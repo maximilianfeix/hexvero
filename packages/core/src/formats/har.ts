@@ -63,6 +63,12 @@ interface RawEntry {
 const SECRET_PARAMS =
   /^(api[_-]?key|token|access[_-]?token|auth|secret|password|pwd|sig|signature|key|session)$/i;
 
+const header = (
+  headers: RawHeader[] | undefined,
+  name: string,
+): string | undefined =>
+  headers?.find((h) => h.name?.toLowerCase() === name)?.value;
+
 export function parseHar(bytes: Uint8Array): HarInfo {
   let doc: {
     log?: {
@@ -104,11 +110,6 @@ export function parseHar(bytes: Uint8Array): HarInfo {
   >();
   const secretsInUrls: HarInfo["secretsInUrls"] = [];
   const websockets: string[] = [];
-  const header = (
-    headers: RawHeader[] | undefined,
-    name: string,
-  ): string | undefined =>
-    headers?.find((h) => h.name?.toLowerCase() === name)?.value;
 
   const entries: HarRequest[] = raw.map((e, index) => {
     const url = e.request?.url ?? "";
@@ -173,7 +174,7 @@ export function parseHar(bytes: Uint8Array): HarInfo {
   const hosts = [...hostStats]
     .map(([host, s]) => ({ host, ...s }))
     .toSorted((a, b) => b.count - a.count);
-  const apiEndpoints = [...endpoints.values()].sort(
+  const apiEndpoints = [...endpoints.values()].toSorted(
     (a, b) => b.count - a.count,
   );
   const authed = entries.filter((e) => e.hasAuth).length;
