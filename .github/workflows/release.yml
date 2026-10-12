@@ -31,7 +31,7 @@ jobs:
       - name: Release notes
         run: node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release/NOTES.md
       - name: GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body_path: release/NOTES.md
           files: release/*.tgz
