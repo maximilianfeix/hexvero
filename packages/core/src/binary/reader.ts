@@ -22,7 +22,9 @@ export class ByteReader {
 
   seek(offset: number): this {
     if (offset < 0 || offset > this.length) {
-      throw new RangeError(`seek(${offset}) outside buffer of ${this.length} bytes`);
+      throw new RangeError(
+        `seek(${offset}) outside buffer of ${this.length} bytes`,
+      );
     }
     this.offset = offset;
     return this;
@@ -35,7 +37,9 @@ export class ByteReader {
   private take(size: number): number {
     const at = this.offset;
     if (at + size > this.length) {
-      throw new RangeError(`read of ${size} bytes at ${at} exceeds buffer of ${this.length}`);
+      throw new RangeError(
+        `read of ${size} bytes at ${at} exceeds buffer of ${this.length}`,
+      );
     }
     this.offset = at + size;
     return at;
@@ -65,7 +69,9 @@ export class ByteReader {
   u64n(): number {
     const value = this.u64();
     if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new RangeError(`64-bit value ${value} exceeds Number.MAX_SAFE_INTEGER`);
+      throw new RangeError(
+        `64-bit value ${value} exceeds Number.MAX_SAFE_INTEGER`,
+      );
     }
     return Number(value);
   }
@@ -123,7 +129,11 @@ export function utf8String(bytes: Uint8Array): string {
 }
 
 /** Reads a NUL-terminated string from a string table at `offset`. */
-export function cstringAt(bytes: Uint8Array, offset: number, max = 4096): string {
+export function cstringAt(
+  bytes: Uint8Array,
+  offset: number,
+  max = 4096,
+): string {
   if (offset < 0 || offset >= bytes.length) return "";
   let end = offset;
   const limit = Math.min(bytes.length, offset + max);

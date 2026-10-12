@@ -1,7 +1,17 @@
 import { parseElf, type ElfInfo } from "../formats/elf.js";
-import { parseMacho, parseMachoFat, type MachoFatInfo, type MachoInfo } from "../formats/macho.js";
+import {
+  parseMacho,
+  parseMachoFat,
+  type MachoFatInfo,
+  type MachoInfo,
+} from "../formats/macho.js";
 import { parsePe, type PeInfo } from "../formats/pe.js";
-import { AnalysisError, type Analysis, type Finding, type Limitation } from "../model.js";
+import {
+  AnalysisError,
+  type Analysis,
+  type Finding,
+  type Limitation,
+} from "../model.js";
 import type { LoadedTarget } from "../target.js";
 
 export type BinaryData =
@@ -10,7 +20,12 @@ export type BinaryData =
   | { kind: "macho"; macho: Omit<MachoInfo, "findings" | "limitations"> }
   | {
       kind: "macho-fat";
-      slices: Array<{ cpu: string; offset: number; size: number; macho: Omit<MachoInfo, "findings" | "limitations"> }>;
+      slices: Array<{
+        cpu: string;
+        offset: number;
+        size: number;
+        macho: Omit<MachoInfo, "findings" | "limitations">;
+      }>;
     };
 
 /** Parses the executable container and returns its layout, symbols and hardening facts. */
@@ -32,11 +47,18 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
       break;
     }
     case "pe": {
-      const { findings: f, limitations: l, rvaToOffset: _r, ...pe } = parsePe(bytes);
+      const {
+        findings: f,
+        limitations: l,
+        rvaToOffset: _r,
+        ...pe
+      } = parsePe(bytes);
       findings.push(...f);
       limitations.push(...l);
       data = { kind: "pe", pe };
-      summary = `PE${pe.bits} ${pe.machine} ${pe.isDll ? "DLL" : "EXE"}${pe.isClr ? " (.NET)" : ""}, ${pe.imports.length} import DLLs, ${pe.exports.length} exports`;
+      summary = `PE${pe.bits} ${pe.machine} ${pe.isDll ? "DLL" : "EXE"}${
+        pe.isClr ? " (.NET)" : ""
+      }, ${pe.imports.length} import DLLs, ${pe.exports.length} exports`;
       break;
     }
     case "macho": {
@@ -51,7 +73,9 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
       const fat: MachoFatInfo = parseMachoFat(bytes);
       const slices = fat.slices.map((s) => {
         const { findings: f, limitations: l, ...macho } = s.info;
-        findings.push(...f.map((x) => ({ ...x, title: `[${s.cpu}] ${x.title}` })));
+        findings.push(
+          ...f.map((x) => ({ ...x, title: `[${s.cpu}] ${x.title}` })),
+        );
         limitations.push(...l);
         return { cpu: s.cpu, offset: s.offset, size: s.size, macho };
       });
@@ -60,10 +84,21 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
       break;
     }
     default:
-      throw new AnalysisError("unsupported_format", `${info.format} is not an executable container`, {
-        format: info.format,
-      });
+      throw new AnalysisError(
+        "unsupported_format",
+        `${info.format} is not an executable container`,
+        {
+          format: info.format,
+        },
+      );
   }
 
-  return { target: info, summary, data, findings, limitations, durationMs: Math.round(performance.now() - started) };
+  return {
+    target: info,
+    summary,
+    data,
+    findings,
+    limitations,
+    durationMs: Math.round(performance.now() - started),
+  };
 }

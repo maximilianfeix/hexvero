@@ -8,7 +8,12 @@ export interface MachoSegment {
   fileOffset: number;
   fileSize: number;
   protection: string;
-  sections: Array<{ name: string; address: string; size: number; offset: number }>;
+  sections: Array<{
+    name: string;
+    address: string;
+    size: number;
+    offset: number;
+  }>;
 }
 
 export interface MachoSymbol {
@@ -32,7 +37,10 @@ export interface MachoInfo {
   symbols: MachoSymbol[];
   encrypted: boolean;
   codeSigned: boolean;
-  mitigations: Record<"pie" | "canary" | "arc" | "restrict" | "stripped", boolean>;
+  mitigations: Record<
+    "pie" | "canary" | "arc" | "restrict" | "stripped",
+    boolean
+  >;
   findings: Finding[];
   limitations: Limitation[];
 }
@@ -71,8 +79,10 @@ const PLATFORMS: Record<number, string> = {
   9: "watchOS Simulator",
   11: "visionOS",
 };
-const prot = (p: number): string => `${p & 1 ? "r" : "-"}${p & 2 ? "w" : "-"}${p & 4 ? "x" : "-"}`;
-const version = (v: number): string => `${v >> 16}.${(v >> 8) & 0xff}.${v & 0xff}`;
+const prot = (p: number): string =>
+  `${p & 1 ? "r" : "-"}${p & 2 ? "w" : "-"}${p & 4 ? "x" : "-"}`;
+const version = (v: number): string =>
+  `${v >> 16}.${(v >> 8) & 0xff}.${v & 0xff}`;
 
 export function parseMachoFat(bytes: Uint8Array): MachoFatInfo {
   const r = new ByteReader(bytes, 4, false);
@@ -84,15 +94,24 @@ export function parseMachoFat(bytes: Uint8Array): MachoFatInfo {
     const offset = r.u32();
     const size = r.u32();
     r.u32();
-    if (offset + size > bytes.length) throw new AnalysisError("malformed", `fat slice ${i} exceeds file`);
-    slices.push({ cpu: CPUS[cpu] ?? hex(cpu), offset, size, info: parseMacho(bytes.subarray(offset, offset + size)) });
+    if (offset + size > bytes.length)
+      throw new AnalysisError("malformed", `fat slice ${i} exceeds file`);
+    slices.push({
+      cpu: CPUS[cpu] ?? hex(cpu),
+      offset,
+      size,
+      info: parseMacho(bytes.subarray(offset, offset + size)),
+    });
   }
   return { slices };
 }
 
 export function parseMacho(bytes: Uint8Array): MachoInfo {
-  if (bytes.length < 28) throw new AnalysisError("malformed", "Mach-O header truncated");
-  const m = ((bytes[0]! << 24) | (bytes[1]! << 16) | (bytes[2]! << 8) | bytes[3]!) >>> 0;
+  if (bytes.length < 28)
+    throw new AnalysisError("malformed", "Mach-O header truncated");
+  const m =
+    ((bytes[0]! << 24) | (bytes[1]! << 16) | (bytes[2]! << 8) | bytes[3]!) >>>
+    0;
   const little = m === 0xcefaedfe || m === 0xcffaedfe;
   const bits: 32 | 64 = m === 0xfeedfacf || m === 0xcffaedfe ? 64 : 32;
   const r = new ByteReader(bytes, 4, little);
@@ -119,13 +138,19 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
   for (let i = 0; i < ncmds; i++) {
     const start = r.offset;
     if (start + 8 > bytes.length) {
-      limitations.push({ code: "load_commands_truncated", message: `Load command ${i} runs past the end.` });
+      limitations.push({
+        code: "load_commands_truncated",
+        message: `Load command ${i} runs past the end.`,
+      });
       break;
     }
     const cmd = r.u32();
     const size = r.u32();
     if (size < 8 || start + size > bytes.length) {
-      limitations.push({ code: "load_command_invalid", message: `Load command ${hex(cmd)} has invalid size ${size}.` });
+      limitations.push({
+        code: "load_command_invalid",
+        message: `Load command ${hex(cmd)} has invalid size ${size}.`,
+      });
       break;
     }
     const lcString = (): string => {
@@ -154,9 +179,22 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
           const sectSize = is64 ? r.u64n() : r.u32();
           const offset = r.u32();
           r.skip(is64 ? 36 : 28);
-          sections.push({ name: sectName, address: hex(addr), size: sectSize, offset });
+          sections.push({
+            name: sectName,
+            address: hex(addr),
+            size: sectSize,
+            offset,
+          });
         }
-        segments.push({ name, vmaddr: hex(vmaddr), vmsize, fileOffset, fileSize, protection: prot(initprot), sections });
+        segments.push({
+          name,
+          vmaddr: hex(vmaddr),
+          vmsize,
+          fileOffset,
+          fileSize,
+          protection: prot(initprot),
+          sections,
+        });
         break;
       }
       case 0x2: {
@@ -164,7 +202,11 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
         const nsyms = Math.min(r.u32(), 200_000);
         const stroff = r.u32();
         const entSize = bits === 64 ? 16 : 12;
-        for (let s = 0; s < nsyms && symoff + (s + 1) * entSize <= bytes.length; s++) {
+        for (
+          let s = 0;
+          s < nsyms && symoff + (s + 1) * entSize <= bytes.length;
+          s++
+        ) {
           r.seek(symoff + s * entSize);
           const strx = r.u32();
           const ntype = r.u8();
@@ -178,7 +220,14 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
           symbols.push({
             name,
             value: hex(value),
-            type: kind === 0 ? "undefined" : kind === 2 ? "absolute" : ntype & 1 ? "external" : "local",
+            type:
+              kind === 0
+                ? "undefined"
+                : kind === 2
+                  ? "absolute"
+                  : ntype & 1
+                    ? "external"
+                    : "local",
             section: sect,
           });
         }
@@ -200,18 +249,33 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
         rpaths.push(lcString());
         break;
       case 0x1b:
-        uuid = Buffer.from(r.bytesAt(16)).toString("hex").replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
+        uuid = Buffer.from(r.bytesAt(16))
+          .toString("hex")
+          .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
         break;
       case 0x32:
-        platform = { name: PLATFORMS[r.u32()] ?? "unknown", minOs: version(r.u32()), sdk: version(r.u32()) };
+        platform = {
+          name: PLATFORMS[r.u32()] ?? "unknown",
+          minOs: version(r.u32()),
+          sdk: version(r.u32()),
+        };
         break;
       case 0x24:
       case 0x25:
       case 0x2f:
       case 0x30:
         if (!platform) {
-          const names: Record<number, string> = { 0x24: "macOS", 0x25: "iOS", 0x2f: "tvOS", 0x30: "watchOS" };
-          platform = { name: names[cmd]!, minOs: version(r.u32()), sdk: version(r.u32()) };
+          const names: Record<number, string> = {
+            0x24: "macOS",
+            0x25: "iOS",
+            0x2f: "tvOS",
+            0x30: "watchOS",
+          };
+          platform = {
+            name: names[cmd]!,
+            minOs: version(r.u32()),
+            sdk: version(r.u32()),
+          };
         }
         break;
       case 0x80000028:
@@ -240,14 +304,36 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
   if (flags & 0x800000) flagNames.push("NO_HEAP_EXECUTION");
 
   const hasLocalFuncs = symbols.some((s) => s.type === "local");
-  if (encrypted) findings.push({ kind: "macho.encrypted", title: "Encrypted with FairPlay (cryptid != 0)", detail: "Decrypt on a device before static analysis.", confidence: "confirmed" });
+  if (encrypted)
+    findings.push({
+      kind: "macho.encrypted",
+      title: "Encrypted with FairPlay (cryptid != 0)",
+      detail: "Decrypt on a device before static analysis.",
+      confidence: "confirmed",
+    });
   if (names.has("_ptrace") || names.has("_sysctl")) {
-    findings.push({ kind: "macho.anti-debug", title: "Imports ptrace/sysctl (possible anti-debugging)", confidence: "inferred" });
+    findings.push({
+      kind: "macho.anti-debug",
+      title: "Imports ptrace/sysctl (possible anti-debugging)",
+      confidence: "inferred",
+    });
   }
   const swift = dylibs.some((d) => d.path.includes("libswiftCore"));
-  if (swift) findings.push({ kind: "macho.swift", title: "Links Swift runtime", confidence: "confirmed" });
-  const objc = segments.some((s) => s.sections.some((x) => x.name.startsWith("__objc_")));
-  if (objc) findings.push({ kind: "macho.objc", title: "Contains Objective-C metadata sections", confidence: "confirmed" });
+  if (swift)
+    findings.push({
+      kind: "macho.swift",
+      title: "Links Swift runtime",
+      confidence: "confirmed",
+    });
+  const objc = segments.some((s) =>
+    s.sections.some((x) => x.name.startsWith("__objc_")),
+  );
+  if (objc)
+    findings.push({
+      kind: "macho.objc",
+      title: "Contains Objective-C metadata sections",
+      confidence: "confirmed",
+    });
 
   return {
     bits,
