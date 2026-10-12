@@ -21,3 +21,13 @@ export {
 } from "./binary/strings.js";
 export { ByteReader, hex } from "./binary/reader.js";
 export { analyzeBinary, type BinaryData } from "./analyzers/binary.js";
+export {
+  parseGoBuildInfo,
+  type GoBuildInfo,
+  type GoModule,
+} from "./formats/go.js";
+export {
+  parseDotnet,
+  type DotnetInfo,
+  type DotnetType,
+} from "./formats/dotnet.js";

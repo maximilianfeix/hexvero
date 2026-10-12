@@ -84,10 +84,13 @@ const prot = (p: number): string =>
 const version = (v: number): string =>
   `${v >> 16}.${(v >> 8) & 0xff}.${v & 0xff}`;
 
-export function parseMachoFat(bytes: Uint8Array): MachoFatInfo {
+/** Reads the fat header without parsing the slices. */
+export function listFatSlices(
+  bytes: Uint8Array,
+): Array<{ cpu: string; offset: number; size: number }> {
   const r = new ByteReader(bytes, 4, false);
   const count = r.u32();
-  const slices: MachoFatInfo["slices"] = [];
+  const slices: Array<{ cpu: string; offset: number; size: number }> = [];
   for (let i = 0; i < count; i++) {
     const cpu = r.u32();
     r.u32();
@@ -96,14 +99,18 @@ export function parseMachoFat(bytes: Uint8Array): MachoFatInfo {
     r.u32();
     if (offset + size > bytes.length)
       throw new AnalysisError("malformed", `fat slice ${i} exceeds file`);
-    slices.push({
-      cpu: CPUS[cpu] ?? hex(cpu),
-      offset,
-      size,
-      info: parseMacho(bytes.subarray(offset, offset + size)),
-    });
+    slices.push({ cpu: CPUS[cpu] ?? hex(cpu), offset, size });
   }
-  return { slices };
+  return slices;
+}
+
+export function parseMachoFat(bytes: Uint8Array): MachoFatInfo {
+  return {
+    slices: listFatSlices(bytes).map((s) => ({
+      ...s,
+      info: parseMacho(bytes.subarray(s.offset, s.offset + s.size)),
+    })),
+  };
 }
 
 export function parseMacho(bytes: Uint8Array): MachoInfo {
