@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Pack
+        run: |
+          mkdir -p release
+          for w in packages/core packages/mcp packages/server packages/cli; do npm pack -w ./$w --pack-destination release >/dev/null; done
+          ls -la release
+      - name: Release notes
+        run: node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release/NOTES.md
+      - name: GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release/NOTES.md
+          files: release/*.tgz
+      - name: Publish to npm
+        if: ${{ env.NPM_TOKEN != '' }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for w in packages/core packages/mcp packages/server packages/cli; do npm publish -w ./$w --access public --provenance; done
