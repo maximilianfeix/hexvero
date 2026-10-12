@@ -37,7 +37,10 @@ export interface PeInfo {
   imports: PeImport[];
   exports: PeExport[];
   dataDirectories: Record<string, { rva: string; size: number }>;
-  mitigations: Record<"aslr" | "highEntropyVa" | "nx" | "cfg" | "seh" | "gs" | "authenticode", boolean | "unknown">;
+  mitigations: Record<
+    "aslr" | "highEntropyVa" | "nx" | "cfg" | "seh" | "gs" | "authenticode",
+    boolean | "unknown"
+  >;
   clrHeaderRva: number | null;
   findings: Finding[];
   limitations: Limitation[];
@@ -66,8 +69,22 @@ const SUBSYSTEMS: Record<number, string> = {
   16: "windows-boot-application",
 };
 const DIRECTORIES = [
-  "export", "import", "resource", "exception", "security", "basereloc", "debug", "architecture",
-  "globalptr", "tls", "loadconfig", "boundimport", "iat", "delayimport", "clr", "reserved",
+  "export",
+  "import",
+  "resource",
+  "exception",
+  "security",
+  "basereloc",
+  "debug",
+  "architecture",
+  "globalptr",
+  "tls",
+  "loadconfig",
+  "boundimport",
+  "iat",
+  "delayimport",
+  "clr",
+  "reserved",
 ];
 
 export function shannonEntropy(bytes: Uint8Array): number {
@@ -89,8 +106,14 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   }
   const r = new ByteReader(bytes, 0x3c);
   const peOffset = r.u32();
-  if (peOffset + 24 > bytes.length || latin1(bytes.subarray(peOffset, peOffset + 4)) !== "PE\0\0") {
-    throw new AnalysisError("malformed", "Missing PE signature (DOS-only executable?)");
+  if (
+    peOffset + 24 > bytes.length ||
+    latin1(bytes.subarray(peOffset, peOffset + 4)) !== "PE\0\0"
+  ) {
+    throw new AnalysisError(
+      "malformed",
+      "Missing PE signature (DOS-only executable?)",
+    );
   }
   const limitations: Limitation[] = [];
   const findings: Finding[] = [];
@@ -106,7 +129,11 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   const optStart = r.offset;
   const magic = r.u16();
   const bits: 32 | 64 = magic === 0x20b ? 64 : 32;
-  if (magic !== 0x10b && magic !== 0x20b) throw new AnalysisError("malformed", `Unknown optional header magic ${hex(magic)}`);
+  if (magic !== 0x10b && magic !== 0x20b)
+    throw new AnalysisError(
+      "malformed",
+      `Unknown optional header magic ${hex(magic)}`,
+    );
   r.seek(optStart + 16);
   const entry = r.u32();
   r.seek(bits === 64 ? optStart + 24 : optStart + 28);
@@ -121,7 +148,12 @@ export function parsePe(bytes: Uint8Array): PeInfo {
 
   // Sections
   const sections: PeSection[] = [];
-  const rawSections: Array<{ va: number; vsize: number; raw: number; rawSize: number }> = [];
+  const rawSections: Array<{
+    va: number;
+    vsize: number;
+    raw: number;
+    rawSize: number;
+  }> = [];
   r.seek(optStart + optionalSize);
   for (let i = 0; i < sectionCount && r.remaining >= 40; i++) {
     const name = r.fixedString(8);
@@ -139,7 +171,9 @@ export function parsePe(bytes: Uint8Array): PeInfo {
       virtualSize: vsize,
       rawOffset: raw,
       rawSize,
-      flags: `${flags & 0x40000000 ? "r" : "-"}${flags & 0x80000000 ? "w" : "-"}${flags & 0x20000000 ? "x" : "-"}`,
+      flags: `${flags & 0x40000000 ? "r" : "-"}${
+        flags & 0x80000000 ? "w" : "-"
+      }${flags & 0x20000000 ? "x" : "-"}`,
       entropy: shannonEntropy(body),
     });
   }
@@ -163,7 +197,11 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   const importDir = dirs[1];
   if (importDir && importDir.rva) {
     let at = rvaToOffset(importDir.rva);
-    for (let n = 0; at !== null && at + 20 <= bytes.length && n < 512; n++, at += 20) {
+    for (
+      let n = 0;
+      at !== null && at + 20 <= bytes.length && n < 512;
+      n++, at += 20
+    ) {
       r.seek(at);
       const oft = r.u32();
       r.skip(8);
@@ -173,7 +211,11 @@ export function parsePe(bytes: Uint8Array): PeInfo {
       const functions: string[] = [];
       let thunk = rvaToOffset(oft || ft);
       const step = bits === 64 ? 8 : 4;
-      for (let i = 0; thunk !== null && thunk + step <= bytes.length && i < 4096; i++, thunk += step) {
+      for (
+        let i = 0;
+        thunk !== null && thunk + step <= bytes.length && i < 4096;
+        i++, thunk += step
+      ) {
         r.seek(thunk);
         const value = bits === 64 ? r.u64() : BigInt(r.u32());
         if (value === 0n) break;
@@ -199,19 +241,28 @@ export function parsePe(bytes: Uint8Array): PeInfo {
       const names = rvaToOffset(r.u32());
       const ords = rvaToOffset(r.u32());
       const limit = Math.min(nameCount, 20_000);
-      if (nameCount > limit) limitations.push({ code: "exports_truncated", message: `Exports truncated to ${limit}.` });
-      for (let i = 0; i < limit && names !== null && ords !== null && funcs !== null; i++) {
-        r.seek(names + i * 4);
+      if (nameCount > limit)
+        limitations.push({
+          code: "exports_truncated",
+          message: `Exports truncated to ${limit}.`,
+        });
+      const tables =
+        names !== null && ords !== null && funcs !== null
+          ? { names, ords, funcs }
+          : null;
+      for (let i = 0; tables && i < limit; i++) {
+        r.seek(tables.names + i * 4);
         const name = readString(r.u32());
-        r.seek(ords + i * 2);
+        r.seek(tables.ords + i * 2);
         const ordinal = r.u16();
         if (ordinal >= funcCount) continue;
-        r.seek(funcs + ordinal * 4);
+        r.seek(tables.funcs + ordinal * 4);
         const rva = r.u32();
-        const inExportDir = rva >= exportDir.rva && rva < exportDir.rva + exportDir.size;
-        const entry: PeExport = { name, ordinal: ordinal + base, rva: hex(rva) };
-        if (inExportDir) entry.forwarder = readString(rva);
-        exports.push(entry);
+        const inExportDir =
+          rva >= exportDir.rva && rva < exportDir.rva + exportDir.size;
+        const item: PeExport = { name, ordinal: ordinal + base, rva: hex(rva) };
+        if (inExportDir) item.forwarder = readString(rva);
+        exports.push(item);
       }
     }
   }
@@ -220,15 +271,19 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   let pdbPath: string | null = null;
   const debugDir = dirs[6];
   if (debugDir && debugDir.rva) {
-    const at = rvaToOffset(debugDir.rva);
-    const count = Math.min(Math.floor(debugDir.size / 28), 16);
-    for (let i = 0; at !== null && i < count && at + (i + 1) * 28 <= bytes.length; i++) {
+    const at = rvaToOffset(debugDir.rva) ?? -1;
+    const count = at < 0 ? 0 : Math.min(Math.floor(debugDir.size / 28), 16);
+    for (let i = 0; i < count && at + (i + 1) * 28 <= bytes.length; i++) {
       r.seek(at + i * 28 + 12);
       const dtype = r.u32();
       const size = r.u32();
       r.u32();
       const ptr = r.u32();
-      if (dtype === 2 && ptr + size <= bytes.length && latin1(bytes.subarray(ptr, ptr + 4)) === "RSDS") {
+      if (
+        dtype === 2 &&
+        ptr + size <= bytes.length &&
+        latin1(bytes.subarray(ptr, ptr + 4)) === "RSDS"
+      ) {
         pdbPath = cstringAt(bytes, ptr + 24);
       }
     }
@@ -250,10 +305,22 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   const isClr = Boolean(clr && clr.rva && clr.size);
   const dataDirectories: PeInfo["dataDirectories"] = {};
   dirs.forEach((d, i) => {
-    if (d.rva || d.size) dataDirectories[DIRECTORIES[i]!] = { rva: hex(d.rva), size: d.size };
+    if (d.rva || d.size)
+      dataDirectories[DIRECTORIES[i]!] = { rva: hex(d.rva), size: d.size };
   });
-  if (isClr) findings.push({ kind: "pe.clr", title: ".NET assembly (CLR header present)", confidence: "confirmed" });
-  if (pdbPath) findings.push({ kind: "pe.pdb", title: "PDB path embedded", detail: pdbPath, confidence: "confirmed" });
+  if (isClr)
+    findings.push({
+      kind: "pe.clr",
+      title: ".NET assembly (CLR header present)",
+      confidence: "confirmed",
+    });
+  if (pdbPath)
+    findings.push({
+      kind: "pe.pdb",
+      title: "PDB path embedded",
+      detail: pdbPath,
+      confidence: "confirmed",
+    });
   const packed = sections.filter((s) => s.entropy > 7.2 && s.rawSize > 4096);
   if (packed.length) {
     findings.push({
@@ -263,7 +330,11 @@ export function parsePe(bytes: Uint8Array): PeInfo {
       confidence: "inferred",
     });
   }
-  if (!dirs[2]?.rva) limitations.push({ code: "no_resources", message: "No resource directory; version info unavailable." });
+  if (!dirs[2]?.rva)
+    limitations.push({
+      code: "no_resources",
+      message: "No resource directory; version info unavailable.",
+    });
 
   return {
     machine: MACHINES[machine] ?? hex(machine),

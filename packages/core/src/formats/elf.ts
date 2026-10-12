@@ -46,7 +46,10 @@ export interface ElfInfo {
   sections: ElfSection[];
   segments: ElfSegment[];
   symbols: ElfSymbol[];
-  mitigations: Record<"nx" | "pie" | "relro" | "canary" | "fortify" | "stripped", boolean | "partial">;
+  mitigations: Record<
+    "nx" | "pie" | "relro" | "canary" | "fortify" | "stripped",
+    boolean | "partial"
+  >;
   findings: Finding[];
   limitations: Limitation[];
 }
@@ -101,19 +104,39 @@ const SEGMENT_TYPES: Record<number, string> = {
   0x6474e552: "GNU_RELRO",
   0x6474e553: "GNU_PROPERTY",
 };
-const SYMBOL_TYPES = ["NOTYPE", "OBJECT", "FUNC", "SECTION", "FILE", "COMMON", "TLS"];
+const SYMBOL_TYPES = [
+  "NOTYPE",
+  "OBJECT",
+  "FUNC",
+  "SECTION",
+  "FILE",
+  "COMMON",
+  "TLS",
+];
 const BINDINGS = ["LOCAL", "GLOBAL", "WEAK"];
-const OSABI: Record<number, string> = { 0: "SysV", 3: "Linux", 9: "FreeBSD", 12: "OpenBSD" };
+const OSABI: Record<number, string> = {
+  0: "SysV",
+  3: "Linux",
+  9: "FreeBSD",
+  12: "OpenBSD",
+};
 
 const segFlags = (f: number): string =>
   `${f & 4 ? "r" : "-"}${f & 2 ? "w" : "-"}${f & 1 ? "x" : "-"}`;
 const secFlags = (f: bigint): string =>
-  [f & 1n ? "W" : "", f & 2n ? "A" : "", f & 4n ? "X" : "", f & 0x400n ? "T" : ""].join("");
+  [
+    f & 1n ? "W" : "",
+    f & 2n ? "A" : "",
+    f & 4n ? "X" : "",
+    f & 0x400n ? "T" : "",
+  ].join("");
 
 export function parseElf(bytes: Uint8Array): ElfInfo {
-  if (bytes.length < 52) throw new AnalysisError("malformed", "ELF header truncated");
+  if (bytes.length < 52)
+    throw new AnalysisError("malformed", "ELF header truncated");
   const cls = bytes[4] === 2 ? 64 : bytes[4] === 1 ? 32 : 0;
-  if (cls === 0) throw new AnalysisError("malformed", `unknown ELF class ${bytes[4]}`);
+  if (cls === 0)
+    throw new AnalysisError("malformed", `unknown ELF class ${bytes[4]}`);
   const little = bytes[5] === 1;
   const r = new ByteReader(bytes, 16, little);
   const limitations: Limitation[] = [];
@@ -136,8 +159,17 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
 
   // Program headers
   const segments: ElfSegment[] = [];
-  const rawSegments: Array<{ type: number; flags: number; offset: number; fileSize: number }> = [];
-  for (let i = 0; i < phnum && phoff + (i + 1) * phentsize <= bytes.length; i++) {
+  const rawSegments: Array<{
+    type: number;
+    flags: number;
+    offset: number;
+    fileSize: number;
+  }> = [];
+  for (
+    let i = 0;
+    i < phnum && phoff + (i + 1) * phentsize <= bytes.length;
+    i++
+  ) {
     r.seek(phoff + i * phentsize);
     const ptype = r.u32();
     let flags: number;
@@ -172,9 +204,17 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
   }
 
   // Section headers
-  type RawSection = ElfSection & { link: number; entsize: number; nameOffset: number };
+  type RawSection = ElfSection & {
+    link: number;
+    entsize: number;
+    nameOffset: number;
+  };
   const raw: RawSection[] = [];
-  for (let i = 0; i < shnum && shoff + (i + 1) * shentsize <= bytes.length; i++) {
+  for (
+    let i = 0;
+    i < shnum && shoff + (i + 1) * shentsize <= bytes.length;
+    i++
+  ) {
     r.seek(shoff + i * shentsize);
     const nameOffset = r.u32();
     const stype = r.u32();
@@ -204,7 +244,11 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
   for (const s of raw) {
     s.name = shstr ? cstringAt(bytes, shstr.offset + s.nameOffset) : "";
   }
-  if (shnum === 0) limitations.push({ code: "no_sections", message: "No section headers (stripped or packed)." });
+  if (shnum === 0)
+    limitations.push({
+      code: "no_sections",
+      message: "No section headers (stripped or packed).",
+    });
 
   // Symbols
   const symbols: ElfSymbol[] = [];
@@ -214,7 +258,10 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
     const entSize = cls === 64 ? 24 : 16;
     const count = Math.min(Math.floor(sec.size / entSize), 200_000);
     if (sec.size / entSize > count) {
-      limitations.push({ code: "symbols_truncated", message: `${table} truncated to ${count} entries.` });
+      limitations.push({
+        code: "symbols_truncated",
+        message: `${table} truncated to ${count} entries.`,
+      });
     }
     for (let i = 0; i < count; i++) {
       const at = sec.offset + i * entSize;
@@ -246,7 +293,12 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
         size,
         type: SYMBOL_TYPES[info & 0xf] ?? `type${info & 0xf}`,
         binding: BINDINGS[info >> 4] ?? `bind${info >> 4}`,
-        section: shndx === 0 ? "UND" : shndx === 0xfff1 ? "ABS" : (raw[shndx]?.name ?? String(shndx)),
+        section:
+          shndx === 0
+            ? "UND"
+            : shndx === 0xfff1
+              ? "ABS"
+              : (raw[shndx]?.name ?? String(shndx)),
         table,
       });
     }
@@ -266,12 +318,17 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
   if (dynamic) {
     const dynstr = raw[dynamic.link];
     const entSize = cls === 64 ? 16 : 8;
-    for (let at = dynamic.offset; at + entSize <= Math.min(bytes.length, dynamic.offset + dynamic.size); at += entSize) {
+    for (
+      let at = dynamic.offset;
+      at + entSize <= Math.min(bytes.length, dynamic.offset + dynamic.size);
+      at += entSize
+    ) {
       r.seek(at);
       const tag = cls === 64 ? r.u64n() : r.u32();
       const val = cls === 64 ? r.u64n() : r.u32();
       if (tag === 0) break;
-      const str = (): string => (dynstr ? cstringAt(bytes, dynstr.offset + val) : "");
+      const str = (): string =>
+        dynstr ? cstringAt(bytes, dynstr.offset + val) : "";
       if (tag === 1) needed.push(str());
       else if (tag === 14) soname = str();
       else if (tag === 15 || tag === 29) rpath.push(str());
@@ -286,7 +343,8 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
   const interpreter = interpSeg ? cstringAt(bytes, interpSeg.offset) : null;
   let buildId: string | null = null;
   for (const s of raw) {
-    if (s.type !== 7 || s.size < 12 || s.offset + s.size > bytes.length) continue;
+    if (s.type !== 7 || s.size < 12 || s.offset + s.size > bytes.length)
+      continue;
     r.seek(s.offset);
     const end = s.offset + s.size;
     while (r.offset + 12 <= end) {
@@ -297,9 +355,15 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
       r.skip((namesz + 3) & ~3);
       const desc = r.bytesAt(Math.min(descsz, end - r.offset));
       r.seek(Math.min(end, r.offset + ((descsz + 3) & ~3) - desc.length));
-      if (name === "GNU" && ntype === 3) buildId = Buffer.from(desc).toString("hex");
+      if (name === "GNU" && ntype === 3)
+        buildId = Buffer.from(desc).toString("hex");
       if (name === "Go" && ntype === 4) {
-        findings.push({ kind: "go.buildid", title: "Go build ID note", detail: Buffer.from(desc).toString(), confidence: "confirmed" });
+        findings.push({
+          kind: "go.buildid",
+          title: "Go build ID note",
+          detail: Buffer.from(desc).toString(),
+          confidence: "confirmed",
+        });
       }
     }
   }
@@ -317,8 +381,17 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
     stripped: !hasSymtab,
   };
 
-  if (interpreter) findings.push({ kind: "elf.interpreter", title: `Dynamic linker ${interpreter}`, confidence: "confirmed" });
-  if (!gnuStack) limitations.push({ code: "no_gnu_stack", message: "No PT_GNU_STACK; NX state unknown." });
+  if (interpreter)
+    findings.push({
+      kind: "elf.interpreter",
+      title: `Dynamic linker ${interpreter}`,
+      confidence: "confirmed",
+    });
+  if (!gnuStack)
+    limitations.push({
+      code: "no_gnu_stack",
+      message: "No PT_GNU_STACK; NX state unknown.",
+    });
 
   return {
     class: cls,

@@ -32,7 +32,11 @@ export function detectFormat(bytes: Uint8Array, name = ""): FormatId {
 
   const head = latin1(bytes.subarray(0, 512)).trimStart();
   if (head.startsWith("<?xml") && head.includes("<plist")) return "plist-xml";
-  if (/^(0x)?[0-9a-fA-F]{8,}\s*$/.test(latin1(bytes.subarray(0, Math.min(bytes.length, 65536))))) {
+  if (
+    /^(0x)?[0-9a-fA-F]{8,}\s*$/.test(
+      latin1(bytes.subarray(0, Math.min(bytes.length, 65536))),
+    )
+  ) {
     return "evm-hex";
   }
   const lower = name.toLowerCase();
@@ -44,12 +48,16 @@ export function detectFormat(bytes: Uint8Array, name = ""): FormatId {
 }
 
 function refine(format: FormatId, bytes: Uint8Array, name: string): FormatId {
-  if (format === "zip" && (name.toLowerCase().endsWith(".apk") || hasApkManifest(bytes))) {
+  if (
+    format === "zip" &&
+    (name.toLowerCase().endsWith(".apk") || hasApkManifest(bytes))
+  ) {
     return "apk";
   }
   if (format === "macho-fat" && bytes.length >= 8) {
     // Java class files share the CAFEBABE magic; fat headers have a small arch count.
-    const count = (bytes[4]! << 24) | (bytes[5]! << 16) | (bytes[6]! << 8) | bytes[7]!;
+    const count =
+      (bytes[4]! << 24) | (bytes[5]! << 16) | (bytes[6]! << 8) | bytes[7]!;
     if (count > 32) return "unknown";
   }
   return format;
