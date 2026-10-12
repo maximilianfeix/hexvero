@@ -87,3 +87,10 @@ export {
 } from "./session.js";
 export { compact, type CompactOptions } from "./compact.js";
 export { detectProviders, type ProviderStatus } from "./providers/index.js";
+export {
+  runProvider,
+  type ProviderRequest,
+  type ProviderResult,
+  type ProviderName,
+  type ProviderOperation,
+} from "./providers/run.js";

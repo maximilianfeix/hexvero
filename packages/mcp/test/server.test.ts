@@ -110,6 +110,10 @@ describe("hexvero MCP server", () => {
     expect(exported.ok).toBe(true);
     expect(exported.body["bytes"]).toBeGreaterThan(100);
     const providers = await call("hexvero_providers");
-    expect(providers.body["providers"]).toEqual([]);
+    expect(
+      (providers.body["providers"] as Array<{ name: string }>).map(
+        (p) => p.name,
+      ),
+    ).toEqual(["radare2", "rizin", "ghidra"]);
   });
 });

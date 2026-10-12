@@ -1,4 +1,11 @@
-import { AnalysisError, Session, compact } from "@hexvero/core";
+import {
+  AnalysisError,
+  Session,
+  compact,
+  runProvider,
+  type ProviderName,
+  type ProviderOperation,
+} from "@hexvero/core";
 import { serveStdio } from "@hexvero/mcp";
 import {
   flagNumber,
@@ -32,6 +39,8 @@ Commands
   bytes <path> <offset> [length]                Hex dump of a byte window
   compare <a> <b> <collection> [--key field]    Diff a collection between two targets
   export <path> <out.json>                      Write the complete analysis to a file
+  provider <path> <engine> <op> [--address a]   Run functions/disassemble/decompile/strings/imports
+                                                through radare2, rizin or ghidra (if installed)
   mcp                                           Serve the Model Context Protocol over stdio
   ui [--port n] [--open]                        Start the local web UI
   doctor                                        Check the runtime and optional engines
@@ -260,6 +269,47 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           ? toJson(result)
           : `${paint(io, "green", "✓")} ${result.path} (${result.bytes} bytes)`,
       );
+      return 0;
+    }
+    case "provider": {
+      const target = await session.open(need(0, "path"));
+      const provider = need(1, "engine") as ProviderName;
+      const operation = need(2, "operation") as ProviderOperation;
+      const result = await runProvider({
+        targetPath: target.info.path,
+        provider,
+        operation,
+        address: flagString(args.flags, "address"),
+        timeoutMs: flagNumber(args.flags, "timeout"),
+      });
+      if (json) {
+        io.out(toJson(result));
+        return 0;
+      }
+      io.out(
+        heading(
+          io,
+          `${provider} ${operation}${
+            result.address ? ` @ ${result.address}` : ""
+          } · ${result.durationMs} ms`,
+        ),
+      );
+      const r = result.result as unknown;
+      if (typeof r === "string") io.out(r);
+      else if (
+        operation === "decompile" &&
+        r &&
+        typeof r === "object" &&
+        "code" in r
+      )
+        io.out(String((r as { code: unknown }).code ?? ""));
+      else if (Array.isArray(r))
+        io.out(
+          table(r.slice(0, 200) as Array<Record<string, unknown>>).join("\n"),
+        );
+      else io.out(toJson(compact(r)));
+      if (result.limitations.length)
+        io.out(`\n${formatLimitations(io, result.limitations).join("\n")}`);
       return 0;
     }
     case "mcp":
