@@ -33,7 +33,7 @@ describe("detectFormat", () => {
         new Uint8Array([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 65]),
         "A.class",
       ),
-    ).toBe("unknown");
+    ).toBe("java-class");
   });
 });
 

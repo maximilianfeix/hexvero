@@ -1,4 +1,5 @@
 import { parseAxml, type AxmlElement } from "./axml.js";
+import { parseDex, type DexClass } from "./dex.js";
 import { openZip, type ZipEntry } from "./zip.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
@@ -34,7 +35,14 @@ export interface ApkInfo {
   };
   components: ApkComponent[];
   nativeLibraries: Record<string, string[]>;
-  dexFiles: Array<{ name: string; size: number }>;
+  dexFiles: Array<{
+    name: string;
+    size: number;
+    classes: number;
+    methods: number;
+  }>;
+  classes: DexClass[];
+  packages: Array<{ name: string; classes: number }>;
   signatureSchemes: string[];
   fileCount: number;
   largestFiles: Array<{ name: string; size: number }>;
@@ -99,12 +107,43 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
 
   const nativeLibraries: Record<string, string[]> = {};
   const dexFiles: ApkInfo["dexFiles"] = [];
+  const classes: DexClass[] = [];
+  const packageCounts = new Map<string, number>();
   const signatureSchemes: string[] = [];
   for (const e of zip.entries) {
     const lib = /^lib\/([^/]+)\/(.+\.so)$/.exec(e.name);
     if (lib) (nativeLibraries[lib[1]!] ??= []).push(lib[2]!);
-    if (/^classes\d*\.dex$/.test(e.name))
-      dexFiles.push({ name: e.name, size: e.size });
+    if (/^classes\d*\.dex$/.test(e.name)) {
+      try {
+        const dex = parseDex(zip.read(e, 64 << 20), {
+          maxClasses: 5000,
+          maxStrings: 0,
+        });
+        dexFiles.push({
+          name: e.name,
+          size: e.size,
+          classes: dex.counts.classes,
+          methods: dex.counts.methods,
+        });
+        if (classes.length < 10_000) classes.push(...dex.classes);
+        for (const p of dex.packages)
+          packageCounts.set(
+            p.name,
+            (packageCounts.get(p.name) ?? 0) + p.classes,
+          );
+        for (const f of dex.findings)
+          if (!findings.some((x) => x.kind === f.kind)) findings.push(f);
+        limitations.push(...dex.limitations);
+      } catch (error) {
+        dexFiles.push({ name: e.name, size: e.size, classes: 0, methods: 0 });
+        limitations.push({
+          code: "dex_unreadable",
+          message: `${e.name}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
+    }
     if (/^META-INF\/.+\.(RSA|DSA|EC)$/.test(e.name))
       signatureSchemes.push("v1 (JAR)");
   }
@@ -151,6 +190,10 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
     components,
     nativeLibraries,
     dexFiles,
+    classes,
+    packages: [...packageCounts]
+      .map(([name, n]) => ({ name, classes: n }))
+      .toSorted((x, y) => y.classes - x.classes),
     signatureSchemes,
     fileCount: zip.entries.length,
     largestFiles: zip.entries

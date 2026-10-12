@@ -28,6 +28,7 @@ export function detectFormat(bytes: Uint8Array, name = ""): FormatId {
   }
   if (startsWith(bytes, [0x4d, 0x5a])) return "pe";
   if (latin1(bytes.subarray(0, 16)) === "SQLite format 3\0") return "sqlite";
+  if (latin1(bytes.subarray(0, 4)) === "dex\n") return "dex";
   if (latin1(bytes.subarray(0, 6)) === "bplist") return "plist-binary";
 
   const head = latin1(bytes.subarray(0, 512)).trimStart();
@@ -48,19 +49,25 @@ export function detectFormat(bytes: Uint8Array, name = ""): FormatId {
 }
 
 function refine(format: FormatId, bytes: Uint8Array, name: string): FormatId {
-  if (
-    format === "zip" &&
-    (name.toLowerCase().endsWith(".apk") || hasApkManifest(bytes))
-  ) {
-    return "apk";
+  if (format === "zip") {
+    const lower = name.toLowerCase();
+    if (lower.endsWith(".apk") || hasApkManifest(bytes)) return "apk";
+    if (/\.(jar|war|ear|aar)$/.test(lower) || hasJarManifest(bytes))
+      return "jar";
   }
   if (format === "macho-fat" && bytes.length >= 8) {
     // Java class files share the CAFEBABE magic; fat headers have a small arch count.
     const count =
       (bytes[4]! << 24) | (bytes[5]! << 16) | (bytes[6]! << 8) | bytes[7]!;
-    if (count > 32) return "unknown";
+    if (count > 32) return "java-class";
   }
   return format;
+}
+
+function hasJarManifest(bytes: Uint8Array): boolean {
+  return latin1(bytes.subarray(0, Math.min(bytes.length, 1 << 20))).includes(
+    "META-INF/MANIFEST.MF",
+  );
 }
 
 function hasApkManifest(bytes: Uint8Array): boolean {
