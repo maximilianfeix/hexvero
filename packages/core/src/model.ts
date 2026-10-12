@@ -9,10 +9,10 @@ export interface Finding {
   /** Stable machine-readable kind, e.g. "go.buildinfo" or "pe.clr". */
   kind: string;
   title: string;
-  detail?: string;
+  detail?: string | undefined;
   confidence: Confidence;
   /** Byte offset or address that supports the finding, when it has one. */
-  location?: string;
+  location?: string | undefined;
 }
 
 /** Something the analyzer could not establish; results stay honest about it. */
