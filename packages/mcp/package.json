@@ -1,6 +1,6 @@
 {
   "name": "@hexvero/mcp",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Compact Model Context Protocol server for hexvero analyzers.",
   "license": "MIT",
   "files": [
@@ -19,7 +19,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@hexvero/core": "0.1.1",
+    "@hexvero/core": "0.2.0",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "zod": "^4.0.0"
   },

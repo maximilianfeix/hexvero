@@ -6,6 +6,19 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-13
+
+### Added
+
+- Toolchain facts for ELF, PE and Mach-O: compiler (GCC, clang, Apple clang, MSVC), Rust detection,
+  DWARF presence, Swift/Objective-C runtime use, embedded build paths.
+- PE version resources (VS_VERSIONINFO): file and product versions, company, product and file names.
+- hexvero.dev landing page deployed through GitHub Pages; issue forms, PR checklist and Dependabot.
+
+### Changed
+
+- GitHub Actions bumped to current majors; dev tooling updated (Vite 8.3, Vitest 5, oxfmt).
+
 ## [0.1.1] - 2026-10-13
 
 ### Added

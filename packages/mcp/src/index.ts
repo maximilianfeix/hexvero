@@ -13,7 +13,7 @@ import { createHandlers, toolSchemas, type ProviderBridge, type ToolName } from 
 export { toolSchemas, type ToolName, type ProviderBridge } from "./tools.js";
 
 export const SERVER_NAME = "hexvero";
-export const SERVER_VERSION = "0.1.1";
+export const SERVER_VERSION = "0.2.0";
 
 const defaultProviders: ProviderBridge = {
   detect: async () => ({ providers: await detectProviders() }),

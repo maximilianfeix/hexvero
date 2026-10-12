@@ -1,6 +1,6 @@
 {
   "name": "@hexvero/core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Zero-dependency static analyzers for binaries, apps and web bundles.",
   "license": "MIT",
   "files": [
