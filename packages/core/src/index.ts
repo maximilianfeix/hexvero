@@ -106,3 +106,8 @@ export {
   type DexInfo,
   type DexClass,
 } from "./formats/dex.js";
+export {
+  analyzeAppBundle,
+  isAppBundle,
+  type BundleInfo,
+} from "./formats/bundle.js";

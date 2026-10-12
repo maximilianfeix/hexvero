@@ -1,4 +1,9 @@
 import { parseApk, type ApkInfo } from "../formats/apk.js";
+import {
+  analyzeAppBundle,
+  isAppBundle,
+  type BundleInfo,
+} from "../formats/bundle.js";
 import { parseEvm, type EvmInfo } from "../formats/evm.js";
 import { parseDex, type DexInfo } from "../formats/dex.js";
 import { parseHar, type HarInfo } from "../formats/har.js";
@@ -42,6 +47,7 @@ export type AnalysisData =
   | { kind: "plist"; plist: PlistValue }
   | { kind: "har"; har: Strip<HarInfo> }
   | { kind: "apk"; apk: Strip<ApkInfo> }
+  | { kind: "bundle"; bundle: Strip<BundleInfo> }
   | { kind: "zip"; zip: { entries: ZipEntry[]; comment: string } }
   | { kind: "jar"; jar: Strip<JarInfo> }
   | { kind: "java-class"; javaClass: Strip<JavaClassInfo> }
@@ -175,6 +181,17 @@ export async function analyzeTarget(
       );
     }
     case "directory": {
+      if (isAppBundle(info.path)) {
+        const bundle = strip(analyzeAppBundle(info.path));
+        return done(
+          `${
+            bundle.platform === "macos" ? "macOS" : "iOS"
+          } app ${bundle.name || bundle.bundleId} ${bundle.version} (${bundle.bundleId})${
+            bundle.main ? ` · ${bundle.main.summary}` : ""
+          }`,
+          { kind: "bundle", bundle },
+        );
+      }
       const app = strip(analyzeJavaScriptTree(directoryTree(info.path)));
       return done(
         `Directory: ${app.totals.files} files, ${app.modules.length} JavaScript modules${
