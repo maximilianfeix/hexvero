@@ -1,0 +1,21 @@
+name: Feature request
+description: A format, a fact, a tool or a UI view hexvero should have.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What should hexvero be able to do?
+      description: Name the target format and the facts you want back. Example files or specs help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would you do with the result?
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where do you need it?
+      multiple: true
+      options: [CLI, MCP, Web UI]

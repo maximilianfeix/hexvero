@@ -1,0 +1,35 @@
+name: Bug report
+description: A parser, the CLI, the MCP server or the UI did something wrong.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: hexvero version
+      description: Output of `hexvero --version` (or the npx version you ran).
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Target type
+      description: ELF / PE / Mach-O / APK / ASAR / … and, if you can share it, a link or minimal sample.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Command and output
+      description: The exact command (add `--json`) and what came back, including the `error` object or stack.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: macOS 15 · Node 24.11
