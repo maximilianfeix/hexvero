@@ -1,6 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { AnalysisError, Session } from "@hexvero/core";
+import {
+  AnalysisError,
+  Session,
+  detectProviders,
+  runProvider,
+  type ProviderName,
+  type ProviderOperation,
+} from "@hexvero/core";
 import {
   createHandlers,
   toolSchemas,
@@ -13,17 +20,16 @@ export { toolSchemas, type ToolName, type ProviderBridge } from "./tools.js";
 export const SERVER_NAME = "hexvero";
 export const SERVER_VERSION = "0.1.0";
 
-const noProviders: ProviderBridge = {
-  detect: async () => ({
-    providers: [],
-    note: "provider adapters are not wired in this build",
-  }),
-  run: async () => {
-    throw new AnalysisError(
-      "provider_unavailable",
-      "No provider adapters are available in this build",
-    );
-  },
+const defaultProviders: ProviderBridge = {
+  detect: async () => ({ providers: await detectProviders() }),
+  run: (args) =>
+    runProvider({
+      targetPath: args.targetPath,
+      provider: args.provider as ProviderName,
+      operation: args.operation as ProviderOperation,
+      address: args.address,
+      timeoutMs: args.timeoutMs,
+    }),
 };
 
 const replacer = (_key: string, value: unknown): unknown =>
@@ -32,7 +38,7 @@ const replacer = (_key: string, value: unknown): unknown =>
 /** Builds the MCP server over a session. Results are returned once, as JSON text, never duplicated. */
 export function createHexveroServer(
   session = new Session(),
-  providers: ProviderBridge = noProviders,
+  providers: ProviderBridge = defaultProviders,
 ): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
