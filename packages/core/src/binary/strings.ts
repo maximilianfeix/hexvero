@@ -79,8 +79,13 @@ function scanUtf16(
 export function classifyString(value: string): string[] {
   const tags: string[] = [];
   if (/^https?:\/\//i.test(value)) tags.push("url");
-  if (/^[A-Za-z]:\\|^\/(usr|etc|var|home|Users|tmp)\//.test(value))
+  if (
+    /^[A-Za-z]:\\|^\/(usr|etc|var|home|Users|tmp|lib|lib64|opt|bin|sbin|System|Library|Applications|private|dev|proc|sys)\//.test(
+      value,
+    )
+  ) {
     tags.push("path");
+  }
   if (/^[\w.-]+@[\w.-]+\.\w+$/.test(value)) tags.push("email");
   if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(value)) tags.push("ip");
   if (/%[sdxpu]/.test(value)) tags.push("format");

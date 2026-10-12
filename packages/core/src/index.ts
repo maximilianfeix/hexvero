@@ -72,3 +72,16 @@ export {
   type JsEdge,
   type FileTree,
 } from "./javascript/app.js";
+export {
+  analyzeTarget,
+  type AnyAnalysis,
+  type AnalysisData,
+} from "./analyzers/dispatch.js";
+export {
+  Session,
+  collectionsOf,
+  type TargetRecord,
+  type CollectionQuery,
+  type CollectionPage,
+  type StringsQuery,
+} from "./session.js";
