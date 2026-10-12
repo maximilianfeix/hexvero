@@ -6,6 +6,26 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-13
+
+### Added
+
+- Apple app bundle analysis for `.app` directories (Info.plist facts, main binary, frameworks, helpers,
+  entitlements, privacy keys, URL schemes).
+- Lazy, file-backed reading for ASARs above the in-memory limit; byte windows served from disk.
+- ZIP64 central directories.
+
+### Fixed
+
+- Mach-O: section records were skipped with the wrong length; addresses and symbol values use bigint.
+- ZIP64 offset read from the wrong field; `.aar`/`.jar` archives no longer routed to the APK parser.
+- WASM global initializer expressions containing `0x0b` immediates.
+- Parser bounds errors are reported as `malformed` instead of internal errors.
+- HTTP server: double-decoded upload names, unvalidated numeric query params, `Origin: null`,
+  immutable caching of unhashed assets, unhandled read-stream errors.
+- Web UI: storage-safe token read, bounded response cache, keyboard-reachable close control.
+- Providers: Ghidra cache keyed by file content, stale outputs removed, `which()` honors PATHEXT.
+
 ## [0.1.0] - 2026-10-13
 
 ### Added

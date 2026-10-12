@@ -1,6 +1,6 @@
 {
   "name": "hexvero",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reverse engineer anything, locally: CLI, MCP server and web UI.",
   "license": "MIT",
   "type": "module",
@@ -17,9 +17,9 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@hexvero/core": "0.1.0",
-    "@hexvero/mcp": "0.1.0",
-    "@hexvero/server": "0.1.0"
+    "@hexvero/core": "0.1.1",
+    "@hexvero/mcp": "0.1.1",
+    "@hexvero/server": "0.1.1"
   },
   "engines": {
     "node": ">=22.12.0"
