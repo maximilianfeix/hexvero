@@ -86,3 +86,4 @@ export {
   type StringsQuery,
 } from "./session.js";
 export { compact, type CompactOptions } from "./compact.js";
+export { detectProviders, type ProviderStatus } from "./providers/index.js";

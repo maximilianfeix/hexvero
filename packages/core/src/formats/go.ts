@@ -21,8 +21,10 @@ export interface GoBuildInfo {
 }
 
 const MAGIC = "\xff Go buildinf:";
-const SENTINEL =
+const SENTINEL_START =
   "\x30\x77\xaf\x0c\x92\x74\x08\x02\x41\xe1\xc1\x07\xe6\xd6\x18\xe6";
+const SENTINEL_END =
+  "\xf9\x32\x43\x31\x86\x18\x20\x72\x00\x82\x42\x10\x41\x16\xd8\xf2";
 
 /** Maps a virtual address to a file offset, provided by the container parser. */
 export type VaResolver = (va: bigint) => number | null;
@@ -42,9 +44,9 @@ function indexOf(hay: Uint8Array, needle: string, from = 0): number {
   return -1;
 }
 
-function hasSentinel(bytes: Uint8Array, at: number): boolean {
+function hasSentinel(bytes: Uint8Array, at: number, sentinel: string): boolean {
   for (let i = 0; i < 16; i++)
-    if (bytes[at + i] !== SENTINEL.charCodeAt(i)) return false;
+    if (bytes[at + i] !== sentinel.charCodeAt(i)) return false;
   return true;
 }
 
@@ -114,8 +116,8 @@ export function parseGoBuildInfo(
   let modinfo: string;
   if (
     modinfoBytes.length >= 32 &&
-    hasSentinel(modinfoBytes, 0) &&
-    hasSentinel(modinfoBytes, modinfoBytes.length - 16)
+    hasSentinel(modinfoBytes, 0, SENTINEL_START) &&
+    hasSentinel(modinfoBytes, modinfoBytes.length - 16, SENTINEL_END)
   ) {
     modinfo = utf8String(modinfoBytes.subarray(16, -16));
   } else {
