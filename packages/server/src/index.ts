@@ -146,7 +146,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     };
 
     if (req.method === "GET" && parts[0] === "health")
-      return json(res, 200, { ok: true, version: "0.1.1" });
+      return json(res, 200, { ok: true, version: "0.2.0" });
     if (req.method === "GET" && parts[0] === "targets" && parts.length === 1)
       return json(res, 200, { targets: session.list() });
     if (req.method === "POST" && parts[0] === "targets" && parts.length === 1) {

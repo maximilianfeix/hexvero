@@ -19,7 +19,7 @@ import {
   type Io,
 } from "./format.js";
 
-export const VERSION = "0.1.1";
+export const VERSION = "0.2.0";
 
 const HELP = `hexvero ${VERSION} — reverse engineer anything, locally.
 
