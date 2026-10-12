@@ -31,3 +31,11 @@ export {
   type DotnetInfo,
   type DotnetType,
 } from "./formats/dotnet.js";
+export { parseWasm, type WasmInfo } from "./formats/wasm.js";
+export {
+  parseEvm,
+  disassembleEvm,
+  evmBytesFrom,
+  EVM_OPCODES,
+  type EvmInfo,
+} from "./formats/evm.js";
