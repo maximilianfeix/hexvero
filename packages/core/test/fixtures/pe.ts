@@ -1,7 +1,9 @@
 import { Builder } from "./builder.js";
 
 /** Minimal PE32+ DLL with one import DLL (two names, one ordinal) and exports (one named, one forwarder). */
-export function buildPe(options: { clr?: boolean } = {}): Uint8Array {
+export function buildPe(
+  options: { clr?: boolean | Uint8Array } = {},
+): Uint8Array {
   const b = new Builder(true);
   b.ascii("MZ").pad(0x3c).u32(0x40).pad(0x40);
   b.ascii("PE\0\0");
@@ -54,6 +56,7 @@ export function buildPe(options: { clr?: boolean } = {}): Uint8Array {
   };
   section(".text", 0x1000, 0x200, 0x60000020);
   section(".rdata", 0x2000, 0x400, 0x40000040);
+  b.patchU32(b.length - 24, 0x800); // .rdata raw size
   b.pad(0x200);
 
   // .text: import directory at RVA 0x1000
@@ -113,8 +116,22 @@ export function buildPe(options: { clr?: boolean } = {}): Uint8Array {
     .patchU32(exportDirOff + 36, rva2(ordsOff));
   const exportSize = b.length - exportDirOff;
   b.patchU32(dirs, 0x2000).patchU32(dirs + 4, exportSize);
-  if (options.clr)
+  if (options.clr) {
     b.patchU32(dirs + 14 * 8, 0x2100).patchU32(dirs + 14 * 8 + 4, 72);
-  b.pad(0x600);
+    b.pad(0x500);
+    const metadata =
+      options.clr instanceof Uint8Array ? options.clr : new Uint8Array();
+    // CLR header: cb, major 2, minor 5, metadata RVA/size, flags ILONLY, entry token
+    b.u32(72)
+      .u16(2)
+      .u16(5)
+      .u32(0x2148)
+      .u32(metadata.length)
+      .u32(1)
+      .u32(0x06000001)
+      .pad(0x548);
+    b.bytes(metadata);
+  }
+  b.pad(0xc00);
   return b.done();
 }
