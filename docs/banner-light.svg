@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+<title id="title">hexvero — Reverse engineer anything, locally.</title>
+<desc id="desc">A local reverse-engineering workbench. Facts with evidence, honest about its limits. An illustrative hex viewer highlights the ELF magic bytes, with inferred and confirmed evidence markers.</desc>
+<defs><clipPath id="frame"><rect width="1280" height="360" rx="24"/></clipPath><style>text {font-family:"IBM Plex Sans", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;fill:#1D2026} .wordmark {font-size:34px;font-weight:600;letter-spacing:-1.2px} .headline {font-size:46px;font-weight:500;letter-spacing:-1.6px} .sub {font-size:20px;fill:#5C616B} .mono {font-family:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;font-size:15px;font-variant-ligatures:none} .small {font-family:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;font-size:13px} .muted {fill:#5C616B} .offset {font-size:13px;fill:#9A6A06;opacity:.65} .reveal {animation:reveal .8s cubic-bezier(.16,1,.3,1) both;animation-delay:var(--delay,0s)} @keyframes reveal {from {opacity:0;transform:translateY(var(--settle,0px))} to {opacity:1;transform:translateY(0)}} @media (prefers-reduced-motion:reduce) {.reveal {animation:none}}</style></defs>
+<g clip-path="url(#frame)"><path fill="#F3F4F6" d="M0 0H1280V360H0Z"/>
+<g transform="translate(40 40)">
+<g fill="none" stroke="#9A6A06" stroke-linecap="round"><path d="M20 16V48 M44 16V48 M20 30H44" stroke-width="6.5"/><circle cx="28" cy="42" r="2.5" stroke-width="1.5"/><circle cx="36" cy="42" r="3.25" fill="#9A6A06" stroke="none"/></g>
+</g>
+<text x="112" y="84" class="wordmark" >hexvero</text>
+<text x="48" y="152" class="headline" >Reverse engineer</text>
+<text x="48" y="208" class="headline" >anything, locally.</text>
+<text x="48" y="248" class="sub" >Facts with evidence. Honest about its limits.</text>
+<rect x="48" y="280" width="168" height="32" rx="16" fill="#FFFFFF" stroke="#DCDFE4"/>
+<text x="132.0" y="301" class="small muted" text-anchor="middle">ELF · PE · Mach-O</text>
+<rect x="224" y="280" width="120" height="32" rx="16" fill="#FFFFFF" stroke="#DCDFE4"/>
+<text x="284.0" y="301" class="small muted" text-anchor="middle">APK · ASAR</text>
+<rect x="352" y="280" width="152" height="32" rx="16" fill="#FFFFFF" stroke="#DCDFE4"/>
+<text x="428.0" y="301" class="small muted" text-anchor="middle">WASM · EVM · …</text>
+<rect x="736" y="40" width="496" height="280" rx="16" fill="#FFFFFF" stroke="#DCDFE4"/>
+<text x="760" y="72" class="small muted" >sample / ELF</text>
+<circle cx="976" cy="68" r="3" fill="none" stroke="#5C616B" stroke-width="1.5"/>
+<text x="988" y="72" class="small muted" >inferred</text>
+<circle cx="1104" cy="68" r="3.5" fill="#9A6A06"/>
+<text x="1116" y="72" class="small muted" >confirmed</text>
+<path d="M736 88H1232 M832 88V272 M736 272H1232" stroke="#DCDFE4"/>
+<g class="reveal" style="--delay:0.000s">
+<text x="760" y="112" class="mono offset" >00000000</text>
+<rect x="844" y="96" width="112" height="24" rx="4" fill="#FBEFCF"/>
+<text x="848" y="112" class="mono" style="fill:#9A6A06">7f 45 4c 46</text>
+<text x="956" y="112" class="mono" >02 01 01 00</text>
+<text x="1128" y="112" class="mono muted" >.ELF....</text>
+</g>
+<g class="reveal" style="--delay:0.065s">
+<text x="760" y="136" class="mono offset" >00000008</text>
+<text x="848" y="136" class="mono" >00 00 00 00 00 00 00 00</text>
+<text x="1128" y="136" class="mono muted" >........</text>
+</g>
+<g class="reveal" style="--delay:0.130s">
+<text x="760" y="160" class="mono offset" >00000010</text>
+<text x="848" y="160" class="mono" >03 00 3e 00 01 00 00 00</text>
+<text x="1128" y="160" class="mono muted" >..&gt;.....</text>
+</g>
+<g class="reveal" style="--delay:0.195s">
+<text x="760" y="184" class="mono offset" >00000018</text>
+<text x="848" y="184" class="mono" >80 10 00 00 00 00 00 00</text>
+<text x="1128" y="184" class="mono muted" >........</text>
+</g>
+<g class="reveal" style="--delay:0.260s">
+<text x="760" y="208" class="mono offset" >00000020</text>
+<text x="848" y="208" class="mono" >40 00 00 00 00 00 00 00</text>
+<text x="1128" y="208" class="mono muted" >@.......</text>
+</g>
+<g class="reveal" style="--delay:0.325s">
+<text x="760" y="232" class="mono offset" >00000028</text>
+<text x="848" y="232" class="mono" >00 38 00 00 00 00 00 00</text>
+<text x="1128" y="232" class="mono muted" >.8......</text>
+</g>
+<g class="reveal" style="--delay:0.390s">
+<text x="760" y="256" class="mono offset" >00000030</text>
+<text x="848" y="256" class="mono" >00 00 00 00 40 00 38 00</text>
+<text x="1128" y="256" class="mono muted" >....@.8.</text>
+</g>
+<g class="reveal" style="--delay:.455s;--settle:4px">
+<circle cx="760" cy="296" r="3.5" fill="#9A6A06"/>
+<text x="776" y="301" class="small" >ELF64 x86-64 · PIE · NX · canary</text>
+</g>
+</g></svg>
