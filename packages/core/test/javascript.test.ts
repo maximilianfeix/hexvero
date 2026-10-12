@@ -3,17 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { openAsar } from "../src/formats/asar.js";
-import {
-  analyzeJavaScriptTree,
-  asarTree,
-  directoryTree,
-} from "../src/javascript/app.js";
+import { analyzeJavaScriptTree, asarTree, directoryTree } from "../src/javascript/app.js";
 import { scanJavaScript, tokenize } from "../src/javascript/scan.js";
-import {
-  decodeVlq,
-  originalPositionFor,
-  summarizeSourceMap,
-} from "../src/javascript/sourcemap.js";
+import { decodeVlq, originalPositionFor, summarizeSourceMap } from "../src/javascript/sourcemap.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 const mainJs = `const { app, BrowserWindow, ipcMain } = require("electron");
@@ -40,9 +32,7 @@ const dbJs = `exports.find = (id) => ({ id });\nexport * from "./missing.js";\n`
 describe("tokenize/scanJavaScript", () => {
   it("skips comments, strings, regexes and templates while finding references", () => {
     const scan = scanJavaScript(mainJs);
-    expect(
-      scan.references.map((r) => `${r.kind}:${r.specifier}:${r.line}`),
-    ).toEqual([
+    expect(scan.references.map((r) => `${r.kind}:${r.specifier}:${r.line}`)).toEqual([
       "require:electron:1",
       "require:path:2",
       "require:./lib/db.js:3",
@@ -68,15 +58,15 @@ describe("tokenize/scanJavaScript", () => {
     const { tokens } = tokenize(
       "const x = `a${b}c${d}e`; const y = 1 / 2 / 3; const z = a / b / c;",
     );
-    expect(
-      tokens.filter((t) => t.type === "template").map((t) => t.value),
-    ).toEqual(["a${…}", "c${…}", "e"]);
+    expect(tokens.filter((t) => t.type === "template").map((t) => t.value)).toEqual([
+      "a${…}",
+      "c${…}",
+      "e",
+    ]);
     expect(tokens.filter((t) => t.type === "regex")).toHaveLength(0);
   });
   it("marks dynamic specifiers", () => {
-    const scan = scanJavaScript(
-      "require(name); import(`./locale/${lang}.js`); require('x' + y);",
-    );
+    const scan = scanJavaScript("require(name); import(`./locale/${lang}.js`); require('x' + y);");
     expect(scan.references.map((r) => [r.specifier, r.dynamic])).toEqual([
       ["<expression>", true],
       ["./locale/${…}", true],
@@ -92,22 +82,14 @@ describe("source maps", () => {
     const map = JSON.stringify({
       version: 3,
       file: "out.js",
-      sources: [
-        "src/a.ts",
-        "node_modules/@scope/pkg/index.js",
-        "node_modules/lodash/x.js",
-      ],
+      sources: ["src/a.ts", "node_modules/@scope/pkg/index.js", "node_modules/lodash/x.js"],
       names: ["foo"],
       mappings: "AAAA,IACAA;AAEA",
       sourcesContent: ["x", null, null],
     });
     const s = summarizeSourceMap(map);
     expect(s).toMatchObject({
-      sources: [
-        "src/a.ts",
-        "node_modules/@scope/pkg/index.js",
-        "node_modules/lodash/x.js",
-      ],
+      sources: ["src/a.ts", "node_modules/@scope/pkg/index.js", "node_modules/lodash/x.js"],
       sourcesWithContent: 1,
       names: 1,
       mappingCount: 3,
@@ -155,9 +137,7 @@ describe("ASAR", () => {
       "lib/db.js",
       "lazy.mjs",
     ]);
-    expect(
-      new TextDecoder().decode(archive.read(archive.find("lib\\db.js")!)),
-    ).toBe(dbJs);
+    expect(new TextDecoder().decode(archive.read(archive.find("lib\\db.js")!))).toBe(dbJs);
   });
   it("analyzes the application graph", () => {
     const info = analyzeJavaScriptTree(asarTree(asar, "app.asar"));
@@ -180,9 +160,10 @@ describe("ASAR", () => {
       "lib/db.js:unknown",
       "lazy.mjs:unknown",
     ]);
-    expect(
-      info.edges.filter((e) => e.resolved).map((e) => `${e.from}->${e.to}`),
-    ).toEqual(["main.js->lib/db.js", "main.js->lazy.mjs"]);
+    expect(info.edges.filter((e) => e.resolved).map((e) => `${e.from}->${e.to}`)).toEqual([
+      "main.js->lib/db.js",
+      "main.js->lazy.mjs",
+    ]);
     expect(info.edges.find((e) => e.to === "./missing.js")).toMatchObject({
       resolved: false,
       from: "lib/db.js",
@@ -201,9 +182,7 @@ describe("ASAR", () => {
       "electron.ipc",
       "electron.preload",
     ]);
-    expect(info.limitations.map((l) => l.code)).toEqual([
-      "unresolved_references",
-    ]);
+    expect(info.limitations.map((l) => l.code)).toEqual(["unresolved_references"]);
   });
 });
 
@@ -222,20 +201,12 @@ describe("directory analysis", () => {
       join(dir, "src", "util.js.map"),
       JSON.stringify({ version: 3, sources: ["util.ts"], mappings: "AAAA" }),
     );
-    writeFileSync(
-      join(dir, "node_modules", "x", "index.js"),
-      "module.exports = 1;",
-    );
+    writeFileSync(join(dir, "node_modules", "x", "index.js"), "module.exports = 1;");
     writeFileSync(join(dir, "addon.node"), "");
     const info = analyzeJavaScriptTree(directoryTree(dir));
-    expect(info.modules.map((m) => m.id)).toEqual([
-      "src/index.js",
-      "src/util.js",
-    ]);
+    expect(info.modules.map((m) => m.id)).toEqual(["src/index.js", "src/util.js"]);
     expect(info.electron).toBeNull();
-    expect(info.externals).toEqual([
-      { specifier: "x", count: 1, builtin: false },
-    ]);
+    expect(info.externals).toEqual([{ specifier: "x", count: 1, builtin: false }]);
     expect(info.sourceMaps).toEqual([
       { file: "src/util.js.map", sources: 1, packages: ["util.ts"] },
     ]);

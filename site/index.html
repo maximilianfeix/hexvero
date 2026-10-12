@@ -1,153 +1,577 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark light">
-<title>hexvero — reverse engineer anything, locally</title>
-<meta name="description" content="hexvero reads executables, app bundles, databases and captures on your machine without running them: ELF, PE, Mach-O, Go, .NET, WebAssembly, EVM, SQLite, APK, Electron, Java and more. CLI, MCP server for coding agents, and a local web UI.">
-<link rel="icon" href="logo.svg" type="image/svg+xml">
-<link rel="canonical" href="https://hexvero.dev/">
-<meta property="og:title" content="hexvero — reverse engineer anything, locally">
-<meta property="og:description" content="Facts with evidence, honest about what it can't tell. Zero-dependency parsers, 12 MCP tools, a local web UI.">
-<meta property="og:image" content="https://hexvero.dev/social-preview.png">
-<meta property="og:url" content="https://hexvero.dev/">
-<meta name="twitter:card" content="summary_large_image">
-<style>
-:root{--bg:#1b1d21;--panel:#23262c;--panel-2:#2a2e35;--line:#31353d;--ink:#e8e6e1;--ink-2:#9a9ea7;--ink-3:#6c707a;--amber:#f2b84b;--amber-ink:#f2b84b;--amber-soft:#3a2f17;--ok:#8fc98a;color-scheme:dark}
-@media (prefers-color-scheme:light){:root{--bg:#f3f4f6;--panel:#fff;--panel-2:#eceef1;--line:#dcdfe4;--ink:#1d2026;--ink-2:#5c616b;--ink-3:#8a8f99;--amber-ink:#9a6a06;--amber-soft:#fbefcf;color-scheme:light}}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
-a{color:var(--amber-ink);text-underline-offset:3px}
-code,pre{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.93em}
-.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
-header{display:flex;align-items:center;gap:12px;padding:18px 0}
-header .mark{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em;text-decoration:none;color:inherit;font-size:18px}
-header nav{margin-left:auto;display:flex;gap:18px;font-size:15px}
-header nav a{color:var(--ink-2);text-decoration:none}
-header nav a:hover{color:var(--ink)}
-.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;padding:56px 0 48px}
-h1{font-size:clamp(2rem,4.4vw,3.4rem);line-height:1.08;letter-spacing:-.025em;margin:0 0 16px;text-wrap:balance}
-.lede{font-size:1.15rem;color:var(--ink-2);max-width:48ch;margin:0 0 24px}
-.cta{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);text-decoration:none;font-weight:500}
-.btn.primary{background:var(--amber);color:#1b1d21;border-color:transparent}
-.btn:hover{border-color:var(--ink-3)}
-pre.install{margin:18px 0 0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;font-size:14px}
-pre.install b{color:var(--amber-ink);font-weight:500}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:13px;line-height:1.6;box-shadow:0 20px 50px -30px rgba(0,0,0,.7)}
-.panel .dim{color:var(--ink-3)}
-.panel .verdict{font-family:"IBM Plex Sans",system-ui,sans-serif;font-weight:600;font-size:17px;letter-spacing:-.01em;margin:8px 0 10px;line-height:1.3}
-.panel .dot::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--amber);margin-right:8px;vertical-align:-1px}
-.panel .dot.on::before{background:var(--amber)}
-.panel .hex{margin-top:12px;color:var(--ink-2);white-space:pre}
-.panel .hex em{font-style:normal;color:var(--ink);background:var(--amber-soft);outline:1px solid var(--amber);border-radius:2px}
-.panel .off{color:var(--amber-ink);opacity:.8}
-section{padding:40px 0;border-top:1px solid var(--line)}
-h2{font-size:1.5rem;letter-spacing:-.02em;margin:0 0 8px}
-.sub{color:var(--ink-2);max-width:62ch;margin:0 0 22px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px 28px}
-.grid h3{font-size:1.02rem;margin:0 0 4px}
-.grid p{margin:0;color:var(--ink-2);font-size:15px}
-table{border-collapse:collapse;width:100%;font-size:15px}
-th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--ink-2);font-weight:500}
-td:first-child{white-space:nowrap;font-weight:500}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0;padding:0;list-style:none}
-.chips li{padding:4px 11px;border:1px solid var(--line);border-radius:999px;font-size:13.5px;color:var(--ink-2)}
-.steps{counter-reset:s;display:grid;gap:14px;max-width:720px}
-.steps li{list-style:none;display:grid;grid-template-columns:28px 1fr;gap:12px;align-items:start}
-.steps li::before{counter-increment:s;content:counter(s);width:26px;height:26px;border-radius:50%;background:var(--amber-soft);color:var(--amber-ink);display:grid;place-items:center;font-size:13px;font-weight:600}
-.steps pre{margin:6px 0 0;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow:auto;font-size:13.5px}
-footer{padding:28px 0 48px;color:var(--ink-3);font-size:14px;display:flex;flex-wrap:wrap;gap:16px}
-footer a{color:var(--ink-2)}
-@media (max-width:820px){.hero{grid-template-columns:1fr;padding-top:28px}header nav{display:none}}
-@media (prefers-reduced-motion:no-preference){.panel .verdict{animation:settle .3s cubic-bezier(.2,.8,.2,1) both .15s}@keyframes settle{from{opacity:0;transform:translateY(6px)}}}
-</style>
-</head>
-<body>
-<div class="wrap">
-<header>
-  <a class="mark" href="/"><img src="logo-mark.svg" width="26" height="26" alt="">hexvero</a>
-  <nav><a href="#reads">Formats</a><a href="#agents">For agents</a><a href="#ui">Web UI</a><a href="https://github.com/maximilianfeix/hexvero">GitHub</a></nav>
-</header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>hexvero — reverse engineer anything, locally</title>
+    <meta
+      name="description"
+      content="hexvero reads executables, app bundles, databases and captures on your machine without running them: ELF, PE, Mach-O, Go, .NET, WebAssembly, EVM, SQLite, APK, Electron, Java and more. CLI, MCP server for coding agents, and a local web UI."
+    />
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://hexvero.dev/" />
+    <meta property="og:title" content="hexvero — reverse engineer anything, locally" />
+    <meta
+      property="og:description"
+      content="Facts with evidence, honest about what it can't tell. Zero-dependency parsers, 12 MCP tools, a local web UI."
+    />
+    <meta property="og:image" content="https://hexvero.dev/social-preview.png" />
+    <meta property="og:url" content="https://hexvero.dev/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <style>
+      :root {
+        --bg: #1b1d21;
+        --panel: #23262c;
+        --panel-2: #2a2e35;
+        --line: #31353d;
+        --ink: #e8e6e1;
+        --ink-2: #9a9ea7;
+        --ink-3: #6c707a;
+        --amber: #f2b84b;
+        --amber-ink: #f2b84b;
+        --amber-soft: #3a2f17;
+        --ok: #8fc98a;
+        color-scheme: dark;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f3f4f6;
+          --panel: #fff;
+          --panel-2: #eceef1;
+          --line: #dcdfe4;
+          --ink: #1d2026;
+          --ink-2: #5c616b;
+          --ink-3: #8a8f99;
+          --amber-ink: #9a6a06;
+          --amber-soft: #fbefcf;
+          color-scheme: light;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          400 16px/1.55 "IBM Plex Sans",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: var(--amber-ink);
+        text-underline-offset: 3px;
+      }
+      code,
+      pre {
+        font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.93em;
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 18px 0;
+      }
+      header .mark {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        text-decoration: none;
+        color: inherit;
+        font-size: 18px;
+      }
+      header nav {
+        margin-left: auto;
+        display: flex;
+        gap: 18px;
+        font-size: 15px;
+      }
+      header nav a {
+        color: var(--ink-2);
+        text-decoration: none;
+      }
+      header nav a:hover {
+        color: var(--ink);
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 40px;
+        align-items: center;
+        padding: 56px 0 48px;
+      }
+      h1 {
+        font-size: clamp(2rem, 4.4vw, 3.4rem);
+        line-height: 1.08;
+        letter-spacing: -0.025em;
+        margin: 0 0 16px;
+        text-wrap: balance;
+      }
+      .lede {
+        font-size: 1.15rem;
+        color: var(--ink-2);
+        max-width: 48ch;
+        margin: 0 0 24px;
+      }
+      .cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        color: var(--ink);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .btn.primary {
+        background: var(--amber);
+        color: #1b1d21;
+        border-color: transparent;
+      }
+      .btn:hover {
+        border-color: var(--ink-3);
+      }
+      pre.install {
+        margin: 18px 0 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 16px;
+        overflow: auto;
+        font-size: 14px;
+      }
+      pre.install b {
+        color: var(--amber-ink);
+        font-weight: 500;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 18px 20px;
+        font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        box-shadow: 0 20px 50px -30px rgba(0, 0, 0, 0.7);
+      }
+      .panel .dim {
+        color: var(--ink-3);
+      }
+      .panel .verdict {
+        font-family: "IBM Plex Sans", system-ui, sans-serif;
+        font-weight: 600;
+        font-size: 17px;
+        letter-spacing: -0.01em;
+        margin: 8px 0 10px;
+        line-height: 1.3;
+      }
+      .panel .dot::before {
+        content: "";
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        border: 1.5px solid var(--amber);
+        margin-right: 8px;
+        vertical-align: -1px;
+      }
+      .panel .dot.on::before {
+        background: var(--amber);
+      }
+      .panel .hex {
+        margin-top: 12px;
+        color: var(--ink-2);
+        white-space: pre;
+      }
+      .panel .hex em {
+        font-style: normal;
+        color: var(--ink);
+        background: var(--amber-soft);
+        outline: 1px solid var(--amber);
+        border-radius: 2px;
+      }
+      .panel .off {
+        color: var(--amber-ink);
+        opacity: 0.8;
+      }
+      section {
+        padding: 40px 0;
+        border-top: 1px solid var(--line);
+      }
+      h2 {
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+        margin: 0 0 8px;
+      }
+      .sub {
+        color: var(--ink-2);
+        max-width: 62ch;
+        margin: 0 0 22px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 18px 28px;
+      }
+      .grid h3 {
+        font-size: 1.02rem;
+        margin: 0 0 4px;
+      }
+      .grid p {
+        margin: 0;
+        color: var(--ink-2);
+        font-size: 15px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 15px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        color: var(--ink-2);
+        font-weight: 500;
+      }
+      td:first-child {
+        white-space: nowrap;
+        font-weight: 500;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 14px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .chips li {
+        padding: 4px 11px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 13.5px;
+        color: var(--ink-2);
+      }
+      .steps {
+        counter-reset: s;
+        display: grid;
+        gap: 14px;
+        max-width: 720px;
+      }
+      .steps li {
+        list-style: none;
+        display: grid;
+        grid-template-columns: 28px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+      .steps li::before {
+        counter-increment: s;
+        content: counter(s);
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--amber-soft);
+        color: var(--amber-ink);
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .steps pre {
+        margin: 6px 0 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        overflow: auto;
+        font-size: 13.5px;
+      }
+      footer {
+        padding: 28px 0 48px;
+        color: var(--ink-3);
+        font-size: 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      footer a {
+        color: var(--ink-2);
+      }
+      @media (max-width: 820px) {
+        .hero {
+          grid-template-columns: 1fr;
+          padding-top: 28px;
+        }
+        header nav {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .panel .verdict {
+          animation: settle 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both 0.15s;
+        }
+        @keyframes settle {
+          from {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="mark" href="/"
+          ><img src="logo-mark.svg" width="26" height="26" alt="" />hexvero</a
+        >
+        <nav>
+          <a href="#reads">Formats</a><a href="#agents">For agents</a><a href="#ui">Web UI</a
+          ><a href="https://github.com/maximilianfeix/hexvero">GitHub</a>
+        </nav>
+      </header>
 
-<section class="hero" style="border-top:0">
-  <div>
-    <h1>See what a file is before you trust it, run it or rebuild it.</h1>
-    <p class="lede">hexvero reads executables, app bundles, databases and captures on your machine without executing them, and tells you what it found, how sure it is, and what it could not establish.</p>
-    <div class="cta">
-      <a class="btn primary" href="https://github.com/maximilianfeix/hexvero#install">Install</a>
-      <a class="btn" href="https://github.com/maximilianfeix/hexvero#for-ai-agents">Connect your agent</a>
-      <a class="btn" href="https://www.npmjs.com/package/hexvero">npm</a>
-    </div>
-    <pre class="install"><b>$</b> npx hexvero ui --open
+      <section class="hero" style="border-top: 0">
+        <div>
+          <h1>See what a file is before you trust it, run it or rebuild it.</h1>
+          <p class="lede">
+            hexvero reads executables, app bundles, databases and captures on your machine without
+            executing them, and tells you what it found, how sure it is, and what it could not
+            establish.
+          </p>
+          <div class="cta">
+            <a class="btn primary" href="https://github.com/maximilianfeix/hexvero#install"
+              >Install</a
+            >
+            <a class="btn" href="https://github.com/maximilianfeix/hexvero#for-ai-agents"
+              >Connect your agent</a
+            >
+            <a class="btn" href="https://www.npmjs.com/package/hexvero">npm</a>
+          </div>
+          <pre class="install"><b>$</b> npx hexvero ui --open
 <b>$</b> npx hexvero analyze ./app.asar
 <b>$</b> npx hexvero setup --apply</pre>
-  </div>
-  <div class="panel" aria-label="Example analysis">
-    <div class="dim">/opt/homebrew/bin/gh · macho · 51 MB · 90 ms</div>
-    <div class="verdict">Mach-O arm64 executable, 4 dylibs, 144 symbols · Go 1.25.1 (github.com/cli/cli/v2/cmd/gh)</div>
-    <div><span class="dot"></span>Imports ptrace/sysctl (possible anti-debugging) <span class="dim">inferred</span></div>
-    <div><span class="dot on"></span>cgo enabled (links C code) <span class="dim">confirmed</span></div>
-    <div class="hex"><span class="off">00000000</span>  <em>cf fa ed fe</em> 0c 00 00 01 00 00 00 00 02 00 00 00  ....
-<span class="off">00000010</span>  15 00 00 00 b8 10 00 00 85 00 20 00 00 00 00 00  ....</div>
-    <div class="dim" style="margin-top:10px">collections: segments 5 · sections 15 · symbols 144 · libraries 4 · goDependencies 212</div>
-  </div>
-</section>
+        </div>
+        <div class="panel" aria-label="Example analysis">
+          <div class="dim">/opt/homebrew/bin/gh · macho · 51 MB · 90 ms</div>
+          <div class="verdict">
+            Mach-O arm64 executable, 4 dylibs, 144 symbols · Go 1.25.1
+            (github.com/cli/cli/v2/cmd/gh)
+          </div>
+          <div>
+            <span class="dot"></span>Imports ptrace/sysctl (possible anti-debugging)
+            <span class="dim">inferred</span>
+          </div>
+          <div>
+            <span class="dot on"></span>cgo enabled (links C code)
+            <span class="dim">confirmed</span>
+          </div>
+          <div class="hex">
+            <span class="off">00000000</span> <em>cf fa ed fe</em> 0c 00 00 01 00 00 00 00 02 00 00
+            00 .... <span class="off">00000010</span> 15 00 00 00 b8 10 00 00 85 00 20 00 00 00 00
+            00 ....
+          </div>
+          <div class="dim" style="margin-top: 10px">
+            collections: segments 5 · sections 15 · symbols 144 · libraries 4 · goDependencies 212
+          </div>
+        </div>
+      </section>
 
-<section id="why">
-  <h2>Built for the questions people actually ask</h2>
-  <p class="sub">Which IPC channels can this Electron renderer reach? Is this binary stripped and PIE? Which Go modules shipped? What permissions does this APK take? hexvero answers from the bytes, with evidence, and never runs the target.</p>
-  <div class="grid">
-    <div><h3>Zero dependencies</h3><p>Every built-in parser is code in the repository. No JDK, no Python, no disassembler before the first useful answer.</p></div>
-    <div><h3>Bounded by design</h3><p>Every list is a page with offset, limit, a filter and a byte budget. The full result goes to a file, never into your context window.</p></div>
-    <div><h3>Honest output</h3><p>Findings are <em>confirmed</em> or <em>inferred</em>. Whatever was skipped, truncated or unreadable is listed as a limitation with a code.</p></div>
-    <div><h3>Engines when you want them</h3><p>radare2, rizin and Ghidra plug in behind one interface for disassembly and decompilation. hexvero never installs them for you.</p></div>
-  </div>
-</section>
+      <section id="why">
+        <h2>Built for the questions people actually ask</h2>
+        <p class="sub">
+          Which IPC channels can this Electron renderer reach? Is this binary stripped and PIE?
+          Which Go modules shipped? What permissions does this APK take? hexvero answers from the
+          bytes, with evidence, and never runs the target.
+        </p>
+        <div class="grid">
+          <div>
+            <h3>Zero dependencies</h3>
+            <p>
+              Every built-in parser is code in the repository. No JDK, no Python, no disassembler
+              before the first useful answer.
+            </p>
+          </div>
+          <div>
+            <h3>Bounded by design</h3>
+            <p>
+              Every list is a page with offset, limit, a filter and a byte budget. The full result
+              goes to a file, never into your context window.
+            </p>
+          </div>
+          <div>
+            <h3>Honest output</h3>
+            <p>
+              Findings are <em>confirmed</em> or <em>inferred</em>. Whatever was skipped, truncated
+              or unreadable is listed as a limitation with a code.
+            </p>
+          </div>
+          <div>
+            <h3>Engines when you want them</h3>
+            <p>
+              radare2, rizin and Ghidra plug in behind one interface for disassembly and
+              decompilation. hexvero never installs them for you.
+            </p>
+          </div>
+        </div>
+      </section>
 
-<section id="reads">
-  <h2>What it reads</h2>
-  <table>
-    <tr><th>Target</th><th>What comes back</th></tr>
-    <tr><td>ELF · PE · Mach-O</td><td>Sections, segments, symbols, imports and exports, libraries, build ids, hardening flags (NX, PIE, RELRO, canary, ASLR, CFG, code signature).</td></tr>
-    <tr><td>Go · .NET</td><td>Compiler version, main module and dependencies, build settings; assembly, types, methods, P/Invoke, user strings.</td></tr>
-    <tr><td>WebAssembly · EVM</td><td>Imports, exports, producers; selector dispatch, solc metadata, DELEGATECALL and SELFDESTRUCT.</td></tr>
-    <tr><td>Android APK · DEX · JAR</td><td>Manifest, permissions, components, deep links, native libraries, classes and packages, frameworks.</td></tr>
-    <tr><td>Electron · JavaScript · source maps</td><td>Module graph, IPC channel matching, preload and sandbox flags, original positions.</td></tr>
-    <tr><td>macOS and iOS apps</td><td>Bundle facts, entitlements, privacy keys, helpers, frameworks and the main binary.</td></tr>
-    <tr><td>SQLite · plist · HAR</td><td>Schema with samples, decoded property lists, hosts and API-like endpoints.</td></tr>
-  </table>
-  <ul class="chips"><li>ELF</li><li>PE</li><li>Mach-O</li><li>Go</li><li>.NET</li><li>WASM</li><li>EVM</li><li>APK</li><li>DEX</li><li>JAR</li><li>ASAR</li><li>JavaScript</li><li>source maps</li><li>.app bundles</li><li>SQLite</li><li>plist</li><li>HAR</li></ul>
-</section>
+      <section id="reads">
+        <h2>What it reads</h2>
+        <table>
+          <tr>
+            <th>Target</th>
+            <th>What comes back</th>
+          </tr>
+          <tr>
+            <td>ELF · PE · Mach-O</td>
+            <td>
+              Sections, segments, symbols, imports and exports, libraries, build ids, hardening
+              flags (NX, PIE, RELRO, canary, ASLR, CFG, code signature).
+            </td>
+          </tr>
+          <tr>
+            <td>Go · .NET</td>
+            <td>
+              Compiler version, main module and dependencies, build settings; assembly, types,
+              methods, P/Invoke, user strings.
+            </td>
+          </tr>
+          <tr>
+            <td>WebAssembly · EVM</td>
+            <td>
+              Imports, exports, producers; selector dispatch, solc metadata, DELEGATECALL and
+              SELFDESTRUCT.
+            </td>
+          </tr>
+          <tr>
+            <td>Android APK · DEX · JAR</td>
+            <td>
+              Manifest, permissions, components, deep links, native libraries, classes and packages,
+              frameworks.
+            </td>
+          </tr>
+          <tr>
+            <td>Electron · JavaScript · source maps</td>
+            <td>
+              Module graph, IPC channel matching, preload and sandbox flags, original positions.
+            </td>
+          </tr>
+          <tr>
+            <td>macOS and iOS apps</td>
+            <td>
+              Bundle facts, entitlements, privacy keys, helpers, frameworks and the main binary.
+            </td>
+          </tr>
+          <tr>
+            <td>SQLite · plist · HAR</td>
+            <td>Schema with samples, decoded property lists, hosts and API-like endpoints.</td>
+          </tr>
+        </table>
+        <ul class="chips">
+          <li>ELF</li>
+          <li>PE</li>
+          <li>Mach-O</li>
+          <li>Go</li>
+          <li>.NET</li>
+          <li>WASM</li>
+          <li>EVM</li>
+          <li>APK</li>
+          <li>DEX</li>
+          <li>JAR</li>
+          <li>ASAR</li>
+          <li>JavaScript</li>
+          <li>source maps</li>
+          <li>.app bundles</li>
+          <li>SQLite</li>
+          <li>plist</li>
+          <li>HAR</li>
+        </ul>
+      </section>
 
-<section id="agents">
-  <h2>12 MCP tools, not 139</h2>
-  <p class="sub">The catalog stays under 32 KiB so small-context models keep working. Open, analyze, page, read bytes, export: it reads like a workflow.</p>
-  <ol class="steps">
-    <li><div>Register hexvero with Claude Code, Cursor, Windsurf, Gemini CLI, VS Code or Codex.<pre>npx hexvero setup --apply</pre></div></li>
-    <li><div>Ask a question about a file on your machine.<pre>Open ~/Downloads/app.asar with hexvero, list the IPC channels the renderer can reach
-and tell me whether nodeIntegration is on.</pre></div></li>
-    <li><div>The agent pages through symbols, strings or modules and exports the full analysis when it needs everything.<pre>hexvero_collection { targetId, collection: "ipcChannels" }
-hexvero_export { targetId, path: "./app.hexvero.json" }</pre></div></li>
-  </ol>
-</section>
+      <section id="agents">
+        <h2>12 MCP tools, not 139</h2>
+        <p class="sub">
+          The catalog stays under 32 KiB so small-context models keep working. Open, analyze, page,
+          read bytes, export: it reads like a workflow.
+        </p>
+        <ol class="steps">
+          <li>
+            <div>
+              Register hexvero with Claude Code, Cursor, Windsurf, Gemini CLI, VS Code or Codex.
+              <pre>npx hexvero setup --apply</pre>
+            </div>
+          </li>
+          <li>
+            <div>
+              Ask a question about a file on your machine.
+              <pre>
+Open ~/Downloads/app.asar with hexvero, list the IPC channels the renderer can reach
+and tell me whether nodeIntegration is on.</pre>
+            </div>
+          </li>
+          <li>
+            <div>
+              The agent pages through symbols, strings or modules and exports the full analysis when
+              it needs everything.
+              <pre>
+hexvero_collection { targetId, collection: "ipcChannels" }
+hexvero_export { targetId, path: "./app.hexvero.json" }</pre>
+            </div>
+          </li>
+        </ol>
+      </section>
 
-<section id="ui">
-  <h2>A workbench, not a dashboard</h2>
-  <p class="sub"><code>hexvero ui</code> starts a loopback server with a per-session token. Drop a file anywhere: verdict, fact sheet, hardening marks, findings with confidence, one tab per collection that exists, a hex viewer that decodes the selected byte in both byte orders, and a module graph for Electron apps. Dark and light, keyboard first, phone layout.</p>
-  <a class="btn" href="https://github.com/maximilianfeix/hexvero#web-ui">See the UI</a>
-</section>
+      <section id="ui">
+        <h2>A workbench, not a dashboard</h2>
+        <p class="sub">
+          <code>hexvero ui</code> starts a loopback server with a per-session token. Drop a file
+          anywhere: verdict, fact sheet, hardening marks, findings with confidence, one tab per
+          collection that exists, a hex viewer that decodes the selected byte in both byte orders,
+          and a module graph for Electron apps. Dark and light, keyboard first, phone layout.
+        </p>
+        <a class="btn" href="https://github.com/maximilianfeix/hexvero#web-ui">See the UI</a>
+      </section>
 
-<footer>
-  <span>MIT licensed</span>
-  <a href="https://github.com/maximilianfeix/hexvero">Source</a>
-  <a href="https://github.com/maximilianfeix/hexvero/blob/main/DISCLAIMER.md">Responsible use</a>
-  <a href="https://github.com/maximilianfeix/hexvero/security/advisories/new">Security</a>
-  <span>Nothing leaves your machine.</span>
-</footer>
-</div>
-</body>
+      <footer>
+        <span>MIT licensed</span>
+        <a href="https://github.com/maximilianfeix/hexvero">Source</a>
+        <a href="https://github.com/maximilianfeix/hexvero/blob/main/DISCLAIMER.md"
+          >Responsible use</a
+        >
+        <a href="https://github.com/maximilianfeix/hexvero/security/advisories/new">Security</a>
+        <span>Nothing leaves your machine.</span>
+      </footer>
+    </div>
+  </body>
 </html>

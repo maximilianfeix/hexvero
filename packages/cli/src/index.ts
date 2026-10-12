@@ -7,13 +7,7 @@ import {
   type ProviderOperation,
 } from "@hexvero/core";
 import { serveStdio } from "@hexvero/mcp";
-import {
-  flagNumber,
-  flagString,
-  parseArgs,
-  UsageError,
-  type ParsedArgs,
-} from "./args.js";
+import { flagNumber, flagString, parseArgs, UsageError, type ParsedArgs } from "./args.js";
 import {
   formatFindings,
   formatLimitations,
@@ -54,10 +48,7 @@ Options
 
 Exit codes: 0 ok · 1 analysis failed · 2 usage error`;
 
-export async function main(
-  argv: string[],
-  io: Io = defaultIo(),
-): Promise<number> {
+export async function main(argv: string[], io: Io = defaultIo()): Promise<number> {
   let args: ParsedArgs;
   try {
     args = parseArgs(argv);
@@ -87,10 +78,7 @@ export async function main(
             },
           }),
         );
-      else
-        io.err(
-          `${paint(io, "red", `error (${error.code}):`)} ${error.message}`,
-        );
+      else io.err(`${paint(io, "red", `error (${error.code}):`)} ${error.message}`);
       return 1;
     }
     io.err(
@@ -147,9 +135,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         `${heading(io, target.info.path)}\n  ${paint(io, "dim", `${target.info.format} · ${target.info.size} bytes · sha256 ${target.info.sha256.slice(0, 16)}… · ${analysis.durationMs} ms`)}`,
       );
       io.out(`\n${heading(io, "Summary")}\n  ${analysis.summary}`);
-      io.out(
-        `\n${heading(io, "Findings")}\n${formatFindings(io, analysis.findings).join("\n")}`,
-      );
+      io.out(`\n${heading(io, "Findings")}\n${formatFindings(io, analysis.findings).join("\n")}`);
       if (analysis.limitations.length)
         io.out(
           `\n${heading(io, "Limitations")}\n${formatLimitations(io, analysis.limitations).join("\n")}`,
@@ -166,11 +152,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "collection":
     case "list": {
       const target = await session.open(need(0, "path"));
-      const page = await session.collection(
-        target.id,
-        need(1, "collection"),
-        paging(),
-      );
+      const page = await session.collection(target.id, need(1, "collection"), paging());
       if (json) {
         io.out(toJson(page));
         return 0;
@@ -234,9 +216,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       ]);
       const keyOf = (item: unknown): string => {
         const o = item as Record<string, unknown>;
-        return o && typeof o === "object" && key in o
-          ? String(o[key])
-          : JSON.stringify(item);
+        return o && typeof o === "object" && key in o ? String(o[key]) : JSON.stringify(item);
       };
       const l = new Set(left.items.map(keyOf));
       const r = new Set(right.items.map(keyOf));
@@ -267,9 +247,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       const target = await session.open(need(0, "path"));
       const result = await session.export(target.id, need(1, "out.json"));
       io.out(
-        json
-          ? toJson(result)
-          : `${paint(io, "green", "✓")} ${result.path} (${result.bytes} bytes)`,
+        json ? toJson(result) : `${paint(io, "green", "✓")} ${result.path} (${result.bytes} bytes)`,
       );
       return 0;
     }
@@ -298,17 +276,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       );
       const r = result.result as unknown;
       if (typeof r === "string") io.out(r);
-      else if (
-        operation === "decompile" &&
-        r &&
-        typeof r === "object" &&
-        "code" in r
-      )
+      else if (operation === "decompile" && r && typeof r === "object" && "code" in r)
         io.out(String((r as { code: unknown }).code ?? ""));
       else if (Array.isArray(r))
-        io.out(
-          table(r.slice(0, 200) as Array<Record<string, unknown>>).join("\n"),
-        );
+        io.out(table(r.slice(0, 200) as Array<Record<string, unknown>>).join("\n"));
       else io.out(toJson(compact(r)));
       if (result.limitations.length)
         io.out(`\n${formatLimitations(io, result.limitations).join("\n")}`);

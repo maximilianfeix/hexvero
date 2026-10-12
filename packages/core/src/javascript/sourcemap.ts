@@ -20,8 +20,7 @@ export interface MappedPosition {
   name: string | null;
 }
 
-const BASE64 =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const LOOKUP = new Int8Array(128).fill(-1);
 for (let i = 0; i < BASE64.length; i++) LOOKUP[BASE64.charCodeAt(i)] = i;
 
@@ -32,11 +31,7 @@ export function decodeVlq(segment: string): number[] {
   let shift = 0;
   for (let i = 0; i < segment.length; i++) {
     const digit = LOOKUP[segment.charCodeAt(i)] ?? -1;
-    if (digit < 0)
-      throw new AnalysisError(
-        "malformed",
-        `invalid VLQ character ${segment[i]}`,
-      );
+    if (digit < 0) throw new AnalysisError("malformed", `invalid VLQ character ${segment[i]}`);
     value += (digit & 31) * 2 ** shift;
     if (digit & 32) shift += 5;
     else {
@@ -84,19 +79,14 @@ export function summarizeSourceMap(text: string): SourceMapSummary {
   const mappings = map.mappings ?? "";
   let mappingCount = 0;
   for (let i = 0; i < mappings.length; i++)
-    if (
-      mappings[i] !== ";" &&
-      (i === 0 || mappings[i - 1] === ";" || mappings[i - 1] === ",")
-    )
+    if (mappings[i] !== ";" && (i === 0 || mappings[i - 1] === ";" || mappings[i - 1] === ","))
       mappingCount++;
   return {
     version: map.version ?? 0,
     file: map.file ?? null,
     sourceRoot: map.sourceRoot ?? null,
     sources,
-    sourcesWithContent: (map.sourcesContent ?? []).filter(
-      (c) => typeof c === "string",
-    ).length,
+    sourcesWithContent: (map.sourcesContent ?? []).filter((c) => typeof c === "string").length,
     names: map.names?.length ?? 0,
     mappingCount,
     packages: [...packages]

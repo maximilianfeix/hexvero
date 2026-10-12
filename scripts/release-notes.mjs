@@ -16,9 +16,7 @@ try {
   /* no changelog */
 }
 if (!notes) {
-  const previous = execSync(
-    "git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true",
-  )
+  const previous = execSync("git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true")
     .toString()
     .trim();
   const range = previous ? `${previous}..HEAD` : "HEAD";

@@ -58,17 +58,10 @@ const VALUE_TYPES: Record<number, string> = {
   0x70: "funcref",
   0x6f: "externref",
 };
-const KINDS: WasmImport["kind"][] = [
-  "function",
-  "table",
-  "memory",
-  "global",
-  "tag",
-];
+const KINDS: WasmImport["kind"][] = ["function", "table", "memory", "global", "tag"];
 
 export function parseWasm(bytes: Uint8Array): WasmInfo {
-  if (bytes.length < 8)
-    throw new AnalysisError("malformed", "WASM header truncated");
+  if (bytes.length < 8) throw new AnalysisError("malformed", "WASM header truncated");
   const r = new ByteReader(bytes, 4, true);
   const version = r.u32();
   const limitations: Limitation[] = [];
@@ -104,11 +97,7 @@ export function parseWasm(bytes: Uint8Array): WasmInfo {
     return { min, max, shared: (flag & 2) !== 0 };
   };
   const funcType = (): string => {
-    if (r.u8() !== 0x60)
-      throw new AnalysisError(
-        "malformed",
-        "function type must start with 0x60",
-      );
+    if (r.u8() !== 0x60) throw new AnalysisError("malformed", "function type must start with 0x60");
     const params = Array.from({ length: r.uleb128() }, valType);
     const results = Array.from({ length: r.uleb128() }, valType);
     return `(${params.join(", ")}) -> (${results.join(", ")})`;
@@ -222,8 +211,7 @@ export function parseWasm(bytes: Uint8Array): WasmInfo {
               type =
                 local >= 0
                   ? (info.types[functionTypeIndices[local] ?? -1] ?? "?")
-                  : (info.imports.filter((x) => x.kind === "function")[index]
-                      ?.type ?? "?");
+                  : (info.imports.filter((x) => x.kind === "function")[index]?.type ?? "?");
             }
             info.exports.push({ name: field, kind, index, type });
           }
@@ -241,19 +229,14 @@ export function parseWasm(bytes: Uint8Array): WasmInfo {
     } catch (error) {
       limitations.push({
         code: "wasm_section_unreadable",
-        message: `${sectionName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        message: `${sectionName}: ${error instanceof Error ? error.message : String(error)}`,
       });
     }
     r.seek(end);
   }
 
   const importModules = new Set(info.imports.map((i) => i.module));
-  if (
-    importModules.has("wasi_snapshot_preview1") ||
-    importModules.has("wasi_unstable")
-  ) {
+  if (importModules.has("wasi_snapshot_preview1") || importModules.has("wasi_unstable")) {
     findings.push({
       kind: "wasm.wasi",
       title: "WASI module (imports wasi_snapshot_preview1)",
@@ -262,9 +245,7 @@ export function parseWasm(bytes: Uint8Array): WasmInfo {
   }
   if (
     importModules.has("env") &&
-    info.imports.some(
-      (i) => i.name.startsWith("emscripten_") || i.name === "__syscall_openat",
-    )
+    info.imports.some((i) => i.name.startsWith("emscripten_") || i.name === "__syscall_openat")
   ) {
     findings.push({
       kind: "wasm.emscripten",

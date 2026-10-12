@@ -9,10 +9,7 @@ import { heading, paint, type Io } from "./format.js";
 /** The built web UI ships inside the CLI package under ./ui. */
 export function uiDirectory(): string | null {
   const here = dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [
-    join(here, "..", "ui"),
-    join(here, "..", "..", "ui"),
-  ]) {
+  for (const candidate of [join(here, "..", "ui"), join(here, "..", "..", "ui")]) {
     if (existsSync(join(candidate, "index.html"))) return candidate;
   }
   return null;

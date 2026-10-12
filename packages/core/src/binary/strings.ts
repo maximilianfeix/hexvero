@@ -13,14 +13,10 @@ export interface StringsOptions {
   utf16?: boolean;
 }
 
-const isPrintable = (b: number): boolean =>
-  (b >= 0x20 && b <= 0x7e) || b === 0x09;
+const isPrintable = (b: number): boolean => (b >= 0x20 && b <= 0x7e) || b === 0x09;
 
 /** Printable ASCII runs, plus optional UTF-16LE runs, like `strings -a`. */
-export function extractStrings(
-  bytes: Uint8Array,
-  options: StringsOptions = {},
-): ExtractedString[] {
+export function extractStrings(bytes: Uint8Array, options: StringsOptions = {}): ExtractedString[] {
   const minLength = options.minLength ?? 4;
   const max = options.max ?? 50_000;
   const out: ExtractedString[] = [];
@@ -60,8 +56,7 @@ function scanUtf16(
   const flush = (end: number): void => {
     if (begin === -1 || (end - begin) / 2 < minLength) return;
     let value = "";
-    for (let j = begin; j < end; j += 2)
-      value += String.fromCharCode(bytes[j]!);
+    for (let j = begin; j < end; j += 2) value += String.fromCharCode(bytes[j]!);
     out.push({ offset: begin, encoding: "utf16le", value });
   };
   for (let i = parity; i + 1 < bytes.length && out.length < max; i += 2) {
@@ -89,8 +84,7 @@ export function classifyString(value: string): string[] {
   if (/^[\w.-]+@[\w.-]+\.\w+$/.test(value)) tags.push("email");
   if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(value)) tags.push("ip");
   if (/%[sdxpu]/.test(value)) tags.push("format");
-  if (/\b(password|secret|token|api[_-]?key|bearer)\b/i.test(value))
-    tags.push("secret-ish");
+  if (/\b(password|secret|token|api[_-]?key|bearer)\b/i.test(value)) tags.push("secret-ish");
   if (/^[A-Za-z0-9+/]{32,}={0,2}$/.test(value)) tags.push("base64-ish");
   return tags;
 }

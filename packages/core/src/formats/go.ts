@@ -21,21 +21,15 @@ export interface GoBuildInfo {
 }
 
 const MAGIC = "\xff Go buildinf:";
-const SENTINEL_START =
-  "\x30\x77\xaf\x0c\x92\x74\x08\x02\x41\xe1\xc1\x07\xe6\xd6\x18\xe6";
-const SENTINEL_END =
-  "\xf9\x32\x43\x31\x86\x18\x20\x72\x00\x82\x42\x10\x41\x16\xd8\xf2";
+const SENTINEL_START = "\x30\x77\xaf\x0c\x92\x74\x08\x02\x41\xe1\xc1\x07\xe6\xd6\x18\xe6";
+const SENTINEL_END = "\xf9\x32\x43\x31\x86\x18\x20\x72\x00\x82\x42\x10\x41\x16\xd8\xf2";
 
 /** Maps a virtual address to a file offset, provided by the container parser. */
 export type VaResolver = (va: bigint) => number | null;
 
 function indexOf(hay: Uint8Array, needle: string, from = 0): number {
   const first = needle.charCodeAt(0);
-  outer: for (
-    let i = hay.indexOf(first, from);
-    i !== -1;
-    i = hay.indexOf(first, i + 1)
-  ) {
+  outer: for (let i = hay.indexOf(first, from); i !== -1; i = hay.indexOf(first, i + 1)) {
     for (let j = 1; j < needle.length; j++) {
       if (hay[i + j] !== needle.charCodeAt(j)) continue outer;
     }
@@ -45,8 +39,7 @@ function indexOf(hay: Uint8Array, needle: string, from = 0): number {
 }
 
 function hasSentinel(bytes: Uint8Array, at: number, sentinel: string): boolean {
-  for (let i = 0; i < 16; i++)
-    if (bytes[at + i] !== sentinel.charCodeAt(i)) return false;
+  for (let i = 0; i < 16; i++) if (bytes[at + i] !== sentinel.charCodeAt(i)) return false;
   return true;
 }
 
@@ -67,10 +60,7 @@ function uvarint(bytes: Uint8Array, at: number): [value: number, next: number] {
  * the Go linker (Go 1.13+, inline strings since 1.18). Returns null when the
  * magic is absent.
  */
-export function parseGoBuildInfo(
-  bytes: Uint8Array,
-  resolveVa: VaResolver,
-): GoBuildInfo | null {
+export function parseGoBuildInfo(bytes: Uint8Array, resolveVa: VaResolver): GoBuildInfo | null {
   const at = indexOf(bytes, MAGIC);
   if (at === -1 || at + 32 > bytes.length) return scanVersionString(bytes);
   const limitations: Limitation[] = [];
@@ -99,8 +89,7 @@ export function parseGoBuildInfo(
       if (off === null || off + ptrSize * 2 > bytes.length) return null;
       const dataOff = resolveVa(readPtr(off));
       const len = Number(readPtr(off + ptrSize));
-      if (dataOff === null || len > 1 << 24 || dataOff + len > bytes.length)
-        return null;
+      if (dataOff === null || len > 1 << 24 || dataOff + len > bytes.length) return null;
       return bytes.subarray(dataOff, dataOff + len);
     };
     const versionBytes = readGoString(readPtr(at + 16));
@@ -125,8 +114,7 @@ export function parseGoBuildInfo(
     if (modinfo) {
       limitations.push({
         code: "go_modinfo_unframed",
-        message:
-          "Module info lacks the expected sentinels; parsed best-effort.",
+        message: "Module info lacks the expected sentinels; parsed best-effort.",
       });
     }
   }
@@ -159,23 +147,18 @@ export function parseGoBuildInfo(
         info.dependencies.push(last);
         break;
       case "=>":
-        if (last)
-          last.replacement = { path: rest[0] ?? "", version: rest[1] ?? "" };
+        if (last) last.replacement = { path: rest[0] ?? "", version: rest[1] ?? "" };
         break;
       case "build": {
         const eq = (rest[0] ?? "").indexOf("=");
-        if (eq > 0)
-          info.settings[rest[0]!.slice(0, eq)] = rest[0]!.slice(eq + 1);
+        if (eq > 0) info.settings[rest[0]!.slice(0, eq)] = rest[0]!.slice(eq + 1);
         break;
       }
       default:
         break;
     }
   }
-  if (
-    info.settings["-ldflags"]?.includes("-s") ||
-    info.settings["-ldflags"]?.includes("-w")
-  ) {
+  if (info.settings["-ldflags"]?.includes("-s") || info.settings["-ldflags"]?.includes("-w")) {
     findings.push({
       kind: "go.stripped",
       title: "Built with -ldflags stripping symbols/DWARF",
@@ -195,8 +178,7 @@ export function parseGoBuildInfo(
       title: `Built from ${info.settings["vcs"] ?? "vcs"} revision ${info.settings["vcs.revision"].slice(0, 12)}`,
       confidence: "confirmed",
     };
-    if (info.settings["vcs.modified"] === "true")
-      vcs.detail = "working tree was modified";
+    if (info.settings["vcs.modified"] === "true") vcs.detail = "working tree was modified";
     findings.push(vcs);
   }
   return info;

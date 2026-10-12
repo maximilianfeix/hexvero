@@ -336,7 +336,9 @@ code,
   color: var(--ink-2);
   text-align: center;
   font-size: 13px;
-  transition: border-color 120ms ease-out, background-color 120ms ease-out;
+  transition:
+    border-color 120ms ease-out,
+    background-color 120ms ease-out;
 }
 
 .dropzone strong {

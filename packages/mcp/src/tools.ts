@@ -1,9 +1,4 @@
-import {
-  AnalysisError,
-  compact,
-  originalPositionFor,
-  Session,
-} from "@hexvero/core";
+import { AnalysisError, compact, originalPositionFor, Session } from "@hexvero/core";
 import { z } from "zod";
 
 /**
@@ -12,28 +7,11 @@ import { z } from "zod";
  * working. Lists come back paged; anything bigger goes to a file.
  */
 
-const targetId = z
-  .string()
-  .min(3)
-  .describe("Target id returned by hexvero_open");
+const targetId = z.string().min(3).describe("Target id returned by hexvero_open");
 const paging = {
-  offset: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe("First item index (default 0)"),
-  limit: z
-    .number()
-    .int()
-    .min(1)
-    .max(2000)
-    .optional()
-    .describe("Items per page (default 100)"),
-  text: z
-    .string()
-    .optional()
-    .describe("Case-insensitive substring filter on each item"),
+  offset: z.number().int().min(0).optional().describe("First item index (default 0)"),
+  limit: z.number().int().min(1).max(2000).optional().describe("Items per page (default 100)"),
+  text: z.string().optional().describe("Case-insensitive substring filter on each item"),
 };
 
 export const toolSchemas = {
@@ -79,8 +57,7 @@ export const toolSchemas = {
   },
   hexvero_bytes: {
     title: "Read bytes",
-    description:
-      "Read a bounded window (max 64 KiB) of the target as hex plus an ASCII gutter.",
+    description: "Read a bounded window (max 64 KiB) of the target as hex plus an ASCII gutter.",
     input: {
       targetId,
       offset: z.number().int().min(0),
@@ -101,10 +78,7 @@ export const toolSchemas = {
       targetA: targetId,
       targetB: targetId,
       collection: z.string(),
-      key: z
-        .string()
-        .optional()
-        .describe("Item field used as identity (default: name, then JSON)"),
+      key: z.string().optional().describe("Item field used as identity (default: name, then JSON)"),
     },
   },
   hexvero_sourcemap: {
@@ -130,17 +104,8 @@ export const toolSchemas = {
     input: {
       targetId,
       provider: z.enum(["radare2", "rizin", "ghidra"]),
-      operation: z.enum([
-        "functions",
-        "disassemble",
-        "decompile",
-        "strings",
-        "imports",
-      ]),
-      address: z
-        .string()
-        .optional()
-        .describe("Function address or name for disassemble/decompile"),
+      operation: z.enum(["functions", "disassemble", "decompile", "strings", "imports"]),
+      address: z.string().optional().describe("Function address or name for disassemble/decompile"),
       timeoutMs: z.number().int().min(1000).max(600_000).optional(),
     },
   },
@@ -160,8 +125,7 @@ export interface ProviderBridge {
 }
 
 const str = (v: unknown): string => String(v);
-const num = (v: unknown): number | undefined =>
-  typeof v === "number" ? v : undefined;
+const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
 
 const paged = (
   args: Record<string, unknown>,
@@ -207,13 +171,8 @@ export function createHandlers(
       return session.strings(str(a["targetId"]), q);
     },
     hexvero_bytes: async (a) =>
-      session.bytes(
-        str(a["targetId"]),
-        Number(a["offset"]),
-        Number(a["length"]),
-      ),
-    hexvero_export: async (a) =>
-      session.export(str(a["targetId"]), str(a["path"])),
+      session.bytes(str(a["targetId"]), Number(a["offset"]), Number(a["length"])),
+    hexvero_export: async (a) => session.export(str(a["targetId"]), str(a["path"])),
     hexvero_compare: async (a) => {
       const name = str(a["collection"]);
       const [left, right] = await Promise.all([
@@ -229,9 +188,7 @@ export function createHandlers(
       const keyOf = (item: unknown): string => {
         const o = item as Record<string, unknown>;
         const field = typeof a["key"] === "string" ? a["key"] : "name";
-        return o && typeof o === "object" && field in o
-          ? String(o[field])
-          : JSON.stringify(item);
+        return o && typeof o === "object" && field in o ? String(o[field]) : JSON.stringify(item);
       };
       const l = new Map(left.items.map((i) => [keyOf(i), i]));
       const r = new Map(right.items.map((i) => [keyOf(i), i]));

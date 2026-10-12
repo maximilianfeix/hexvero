@@ -1,10 +1,5 @@
 import type { ReactElement } from "react";
-import {
-  api,
-  formatBytes,
-  formatCount,
-  type TargetRecord,
-} from "../lib/api.js";
+import { api, formatBytes, formatCount, type TargetRecord } from "../lib/api.js";
 import { navigate } from "../lib/route.js";
 import { useAsync } from "../lib/useAsync.js";
 import { CollectionView } from "./CollectionView.js";
@@ -25,9 +20,7 @@ export function Workspace({
   tab: string;
   query: URLSearchParams;
 }): ReactElement {
-  const analysis = useAsync(`analysis:${target.id}`, () =>
-    api.analysis(target.id),
-  );
+  const analysis = useAsync(`analysis:${target.id}`, () => api.analysis(target.id));
   const isDirectory = target.info.format === "directory";
   const collections = analysis.data?.collections ?? {};
   const dynamic = Object.entries(collections)
@@ -48,9 +41,7 @@ export function Workspace({
           <span>{target.info.format}</span>
           {!isDirectory && <span>{formatBytes(target.info.size)}</span>}
           {target.info.sha256 && (
-            <span title={target.info.sha256}>
-              sha256 {target.info.sha256.slice(0, 16)}…
-            </span>
+            <span title={target.info.sha256}>sha256 {target.info.sha256.slice(0, 16)}…</span>
           )}
           {analysis.data && <span>{analysis.data.durationMs} ms</span>}
           <a href={api.exportUrl(target.id)} download>
@@ -87,21 +78,13 @@ export function Workspace({
         ))}
       </nav>
       <section className="panel" role="tabpanel">
-        {analysis.data && tab === "overview" && (
-          <Overview analysis={analysis.data} />
-        )}
-        {analysis.data && tab === "findings" && (
-          <Overview analysis={analysis.data} findingsOnly />
-        )}
+        {analysis.data && tab === "overview" && <Overview analysis={analysis.data} />}
+        {analysis.data && tab === "findings" && <Overview analysis={analysis.data} findingsOnly />}
         {analysis.data && dynamic.includes(tab) && (
           <CollectionView targetId={target.id} name={tab} query={query} />
         )}
-        {tab === "strings" && (
-          <StringsView targetId={target.id} query={query} />
-        )}
-        {tab === "hex" && (
-          <HexView targetId={target.id} size={target.info.size} query={query} />
-        )}
+        {tab === "strings" && <StringsView targetId={target.id} query={query} />}
+        {tab === "hex" && <HexView targetId={target.id} size={target.info.size} query={query} />}
         {analysis.data && tab === "graph" && <GraphView targetId={target.id} />}
       </section>
     </>

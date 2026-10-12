@@ -126,25 +126,19 @@ for (let i = 1; i <= 16; i++) OPCODES[0x8f + i] = `SWAP${i}`;
 
 /** Accepts raw bytes or ASCII hex (with or without 0x). */
 export function evmBytesFrom(input: Uint8Array): Uint8Array {
-  const text = new TextDecoder()
-    .decode(input.subarray(0, Math.min(input.length, 4 << 20)))
-    .trim();
+  const text = new TextDecoder().decode(input.subarray(0, Math.min(input.length, 4 << 20))).trim();
   if (/^(0x)?[0-9a-fA-F]+$/.test(text) && text.length % 2 === 0) {
     const hexText = text.startsWith("0x") ? text.slice(2) : text;
     const out = new Uint8Array(hexText.length / 2);
-    for (let i = 0; i < out.length; i++)
-      out[i] = parseInt(hexText.slice(i * 2, i * 2 + 2), 16);
+    for (let i = 0; i < out.length; i++) out[i] = parseInt(hexText.slice(i * 2, i * 2 + 2), 16);
     return out;
   }
   return input;
 }
 
-export function disassembleEvm(
-  code: Uint8Array,
-  max = 200_000,
-): EvmInstruction[] {
+export function disassembleEvm(code: Uint8Array, max = 200_000): EvmInstruction[] {
   const out: EvmInstruction[] = [];
-  for (let pc = 0; pc < code.length && out.length < max; ) {
+  for (let pc = 0; pc < code.length && out.length < max;) {
     const opcode = code[pc]!;
     const name = OPCODES[opcode] ?? "INVALID";
     const ins: EvmInstruction = { offset: pc, opcode, name };
@@ -183,14 +177,11 @@ function readMetadata(code: Uint8Array): EvmInfo["metadata"] {
 
 export function parseEvm(input: Uint8Array): EvmInfo {
   const code = evmBytesFrom(input);
-  if (code.length === 0)
-    throw new AnalysisError("malformed", "Empty EVM bytecode");
+  if (code.length === 0) throw new AnalysisError("malformed", "Empty EVM bytecode");
   const limitations: Limitation[] = [];
   const findings: Finding[] = [];
   const metadata = readMetadata(code);
-  const body = metadata
-    ? code.subarray(0, code.length - 2 - metadata.cborLength)
-    : code;
+  const body = metadata ? code.subarray(0, code.length - 2 - metadata.cborLength) : code;
   const instructions = disassembleEvm(body);
   if (instructions.length >= 200_000)
     limitations.push({
@@ -199,8 +190,7 @@ export function parseEvm(input: Uint8Array): EvmInfo {
     });
 
   const histogram: Record<string, number> = {};
-  for (const ins of instructions)
-    histogram[ins.name] = (histogram[ins.name] ?? 0) + 1;
+  for (const ins of instructions) histogram[ins.name] = (histogram[ins.name] ?? 0) + 1;
 
   // Dispatch pattern: PUSH4 <sel> ... EQ ... PUSH2 <dest> JUMPI (DUP1 may sit in between)
   const selectors: EvmSelector[] = [];
@@ -215,9 +205,7 @@ export function parseEvm(input: Uint8Array): EvmInfo {
     if (!jumpi) continue;
     const pushTarget = window
       .slice(eqAt)
-      .find(
-        (w) => w.name === "PUSH2" || w.name === "PUSH1" || w.name === "PUSH3",
-      );
+      .find((w) => w.name === "PUSH2" || w.name === "PUSH1" || w.name === "PUSH3");
     if (seen.has(ins.push)) continue;
     seen.add(ins.push);
     selectors.push({
@@ -250,8 +238,7 @@ export function parseEvm(input: Uint8Array): EvmInfo {
   if (histogram["CODECOPY"] && histogram["RETURN"] && selectors.length === 0) {
     findings.push({
       kind: "evm.creation",
-      title:
-        "Looks like creation (deploy) code; supply the runtime bytecode for selectors",
+      title: "Looks like creation (deploy) code; supply the runtime bytecode for selectors",
       confidence: "inferred",
     });
   }

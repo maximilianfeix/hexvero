@@ -81,8 +81,7 @@ export function buildAxml(root: El): Uint8Array {
       .u16(0);
     for (const [n, v, ns] of attrs) {
       body.u32(ns === false ? 0xffffffff : index(ANDROID_NS)).u32(index(n));
-      if (typeof v === "string")
-        body.u32(index(v)).u16(8).u8(0).u8(0x03).u32(index(v));
+      if (typeof v === "string") body.u32(index(v)).u16(8).u8(0).u8(0x03).u32(index(v));
       else if (typeof v === "boolean")
         body
           .u32(0xffffffff)
@@ -94,14 +93,7 @@ export function buildAxml(root: El): Uint8Array {
     }
     body.patchU32(start + 4, body.length - start);
     el.children?.forEach(emit);
-    body
-      .u16(0x0103)
-      .u16(16)
-      .u32(24)
-      .u32(0)
-      .u32(0xffffffff)
-      .u32(0xffffffff)
-      .u32(index(el.tag));
+    body.u16(0x0103).u16(16).u32(24).u32(0).u32(0xffffffff).u32(0xffffffff).u32(index(el.tag));
   };
   emit(root);
   const poolBytes = pool.done();

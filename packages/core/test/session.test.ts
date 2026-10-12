@@ -49,9 +49,7 @@ describe("Session", () => {
     });
     expect(tiny.items.length).toBeLessThan(tiny.total);
     expect(tiny.truncated).toBe(true);
-    await expect(session.collection(record.id, "nope")).rejects.toThrow(
-      /available: findings/,
-    );
+    await expect(session.collection(record.id, "nope")).rejects.toThrow(/available: findings/);
   });
 
   it("serves strings and byte windows", () => {
@@ -85,9 +83,7 @@ describe("Session", () => {
     const out = join(dir, "export.json");
     const result = await session.export(record.id, out);
     expect(result.bytes).toBeGreaterThan(100);
-    expect(JSON.parse(readFileSync(out, "utf8")).analysis.summary).toContain(
-      "Electron ASAR",
-    );
+    expect(JSON.parse(readFileSync(out, "utf8")).analysis.summary).toContain("Electron ASAR");
     expect(session.close(record.id)).toBe(true);
     expect(() => session.get(record.id)).toThrow(/No open target/);
   });

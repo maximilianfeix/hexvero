@@ -73,38 +73,14 @@ export function buildDotnetMetadata(): Uint8Array {
     .u16(idx["Beep"]!)
     .u16(1);
   // Assembly
-  t.u32(0x8004)
-    .u16(1)
-    .u16(2)
-    .u16(3)
-    .u16(4)
-    .u32(0)
-    .u16(0)
-    .u16(idx["MyAsm"]!)
-    .u16(idx[""]!);
+  t.u32(0x8004).u16(1).u16(2).u16(3).u16(4).u32(0).u16(0).u16(idx["MyAsm"]!).u16(idx[""]!);
   // AssemblyRef
-  t.u16(4)
-    .u16(0)
-    .u16(0)
-    .u16(0)
-    .u32(0)
-    .u16(0)
-    .u16(idx["mscorlib"]!)
-    .u16(0)
-    .u16(0);
+  t.u16(4).u16(0).u16(0).u16(0).u32(0).u16(0).u16(idx["mscorlib"]!).u16(0).u16(0);
   t.align(4);
   const tablesBytes = t.done();
 
   const root = new Builder();
-  root
-    .ascii("BSJB")
-    .u16(1)
-    .u16(1)
-    .u32(0)
-    .u32(12)
-    .fixed("v4.0.30319", 12)
-    .u16(0)
-    .u16(3);
+  root.ascii("BSJB").u16(1).u16(1).u32(0).u32(12).fixed("v4.0.30319", 12).u16(0).u16(3);
   const headerSize = root.length + 3 * 8 + 4 + 12 + 4; // "#~\0\0" "#Strings\0\0\0\0" "#US\0"
   let offset = headerSize;
   const streams: Array<[string, Uint8Array]> = [
@@ -116,8 +92,7 @@ export function buildDotnetMetadata(): Uint8Array {
     root.u32(offset).u32(bytes.length).cstr(name).align(4);
     offset += bytes.length;
   }
-  if (root.length !== headerSize)
-    throw new Error(`header ${root.length} != ${headerSize}`);
+  if (root.length !== headerSize) throw new Error(`header ${root.length} != ${headerSize}`);
   for (const [, bytes] of streams) root.bytes(bytes);
   return root.done();
 }

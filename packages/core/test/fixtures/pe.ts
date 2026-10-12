@@ -2,57 +2,26 @@ import { Builder } from "./builder.js";
 
 /** Minimal PE32+ DLL with one import DLL (two names, one ordinal) and exports (one named, one forwarder). */
 export function buildPe(
-  options: { clr?: boolean | Uint8Array } = {},
+  options: { clr?: boolean | Uint8Array; resources?: Uint8Array } = {},
 ): Uint8Array {
   const b = new Builder(true);
   b.ascii("MZ").pad(0x3c).u32(0x40).pad(0x40);
   b.ascii("PE\0\0");
   b.u16(0x8664).u16(2).u32(1_700_000_000).u32(0).u32(0).u16(240).u16(0x2022);
   const opt = b.length;
-  b.u16(0x20b)
-    .u8(14)
-    .u8(0)
-    .u32(0x200)
-    .u32(0x200)
-    .u32(0)
-    .u32(0x1000)
-    .u32(0x1000);
+  b.u16(0x20b).u8(14).u8(0).u32(0x200).u32(0x200).u32(0).u32(0x1000).u32(0x1000);
   b.u64(0x180000000); // image base
   b.u32(0x1000).u32(0x200);
-  b.u16(6)
-    .u16(0)
-    .u16(0)
-    .u16(0)
-    .u16(6)
-    .u16(0)
-    .u32(0)
-    .u32(0x3000)
-    .u32(0x400)
-    .u32(0);
+  b.u16(6).u16(0).u16(0).u16(0).u16(6).u16(0).u32(0).u32(0x3000).u32(0x400).u32(0);
   b.u16(2).u16(0x160); // subsystem GUI, DLL chars: HIGH_ENTROPY|DYNAMIC_BASE|NX
   b.u64(0x100000).u64(0x1000).u64(0x100000).u64(0x1000).u32(0).u32(16);
   const dirs = b.length;
   for (let i = 0; i < 16; i++) b.u32(0).u32(0);
-  if (b.length - opt !== 240)
-    throw new Error(`optional header is ${b.length - opt}`);
+  if (b.length - opt !== 240) throw new Error(`optional header is ${b.length - opt}`);
 
   // Section table: .text (RVA 0x1000, raw 0x200) and .rdata (RVA 0x2000, raw 0x400)
-  const section = (
-    name: string,
-    va: number,
-    raw: number,
-    flags: number,
-  ): void => {
-    b.fixed(name, 8)
-      .u32(0x200)
-      .u32(va)
-      .u32(0x200)
-      .u32(raw)
-      .u32(0)
-      .u32(0)
-      .u16(0)
-      .u16(0)
-      .u32(flags);
+  const section = (name: string, va: number, raw: number, flags: number): void => {
+    b.fixed(name, 8).u32(0x200).u32(va).u32(0x200).u32(raw).u32(0).u32(0).u16(0).u16(0).u32(flags);
   };
   section(".text", 0x1000, 0x200, 0x60000020);
   section(".rdata", 0x2000, 0x400, 0x40000040);
@@ -119,18 +88,15 @@ export function buildPe(
   if (options.clr) {
     b.patchU32(dirs + 14 * 8, 0x2100).patchU32(dirs + 14 * 8 + 4, 72);
     b.pad(0x500);
-    const metadata =
-      options.clr instanceof Uint8Array ? options.clr : new Uint8Array();
+    const metadata = options.clr instanceof Uint8Array ? options.clr : new Uint8Array();
     // CLR header: cb, major 2, minor 5, metadata RVA/size, flags ILONLY, entry token
-    b.u32(72)
-      .u16(2)
-      .u16(5)
-      .u32(0x2148)
-      .u32(metadata.length)
-      .u32(1)
-      .u32(0x06000001)
-      .pad(0x548);
+    b.u32(72).u16(2).u16(5).u32(0x2148).u32(metadata.length).u32(1).u32(0x06000001).pad(0x548);
     b.bytes(metadata);
+  }
+  if (options.resources) {
+    // Resource directory lives in .rdata at RVA 0x2500 (file 0x900); the fixture's data entries are relative to that RVA.
+    b.pad(0x900).bytes(options.resources);
+    b.patchU32(dirs + 2 * 8, 0x2500).patchU32(dirs + 2 * 8 + 4, options.resources.length);
   }
   b.pad(0xc00);
   return b.done();

@@ -50,10 +50,7 @@ export function parseDex(
   const r = new ByteReader(bytes, 0x28, true);
   const endianTag = r.u32();
   if (endianTag === 0x78563412)
-    throw new AnalysisError(
-      "unsupported_format",
-      "big-endian DEX is not supported",
-    );
+    throw new AnalysisError("unsupported_format", "big-endian DEX is not supported");
   r.seek(0x38);
   const stringsSize = r.u32();
   const stringsOff = r.u32();
@@ -81,12 +78,7 @@ export function parseDex(
     const utf16Length = sr.uleb128();
     const start = sr.offset;
     let end = start;
-    while (
-      end < bytes.length &&
-      bytes[end] !== 0 &&
-      end - start < utf16Length * 3
-    )
-      end++;
+    while (end < bytes.length && bytes[end] !== 0 && end - start < utf16Length * 3) end++;
     return mutf8(bytes.subarray(start, end));
   };
   const typeName = (index: number): string => {
@@ -113,9 +105,7 @@ export function parseDex(
     const superIdx = cr.u32();
     cr.u32();
     const sourceIdx = cr.u32();
-    const pkg = name.includes(".")
-      ? name.slice(0, name.lastIndexOf("."))
-      : "(default)";
+    const pkg = name.includes(".") ? name.slice(0, name.lastIndexOf(".")) : "(default)";
     packages.set(pkg, (packages.get(pkg) ?? 0) + 1);
     classes.push({
       name,
@@ -130,8 +120,7 @@ export function parseDex(
       message: `Listed ${maxClasses} of ${classesSize} classes.`,
     });
   const strings: string[] = [];
-  for (let i = 0; i < Math.min(stringsSize, maxStrings); i++)
-    strings.push(readString(i));
+  for (let i = 0; i < Math.min(stringsSize, maxStrings); i++) strings.push(readString(i));
   if (stringsSize > maxStrings)
     limitations.push({
       code: "dex_strings_limited",
@@ -146,9 +135,7 @@ export function parseDex(
       detail: urls.slice(0, 5).join(", "),
       confidence: "confirmed",
     });
-  const obfuscated = classes.filter((c) =>
-    /(^|\.)[a-z]{1,2}$/.test(c.name),
-  ).length;
+  const obfuscated = classes.filter((c) => /(^|\.)[a-z]{1,2}$/.test(c.name)).length;
   if (classes.length > 20 && obfuscated / classes.length > 0.4)
     findings.push({
       kind: "dex.obfuscated",
@@ -169,9 +156,7 @@ export function parseDex(
     findings.push({
       kind: "dex.sdks",
       title: "Third-party SDKs",
-      detail: [
-        ...new Set(sdks.map((s) => s.split(".").slice(0, 3).join("."))),
-      ].join(", "),
+      detail: [...new Set(sdks.map((s) => s.split(".").slice(0, 3).join(".")))].join(", "),
       confidence: "inferred",
     });
   return {
@@ -195,7 +180,7 @@ export function parseDex(
 /** Modified UTF-8 as used by the JVM and DEX: NUL is encoded as C0 80, supplementary chars as surrogate pairs. */
 function mutf8(bytes: Uint8Array): string {
   let out = "";
-  for (let i = 0; i < bytes.length; ) {
+  for (let i = 0; i < bytes.length;) {
     const b = bytes[i]!;
     if (b < 0x80) {
       out += String.fromCharCode(b);
@@ -205,9 +190,7 @@ function mutf8(bytes: Uint8Array): string {
       i += 2;
     } else if ((b & 0xf0) === 0xe0) {
       out += String.fromCharCode(
-        ((b & 0x0f) << 12) |
-          ((bytes[i + 1]! & 0x3f) << 6) |
-          (bytes[i + 2]! & 0x3f),
+        ((b & 0x0f) << 12) | ((bytes[i + 1]! & 0x3f) << 6) | (bytes[i + 2]! & 0x3f),
       );
       i += 3;
     } else {

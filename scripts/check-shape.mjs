@@ -25,9 +25,7 @@ function walk(dir) {
   return out;
 }
 
-const sources = walk("packages").filter(
-  (f) => !f.includes("/test/") && !f.endsWith(".test.ts"),
-);
+const sources = walk("packages").filter((f) => !f.includes("/test/") && !f.endsWith(".test.ts"));
 const tests = walk("packages")
   .filter((f) => f.includes("/test/") || f.endsWith(".test.ts"))
   .map((f) => readFileSync(f, "utf8"))
@@ -60,18 +58,13 @@ try {
       typeof v === "object" && v && "_def" in v ? "<schema>" : v,
     ),
   );
-  notes.push(
-    `MCP catalog: ${Object.keys(toolSchemas).length} tools, descriptions ${size} bytes`,
-  );
-  if (Object.keys(toolSchemas).length > 16)
-    findings.push("MCP catalog exceeds 16 tools");
+  notes.push(`MCP catalog: ${Object.keys(toolSchemas).length} tools, descriptions ${size} bytes`);
+  if (Object.keys(toolSchemas).length > 16) findings.push("MCP catalog exceeds 16 tools");
 } catch {
   notes.push("MCP catalog not built; skipped size check");
 }
 
 for (const n of notes) console.log(`note: ${n}`);
 for (const f of findings) console.log(`finding: ${f}`);
-console.log(
-  `${findings.length} finding(s), ${sources.length} source files checked`,
-);
+console.log(`${findings.length} finding(s), ${sources.length} source files checked`);
 process.exit(findings.length ? 1 : 0);

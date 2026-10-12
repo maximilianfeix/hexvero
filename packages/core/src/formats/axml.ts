@@ -45,11 +45,7 @@ const RESOURCE_NAMES: Record<number, string> = {
   0x0101000d: "protectionLevel",
 };
 
-function decodeTypedValue(
-  type: number,
-  data: number,
-  strings: string[],
-): string {
+function decodeTypedValue(type: number, data: number, strings: string[]): string {
   switch (type) {
     case 0x03:
       return strings[data] ?? "";
@@ -64,9 +60,7 @@ function decodeTypedValue(
     case 0x12:
       return data !== 0 ? "true" : "false";
     case 0x04:
-      return String(
-        new DataView(new Uint32Array([data]).buffer).getFloat32(0, true),
-      );
+      return String(new DataView(new Uint32Array([data]).buffer).getFloat32(0, true));
     case 0x05:
       return `${data >> 8}${["px", "dip", "sp", "pt", "in", "mm"][data & 0xf] ?? ""}`;
     case 0x1c:
@@ -79,20 +73,14 @@ function decodeTypedValue(
   }
 }
 
-function readStringPool(
-  r: ByteReader,
-  chunkStart: number,
-  chunkSize: number,
-): string[] {
+function readStringPool(r: ByteReader, chunkStart: number, chunkSize: number): string[] {
   const count = r.u32();
   r.u32(); // style count
   const flags = r.u32();
   const stringsStart = r.u32();
   r.u32(); // styles start
   const utf8 = (flags & 0x100) !== 0;
-  const offsets = Array.from({ length: Math.min(count, 1_000_000) }, () =>
-    r.u32(),
-  );
+  const offsets = Array.from({ length: Math.min(count, 1_000_000) }, () => r.u32());
   const base = chunkStart + stringsStart;
   const end = chunkStart + chunkSize;
   const strings: string[] = [];
@@ -113,8 +101,7 @@ function readStringPool(
       let len = r.u16();
       if (len & 0x8000) len = ((len & 0x7fff) << 16) | r.u16();
       let s = "";
-      for (let i = 0; i < len && r.remaining >= 2; i++)
-        s += String.fromCharCode(r.u16());
+      for (let i = 0; i < len && r.remaining >= 2; i++) s += String.fromCharCode(r.u16());
       strings.push(s);
     }
   }
@@ -149,9 +136,7 @@ export function parseAxml(bytes: Uint8Array): AxmlElement {
         strings = readStringPool(r, chunkStart, chunkSize);
         break;
       case CHUNK_RESOURCE_MAP:
-        resourceIds = Array.from({ length: (chunkSize - headerSize) / 4 }, () =>
-          r.u32(),
-        );
+        resourceIds = Array.from({ length: (chunkSize - headerSize) / 4 }, () => r.u32());
         break;
       case CHUNK_START_NAMESPACE: {
         r.skip(8);
@@ -182,10 +167,7 @@ export function parseAxml(bytes: Uint8Array): AxmlElement {
           const resId = resourceIds[nameIndex];
           if (!name && resId !== undefined)
             name = RESOURCE_NAMES[resId] ?? `@0x${resId.toString(16)}`;
-          const ns =
-            nsIndex !== 0xffffffff
-              ? namespaces.get(strings[nsIndex] ?? "")
-              : undefined;
+          const ns = nsIndex !== 0xffffffff ? namespaces.get(strings[nsIndex] ?? "") : undefined;
           const key = ns ? `${ns}:${name}` : name;
           element.attributes[key] =
             rawValue !== 0xffffffff

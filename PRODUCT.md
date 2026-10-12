@@ -1,6 +1,6 @@
 # hexvero — product context
 
-> Written from the build brief while the owner was unavailable; items marked *assumed* are inferences, not confirmed answers.
+> Written from the build brief while the owner was unavailable; items marked _assumed_ are inferences, not confirmed answers.
 
 ## What it is
 
@@ -13,7 +13,7 @@ agents, and a local web UI.
 ## Who uses it
 
 - Developers who want to understand how a shipped app works (an Electron app's IPC, a Go binary's
-  dependencies, an APK's permissions) before building something similar. *assumed: primary audience*
+  dependencies, an APK's permissions) before building something similar. _assumed: primary audience_
 - Security-minded engineers doing quick triage of a binary or bundle on their own machine.
 - Coding agents (Claude Code, Codex, Cursor) driving the same analyses through MCP.
 
@@ -28,8 +28,8 @@ page: scanability, dense but legible tables, keyboard navigation, honest empty/p
 - Never executes a target. Never uploads anything off the machine.
 - Every list is paged; large results never freeze the page.
 - Findings show confidence (confirmed vs inferred); limitations are always visible, never hidden.
-- Works offline; no external fonts or CDNs at runtime (fonts are self-hosted or system). *assumed*
-- Dark-first, used in dim rooms next to a terminal; a light theme follows the OS setting. *assumed*
+- Works offline; no external fonts or CDNs at runtime (fonts are self-hosted or system). _assumed_
+- Dark-first, used in dim rooms next to a terminal; a light theme follows the OS setting. _assumed_
 
 ## Voice
 

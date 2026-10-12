@@ -55,13 +55,9 @@ export function GraphView({ targetId }: { targetId: string }): ReactElement {
       const inColumn = mods
         .filter((m) => m.role === role)
         .toSorted(
-          (a, b) =>
-            (fanIn.get(b.id) ?? 0) - (fanIn.get(a.id) ?? 0) ||
-            a.id.localeCompare(b.id),
+          (a, b) => (fanIn.get(b.id) ?? 0) - (fanIn.get(a.id) ?? 0) || a.id.localeCompare(b.id),
         );
-      inColumn.forEach((m, i) =>
-        pos.set(m.id, { x, y: 40 + i * (NODE_H + GAP_Y) }),
-      );
+      inColumn.forEach((m, i) => pos.set(m.id, { x, y: 40 + i * (NODE_H + GAP_Y) }));
       height = Math.max(height, 40 + inColumn.length * (NODE_H + GAP_Y));
       const column = { role, title, x, items: inColumn };
       if (inColumn.length) x += NODE_W + GAP_X;
@@ -79,23 +75,20 @@ export function GraphView({ targetId }: { targetId: string }): ReactElement {
 
   if (modules.error || edges.error)
     return <p className="empty">{(modules.error ?? edges.error)!.message}</p>;
-  if (!modules.data || !edges.data)
-    return <p className="empty">Laying out modules…</p>;
+  if (!modules.data || !edges.data) return <p className="empty">Laying out modules…</p>;
   if (layout.columns.length === 0)
     return <p className="empty">No JavaScript modules were found to draw.</p>;
 
   const hot = new Set<string>();
   if (selected)
     for (const e of layout.edges)
-      if (e.from === selected || e.to === selected)
-        hot.add(`${e.from}→${e.to}`);
+      if (e.from === selected || e.to === selected) hot.add(`${e.from}→${e.to}`);
 
   return (
     <>
       <div className="legend">
         <span>
-          {layout.edges.length} resolved imports between {layout.pos.size}{" "}
-          modules
+          {layout.edges.length} resolved imports between {layout.pos.size} modules
         </span>
         {layout.truncated && <span>· showing the first {MAX_NODES}</span>}
         <span>· click a module to trace its imports</span>

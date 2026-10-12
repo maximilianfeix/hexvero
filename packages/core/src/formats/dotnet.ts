@@ -38,14 +38,7 @@ export interface DotnetInfo {
   limitations: Limitation[];
 }
 
-type Col =
-  | "u2"
-  | "u4"
-  | "str"
-  | "guid"
-  | "blob"
-  | { t: number }
-  | { c: string };
+type Col = "u2" | "u4" | "str" | "guid" | "blob" | { t: number } | { c: string };
 const T = (t: number): Col => ({ t });
 const C = (c: string): Col => ({ c });
 
@@ -63,10 +56,7 @@ const TABLES: Record<number, [name: string, cols: Col[]]> = {
   0x09: ["InterfaceImpl", [T(0x02), C("TypeDefOrRef")]],
   0x0a: ["MemberRef", [C("MemberRefParent"), "str", "blob"]],
   0x0b: ["Constant", ["u2", C("HasConstant"), "blob"]],
-  0x0c: [
-    "CustomAttribute",
-    [C("HasCustomAttribute"), C("CustomAttributeType"), "blob"],
-  ],
+  0x0c: ["CustomAttribute", [C("HasCustomAttribute"), C("CustomAttributeType"), "blob"]],
   0x0d: ["FieldMarshal", [C("HasFieldMarshal"), "blob"]],
   0x0e: ["DeclSecurity", ["u2", C("HasDeclSecurity"), "blob"]],
   0x0f: ["ClassLayout", ["u2", "u4", T(0x02)]],
@@ -86,16 +76,10 @@ const TABLES: Record<number, [name: string, cols: Col[]]> = {
   0x1d: ["FieldRVA", ["u4", T(0x04)]],
   0x1e: ["EncLog", ["u4", "u4"]],
   0x1f: ["EncMap", ["u4"]],
-  0x20: [
-    "Assembly",
-    ["u4", "u2", "u2", "u2", "u2", "u4", "blob", "str", "str"],
-  ],
+  0x20: ["Assembly", ["u4", "u2", "u2", "u2", "u2", "u4", "blob", "str", "str"]],
   0x21: ["AssemblyProcessor", ["u4"]],
   0x22: ["AssemblyOS", ["u4", "u4", "u4"]],
-  0x23: [
-    "AssemblyRef",
-    ["u2", "u2", "u2", "u2", "u4", "blob", "str", "str", "blob"],
-  ],
+  0x23: ["AssemblyRef", ["u2", "u2", "u2", "u2", "u4", "blob", "str", "str", "blob"]],
   0x24: ["AssemblyRefProcessor", ["u4", T(0x23)]],
   0x25: ["AssemblyRefOS", ["u4", "u4", "u4", T(0x23)]],
   0x26: ["File", ["u4", "str", "blob"]],
@@ -114,8 +98,8 @@ const CODED: Record<string, [bits: number, tables: number[]]> = {
   HasCustomAttribute: [
     5,
     [
-      0x06, 0x04, 0x01, 0x02, 0x08, 0x09, 0x0a, 0x00, 0x0e, 0x17, 0x14, 0x11,
-      0x1a, 0x1b, 0x20, 0x23, 0x26, 0x27, 0x28, 0x2a, 0x2c, 0x2b,
+      0x06, 0x04, 0x01, 0x02, 0x08, 0x09, 0x0a, 0x00, 0x0e, 0x17, 0x14, 0x11, 0x1a, 0x1b, 0x20,
+      0x23, 0x26, 0x27, 0x28, 0x2a, 0x2c, 0x2b,
     ],
   ],
   HasFieldMarshal: [1, [0x04, 0x08]],
@@ -130,8 +114,7 @@ const CODED: Record<string, [bits: number, tables: number[]]> = {
   TypeOrMethodDef: [1, [0x02, 0x06]],
 };
 
-const typeName = (ns: string, name: string): string =>
-  ns ? `${ns}.${name}` : name;
+const typeName = (ns: string, name: string): string => (ns ? `${ns}.${name}` : name);
 
 interface Row {
   values: number[];
@@ -158,10 +141,7 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
     metaOff + 16 > bytes.length ||
     latin1(bytes.subarray(metaOff, metaOff + 4)) !== "BSJB"
   ) {
-    throw new AnalysisError(
-      "malformed",
-      "Metadata root signature BSJB not found",
-    );
+    throw new AnalysisError("malformed", "Metadata root signature BSJB not found");
   }
   r.seek(metaOff + 12);
   const versionLength = r.u32();
@@ -181,10 +161,7 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
     const s = streams.find((x) => x.name === name);
     if (!s) return null;
     const start = metaOff + s.offset;
-    return bytes.subarray(
-      start,
-      Math.min(bytes.length, start + s.size, metaOff + metaSize),
-    );
+    return bytes.subarray(start, Math.min(bytes.length, start + s.size, metaOff + metaSize));
   };
   const strings = stream("#Strings") ?? new Uint8Array();
   const blobs = stream("#Blob") ?? new Uint8Array();
@@ -193,9 +170,7 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
   const info: DotnetInfo = {
     runtimeVersion,
     assembly: null,
-    entryPointToken: entryToken
-      ? `0x${entryToken.toString(16).padStart(8, "0")}`
-      : null,
+    entryPointToken: entryToken ? `0x${entryToken.toString(16).padStart(8, "0")}` : null,
     flags: {
       ilOnly: (clrFlags & 1) !== 0,
       requires32Bit: (clrFlags & 2) !== 0,
@@ -228,8 +203,7 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
   const valid = tr.u64();
   tr.u64(); // sorted
   const rows: number[] = Array.from({ length: 64 }, () => 0);
-  for (let i = 0; i < 64; i++)
-    if (valid & (1n << BigInt(i))) rows[i] = tr.u32();
+  for (let i = 0; i < 64; i++) if (valid & (1n << BigInt(i))) rows[i] = tr.u32();
   for (let i = 0x2d; i < 64; i++) {
     if (rows[i])
       limitations.push({
@@ -375,8 +349,7 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
   if (info.types.length > 10 && shortNames / info.types.length > 0.5) {
     findings.push({
       kind: "dotnet.obfuscated",
-      title:
-        "Most type names are one or two characters or non-ASCII (obfuscated)",
+      title: "Most type names are one or two characters or non-ASCII (obfuscated)",
       confidence: "inferred",
     });
   }
@@ -414,11 +387,7 @@ function readUserStrings(us: Uint8Array, max = 5000): string[] {
       len = ((first & 0x3f) << 8) | us[at + 1]!;
       header = 2;
     } else {
-      len =
-        ((first & 0x1f) << 24) |
-        (us[at + 1]! << 16) |
-        (us[at + 2]! << 8) |
-        us[at + 3]!;
+      len = ((first & 0x1f) << 24) | (us[at + 1]! << 16) | (us[at + 2]! << 8) | us[at + 3]!;
       header = 4;
     }
     const start = at + header;

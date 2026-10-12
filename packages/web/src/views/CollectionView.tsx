@@ -23,23 +23,14 @@ export function CollectionView({
     api.collection<Row>(targetId, name, { offset, limit: PAGE, text }),
   );
   const setQuery = (q: string, off = 0): void =>
-    navigate(
-      targetId,
-      name,
-      { q: q || undefined, offset: off ? String(off) : undefined },
-      true,
-    );
+    navigate(targetId, name, { q: q || undefined, offset: off ? String(off) : undefined }, true);
   return (
     <>
       <Toolbar
         text={text}
         onText={(q) => setQuery(q)}
         status={
-          page.data
-            ? statusLine(page.data, text)
-            : page.error
-              ? page.error.message
-              : "Loading…"
+          page.data ? statusLine(page.data, text) : page.error ? page.error.message : "Loading…"
         }
       />
       <Table rows={page.data?.items ?? []} loading={page.loading} />
@@ -109,22 +100,12 @@ export function Toolbar({
 }
 
 const cellText = (v: unknown): string =>
-  v === null || v === undefined
-    ? ""
-    : typeof v === "object"
-      ? JSON.stringify(v)
-      : String(v);
+  v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
 
-export function Table({
-  rows,
-  loading,
-}: {
-  rows: Row[];
-  loading: boolean;
-}): ReactElement {
+export function Table({ rows, loading }: { rows: Row[]; loading: boolean }): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
-  const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter(
-    (c) => rows.some((r) => r[c] !== undefined && r[c] !== null),
+  const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((c) =>
+    rows.some((r) => r[c] !== undefined && r[c] !== null),
   );
   const widths = columns.map((c) => {
     const longest = rows
@@ -133,9 +114,7 @@ export function Table({
     return `${Math.min(Math.max(longest * 7.6 + 24, 72), 560)}px`;
   });
   const numeric = columns.map((c) =>
-    rows
-      .slice(0, 50)
-      .every((r) => typeof r[c] === "number" || r[c] === undefined),
+    rows.slice(0, 50).every((r) => typeof r[c] === "number" || r[c] === undefined),
   );
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -154,18 +133,12 @@ export function Table({
         <div className="table" style={{ ["--cols" as string]: cols }}>
           <div className="row head" role="row">
             {columns.map((c, i) => (
-              <div
-                key={c}
-                className={`cell${numeric[i] ? " num" : ""}`}
-                role="columnheader"
-              >
+              <div key={c} className={`cell${numeric[i] ? " num" : ""}`} role="columnheader">
                 {c}
               </div>
             ))}
           </div>
-          <div
-            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
-          >
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((item) => {
               const row = rows[item.index]!;
               return (
@@ -204,16 +177,8 @@ export function Table({
 
 function Cell({ value }: { value: unknown }): ReactElement {
   if (typeof value === "boolean")
-    return (
-      <span className={value ? "bool-true" : "bool-false"}>
-        {value ? "yes" : "no"}
-      </span>
-    );
-  if (
-    Array.isArray(value) &&
-    value.every((v) => typeof v === "string") &&
-    value.length <= 6
-  ) {
+    return <span className={value ? "bool-true" : "bool-false"}>{value ? "yes" : "no"}</span>;
+  if (Array.isArray(value) && value.every((v) => typeof v === "string") && value.length <= 6) {
     return (
       <>
         {(value as string[]).map((v) => (

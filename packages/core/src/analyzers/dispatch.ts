@@ -1,18 +1,9 @@
 import { parseApk, type ApkInfo } from "../formats/apk.js";
-import {
-  analyzeAppBundle,
-  isAppBundle,
-  type BundleInfo,
-} from "../formats/bundle.js";
+import { analyzeAppBundle, isAppBundle, type BundleInfo } from "../formats/bundle.js";
 import { parseEvm, type EvmInfo } from "../formats/evm.js";
 import { parseDex, type DexInfo } from "../formats/dex.js";
 import { parseHar, type HarInfo } from "../formats/har.js";
-import {
-  parseJar,
-  parseJavaClass,
-  type JarInfo,
-  type JavaClassInfo,
-} from "../formats/java.js";
+import { parseJar, parseJavaClass, type JarInfo, type JavaClassInfo } from "../formats/java.js";
 import { parsePlist, type PlistValue } from "../formats/plist.js";
 import { inspectSqlite, type SqliteInfo } from "../formats/sqlite.js";
 import { parseWasm, type WasmInfo } from "../formats/wasm.js";
@@ -25,16 +16,8 @@ import {
   type JsAppInfo,
 } from "../javascript/app.js";
 import { scanJavaScript, type ScanResult } from "../javascript/scan.js";
-import {
-  summarizeSourceMap,
-  type SourceMapSummary,
-} from "../javascript/sourcemap.js";
-import {
-  AnalysisError,
-  type Analysis,
-  type Finding,
-  type Limitation,
-} from "../model.js";
+import { summarizeSourceMap, type SourceMapSummary } from "../javascript/sourcemap.js";
+import { AnalysisError, type Analysis, type Finding, type Limitation } from "../model.js";
 import type { LoadedTarget } from "../target.js";
 import { analyzeBinary, type BinaryData } from "./binary.js";
 
@@ -64,18 +47,14 @@ export type AnyAnalysis = Analysis<AnalysisData>;
 const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 
 /** Routes a loaded target to the matching analyzer; parser bounds errors become `malformed` results. */
-export async function analyzeTarget(
-  target: LoadedTarget,
-): Promise<AnyAnalysis> {
+export async function analyzeTarget(target: LoadedTarget): Promise<AnyAnalysis> {
   try {
     return await analyzeTargetUnsafe(target);
   } catch (error) {
     if (error instanceof RangeError || error instanceof TypeError) {
-      throw new AnalysisError(
-        "malformed",
-        `${target.info.format}: ${error.message}`,
-        { format: target.info.format },
-      );
+      throw new AnalysisError("malformed", `${target.info.format}: ${error.message}`, {
+        format: target.info.format,
+      });
     }
     throw error;
   }
@@ -136,9 +115,7 @@ async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
     case "plist-xml": {
       const plist = parsePlist(bytes);
       const keys =
-        plist && typeof plist === "object" && !Array.isArray(plist)
-          ? Object.keys(plist).length
-          : 0;
+        plist && typeof plist === "object" && !Array.isArray(plist) ? Object.keys(plist).length : 0;
       return done(
         `Property list (${
           info.format === "plist-binary" ? "binary" : "XML"
@@ -192,9 +169,7 @@ async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
     case "asar": {
       const app = strip(
         analyzeJavaScriptTree(
-          target.lazy
-            ? asarTreeFromFile(info.path)
-            : asarTree(bytes, info.path),
+          target.lazy ? asarTreeFromFile(info.path) : asarTree(bytes, info.path),
         ),
       );
       return done(
@@ -238,16 +213,13 @@ async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
     }
     case "json": {
       const text = decode(bytes);
-      if (
-        info.path.endsWith(".map") ||
-        /"mappings"\s*:/.test(text.slice(0, 1 << 20))
-      ) {
+      if (info.path.endsWith(".map") || /"mappings"\s*:/.test(text.slice(0, 1 << 20))) {
         try {
           const map = summarizeSourceMap(text);
-          return done(
-            `Source map for ${map.file ?? "?"}: ${map.sources.length} sources`,
-            { kind: "source-map", map },
-          );
+          return done(`Source map for ${map.file ?? "?"}: ${map.sources.length} sources`, {
+            kind: "source-map",
+            map,
+          });
         } catch {
           /* fall through to HAR/JSON */
         }
@@ -255,10 +227,10 @@ async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
       if (/"log"\s*:/.test(text.slice(0, 4096))) {
         try {
           const har = strip(parseHar(bytes));
-          return done(
-            `HAR capture: ${har.entries.length} requests to ${har.hosts.length} hosts`,
-            { kind: "har", har },
-          );
+          return done(`HAR capture: ${har.entries.length} requests to ${har.hosts.length} hosts`, {
+            kind: "har",
+            har,
+          });
         } catch {
           /* not a HAR after all; fall through to plain JSON */
         }
@@ -274,17 +246,13 @@ async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
           json: { topLevelKeys, bytes: bytes.length },
         });
       } catch {
-        throw new AnalysisError(
-          "malformed",
-          "File looks like JSON but does not parse",
-        );
+        throw new AnalysisError("malformed", "File looks like JSON but does not parse");
       }
     }
     default:
       limitations.push({
         code: "unknown_format",
-        message:
-          "No parser recognized this file; strings and byte windows are still available.",
+        message: "No parser recognized this file; strings and byte windows are still available.",
       });
       return done(`Unrecognized format (${bytes.length} bytes)`, {
         kind: "unknown",

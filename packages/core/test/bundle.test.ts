@@ -15,10 +15,9 @@ describe("app bundles", () => {
   const app = join(dir, "Demo.app");
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(app, "Contents", "MacOS"), { recursive: true });
-  mkdirSync(
-    join(app, "Contents", "Frameworks", "Electron Framework.framework"),
-    { recursive: true },
-  );
+  mkdirSync(join(app, "Contents", "Frameworks", "Electron Framework.framework"), {
+    recursive: true,
+  });
   mkdirSync(join(app, "Contents", "Resources"), { recursive: true });
   mkdirSync(join(app, "Contents", "XPCServices", "Helper.xpc"), {
     recursive: true,
@@ -81,8 +80,6 @@ describe("app bundles", () => {
   it("routes .app directories through analyzeTarget", async () => {
     const analysis = await analyzeTarget(await loadTarget(app));
     expect(analysis.data.kind).toBe("bundle");
-    expect(analysis.summary).toContain(
-      "macOS app Demo 2.1.0 (com.example.demo)",
-    );
+    expect(analysis.summary).toContain("macOS app Demo 2.1.0 (com.example.demo)");
   });
 });

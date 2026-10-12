@@ -26,13 +26,7 @@ export const CLIENTS: Client[] = [
     name: "Claude Desktop",
     file: (h) =>
       process.platform === "darwin"
-        ? join(
-            h,
-            "Library",
-            "Application Support",
-            "Claude",
-            "claude_desktop_config.json",
-          )
+        ? join(h, "Library", "Application Support", "Claude", "claude_desktop_config.json")
         : join(h, ".config", "Claude", "claude_desktop_config.json"),
     key: ["mcpServers"],
   },
@@ -79,9 +73,7 @@ export async function setup(
     );
     return 0;
   }
-  const clients = options.client
-    ? CLIENTS.filter((c) => c.id === options.client)
-    : CLIENTS;
+  const clients = options.client ? CLIENTS.filter((c) => c.id === options.client) : CLIENTS;
   if (!clients.length)
     throw new UsageError(
       `unknown client "${options.client}"; known: codex, ${CLIENTS.map((c) => c.id).join(", ")}`,
@@ -101,10 +93,7 @@ export async function setup(
     let config: Record<string, unknown> = {};
     if (exists) {
       try {
-        config = JSON.parse(readFileSync(file, "utf8")) as Record<
-          string,
-          unknown
-        >;
+        config = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
       } catch {
         results.push({
           client: client.id,
@@ -115,8 +104,7 @@ export async function setup(
       }
     }
     let node = config;
-    for (const k of client.key)
-      node = (node[k] as Record<string, unknown>) ?? (node[k] = {});
+    for (const k of client.key) node = (node[k] as Record<string, unknown>) ?? (node[k] = {});
     node["hexvero"] = SERVER;
     mkdirSync(join(file, ".."), { recursive: true });
     if (exists) writeFileSync(`${file}.hexvero-backup`, readFileSync(file));

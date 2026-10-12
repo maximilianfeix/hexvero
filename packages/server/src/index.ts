@@ -1,21 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join, normalize, sep } from "node:path";
-import {
-  AnalysisError,
-  compact,
-  detectProviders,
-  Session,
-  targetFromBytes,
-} from "@hexvero/core";
+import { AnalysisError, compact, detectProviders, Session, targetFromBytes } from "@hexvero/core";
 
 export interface ServerOptions {
   port?: number;
@@ -49,9 +38,7 @@ const MIME: Record<string, string> = {
 };
 
 const json = (res: ServerResponse, status: number, body: unknown): void => {
-  const text = JSON.stringify(body, (_k, v: unknown) =>
-    typeof v === "bigint" ? v.toString() : v,
-  );
+  const text = JSON.stringify(body, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
@@ -86,10 +73,7 @@ const fail = (res: ServerResponse, error: unknown): void => {
   });
 };
 
-async function readBody(
-  req: IncomingMessage,
-  max: number,
-): Promise<Uint8Array> {
+async function readBody(req: IncomingMessage, max: number): Promise<Uint8Array> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -108,9 +92,7 @@ async function readBody(
  * Starts the loopback server. Every /api route requires the session token;
  * the UI receives it through the page URL hash so it never hits the server log.
  */
-export async function startServer(
-  options: ServerOptions = {},
-): Promise<RunningServer> {
+export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
   const session = options.session ?? new Session();
   const token = options.token ?? randomBytes(18).toString("base64url");
   const host = options.host ?? "127.0.0.1";
@@ -123,17 +105,9 @@ export async function startServer(
     return url.searchParams.get("token") === token;
   };
 
-  const api = async (
-    req: IncomingMessage,
-    res: ServerResponse,
-    url: URL,
-  ): Promise<void> => {
+  const api = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
     const origin = req.headers.origin;
-    const originHost = origin
-      ? URL.canParse(origin)
-        ? new URL(origin).host
-        : ""
-      : undefined;
+    const originHost = origin ? (URL.canParse(origin) ? new URL(origin).host : "") : undefined;
     if (originHost !== undefined && originHost !== req.headers.host) {
       json(res, 403, {
         error: {
@@ -158,10 +132,7 @@ export async function startServer(
       if (!q.has(key)) return fallback;
       const value = Number(q.get(key));
       if (!Number.isFinite(value) || value < 0)
-        throw new AnalysisError(
-          "invalid_input",
-          `${key} must be a non-negative number`,
-        );
+        throw new AnalysisError("invalid_input", `${key} must be a non-negative number`);
       return value;
     };
     const paging = (): { offset?: number; limit?: number; text?: string } => {
@@ -179,11 +150,10 @@ export async function startServer(
     if (req.method === "GET" && parts[0] === "targets" && parts.length === 1)
       return json(res, 200, { targets: session.list() });
     if (req.method === "POST" && parts[0] === "targets" && parts.length === 1) {
-      const body = JSON.parse(
-        new TextDecoder().decode(await readBody(req, 1 << 20)),
-      ) as { path?: string };
-      if (!body.path)
-        throw new AnalysisError("invalid_input", "body.path is required");
+      const body = JSON.parse(new TextDecoder().decode(await readBody(req, 1 << 20))) as {
+        path?: string;
+      };
+      if (!body.path) throw new AnalysisError("invalid_input", "body.path is required");
       return json(res, 201, await session.open(body.path));
     }
     if (req.method === "POST" && parts[0] === "uploads") {
@@ -192,18 +162,11 @@ export async function startServer(
       const loaded = targetFromBytes(bytes, name);
       if (loaded.info.format === "sqlite") {
         await mkdir(uploadDir, { recursive: true });
-        const path = join(
-          uploadDir,
-          `${loaded.info.sha256.slice(0, 16)}-${name}`,
-        );
+        const path = join(uploadDir, `${loaded.info.sha256.slice(0, 16)}-${name}`);
         await writeFile(path, bytes);
         return json(res, 201, await session.open(path));
       }
-      return json(
-        res,
-        201,
-        session.register({ ...loaded, info: { ...loaded.info, path: name } }),
-      );
+      return json(res, 201, session.register({ ...loaded, info: { ...loaded.info, path: name } }));
     }
     if (parts[0] === "targets" && parts[1]) {
       const id = parts[1];
@@ -242,11 +205,7 @@ export async function startServer(
         return json(
           res,
           200,
-          session.bytes(
-            id,
-            Number(q.get("offset") ?? 0),
-            Number(q.get("length") ?? 4096),
-          ),
+          session.bytes(id, Number(q.get("offset") ?? 0), Number(q.get("length") ?? 4096)),
         );
       if (sub === "export") {
         const analysis = await session.analyze(id);
@@ -284,15 +243,8 @@ export async function startServer(
       });
       return;
     }
-    let file = join(
-      options.staticDir,
-      normalize(pathname === "/" ? "/index.html" : pathname),
-    );
-    if (
-      !file.startsWith(options.staticDir) ||
-      !existsSync(file) ||
-      statSync(file).isDirectory()
-    )
+    let file = join(options.staticDir, normalize(pathname === "/" ? "/index.html" : pathname));
+    if (!file.startsWith(options.staticDir) || !existsSync(file) || statSync(file).isDirectory())
       file = join(options.staticDir, "index.html");
     const type = MIME[extname(file)] ?? "application/octet-stream";
     res.writeHead(200, {
@@ -327,8 +279,7 @@ export async function startServer(
     server.listen(options.port ?? 0, host, () => resolve());
   });
   const address = server.address();
-  const port =
-    typeof address === "object" && address ? address.port : (options.port ?? 0);
+  const port = typeof address === "object" && address ? address.port : (options.port ?? 0);
   return {
     server,
     url: `http://${host}:${port}`,

@@ -31,31 +31,20 @@ const ZIP64_EOCD = 0x06064b50;
 export function openZip(bytes: Uint8Array): ZipArchive {
   const eocd = findEocd(bytes);
   if (eocd === -1)
-    throw new AnalysisError(
-      "malformed",
-      "ZIP end-of-central-directory record not found",
-    );
+    throw new AnalysisError("malformed", "ZIP end-of-central-directory record not found");
   const r = new ByteReader(bytes, eocd + 4);
   r.skip(6);
   let entryCount = r.u16();
   r.u32();
   let cdOffset = r.u32();
   const commentLength = r.u16();
-  const comment = utf8String(
-    bytes.subarray(r.offset, r.offset + commentLength),
-  );
+  const comment = utf8String(bytes.subarray(r.offset, r.offset + commentLength));
 
   if (entryCount === 0xffff || cdOffset === 0xffffffff) {
     const locator = eocd - 20;
-    if (
-      locator >= 0 &&
-      new ByteReader(bytes, locator).u32() === ZIP64_LOCATOR
-    ) {
+    if (locator >= 0 && new ByteReader(bytes, locator).u32() === ZIP64_LOCATOR) {
       const z64 = new ByteReader(bytes, locator + 8).u64n();
-      if (
-        z64 + 56 <= bytes.length &&
-        new ByteReader(bytes, z64).u32() === ZIP64_EOCD
-      ) {
+      if (z64 + 56 <= bytes.length && new ByteReader(bytes, z64).u32() === ZIP64_EOCD) {
         const zr = new ByteReader(bytes, z64 + 32);
         entryCount = zr.u64n(); // total entries
         zr.u64(); // central directory size
@@ -84,21 +73,15 @@ export function openZip(bytes: Uint8Array): ZipArchive {
     const name = flags & 0x800 ? utf8String(rawName) : latin1(rawName);
     const extra = cr.bytesAt(extraLength);
     cr.skip(commentLen);
-    if (
-      size === 0xffffffff ||
-      compressedSize === 0xffffffff ||
-      localHeaderOffset === 0xffffffff
-    ) {
+    if (size === 0xffffffff || compressedSize === 0xffffffff || localHeaderOffset === 0xffffffff) {
       const er = new ByteReader(extra, 0);
       while (er.remaining >= 4) {
         const id = er.u16();
         const len = er.u16();
         if (id === 0x0001) {
           if (size === 0xffffffff && er.remaining >= 8) size = er.u64n();
-          if (compressedSize === 0xffffffff && er.remaining >= 8)
-            compressedSize = er.u64n();
-          if (localHeaderOffset === 0xffffffff && er.remaining >= 8)
-            localHeaderOffset = er.u64n();
+          if (compressedSize === 0xffffffff && er.remaining >= 8) compressedSize = er.u64n();
+          if (localHeaderOffset === 0xffffffff && er.remaining >= 8) localHeaderOffset = er.u64n();
           break;
         }
         er.skip(Math.min(len, er.remaining));
@@ -118,10 +101,7 @@ export function openZip(bytes: Uint8Array): ZipArchive {
 
   const read = (entry: ZipEntry, maxBytes = 64 * 1024 * 1024): Uint8Array => {
     if (entry.encrypted)
-      throw new AnalysisError(
-        "unsupported_format",
-        `${entry.name} is encrypted`,
-      );
+      throw new AnalysisError("unsupported_format", `${entry.name} is encrypted`);
     if (entry.method === "other")
       throw new AnalysisError(
         "unsupported_format",
@@ -134,20 +114,14 @@ export function openZip(bytes: Uint8Array): ZipArchive {
       );
     const lr = new ByteReader(bytes, entry.localHeaderOffset);
     if (lr.u32() !== LOCAL)
-      throw new AnalysisError(
-        "malformed",
-        `${entry.name}: local header signature mismatch`,
-      );
+      throw new AnalysisError("malformed", `${entry.name}: local header signature mismatch`);
     lr.skip(22);
     const nameLength = lr.u16();
     const extraLength = lr.u16();
     const start = lr.offset + nameLength + extraLength;
     const data = bytes.subarray(start, start + entry.compressedSize);
     if (data.length < entry.compressedSize)
-      throw new AnalysisError(
-        "malformed",
-        `${entry.name}: compressed data truncated`,
-      );
+      throw new AnalysisError("malformed", `${entry.name}: compressed data truncated`);
     if (entry.method === "stored") return data;
     const out = inflateRawSync(data, {
       maxOutputLength: Math.max(entry.size, 1),

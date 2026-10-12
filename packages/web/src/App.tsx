@@ -1,11 +1,5 @@
 import type { ReactElement } from "react";
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type DragEvent,
-  type FormEvent,
-} from "react";
+import { useCallback, useEffect, useState, type DragEvent, type FormEvent } from "react";
 import { api, formatBytes, type TargetRecord } from "./lib/api.js";
 import { navigate, useRoute } from "./lib/route.js";
 import { Workspace } from "./views/Workspace.js";
@@ -17,9 +11,7 @@ function useTheme(): [string, () => void] {
     try {
       return (
         localStorage.getItem(THEME_KEY) ??
-        (window.matchMedia("(prefers-color-scheme: light)").matches
-          ? "light"
-          : "dark")
+        (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
       );
     } catch {
       return "dark";
@@ -56,9 +48,7 @@ export function App(): ReactElement {
   useEffect(() => void refresh(), [refresh]);
 
   const openRecord = (record: TargetRecord): void => {
-    setTargets((list) =>
-      list.some((t) => t.id === record.id) ? list : [...list, record],
-    );
+    setTargets((list) => (list.some((t) => t.id === record.id) ? list : [...list, record]));
     navigate(record.id, "overview");
     setSidebarOpen(false);
   };
@@ -78,9 +68,7 @@ export function App(): ReactElement {
 
   const openPath = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
-    const input = event.currentTarget.elements.namedItem(
-      "path",
-    ) as HTMLInputElement;
+    const input = event.currentTarget.elements.namedItem("path") as HTMLInputElement;
     const path = input.value.trim();
     if (!path) return;
     setBusy(`Opening ${path}…`);
@@ -103,8 +91,7 @@ export function App(): ReactElement {
   const onDrop = (event: DragEvent): void => {
     event.preventDefault();
     setDragging(false);
-    if (event.dataTransfer.files.length)
-      void openFiles(event.dataTransfer.files);
+    if (event.dataTransfer.files.length) void openFiles(event.dataTransfer.files);
   };
 
   useEffect(() => {
@@ -120,9 +107,8 @@ export function App(): ReactElement {
       if (e.key === "/" && !editing) {
         e.preventDefault();
         (
-          document.querySelector<HTMLInputElement>(
-            ".toolbar input[type=search]",
-          ) ?? document.querySelector<HTMLInputElement>(".topbar input")
+          document.querySelector<HTMLInputElement>(".toolbar input[type=search]") ??
+          document.querySelector<HTMLInputElement>(".topbar input")
         )?.focus();
       }
     };
@@ -134,9 +120,7 @@ export function App(): ReactElement {
 
   return (
     <div
-      className={`app${dragging ? " dragging" : ""}${
-        sidebarOpen ? " sidebar-open" : ""
-      }`}
+      className={`app${dragging ? " dragging" : ""}${sidebarOpen ? " sidebar-open" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
@@ -156,11 +140,7 @@ export function App(): ReactElement {
         >
           ☰
         </button>
-        <a
-          className="wordmark"
-          href="/"
-          onClick={(e) => (e.preventDefault(), navigate(null))}
-        >
+        <a className="wordmark" href="/" onClick={(e) => (e.preventDefault(), navigate(null))}>
           <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
             <rect width="32" height="32" rx="7" fill="var(--panel-2)" />
             <path
@@ -213,9 +193,7 @@ export function App(): ReactElement {
               <button
                 className="target-item"
                 aria-current={t.id === route.targetId}
-                onClick={() => (
-                  navigate(t.id, "overview"), setSidebarOpen(false)
-                )}
+                onClick={() => (navigate(t.id, "overview"), setSidebarOpen(false))}
               >
                 <span className="name">{t.info.path.split(/[\\/]/).pop()}</span>
                 <span className="meta">
@@ -244,29 +222,19 @@ export function App(): ReactElement {
 
       <main className="workspace">
         {error && (
-          <div
-            className="empty"
-            style={{ padding: "12px 24px", color: "var(--alert)" }}
-          >
+          <div className="empty" style={{ padding: "12px 24px", color: "var(--alert)" }}>
             {error}
           </div>
         )}
         {current ? (
-          <Workspace
-            key={current.id}
-            target={current}
-            tab={route.tab}
-            query={route.query}
-          />
+          <Workspace key={current.id} target={current} tab={route.tab} query={route.query} />
         ) : (
           <section className="welcome">
-            <h1>
-              See what a file is before you trust it, run it or rebuild it.
-            </h1>
+            <h1>See what a file is before you trust it, run it or rebuild it.</h1>
             <p>
-              hexvero reads executables, app bundles, databases and captures on
-              this machine without executing them, and tells you what it found,
-              how sure it is, and what it could not establish.
+              hexvero reads executables, app bundles, databases and captures on this machine without
+              executing them, and tells you what it found, how sure it is, and what it could not
+              establish.
             </p>
             <ul className="formats">
               {[

@@ -15,12 +15,8 @@ describe("parseJavaClass", () => {
     expect(c.version).toEqual({ major: 61, minor: 0, java: "17" });
     expect(c.flags).toEqual(["public", "super"]);
     expect(c.sourceFile).toBe("Hello.java");
-    expect(c.fields).toEqual([
-      { name: "count", descriptor: "I", flags: ["private"] },
-    ]);
-    expect(
-      c.methods.map((m) => `${m.name}${m.descriptor}:${m.flags.join("|")}`),
-    ).toEqual([
+    expect(c.fields).toEqual([{ name: "count", descriptor: "I", flags: ["private"] }]);
+    expect(c.methods.map((m) => `${m.name}${m.descriptor}:${m.flags.join("|")}`)).toEqual([
       "main([Ljava/lang/String;)V:public|static",
       "crunch()V:private|native",
     ]);
@@ -37,9 +33,7 @@ describe("parseJavaClass", () => {
     expect(detectFormat(buildClass(), "Hello.class")).toBe("java-class");
   });
   it("rejects non-class input", () => {
-    expect(() => parseJavaClass(new Uint8Array(30))).toThrow(
-      /not a Java class/,
-    );
+    expect(() => parseJavaClass(new Uint8Array(30))).toThrow(/not a Java class/);
   });
 });
 

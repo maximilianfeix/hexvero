@@ -43,8 +43,8 @@ export function Overview({
         <h3>Findings</h3>
         {analysis.findings.length === 0 ? (
           <p className="empty">
-            <strong>Nothing stood out.</strong> The parser read the file; the
-            collections above hold the raw facts.
+            <strong>Nothing stood out.</strong> The parser read the file; the collections above hold
+            the raw facts.
           </p>
         ) : (
           <ul className="findings">
@@ -53,9 +53,7 @@ export function Overview({
                 key={i}
                 className={`finding ${f.confidence}`}
                 title={
-                  f.confidence === "confirmed"
-                    ? "Confirmed by parsing"
-                    : "Inferred from patterns"
+                  f.confidence === "confirmed" ? "Confirmed by parsing" : "Inferred from patterns"
                 }
               >
                 <span className="dot" />
@@ -132,10 +130,7 @@ function factsFor(data: Obj): Array<[string, string]> {
         add("File type", macho["fileType"]);
         const platform = obj(macho["platform"]);
         if (platform)
-          add(
-            "Platform",
-            `${platform["name"]} ≥ ${platform["minOs"]} (SDK ${platform["sdk"]})`,
-          );
+          add("Platform", `${platform["name"]} ≥ ${platform["minOs"]} (SDK ${platform["sdk"]})`);
         add("UUID", macho["uuid"]);
         add("Entry", macho["entry"]);
         add("Code signed", macho["codeSigned"] ? "yes" : "no");
@@ -156,6 +151,22 @@ function factsFor(data: Obj): Array<[string, string]> {
           "vcs.revision",
         ])
           add(key, settings[key]);
+      }
+      const toolchain =
+        obj(b["toolchain"]) ??
+        obj((obj((b["slices"] as unknown[] | undefined)?.[0]) ?? {})["toolchain"]);
+      if (toolchain) {
+        add("Compiler", toolchain["compiler"]);
+        add("Rust", toolchain["rust"]);
+        add("Debug info", toolchain["debugInfo"] ? "DWARF present" : undefined);
+        add("Swift", toolchain["swift"] ? "yes" : undefined);
+      }
+      const versionInfo = obj(b["versionInfo"]);
+      if (versionInfo) {
+        add("File version", versionInfo["fileVersion"]);
+        const vs = obj(versionInfo["strings"]) ?? {};
+        for (const key of ["ProductName", "CompanyName", "FileDescription", "OriginalFilename"])
+          add(key, vs[key]);
       }
       const dotnet = obj(b["dotnet"]);
       if (dotnet) {
@@ -188,17 +199,10 @@ function factsFor(data: Obj): Array<[string, string]> {
       const electron = obj(app["electron"]);
       if (electron) {
         add("Electron", electron["version"] ?? "detected");
-        add(
-          "Preload scripts",
-          (electron["preloadScripts"] as string[])?.join(", "),
-        );
+        add("Preload scripts", (electron["preloadScripts"] as string[])?.join(", "));
       }
       const totals = obj(app["totals"]);
-      if (totals)
-        add(
-          "Files",
-          `${totals["files"]} total · ${totals["javascript"]} JavaScript`,
-        );
+      if (totals) add("Files", `${totals["files"]} total · ${totals["javascript"]} JavaScript`);
       break;
     }
     case "sqlite": {
@@ -216,8 +220,7 @@ function factsFor(data: Obj): Array<[string, string]> {
       add("Custom sections", (w["customSections"] as string[])?.join(", "));
       const producers = obj(w["producers"]);
       if (producers)
-        for (const [k, v] of Object.entries(producers))
-          add(k, (v as string[]).join(", "));
+        for (const [k, v] of Object.entries(producers)) add(k, (v as string[]).join(", "));
       break;
     }
     case "evm": {
@@ -247,10 +250,7 @@ function factsFor(data: Obj): Array<[string, string]> {
       add("Executable", b["executable"]);
       add("Minimum OS", b["minimumOs"]);
       add("Framework", b["framework"]);
-      add(
-        "Sandboxed",
-        b["sandboxed"] === null ? undefined : b["sandboxed"] ? "yes" : "no",
-      );
+      add("Sandboxed", b["sandboxed"] === null ? undefined : b["sandboxed"] ? "yes" : "no");
       add("URL schemes", (b["urlSchemes"] as string[])?.join(", "));
       const main = obj(b["main"]);
       if (main) add("Main binary", main["summary"]);
@@ -333,8 +333,7 @@ function marksFor(
     .filter(([k]) => names[k])
     .map(([k, v]) => {
       const good = k === "stripped" ? v === false : v === true;
-      const state: "on" | "off" | "partial" =
-        v === "partial" ? "partial" : good ? "on" : "off";
+      const state: "on" | "off" | "partial" = v === "partial" ? "partial" : good ? "on" : "off";
       const word = k === "stripped" ? (good ? "kept" : "stripped") : state;
       return { name: names[k]!, state, word };
     });

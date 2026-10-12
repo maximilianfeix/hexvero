@@ -46,11 +46,14 @@ Illustrative TypeScript; `Result` carries tagged expected failures:
 ```ts
 type Result<T> =
   | { ok: true; value: T }
-  | { ok: false; error: {
-      code: "INVALID" | "UNSUPPORTED" | "LIMIT" | "STALE" |
-            "IO" | "PROVIDER" | "CANCELLED";
-      message: string; evidenceIds?: string[];
-    } };
+  | {
+      ok: false;
+      error: {
+        code: "INVALID" | "UNSUPPORTED" | "LIMIT" | "STALE" | "IO" | "PROVIDER" | "CANCELLED";
+        message: string;
+        evidenceIds?: string[];
+      };
+    };
 
 interface Analyzer {
   id: string;
@@ -81,8 +84,7 @@ interface Finding {
 interface Provider {
   id: string;
   detect(): Promise<Result<ProviderCapabilities>>;
-  run(ctx: ProviderContext, request: ProviderRequest):
-    AsyncIterable<AnalysisEvent>;
+  run(ctx: ProviderContext, request: ProviderRequest): AsyncIterable<AnalysisEvent>;
 }
 
 interface Page<T> {
@@ -92,7 +94,9 @@ interface Page<T> {
   page: { nextCursor: string | null; returned: number; bytes: number };
   coverage: {
     state: "complete" | "partial" | "unknown";
-    examined: string; unit: string; reasons: string[];
+    examined: string;
+    unit: string;
+    reasons: string[];
   };
   warnings: string[];
 }
@@ -112,22 +116,22 @@ File delivery streams NDJSON with backpressure into an exclusively created tempo
 
 `?` means optional. `P` expands to `cursor?`, `limit?`, `maxBytes?`, `outputPath?`; file output exports the full filtered snapshot rather than the current page.
 
-| Tool | Purpose | Input fields |
-|---|---|---|
-| `hexvero_open` | Register a local file or directory | `path`, `formatHint?` |
-| `hexvero_close` | Release a target and optionally its retained results | `targetId`, `purgeResults?` |
-| `hexvero_inspect` | Show identity, detected formats, capabilities, and run summaries | `targetId` |
-| `hexvero_analyze` | Start selected built-in analyses | `targetId`, `analyses?`, `sliceId?`, `budgets?` |
-| `hexvero_job` | Inspect or cancel a job | `jobId`, `action: status\|cancel` |
-| `hexvero_results` | Browse a typed result collection | `resultId`, `collection`, `kind?`, `text?`, `P` |
-| `hexvero_strings` | Browse retained strings | `resultId`, `contains?`, `encoding?`, `minLength?`, `P` |
-| `hexvero_symbols` | Browse symbols, imports, or exports | `resultId`, `role?`, `name?`, `P` |
-| `hexvero_graph` | Retrieve a bounded dependency neighborhood | `resultId`, `rootId?`, `depth?`, `edgeKinds?`, `P` |
-| `hexvero_bytes` | Read a bounded byte window | `targetId`, `offset`, `length`, `encoding: hex\|base64` |
-| `hexvero_evidence` | Resolve provenance for selected records | `resultId`, `ids`, `P` |
-| `hexvero_export` | Export findings and evidence as NDJSON | `resultId`, `collections?`, `outputPath?` |
-| `hexvero_providers` | Detect installed engines and their supported operations | none |
-| `hexvero_provider_run` | Start optional engine analysis | `targetId`, `provider`, `operation`, `address?`, `sliceId?`, `timeoutMs?`, `reuse?` |
+| Tool                   | Purpose                                                          | Input fields                                                                        |
+| ---------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `hexvero_open`         | Register a local file or directory                               | `path`, `formatHint?`                                                               |
+| `hexvero_close`        | Release a target and optionally its retained results             | `targetId`, `purgeResults?`                                                         |
+| `hexvero_inspect`      | Show identity, detected formats, capabilities, and run summaries | `targetId`                                                                          |
+| `hexvero_analyze`      | Start selected built-in analyses                                 | `targetId`, `analyses?`, `sliceId?`, `budgets?`                                     |
+| `hexvero_job`          | Inspect or cancel a job                                          | `jobId`, `action: status\|cancel`                                                   |
+| `hexvero_results`      | Browse a typed result collection                                 | `resultId`, `collection`, `kind?`, `text?`, `P`                                     |
+| `hexvero_strings`      | Browse retained strings                                          | `resultId`, `contains?`, `encoding?`, `minLength?`, `P`                             |
+| `hexvero_symbols`      | Browse symbols, imports, or exports                              | `resultId`, `role?`, `name?`, `P`                                                   |
+| `hexvero_graph`        | Retrieve a bounded dependency neighborhood                       | `resultId`, `rootId?`, `depth?`, `edgeKinds?`, `P`                                  |
+| `hexvero_bytes`        | Read a bounded byte window                                       | `targetId`, `offset`, `length`, `encoding: hex\|base64`                             |
+| `hexvero_evidence`     | Resolve provenance for selected records                          | `resultId`, `ids`, `P`                                                              |
+| `hexvero_export`       | Export findings and evidence as NDJSON                           | `resultId`, `collections?`, `outputPath?`                                           |
+| `hexvero_providers`    | Detect installed engines and their supported operations          | none                                                                                |
+| `hexvero_provider_run` | Start optional engine analysis                                   | `targetId`, `provider`, `operation`, `address?`, `sliceId?`, `timeoutMs?`, `reuse?` |
 
 Collection names are a small enum, not arbitrary query languages. Provider operations are `inventory`, `disassemble`, and `decompile`; unsupported combinations return capability errors. No raw shell commands or provider scripting surface.
 
@@ -137,26 +141,26 @@ Keep `tools/list` below 32 KiB, with a measured token budget; validate converted
 
 All parser PRs require a valid fixture, malformed/truncated cases, and a public CLI test asserting provenance.
 
-| PR | Scope and principal files | Acceptance test |
-|---|---|---|
-| 1 | Workspace, contracts, bounded reader, source registration; `core/*`, `cli/main.ts` | `hexvero open fixture --json`; reject overflowing ranges; preserve Windows/file-URL inputs. |
-| 2 | Streaming strings, jobs, retained results, pagination/export; `strings.ts`, `core/{jobs,store}.ts` | CLI analyzes and exports a large generated file; chunk-boundary strings survive; cancellation retains partial results. |
-| 3 | MCP adapter and all 14 compact contracts; `mcp/*` | Real SDK client opens, analyzes, pages, exports; unavailable capabilities report unsupported; discovery stays within budget. |
-| 4 | Local HTTP service and browser upload; `server/*` | Upload → job → results through HTTP; oversized upload and disconnect clean up owned files. |
-| 5 | Polished GUI shell, evidence, strings, hex; `web/*` | Browser drag-and-drop yields navigable findings; byte selection opens exact evidence; narrow viewport works. |
-| 6 | ELF headers, sections, symbols, dynamic imports/exports; `binary/elf.ts` | ELF32/64, both endians, stripped and sectionless fixtures; CLI/MCP/GUI agree. **Prototype checkpoint.** |
-| 7 | PE headers, sections, imports/exports; `binary/pe.ts` | PE32/PE32+, ordinal imports, forwarded exports, malformed RVAs. |
-| 8 | Thin/fat Mach-O, symbols, dylibs, export trie; `binary/macho.ts` | Enumerate every fat slice; dylib names resolve relative to commands; invalid command sizes fail. |
-| 9 | Go build information; `binary/go.ts` | Pointer and inline layouts recover compiler/modules through existing address mappings. |
-| 10 | .NET metadata streams and table inventory; `binary/dotnet.ts` | Assembly/type/method names from differing heap/index widths; truncated stream preserves earlier facts. |
-| 11 | WASM inventory and EVM selector candidates; `binary/{wasm,evm}.ts` | Import/export index spaces correct; PUSH payload bytes never become opcodes or false selectors. |
-| 12 | SQLite schema, HAR summaries, XML/binary plist; `structured/*`, `containers/plist.ts` | Read-only schema; HAR retains source linkage; oversized JSON refuses cleanly; plist variants agree. |
-| 13 | ZIP directory reader and APK AXML; `containers/{zip,axml}.ts` | Stored/deflated manifests; namespace/typed attributes; traversal and decompression-budget cases. |
-| 14 | ASAR virtual filesystem, directory traversal, JS reference graph; `asar.ts`, `javascript/*` | Windows ASAR paths, unpacked entries, cycles, comments/string decoys; unresolved references remain explicit. |
-| 15 | Source-map decoding and GUI graph; `sourcemap.ts`, `web/components/Graph*` | VLQ mapping resolves source positions; escaped names render safely; large graph shows bounded neighborhoods. |
-| 16 | Provider supervisor and radare2/rizin; `providers/{process,radare}.ts` | Installed engine produces attributed findings; timeout/cancel terminates owned children; outputs spool to disk. |
-| 17 | Ghidra headless and reusable owned project cache; `ghidra.ts`, `scripts/*` | Real import, warm reuse, version/options invalidation, cancellation, concurrent-cache locking. |
-| 18 | Packaging, compatibility, documentation, performance gates | Clean npm install without external engines; Windows/Linux/macOS workflows; measured discovery, export, and GUI workloads. |
+| PR  | Scope and principal files                                                                          | Acceptance test                                                                                                              |
+| --- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Workspace, contracts, bounded reader, source registration; `core/*`, `cli/main.ts`                 | `hexvero open fixture --json`; reject overflowing ranges; preserve Windows/file-URL inputs.                                  |
+| 2   | Streaming strings, jobs, retained results, pagination/export; `strings.ts`, `core/{jobs,store}.ts` | CLI analyzes and exports a large generated file; chunk-boundary strings survive; cancellation retains partial results.       |
+| 3   | MCP adapter and all 14 compact contracts; `mcp/*`                                                  | Real SDK client opens, analyzes, pages, exports; unavailable capabilities report unsupported; discovery stays within budget. |
+| 4   | Local HTTP service and browser upload; `server/*`                                                  | Upload → job → results through HTTP; oversized upload and disconnect clean up owned files.                                   |
+| 5   | Polished GUI shell, evidence, strings, hex; `web/*`                                                | Browser drag-and-drop yields navigable findings; byte selection opens exact evidence; narrow viewport works.                 |
+| 6   | ELF headers, sections, symbols, dynamic imports/exports; `binary/elf.ts`                           | ELF32/64, both endians, stripped and sectionless fixtures; CLI/MCP/GUI agree. **Prototype checkpoint.**                      |
+| 7   | PE headers, sections, imports/exports; `binary/pe.ts`                                              | PE32/PE32+, ordinal imports, forwarded exports, malformed RVAs.                                                              |
+| 8   | Thin/fat Mach-O, symbols, dylibs, export trie; `binary/macho.ts`                                   | Enumerate every fat slice; dylib names resolve relative to commands; invalid command sizes fail.                             |
+| 9   | Go build information; `binary/go.ts`                                                               | Pointer and inline layouts recover compiler/modules through existing address mappings.                                       |
+| 10  | .NET metadata streams and table inventory; `binary/dotnet.ts`                                      | Assembly/type/method names from differing heap/index widths; truncated stream preserves earlier facts.                       |
+| 11  | WASM inventory and EVM selector candidates; `binary/{wasm,evm}.ts`                                 | Import/export index spaces correct; PUSH payload bytes never become opcodes or false selectors.                              |
+| 12  | SQLite schema, HAR summaries, XML/binary plist; `structured/*`, `containers/plist.ts`              | Read-only schema; HAR retains source linkage; oversized JSON refuses cleanly; plist variants agree.                          |
+| 13  | ZIP directory reader and APK AXML; `containers/{zip,axml}.ts`                                      | Stored/deflated manifests; namespace/typed attributes; traversal and decompression-budget cases.                             |
+| 14  | ASAR virtual filesystem, directory traversal, JS reference graph; `asar.ts`, `javascript/*`        | Windows ASAR paths, unpacked entries, cycles, comments/string decoys; unresolved references remain explicit.                 |
+| 15  | Source-map decoding and GUI graph; `sourcemap.ts`, `web/components/Graph*`                         | VLQ mapping resolves source positions; escaped names render safely; large graph shows bounded neighborhoods.                 |
+| 16  | Provider supervisor and radare2/rizin; `providers/{process,radare}.ts`                             | Installed engine produces attributed findings; timeout/cancel terminates owned children; outputs spool to disk.              |
+| 17  | Ghidra headless and reusable owned project cache; `ghidra.ts`, `scripts/*`                         | Real import, warm reuse, version/options invalidation, cancellation, concurrent-cache locking.                               |
+| 18  | Packaging, compatibility, documentation, performance gates                                         | Clean npm install without external engines; Windows/Linux/macOS workflows; measured discovery, export, and GUI workloads.    |
 
 Record elapsed time, CPU time, peak process-family memory, and whole-workflow agent tokens. Separate cold/warm provider runs. Simulated providers do not establish real-engine support; publish unverified coverage explicitly.
 

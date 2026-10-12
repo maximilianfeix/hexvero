@@ -133,10 +133,7 @@ export function parseJavaClass(bytes: Uint8Array): JavaClassInfo {
         pool.push({ tag, raw: `${r.u8()}:${r.u16()}` });
         break;
       default:
-        throw new AnalysisError(
-          "malformed",
-          `unknown constant pool tag ${tag} at entry ${i}`,
-        );
+        throw new AnalysisError("malformed", `unknown constant pool tag ${tag} at entry ${i}`);
     }
   }
   const utf8 = (index: number): string => {
@@ -183,9 +180,7 @@ export function parseJavaClass(bytes: Uint8Array): JavaClassInfo {
   } catch (error) {
     limitations.push({
       code: "class_truncated",
-      message: `Member tables truncated: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      message: `Member tables truncated: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 
@@ -195,8 +190,7 @@ export function parseJavaClass(bytes: Uint8Array): JavaClassInfo {
   for (const c of pool) {
     if (!c) continue;
     if (c.tag === 8) strings.push(utf8(c.index));
-    else if (c.tag === 7)
-      referencedClasses.add(utf8(c.index).replace(/\//g, "."));
+    else if (c.tag === 7) referencedClasses.add(utf8(c.index).replace(/\//g, "."));
     else if (c.tag === 10 || c.tag === 11)
       referencedMethods.add(`${className(c.a)}.${nameAndType(c.b)}`);
   }
@@ -238,20 +232,14 @@ export function parseJavaClass(bytes: Uint8Array): JavaClassInfo {
       confidence: "confirmed",
     });
   if (
-    [...referencedMethods].some((m) =>
-      /^java\.lang\.reflect\.|^java\.lang\.Class\.forName/.test(m),
-    )
+    [...referencedMethods].some((m) => /^java\.lang\.reflect\.|^java\.lang\.Class\.forName/.test(m))
   )
     findings.push({
       kind: "java.reflection",
       title: "Uses reflection",
       confidence: "confirmed",
     });
-  if (
-    [...referencedClasses].some((c) =>
-      /^java\.net\.|^javax\.net\.|okhttp3\./.test(c),
-    )
-  )
+  if ([...referencedClasses].some((c) => /^java\.net\.|^javax\.net\.|okhttp3\./.test(c)))
     findings.push({
       kind: "java.network",
       title: "References networking classes",
@@ -288,36 +276,25 @@ export interface JarInfo {
 }
 
 /** Inventories a JAR/WAR/AAR: manifest, packages and a bounded set of parsed classes. */
-export function parseJar(
-  bytes: Uint8Array,
-  options: { maxClasses?: number } = {},
-): JarInfo {
+export function parseJar(bytes: Uint8Array, options: { maxClasses?: number } = {}): JarInfo {
   const zip = openZip(bytes);
   return inventoryJar(zip, options);
 }
 
-export function inventoryJar(
-  zip: ZipArchive,
-  options: { maxClasses?: number } = {},
-): JarInfo {
+export function inventoryJar(zip: ZipArchive, options: { maxClasses?: number } = {}): JarInfo {
   const maxClasses = options.maxClasses ?? 2000;
   const limitations: Limitation[] = [];
   const findings: Finding[] = [];
   const manifest: Record<string, string> = {};
   const manifestEntry = zip.find("META-INF/MANIFEST.MF");
   if (manifestEntry) {
-    const text = new TextDecoder()
-      .decode(zip.read(manifestEntry, 1 << 20))
-      .replace(/\r?\n /g, "");
+    const text = new TextDecoder().decode(zip.read(manifestEntry, 1 << 20)).replace(/\r?\n /g, "");
     for (const line of text.split(/\r?\n/)) {
       const colon = line.indexOf(":");
-      if (colon > 0)
-        manifest[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+      if (colon > 0) manifest[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
     }
   }
-  const classEntries = zip.entries.filter(
-    (e) => e.name.endsWith(".class") && !e.isDirectory,
-  );
+  const classEntries = zip.entries.filter((e) => e.name.endsWith(".class") && !e.isDirectory);
   const packages = new Map<string, number>();
   const classes: JarInfo["classes"] = [];
   const allFindings = new Map<string, Finding>();
@@ -339,17 +316,16 @@ export function inventoryJar(
       for (const f of c.findings) {
         const existing = allFindings.get(f.kind);
         if (existing)
-          existing.detail = `${existing.detail ?? ""}${
-            existing.detail ? ", " : ""
-          }${c.name}`.slice(0, 400);
+          existing.detail = `${existing.detail ?? ""}${existing.detail ? ", " : ""}${c.name}`.slice(
+            0,
+            400,
+          );
         else allFindings.set(f.kind, { ...f, detail: c.name });
       }
     } catch (error) {
       limitations.push({
         code: "class_unreadable",
-        message: `${entry.name}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        message: `${entry.name}: ${error instanceof Error ? error.message : String(error)}`,
       });
       if (limitations.length > 20) break;
     }
@@ -360,12 +336,8 @@ export function inventoryJar(
       message: `Parsed ${maxClasses} of ${classEntries.length} classes.`,
     });
   findings.push(...allFindings.values());
-  const signed = zip.entries.some((e) =>
-    /^META-INF\/.+\.(RSA|DSA|EC|SF)$/.test(e.name),
-  );
-  const nestedJars = zip.entries
-    .filter((e) => /\.(jar|war|aar)$/.test(e.name))
-    .map((e) => e.name);
+  const signed = zip.entries.some((e) => /^META-INF\/.+\.(RSA|DSA|EC|SF)$/.test(e.name));
+  const nestedJars = zip.entries.filter((e) => /\.(jar|war|aar)$/.test(e.name)).map((e) => e.name);
   if (manifest["Main-Class"])
     findings.push({
       kind: "jar.main",
@@ -399,9 +371,7 @@ export function inventoryJar(
       .map(([name, count]) => ({ name, classes: count }))
       .toSorted((a, b) => b.classes - a.classes),
     classes,
-    resources: zip.entries.filter(
-      (e) => !e.isDirectory && !e.name.endsWith(".class"),
-    ).length,
+    resources: zip.entries.filter((e) => !e.isDirectory && !e.name.endsWith(".class")).length,
     nestedJars,
     signed,
     findings,

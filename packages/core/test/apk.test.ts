@@ -113,23 +113,17 @@ describe("openZip", () => {
       "a.txt:deflate:17",
       "raw.store:stored:6",
     ]);
-    expect(new TextDecoder().decode(zip.read(zip.entries[0]!))).toBe(
-      "hello hello hello",
-    );
+    expect(new TextDecoder().decode(zip.read(zip.entries[0]!))).toBe("hello hello hello");
     expect(new TextDecoder().decode(zip.read(zip.entries[1]!))).toBe("stored");
     expect(() => zip.read(zip.entries[0]!, 4)).toThrow(/expands to/);
   });
   it("reads ZIP64 central directories", () => {
-    const zip = openZip(
-      buildZip({ "a.txt": "alpha", "b.txt": "beta" }, { zip64: true }),
-    );
+    const zip = openZip(buildZip({ "a.txt": "alpha", "b.txt": "beta" }, { zip64: true }));
     expect(zip.entries.map((e) => e.name)).toEqual(["a.txt", "b.txt"]);
     expect(new TextDecoder().decode(zip.read(zip.entries[1]!))).toBe("beta");
   });
   it("rejects non-zip data", () => {
-    expect(() => openZip(new Uint8Array(100))).toThrow(
-      /end-of-central-directory/,
-    );
+    expect(() => openZip(new Uint8Array(100))).toThrow(/end-of-central-directory/);
   });
 });
 
@@ -176,10 +170,7 @@ describe("parseApk", () => {
       minSdk: "24",
       targetSdk: "34",
     });
-    expect(info.permissions).toEqual([
-      "android.permission.INTERNET",
-      "android.permission.CAMERA",
-    ]);
+    expect(info.permissions).toEqual(["android.permission.INTERNET", "android.permission.CAMERA"]);
     expect(info.application).toEqual({
       label: "Demo",
       debuggable: true,
@@ -187,15 +178,13 @@ describe("parseApk", () => {
       cleartextTraffic: true,
       networkSecurityConfig: null,
     });
-    expect(
-      info.components.map(
-        (c) => `${c.kind}:${c.name}:${c.exported}:${c.permission}`,
-      ),
-    ).toEqual([
-      "activity:.MainActivity:true:null",
-      "service:.SyncService:true:null",
-      "receiver:.BootReceiver:true:com.example.PRIV",
-    ]);
+    expect(info.components.map((c) => `${c.kind}:${c.name}:${c.exported}:${c.permission}`)).toEqual(
+      [
+        "activity:.MainActivity:true:null",
+        "service:.SyncService:true:null",
+        "receiver:.BootReceiver:true:com.example.PRIV",
+      ],
+    );
     expect(info.components[0]!.intentFilters[1]).toEqual({
       actions: ["android.intent.action.VIEW"],
       categories: [],
@@ -205,10 +194,7 @@ describe("parseApk", () => {
     expect(info.nativeLibraries).toEqual({
       "arm64-v8a": ["libnative.so", "libflutter.so"],
     });
-    expect(info.dexFiles.map((d) => d.name)).toEqual([
-      "classes.dex",
-      "classes2.dex",
-    ]);
+    expect(info.dexFiles.map((d) => d.name)).toEqual(["classes.dex", "classes2.dex"]);
     expect(info.signatureSchemes).toEqual(["v1 (JAR)"]);
     expect(info.findings.map((f) => f.kind)).toEqual([
       "apk.debuggable",
@@ -219,16 +205,12 @@ describe("parseApk", () => {
       "apk.native",
       "apk.framework",
     ]);
-    expect(
-      info.findings.find((f) => f.kind === "apk.exported-components")?.detail,
-    ).toBe("service .SyncService");
-    expect(info.findings.find((f) => f.kind === "apk.framework")?.title).toBe(
-      "Built with Flutter",
+    expect(info.findings.find((f) => f.kind === "apk.exported-components")?.detail).toBe(
+      "service .SyncService",
     );
+    expect(info.findings.find((f) => f.kind === "apk.framework")?.title).toBe("Built with Flutter");
   });
   it("requires a manifest", () => {
-    expect(() => parseApk(buildZip({ "a.txt": "x" }))).toThrow(
-      /AndroidManifest/,
-    );
+    expect(() => parseApk(buildZip({ "a.txt": "x" }))).toThrow(/AndroidManifest/);
   });
 });

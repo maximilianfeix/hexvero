@@ -16,24 +16,15 @@ describe("detectFormat", () => {
     expect(detectFormat(buildPe(), "x")).toBe("pe");
     expect(detectFormat(buildMacho(), "x")).toBe("macho");
     expect(detectFormat(buildFat([buildMacho()]), "x")).toBe("macho-fat");
-    expect(
-      detectFormat(new TextEncoder().encode("SQLite format 3\0"), "a.db"),
-    ).toBe("sqlite");
-    expect(detectFormat(new TextEncoder().encode("0x6080604052"), "x")).toBe(
-      "evm-hex",
-    );
-    expect(
-      detectFormat(new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]), "x"),
-    ).toBe("wasm");
+    expect(detectFormat(new TextEncoder().encode("SQLite format 3\0"), "a.db")).toBe("sqlite");
+    expect(detectFormat(new TextEncoder().encode("0x6080604052"), "x")).toBe("evm-hex");
+    expect(detectFormat(new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]), "x")).toBe("wasm");
     expect(detectFormat(new Uint8Array(), "app.js")).toBe("javascript");
   });
   it("tells Java class files from fat Mach-O", () => {
-    expect(
-      detectFormat(
-        new Uint8Array([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 65]),
-        "A.class",
-      ),
-    ).toBe("java-class");
+    expect(detectFormat(new Uint8Array([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 65]), "A.class")).toBe(
+      "java-class",
+    );
   });
 });
 
@@ -49,10 +40,7 @@ describe("parseElf", () => {
     expect(elf.rpath).toEqual(["$ORIGIN/lib"]);
     expect(elf.buildId).toBe("0102030405060708");
     expect(elf.sections.map((s) => s.name)).toContain(".dynamic");
-    expect(elf.symbols.map((s) => s.name)).toEqual([
-      "__stack_chk_fail",
-      "main",
-    ]);
+    expect(elf.symbols.map((s) => s.name)).toEqual(["__stack_chk_fail", "main"]);
     expect(elf.symbols[1]).toMatchObject({
       type: "FUNC",
       binding: "GLOBAL",
@@ -116,9 +104,9 @@ describe("parsePe", () => {
     expect(pe.findings.map((f) => f.kind)).toContain("pe.clr");
   });
   it("rejects DOS-only files", () => {
-    expect(() =>
-      parsePe(new TextEncoder().encode("MZ" + "\0".repeat(100))),
-    ).toThrow(/PE signature/);
+    expect(() => parsePe(new TextEncoder().encode("MZ" + "\0".repeat(100)))).toThrow(
+      /PE signature/,
+    );
   });
 });
 
@@ -134,9 +122,7 @@ describe("parseMacho", () => {
       sdk: "14.0.0",
     });
     expect(m.entry).toBe("0x1000");
-    expect(m.dylibs).toEqual([
-      { path: "/usr/lib/libSystem.B.dylib", kind: "load" },
-    ]);
+    expect(m.dylibs).toEqual([{ path: "/usr/lib/libSystem.B.dylib", kind: "load" }]);
     expect(m.segments[0]).toMatchObject({ name: "__TEXT", protection: "r-x" });
     expect(m.segments[0]!.sections[0]).toMatchObject({
       name: "__text",
@@ -170,24 +156,19 @@ describe("analyzeBinary", () => {
     expect(result.data.kind).toBe("elf");
   });
   it("refuses non-executables", () => {
-    expect(() =>
-      analyzeBinary(targetFromBytes(new Uint8Array(10), "x.bin")),
-    ).toThrow(/not an executable/);
+    expect(() => analyzeBinary(targetFromBytes(new Uint8Array(10), "x.bin"))).toThrow(
+      /not an executable/,
+    );
   });
 });
 
 describe("strings", () => {
   it("extracts ascii and utf16 runs and classifies them", () => {
-    const text =
-      "hello https://example.com/x \0\0 ab \0 p\0a\0s\0s\0w\0o\0r\0d\0=\0 ";
+    const text = "hello https://example.com/x \0\0 ab \0 p\0a\0s\0s\0w\0o\0r\0d\0=\0 ";
     const bytes = new TextEncoder().encode(text);
     const strings = extractStrings(bytes, { utf16: true });
-    expect(strings.map((s) => s.value)).toContain(
-      "hello https://example.com/x ",
-    );
-    expect(strings.find((s) => s.encoding === "utf16le")?.value).toBe(
-      "password=",
-    );
+    expect(strings.map((s) => s.value)).toContain("hello https://example.com/x ");
+    expect(strings.find((s) => s.encoding === "utf16le")?.value).toBe("password=");
     expect(classifyString("https://example.com")).toEqual(["url"]);
     expect(classifyString("api_key=%s")).toEqual(["format", "secret-ish"]);
   });

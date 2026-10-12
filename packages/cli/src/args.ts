@@ -22,11 +22,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
       const key = arg.slice(2);
       const next = argv[i + 1];
-      if (
-        next !== undefined &&
-        !next.startsWith("--") &&
-        !BOOLEAN_FLAGS.has(key)
-      ) {
+      if (next !== undefined && !next.startsWith("--") && !BOOLEAN_FLAGS.has(key)) {
         flags[key] = next;
         i++;
       } else flags[key] = true;
@@ -59,23 +55,16 @@ const SHORT: Record<string, string> = {
   "-j": "json",
 };
 
-export function flagString(
-  flags: ParsedArgs["flags"],
-  key: string,
-): string | undefined {
+export function flagString(flags: ParsedArgs["flags"], key: string): string | undefined {
   const v = flags[key];
   return typeof v === "string" ? v : undefined;
 }
 
-export function flagNumber(
-  flags: ParsedArgs["flags"],
-  key: string,
-): number | undefined {
+export function flagNumber(flags: ParsedArgs["flags"], key: string): number | undefined {
   const v = flagString(flags, key);
   if (v === undefined) return undefined;
   const n = Number(v);
-  if (!Number.isFinite(n))
-    throw new UsageError(`--${key} expects a number, got "${v}"`);
+  if (!Number.isFinite(n)) throw new UsageError(`--${key} expects a number, got "${v}"`);
   return n;
 }
 

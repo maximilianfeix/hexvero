@@ -18,16 +18,7 @@ export function buildElf(
   const shentsize = bits === 64 ? 64 : 40;
 
   // e_ident
-  b.bytes([
-    0x7f,
-    0x45,
-    0x4c,
-    0x46,
-    bits === 64 ? 2 : 1,
-    little ? 1 : 2,
-    1,
-    0,
-  ]).pad(16);
+  b.bytes([0x7f, 0x45, 0x4c, 0x46, bits === 64 ? 2 : 1, little ? 1 : 2, 1, 0]).pad(16);
   b.u16(3); // ET_DYN
   b.u16(bits === 64 ? 0x3e : 0x28); // x86-64 or arm
   b.u32(1);
@@ -63,15 +54,8 @@ export function buildElf(
   const dynstrSize = b.length - dynstrOff;
   b.align(8);
   const dynsymOff = b.length;
-  const sym = (
-    name: string,
-    value: number,
-    size: number,
-    info: number,
-    shndx: number,
-  ): void => {
-    if (bits === 64)
-      b.u32(strIndex[name]!).u8(info).u8(0).u16(shndx).u64(value).u64(size);
+  const sym = (name: string, value: number, size: number, info: number, shndx: number): void => {
+    if (bits === 64) b.u32(strIndex[name]!).u8(info).u8(0).u16(shndx).u64(value).u64(size);
     else b.u32(strIndex[name]!).u32(value).u32(size).u8(info).u8(0).u16(shndx);
   };
   sym("", 0, 0, 0, 0);
@@ -97,14 +81,7 @@ export function buildElf(
   b.u32(4).u32(8).u32(3).ascii("GNU\0").bytes([1, 2, 3, 4, 5, 6, 7, 8]);
   const noteSize = b.length - noteOff;
   const shstrOff = b.length;
-  const names = [
-    "",
-    ".dynsym",
-    ".dynstr",
-    ".dynamic",
-    ".note.gnu.build-id",
-    ".shstrtab",
-  ];
+  const names = ["", ".dynsym", ".dynstr", ".dynamic", ".note.gnu.build-id", ".shstrtab"];
   const nameIndex: number[] = [];
   for (const n of names) {
     nameIndex.push(b.length - shstrOff);
@@ -115,30 +92,10 @@ export function buildElf(
 
   // Program headers
   const phoff = b.length;
-  const ph = (
-    type: number,
-    flags: number,
-    offset: number,
-    filesz: number,
-  ): void => {
+  const ph = (type: number, flags: number, offset: number, filesz: number): void => {
     if (bits === 64)
-      b.u32(type)
-        .u32(flags)
-        .u64(offset)
-        .u64(offset)
-        .u64(offset)
-        .u64(filesz)
-        .u64(filesz)
-        .u64(8);
-    else
-      b.u32(type)
-        .u32(offset)
-        .u32(offset)
-        .u32(offset)
-        .u32(filesz)
-        .u32(filesz)
-        .u32(flags)
-        .u32(8);
+      b.u32(type).u32(flags).u64(offset).u64(offset).u64(offset).u64(filesz).u64(filesz).u64(8);
+    else b.u32(type).u32(offset).u32(offset).u32(offset).u32(filesz).u32(filesz).u32(flags).u32(8);
   };
   ph(3, 4, interpOff, 28); // PT_INTERP
   ph(2, 6, dynamicOff, dynamicSize); // PT_DYNAMIC
@@ -158,47 +115,13 @@ export function buildElf(
     entsize: number,
   ): void => {
     b.u32(name).u32(type);
-    if (bits === 64)
-      b.u64(flags)
-        .u64(addr)
-        .u64(off)
-        .u64(size)
-        .u32(link)
-        .u32(0)
-        .u64(8)
-        .u64(entsize);
-    else
-      b.u32(flags)
-        .u32(addr)
-        .u32(off)
-        .u32(size)
-        .u32(link)
-        .u32(0)
-        .u32(4)
-        .u32(entsize);
+    if (bits === 64) b.u64(flags).u64(addr).u64(off).u64(size).u32(link).u32(0).u64(8).u64(entsize);
+    else b.u32(flags).u32(addr).u32(off).u32(size).u32(link).u32(0).u32(4).u32(entsize);
   };
   sh(0, 0, 0, 0, 0, 0, 0, 0);
-  sh(
-    nameIndex[1]!,
-    11,
-    2,
-    0x200,
-    dynsymOff,
-    dynsymSize,
-    2,
-    bits === 64 ? 24 : 16,
-  );
+  sh(nameIndex[1]!, 11, 2, 0x200, dynsymOff, dynsymSize, 2, bits === 64 ? 24 : 16);
   sh(nameIndex[2]!, 3, 2, 0x300, dynstrOff, dynstrSize, 0, 0);
-  sh(
-    nameIndex[3]!,
-    6,
-    3,
-    0x400,
-    dynamicOff,
-    dynamicSize,
-    2,
-    bits === 64 ? 16 : 8,
-  );
+  sh(nameIndex[3]!, 6, 3, 0x400, dynamicOff, dynamicSize, 2, bits === 64 ? 16 : 8);
   sh(nameIndex[4]!, 7, 2, 0x500, noteOff, noteSize, 0, 0);
   sh(nameIndex[5]!, 3, 0, 0, shstrOff, shstrSize, 0, 0);
 
