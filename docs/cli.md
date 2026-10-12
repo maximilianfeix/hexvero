@@ -29,7 +29,10 @@ Exit codes: `0` success, `1` analysis error (`{"error":{"code","message","detail
 | EVM | selectors, instructions, opcodes |
 | SQLite | tables, columns, indexes, triggers, samples |
 | HAR | requests, hosts, endpoints |
-| APK | permissions, components, libraries, files |
+| APK | permissions, components, libraries, files, classes, packages, dexFiles |
+| JAR | classes, packages, manifest |
+| Java class | methods, fields, referencedMethods, referencedClasses, constants |
+| DEX | classes, packages, dexStrings |
 | ZIP | files |
 | Electron / directory | modules, edges, externals, ipcChannels, ipc, sourceMaps |
 | JavaScript file | references, ipc, exports |
