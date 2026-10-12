@@ -22,3 +22,5 @@ All notable changes to hexvero are listed here. The format follows
 - Compact MCP server with 12 tools and a discovery payload under 32 KiB.
 - Local web UI with overview, findings, collections, strings, hex viewer and module graph.
 - Optional radare2/rizin and Ghidra headless adapters.
+- Java class, JAR and DEX inspection; APK analysis lists classes and packages.
+- Review workflow with a threaded quality report on every pull request; release workflow on tags.

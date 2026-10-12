@@ -18,7 +18,7 @@
 <a href="#install"><img src="https://img.shields.io/badge/Install-F2B84B?style=for-the-badge&labelColor=1B1D21" alt="Install"></a>
 <a href="#web-ui"><img src="https://img.shields.io/badge/Web_UI-1B1D21?style=for-the-badge" alt="Web UI"></a>
 <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP_server-1B1D21?style=for-the-badge" alt="MCP server for AI agents"></a>
-<a href="#what-it-reads"><img src="https://img.shields.io/badge/14_formats-1B1D21?style=for-the-badge" alt="14 formats"></a>
+<a href="#what-it-reads"><img src="https://img.shields.io/badge/17_formats-1B1D21?style=for-the-badge" alt="17 formats"></a>
 
 [Install](#install) · [What it reads](#what-it-reads) · [CLI](#cli) · [Web UI](#web-ui) · [For AI agents](#for-ai-agents) · [Engines](#optional-engines) · [Compared with REA](#compared-with-rea) · [How it works](#how-it-works) · [FAQ](#faq)
 
@@ -90,7 +90,8 @@ Or run without installing: `npx hexvero <command>`.
 | EVM bytecode               | PUSH-aware disassembly, dispatch selectors with jump targets, solc metadata, DELEGATECALL/SELFDESTRUCT                 |
 | SQLite databases           | Tables, columns, row counts, sample rows, views, indexes, triggers (read-only via `node:sqlite`)                       |
 | plist (XML and binary)     | Fully decoded property list                                                                                           |
-| Android APK                | Manifest facts, permissions, components with intent filters, deep links, native libraries, DEX inventory, frameworks |
+| Android APK                | Manifest facts, permissions, components with intent filters, deep links, native libraries, DEX classes and packages, frameworks |
+| Java class / JAR / DEX     | Constant pool, members, referenced APIs, manifest and packages; DEX classes, strings and SDK hints                    |
 | Electron ASAR / JS apps    | Package facts, module roles, resolved import graph, IPC channel sender/receiver matching, preload and sandbox flags  |
 | JavaScript files           | Imports, requires, dynamic imports, exports, IPC usage, source map comment                                             |
 | Source maps                | Sources grouped by package, mapping count, original position lookup                                                   |
