@@ -30,7 +30,7 @@ esac
     chmodSync(join(dir, "r2"), 0o755);
     writeFileSync(
       join(dir, "analyzeHeadless"),
-      `#!/bin/sh\n# args: projectDir name -import file ... op addr out\nOUT=\${@: -1}\nmkdir -p "$1"; touch "$1/hexvero.gpr"; echo '{"functions":[{"name":"entry","address":"0x1000"}],"truncated":false}' > "$OUT"\n`,
+      `#!/bin/sh\n# args: projectDir name -import file ... op addr out\nfor a; do OUT=$a; done\nmkdir -p "$1"; touch "$1/hexvero.gpr"; echo '{"functions":[{"name":"entry","address":"0x1000"}],"truncated":false}' > "$OUT"\n`,
     );
     chmodSync(join(dir, "analyzeHeadless"), 0o755);
     process.env["PATH"] = `${dir}:${originalPath ?? ""}`;
