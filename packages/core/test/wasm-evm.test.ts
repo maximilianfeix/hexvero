@@ -105,10 +105,7 @@ describe("parseWasm", () => {
       { type: "i32", mutable: true },
       { type: "i64", mutable: false },
     ]);
-    expect(w.findings.map((f) => f.kind)).toEqual([
-      "wasm.wasi",
-      "wasm.producers",
-    ]);
+    expect(w.findings.map((f) => f.kind)).toEqual(["wasm.wasi", "wasm.producers"]);
     expect(w.sections.map((s) => s.name)).toEqual([
       "type",
       "import",
@@ -121,9 +118,7 @@ describe("parseWasm", () => {
   it("reports truncated sections instead of throwing", () => {
     const bytes = buildWasm();
     const w = parseWasm(bytes.subarray(0, bytes.length - 10));
-    expect(w.limitations.some((l) => l.code === "wasm_section_truncated")).toBe(
-      true,
-    );
+    expect(w.limitations.some((l) => l.code === "wasm_section_truncated")).toBe(true);
     expect(w.types).toHaveLength(2);
   });
 });
@@ -138,10 +133,7 @@ describe("EVM", () => {
       { selector: "0x70a08231", target: 0x50, offset: 18 },
     ]);
     expect(info.usesDelegatecall).toBe(true);
-    expect(info.findings.map((f) => f.kind)).toEqual([
-      "evm.delegatecall",
-      "evm.selectors",
-    ]);
+    expect(info.findings.map((f) => f.kind)).toEqual(["evm.delegatecall", "evm.selectors"]);
   });
   it("never treats PUSH payload bytes as opcodes", () => {
     const code = evmBytesFrom(new TextEncoder().encode("63a9059cbb00"));

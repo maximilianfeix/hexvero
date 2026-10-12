@@ -38,9 +38,7 @@ describe("hexvero CLI", () => {
     expect(text).toContain("ELF64 x86-64 shared-object");
     expect(text).toContain("symbols (2)");
     const jio = capture();
-    expect(
-      await main(["analyze", so, "--json", "--out", join(dir, "a.json")], jio),
-    ).toBe(0);
+    expect(await main(["analyze", so, "--json", "--out", join(dir, "a.json")], jio)).toBe(0);
     const parsed = JSON.parse(jio.stdout.join(""));
     expect(parsed.summary).toContain("ELF64");
     expect(parsed.overview.kind).toBe("binary");
@@ -49,16 +47,12 @@ describe("hexvero CLI", () => {
 
   it("pages collections, strings and bytes", async () => {
     const io = capture();
-    expect(await main(["collection", so, "symbols", "--limit", "1"], io)).toBe(
-      0,
-    );
+    expect(await main(["collection", so, "symbols", "--limit", "1"], io)).toBe(0);
     expect(io.stdout[0]).toContain("symbols 1-1 of 2");
     expect(io.stdout[1]).toContain("__stack_chk_fail");
     const sio = capture();
     expect(await main(["strings", so, "--tag", "path", "--json"], sio)).toBe(0);
-    expect(JSON.parse(sio.stdout.join("")).items[0].value).toBe(
-      "/lib64/ld-linux-x86-64.so.2",
-    );
+    expect(JSON.parse(sio.stdout.join("")).items[0].value).toBe("/lib64/ld-linux-x86-64.so.2");
     const bio = capture();
     expect(await main(["bytes", so, "0", "16"], bio)).toBe(0);
     expect(bio.stdout[0]).toMatch(/^ {2}00000000 {2}7f 45 4c 46/);
@@ -72,9 +66,7 @@ describe("hexvero CLI", () => {
     expect(await main(["analyze", join(dir, "nope.bin")], nio)).toBe(1);
     expect(nio.stderr[0]).toContain("error (not_found)");
     const jio = capture();
-    expect(await main(["analyze", join(dir, "nope.bin"), "--json"], jio)).toBe(
-      1,
-    );
+    expect(await main(["analyze", join(dir, "nope.bin"), "--json"], jio)).toBe(1);
     expect(JSON.parse(jio.stdout.join("")).error.code).toBe("not_found");
     expect(await main(["frobnicate"], capture())).toBe(2);
   });
@@ -83,12 +75,7 @@ describe("hexvero CLI", () => {
     const other = join(dir, "other.so");
     writeFileSync(other, buildElf({ nx: false }));
     const io = capture();
-    expect(
-      await main(
-        ["compare", so, other, "findings", "--key", "kind", "--json"],
-        io,
-      ),
-    ).toBe(0);
+    expect(await main(["compare", so, other, "findings", "--key", "kind", "--json"], io)).toBe(0);
     expect(JSON.parse(io.stdout.join("")).unchanged).toBe(1);
     const dio = capture();
     expect(await main(["doctor", "--json"], dio)).toBe(0);

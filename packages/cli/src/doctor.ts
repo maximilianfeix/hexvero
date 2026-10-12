@@ -1,10 +1,7 @@
 import { paint, toJson, type Io } from "./format.js";
 
 export async function doctor(io: Io, json: boolean): Promise<number> {
-  const [major, minor] = process.versions.node.split(".").map(Number) as [
-    number,
-    number,
-  ];
+  const [major, minor] = process.versions.node.split(".").map(Number) as [number, number];
   const nodeOk = major > 22 || (major === 22 && minor >= 12);
   let sqlite = false;
   try {
@@ -25,17 +22,10 @@ export async function doctor(io: Io, json: boolean): Promise<number> {
     io.out(toJson(report));
     return nodeOk ? 0 : 1;
   }
-  const mark = (ok: boolean): string =>
-    ok ? paint(io, "green", "✓") : paint(io, "red", "✗");
+  const mark = (ok: boolean): string => (ok ? paint(io, "green", "✓") : paint(io, "red", "✗"));
+  io.out(`${mark(nodeOk)} Node.js ${process.versions.node} ${nodeOk ? "" : "(need >= 22.12)"}`);
   io.out(
-    `${mark(nodeOk)} Node.js ${process.versions.node} ${
-      nodeOk ? "" : "(need >= 22.12)"
-    }`,
-  );
-  io.out(
-    `${mark(sqlite)} node:sqlite ${
-      sqlite ? "available" : "missing — SQLite inspection disabled"
-    }`,
+    `${mark(sqlite)} node:sqlite ${sqlite ? "available" : "missing — SQLite inspection disabled"}`,
   );
   for (const p of providers)
     io.out(

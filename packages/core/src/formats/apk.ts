@@ -54,16 +54,14 @@ export interface ApkInfo {
 const DANGEROUS =
   /^android\.permission\.(READ_SMS|SEND_SMS|RECEIVE_SMS|READ_CONTACTS|WRITE_CONTACTS|RECORD_AUDIO|CAMERA|ACCESS_FINE_LOCATION|ACCESS_BACKGROUND_LOCATION|READ_CALL_LOG|READ_PHONE_STATE|SYSTEM_ALERT_WINDOW|REQUEST_INSTALL_PACKAGES|BIND_ACCESSIBILITY_SERVICE|READ_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE|QUERY_ALL_PACKAGES|BIND_DEVICE_ADMIN)$/;
 
-const bool = (v: string | undefined): boolean | null =>
-  v === undefined ? null : v === "true";
+const bool = (v: string | undefined): boolean | null => (v === undefined ? null : v === "true");
 
 export function parseApk(bytes: Uint8Array): ApkInfo {
   const zip = openZip(bytes);
   const limitations: Limitation[] = [];
   const findings: Finding[] = [];
   const manifestEntry = zip.find("AndroidManifest.xml");
-  if (!manifestEntry)
-    throw new AnalysisError("malformed", "APK has no AndroidManifest.xml");
+  if (!manifestEntry) throw new AnalysisError("malformed", "APK has no AndroidManifest.xml");
   const manifest = parseAxml(zip.read(manifestEntry, 8 << 20));
   const a = manifest.attributes;
   const app = manifest.children.find((c) => c.tag === "application") ?? {
@@ -75,8 +73,7 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
   const components: ApkComponent[] = [];
   for (const child of app.children) {
     const kind = child.tag as ApkComponent["kind"];
-    if (!["activity", "service", "receiver", "provider"].includes(kind))
-      continue;
+    if (!["activity", "service", "receiver", "provider"].includes(kind)) continue;
     const intentFilters = child.children
       .filter((c) => c.tag === "intent-filter")
       .map((f) => ({
@@ -127,10 +124,7 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
         });
         if (classes.length < 10_000) classes.push(...dex.classes);
         for (const p of dex.packages)
-          packageCounts.set(
-            p.name,
-            (packageCounts.get(p.name) ?? 0) + p.classes,
-          );
+          packageCounts.set(p.name, (packageCounts.get(p.name) ?? 0) + p.classes);
         for (const f of dex.findings)
           if (!findings.some((x) => x.kind === f.kind)) findings.push(f);
         limitations.push(...dex.limitations);
@@ -138,28 +132,21 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
         dexFiles.push({ name: e.name, size: e.size, classes: 0, methods: 0 });
         limitations.push({
           code: "dex_unreadable",
-          message: `${e.name}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          message: `${e.name}: ${error instanceof Error ? error.message : String(error)}`,
         });
       }
     }
-    if (/^META-INF\/.+\.(RSA|DSA|EC)$/.test(e.name))
-      signatureSchemes.push("v1 (JAR)");
+    if (/^META-INF\/.+\.(RSA|DSA|EC)$/.test(e.name)) signatureSchemes.push("v1 (JAR)");
   }
-  if (hasApkSigningBlock(bytes))
-    signatureSchemes.push("v2/v3 (APK Signing Block)");
+  if (hasApkSigningBlock(bytes)) signatureSchemes.push("v2/v3 (APK Signing Block)");
   if (!signatureSchemes.length)
     limitations.push({
       code: "apk_unsigned",
-      message:
-        "No signature found; the APK may be unsigned or use an unrecognized scheme.",
+      message: "No signature found; the APK may be unsigned or use an unrecognized scheme.",
     });
 
   const permissions = manifest.children
-    .filter(
-      (c) => c.tag === "uses-permission" || c.tag === "uses-permission-sdk-23",
-    )
+    .filter((c) => c.tag === "uses-permission" || c.tag === "uses-permission-sdk-23")
     .map((c) => c.attributes["android:name"] ?? "");
   const customPermissions = manifest.children
     .filter((c) => c.tag === "permission")
@@ -184,8 +171,7 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
       debuggable: app.attributes["android:debuggable"] === "true",
       allowBackup: bool(app.attributes["android:allowBackup"]),
       cleartextTraffic: bool(app.attributes["android:usesCleartextTraffic"]),
-      networkSecurityConfig:
-        app.attributes["android:networkSecurityConfig"] ?? null,
+      networkSecurityConfig: app.attributes["android:networkSecurityConfig"] ?? null,
     },
     components,
     nativeLibraries,
@@ -233,18 +219,14 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
     findings.push({
       kind: "apk.dangerous-permissions",
       title: `${dangerous.length} dangerous permissions`,
-      detail: dangerous
-        .map((p) => p.replace("android.permission.", ""))
-        .join(", "),
+      detail: dangerous.map((p) => p.replace("android.permission.", "")).join(", "),
       confidence: "confirmed",
     });
   const exposed = components.filter(
     (c) =>
       c.exported === true &&
       !c.permission &&
-      !c.intentFilters.some((f) =>
-        f.actions.includes("android.intent.action.MAIN"),
-      ),
+      !c.intentFilters.some((f) => f.actions.includes("android.intent.action.MAIN")),
   );
   if (exposed.length)
     findings.push({
@@ -257,9 +239,7 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
       confidence: "confirmed",
     });
   const deepLinks = components.flatMap((c) =>
-    c.intentFilters.flatMap((f) =>
-      f.schemes.map((s) => `${s}://${f.hosts[0] ?? ""}`),
-    ),
+    c.intentFilters.flatMap((f) => f.schemes.map((s) => `${s}://${f.hosts[0] ?? ""}`)),
   );
   if (deepLinks.length)
     findings.push({
@@ -273,9 +253,7 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
     findings.push({
       kind: "apk.native",
       title: `Native libraries for ${abis.join(", ")}`,
-      detail: [...new Set(Object.values(nativeLibraries).flat())]
-        .slice(0, 8)
-        .join(", "),
+      detail: [...new Set(Object.values(nativeLibraries).flat())].slice(0, 8).join(", "),
       confidence: "confirmed",
     });
   const frameworks = detectFrameworks(zip.entries);
@@ -293,8 +271,7 @@ function detectFrameworks(entries: ZipEntry[]): string[] {
   const some = (re: RegExp): boolean => entries.some((e) => re.test(e.name));
   const out: string[] = [];
   if (some(/libflutter\.so$/)) out.push("Flutter");
-  if (some(/libreactnativejni\.so$|index\.android\.bundle$/))
-    out.push("React Native");
+  if (some(/libreactnativejni\.so$|index\.android\.bundle$/)) out.push("React Native");
   if (some(/^assets\/www\/cordova\.js$/)) out.push("Cordova");
   if (some(/libil2cpp\.so$|libunity\.so$/)) out.push("Unity");
   if (some(/libmonodroid\.so$|libxamarin-app\.so$/)) out.push("Xamarin/.NET");

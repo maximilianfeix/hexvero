@@ -59,9 +59,9 @@ describe("parsePlist", () => {
     expect(parsePlist(b.done())).toEqual({ name: "hexvero", nums: [7, true] });
   });
   it("rejects malformed XML", () => {
-    expect(() =>
-      parsePlist(new TextEncoder().encode("<plist><dict><key>a</key></plist>")),
-    ).toThrow(/unexpected|unclosed/);
+    expect(() => parsePlist(new TextEncoder().encode("<plist><dict><key>a</key></plist>"))).toThrow(
+      /unexpected|unclosed/,
+    );
   });
 });
 
@@ -143,9 +143,10 @@ describe("parseHar", () => {
     });
     expect(info.methods).toEqual({ GET: 3, POST: 1 });
     expect(info.statuses).toEqual({ "2xx": 2, "4xx": 1, "1xx": 1 });
-    expect(
-      info.apiEndpoints.map((e) => `${e.method} ${e.path}×${e.count}`),
-    ).toEqual(["GET /users/{id}×2", "POST /upload×1"]);
+    expect(info.apiEndpoints.map((e) => `${e.method} ${e.path}×${e.count}`)).toEqual([
+      "GET /users/{id}×2",
+      "POST /upload×1",
+    ]);
     expect(info.secretsInUrls).toEqual([{ index: 0, param: "token" }]);
     expect(info.websockets).toEqual(["wss://live.example.com/socket"]);
     expect(info.entries[0]).toMatchObject({
@@ -162,12 +163,8 @@ describe("parseHar", () => {
     ]);
   });
   it("rejects non-HAR JSON", () => {
-    expect(() => parseHar(new TextEncoder().encode("{}"))).toThrow(
-      /log.entries/,
-    );
-    expect(() => parseHar(new TextEncoder().encode("nope"))).toThrow(
-      /valid JSON/,
-    );
+    expect(() => parseHar(new TextEncoder().encode("{}"))).toThrow(/log.entries/);
+    expect(() => parseHar(new TextEncoder().encode("nope"))).toThrow(/valid JSON/);
   });
 });
 
@@ -188,10 +185,7 @@ describe("inspectSqlite", () => {
     const info = await inspectSqlite(path);
     expect(info.userVersion).toBe(7);
     expect(info.pageSize).toBeGreaterThan(0);
-    expect(info.tables.map((t) => `${t.kind}:${t.name}`)).toEqual([
-      "table:users",
-      "view:emails",
-    ]);
+    expect(info.tables.map((t) => `${t.kind}:${t.name}`)).toEqual(["table:users", "view:emails"]);
     const users = info.tables[0]!;
     expect(users.columns.map((c) => c.name)).toEqual([
       "id",
@@ -222,8 +216,6 @@ describe("inspectSqlite", () => {
     expect(info.findings.map((f) => f.kind)).toEqual(["sqlite.secret-columns"]);
   });
   it("reports unreadable files", async () => {
-    await expect(inspectSqlite(join(dir, "missing.db"))).rejects.toThrow(
-      /Cannot open/,
-    );
+    await expect(inspectSqlite(join(dir, "missing.db"))).rejects.toThrow(/Cannot open/);
   });
 });

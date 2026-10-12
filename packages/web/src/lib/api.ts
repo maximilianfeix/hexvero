@@ -68,9 +68,7 @@ export class HttpError extends Error {
 }
 
 const token = (): string => {
-  const fromHash = new URLSearchParams(window.location.hash.slice(1)).get(
-    "token",
-  );
+  const fromHash = new URLSearchParams(window.location.hash.slice(1)).get("token");
   if (fromHash) return fromHash;
   try {
     return localStorage.getItem("hexvero.token") ?? "";
@@ -107,9 +105,7 @@ const CACHE_LIMIT = 400;
 
 /** Drops cached responses for one target (after close) or everything. */
 export function evictCache(prefix = ""): void {
-  const stale = Array.from(cache.keys()).filter((key) =>
-    key.startsWith(prefix),
-  );
+  const stale = Array.from(cache.keys()).filter((key) => key.startsWith(prefix));
   for (const key of stale) cache.delete(key);
 }
 
@@ -149,10 +145,7 @@ export const api = {
     id: string,
     name: string,
     q: { offset?: number; limit?: number; text?: string },
-  ) =>
-    cached<Page<T>>(
-      `/targets/${id}/collections/${encodeURIComponent(name)}?${params(q)}`,
-    ),
+  ) => cached<Page<T>>(`/targets/${id}/collections/${encodeURIComponent(name)}?${params(q)}`),
   strings: (
     id: string,
     q: {
@@ -168,16 +161,11 @@ export const api = {
       `/targets/${id}/strings?${params({ ...q, utf16: q.utf16 ? 1 : undefined })}`,
     ),
   bytes: (id: string, offset: number, length: number) =>
-    cached<ByteWindow>(
-      `/targets/${id}/bytes?offset=${offset}&length=${length}`,
-    ),
-  exportUrl: (id: string) =>
-    `/api/targets/${id}/export?token=${encodeURIComponent(token())}`,
+    cached<ByteWindow>(`/targets/${id}/bytes?offset=${offset}&length=${length}`),
+  exportUrl: (id: string) => `/api/targets/${id}/export?token=${encodeURIComponent(token())}`,
 };
 
-function params(
-  q: Record<string, string | number | boolean | undefined>,
-): string {
+function params(q: Record<string, string | number | boolean | undefined>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(q))
     if (v !== undefined && v !== "" && v !== false) p.set(k, String(v));

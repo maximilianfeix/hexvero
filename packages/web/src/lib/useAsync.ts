@@ -7,10 +7,7 @@ export interface AsyncState<T> {
 }
 
 /** Runs `factory` when `key` changes; ignores stale resolutions. */
-export function useAsync<T>(
-  key: string,
-  factory: () => Promise<T>,
-): AsyncState<T> {
+export function useAsync<T>(key: string, factory: () => Promise<T>): AsyncState<T> {
   const [state, setState] = useState<AsyncState<T>>({
     data: null,
     error: null,

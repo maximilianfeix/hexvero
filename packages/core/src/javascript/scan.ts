@@ -66,18 +66,7 @@ const IPC_APIS = new Set([
   "webContents.send",
   "contextBridge.exposeInMainWorld",
 ]);
-const PUNCT3 = new Set([
-  "===",
-  "!==",
-  "...",
-  ">>>",
-  "**=",
-  "<<=",
-  ">>=",
-  "&&=",
-  "||=",
-  "??=",
-]);
+const PUNCT3 = new Set(["===", "!==", "...", ">>>", "**=", "<<=", ">>=", "&&=", "||=", "??="]);
 const PUNCT2 = new Set([
   "=>",
   "==",
@@ -241,10 +230,7 @@ export function tokenize(
 }
 
 const literal = (t: Token | undefined): string | null =>
-  t &&
-  (t.type === "string" || (t.type === "template" && !t.value.includes("${")))
-    ? t.value
-    : null;
+  t && (t.type === "string" || (t.type === "template" && !t.value.includes("${"))) ? t.value : null;
 
 const EXPORT_DECLARATIONS = new Set([
   "default",
@@ -256,10 +242,7 @@ const EXPORT_DECLARATIONS = new Set([
   "async",
 ]);
 
-export function scanJavaScript(
-  source: string,
-  options: { maxTokens?: number } = {},
-): ScanResult {
+export function scanJavaScript(source: string, options: { maxTokens?: number } = {}): ScanResult {
   const { tokens, truncated } = tokenize(source, options.maxTokens);
   const references: ModuleReference[] = [];
   const ipc: IpcUsage[] = [];
@@ -271,18 +254,13 @@ export function scanJavaScript(
     const t = at(k);
     return !!t && t.type === type && (value === undefined || t.value === value);
   };
-  const specifierAt = (
-    k: number,
-    kind: ModuleReference["kind"],
-    line: number,
-  ): void => {
+  const specifierAt = (k: number, kind: ModuleReference["kind"], line: number): void => {
     const t = at(k);
     if (!t) return;
     const value = literal(t);
     const isCall = kind === "require" || kind === "dynamic-import";
     const lone = !isCall || is(k + 1, "punct", ")") || is(k + 1, "punct", ",");
-    if (value !== null && lone)
-      references.push({ specifier: value, kind, line, dynamic: false });
+    if (value !== null && lone) references.push({ specifier: value, kind, line, dynamic: false });
     else
       references.push({
         specifier: t.type === "template" ? t.value : "<expression>",
@@ -291,11 +269,7 @@ export function scanJavaScript(
         dynamic: true,
       });
   };
-  const findFrom = (
-    k: number,
-    kind: ModuleReference["kind"],
-    line: number,
-  ): void => {
+  const findFrom = (k: number, kind: ModuleReference["kind"], line: number): void => {
     for (let j = k + 1; j < Math.min(tokens.length, k + 200); j++) {
       if (is(j, "ident", "from") && is(j + 1, "string")) {
         specifierAt(j + 1, kind, line);
@@ -310,8 +284,7 @@ export function scanJavaScript(
     if (t.type !== "ident") continue;
     switch (t.value) {
       case "import":
-        if (is(k + 1, "punct", "("))
-          specifierAt(k + 2, "dynamic-import", t.line);
+        if (is(k + 1, "punct", "(")) specifierAt(k + 2, "dynamic-import", t.line);
         else if (is(k + 1, "punct", ".")) esm = true;
         else {
           esm = true;
@@ -321,8 +294,7 @@ export function scanJavaScript(
         break;
       case "export": {
         esm = true;
-        if (is(k + 1, "punct", "{") || is(k + 1, "punct", "*"))
-          findFrom(k, "export-from", t.line);
+        if (is(k + 1, "punct", "{") || is(k + 1, "punct", "*")) findFrom(k, "export-from", t.line);
         const next = at(k + 1);
         if (next?.type === "ident" && EXPORT_DECLARATIONS.has(next.value)) {
           const name =
@@ -342,11 +314,7 @@ export function scanJavaScript(
       case "module":
         if (is(k + 1, "punct", ".") && is(k + 2, "ident", "exports")) {
           cjs = true;
-          if (
-            is(k + 3, "punct", ".") &&
-            is(k + 4, "ident") &&
-            is(k + 5, "punct", "=")
-          ) {
+          if (is(k + 3, "punct", ".") && is(k + 4, "ident") && is(k + 5, "punct", "=")) {
             exports.add(at(k + 4)!.value);
           }
         }
@@ -365,20 +333,14 @@ export function scanJavaScript(
       default:
         break;
     }
-    if (
-      is(k + 1, "punct", ".") &&
-      is(k + 2, "ident") &&
-      is(k + 3, "punct", "(")
-    ) {
+    if (is(k + 1, "punct", ".") && is(k + 2, "ident") && is(k + 3, "punct", "(")) {
       const api = `${t.value}.${at(k + 2)!.value}`;
-      if (IPC_APIS.has(api))
-        ipc.push({ api, channel: literal(at(k + 4)), line: t.line });
+      if (IPC_APIS.has(api)) ipc.push({ api, channel: literal(at(k + 4)), line: t.line });
     }
   }
 
   const sourceMappingUrl =
-    /\/\/[#@]\s*sourceMappingURL=(\S+)\s*$/.exec(source.slice(-2000))?.[1] ??
-    null;
+    /\/\/[#@]\s*sourceMappingURL=(\S+)\s*$/.exec(source.slice(-2000))?.[1] ?? null;
   const lines = source.split("\n").length;
   return {
     references,

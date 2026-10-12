@@ -8,12 +8,7 @@ import { AnalysisError, type Limitation } from "../model.js";
 import { detectProviders, type ProviderStatus } from "./index.js";
 
 export type ProviderName = ProviderStatus["name"];
-export type ProviderOperation =
-  | "functions"
-  | "disassemble"
-  | "decompile"
-  | "strings"
-  | "imports";
+export type ProviderOperation = "functions" | "disassemble" | "decompile" | "strings" | "imports";
 
 export interface ProviderRequest {
   targetPath: string;
@@ -44,12 +39,7 @@ interface Exec {
   timedOut: boolean;
 }
 
-function exec(
-  command: string,
-  args: string[],
-  timeoutMs: number,
-  cwd?: string,
-): Promise<Exec> {
+function exec(command: string, args: string[], timeoutMs: number, cwd?: string): Promise<Exec> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -62,8 +52,7 @@ function exec(
     let timedOut = false;
     const kill = (): void => {
       try {
-        if (process.platform !== "win32" && child.pid)
-          process.kill(-child.pid, "SIGKILL");
+        if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
         else child.kill("SIGKILL");
       } catch {
         /* already gone */
@@ -114,10 +103,7 @@ function parseJson(text: string): unknown {
   }
 }
 
-const RADARE_COMMANDS: Record<
-  ProviderOperation,
-  (address: string | null) => string
-> = {
+const RADARE_COMMANDS: Record<ProviderOperation, (address: string | null) => string> = {
   functions: () => "aaa; aflj",
   disassemble: (a) => `aaa; pdfj @ ${a ?? "entry0"}`,
   decompile: (a) => `aaa; pdgj @ ${a ?? "entry0"}`,
@@ -126,9 +112,7 @@ const RADARE_COMMANDS: Record<
 };
 
 export function cacheRoot(): string {
-  return (
-    process.env["HEXVERO_CACHE_DIR"] ?? join(homedir(), ".cache", "hexvero")
-  );
+  return process.env["HEXVERO_CACHE_DIR"] ?? join(homedir(), ".cache", "hexvero");
 }
 
 /** Location of the packaged Ghidra export script. */
@@ -163,13 +147,9 @@ export async function runProvider(
     );
   }
   if (request.address !== undefined && !/^[\w.$@]+$/.test(request.address)) {
-    throw new AnalysisError(
-      "invalid_input",
-      "address must be a hex address or a symbol name",
-    );
+    throw new AnalysisError("invalid_input", "address must be a hex address or a symbol name");
   }
-  const timeoutMs =
-    request.timeoutMs ?? (request.provider === "ghidra" ? 300_000 : 120_000);
+  const timeoutMs = request.timeoutMs ?? (request.provider === "ghidra" ? 300_000 : 120_000);
   const limitations: Limitation[] = [];
   const address = request.address ?? null;
 
@@ -181,10 +161,7 @@ export async function runProvider(
       .digest("hex")
       .slice(0, 16);
     const projectDir = join(cacheRoot(), "ghidra", digest);
-    const outputPath = join(
-      projectDir,
-      `${request.operation}-${address ?? "all"}.json`,
-    );
+    const outputPath = join(projectDir, `${request.operation}-${address ?? "all"}.json`);
     await mkdir(projectDir, { recursive: true });
     await rm(outputPath, { force: true });
     const exists = await readFile(join(projectDir, "hexvero.gpr")).then(
@@ -194,9 +171,7 @@ export async function runProvider(
     const args = [
       projectDir,
       "hexvero",
-      ...(exists
-        ? ["-process", "-noanalysis"]
-        : ["-import", request.targetPath]),
+      ...(exists ? ["-process", "-noanalysis"] : ["-import", request.targetPath]),
       "-scriptPath",
       ghidraScriptDir(),
       "-postScript",
@@ -237,14 +212,10 @@ export async function runProvider(
       timeoutMs,
     );
     result = parseJson(run.stdout);
-    if (
-      request.operation === "decompile" &&
-      (result === null || typeof result === "string")
-    ) {
+    if (request.operation === "decompile" && (result === null || typeof result === "string")) {
       limitations.push({
         code: "decompiler_missing",
-        message:
-          "pdgj returned nothing; install the r2ghidra/rz-ghidra plugin or use disassemble.",
+        message: "pdgj returned nothing; install the r2ghidra/rz-ghidra plugin or use disassemble.",
       });
     }
   }

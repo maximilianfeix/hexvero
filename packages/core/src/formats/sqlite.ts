@@ -60,9 +60,7 @@ async function openReadOnly(path: string): Promise<DatabaseLike> {
   } catch (error) {
     throw new AnalysisError(
       "malformed",
-      `Cannot open SQLite database: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Cannot open SQLite database: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -80,9 +78,7 @@ export async function inspectSqlite(
   const findings: Finding[] = [];
   try {
     const pragma = (name: string): unknown => {
-      const row = db.prepare(`PRAGMA ${name}`).get() as
-        | Record<string, unknown>
-        | undefined;
+      const row = db.prepare(`PRAGMA ${name}`).get() as Record<string, unknown> | undefined;
       return row ? Object.values(row)[0] : null;
     };
     const master = db
@@ -96,9 +92,7 @@ export async function inspectSqlite(
       sql: string | null;
     }>;
     const tables: SqliteTable[] = [];
-    for (const row of master.filter(
-      (m) => m.type === "table" || m.type === "view",
-    )) {
+    for (const row of master.filter((m) => m.type === "table" || m.type === "view")) {
       const virtual = /^CREATE VIRTUAL TABLE/i.test(row.sql ?? "");
       const columns = (
         db.prepare(`PRAGMA table_info(${safeIdent(row.name)})`).all() as Array<{
@@ -114,9 +108,7 @@ export async function inspectSqlite(
         notNull: c.notnull === 1,
         primaryKey: c.pk > 0,
         defaultValue:
-          c.dflt_value === null || c.dflt_value === undefined
-            ? null
-            : String(c.dflt_value),
+          c.dflt_value === null || c.dflt_value === undefined ? null : String(c.dflt_value),
       }));
       let rowCount: number | null = null;
       let sample: Array<Record<string, unknown>> = [];
@@ -125,26 +117,22 @@ export async function inspectSqlite(
           if (options.countRows !== false)
             rowCount = Number(
               (
-                db
-                  .prepare(`SELECT count(*) AS n FROM ${safeIdent(row.name)}`)
-                  .get() as { n: number }
+                db.prepare(`SELECT count(*) AS n FROM ${safeIdent(row.name)}`).get() as {
+                  n: number;
+                }
               ).n,
             );
           if (sampleRows > 0) {
             sample = (
               db
-                .prepare(
-                  `SELECT * FROM ${safeIdent(row.name)} LIMIT ${Math.min(sampleRows, 50)}`,
-                )
+                .prepare(`SELECT * FROM ${safeIdent(row.name)} LIMIT ${Math.min(sampleRows, 50)}`)
                 .all() as Array<Record<string, unknown>>
             ).map(normalizeRow);
           }
         } catch (error) {
           limitations.push({
             code: "sqlite_table_unreadable",
-            message: `${row.name}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            message: `${row.name}: ${error instanceof Error ? error.message : String(error)}`,
           });
         }
       }
@@ -171,9 +159,7 @@ export async function inspectSqlite(
 
     const secretColumns = tables.flatMap((t) =>
       t.columns
-        .filter((c) =>
-          /password|secret|token|api_?key|credential/i.test(c.name),
-        )
+        .filter((c) => /password|secret|token|api_?key|credential/i.test(c.name))
         .map((c) => `${t.name}.${c.name}`),
     );
     if (secretColumns.length)
@@ -228,8 +214,7 @@ function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
         preview: Buffer.from(v.subarray(0, 16)).toString("hex"),
       };
     else if (typeof v === "bigint") out[k] = v.toString();
-    else if (typeof v === "string" && v.length > 200)
-      out[k] = `${v.slice(0, 200)}…`;
+    else if (typeof v === "string" && v.length > 200) out[k] = `${v.slice(0, 200)}…`;
     else out[k] = v;
   }
   return out;

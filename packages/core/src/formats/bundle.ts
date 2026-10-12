@@ -53,11 +53,8 @@ const PRIVACY_KEYS: Record<string, string> = {
 };
 
 const dict = (v: PlistValue | undefined): Record<string, PlistValue> | null =>
-  v && typeof v === "object" && !Array.isArray(v)
-    ? (v as Record<string, PlistValue>)
-    : null;
-const str = (v: PlistValue | undefined): string =>
-  typeof v === "string" ? v : "";
+  v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, PlistValue>) : null;
+const str = (v: PlistValue | undefined): string => (typeof v === "string" ? v : "");
 
 /** True when the directory is a macOS or iOS application bundle. */
 export function isAppBundle(dir: string): boolean {
@@ -81,13 +78,9 @@ export function analyzeAppBundle(dir: string): BundleInfo {
   const root = macos ? join(dir, "Contents") : dir;
   const limitations: Limitation[] = [];
   const findings: Finding[] = [];
-  const info =
-    dict(parsePlist(new Uint8Array(readFileSync(join(root, "Info.plist"))))) ??
-    {};
+  const info = dict(parsePlist(new Uint8Array(readFileSync(join(root, "Info.plist"))))) ?? {};
   const executable = str(info["CFBundleExecutable"]);
-  const executablePath = macos
-    ? join(root, "MacOS", executable)
-    : join(root, executable);
+  const executablePath = macos ? join(root, "MacOS", executable) : join(root, executable);
 
   let main: BundleInfo["main"] = null;
   if (executable && existsSync(executablePath)) {
@@ -100,10 +93,7 @@ export function analyzeAppBundle(dir: string): BundleInfo {
         });
       else {
         const result = analyzeBinary(
-          targetFromBytes(
-            new Uint8Array(readFileSync(executablePath)),
-            executablePath,
-          ),
+          targetFromBytes(new Uint8Array(readFileSync(executablePath)), executablePath),
         );
         main = { summary: result.summary, binary: result.data };
         findings.push(
@@ -117,9 +107,7 @@ export function analyzeAppBundle(dir: string): BundleInfo {
     } catch (error) {
       limitations.push({
         code: "executable_unreadable",
-        message: `${executable}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        message: `${executable}: ${error instanceof Error ? error.message : String(error)}`,
       });
     }
   } else
@@ -162,14 +150,8 @@ export function analyzeAppBundle(dir: string): BundleInfo {
   const permissions = Object.entries(PRIVACY_KEYS)
     .filter(([key]) => info[key] !== undefined)
     .map(([key, reason]) => ({ key, reason: `${reason}: ${str(info[key])}` }));
-  const urlSchemes = (
-    (info["CFBundleURLTypes"] as PlistValue[] | undefined) ?? []
-  )
-    .flatMap((t) =>
-      ((dict(t)?.["CFBundleURLSchemes"] as PlistValue[] | undefined) ?? []).map(
-        str,
-      ),
-    )
+  const urlSchemes = ((info["CFBundleURLTypes"] as PlistValue[] | undefined) ?? [])
+    .flatMap((t) => ((dict(t)?.["CFBundleURLSchemes"] as PlistValue[] | undefined) ?? []).map(str))
     .filter(Boolean);
   const ats = dict(info["NSAppTransportSecurity"]);
   const frameworkNames = frameworks.map((f) => f.toLowerCase());
@@ -188,9 +170,7 @@ export function analyzeAppBundle(dir: string): BundleInfo {
               : existsSync(join(root, "MacOS", "Tauri"))
                 ? "Tauri"
                 : null;
-  const sandboxed = entitlements
-    ? entitlements["com.apple.security.app-sandbox"] === true
-    : null;
+  const sandboxed = entitlements ? entitlements["com.apple.security.app-sandbox"] === true : null;
   const mainMacho = main
     ? main.binary.kind === "macho"
       ? main.binary.macho
@@ -232,8 +212,7 @@ export function analyzeAppBundle(dir: string): BundleInfo {
       confidence: "confirmed",
     });
   if (
-    entitlements?.["com.apple.security.cs.allow-unsigned-executable-memory"] ===
-      true ||
+    entitlements?.["com.apple.security.cs.allow-unsigned-executable-memory"] === true ||
     entitlements?.["com.apple.security.cs.disable-library-validation"] === true
   ) {
     findings.push({
@@ -265,15 +244,10 @@ export function analyzeAppBundle(dir: string): BundleInfo {
     version: str(info["CFBundleShortVersionString"]),
     build: str(info["CFBundleVersion"]),
     executable,
-    minimumOs:
-      str(info["LSMinimumSystemVersion"]) ||
-      str(info["MinimumOSVersion"]) ||
-      null,
+    minimumOs: str(info["LSMinimumSystemVersion"]) || str(info["MinimumOSVersion"]) || null,
     category: str(info["LSApplicationCategoryType"]) || null,
     urlSchemes,
-    documentTypes: (
-      (info["CFBundleDocumentTypes"] as PlistValue[] | undefined) ?? []
-    ).length,
+    documentTypes: ((info["CFBundleDocumentTypes"] as PlistValue[] | undefined) ?? []).length,
     permissions,
     appTransportSecurity: {
       allowsArbitraryLoads: ats ? ats["NSAllowsArbitraryLoads"] === true : null,

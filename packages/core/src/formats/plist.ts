@@ -24,10 +24,7 @@ export function parsePlist(bytes: Uint8Array): PlistValue {
 
 function parseBinaryPlist(bytes: Uint8Array): PlistValue {
   if (bytes.length < 40)
-    throw new AnalysisError(
-      "malformed",
-      "binary plist shorter than its trailer",
-    );
+    throw new AnalysisError("malformed", "binary plist shorter than its trailer");
   const trailer = new ByteReader(bytes, bytes.length - 32, false);
   trailer.skip(6);
   const offsetSize = trailer.u8();
@@ -35,14 +32,8 @@ function parseBinaryPlist(bytes: Uint8Array): PlistValue {
   const objectCount = trailer.u64n();
   const topObject = trailer.u64n();
   const tableOffset = trailer.u64n();
-  if (
-    objectCount > 1_000_000 ||
-    tableOffset + objectCount * offsetSize > bytes.length
-  ) {
-    throw new AnalysisError(
-      "malformed",
-      "binary plist offset table out of range",
-    );
+  if (objectCount > 1_000_000 || tableOffset + objectCount * offsetSize > bytes.length) {
+    throw new AnalysisError("malformed", "binary plist offset table out of range");
   }
   const readSized = (at: number, size: number): number => {
     let v = 0;
@@ -66,8 +57,7 @@ function parseBinaryPlist(bytes: Uint8Array): PlistValue {
   };
   const seen = new Set<number>();
   const object = (index: number, depth = 0): PlistValue => {
-    if (depth > 64)
-      throw new AnalysisError("malformed", "binary plist nests too deeply");
+    if (depth > 64) throw new AnalysisError("malformed", "binary plist nests too deeply");
     const offset = offsets[index];
     if (offset === undefined || offset >= bytes.length)
       throw new AnalysisError("malformed", `object ${index} out of range`);
@@ -122,16 +112,11 @@ function parseBinaryPlist(bytes: Uint8Array): PlistValue {
       case 0xd: {
         const n = count(lower);
         const keys = Array.from({ length: n }, () => Number(readInt(refSize)));
-        const values = Array.from({ length: n }, () =>
-          Number(readInt(refSize)),
-        );
+        const values = Array.from({ length: n }, () => Number(readInt(refSize)));
         seen.add(index);
         const out: { [key: string]: PlistValue } = {};
         for (let i = 0; i < n; i++)
-          out[String(object(keys[i]!, depth + 1))] = object(
-            values[i]!,
-            depth + 1,
-          );
+          out[String(object(keys[i]!, depth + 1))] = object(values[i]!, depth + 1);
         seen.delete(index);
         return out;
       }
@@ -161,12 +146,8 @@ const ENTITIES: Record<string, string> = {
   "&apos;": "'",
 };
 const unescape = (s: string): string =>
-  s.replace(
-    /&(lt|gt|amp|quot|apos);|&#x([0-9a-fA-F]+);|&#(\d+);/g,
-    (m, named, hexCode, dec) =>
-      named
-        ? ENTITIES[m]!
-        : String.fromCodePoint(parseInt(hexCode ?? dec, hexCode ? 16 : 10)),
+  s.replace(/&(lt|gt|amp|quot|apos);|&#x([0-9a-fA-F]+);|&#(\d+);/g, (m, named, hexCode, dec) =>
+    named ? ENTITIES[m]! : String.fromCodePoint(parseInt(hexCode ?? dec, hexCode ? 16 : 10)),
   );
 
 /** Minimal XML reader for the plist subset: elements, text, CDATA, comments, self-closing tags. */
@@ -179,8 +160,7 @@ function parseXml(text: string): XmlNode {
     const top = stack[stack.length - 1]!;
     if (m[1] !== undefined) top.text += m[1];
     else if (m[2]) {
-      if (top.tag !== m[2])
-        throw new AnalysisError("malformed", `unexpected </${m[2]}>`);
+      if (top.tag !== m[2]) throw new AnalysisError("malformed", `unexpected </${m[2]}>`);
       stack.pop();
     } else if (m[3]) {
       const node: XmlNode = { tag: m[3], text: "", children: [] };
@@ -189,10 +169,7 @@ function parseXml(text: string): XmlNode {
     } else if (m[6] !== undefined) top.text += unescape(m[6]);
   }
   if (stack.length !== 1)
-    throw new AnalysisError(
-      "malformed",
-      `unclosed <${stack[stack.length - 1]!.tag}>`,
-    );
+    throw new AnalysisError("malformed", `unclosed <${stack[stack.length - 1]!.tag}>`);
   return root;
 }
 
@@ -208,10 +185,7 @@ function parseXmlPlist(text: string): PlistValue {
         for (let i = 0; i + 1 < node.children.length; i += 2) {
           const key = node.children[i]!;
           if (key.tag !== "key")
-            throw new AnalysisError(
-              "malformed",
-              `expected <key>, found <${key.tag}>`,
-            );
+            throw new AnalysisError("malformed", `expected <key>, found <${key.tag}>`);
           out[key.text] = convert(node.children[i + 1]!);
         }
         return out;
@@ -222,8 +196,7 @@ function parseXmlPlist(text: string): PlistValue {
         return node.text;
       case "integer": {
         const v = BigInt(node.text.trim());
-        return v <= BigInt(Number.MAX_SAFE_INTEGER) &&
-          v >= BigInt(Number.MIN_SAFE_INTEGER)
+        return v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= BigInt(Number.MIN_SAFE_INTEGER)
           ? Number(v)
           : v;
       }
@@ -238,10 +211,7 @@ function parseXmlPlist(text: string): PlistValue {
       case "data":
         return { $data: node.text.replace(/\s+/g, "") };
       default:
-        throw new AnalysisError(
-          "malformed",
-          `unknown plist element <${node.tag}>`,
-        );
+        throw new AnalysisError("malformed", `unknown plist element <${node.tag}>`);
     }
   };
   return convert(first);

@@ -5,15 +5,7 @@ import { useAsync } from "../lib/useAsync.js";
 import { statusLine, Table, Toolbar } from "./CollectionView.js";
 
 const PAGE = 500;
-const TAGS = [
-  "url",
-  "path",
-  "email",
-  "ip",
-  "format",
-  "secret-ish",
-  "base64-ish",
-];
+const TAGS = ["url", "path", "email", "ip", "format", "secret-ish", "base64-ish"];
 
 export function StringsView({
   targetId,
@@ -26,9 +18,8 @@ export function StringsView({
   const tag = query.get("tag") ?? "";
   const utf16 = query.get("utf16") === "1";
   const offset = Number(query.get("offset") ?? 0);
-  const page = useAsync(
-    `${targetId}:strings:${offset}:${text}:${tag}:${utf16}`,
-    () => api.strings(targetId, { offset, limit: PAGE, text, tag, utf16 }),
+  const page = useAsync(`${targetId}:strings:${offset}:${text}:${tag}:${utf16}`, () =>
+    api.strings(targetId, { offset, limit: PAGE, text, tag, utf16 }),
   );
   const set = (patch: Record<string, string | undefined>): void =>
     navigate(
@@ -66,9 +57,7 @@ export function StringsView({
           className="input"
           style={{ maxWidth: 160 }}
           value={tag}
-          onChange={(e) =>
-            set({ tag: e.target.value || undefined, offset: undefined })
-          }
+          onChange={(e) => set({ tag: e.target.value || undefined, offset: undefined })}
           aria-label="Filter by tag"
         >
           <option value="">All tags</option>
@@ -98,9 +87,7 @@ export function StringsView({
           <button
             className="btn"
             disabled={offset === 0}
-            onClick={() =>
-              set({ offset: String(Math.max(0, offset - PAGE)) || undefined })
-            }
+            onClick={() => set({ offset: String(Math.max(0, offset - PAGE)) || undefined })}
           >
             Previous
           </button>

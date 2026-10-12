@@ -60,9 +60,7 @@ esac
       provider: "radare2",
       operation: "functions",
     });
-    expect(functions.result).toEqual([
-      { name: "main", offset: 4096, size: 42 },
-    ]);
+    expect(functions.result).toEqual([{ name: "main", offset: 4096, size: 42 }]);
     expect(functions.limitations).toEqual([]);
     const dis = await runProvider({
       targetPath: target,
@@ -103,9 +101,7 @@ esac
       provider: "ghidra",
       operation: "functions",
     });
-    expect((first.result as { functions: unknown[] }).functions).toHaveLength(
-      1,
-    );
+    expect((first.result as { functions: unknown[] }).functions).toHaveLength(1);
     const second = await runProvider({
       targetPath: target,
       provider: "ghidra",

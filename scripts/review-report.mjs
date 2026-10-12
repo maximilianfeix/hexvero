@@ -60,20 +60,14 @@ const ok = results.every((r) => r.ok);
 const lines = [];
 lines.push(
   `## hexvero review · ${
-    ok
-      ? "all gates green"
-      : `${results.filter((r) => !r.ok).length} gate(s) failing`
+    ok ? "all gates green" : `${results.filter((r) => !r.ok).length} gate(s) failing`
   }`,
 );
 lines.push("");
 lines.push("| Gate | Result | Time |");
 lines.push("| --- | --- | --- |");
 for (const r of results)
-  lines.push(
-    `| ${r.name} | ${
-      r.ok ? "✅ pass" : "❌ fail"
-    } | ${(r.ms / 1000).toFixed(1)} s |`,
-  );
+  lines.push(`| ${r.name} | ${r.ok ? "✅ pass" : "❌ fail"} | ${(r.ms / 1000).toFixed(1)} s |`);
 for (const r of results.filter((x) => !x.ok)) {
   lines.push(
     "",

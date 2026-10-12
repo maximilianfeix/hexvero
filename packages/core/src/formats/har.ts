@@ -63,10 +63,7 @@ interface RawEntry {
 const SECRET_PARAMS =
   /^(api[_-]?key|token|access[_-]?token|auth|secret|password|pwd|sig|signature|key|session)$/i;
 
-const header = (
-  headers: RawHeader[] | undefined,
-  name: string,
-): string | undefined =>
+const header = (headers: RawHeader[] | undefined, name: string): string | undefined =>
   headers?.find((h) => h.name?.toLowerCase() === name)?.value;
 
 export function parseHar(bytes: Uint8Array): HarInfo {
@@ -82,9 +79,7 @@ export function parseHar(bytes: Uint8Array): HarInfo {
   } catch (error) {
     throw new AnalysisError(
       "malformed",
-      `HAR is not valid JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `HAR is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   const log = doc.log;
@@ -126,11 +121,8 @@ export function parseHar(bytes: Uint8Array): HarInfo {
     }
     const method = e.request?.method ?? "GET";
     const status = e.response?.status ?? 0;
-    const mimeType = (e.response?.content?.mimeType ?? "")
-      .split(";")[0]!
-      .trim();
-    const responseBytes =
-      e.response?.content?.size ?? e.response?.bodySize ?? 0;
+    const mimeType = (e.response?.content?.mimeType ?? "").split(";")[0]!.trim();
+    const responseBytes = e.response?.content?.size ?? e.response?.bodySize ?? 0;
     methods[method] = (methods[method] ?? 0) + 1;
     const bucket = status ? `${Math.floor(status / 100)}xx` : "none";
     statuses[bucket] = (statuses[bucket] ?? 0) + 1;
@@ -174,9 +166,7 @@ export function parseHar(bytes: Uint8Array): HarInfo {
   const hosts = [...hostStats]
     .map(([host, s]) => ({ host, ...s }))
     .toSorted((a, b) => b.count - a.count);
-  const apiEndpoints = [...endpoints.values()].toSorted(
-    (a, b) => b.count - a.count,
-  );
+  const apiEndpoints = [...endpoints.values()].toSorted((a, b) => b.count - a.count);
   const authed = entries.filter((e) => e.hasAuth).length;
   if (authed)
     findings.push({
@@ -216,8 +206,7 @@ export function parseHar(bytes: Uint8Array): HarInfo {
     });
 
   return {
-    creator:
-      `${log.creator?.name ?? "unknown"} ${log.creator?.version ?? ""}`.trim(),
+    creator: `${log.creator?.name ?? "unknown"} ${log.creator?.version ?? ""}`.trim(),
     pages: Array.isArray(log.pages) ? log.pages.length : 0,
     entries,
     hosts,

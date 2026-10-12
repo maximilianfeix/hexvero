@@ -5,17 +5,17 @@ large sentence per target that says what the file is. Everything else is quiet, 
 
 ## Color
 
-| Token            | Dark      | Light     | Role                                        |
-| ---------------- | --------- | --------- | ------------------------------------------- |
-| `--bg`           | `#1b1d21` | `#f3f4f6` | page                                        |
-| `--panel`        | `#23262c` | `#ffffff` | sidebar, table surfaces                     |
-| `--line`         | `#31353d` | `#dcdfe4` | hairlines, table rules                      |
-| `--ink`          | `#e8e6e1` | `#1d2026` | primary text (warm off-white, not pure)     |
-| `--ink-2`        | `#9a9ea7` | `#5c616b` | secondary text                              |
-| `--amber`        | `#f2b84b` | `#9a6a06` | the one accent: evidence, selection, focus  |
-| `--amber-soft`   | `#3a2f17` | `#fbefcf` | selected rows, highlighted bytes            |
-| `--alert`        | `#e5736f` | `#b3261e` | hardening off, dangerous permissions        |
-| `--ok`           | `#8fc98a` | `#2e7d32` | mitigation on, verified                     |
+| Token          | Dark      | Light     | Role                                       |
+| -------------- | --------- | --------- | ------------------------------------------ |
+| `--bg`         | `#1b1d21` | `#f3f4f6` | page                                       |
+| `--panel`      | `#23262c` | `#ffffff` | sidebar, table surfaces                    |
+| `--line`       | `#31353d` | `#dcdfe4` | hairlines, table rules                     |
+| `--ink`        | `#e8e6e1` | `#1d2026` | primary text (warm off-white, not pure)    |
+| `--ink-2`      | `#9a9ea7` | `#5c616b` | secondary text                             |
+| `--amber`      | `#f2b84b` | `#9a6a06` | the one accent: evidence, selection, focus |
+| `--amber-soft` | `#3a2f17` | `#fbefcf` | selected rows, highlighted bytes           |
+| `--alert`      | `#e5736f` | `#b3261e` | hardening off, dangerous permissions       |
+| `--ok`         | `#8fc98a` | `#2e7d32` | mitigation on, verified                    |
 
 Amber is spent on evidence only: confirmed findings, selected bytes, the active tab mark, focus rings.
 Red and green appear as small marks in fact tables, never as washes.

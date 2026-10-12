@@ -79,24 +79,24 @@ Or run without installing: `npx hexvero <command>`.
 
 ## What it reads
 
-| Target                     | Built-in result                                                                                   |
-| -------------------------- | ------------------------------------------------------------------------------------------------- |
-| ELF (32/64, LE/BE)         | Sections, segments, symbols, dynamic imports/exports, needed libraries, RPATH, build-id, NX/PIE/RELRO/canary/FORTIFY |
-| PE / PE32+                 | Sections with entropy, imports (names and ordinals), exports and forwarders, PDB path, ASLR/NX/CFG/GS/Authenticode  |
-| Mach-O (thin and fat)      | Load commands, segments, symbols, dylibs, UUID, platform/SDK, encryption, code signature, PIE/ARC/canary            |
-| Go binaries                | Compiler version, main module, dependencies with replacements, build settings, VCS revision                           |
-| .NET assemblies            | Assembly and references, types with methods, P/Invoke declarations, user strings, obfuscation hints                   |
-| WebAssembly                | Types, imports/exports with correct index spaces, memories, tables, producers, WASI/Emscripten/wasm-bindgen           |
-| EVM bytecode               | PUSH-aware disassembly, dispatch selectors with jump targets, solc metadata, DELEGATECALL/SELFDESTRUCT                 |
-| SQLite databases           | Tables, columns, row counts, sample rows, views, indexes, triggers (read-only via `node:sqlite`)                       |
-| plist (XML and binary)     | Fully decoded property list                                                                                           |
-| Android APK                | Manifest facts, permissions, components with intent filters, deep links, native libraries, DEX classes and packages, frameworks |
-| Java class / JAR / DEX     | Constant pool, members, referenced APIs, manifest and packages; DEX classes, strings and SDK hints                    |
-| Electron ASAR / JS apps    | Package facts, module roles, resolved import graph, IPC channel sender/receiver matching, preload and sandbox flags  |
-| JavaScript files           | Imports, requires, dynamic imports, exports, IPC usage, source map comment                                             |
-| Source maps                | Sources grouped by package, mapping count, original position lookup                                                   |
-| HAR captures               | Hosts, methods, status buckets, API-like endpoints, secrets in URLs, auth headers, WebSockets                          |
-| Anything                   | Strings (ASCII and UTF-16) with tags, bounded byte windows, entropy                                                   |
+| Target                  | Built-in result                                                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| ELF (32/64, LE/BE)      | Sections, segments, symbols, dynamic imports/exports, needed libraries, RPATH, build-id, NX/PIE/RELRO/canary/FORTIFY            |
+| PE / PE32+              | Sections with entropy, imports (names and ordinals), exports and forwarders, PDB path, ASLR/NX/CFG/GS/Authenticode              |
+| Mach-O (thin and fat)   | Load commands, segments, symbols, dylibs, UUID, platform/SDK, encryption, code signature, PIE/ARC/canary                        |
+| Go binaries             | Compiler version, main module, dependencies with replacements, build settings, VCS revision                                     |
+| .NET assemblies         | Assembly and references, types with methods, P/Invoke declarations, user strings, obfuscation hints                             |
+| WebAssembly             | Types, imports/exports with correct index spaces, memories, tables, producers, WASI/Emscripten/wasm-bindgen                     |
+| EVM bytecode            | PUSH-aware disassembly, dispatch selectors with jump targets, solc metadata, DELEGATECALL/SELFDESTRUCT                          |
+| SQLite databases        | Tables, columns, row counts, sample rows, views, indexes, triggers (read-only via `node:sqlite`)                                |
+| plist (XML and binary)  | Fully decoded property list                                                                                                     |
+| Android APK             | Manifest facts, permissions, components with intent filters, deep links, native libraries, DEX classes and packages, frameworks |
+| Java class / JAR / DEX  | Constant pool, members, referenced APIs, manifest and packages; DEX classes, strings and SDK hints                              |
+| Electron ASAR / JS apps | Package facts, module roles, resolved import graph, IPC channel sender/receiver matching, preload and sandbox flags             |
+| JavaScript files        | Imports, requires, dynamic imports, exports, IPC usage, source map comment                                                      |
+| Source maps             | Sources grouped by package, mapping count, original position lookup                                                             |
+| HAR captures            | Hosts, methods, status buckets, API-like endpoints, secrets in URLs, auth headers, WebSockets                                   |
+| Anything                | Strings (ASCII and UTF-16) with tags, bounded byte windows, entropy                                                             |
 
 <a id="cli"></a>
 
@@ -137,20 +137,20 @@ hexvero setup --client codex  # prints the TOML snippet for ~/.codex/config.toml
 
 Supported: Claude Code, Claude Desktop, Cursor, Windsurf, Gemini CLI, VS Code, Codex. Any other client can run `npx -y hexvero mcp` over stdio.
 
-| Tool                   | Purpose                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `hexvero_open`         | Register a file or directory; returns a content-derived id                                  |
-| `hexvero_analyze`      | Summary, findings, limitations, collection counts and a compact overview                    |
-| `hexvero_collection`   | Page any list: symbols, imports, exports, sections, types, selectors, requests, modules …   |
-| `hexvero_strings`      | Tagged strings with filter and paging                                                       |
-| `hexvero_bytes`        | A bounded hex window                                                                        |
-| `hexvero_export`       | The complete analysis to a file                                                             |
-| `hexvero_compare`      | Diff one collection between two targets                                                     |
-| `hexvero_sourcemap`    | Original position for a generated line/column                                               |
-| `hexvero_providers` · `hexvero_provider_run` | Detect and drive radare2, rizin or Ghidra                             |
-| `hexvero_list` · `hexvero_close`             | Session housekeeping                                                  |
+| Tool                                         | Purpose                                                                                   |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `hexvero_open`                               | Register a file or directory; returns a content-derived id                                |
+| `hexvero_analyze`                            | Summary, findings, limitations, collection counts and a compact overview                  |
+| `hexvero_collection`                         | Page any list: symbols, imports, exports, sections, types, selectors, requests, modules … |
+| `hexvero_strings`                            | Tagged strings with filter and paging                                                     |
+| `hexvero_bytes`                              | A bounded hex window                                                                      |
+| `hexvero_export`                             | The complete analysis to a file                                                           |
+| `hexvero_compare`                            | Diff one collection between two targets                                                   |
+| `hexvero_sourcemap`                          | Original position for a generated line/column                                             |
+| `hexvero_providers` · `hexvero_provider_run` | Detect and drive radare2, rizin or Ghidra                                                 |
+| `hexvero_list` · `hexvero_close`             | Session housekeeping                                                                      |
 
-Ask your agent: *"Open ~/Downloads/app.asar with hexvero, tell me which IPC channels the renderer can reach and whether nodeIntegration is on."* See [docs/mcp.md](docs/mcp.md).
+Ask your agent: _"Open ~/Downloads/app.asar with hexvero, tell me which IPC channels the renderer can reach and whether nodeIntegration is on."_ See [docs/mcp.md](docs/mcp.md).
 
 <a id="optional-engines"></a>
 
@@ -171,14 +171,14 @@ Ghidra imports each target once into a project cached under `~/.cache/hexvero` a
 
 [REA](https://github.com/morluto/rea) is the project that proved agents want this. hexvero is a smaller reimplementation that starts from its users' open issues.
 
-| | REA | hexvero |
-| --- | --- | --- |
-| MCP tools / catalog | 139 tools, ~2 MB | 12 tools, < 32 KiB |
-| Large results | Single JSON document; 500 MB bundles abort Node | Paged collections with byte budgets; export to file |
-| Native analysis without an engine | Limited | Full container parsing, Go, .NET, hardening facts |
-| Install | Node + Ghidra/Hopper/IDA + JDK/Python for most targets | Node only; engines optional |
-| GUI | None | Local web UI |
-| Dynamic analysis, Frida, ADB, process capture | Yes | Not in scope |
+|                                               | REA                                                    | hexvero                                             |
+| --------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------- |
+| MCP tools / catalog                           | 139 tools, ~2 MB                                       | 12 tools, < 32 KiB                                  |
+| Large results                                 | Single JSON document; 500 MB bundles abort Node        | Paged collections with byte budgets; export to file |
+| Native analysis without an engine             | Limited                                                | Full container parsing, Go, .NET, hardening facts   |
+| Install                                       | Node + Ghidra/Hopper/IDA + JDK/Python for most targets | Node only; engines optional                         |
+| GUI                                           | None                                                   | Local web UI                                        |
+| Dynamic analysis, Frida, ADB, process capture | Yes                                                    | Not in scope                                        |
 
 REA covers far more ground in dynamic and provider-driven analysis. If you need Hopper, IDA, Frida or Android device work today, use REA.
 

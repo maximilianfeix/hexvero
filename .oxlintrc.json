@@ -1,10 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "typescript",
-    "import",
-    "unicorn"
-  ],
+  "plugins": ["typescript", "import", "unicorn"],
   "categories": {
     "correctness": "error",
     "suspicious": "warn"
@@ -15,9 +11,5 @@
     "no-unmodified-loop-condition": "off",
     "import/no-unassigned-import": "off"
   },
-  "ignorePatterns": [
-    "**/dist/**",
-    "**/node_modules/**",
-    "packages/cli/ui/**"
-  ]
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "packages/cli/ui/**"]
 }

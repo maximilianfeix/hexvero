@@ -44,19 +44,10 @@ export function buildMacho(options: { pie?: boolean } = {}): Uint8Array {
   // LC_LOAD_DYLIB
   const dylib = "/usr/lib/libSystem.B.dylib";
   const dylibSize = Math.ceil((24 + dylib.length + 1) / 8) * 8;
-  b.u32(0xc)
-    .u32(dylibSize)
-    .u32(24)
-    .u32(2)
-    .u32(0x10000)
-    .u32(0x10000)
-    .cstr(dylib)
-    .align(8);
+  b.u32(0xc).u32(dylibSize).u32(24).u32(2).u32(0x10000).u32(0x10000).cstr(dylib).align(8);
   ncmds++;
   // LC_UUID
-  b.u32(0x1b)
-    .u32(24)
-    .bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+  b.u32(0x1b).u32(24).bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
   ncmds++;
   // LC_BUILD_VERSION (macOS 13.0, SDK 14.0, 0 tools)
   b.u32(0x32).u32(24).u32(1).u32(0x000d0000).u32(0x000e0000).u32(0);

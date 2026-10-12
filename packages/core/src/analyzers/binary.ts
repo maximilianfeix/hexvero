@@ -1,33 +1,30 @@
 import { parseDotnet, type DotnetInfo } from "../formats/dotnet.js";
 import { parseElf, type ElfInfo } from "../formats/elf.js";
-import {
-  parseGoBuildInfo,
-  type GoBuildInfo,
-  type VaResolver,
-} from "../formats/go.js";
+import { parseGoBuildInfo, type GoBuildInfo, type VaResolver } from "../formats/go.js";
 import { listFatSlices, parseMacho, type MachoInfo } from "../formats/macho.js";
 import { parsePe, type PeInfo } from "../formats/pe.js";
-import {
-  AnalysisError,
-  type Analysis,
-  type Finding,
-  type Limitation,
-} from "../model.js";
+import { readVersionInfo, type PeVersionInfo } from "../formats/peResources.js";
+import { detectToolchain, type ToolchainFacts } from "../formats/toolchain.js";
+import { cstringAt } from "../binary/reader.js";
+import { AnalysisError, type Analysis, type Finding, type Limitation } from "../model.js";
 import type { LoadedTarget } from "../target.js";
 
 type Go = Omit<GoBuildInfo, "findings" | "limitations">;
 type Dotnet = Omit<DotnetInfo, "findings" | "limitations">;
 type Macho = Omit<MachoInfo, "findings" | "limitations">;
+type Toolchain = Omit<ToolchainFacts, "findings">;
 
 export type BinaryData =
-  | { kind: "elf"; elf: Omit<ElfInfo, "findings" | "limitations">; go?: Go }
+  | { kind: "elf"; elf: Omit<ElfInfo, "findings" | "limitations">; go?: Go; toolchain?: Toolchain }
   | {
       kind: "pe";
       pe: Omit<PeInfo, "findings" | "limitations" | "rvaToOffset">;
       go?: Go;
       dotnet?: Dotnet;
+      toolchain?: Toolchain;
+      versionInfo?: PeVersionInfo;
     }
-  | { kind: "macho"; macho: Macho; go?: Go }
+  | { kind: "macho"; macho: Macho; go?: Go; toolchain?: Toolchain }
   | {
       kind: "macho-fat";
       slices: Array<{
@@ -36,6 +33,7 @@ export type BinaryData =
         size: number;
         macho: Macho;
         go?: Go;
+        toolchain?: Toolchain;
       }>;
     };
 
@@ -49,8 +47,7 @@ const rangeResolver =
   (ranges: Range[]): VaResolver =>
   (va) => {
     for (const r of ranges) {
-      if (va >= r.va && va < r.va + BigInt(r.size))
-        return r.offset + Number(va - r.va);
+      if (va >= r.va && va < r.va + BigInt(r.size)) return r.offset + Number(va - r.va);
     }
     return null;
   };
@@ -63,36 +60,31 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
   const limitations: Limitation[] = [];
   let summary = "";
 
-  const collect = <
-    T extends { findings: Finding[]; limitations: Limitation[] },
-  >(
+  const collect = <T extends { findings: Finding[]; limitations: Limitation[] }>(
     parsed: T,
     prefix = "",
   ): Omit<T, "findings" | "limitations"> => {
     const { findings: f, limitations: l, ...rest } = parsed;
-    findings.push(
-      ...(prefix ? f.map((x) => ({ ...x, title: `${prefix} ${x.title}` })) : f),
-    );
+    findings.push(...(prefix ? f.map((x) => ({ ...x, title: `${prefix} ${x.title}` })) : f));
     limitations.push(...l);
     return rest;
   };
-  const goOf = (
-    slice: Uint8Array,
-    resolve: VaResolver,
-    prefix = "",
-  ): Go | undefined => {
+  const goOf = (slice: Uint8Array, resolve: VaResolver, prefix = ""): Go | undefined => {
     const go = parseGoBuildInfo(slice, resolve);
     if (!go) return undefined;
-    summary += ` · Go ${go.goVersion.replace(/^go/, "")}${
-      go.mainPath ? ` (${go.mainPath})` : ""
-    }`;
+    summary += ` · Go ${go.goVersion.replace(/^go/, "")}${go.mainPath ? ` (${go.mainPath})` : ""}`;
     return collect(go, prefix);
   };
   const machoSlice = (
     slice: Uint8Array,
     prefix = "",
-  ): { macho: Macho; go?: Go } => {
+  ): { macho: Macho; go?: Go; toolchain: Toolchain } => {
     const macho = collect(parseMacho(slice), prefix);
+    const toolchain = toolchainOf(slice, {
+      sectionNames: macho.segments.flatMap((sg) => [sg.name, ...sg.sections.map((x) => x.name)]),
+      symbolNames: macho.symbols.map((x) => x.name),
+      libraries: macho.dylibs.map((x) => x.path),
+    });
     const go = goOf(
       slice,
       rangeResolver(
@@ -104,7 +96,21 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
       ),
       prefix,
     );
-    return go ? { macho, go } : { macho };
+    return go ? { macho, go, toolchain } : { macho, toolchain };
+  };
+
+  const toolchainOf = (
+    slice: Uint8Array,
+    ctx: {
+      comment?: string;
+      sectionNames: string[];
+      symbolNames: Iterable<string>;
+      libraries: string[];
+    },
+  ): Toolchain => {
+    const { findings: f, ...rest } = detectToolchain(slice, ctx);
+    findings.push(...f);
+    return rest;
   };
 
   let data: BinaryData;
@@ -123,7 +129,18 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
           })),
         ),
       );
-      data = go ? { kind: "elf", elf, go } : { kind: "elf", elf };
+      const commentSection = elf.sections.find((x) => x.name === ".comment");
+      const comment =
+        commentSection && commentSection.size < 65536
+          ? cstringAt(bytes, commentSection.offset, commentSection.size).replace(/\0/g, " ")
+          : undefined;
+      const toolchain = toolchainOf(bytes, {
+        ...(comment ? { comment } : {}),
+        sectionNames: elf.sections.map((x) => x.name),
+        symbolNames: elf.symbols.map((x) => x.name),
+        libraries: elf.needed,
+      });
+      data = go ? { kind: "elf", elf, go, toolchain } : { kind: "elf", elf, toolchain };
       break;
     }
     case "pe": {
@@ -134,6 +151,31 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
         pe.isClr ? " (.NET)" : ""
       }, ${pe.imports.length} import DLLs, ${pe.exports.length} exports`;
       data = { kind: "pe", pe };
+      data.toolchain = toolchainOf(bytes, {
+        sectionNames: pe.sections.map((x) => x.name),
+        symbolNames: pe.imports.flatMap((i) => i.functions),
+        libraries: pe.imports.map((i) => i.dll),
+      });
+      const versionInfo = readVersionInfo(bytes, parsed);
+      if (versionInfo) {
+        data.versionInfo = versionInfo;
+        const product =
+          versionInfo.strings["ProductName"] ?? versionInfo.strings["FileDescription"];
+        if (product) {
+          const detail = [
+            versionInfo.strings["CompanyName"],
+            versionInfo.strings["OriginalFilename"],
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          findings.push({
+            kind: "pe.version-info",
+            title: `${product} ${versionInfo.fileVersion ?? ""}`.trim(),
+            detail: detail || undefined,
+            confidence: "confirmed",
+          });
+        }
+      }
       if (pe.isClr) {
         try {
           const dotnet = collect(parseDotnet(bytes, parsed));
@@ -147,9 +189,7 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
         }
       } else {
         const base = BigInt(pe.imageBase);
-        const go = goOf(bytes, (va) =>
-          va >= base ? rvaToOffset(Number(va - base)) : null,
-        );
+        const go = goOf(bytes, (va) => (va >= base ? rvaToOffset(Number(va - base)) : null));
         if (go) data.go = go;
       }
       break;
@@ -165,10 +205,7 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
         cpu: s.cpu,
         offset: s.offset,
         size: s.size,
-        ...machoSlice(
-          bytes.subarray(s.offset, s.offset + s.size),
-          `[${s.cpu}]`,
-        ),
+        ...machoSlice(bytes.subarray(s.offset, s.offset + s.size), `[${s.cpu}]`),
       }));
       summary = `Universal Mach-O with ${slices.length} slices: ${slices.map((s) => s.cpu).join(", ")}${summary}`;
       data = { kind: "macho-fat", slices };

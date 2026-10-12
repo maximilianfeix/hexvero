@@ -29,10 +29,7 @@ export function heading(io: Io, text: string): string {
 export function formatFindings(io: Io, findings: Finding[]): string[] {
   if (!findings.length) return [paint(io, "dim", "  (no findings)")];
   return findings.map((f) => {
-    const badge =
-      f.confidence === "confirmed"
-        ? paint(io, "green", "●")
-        : paint(io, "yellow", "○");
+    const badge = f.confidence === "confirmed" ? paint(io, "green", "●") : paint(io, "yellow", "○");
     const detail = f.detail ? paint(io, "dim", ` — ${f.detail}`) : "";
     return `  ${badge} ${f.title}${detail}`;
   });
@@ -40,32 +37,22 @@ export function formatFindings(io: Io, findings: Finding[]): string[] {
 
 export function formatLimitations(io: Io, limitations: Limitation[]): string[] {
   return limitations.map(
-    (l) =>
-      `  ${paint(io, "yellow", "!")} ${l.message} ${paint(io, "dim", `(${l.code})`)}`,
+    (l) => `  ${paint(io, "yellow", "!")} ${l.message} ${paint(io, "dim", `(${l.code})`)}`,
   );
 }
 
 /** Renders a list of flat objects as an aligned table, truncating long cells. */
-export function table(
-  rows: Array<Record<string, unknown>>,
-  maxWidth = 60,
-): string[] {
+export function table(rows: Array<Record<string, unknown>>, maxWidth = 60): string[] {
   if (!rows.length) return ["  (empty)"];
-  const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter(
-    (c) => rows.some((r) => r[c] !== undefined && typeof r[c] !== "object"),
+  const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((c) =>
+    rows.some((r) => r[c] !== undefined && typeof r[c] !== "object"),
   );
   const cell = (v: unknown): string => {
     const text =
-      v === undefined || v === null
-        ? ""
-        : typeof v === "object"
-          ? JSON.stringify(v)
-          : String(v);
+      v === undefined || v === null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
     return text.length > maxWidth ? `${text.slice(0, maxWidth - 1)}…` : text;
   };
-  const widths = columns.map((c) =>
-    Math.max(c.length, ...rows.map((r) => cell(r[c]).length)),
-  );
+  const widths = columns.map((c) => Math.max(c.length, ...rows.map((r) => cell(r[c]).length)));
   const line = (values: string[]): string =>
     `  ${values.map((v, i) => v.padEnd(widths[i]!)).join("  ")}`.trimEnd();
   return [
@@ -80,16 +67,10 @@ export function hexdump(hex: string, ascii: string, offset: number): string[] {
   for (let i = 0; i < hex.length; i += 32) {
     const chunk = hex.slice(i, i + 32).match(/../g) ?? [];
     const addr = (offset + i / 2).toString(16).padStart(8, "0");
-    lines.push(
-      `  ${addr}  ${chunk.join(" ").padEnd(47)}  |${ascii.slice(i / 2, i / 2 + 16)}|`,
-    );
+    lines.push(`  ${addr}  ${chunk.join(" ").padEnd(47)}  |${ascii.slice(i / 2, i / 2 + 16)}|`);
   }
   return lines;
 }
 
 export const toJson = (value: unknown): string =>
-  JSON.stringify(
-    value,
-    (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v),
-    2,
-  );
+  JSON.stringify(value, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v), 2);

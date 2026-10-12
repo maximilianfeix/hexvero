@@ -104,10 +104,7 @@ const NODE_BUILTINS = new Set([
   "electron",
 ]);
 
-export function directoryTree(
-  root: string,
-  options: { maxFiles?: number } = {},
-): FileTree {
+export function directoryTree(root: string, options: { maxFiles?: number } = {}): FileTree {
   const maxFiles = options.maxFiles ?? 50_000;
   const files: FileTree["files"] = [];
   const walk = (dir: string, depth: number): void => {
@@ -147,8 +144,7 @@ export function directoryTree(
       if (relative(root, full).startsWith(".."))
         throw new AnalysisError("invalid_input", `${path} escapes the root`);
       const size = statSync(full).size;
-      if (size > maxBytes)
-        throw new AnalysisError("too_large", `${path} is ${size} bytes`);
+      if (size > maxBytes) throw new AnalysisError("too_large", `${path} is ${size} bytes`);
       return new Uint8Array(readFileSync(full));
     },
   };
@@ -187,15 +183,9 @@ interface PackageJson {
 
 const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 
-function resolveSpecifier(
-  from: string,
-  specifier: string,
-  known: Set<string>,
-): string | null {
+function resolveSpecifier(from: string, specifier: string, known: Set<string>): string | null {
   if (!specifier.startsWith(".") && !specifier.startsWith("/")) return null;
-  const base = posix
-    .normalize(posix.join(posix.dirname(from), specifier))
-    .replace(/^\.\//, "");
+  const base = posix.normalize(posix.join(posix.dirname(from), specifier)).replace(/^\.\//, "");
   const candidates = [
     base,
     `${base}.js`,
@@ -238,10 +228,7 @@ export function analyzeJavaScriptTree(
         devDependencies: Object.keys(raw.devDependencies ?? {}),
         scripts: Object.keys(raw.scripts ?? {}),
       };
-      electronVersion =
-        raw.dependencies?.["electron"] ??
-        raw.devDependencies?.["electron"] ??
-        null;
+      electronVersion = raw.dependencies?.["electron"] ?? raw.devDependencies?.["electron"] ?? null;
     } catch (error) {
       limitations.push({
         code: "package_json_invalid",
@@ -288,46 +275,33 @@ export function analyzeJavaScriptTree(
         message: `${file.path}: token budget exhausted; references after the cut are missing.`,
       });
     let role: JsModule["role"] = "unknown";
-    const usesElectron = scan.references.some(
-      (r) => r.specifier === "electron",
-    );
+    const usesElectron = scan.references.some((r) => r.specifier === "electron");
     if (usesElectron) electronSeen = true;
     if (
       scan.ipc.some((i) => i.api.startsWith("ipcMain.")) ||
       /BrowserWindow|app\.whenReady|app\.on\(/.test(source)
     )
       role = "main";
-    else if (scan.ipc.some((i) => i.api.startsWith("contextBridge.")))
-      role = "preload";
+    else if (scan.ipc.some((i) => i.api.startsWith("contextBridge."))) role = "preload";
     else if (
       scan.ipc.some((i) => i.api.startsWith("ipcRenderer.")) ||
       /document\.|window\./.test(source.slice(0, 50_000))
     )
       role = "renderer";
     if (pkg?.main && posix.normalize(pkg.main) === file.path) role = "main";
-    for (const m of source.matchAll(
-      /preload\s*:\s*[^,}\n]*?['"`]([^'"`]+)['"`]/g,
-    ))
+    for (const m of source.matchAll(/preload\s*:\s*[^,}\n]*?['"`]([^'"`]+)['"`]/g))
       preloadScripts.add(m[1]!);
-    for (const m of source.matchAll(
-      /preload\s*:\s*path\.join\([^)]*['"`]([^'"`]+\.c?js)['"`]\)/g,
-    ))
+    for (const m of source.matchAll(/preload\s*:\s*path\.join\([^)]*['"`]([^'"`]+\.c?js)['"`]\)/g))
       preloadScripts.add(m[1]!);
     const bool = (key: string): boolean | null => {
       const m = new RegExp(`${key}\\s*:\\s*(true|false)`).exec(source);
       return m ? m[1] === "true" : null;
     };
-    for (const key of [
-      "nodeIntegration",
-      "contextIsolation",
-      "sandbox",
-    ] as const) {
+    for (const key of ["nodeIntegration", "contextIsolation", "sandbox"] as const) {
       const v = bool(key);
       if (v !== null)
         flags[key] =
-          key === "nodeIntegration"
-            ? (flags[key] ?? false) || v
-            : (flags[key] ?? true) && v;
+          key === "nodeIntegration" ? (flags[key] ?? false) || v : (flags[key] ?? true) && v;
     }
     if (
       /@electron\/remote|require\(['"]electron['"]\)\.remote|enableRemoteModule\s*:\s*true/.test(
@@ -396,10 +370,7 @@ export function analyzeJavaScriptTree(
     });
 
   // IPC channel matching
-  const channels = new Map<
-    string,
-    { senders: Set<string>; receivers: Set<string> }
-  >();
+  const channels = new Map<string, { senders: Set<string>; receivers: Set<string> }>();
   for (const m of modules) {
     for (const u of m.ipc) {
       if (!u.channel || u.api.startsWith("contextBridge.")) continue;
@@ -436,9 +407,7 @@ export function analyzeJavaScriptTree(
       /* not a source map */
     }
   }
-  const nativeAddons = tree.files
-    .filter((f) => f.path.endsWith(".node"))
-    .map((f) => f.path);
+  const nativeAddons = tree.files.filter((f) => f.path.endsWith(".node")).map((f) => f.path);
 
   const electron =
     electronSeen || electronVersion || tree.kind === "asar"
@@ -510,9 +479,7 @@ export function analyzeJavaScriptTree(
       title: `${minified} minified bundles`,
       confidence: "inferred",
     });
-  const unresolved = edges.filter(
-    (e) => !e.resolved && e.kind !== "dynamic-import",
-  ).length;
+  const unresolved = edges.filter((e) => !e.resolved && e.kind !== "dynamic-import").length;
   if (unresolved)
     limitations.push({
       code: "unresolved_references",

@@ -62,9 +62,7 @@ describe("hexvero HTTP API", () => {
     });
     expect(uploaded.status).toBe(201);
     expect((uploaded.body["info"] as { format: string }).format).toBe("elf");
-    expect(((await api("/targets")).body["targets"] as unknown[]).length).toBe(
-      2,
-    );
+    expect(((await api("/targets")).body["targets"] as unknown[]).length).toBe(2);
   });
 
   it("serves analysis, collections, strings, bytes and export", async () => {
@@ -75,9 +73,7 @@ describe("hexvero HTTP API", () => {
     const page = await api(`/targets/${targetId}/collections/symbols?limit=1`);
     expect(page.body).toMatchObject({ total: 2, truncated: true });
     const strings = await api(`/targets/${targetId}/strings?tag=path`);
-    expect(
-      (strings.body["items"] as Array<{ value: string }>)[0]?.value,
-    ).toContain("ld-linux");
+    expect((strings.body["items"] as Array<{ value: string }>)[0]?.value).toContain("ld-linux");
     const bytes = await api(`/targets/${targetId}/bytes?offset=0&length=4`);
     expect(bytes.body["hex"]).toBe("7f454c46");
     const exported = await fetch(

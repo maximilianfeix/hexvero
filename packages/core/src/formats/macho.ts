@@ -37,10 +37,7 @@ export interface MachoInfo {
   symbols: MachoSymbol[];
   encrypted: boolean;
   codeSigned: boolean;
-  mitigations: Record<
-    "pie" | "canary" | "arc" | "restrict" | "stripped",
-    boolean
-  >;
+  mitigations: Record<"pie" | "canary" | "arc" | "restrict" | "stripped", boolean>;
   findings: Finding[];
   limitations: Limitation[];
 }
@@ -79,10 +76,8 @@ const PLATFORMS: Record<number, string> = {
   9: "watchOS Simulator",
   11: "visionOS",
 };
-const prot = (p: number): string =>
-  `${p & 1 ? "r" : "-"}${p & 2 ? "w" : "-"}${p & 4 ? "x" : "-"}`;
-const version = (v: number): string =>
-  `${v >> 16}.${(v >> 8) & 0xff}.${v & 0xff}`;
+const prot = (p: number): string => `${p & 1 ? "r" : "-"}${p & 2 ? "w" : "-"}${p & 4 ? "x" : "-"}`;
+const version = (v: number): string => `${v >> 16}.${(v >> 8) & 0xff}.${v & 0xff}`;
 
 /** Reads the fat header without parsing the slices. */
 export function listFatSlices(
@@ -114,11 +109,8 @@ export function parseMachoFat(bytes: Uint8Array): MachoFatInfo {
 }
 
 export function parseMacho(bytes: Uint8Array): MachoInfo {
-  if (bytes.length < 28)
-    throw new AnalysisError("malformed", "Mach-O header truncated");
-  const m =
-    ((bytes[0]! << 24) | (bytes[1]! << 16) | (bytes[2]! << 8) | bytes[3]!) >>>
-    0;
+  if (bytes.length < 28) throw new AnalysisError("malformed", "Mach-O header truncated");
+  const m = ((bytes[0]! << 24) | (bytes[1]! << 16) | (bytes[2]! << 8) | bytes[3]!) >>> 0;
   const little = m === 0xcefaedfe || m === 0xcffaedfe;
   const bits: 32 | 64 = m === 0xfeedfacf || m === 0xcffaedfe ? 64 : 32;
   const r = new ByteReader(bytes, 4, little);
@@ -216,11 +208,7 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
         }
         const stroff = r.u32();
         const entSize = bits === 64 ? 16 : 12;
-        for (
-          let s = 0;
-          s < nsyms && symoff + (s + 1) * entSize <= bytes.length;
-          s++
-        ) {
+        for (let s = 0; s < nsyms && symoff + (s + 1) * entSize <= bytes.length; s++) {
           r.seek(symoff + s * entSize);
           const strx = r.u32();
           const ntype = r.u8();
@@ -235,13 +223,7 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
             name,
             value: hex(value),
             type:
-              kind === 0
-                ? "undefined"
-                : kind === 2
-                  ? "absolute"
-                  : ntype & 1
-                    ? "external"
-                    : "local",
+              kind === 0 ? "undefined" : kind === 2 ? "absolute" : ntype & 1 ? "external" : "local",
             section: sect,
           });
         }
@@ -339,9 +321,7 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
       title: "Links Swift runtime",
       confidence: "confirmed",
     });
-  const objc = segments.some((s) =>
-    s.sections.some((x) => x.name.startsWith("__objc_")),
-  );
+  const objc = segments.some((s) => s.sections.some((x) => x.name.startsWith("__objc_")));
   if (objc)
     findings.push({
       kind: "macho.objc",

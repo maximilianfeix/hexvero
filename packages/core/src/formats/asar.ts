@@ -33,18 +33,14 @@ interface Node {
  * length) followed by the JSON tree, then concatenated file contents.
  */
 export function openAsar(bytes: Uint8Array): AsarArchive {
-  const { headerSize, files, dataStart } = parseHeader(
-    bytes.subarray(0, 16),
-    (off, len) => bytes.subarray(off, off + len),
+  const { headerSize, files, dataStart } = parseHeader(bytes.subarray(0, 16), (off, len) =>
+    bytes.subarray(off, off + len),
   );
   const read = (file: AsarFile, maxBytes = 64 * 1024 * 1024): Uint8Array => {
     checkReadable(file, maxBytes);
     const start = dataStart + file.offset!;
     if (start + file.size > bytes.length)
-      throw new AnalysisError(
-        "malformed",
-        `${file.path} extends past the archive`,
-      );
+      throw new AnalysisError("malformed", `${file.path} extends past the archive`);
     return bytes.subarray(start, start + file.size);
   };
   return {
@@ -77,10 +73,7 @@ export function openAsarFile(path: string): AsarArchive {
       const out = new Uint8Array(file.size);
       const n = readSync(h, out, 0, file.size, dataStart + file.offset!);
       if (n < file.size)
-        throw new AnalysisError(
-          "malformed",
-          `${file.path} extends past the archive`,
-        );
+        throw new AnalysisError("malformed", `${file.path} extends past the archive`);
       return out;
     } finally {
       closeSync(h);
@@ -96,23 +89,16 @@ export function openAsarFile(path: string): AsarArchive {
 
 function checkReadable(file: AsarFile, maxBytes: number): void {
   if (file.offset === null)
-    throw new AnalysisError(
-      "not_found",
-      `${file.path} is stored outside the archive (unpacked)`,
-    );
+    throw new AnalysisError("not_found", `${file.path} is stored outside the archive (unpacked)`);
   if (file.size > maxBytes)
-    throw new AnalysisError(
-      "too_large",
-      `${file.path} is ${file.size} bytes (limit ${maxBytes})`,
-    );
+    throw new AnalysisError("too_large", `${file.path} is ${file.size} bytes (limit ${maxBytes})`);
 }
 
 function parseHeader(
   prefix: Uint8Array,
   readAt: (offset: number, length: number) => Uint8Array,
 ): { headerSize: number; files: AsarFile[]; dataStart: number } {
-  if (prefix.length < 16)
-    throw new AnalysisError("malformed", "ASAR header truncated");
+  if (prefix.length < 16) throw new AnalysisError("malformed", "ASAR header truncated");
   const r = new ByteReader(prefix, 0, true);
   r.u32(); // pickle size header (always 4)
   const headerSize = r.u32();
@@ -121,8 +107,7 @@ function parseHeader(
   if (jsonLength > headerSize || jsonLength > 256 * 1024 * 1024)
     throw new AnalysisError("malformed", "ASAR header length out of range");
   const jsonBytes = readAt(16, jsonLength);
-  if (jsonBytes.length < jsonLength)
-    throw new AnalysisError("malformed", "ASAR header truncated");
+  if (jsonBytes.length < jsonLength) throw new AnalysisError("malformed", "ASAR header truncated");
   let tree: Node;
   try {
     tree = JSON.parse(utf8String(jsonBytes));
@@ -142,10 +127,7 @@ function parseHeader(
       files.push({
         path: filePath,
         size: child.size ?? 0,
-        offset:
-          child.offset !== undefined && !child.unpacked
-            ? Number(child.offset)
-            : null,
+        offset: child.offset !== undefined && !child.unpacked ? Number(child.offset) : null,
         unpacked: Boolean(child.unpacked),
         executable: Boolean(child.executable),
         integrity: child.integrity?.hash ?? null,

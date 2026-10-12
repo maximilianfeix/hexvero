@@ -8,12 +8,7 @@ import {
   type ProviderName,
   type ProviderOperation,
 } from "@hexvero/core";
-import {
-  createHandlers,
-  toolSchemas,
-  type ProviderBridge,
-  type ToolName,
-} from "./tools.js";
+import { createHandlers, toolSchemas, type ProviderBridge, type ToolName } from "./tools.js";
 
 export { toolSchemas, type ToolName, type ProviderBridge } from "./tools.js";
 
@@ -67,9 +62,7 @@ export function createHexveroServer(
         try {
           const result = await handlers[name](args ?? {});
           return {
-            content: [
-              { type: "text" as const, text: JSON.stringify(result, replacer) },
-            ],
+            content: [{ type: "text" as const, text: JSON.stringify(result, replacer) }],
           };
         } catch (error) {
           const payload =
@@ -84,8 +77,7 @@ export function createHexveroServer(
               : {
                   error: {
                     code: "internal",
-                    message:
-                      error instanceof Error ? error.message : String(error),
+                    message: error instanceof Error ? error.message : String(error),
                   },
                 };
           return {
@@ -99,10 +91,7 @@ export function createHexveroServer(
   return server;
 }
 
-export async function serveStdio(
-  session?: Session,
-  providers?: ProviderBridge,
-): Promise<void> {
+export async function serveStdio(session?: Session, providers?: ProviderBridge): Promise<void> {
   const server = createHexveroServer(session, providers);
   await server.connect(new StdioServerTransport());
 }

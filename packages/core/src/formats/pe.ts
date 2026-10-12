@@ -106,14 +106,8 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   }
   const r = new ByteReader(bytes, 0x3c);
   const peOffset = r.u32();
-  if (
-    peOffset + 24 > bytes.length ||
-    latin1(bytes.subarray(peOffset, peOffset + 4)) !== "PE\0\0"
-  ) {
-    throw new AnalysisError(
-      "malformed",
-      "Missing PE signature (DOS-only executable?)",
-    );
+  if (peOffset + 24 > bytes.length || latin1(bytes.subarray(peOffset, peOffset + 4)) !== "PE\0\0") {
+    throw new AnalysisError("malformed", "Missing PE signature (DOS-only executable?)");
   }
   const limitations: Limitation[] = [];
   const findings: Finding[] = [];
@@ -130,10 +124,7 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   const magic = r.u16();
   const bits: 32 | 64 = magic === 0x20b ? 64 : 32;
   if (magic !== 0x10b && magic !== 0x20b)
-    throw new AnalysisError(
-      "malformed",
-      `Unknown optional header magic ${hex(magic)}`,
-    );
+    throw new AnalysisError("malformed", `Unknown optional header magic ${hex(magic)}`);
   r.seek(optStart + 16);
   const entry = r.u32();
   r.seek(bits === 64 ? optStart + 24 : optStart + 28);
@@ -197,11 +188,7 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   const importDir = dirs[1];
   if (importDir && importDir.rva) {
     let at = rvaToOffset(importDir.rva);
-    for (
-      let n = 0;
-      at !== null && at + 20 <= bytes.length && n < 512;
-      n++, at += 20
-    ) {
+    for (let n = 0; at !== null && at + 20 <= bytes.length && n < 512; n++, at += 20) {
       r.seek(at);
       const oft = r.u32();
       r.skip(8);
@@ -247,9 +234,7 @@ export function parsePe(bytes: Uint8Array): PeInfo {
           message: `Exports truncated to ${limit}.`,
         });
       const tables =
-        names !== null && ords !== null && funcs !== null
-          ? { names, ords, funcs }
-          : null;
+        names !== null && ords !== null && funcs !== null ? { names, ords, funcs } : null;
       for (let i = 0; tables && i < limit; i++) {
         r.seek(tables.names + i * 4);
         const name = readString(r.u32());
@@ -258,8 +243,7 @@ export function parsePe(bytes: Uint8Array): PeInfo {
         if (ordinal >= funcCount) continue;
         r.seek(tables.funcs + ordinal * 4);
         const rva = r.u32();
-        const inExportDir =
-          rva >= exportDir.rva && rva < exportDir.rva + exportDir.size;
+        const inExportDir = rva >= exportDir.rva && rva < exportDir.rva + exportDir.size;
         const item: PeExport = { name, ordinal: ordinal + base, rva: hex(rva) };
         if (inExportDir) item.forwarder = readString(rva);
         exports.push(item);
@@ -305,8 +289,7 @@ export function parsePe(bytes: Uint8Array): PeInfo {
   const isClr = Boolean(clr && clr.rva && clr.size);
   const dataDirectories: PeInfo["dataDirectories"] = {};
   dirs.forEach((d, i) => {
-    if (d.rva || d.size)
-      dataDirectories[DIRECTORIES[i]!] = { rva: hex(d.rva), size: d.size };
+    if (d.rva || d.size) dataDirectories[DIRECTORIES[i]!] = { rva: hex(d.rva), size: d.size };
   });
   if (isClr)
     findings.push({

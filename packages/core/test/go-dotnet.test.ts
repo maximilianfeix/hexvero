@@ -31,11 +31,7 @@ describe("parseGoBuildInfo", () => {
       CGO_ENABLED: "1",
       "vcs.revision": "0123456789abcdef",
     });
-    expect(info.findings.map((f) => f.kind)).toEqual([
-      "go.stripped",
-      "go.cgo",
-      "go.vcs",
-    ]);
+    expect(info.findings.map((f) => f.kind)).toEqual(["go.stripped", "go.cgo", "go.vcs"]);
     expect(info.limitations).toEqual([]);
   });
   it("follows pointers through the VA resolver", () => {
@@ -44,10 +40,7 @@ describe("parseGoBuildInfo", () => {
     expect(info.dependencies).toEqual([]);
   });
   it("falls back to a string scan", () => {
-    const info = parseGoBuildInfo(
-      new TextEncoder().encode("xx go1.21.0 yy"),
-      () => null,
-    )!;
+    const info = parseGoBuildInfo(new TextEncoder().encode("xx go1.21.0 yy"), () => null)!;
     expect(info.source).toBe("string-scan");
     expect(info.limitations[0]?.code).toBe("go_no_buildinfo");
     expect(parseGoBuildInfo(new Uint8Array(32), () => null)).toBeNull();
@@ -65,23 +58,16 @@ describe("parseDotnet", () => {
       culture: "",
       publicKey: false,
     });
-    expect(info.assemblyRefs).toEqual([
-      { name: "mscorlib", version: "4.0.0.0" },
-    ]);
+    expect(info.assemblyRefs).toEqual([{ name: "mscorlib", version: "4.0.0.0" }]);
     expect(info.moduleRefs).toEqual(["kernel32.dll"]);
-    expect(info.types.map((t) => `${t.namespace}.${t.name}`)).toEqual([
-      ".<Module>",
-      "Bar.Foo",
-    ]);
+    expect(info.types.map((t) => `${t.namespace}.${t.name}`)).toEqual([".<Module>", "Bar.Foo"]);
     expect(info.types[1]).toMatchObject({
       visibility: "public",
       kind: "class",
       extends: "System.Object",
       methods: ["Main", "Run"],
     });
-    expect(info.pinvokes).toEqual([
-      { dll: "kernel32.dll", entryPoint: "Beep", method: "Run" },
-    ]);
+    expect(info.pinvokes).toEqual([{ dll: "kernel32.dll", entryPoint: "Beep", method: "Run" }]);
     expect(info.userStrings).toEqual(["Hello"]);
     expect(info.entryPointToken).toBe("0x06000001");
     expect(info.flags.ilOnly).toBe(true);
@@ -90,8 +76,7 @@ describe("parseDotnet", () => {
   it("is wired into analyzeBinary for PE targets", () => {
     const result = analyzeBinary(targetFromBytes(bytes, "MyAsm.dll"));
     expect(result.data.kind).toBe("pe");
-    if (result.data.kind === "pe")
-      expect(result.data.dotnet?.assembly?.name).toBe("MyAsm");
+    if (result.data.kind === "pe") expect(result.data.dotnet?.assembly?.name).toBe("MyAsm");
     expect(result.summary).toContain(".NET");
   });
 });

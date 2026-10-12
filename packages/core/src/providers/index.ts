@@ -69,8 +69,7 @@ export async function detectProviders(): Promise<ProviderStatus[]> {
     };
     if (path) {
       status.path = path;
-      const version =
-        name === "ghidra" ? undefined : await versionOf(path, ["-v"]);
+      const version = name === "ghidra" ? undefined : await versionOf(path, ["-v"]);
       if (version) status.version = version;
     }
     out.push(status);

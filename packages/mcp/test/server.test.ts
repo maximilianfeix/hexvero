@@ -13,8 +13,7 @@ describe("hexvero MCP server", () => {
   const client = new Client({ name: "test", version: "0" });
   let targetId = "";
   beforeAll(async () => {
-    const [clientTransport, serverTransport] =
-      InMemoryTransport.createLinkedPair();
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await createHexveroServer(new Session()).connect(serverTransport);
     await client.connect(clientTransport);
   });
@@ -25,9 +24,7 @@ describe("hexvero MCP server", () => {
     args: Record<string, unknown> = {},
   ): Promise<{ ok: boolean; body: Record<string, unknown> }> => {
     const result = await client.callTool({ name, arguments: args });
-    const content = (
-      result.content as Array<{ type: string; text: string }>
-    )[0]!;
+    const content = (result.content as Array<{ type: string; text: string }>)[0]!;
     return {
       ok: !result.isError,
       body: JSON.parse(content.text) as Record<string, unknown>,
@@ -39,9 +36,7 @@ describe("hexvero MCP server", () => {
     expect(tools.map((t) => t.name)).toHaveLength(12);
     const bytes = Buffer.byteLength(JSON.stringify(tools));
     expect(bytes).toBeLessThan(32 * 1024);
-    expect(tools.every((t) => t.description && t.description.length > 20)).toBe(
-      true,
-    );
+    expect(tools.every((t) => t.description && t.description.length > 20)).toBe(true);
   });
 
   it("opens, analyzes and pages a target", async () => {
@@ -88,9 +83,7 @@ describe("hexvero MCP server", () => {
       collection: "nothing",
     });
     expect(badCollection.ok).toBe(false);
-    expect(
-      (badCollection.body["error"] as { message: string }).message,
-    ).toContain("available");
+    expect((badCollection.body["error"] as { message: string }).message).toContain("available");
   });
 
   it("compares collections and exports to a file", async () => {
@@ -110,10 +103,10 @@ describe("hexvero MCP server", () => {
     expect(exported.ok).toBe(true);
     expect(exported.body["bytes"]).toBeGreaterThan(100);
     const providers = await call("hexvero_providers");
-    expect(
-      (providers.body["providers"] as Array<{ name: string }>).map(
-        (p) => p.name,
-      ),
-    ).toEqual(["radare2", "rizin", "ghidra"]);
+    expect((providers.body["providers"] as Array<{ name: string }>).map((p) => p.name)).toEqual([
+      "radare2",
+      "rizin",
+      "ghidra",
+    ]);
   });
 });

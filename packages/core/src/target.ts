@@ -43,21 +43,14 @@ export async function loadTarget(
     const head = readHead(absolute, 64 * 1024);
     const format = detectFormat(head, absolute);
     if (!LAZY_FORMATS.has(format)) {
-      throw new AnalysisError(
-        "too_large",
-        `${absolute} is ${size} bytes; limit is ${maxBytes}`,
-        {
-          size,
-          maxBytes,
-          format,
-        },
-      );
+      throw new AnalysisError("too_large", `${absolute} is ${size} bytes; limit is ${maxBytes}`, {
+        size,
+        maxBytes,
+        format,
+      });
     }
     // Identity for lazy targets hashes the first 64 KiB plus the size instead of the whole file.
-    const sha256 = hash("sha256")
-      .update(head)
-      .update(String(size))
-      .digest("hex");
+    const sha256 = hash("sha256").update(head).update(String(size)).digest("hex");
     return {
       info: { path: absolute, size, sha256, format },
       bytes: new Uint8Array(),
@@ -90,11 +83,7 @@ export function targetFromBytes(bytes: Uint8Array, name: string): LoadedTarget {
 }
 
 /** Reads `length` bytes at `offset` straight from disk; used for lazy targets. */
-export function readWindow(
-  path: string,
-  offset: number,
-  length: number,
-): Uint8Array {
+export function readWindow(path: string, offset: number, length: number): Uint8Array {
   const fd = openSync(path, "r");
   try {
     const out = new Uint8Array(length);

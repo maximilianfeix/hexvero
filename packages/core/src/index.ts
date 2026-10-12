@@ -1,36 +1,14 @@
 export * from "./model.js";
 export * from "./target.js";
 export { detectFormat } from "./formats/detect.js";
-export {
-  parseElf,
-  type ElfInfo,
-  type ElfSymbol,
-  type ElfSection,
-} from "./formats/elf.js";
+export { parseElf, type ElfInfo, type ElfSymbol, type ElfSection } from "./formats/elf.js";
 export { parsePe, shannonEntropy, type PeInfo } from "./formats/pe.js";
-export {
-  parseMacho,
-  parseMachoFat,
-  type MachoInfo,
-  type MachoFatInfo,
-} from "./formats/macho.js";
-export {
-  extractStrings,
-  classifyString,
-  type ExtractedString,
-} from "./binary/strings.js";
+export { parseMacho, parseMachoFat, type MachoInfo, type MachoFatInfo } from "./formats/macho.js";
+export { extractStrings, classifyString, type ExtractedString } from "./binary/strings.js";
 export { ByteReader, hex } from "./binary/reader.js";
 export { analyzeBinary, type BinaryData } from "./analyzers/binary.js";
-export {
-  parseGoBuildInfo,
-  type GoBuildInfo,
-  type GoModule,
-} from "./formats/go.js";
-export {
-  parseDotnet,
-  type DotnetInfo,
-  type DotnetType,
-} from "./formats/dotnet.js";
+export { parseGoBuildInfo, type GoBuildInfo, type GoModule } from "./formats/go.js";
+export { parseDotnet, type DotnetInfo, type DotnetType } from "./formats/dotnet.js";
 export { parseWasm, type WasmInfo } from "./formats/wasm.js";
 export {
   parseEvm,
@@ -41,11 +19,7 @@ export {
 } from "./formats/evm.js";
 export { parsePlist, type PlistValue } from "./formats/plist.js";
 export { parseHar, type HarInfo, type HarRequest } from "./formats/har.js";
-export {
-  inspectSqlite,
-  type SqliteInfo,
-  type SqliteTable,
-} from "./formats/sqlite.js";
+export { inspectSqlite, type SqliteInfo, type SqliteTable } from "./formats/sqlite.js";
 export { openZip, type ZipArchive, type ZipEntry } from "./formats/zip.js";
 export { parseAxml, type AxmlElement } from "./formats/axml.js";
 export { parseApk, type ApkInfo, type ApkComponent } from "./formats/apk.js";
@@ -72,11 +46,7 @@ export {
   type JsEdge,
   type FileTree,
 } from "./javascript/app.js";
-export {
-  analyzeTarget,
-  type AnyAnalysis,
-  type AnalysisData,
-} from "./analyzers/dispatch.js";
+export { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
 export {
   Session,
   collectionsOf,
@@ -94,20 +64,8 @@ export {
   type ProviderName,
   type ProviderOperation,
 } from "./providers/run.js";
-export {
-  parseJavaClass,
-  parseJar,
-  type JavaClassInfo,
-  type JarInfo,
-} from "./formats/java.js";
-export {
-  parseDex,
-  descriptorToName,
-  type DexInfo,
-  type DexClass,
-} from "./formats/dex.js";
-export {
-  analyzeAppBundle,
-  isAppBundle,
-  type BundleInfo,
-} from "./formats/bundle.js";
+export { parseJavaClass, parseJar, type JavaClassInfo, type JarInfo } from "./formats/java.js";
+export { parseDex, descriptorToName, type DexInfo, type DexClass } from "./formats/dex.js";
+export { analyzeAppBundle, isAppBundle, type BundleInfo } from "./formats/bundle.js";
+export { detectToolchain, type ToolchainFacts } from "./formats/toolchain.js";
+export { readVersionInfo, type PeVersionInfo } from "./formats/peResources.js";

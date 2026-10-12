@@ -1,9 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import {
-  analyzeTarget,
-  type AnyAnalysis,
-  type AnalysisData,
-} from "./analyzers/dispatch.js";
+import { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
 import { AnalysisError, page, type Page, type TargetInfo } from "./model.js";
@@ -58,9 +54,7 @@ interface Entry {
 export class Session {
   private readonly entries = new Map<string, Entry>();
 
-  constructor(
-    private readonly options: { maxTargets?: number; maxBytes?: number } = {},
-  ) {}
+  constructor(private readonly options: { maxTargets?: number; maxBytes?: number } = {}) {}
 
   list(): TargetRecord[] {
     return [...this.entries.values()].map((e) => e.record);
@@ -103,12 +97,7 @@ export class Session {
 
   private entry(id: string): Entry {
     const e = this.entries.get(id);
-    if (!e)
-      throw new AnalysisError(
-        "not_found",
-        `No open target ${id}; call open first`,
-        { id },
-      );
+    if (!e) throw new AnalysisError("not_found", `No open target ${id}; call open first`, { id });
     return e;
   }
 
@@ -122,9 +111,7 @@ export class Session {
   }
 
   /** Names of the list-like collections available for this target after analysis. */
-  private async collectionTable(
-    id: string,
-  ): Promise<Record<string, unknown[]>> {
+  private async collectionTable(id: string): Promise<Record<string, unknown[]>> {
     const analysis = await this.analyze(id);
     const e = this.entry(id);
     e.collections ??= collectionsOf(analysis, e.loaded);
@@ -138,11 +125,7 @@ export class Session {
     return out;
   }
 
-  async collection(
-    id: string,
-    name: string,
-    query: CollectionQuery = {},
-  ): Promise<CollectionPage> {
+  async collection(id: string, name: string, query: CollectionQuery = {}): Promise<CollectionPage> {
     const all = await this.collectionTable(id);
     const items = all[name];
     if (!items) {
@@ -166,10 +149,7 @@ export class Session {
   }> {
     const e = this.entry(id);
     if (e.loaded.info.format === "directory")
-      throw new AnalysisError(
-        "invalid_input",
-        "Strings are extracted from files, not directories",
-      );
+      throw new AnalysisError("invalid_input", "Strings are extracted from files, not directories");
     const minLength = query.minLength ?? 4;
     const key = `${minLength}:${query.utf16 ? 1 : 0}`;
     if (!e.strings || e.strings.key !== key) {
@@ -185,9 +165,7 @@ export class Session {
     }
     let items = e.strings.items;
     if (query.tag) items = items.filter((s) => s.tags.includes(query.tag!));
-    return pageOf("strings", items, query) as CollectionPage<
-      (typeof items)[number]
-    >;
+    return pageOf("strings", items, query) as CollectionPage<(typeof items)[number]>;
   }
 
   /** Whole-file contents for in-memory targets (empty for lazy ones). */
@@ -208,15 +186,11 @@ export class Session {
     const e = this.entry(id);
     const total = e.loaded.bytes.length;
     if (offset < 0 || offset > total)
-      throw new AnalysisError(
-        "invalid_input",
-        `offset ${offset} outside 0..${total}`,
-      );
+      throw new AnalysisError("invalid_input", `offset ${offset} outside 0..${total}`);
     const take = Math.max(0, Math.min(length, 65536, total - offset));
     const slice = e.loaded.bytes.subarray(offset, offset + take);
     let ascii = "";
-    for (const b of slice)
-      ascii += b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : ".";
+    for (const b of slice) ascii += b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : ".";
     return {
       offset,
       length: take,
@@ -226,10 +200,7 @@ export class Session {
     };
   }
 
-  async export(
-    id: string,
-    destination: string,
-  ): Promise<{ path: string; bytes: number }> {
+  async export(id: string, destination: string): Promise<{ path: string; bytes: number }> {
     const analysis = await this.analyze(id);
     const text = JSON.stringify(
       {
@@ -251,16 +222,11 @@ const replacer = (_key: string, value: unknown): unknown =>
 
 function hashText(text: string): string {
   let h = 2166136261;
-  for (let i = 0; i < text.length; i++)
-    h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
-function pageOf(
-  name: string,
-  items: readonly unknown[],
-  query: CollectionQuery,
-): CollectionPage {
+function pageOf(name: string, items: readonly unknown[], query: CollectionQuery): CollectionPage {
   let filtered = items;
   if (query.text) {
     const needle = query.text.toLowerCase();
@@ -307,12 +273,7 @@ export function collectionsOf(
           .filter((s) => s.section === "UND" && s.table === "dynsym")
           .map((s) => ({ name: s.name, type: s.type, binding: s.binding }));
         out["exports"] = b.elf.symbols
-          .filter(
-            (s) =>
-              s.section !== "UND" &&
-              s.table === "dynsym" &&
-              s.binding !== "LOCAL",
-          )
+          .filter((s) => s.section !== "UND" && s.table === "dynsym" && s.binding !== "LOCAL")
           .map((s) => ({
             name: s.name,
             value: s.value,
@@ -414,8 +375,8 @@ export function collectionsOf(
     case "apk":
       out["permissions"] = d.apk.permissions.map((name) => ({ name }));
       out["components"] = d.apk.components;
-      out["libraries"] = Object.entries(d.apk.nativeLibraries).flatMap(
-        ([abi, libs]) => libs.map((name) => ({ abi, name })),
+      out["libraries"] = Object.entries(d.apk.nativeLibraries).flatMap(([abi, libs]) =>
+        libs.map((name) => ({ abi, name })),
       );
       out["files"] = d.apk.largestFiles;
       out["classes"] = d.apk.classes;
@@ -426,9 +387,10 @@ export function collectionsOf(
       out["frameworks"] = d.bundle.frameworks.map((name) => ({ name }));
       out["permissions"] = d.bundle.permissions;
       out["helpers"] = d.bundle.helpers.map((name) => ({ name }));
-      out["entitlements"] = Object.entries(d.bundle.entitlements ?? {}).map(
-        ([key, value]) => ({ key, value }),
-      );
+      out["entitlements"] = Object.entries(d.bundle.entitlements ?? {}).map(([key, value]) => ({
+        key,
+        value,
+      }));
       {
         const bin = d.bundle.main?.binary;
         const macho =
@@ -474,19 +436,15 @@ export function collectionsOf(
       out["dexStrings"] = d.dex.strings.map((value) => ({ value }));
       break;
     case "javascript-app":
-      out["modules"] = d.app.modules.map(
-        ({ references: _r, ipc: _i, ...m }) => ({
-          ...m,
-          references: _r.length,
-          ipc: _i.length,
-        }),
-      );
+      out["modules"] = d.app.modules.map(({ references: _r, ipc: _i, ...m }) => ({
+        ...m,
+        references: _r.length,
+        ipc: _i.length,
+      }));
       out["edges"] = d.app.edges;
       out["externals"] = d.app.externals;
       out["ipcChannels"] = d.app.ipcChannels;
-      out["ipc"] = d.app.modules.flatMap((m) =>
-        m.ipc.map((u) => ({ module: m.id, ...u })),
-      );
+      out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       out["sourceMaps"] = d.app.sourceMaps;
       break;
     case "javascript":

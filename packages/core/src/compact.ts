@@ -9,11 +9,7 @@ export interface CompactOptions {
   maxDepth?: number;
 }
 
-export function compact(
-  value: unknown,
-  options: CompactOptions = {},
-  depth = 0,
-): unknown {
+export function compact(value: unknown, options: CompactOptions = {}, depth = 0): unknown {
   const maxItems = options.maxItems ?? 8;
   const maxString = options.maxString ?? 300;
   const maxDepth = options.maxDepth ?? 6;
@@ -24,16 +20,12 @@ export function compact(
       ? `${value.slice(0, maxString)}… (+${value.length - maxString} chars)`
       : value;
   if (typeof value !== "object") return value;
-  if (depth >= maxDepth)
-    return Array.isArray(value) ? `[${value.length} items]` : "{…}";
+  if (depth >= maxDepth) return Array.isArray(value) ? `[${value.length} items]` : "{…}";
   if (Array.isArray(value)) {
-    if (value.length <= maxItems)
-      return value.map((v) => compact(v, options, depth + 1));
+    if (value.length <= maxItems) return value.map((v) => compact(v, options, depth + 1));
     return {
       $count: value.length,
-      $sample: value
-        .slice(0, maxItems)
-        .map((v) => compact(v, options, depth + 1)),
+      $sample: value.slice(0, maxItems).map((v) => compact(v, options, depth + 1)),
       $note: `${value.length - maxItems} more; use the matching collection to page through all items`,
     };
   }

@@ -7,9 +7,7 @@ export class Builder {
 
   private ensure(size: number): void {
     if (this.length + size <= this.buf.length) return;
-    const next = new Uint8Array(
-      Math.max(this.buf.length * 2, this.length + size),
-    );
+    const next = new Uint8Array(Math.max(this.buf.length * 2, this.length + size));
     next.set(this.buf);
     this.buf = next;
     this.view = new DataView(next.buffer);

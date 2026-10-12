@@ -49,9 +49,7 @@ export function HexView({
     for (let c = start; c <= end; c++) {
       if (chunks.has(c) || c * CHUNK >= size) continue;
       void api.bytes(targetId, c * CHUNK, CHUNK).then((w) => {
-        const bytes = Uint8Array.from(w.hex.match(/../g) ?? [], (h) =>
-          parseInt(h, 16),
-        );
+        const bytes = Uint8Array.from(w.hex.match(/../g) ?? [], (h) => parseInt(h, 16));
         setChunks((m) => (m.has(c) ? m : new Map(m).set(c, bytes)));
       });
     }
@@ -61,9 +59,7 @@ export function HexView({
     chunks.get(Math.floor(offset / CHUNK))?.[offset % CHUNK];
   const jump = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    const raw = (
-      event.currentTarget.elements.namedItem("offset") as HTMLInputElement
-    ).value.trim();
+    const raw = (event.currentTarget.elements.namedItem("offset") as HTMLInputElement).value.trim();
     const off = raw.startsWith("0x") ? parseInt(raw, 16) : Number(raw);
     if (!Number.isFinite(off) || off < 0 || off >= size) return;
     setSelected(off);
@@ -80,10 +76,7 @@ export function HexView({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (
-        selected === null ||
-        (e.target as HTMLElement | null)?.closest("input, select, textarea")
-      )
+      if (selected === null || (e.target as HTMLElement | null)?.closest("input, select, textarea"))
         return;
       const delta =
         e.key === "ArrowLeft"
@@ -125,15 +118,12 @@ export function HexView({
           Go
         </button>
         <span className="status">
-          {formatBytes(size)} · {perRow} bytes per row · click a byte to decode
-          it
+          {formatBytes(size)} · {perRow} bytes per row · click a byte to decode it
         </span>
       </form>
       <div className="hex">
         <div className="hex-scroll" ref={parentRef}>
-          <div
-            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
-          >
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {items.map((item) => {
               const base = item.index * perRow;
               const cells: ReactElement[] = [];
@@ -145,9 +135,7 @@ export function HexView({
                 cells.push(
                   <span
                     key={i}
-                    className={`byte${b === 0 ? " zero" : ""}${
-                      sel ? " sel" : ""
-                    }`}
+                    className={`byte${b === 0 ? " zero" : ""}${sel ? " sel" : ""}`}
                     onClick={() => (
                       setSelected(off),
                       navigate(targetId, "hex", { sel: String(off) }, true)
@@ -159,11 +147,7 @@ export function HexView({
                 );
                 ascii.push(
                   <span key={i} className={sel ? "sel" : ""}>
-                    {b === undefined
-                      ? " "
-                      : b >= 0x20 && b <= 0x7e
-                        ? String.fromCharCode(b)
-                        : "."}
+                    {b === undefined ? " " : b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : "."}
                   </span>,
                 );
               }
@@ -180,9 +164,7 @@ export function HexView({
                     transform: `translateY(${item.start}px)`,
                   }}
                 >
-                  <span className="off">
-                    {base.toString(16).padStart(8, "0")}
-                  </span>
+                  <span className="off">{base.toString(16).padStart(8, "0")}</span>
                   <span>{cells}</span>
                   <span className="asc">{ascii}</span>
                 </div>
@@ -207,8 +189,7 @@ export function HexView({
             </dl>
           ) : (
             <p style={{ color: "var(--ink-2)", margin: 0 }}>
-              Integers and floats at the selected offset appear here, little-
-              and big-endian.
+              Integers and floats at the selected offset appear here, little- and big-endian.
             </p>
           )}
         </aside>
@@ -217,8 +198,7 @@ export function HexView({
   );
 }
 
-const view = (b: Uint8Array): DataView =>
-  new DataView(b.buffer, b.byteOffset, b.byteLength);
+const view = (b: Uint8Array): DataView => new DataView(b.buffer, b.byteOffset, b.byteLength);
 
 function decode(
   offset: number,
@@ -247,33 +227,22 @@ function decode(
     ],
   ];
   if (b2)
-    out.push([
-      "u16 LE / BE",
-      `${view(b2).getUint16(0, true)} / ${view(b2).getUint16(0, false)}`,
-    ]);
+    out.push(["u16 LE / BE", `${view(b2).getUint16(0, true)} / ${view(b2).getUint16(0, false)}`]);
   if (b4) {
-    out.push([
-      "u32 LE / BE",
-      `${view(b4).getUint32(0, true)} / ${view(b4).getUint32(0, false)}`,
-    ]);
+    out.push(["u32 LE / BE", `${view(b4).getUint32(0, true)} / ${view(b4).getUint32(0, false)}`]);
     out.push(["i32 LE", String(view(b4).getInt32(0, true))]);
     out.push(["f32 LE", view(b4).getFloat32(0, true).toPrecision(6)]);
   }
   if (b8) {
     out.push(["u64 LE", view(b8).getBigUint64(0, true).toString()]);
-    out.push([
-      "u64 LE hex",
-      `0x${view(b8).getBigUint64(0, true).toString(16)}`,
-    ]);
+    out.push(["u64 LE hex", `0x${view(b8).getBigUint64(0, true).toString(16)}`]);
     out.push(["f64 LE", view(b8).getFloat64(0, true).toPrecision(8)]);
   }
   const text = take(16);
   if (text)
     out.push([
       "ascii",
-      Array.from(text, (b) =>
-        b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : ".",
-      ).join(""),
+      Array.from(text, (b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : ".")).join(""),
     ]);
   return out;
 }
