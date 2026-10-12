@@ -46,3 +46,6 @@ export {
   type SqliteInfo,
   type SqliteTable,
 } from "./formats/sqlite.js";
+export { openZip, type ZipArchive, type ZipEntry } from "./formats/zip.js";
+export { parseAxml, type AxmlElement } from "./formats/axml.js";
+export { parseApk, type ApkInfo, type ApkComponent } from "./formats/apk.js";
