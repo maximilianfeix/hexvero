@@ -11,9 +11,9 @@ export function buildMacho(options: { pie?: boolean } = {}): Uint8Array {
     .u32((pie ? 0x200000 : 0) | 0x85)
     .u32(0);
   let ncmds = 0;
-  // LC_SEGMENT_64 __TEXT with __text section
+  // LC_SEGMENT_64 __TEXT with __text and __cstring sections
   b.u32(0x19)
-    .u32(72 + 80)
+    .u32(72 + 80 * 2)
     .fixed("__TEXT", 16)
     .u64(0x100000000)
     .u64(0x4000)
@@ -21,20 +21,25 @@ export function buildMacho(options: { pie?: boolean } = {}): Uint8Array {
     .u64(0x4000)
     .u32(5)
     .u32(5)
-    .u32(1)
-    .u32(0);
-  b.fixed("__text", 16)
-    .fixed("__TEXT", 16)
-    .u64(0x100001000)
-    .u64(0x100)
-    .u32(0x1000)
     .u32(2)
-    .u32(0)
-    .u32(0)
-    .u32(0x80000400)
-    .u32(0)
-    .u32(0)
     .u32(0);
+  for (const [name, addr] of [
+    ["__text", 0x100001000],
+    ["__cstring", 0x100002000],
+  ] as const) {
+    b.fixed(name, 16)
+      .fixed("__TEXT", 16)
+      .u64(addr)
+      .u64(0x100)
+      .u32(0x1000)
+      .u32(2)
+      .u32(0)
+      .u32(0)
+      .u32(0x80000400)
+      .u32(0)
+      .u32(0)
+      .u32(0);
+  }
   ncmds++;
   // LC_LOAD_DYLIB
   const dylib = "/usr/lib/libSystem.B.dylib";

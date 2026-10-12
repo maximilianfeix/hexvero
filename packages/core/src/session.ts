@@ -399,6 +399,21 @@ export function collectionsOf(
       out["packages"] = d.apk.packages;
       out["dexFiles"] = d.apk.dexFiles;
       break;
+    case "bundle":
+      out["frameworks"] = d.bundle.frameworks.map((name) => ({ name }));
+      out["permissions"] = d.bundle.permissions;
+      out["helpers"] = d.bundle.helpers.map((name) => ({ name }));
+      out["entitlements"] = Object.entries(d.bundle.entitlements ?? {}).map(
+        ([key, value]) => ({ key, value }),
+      );
+      if (d.bundle.main?.binary.kind === "macho") {
+        out["libraries"] = d.bundle.main.binary.macho.dylibs.map((x) => ({
+          name: x.path,
+          kind: x.kind,
+        }));
+        out["symbols"] = d.bundle.main.binary.macho.symbols;
+      }
+      break;
     case "zip":
       out["files"] = d.zip.entries;
       break;

@@ -170,7 +170,7 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
       case 0x19: {
         const is64 = cmd === 0x19;
         const name = r.fixedString(16);
-        const vmaddr = is64 ? r.u64n() : r.u32();
+        const vmaddr = is64 ? r.u64() : BigInt(r.u32());
         const vmsize = is64 ? r.u64n() : r.u32();
         const fileOffset = is64 ? r.u64n() : r.u32();
         const fileSize = is64 ? r.u64n() : r.u32();
@@ -182,10 +182,10 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
         for (let s = 0; s < nsects; s++) {
           const sectName = r.fixedString(16);
           r.fixedString(16);
-          const addr = is64 ? r.u64n() : r.u32();
+          const addr = is64 ? r.u64() : BigInt(r.u32());
           const sectSize = is64 ? r.u64n() : r.u32();
           const offset = r.u32();
-          r.skip(is64 ? 36 : 28);
+          r.skip(is64 ? 28 : 24); // align, reloff, nreloc, flags, reserved1..3 (64-bit adds reserved3)
           sections.push({
             name: sectName,
             address: hex(addr),
@@ -206,7 +206,14 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
       }
       case 0x2: {
         const symoff = r.u32();
-        const nsyms = Math.min(r.u32(), 200_000);
+        const declared = r.u32();
+        const nsyms = Math.min(declared, 200_000);
+        if (declared > nsyms) {
+          limitations.push({
+            code: "symbols_truncated",
+            message: `Symbol table truncated to ${nsyms} of ${declared} entries.`,
+          });
+        }
         const stroff = r.u32();
         const entSize = bits === 64 ? 16 : 12;
         for (
@@ -219,7 +226,7 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
           const ntype = r.u8();
           const sect = r.u8();
           r.u16();
-          const value = bits === 64 ? r.u64n() : r.u32();
+          const value = bits === 64 ? r.u64() : BigInt(r.u32());
           if (ntype & 0xe0) continue; // debugging (stab) entries
           const name = cstringAt(bytes, stroff + strx);
           if (!name) continue;
@@ -286,7 +293,7 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
         }
         break;
       case 0x80000028:
-        entry = hex(r.u64n());
+        entry = hex(r.u64());
         break;
       case 0x1d:
         codeSigned = true;
