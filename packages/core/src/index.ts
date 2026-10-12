@@ -94,3 +94,15 @@ export {
   type ProviderName,
   type ProviderOperation,
 } from "./providers/run.js";
+export {
+  parseJavaClass,
+  parseJar,
+  type JavaClassInfo,
+  type JarInfo,
+} from "./formats/java.js";
+export {
+  parseDex,
+  descriptorToName,
+  type DexInfo,
+  type DexClass,
+} from "./formats/dex.js";

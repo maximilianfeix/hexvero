@@ -395,9 +395,36 @@ export function collectionsOf(
         ([abi, libs]) => libs.map((name) => ({ abi, name })),
       );
       out["files"] = d.apk.largestFiles;
+      out["classes"] = d.apk.classes;
+      out["packages"] = d.apk.packages;
+      out["dexFiles"] = d.apk.dexFiles;
       break;
     case "zip":
       out["files"] = d.zip.entries;
+      break;
+    case "jar":
+      out["classes"] = d.jar.classes;
+      out["packages"] = d.jar.packages;
+      out["manifest"] = Object.entries(d.jar.manifest).map(([key, value]) => ({
+        key,
+        value,
+      }));
+      break;
+    case "java-class":
+      out["methods"] = d.javaClass.methods;
+      out["fields"] = d.javaClass.fields;
+      out["referencedMethods"] = d.javaClass.referencedMethods.map((name) => ({
+        name,
+      }));
+      out["referencedClasses"] = d.javaClass.referencedClasses.map((name) => ({
+        name,
+      }));
+      out["constants"] = d.javaClass.strings.map((value) => ({ value }));
+      break;
+    case "dex":
+      out["classes"] = d.dex.classes;
+      out["packages"] = d.dex.packages;
+      out["dexStrings"] = d.dex.strings.map((value) => ({ value }));
       break;
     case "javascript-app":
       out["modules"] = d.app.modules.map(

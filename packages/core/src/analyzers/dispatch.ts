@@ -1,6 +1,13 @@
 import { parseApk, type ApkInfo } from "../formats/apk.js";
 import { parseEvm, type EvmInfo } from "../formats/evm.js";
+import { parseDex, type DexInfo } from "../formats/dex.js";
 import { parseHar, type HarInfo } from "../formats/har.js";
+import {
+  parseJar,
+  parseJavaClass,
+  type JarInfo,
+  type JavaClassInfo,
+} from "../formats/java.js";
 import { parsePlist, type PlistValue } from "../formats/plist.js";
 import { inspectSqlite, type SqliteInfo } from "../formats/sqlite.js";
 import { parseWasm, type WasmInfo } from "../formats/wasm.js";
@@ -36,6 +43,9 @@ export type AnalysisData =
   | { kind: "har"; har: Strip<HarInfo> }
   | { kind: "apk"; apk: Strip<ApkInfo> }
   | { kind: "zip"; zip: { entries: ZipEntry[]; comment: string } }
+  | { kind: "jar"; jar: Strip<JarInfo> }
+  | { kind: "java-class"; javaClass: Strip<JavaClassInfo> }
+  | { kind: "dex"; dex: Strip<DexInfo> }
   | { kind: "javascript-app"; app: Strip<JsAppInfo> }
   | { kind: "javascript"; script: ScanResult }
   | { kind: "source-map"; map: SourceMapSummary }
@@ -119,6 +129,35 @@ export async function analyzeTarget(
       return done(
         `Android APK ${apk.package} ${apk.versionName}, ${apk.components.length} components, ${apk.permissions.length} permissions`,
         { kind: "apk", apk },
+      );
+    }
+    case "jar": {
+      const jar = strip(parseJar(bytes));
+      return done(
+        `Java archive: ${jar.classCount} classes in ${jar.packages.length} packages${
+          jar.mainClass ? `, main ${jar.mainClass}` : ""
+        }`,
+        { kind: "jar", jar },
+      );
+    }
+    case "java-class": {
+      const javaClass = strip(parseJavaClass(bytes));
+      return done(
+        `Java class ${javaClass.name} (Java ${javaClass.version.java}), ${javaClass.methods.length} methods`,
+        {
+          kind: "java-class",
+          javaClass,
+        },
+      );
+    }
+    case "dex": {
+      const dex = strip(parseDex(bytes));
+      return done(
+        `DEX ${dex.version}: ${dex.counts.classes} classes, ${dex.counts.methods} methods, ${dex.counts.strings} strings`,
+        {
+          kind: "dex",
+          dex,
+        },
       );
     }
     case "zip": {

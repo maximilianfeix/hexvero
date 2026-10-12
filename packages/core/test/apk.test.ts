@@ -4,6 +4,7 @@ import { parseAxml } from "../src/formats/axml.js";
 import { detectFormat } from "../src/formats/detect.js";
 import { openZip } from "../src/formats/zip.js";
 import { buildAxml } from "./fixtures/axml.js";
+import { buildDex } from "./fixtures/dex.js";
 import { buildZip } from "./fixtures/zip.js";
 
 const manifest = buildAxml({
@@ -145,7 +146,7 @@ describe("parseAxml", () => {
 describe("parseApk", () => {
   const apk = buildZip({
     "AndroidManifest.xml": manifest,
-    "classes.dex": "dex\n035",
+    "classes.dex": buildDex(),
     "classes2.dex": "dex\n035",
     "lib/arm64-v8a/libnative.so": new Uint8Array(100),
     "lib/arm64-v8a/libflutter.so": new Uint8Array(10),
