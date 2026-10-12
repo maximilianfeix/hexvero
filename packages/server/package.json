@@ -1,0 +1,14 @@
+{
+  "name": "@hexvero/server",
+  "version": "0.1.0",
+  "description": "Loopback HTTP API and static host for the hexvero web UI.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist"],
+  "scripts": { "build": "tsc -b" },
+  "dependencies": { "@hexvero/core": "0.1.0" },
+  "engines": { "node": ">=22.12.0" }
+}
