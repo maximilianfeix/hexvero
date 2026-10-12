@@ -13,7 +13,7 @@ export function crc32(bytes: Uint8Array): number {
 /** Builds a ZIP with the given files; names ending in ".store" stay uncompressed. */
 export function buildZip(
   files: Record<string, Uint8Array | string>,
-  options: { prefix?: Uint8Array; comment?: string } = {},
+  options: { prefix?: Uint8Array; comment?: string; zip64?: boolean } = {},
 ): Uint8Array {
   const b = new Builder();
   if (options.prefix) b.bytes(options.prefix);
@@ -60,6 +60,31 @@ export function buildZip(
   for (const c of central) b.bytes(c);
   const cdSize = b.length - cdOffset;
   const comment = new TextEncoder().encode(options.comment ?? "");
+  if (options.zip64) {
+    // ZIP64 end of central directory record + locator, with sentinels in the classic EOCD.
+    const z64 = b.length;
+    b.u32(0x06064b50)
+      .u64(44)
+      .u16(45)
+      .u16(45)
+      .u32(0)
+      .u32(0)
+      .u64(central.length)
+      .u64(central.length)
+      .u64(cdSize)
+      .u64(cdOffset);
+    b.u32(0x07064b50).u32(0).u64(z64).u32(1);
+    b.u32(0x06054b50)
+      .u16(0)
+      .u16(0)
+      .u16(0xffff)
+      .u16(0xffff)
+      .u32(0xffffffff)
+      .u32(0xffffffff)
+      .u16(comment.length)
+      .bytes(comment);
+    return b.done();
+  }
   b.u32(0x06054b50)
     .u16(0)
     .u16(0)

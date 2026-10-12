@@ -20,6 +20,7 @@ import { openZip, type ZipEntry } from "../formats/zip.js";
 import {
   analyzeJavaScriptTree,
   asarTree,
+  asarTreeFromFile,
   directoryTree,
   type JsAppInfo,
 } from "../javascript/app.js";
@@ -62,10 +63,25 @@ export type AnyAnalysis = Analysis<AnalysisData>;
 
 const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 
-/** Routes a loaded target to the matching analyzer and normalizes the result shape. */
+/** Routes a loaded target to the matching analyzer; parser bounds errors become `malformed` results. */
 export async function analyzeTarget(
   target: LoadedTarget,
 ): Promise<AnyAnalysis> {
+  try {
+    return await analyzeTargetUnsafe(target);
+  } catch (error) {
+    if (error instanceof RangeError || error instanceof TypeError) {
+      throw new AnalysisError(
+        "malformed",
+        `${target.info.format}: ${error.message}`,
+        { format: target.info.format },
+      );
+    }
+    throw error;
+  }
+}
+
+async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
   const started = performance.now();
   const { info, bytes } = target;
   const findings: Finding[] = [];
@@ -174,7 +190,13 @@ export async function analyzeTarget(
       });
     }
     case "asar": {
-      const app = strip(analyzeJavaScriptTree(asarTree(bytes, info.path)));
+      const app = strip(
+        analyzeJavaScriptTree(
+          target.lazy
+            ? asarTreeFromFile(info.path)
+            : asarTree(bytes, info.path),
+        ),
+      );
       return done(
         `Electron ASAR: ${app.modules.length} JavaScript modules, ${app.ipcChannels.length} IPC channels`,
         { kind: "javascript-app", app },
@@ -231,11 +253,15 @@ export async function analyzeTarget(
         }
       }
       if (/"log"\s*:/.test(text.slice(0, 4096))) {
-        const har = strip(parseHar(bytes));
-        return done(
-          `HAR capture: ${har.entries.length} requests to ${har.hosts.length} hosts`,
-          { kind: "har", har },
-        );
+        try {
+          const har = strip(parseHar(bytes));
+          return done(
+            `HAR capture: ${har.entries.length} requests to ${har.hosts.length} hosts`,
+            { kind: "har", har },
+          );
+        } catch {
+          /* not a HAR after all; fall through to plain JSON */
+        }
       }
       try {
         const parsed = JSON.parse(text) as unknown;

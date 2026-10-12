@@ -57,9 +57,8 @@ export function openZip(bytes: Uint8Array): ZipArchive {
         new ByteReader(bytes, z64).u32() === ZIP64_EOCD
       ) {
         const zr = new ByteReader(bytes, z64 + 32);
-        entryCount = zr.u64n();
-        zr.u64();
-        zr.u64();
+        entryCount = zr.u64n(); // total entries
+        zr.u64(); // central directory size
         cdOffset = zr.u64n();
       }
     }

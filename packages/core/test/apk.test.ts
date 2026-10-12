@@ -119,6 +119,13 @@ describe("openZip", () => {
     expect(new TextDecoder().decode(zip.read(zip.entries[1]!))).toBe("stored");
     expect(() => zip.read(zip.entries[0]!, 4)).toThrow(/expands to/);
   });
+  it("reads ZIP64 central directories", () => {
+    const zip = openZip(
+      buildZip({ "a.txt": "alpha", "b.txt": "beta" }, { zip64: true }),
+    );
+    expect(zip.entries.map((e) => e.name)).toEqual(["a.txt", "b.txt"]);
+    expect(new TextDecoder().decode(zip.read(zip.entries[1]!))).toBe("beta");
+  });
   it("rejects non-zip data", () => {
     expect(() => openZip(new Uint8Array(100))).toThrow(
       /end-of-central-directory/,
@@ -152,6 +159,9 @@ describe("parseApk", () => {
     "lib/arm64-v8a/libflutter.so": new Uint8Array(10),
     "META-INF/CERT.RSA": new Uint8Array(8),
     "resources.arsc": new Uint8Array(4),
+  });
+  it("prefers the archive extension for jar-like names", () => {
+    expect(detectFormat(apk, "library.aar")).toBe("jar");
   });
   it("is detected as an APK", () => {
     expect(detectFormat(apk, "demo.apk")).toBe("apk");

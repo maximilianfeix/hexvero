@@ -67,10 +67,17 @@ export class HttpError extends Error {
   }
 }
 
-const token = (): string =>
-  new URLSearchParams(window.location.hash.slice(1)).get("token") ??
-  localStorage.getItem("hexvero.token") ??
-  "";
+const token = (): string => {
+  const fromHash = new URLSearchParams(window.location.hash.slice(1)).get(
+    "token",
+  );
+  if (fromHash) return fromHash;
+  try {
+    return localStorage.getItem("hexvero.token") ?? "";
+  } catch {
+    return "";
+  }
+};
 try {
   const t = new URLSearchParams(window.location.hash.slice(1)).get("token");
   if (t) localStorage.setItem("hexvero.token", t);
@@ -96,6 +103,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const cache = new Map<string, Promise<unknown>>();
+const CACHE_LIMIT = 400;
+
+/** Drops cached responses for one target (after close) or everything. */
+export function evictCache(prefix = ""): void {
+  const stale = Array.from(cache.keys()).filter((key) =>
+    key.startsWith(prefix),
+  );
+  for (const key of stale) cache.delete(key);
+}
 
 /** GET with an in-memory promise cache; analysis results are immutable per target id. */
 export function cached<T>(path: string): Promise<T> {
@@ -105,6 +121,7 @@ export function cached<T>(path: string): Promise<T> {
       cache.delete(path);
       throw error;
     });
+    if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value!);
     cache.set(path, hit);
   }
   return hit;
@@ -123,8 +140,10 @@ export const api = {
       method: "POST",
       body: file,
     }),
-  close: (id: string) =>
-    request<{ closed: boolean }>(`/targets/${id}`, { method: "DELETE" }),
+  close: (id: string) => {
+    evictCache(`/targets/${id}`);
+    return request<{ closed: boolean }>(`/targets/${id}`, { method: "DELETE" });
+  },
   analysis: (id: string) => cached<AnalysisResponse>(`/targets/${id}/analysis`),
   collection: <T = Record<string, unknown>>(
     id: string,

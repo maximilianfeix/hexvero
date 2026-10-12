@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 
 export interface ProviderStatus {
@@ -21,14 +21,20 @@ export async function which(binary: string): Promise<string | null> {
     ? [join(process.env["GHIDRA_INSTALL_DIR"], "support")]
     : [];
   const dirs = [...(process.env["PATH"] ?? "").split(delimiter), ...extra];
+  const suffixes =
+    process.platform === "win32"
+      ? ["", ...(process.env["PATHEXT"] ?? ".EXE;.CMD;.BAT").split(";")]
+      : [""];
   for (const dir of dirs) {
     if (!dir) continue;
-    const full = join(dir, binary);
-    try {
-      await access(full);
-      return full;
-    } catch {
-      /* keep looking */
+    for (const suffix of suffixes) {
+      const full = join(dir, binary + suffix);
+      try {
+        const info = await stat(full);
+        if (info.isFile()) return full;
+      } catch {
+        /* keep looking */
+      }
     }
   }
   return null;

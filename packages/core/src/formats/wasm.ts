@@ -206,8 +206,7 @@ export function parseWasm(bytes: Uint8Array): WasmInfo {
             const type = valType();
             const mutable = r.u8() === 1;
             info.globals.push({ type, mutable });
-            // skip the constant initializer expression up to 0x0b
-            while (r.offset < end && r.u8() !== 0x0b);
+            skipConstExpr(r);
           }
           break;
         }
@@ -299,4 +298,49 @@ export function parseWasm(bytes: Uint8Array): WasmInfo {
       confidence: "confirmed",
     });
   return info;
+}
+
+/** Decodes a constant expression (global initializer) instead of scanning for 0x0b, which may appear inside immediates. */
+function skipConstExpr(r: ByteReader): void {
+  for (let i = 0; i < 64; i++) {
+    const op = r.u8();
+    switch (op) {
+      case 0x0b:
+        return;
+      case 0x41: // i32.const
+      case 0x42: // i64.const
+        r.sleb128();
+        break;
+      case 0x43: // f32.const
+        r.skip(4);
+        break;
+      case 0x44: // f64.const
+        r.skip(8);
+        break;
+      case 0x23: // global.get
+      case 0xd2: // ref.func
+        r.uleb128();
+        break;
+      case 0xd0: // ref.null
+        r.u8();
+        break;
+      case 0x6a: // i32.add / sub / mul (extended const)
+      case 0x6b:
+      case 0x6c:
+      case 0x7c:
+      case 0x7d:
+      case 0x7e:
+        break;
+      case 0xfd: // v128.const
+        r.uleb128();
+        r.skip(16);
+        break;
+      default:
+        throw new AnalysisError(
+          "malformed",
+          `unsupported constant expression opcode 0x${op.toString(16)}`,
+        );
+    }
+  }
+  throw new AnalysisError("malformed", "constant expression did not terminate");
 }

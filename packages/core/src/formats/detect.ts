@@ -51,9 +51,9 @@ export function detectFormat(bytes: Uint8Array, name = ""): FormatId {
 function refine(format: FormatId, bytes: Uint8Array, name: string): FormatId {
   if (format === "zip") {
     const lower = name.toLowerCase();
+    if (/\.(jar|war|ear|aar)$/.test(lower)) return "jar";
     if (lower.endsWith(".apk") || hasApkManifest(bytes)) return "apk";
-    if (/\.(jar|war|ear|aar)$/.test(lower) || hasJarManifest(bytes))
-      return "jar";
+    if (hasJarManifest(bytes)) return "jar";
   }
   if (format === "macho-fat" && bytes.length >= 8) {
     // Java class files share the CAFEBABE magic; fat headers have a small arch count.
