@@ -2,14 +2,18 @@
   "name": "hexvero-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "hexvero.dev — reverse engineer anything, locally.",
+  "description": "hexvero.dev \u2014 reverse engineer anything, locally.",
   "license": "MIT",
   "type": "module",
-  "engines": { "node": ">=22.12.0" },
-  "workspaces": ["packages/*"],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "tsc -b packages/core packages/mcp packages/cli",
+    "typecheck": "tsc -b packages/core packages/mcp packages/server packages/cli",
     "lint": "oxlint packages --deny-warnings",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

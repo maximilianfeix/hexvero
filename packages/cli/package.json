@@ -4,13 +4,24 @@
   "description": "Reverse engineer anything, locally: CLI, MCP server and web UI.",
   "license": "MIT",
   "type": "module",
-  "bin": { "hexvero": "./bin/hexvero.js" },
+  "bin": {
+    "hexvero": "./bin/hexvero.js"
+  },
   "main": "./dist/index.js",
-  "files": ["dist", "bin", "ui"],
-  "scripts": { "build": "tsc -b" },
+  "files": [
+    "dist",
+    "bin",
+    "ui"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
   "dependencies": {
     "@hexvero/core": "0.1.0",
-    "@hexvero/mcp": "0.1.0"
+    "@hexvero/mcp": "0.1.0",
+    "@hexvero/server": "0.1.0"
   },
-  "engines": { "node": ">=22.12.0" }
+  "engines": {
+    "node": ">=22.12.0"
+  }
 }
