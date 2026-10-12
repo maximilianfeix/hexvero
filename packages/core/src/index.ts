@@ -49,3 +49,26 @@ export {
 export { openZip, type ZipArchive, type ZipEntry } from "./formats/zip.js";
 export { parseAxml, type AxmlElement } from "./formats/axml.js";
 export { parseApk, type ApkInfo, type ApkComponent } from "./formats/apk.js";
+export { openAsar, type AsarArchive, type AsarFile } from "./formats/asar.js";
+export {
+  scanJavaScript,
+  tokenize,
+  type ScanResult,
+  type ModuleReference,
+  type IpcUsage,
+} from "./javascript/scan.js";
+export {
+  summarizeSourceMap,
+  originalPositionFor,
+  decodeVlq,
+  type SourceMapSummary,
+} from "./javascript/sourcemap.js";
+export {
+  analyzeJavaScriptTree,
+  directoryTree,
+  asarTree,
+  type JsAppInfo,
+  type JsModule,
+  type JsEdge,
+  type FileTree,
+} from "./javascript/app.js";
