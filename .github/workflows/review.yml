@@ -31,7 +31,7 @@ jobs:
         env:
           REVIEW_REPORT_PATH: review-report.md
       - name: Post or update the review thread
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require("fs");
