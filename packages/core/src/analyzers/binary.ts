@@ -83,7 +83,9 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
   ): Go | undefined => {
     const go = parseGoBuildInfo(slice, resolve);
     if (!go) return undefined;
-    summary += ` · Go ${go.goVersion}${go.mainPath ? ` (${go.mainPath})` : ""}`;
+    summary += ` · Go ${go.goVersion.replace(/^go/, "")}${
+      go.mainPath ? ` (${go.mainPath})` : ""
+    }`;
     return collect(go, prefix);
   };
   const machoSlice = (

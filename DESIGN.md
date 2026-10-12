@@ -1,0 +1,61 @@
+# hexvero — design decisions
+
+Dark-first workbench used in dim rooms beside a terminal. The memorable element is the **verdict**: one
+large sentence per target that says what the file is. Everything else is quiet, dense and legible.
+
+## Color
+
+| Token            | Dark      | Light     | Role                                        |
+| ---------------- | --------- | --------- | ------------------------------------------- |
+| `--bg`           | `#1b1d21` | `#f3f4f6` | page                                        |
+| `--panel`        | `#23262c` | `#ffffff` | sidebar, table surfaces                     |
+| `--line`         | `#31353d` | `#dcdfe4` | hairlines, table rules                      |
+| `--ink`          | `#e8e6e1` | `#1d2026` | primary text (warm off-white, not pure)     |
+| `--ink-2`        | `#9a9ea7` | `#5c616b` | secondary text                              |
+| `--amber`        | `#f2b84b` | `#9a6a06` | the one accent: evidence, selection, focus  |
+| `--amber-soft`   | `#3a2f17` | `#fbefcf` | selected rows, highlighted bytes            |
+| `--alert`        | `#e5736f` | `#b3261e` | hardening off, dangerous permissions        |
+| `--ok`           | `#8fc98a` | `#2e7d32` | mitigation on, verified                     |
+
+Amber is spent on evidence only: confirmed findings, selected bytes, the active tab mark, focus rings.
+Red and green appear as small marks in fact tables, never as washes.
+
+## Type
+
+- **IBM Plex Sans** (400/500/600) for UI and the verdict. Verdict: 600, `clamp(1.25rem, 2.2vw, 1.75rem)`,
+  tracking -0.02em, balanced wrapping.
+- **IBM Plex Mono** (400/500) for data: hex, offsets, addresses, symbol names, paths, hashes, table cells
+  that hold identifiers. Tabular numerals everywhere numbers align.
+- Body 14px/1.5 in tables, 15px/1.55 in prose. No all-caps labels, no eyebrows.
+
+## Layout
+
+```
+┌ top bar: wordmark · open file · open path · theme ───────────────────┐
+├ targets (240px) ┬ target header: path, format, size, hash, export    ┤
+│ list of open    │ verdict sentence                                    │
+│ targets + drop  │ tabs: Overview · Findings · <collections…> · Strings · Hex · Graph
+│ zone            │ workspace: virtualized table / viewer               │
+└─────────────────┴──────────────────────────────────────────────────────┘
+```
+
+Left-aligned throughout. Under 820px the sidebar becomes a slide-in sheet, tables scroll horizontally,
+the hex view drops to 8 bytes per row.
+
+## Structure carries information
+
+- Tabs are the collections that exist for this target, with counts. No empty tabs.
+- A finding's dot is filled when confirmed and hollow when inferred. Limitations always render,
+  beneath findings, in the same list rhythm, never collapsed away.
+- A truncated page says "showing 200 of 14,322 · filtered" inline where the count is.
+- Tables: hairline row rules only, no zebra, no borders around cells, sticky header.
+
+## Motion
+
+One authored moment: when a target finishes analysis the verdict settles in (opacity + 6px rise,
+220ms, ease-out). Everything else changes instantly. `prefers-reduced-motion` disables it.
+
+## Browser surfaces
+
+Selection color, caret, scrollbars (thin, `--line` thumb) and focus rings (2px amber, 2px offset) are
+themed from the palette.
