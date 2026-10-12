@@ -1,0 +1,273 @@
+import { AnalysisError, compact, Session } from "@hexvero/core";
+import { z } from "zod";
+
+/**
+ * Tool catalog. Kept deliberately small: twelve tools whose combined
+ * discovery payload stays under 32 KiB so that constrained MCP clients keep
+ * working. Lists come back paged; anything bigger goes to a file.
+ */
+
+const targetId = z
+  .string()
+  .min(3)
+  .describe("Target id returned by hexvero_open");
+const paging = {
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("First item index (default 0)"),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(2000)
+    .optional()
+    .describe("Items per page (default 100)"),
+  text: z
+    .string()
+    .optional()
+    .describe("Case-insensitive substring filter on each item"),
+};
+
+export const toolSchemas = {
+  hexvero_open: {
+    title: "Open target",
+    description:
+      "Register a local file or directory for analysis. Returns its id, size, hash and detected format. Ids are stable per content.",
+    input: { path: z.string().describe("Absolute or relative path") },
+  },
+  hexvero_list: {
+    title: "List targets",
+    description: "List targets opened in this session.",
+    input: {},
+  },
+  hexvero_close: {
+    title: "Close target",
+    description: "Release a target and its retained analysis.",
+    input: { targetId },
+  },
+  hexvero_analyze: {
+    title: "Analyze target",
+    description:
+      "Run the built-in analyzer for the target's format (ELF/PE/Mach-O, Go, .NET, WASM, EVM, SQLite, plist, APK, ZIP, Electron ASAR, JavaScript apps, source maps, HAR). Returns a summary, findings with confidence, limitations, a compact overview and the collections available for paging.",
+    input: { targetId },
+  },
+  hexvero_collection: {
+    title: "Page a collection",
+    description:
+      "Page through one named list from the analysis, e.g. symbols, imports, exports, sections, libraries, types, methods, pinvokes, selectors, instructions, tables, columns, requests, endpoints, permissions, components, modules, edges, ipcChannels, findings. Use hexvero_analyze to see which exist.",
+    input: { targetId, collection: z.string(), ...paging },
+  },
+  hexvero_strings: {
+    title: "Strings",
+    description:
+      "Printable ASCII (and optional UTF-16LE) strings with offsets and tags (url, path, email, ip, format, secret-ish, base64-ish).",
+    input: {
+      targetId,
+      ...paging,
+      minLength: z.number().int().min(2).max(64).optional(),
+      utf16: z.boolean().optional(),
+      tag: z.string().optional().describe("Only strings carrying this tag"),
+    },
+  },
+  hexvero_bytes: {
+    title: "Read bytes",
+    description:
+      "Read a bounded window (max 64 KiB) of the target as hex plus an ASCII gutter.",
+    input: {
+      targetId,
+      offset: z.number().int().min(0),
+      length: z.number().int().min(1).max(65536),
+    },
+  },
+  hexvero_export: {
+    title: "Export analysis",
+    description:
+      "Write the complete analysis as JSON to a file and return its path and size. Use this instead of paging when you need everything.",
+    input: { targetId, path: z.string().describe("Destination file path") },
+  },
+  hexvero_compare: {
+    title: "Compare collections",
+    description:
+      "Diff one collection between two targets (e.g. exports of two versions). Returns added, removed and unchanged counts with samples.",
+    input: {
+      targetA: targetId,
+      targetB: targetId,
+      collection: z.string(),
+      key: z
+        .string()
+        .optional()
+        .describe("Item field used as identity (default: name, then JSON)"),
+    },
+  },
+  hexvero_sourcemap: {
+    title: "Resolve source map position",
+    description:
+      "Map a generated line/column of a source map target back to its original source, line, column and name.",
+    input: {
+      targetId,
+      line: z.number().int().min(1),
+      column: z.number().int().min(0),
+    },
+  },
+  hexvero_providers: {
+    title: "Providers",
+    description:
+      "Detect optional external engines (radare2/rizin, Ghidra) and the operations each supports.",
+    input: {},
+  },
+  hexvero_provider_run: {
+    title: "Run provider operation",
+    description:
+      "Run disassemble, decompile or functions on a target through an installed engine. Output is bounded and cached.",
+    input: {
+      targetId,
+      provider: z.enum(["radare2", "rizin", "ghidra"]),
+      operation: z.enum([
+        "functions",
+        "disassemble",
+        "decompile",
+        "strings",
+        "imports",
+      ]),
+      address: z
+        .string()
+        .optional()
+        .describe("Function address or name for disassemble/decompile"),
+      timeoutMs: z.number().int().min(1000).max(600_000).optional(),
+    },
+  },
+} as const;
+
+export type ToolName = keyof typeof toolSchemas;
+
+export interface ProviderBridge {
+  detect(): Promise<unknown>;
+  run(args: {
+    targetPath: string;
+    provider: string;
+    operation: string;
+    address?: string;
+    timeoutMs?: number;
+  }): Promise<unknown>;
+}
+
+const str = (v: unknown): string => String(v);
+const num = (v: unknown): number | undefined =>
+  typeof v === "number" ? v : undefined;
+
+const paged = (
+  args: Record<string, unknown>,
+): { offset?: number; limit?: number; text?: string } => {
+  const q: { offset?: number; limit?: number; text?: string } = {};
+  const offset = num(args["offset"]);
+  if (offset !== undefined) q.offset = offset;
+  const limit = num(args["limit"]);
+  if (limit !== undefined) q.limit = limit;
+  if (typeof args["text"] === "string") q.text = args["text"];
+  return q;
+};
+
+export function createHandlers(
+  session: Session,
+  providers: ProviderBridge,
+): Record<ToolName, (args: Record<string, unknown>) => Promise<unknown>> {
+  return {
+    hexvero_open: async (a) => session.open(str(a["path"])),
+    hexvero_list: async () => ({ targets: session.list() }),
+    hexvero_close: async (a) => ({ closed: session.close(str(a["targetId"])) }),
+    hexvero_analyze: async (a) => {
+      const id = str(a["targetId"]);
+      const analysis = await session.analyze(id);
+      return {
+        target: session.get(id),
+        summary: analysis.summary,
+        durationMs: analysis.durationMs,
+        findings: analysis.findings,
+        limitations: analysis.limitations,
+        collections: await session.collections(id),
+        overview: compact(analysis.data),
+      };
+    },
+    hexvero_collection: async (a) =>
+      session.collection(str(a["targetId"]), str(a["collection"]), paged(a)),
+    hexvero_strings: async (a) => {
+      const q: Parameters<Session["strings"]>[1] = paged(a);
+      const minLength = num(a["minLength"]);
+      if (minLength !== undefined) q.minLength = minLength;
+      if (typeof a["utf16"] === "boolean") q.utf16 = a["utf16"];
+      if (typeof a["tag"] === "string") q.tag = a["tag"];
+      return session.strings(str(a["targetId"]), q);
+    },
+    hexvero_bytes: async (a) =>
+      session.bytes(
+        str(a["targetId"]),
+        Number(a["offset"]),
+        Number(a["length"]),
+      ),
+    hexvero_export: async (a) =>
+      session.export(str(a["targetId"]), str(a["path"])),
+    hexvero_compare: async (a) => {
+      const name = str(a["collection"]);
+      const [left, right] = await Promise.all([
+        session.collection(str(a["targetA"]), name, {
+          limit: 2000,
+          maxBytes: 64 << 20,
+        }),
+        session.collection(str(a["targetB"]), name, {
+          limit: 2000,
+          maxBytes: 64 << 20,
+        }),
+      ]);
+      const keyOf = (item: unknown): string => {
+        const o = item as Record<string, unknown>;
+        const field = typeof a["key"] === "string" ? a["key"] : "name";
+        return o && typeof o === "object" && field in o
+          ? String(o[field])
+          : JSON.stringify(item);
+      };
+      const l = new Map(left.items.map((i) => [keyOf(i), i]));
+      const r = new Map(right.items.map((i) => [keyOf(i), i]));
+      const added = [...r.keys()].filter((k) => !l.has(k));
+      const removed = [...l.keys()].filter((k) => !r.has(k));
+      return {
+        collection: name,
+        left: { total: left.total, truncated: left.truncated },
+        right: { total: right.total, truncated: right.truncated },
+        unchanged: [...l.keys()].filter((k) => r.has(k)).length,
+        added: { count: added.length, sample: added.slice(0, 50) },
+        removed: { count: removed.length, sample: removed.slice(0, 50) },
+      };
+    },
+    hexvero_sourcemap: async (a) => {
+      const id = str(a["targetId"]);
+      const analysis = await session.analyze(id);
+      if (analysis.data.kind !== "source-map")
+        throw new AnalysisError("invalid_input", "Target is not a source map");
+      const { originalPositionFor } = await import("@hexvero/core");
+      const { readFile } = await import("node:fs/promises");
+      const text = await readFile(analysis.target.path, "utf8");
+      return (
+        originalPositionFor(text, Number(a["line"]), Number(a["column"])) ?? {
+          source: null,
+          note: "no mapping at that position",
+        }
+      );
+    },
+    hexvero_providers: async () => providers.detect(),
+    hexvero_provider_run: async (a) => {
+      const target = session.get(str(a["targetId"]));
+      const req: Parameters<ProviderBridge["run"]>[0] = {
+        targetPath: target.info.path,
+        provider: str(a["provider"]),
+        operation: str(a["operation"]),
+      };
+      if (typeof a["address"] === "string") req.address = a["address"];
+      const timeoutMs = num(a["timeoutMs"]);
+      if (timeoutMs !== undefined) req.timeoutMs = timeoutMs;
+      return providers.run(req);
+    },
+  };
+}

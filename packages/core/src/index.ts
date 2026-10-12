@@ -85,3 +85,4 @@ export {
   type CollectionPage,
   type StringsQuery,
 } from "./session.js";
+export { compact, type CompactOptions } from "./compact.js";
