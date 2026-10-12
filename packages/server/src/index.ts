@@ -8,7 +8,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { tmpdir } from "node:os";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, sep } from "node:path";
 import {
   AnalysisError,
   compact,
@@ -129,7 +129,12 @@ export async function startServer(
     url: URL,
   ): Promise<void> => {
     const origin = req.headers.origin;
-    if (origin && new URL(origin).host !== req.headers.host) {
+    const originHost = origin
+      ? URL.canParse(origin)
+        ? new URL(origin).host
+        : ""
+      : undefined;
+    if (originHost !== undefined && originHost !== req.headers.host) {
       json(res, 403, {
         error: {
           code: "forbidden",
@@ -149,10 +154,22 @@ export async function startServer(
     }
     const parts = url.pathname.split("/").filter(Boolean).slice(1); // drop "api"
     const q = url.searchParams;
+    const num = (key: string, fallback?: number): number | undefined => {
+      if (!q.has(key)) return fallback;
+      const value = Number(q.get(key));
+      if (!Number.isFinite(value) || value < 0)
+        throw new AnalysisError(
+          "invalid_input",
+          `${key} must be a non-negative number`,
+        );
+      return value;
+    };
     const paging = (): { offset?: number; limit?: number; text?: string } => {
       const out: { offset?: number; limit?: number; text?: string } = {};
-      if (q.has("offset")) out.offset = Number(q.get("offset"));
-      if (q.has("limit")) out.limit = Number(q.get("limit"));
+      const offset = num("offset");
+      const limit = num("limit");
+      if (offset !== undefined) out.offset = offset;
+      if (limit !== undefined) out.limit = limit;
       if (q.get("text")) out.text = q.get("text")!;
       return out;
     };
@@ -170,10 +187,7 @@ export async function startServer(
       return json(res, 201, await session.open(body.path));
     }
     if (req.method === "POST" && parts[0] === "uploads") {
-      const name = decodeURIComponent(q.get("name") ?? "upload.bin").replace(
-        /[^\w.@()-]+/g,
-        "_",
-      );
+      const name = (q.get("name") ?? "upload.bin").replace(/[^\w.@()-]+/g, "_");
       const bytes = await readBody(req, maxUpload);
       const loaded = targetFromBytes(bytes, name);
       if (loaded.info.format === "sqlite") {
@@ -218,7 +232,8 @@ export async function startServer(
         return json(res, 200, await session.collection(id, parts[3], paging()));
       if (sub === "strings") {
         const query: Parameters<Session["strings"]>[1] = paging();
-        if (q.has("minLength")) query.minLength = Number(q.get("minLength"));
+        const minLength = num("minLength");
+        if (minLength !== undefined) query.minLength = minLength;
         if (q.get("utf16") === "1") query.utf16 = true;
         if (q.get("tag")) query.tag = q.get("tag")!;
         return json(res, 200, session.strings(id, query));
@@ -284,9 +299,16 @@ export async function startServer(
       "content-type": type,
       "cache-control": file.endsWith("index.html")
         ? "no-store"
-        : "public, max-age=31536000, immutable",
+        : file.includes(`${sep}assets${sep}`)
+          ? "public, max-age=31536000, immutable"
+          : "no-cache",
     });
-    createReadStream(file).pipe(res);
+    createReadStream(file)
+      .on("error", (error) => {
+        if (!res.headersSent) fail(res, error);
+        else res.destroy();
+      })
+      .pipe(res);
   };
 
   const server = createServer((req, res) => {

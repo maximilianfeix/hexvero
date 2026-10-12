@@ -19,7 +19,7 @@ export interface BundleInfo {
   permissions: Array<{ key: string; reason: string }>;
   appTransportSecurity: { allowsArbitraryLoads: boolean | null };
   sandboxed: boolean | null;
-  hardenedRuntime: boolean | null;
+  codeSigned: boolean | null;
   frameworks: string[];
   embeddedBinaries: string[];
   helpers: string[];
@@ -191,10 +191,14 @@ export function analyzeAppBundle(dir: string): BundleInfo {
   const sandboxed = entitlements
     ? entitlements["com.apple.security.app-sandbox"] === true
     : null;
-  const hardenedRuntime =
-    main && main.binary.kind !== "macho-fat" && "macho" in main.binary
-      ? main.binary.macho.codeSigned
-      : null;
+  const mainMacho = main
+    ? main.binary.kind === "macho"
+      ? main.binary.macho
+      : main.binary.kind === "macho-fat"
+        ? main.binary.slices[0]?.macho
+        : undefined
+    : undefined;
+  const codeSigned = mainMacho ? mainMacho.codeSigned : null;
 
   if (ats?.["NSAllowsArbitraryLoads"] === true)
     findings.push({
@@ -275,7 +279,7 @@ export function analyzeAppBundle(dir: string): BundleInfo {
       allowsArbitraryLoads: ats ? ats["NSAllowsArbitraryLoads"] === true : null,
     },
     sandboxed,
-    hardenedRuntime,
+    codeSigned,
     frameworks,
     embeddedBinaries,
     helpers,

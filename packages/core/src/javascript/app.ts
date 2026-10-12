@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative, sep } from "node:path";
-import { openAsar } from "../formats/asar.js";
+import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
 import { scanJavaScript, type IpcUsage, type ModuleReference } from "./scan.js";
@@ -155,7 +155,14 @@ export function directoryTree(
 }
 
 export function asarTree(bytes: Uint8Array, name: string): FileTree {
-  const archive = openAsar(bytes);
+  return archiveTree(openAsar(bytes), name);
+}
+
+export function asarTreeFromFile(path: string): FileTree {
+  return archiveTree(openAsarFile(path), path);
+}
+
+function archiveTree(archive: AsarArchive, name: string): FileTree {
   return {
     kind: "asar",
     root: name,

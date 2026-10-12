@@ -239,6 +239,55 @@ function factsFor(data: Obj): Array<[string, string]> {
       add("Status", JSON.stringify(h["statuses"]));
       break;
     }
+    case "bundle": {
+      const b = obj(data["bundle"]) ?? {};
+      add("Bundle id", b["bundleId"]);
+      add("Version", `${b["version"]} (${b["build"]})`);
+      add("Platform", b["platform"]);
+      add("Executable", b["executable"]);
+      add("Minimum OS", b["minimumOs"]);
+      add("Framework", b["framework"]);
+      add(
+        "Sandboxed",
+        b["sandboxed"] === null ? undefined : b["sandboxed"] ? "yes" : "no",
+      );
+      add("URL schemes", (b["urlSchemes"] as string[])?.join(", "));
+      const main = obj(b["main"]);
+      if (main) add("Main binary", main["summary"]);
+      break;
+    }
+    case "jar": {
+      const j = obj(data["jar"]) ?? {};
+      add("Main class", j["mainClass"]);
+      add("Classes", j["classCount"]);
+      add("Signed", j["signed"] ? "yes" : "no");
+      const manifest = obj(j["manifest"]) ?? {};
+      for (const key of [
+        "Created-By",
+        "Build-Jdk",
+        "Implementation-Version",
+        "Bundle-SymbolicName",
+      ])
+        add(key, manifest[key]);
+      break;
+    }
+    case "java-class": {
+      const c = obj(data["javaClass"]) ?? {};
+      add("Class", c["name"]);
+      add("Extends", c["superClass"]);
+      add("Implements", (c["interfaces"] as string[])?.join(", "));
+      const v = obj(c["version"]);
+      if (v) add("Java", v["java"]);
+      add("Source file", c["sourceFile"]);
+      break;
+    }
+    case "dex": {
+      const d = obj(data["dex"]) ?? {};
+      add("DEX version", d["version"]);
+      const counts = obj(d["counts"]);
+      if (counts) for (const [k, v] of Object.entries(counts)) add(k, v);
+      break;
+    }
     case "plist": {
       const p = obj(data["plist"]);
       if (p)

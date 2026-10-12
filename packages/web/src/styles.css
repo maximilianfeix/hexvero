@@ -256,6 +256,27 @@ code,
   flex: 1;
 }
 
+.target-row {
+  position: relative;
+}
+
+.target-row .close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.target-row .close:hover {
+  color: var(--ink);
+  background: var(--panel);
+}
+
 .target-item {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -279,6 +300,7 @@ code,
 }
 
 .target-item .name {
+  padding-right: 20px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;

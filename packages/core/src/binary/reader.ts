@@ -101,15 +101,16 @@ export class ByteReader {
     }
   }
 
-  /** Signed LEB128 (WASM value types). */
+  /** Signed LEB128; values beyond 32 bits are consumed but return a truncated number. */
   sleb128(): number {
     let result = 0;
     let shift = 0;
     let byte = 0;
     do {
       byte = this.u8();
-      result |= (byte & 0x7f) << shift;
+      if (shift < 32) result |= (byte & 0x7f) << shift;
       shift += 7;
+      if (shift > 70) throw new RangeError("sleb128 value too long");
     } while (byte & 0x80);
     if (shift < 32 && byte & 0x40) result |= -1 << shift;
     return result;
@@ -117,9 +118,9 @@ export class ByteReader {
 }
 
 export function latin1(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]!);
-  return out;
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString(
+    "latin1",
+  );
 }
 
 const utf8 = new TextDecoder("utf-8", { fatal: false });

@@ -63,6 +63,12 @@ function buildWasm(): Uint8Array {
   exports.u8(2);
   leb(exports, 0);
   out.bytes(section(7, exports.done()));
+  // global: i32 mutable = 11 (0x0b inside the immediate), then i64 const -1
+  const globals = new Builder();
+  leb(globals, 2);
+  globals.u8(0x7f).u8(1).u8(0x41).u8(0x0b).u8(0x0b);
+  globals.u8(0x7e).u8(0).u8(0x42).u8(0x7f).u8(0x0b);
+  out.bytes(section(6, globals.done()));
   // producers custom section
   const producers = new Builder();
   str(producers, "producers");
@@ -95,6 +101,10 @@ describe("parseWasm", () => {
       { name: "memory", kind: "memory", index: 0, type: "" },
     ]);
     expect(w.producers).toEqual({ language: ["Rust"] });
+    expect(w.globals).toEqual([
+      { type: "i32", mutable: true },
+      { type: "i64", mutable: false },
+    ]);
     expect(w.findings.map((f) => f.kind)).toEqual([
       "wasm.wasi",
       "wasm.producers",
@@ -104,6 +114,7 @@ describe("parseWasm", () => {
       "import",
       "function",
       "export",
+      "global",
       "custom",
     ]);
   });

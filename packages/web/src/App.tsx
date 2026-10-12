@@ -209,7 +209,7 @@ export function App(): ReactElement {
         <h2>Targets</h2>
         <ul className="target-list">
           {targets.map((t) => (
-            <li key={t.id}>
+            <li key={t.id} className="target-row">
               <button
                 className="target-item"
                 aria-current={t.id === route.targetId}
@@ -218,20 +218,17 @@ export function App(): ReactElement {
                 )}
               >
                 <span className="name">{t.info.path.split(/[\\/]/).pop()}</span>
-                <span
-                  className="close"
-                  role="button"
-                  aria-label={`Close ${t.info.path}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void close(t.id);
-                  }}
-                >
-                  ×
-                </span>
                 <span className="meta">
                   {t.info.format} · {formatBytes(t.info.size)}
                 </span>
+              </button>
+
+              <button
+                className="close"
+                aria-label={`Close ${t.info.path}`}
+                onClick={() => void close(t.id)}
+              >
+                ×
               </button>
             </li>
           ))}

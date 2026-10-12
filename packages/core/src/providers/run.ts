@@ -177,7 +177,7 @@ export async function runProvider(
   let result: unknown;
   if (request.provider === "ghidra") {
     const digest = createHash("sha256")
-      .update(request.targetPath)
+      .update(await readFile(request.targetPath))
       .digest("hex")
       .slice(0, 16);
     const projectDir = join(cacheRoot(), "ghidra", digest);
@@ -186,6 +186,7 @@ export async function runProvider(
       `${request.operation}-${address ?? "all"}.json`,
     );
     await mkdir(projectDir, { recursive: true });
+    await rm(outputPath, { force: true });
     const exists = await readFile(join(projectDir, "hexvero.gpr")).then(
       () => true,
       () => false,

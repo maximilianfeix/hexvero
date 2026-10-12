@@ -213,6 +213,8 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       if (!Number.isFinite(offset))
         throw new UsageError("offset must be a number (decimal or 0x hex)");
       const length = args.positionals[2] ? Number(args.positionals[2]) : 256;
+      if (!Number.isFinite(length) || length <= 0)
+        throw new UsageError("length must be a positive number");
       const window = session.bytes(target.id, offset, length);
       if (json) {
         io.out(toJson(window));

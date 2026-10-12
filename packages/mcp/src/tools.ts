@@ -1,4 +1,9 @@
-import { AnalysisError, compact, Session } from "@hexvero/core";
+import {
+  AnalysisError,
+  compact,
+  originalPositionFor,
+  Session,
+} from "@hexvero/core";
 import { z } from "zod";
 
 /**
@@ -246,9 +251,7 @@ export function createHandlers(
       const analysis = await session.analyze(id);
       if (analysis.data.kind !== "source-map")
         throw new AnalysisError("invalid_input", "Target is not a source map");
-      const { originalPositionFor } = await import("@hexvero/core");
-      const { readFile } = await import("node:fs/promises");
-      const text = await readFile(analysis.target.path, "utf8");
+      const text = new TextDecoder().decode(session.rawBytes(id));
       return (
         originalPositionFor(text, Number(a["line"]), Number(a["column"])) ?? {
           source: null,
@@ -267,7 +270,15 @@ export function createHandlers(
       if (typeof a["address"] === "string") req.address = a["address"];
       const timeoutMs = num(a["timeoutMs"]);
       if (timeoutMs !== undefined) req.timeoutMs = timeoutMs;
-      return providers.run(req);
+      const result = (await providers.run(req)) as { result?: unknown } | null;
+      if (result && typeof result === "object" && "result" in result) {
+        return {
+          ...result,
+          result: compact(result.result, { maxItems: 200, maxString: 20_000 }),
+          note: "Large engine results are sampled; use the CLI `hexvero provider --json` for the complete output.",
+        };
+      }
+      return result;
     },
   };
 }

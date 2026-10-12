@@ -36,11 +36,19 @@ export interface StringsQuery extends CollectionQuery {
   tag?: string;
 }
 
+interface TaggedString {
+  offset: number;
+  encoding: "ascii" | "utf16le";
+  value: string;
+  tags: string[];
+}
+
 interface Entry {
   record: TargetRecord;
   loaded: LoadedTarget;
   analysis?: AnyAnalysis;
-  strings?: { key: string; items: ReturnType<typeof extractStrings> };
+  strings?: { key: string; items: TaggedString[] };
+  collections?: Record<string, unknown[]>;
 }
 
 /**
@@ -114,12 +122,18 @@ export class Session {
   }
 
   /** Names of the list-like collections available for this target after analysis. */
-  async collections(id: string): Promise<Record<string, number>> {
+  private async collectionTable(
+    id: string,
+  ): Promise<Record<string, unknown[]>> {
     const analysis = await this.analyze(id);
+    const e = this.entry(id);
+    e.collections ??= collectionsOf(analysis, e.loaded);
+    return e.collections;
+  }
+
+  async collections(id: string): Promise<Record<string, number>> {
     const out: Record<string, number> = {};
-    for (const [name, items] of Object.entries(
-      collectionsOf(analysis, this.entry(id).loaded),
-    ))
+    for (const [name, items] of Object.entries(await this.collectionTable(id)))
       out[name] = items.length;
     return out;
   }
@@ -129,8 +143,7 @@ export class Session {
     name: string,
     query: CollectionQuery = {},
   ): Promise<CollectionPage> {
-    const analysis = await this.analyze(id);
-    const all = collectionsOf(analysis, this.entry(id).loaded);
+    const all = await this.collectionTable(id);
     const items = all[name];
     if (!items) {
       throw new AnalysisError(
@@ -160,23 +173,27 @@ export class Session {
     const minLength = query.minLength ?? 4;
     const key = `${minLength}:${query.utf16 ? 1 : 0}`;
     if (!e.strings || e.strings.key !== key) {
+      const extracted = extractStrings(e.loaded.bytes, {
+        minLength,
+        utf16: query.utf16 ?? false,
+        max: 200_000,
+      });
       e.strings = {
         key,
-        items: extractStrings(e.loaded.bytes, {
-          minLength,
-          utf16: query.utf16 ?? false,
-          max: 200_000,
-        }),
+        items: extracted.map((x) => ({ ...x, tags: classifyString(x.value) })),
       };
     }
-    const extracted = e.strings.items;
-    let items = extracted.map((s) => ({ ...s, tags: classifyString(s.value) }));
+    let items = e.strings.items;
     if (query.tag) items = items.filter((s) => s.tags.includes(query.tag!));
     return pageOf("strings", items, query) as CollectionPage<
       (typeof items)[number]
     >;
   }
 
+  /** Whole-file contents for in-memory targets (empty for lazy ones). */
+  rawBytes(id: string): Uint8Array {
+    return this.entry(id).loaded.bytes;
+  }
   bytes(
     id: string,
     offset: number,
@@ -254,11 +271,17 @@ function pageOf(
   const limit = Math.min(Math.max(query.limit ?? 100, 1), 2000);
   const p = page(filtered, query.offset ?? 0, limit);
   const maxBytes = query.maxBytes ?? 256 * 1024;
-  let bytes = Buffer.byteLength(JSON.stringify(p.items, replacer));
-  while (bytes > maxBytes && p.items.length > 1) {
-    p.items.pop();
+  let bytes = 2;
+  let keep = 0;
+  for (const item of p.items) {
+    const size = Buffer.byteLength(JSON.stringify(item, replacer)) + 1;
+    if (keep > 0 && bytes + size > maxBytes) break;
+    bytes += size;
+    keep++;
+  }
+  if (keep < p.items.length) {
+    p.items = p.items.slice(0, keep);
     p.truncated = true;
-    bytes = Buffer.byteLength(JSON.stringify(p.items, replacer));
   }
   return { ...p, collection: name, bytes };
 }
@@ -406,12 +429,21 @@ export function collectionsOf(
       out["entitlements"] = Object.entries(d.bundle.entitlements ?? {}).map(
         ([key, value]) => ({ key, value }),
       );
-      if (d.bundle.main?.binary.kind === "macho") {
-        out["libraries"] = d.bundle.main.binary.macho.dylibs.map((x) => ({
-          name: x.path,
-          kind: x.kind,
-        }));
-        out["symbols"] = d.bundle.main.binary.macho.symbols;
+      {
+        const bin = d.bundle.main?.binary;
+        const macho =
+          bin?.kind === "macho"
+            ? bin.macho
+            : bin?.kind === "macho-fat"
+              ? bin.slices[0]?.macho
+              : undefined;
+        if (macho) {
+          out["libraries"] = macho.dylibs.map((x) => ({
+            name: x.path,
+            kind: x.kind,
+          }));
+          out["symbols"] = macho.symbols;
+        }
       }
       break;
     case "zip":
