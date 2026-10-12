@@ -39,3 +39,10 @@ export {
   EVM_OPCODES,
   type EvmInfo,
 } from "./formats/evm.js";
+export { parsePlist, type PlistValue } from "./formats/plist.js";
+export { parseHar, type HarInfo, type HarRequest } from "./formats/har.js";
+export {
+  inspectSqlite,
+  type SqliteInfo,
+  type SqliteTable,
+} from "./formats/sqlite.js";
