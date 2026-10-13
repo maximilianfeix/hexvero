@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { delimiter, join } from "node:path";
+import type { ProviderOperation } from "./run.js";
 
 export interface ProviderStatus {
   name: "radare2" | "rizin" | "ghidra";
@@ -9,6 +10,34 @@ export interface ProviderStatus {
   version?: string;
   operations: string[];
 }
+
+export const PROVIDER_OPERATIONS: Record<ProviderStatus["name"], ProviderOperation[]> = {
+  radare2: [
+    "functions",
+    "disassemble",
+    "decompile",
+    "strings",
+    "imports",
+    "xrefs",
+    "callers",
+    "callees",
+    "callgraph",
+    "search",
+  ],
+  rizin: [
+    "functions",
+    "disassemble",
+    "decompile",
+    "strings",
+    "imports",
+    "xrefs",
+    "callers",
+    "callees",
+    "callgraph",
+    "search",
+  ],
+  ghidra: ["functions", "decompile", "xrefs", "callers", "callees", "callgraph", "search"],
+};
 
 const CANDIDATES: Record<ProviderStatus["name"], string[]> = {
   radare2: ["r2", "radare2"],
@@ -57,11 +86,7 @@ export async function detectProviders(): Promise<ProviderStatus[]> {
       path = await which(bin);
       if (path) break;
     }
-    const operations = !path
-      ? []
-      : name === "ghidra"
-        ? ["functions", "decompile"]
-        : ["functions", "disassemble", "decompile", "strings", "imports"];
+    const operations = !path ? [] : [...PROVIDER_OPERATIONS[name]];
     const status: ProviderStatus = {
       name,
       available: path !== null,

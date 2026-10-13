@@ -2,7 +2,11 @@ import {
   AnalysisError,
   Session,
   compact,
+  loadCallGraph,
+  neighborhood,
+  resolveNode,
   runProvider,
+  tracePath,
   type ProviderName,
   type ProviderOperation,
 } from "@hexvero/core";
@@ -35,8 +39,13 @@ Commands
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
-  provider <path> <engine> <op> [--address a]   Run functions/disassemble/decompile/strings/imports
-                                                through radare2, rizin or ghidra (if installed)
+  provider <path> <engine> <op> [--address a] [--text s]
+                                                Run functions/disassemble/decompile/strings/imports/
+                                                xrefs/callers/callees/callgraph/search through
+                                                radare2, rizin or ghidra (if installed)
+  calls <path> <engine> <root> [--direction callers|callees|both] [--depth n] [--max n] [--goal g]
+                                                Bounded call-graph neighborhood, or the shortest
+                                                call path from root to goal
   mcp                                           Serve the Model Context Protocol over stdio
   ui [--port n] [--open]                        Start the local web UI
   doctor                                        Check the runtime and optional engines
@@ -263,6 +272,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         provider,
         operation,
         address: flagString(args.flags, "address"),
+        text: flagString(args.flags, "text"),
         timeoutMs: flagNumber(args.flags, "timeout"),
       });
       if (json) {
@@ -286,6 +296,80 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       else io.out(toJson(compact(r)));
       if (result.limitations.length)
         io.out(`\n${formatLimitations(io, result.limitations).join("\n")}`);
+      return 0;
+    }
+    case "calls": {
+      const target = await session.open(need(0, "path"));
+      const provider = need(1, "engine") as ProviderName;
+      const rootSpec = need(2, "root");
+      const graphRun = await loadCallGraph({
+        targetPath: target.info.path,
+        provider,
+        timeoutMs: flagNumber(args.flags, "timeout"),
+      });
+      const graph = graphRun.graph;
+      const root = resolveNode(graph, rootSpec);
+      if (!root.node)
+        throw new AnalysisError("invalid_input", `No function matches ${rootSpec}`, {
+          candidates: root.candidates,
+        });
+      const directionFlag = flagString(args.flags, "direction");
+      const goalSpec = flagString(args.flags, "goal");
+      if (goalSpec !== undefined) {
+        const goal = resolveNode(graph, goalSpec);
+        if (!goal.node)
+          throw new AnalysisError("invalid_input", `No function matches ${goalSpec}`, {
+            candidates: goal.candidates,
+          });
+        const trace = tracePath(
+          graph,
+          root.node,
+          goal.node,
+          directionFlag === "callers" || directionFlag === "both" ? directionFlag : "callees",
+        );
+        if (json) {
+          io.out(toJson(trace));
+          return 0;
+        }
+        io.out(
+          heading(io, `${provider} path ${root.node.name} → ${goal.node.name} · ${trace.status}`),
+        );
+        if (trace.path)
+          trace.path.forEach((n, i) => io.out(`${"  ".repeat(i)}${i ? "└ " : ""}${n}`));
+        else io.out(paint(io, "yellow", `no path (${trace.explored} functions explored)`));
+        if (trace.limitations.length)
+          io.out(`\n${formatLimitations(io, trace.limitations).join("\n")}`);
+        return 0;
+      }
+      const options: Parameters<typeof neighborhood>[2] = {
+        maxDepth: flagNumber(args.flags, "depth"),
+        maxNodes: flagNumber(args.flags, "max"),
+      };
+      if (directionFlag === "callers" || directionFlag === "callees" || directionFlag === "both")
+        options.direction = directionFlag;
+      const hood = neighborhood(graph, root.node, options);
+      if (json) {
+        io.out(toJson(hood));
+        return 0;
+      }
+      io.out(
+        heading(
+          io,
+          `${provider} ${hood.direction} of ${root.node.name} · ${hood.nodes.length} functions, ${hood.edges.length} edges · ${graphRun.durationMs} ms`,
+        ),
+      );
+      for (const level of hood.levels) {
+        io.out(paint(io, "dim", `depth ${level.depth}`));
+        for (const id of level.ids) {
+          const node = hood.nodes.find((n) => n.id === id);
+          const address = node?.address && node.address !== node.name ? ` ${node.address}` : "";
+          io.out(
+            `  ${node?.name ?? id}${paint(io, "dim", address)}${node?.external ? paint(io, "dim", " (external)") : ""}`,
+          );
+        }
+      }
+      if (hood.limitations.length)
+        io.out(`\n${formatLimitations(io, hood.limitations).join("\n")}`);
       return 0;
     }
     case "recover": {

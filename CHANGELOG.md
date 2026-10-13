@@ -8,6 +8,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- Cross-references and call graphs through engines: provider operations `xrefs`, `callers`,
+  `callees`, `callgraph` and `search` for radare2, rizin and Ghidra with one normalized shape; the
+  whole-program graph is read once and walked locally with depth/node bounds (`hexvero calls`,
+  `hexvero_call_graph`), including shortest call paths and explicit truncation facts.
 - Zero-dependency JavaScript bundle splitting (webpack 4/5, Rspack, browserify, esbuild): module
   boundaries, require graph, export names, endpoint/route/storage candidates, vendor fingerprints.
 - Objective-C metadata from Mach-O images without an engine: classes (methods, ivars, properties,

@@ -1,8 +1,17 @@
-import { AnalysisError, compact, originalPositionFor, Session } from "@hexvero/core";
+import {
+  AnalysisError,
+  compact,
+  neighborhood,
+  originalPositionFor,
+  resolveNode,
+  Session,
+  tracePath,
+  type CallGraph,
+} from "@hexvero/core";
 import { z } from "zod";
 
 /**
- * Tool catalog. Kept deliberately small: twelve tools whose combined
+ * Tool catalog. Kept deliberately small: fifteen tools whose combined
  * discovery payload stays under 32 KiB so that constrained MCP clients keep
  * working. Lists come back paged; anything bigger goes to a file.
  */
@@ -125,12 +134,46 @@ export const toolSchemas = {
   hexvero_provider_run: {
     title: "Run provider operation",
     description:
-      "Run disassemble, decompile or functions on a target through an installed engine. Output is bounded and cached.",
+      "Run one engine operation on a target: functions, disassemble, decompile, strings, imports, xrefs (references to an address), callers, callees, callgraph or search (names + strings). Output is bounded and cached.",
     input: {
       targetId,
       provider: z.enum(["radare2", "rizin", "ghidra"]),
-      operation: z.enum(["functions", "disassemble", "decompile", "strings", "imports"]),
-      address: z.string().optional().describe("Function address or name for disassemble/decompile"),
+      operation: z.enum([
+        "functions",
+        "disassemble",
+        "decompile",
+        "strings",
+        "imports",
+        "xrefs",
+        "callers",
+        "callees",
+        "callgraph",
+        "search",
+      ]),
+      address: z
+        .string()
+        .optional()
+        .describe("Function address or symbol for disassemble/decompile/xrefs/callers/callees"),
+      text: z.string().min(1).max(200).optional().describe("Needle for search"),
+      timeoutMs: z.number().int().min(1000).max(600_000).optional(),
+    },
+  },
+  hexvero_call_graph: {
+    title: "Call graph",
+    description:
+      "Bounded call-graph neighborhood around a function (callers, callees or both, by depth and node count), or the shortest call path from root to goal. One engine run per target, cached; levels state what was cut.",
+    input: {
+      targetId,
+      provider: z.enum(["radare2", "rizin", "ghidra"]),
+      root: z.string().min(1).describe("Function name or address to start from"),
+      direction: z.enum(["callers", "callees", "both"]).optional().describe("Default callees"),
+      maxDepth: z.number().int().min(0).max(8).optional().describe("Hops from root (default 2)"),
+      maxNodes: z.number().int().min(1).max(2000).optional().describe("Default 150"),
+      goal: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("With goal: shortest path root → goal in the given direction instead"),
       timeoutMs: z.number().int().min(1000).max(600_000).optional(),
     },
   },
@@ -145,8 +188,11 @@ export interface ProviderBridge {
     provider: string;
     operation: string;
     address?: string;
+    text?: string;
     timeoutMs?: number;
   }): Promise<unknown>;
+  /** The normalized whole-program call graph (the `callgraph` operation's result). */
+  callGraph(args: { targetPath: string; provider: string; timeoutMs?: number }): Promise<CallGraph>;
 }
 
 const str = (v: unknown): string => String(v);
@@ -281,6 +327,7 @@ export function createHandlers(
         operation: str(a["operation"]),
       };
       if (typeof a["address"] === "string") req.address = a["address"];
+      if (typeof a["text"] === "string") req.text = a["text"];
       const timeoutMs = num(a["timeoutMs"]);
       if (timeoutMs !== undefined) req.timeoutMs = timeoutMs;
       const result = (await providers.run(req)) as { result?: unknown } | null;
@@ -292,6 +339,41 @@ export function createHandlers(
         };
       }
       return result;
+    },
+    hexvero_call_graph: async (a) => {
+      const target = session.get(str(a["targetId"]));
+      const req: Parameters<ProviderBridge["callGraph"]>[0] = {
+        targetPath: target.info.path,
+        provider: str(a["provider"]),
+      };
+      const timeoutMs = num(a["timeoutMs"]);
+      if (timeoutMs !== undefined) req.timeoutMs = timeoutMs;
+      const graph = await providers.callGraph(req);
+      const root = resolveNode(graph, str(a["root"]));
+      if (!root.node)
+        throw new AnalysisError("invalid_input", `No function matches ${str(a["root"])}`, {
+          candidates: root.candidates,
+          functions: graph.nodes.length,
+        });
+      if (typeof a["goal"] === "string") {
+        const goal = resolveNode(graph, a["goal"]);
+        if (!goal.node)
+          throw new AnalysisError("invalid_input", `No function matches ${a["goal"]}`, {
+            candidates: goal.candidates,
+          });
+        const direction =
+          a["direction"] === "callers" || a["direction"] === "both" ? a["direction"] : "callees";
+        return tracePath(graph, root.node, goal.node, direction);
+      }
+      const options: Parameters<typeof neighborhood>[2] = {};
+      if (a["direction"] === "callers" || a["direction"] === "callees" || a["direction"] === "both")
+        options.direction = a["direction"];
+      const maxDepth = num(a["maxDepth"]);
+      if (maxDepth !== undefined) options.maxDepth = maxDepth;
+      const maxNodes = num(a["maxNodes"]);
+      if (maxNodes !== undefined) options.maxNodes = maxNodes;
+      const result = neighborhood(graph, root.node, options);
+      return { ...result, functions: graph.nodes.length, edgesTotal: graph.edges.length };
     },
   };
 }

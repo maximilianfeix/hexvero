@@ -1,20 +1,34 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AnalysisError, type Limitation } from "../model.js";
+import { type CallGraph, callersOf, calleesOf, normalizeCallGraph, resolveNode } from "./graph.js";
 import { detectProviders, type ProviderStatus } from "./index.js";
 
 export type ProviderName = ProviderStatus["name"];
-export type ProviderOperation = "functions" | "disassemble" | "decompile" | "strings" | "imports";
+export type ProviderOperation =
+  | "functions"
+  | "disassemble"
+  | "decompile"
+  | "strings"
+  | "imports"
+  | "xrefs"
+  | "callers"
+  | "callees"
+  | "callgraph"
+  | "search";
 
 export interface ProviderRequest {
   targetPath: string;
   provider: ProviderName;
   operation: ProviderOperation;
+  /** Function address or symbol for disassemble/decompile/xrefs/callers/callees. */
   address?: string | undefined;
+  /** Case-insensitive needle for `search` (function names and strings); never passed to a shell. */
+  text?: string | undefined;
   timeoutMs?: number | undefined;
 }
 
@@ -103,13 +117,244 @@ function parseJson(text: string): unknown {
   }
 }
 
+/** Every line of stdout that parses as JSON, in order (radare2 prints one document per command). */
+function parseJsonDocs(text: string): unknown[] {
+  const docs: unknown[] = [];
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("[") && !t.startsWith("{")) continue;
+    try {
+      docs.push(JSON.parse(t));
+    } catch {
+      /* warning or partial line */
+    }
+  }
+  return docs;
+}
+
 const RADARE_COMMANDS: Record<ProviderOperation, (address: string | null) => string> = {
   functions: () => "aaa; aflj",
   disassemble: (a) => `aaa; pdfj @ ${a ?? "entry0"}`,
   decompile: (a) => `aaa; pdgj @ ${a ?? "entry0"}`,
   strings: () => "izj",
   imports: () => "iij",
+  // references to an address or symbol from anywhere; the function list maps each source
+  // address to its function (rizin's axtj carries no function name)
+  xrefs: (a) => `aaa; aflj; axtj @ ${a ?? "entry0"}`,
+  // callers/callees/callgraph share one whole-program read: functions with addresses plus the
+  // global call graph. The relationship is computed client-side from the cached graph.
+  callers: () => "aaa; aflj; agCj",
+  callees: () => "aaa; aflj; agCj",
+  callgraph: () => "aaa; aflj; agCj",
+  // function names and strings; the needle is applied client-side, never interpolated
+  search: () => "aaa; aflj; izj",
 };
+
+/** rizin renamed the JSON call graph to `agC json`; everything else matches radare2. */
+const RIZIN_COMMANDS: typeof RADARE_COMMANDS = {
+  ...RADARE_COMMANDS,
+  callers: () => "aaa; aflj; agC json",
+  callees: () => "aaa; aflj; agC json",
+  callgraph: () => "aaa; aflj; agC json",
+};
+
+const ADDRESS_OPERATIONS: ReadonlySet<ProviderOperation> = new Set([
+  "disassemble",
+  "decompile",
+  "xrefs",
+  "callers",
+  "callees",
+]);
+
+const MAX_XREFS = 20_000;
+const MAX_SEARCH_RESULTS = 5_000;
+const MAX_STRING_VALUE = 256;
+
+interface FunctionRange {
+  name: string;
+  start: number;
+  end: number;
+}
+
+/** Function ranges from an `aflj` document (radare2 ≥ 6 says `addr`, older builds and rizin `offset`). */
+function functionRanges(doc: unknown): FunctionRange[] {
+  if (!Array.isArray(doc)) return [];
+  const out: FunctionRange[] = [];
+  for (const item of doc as unknown[]) {
+    if (typeof item !== "object" || item === null) continue;
+    const r = item as Record<string, unknown>;
+    const start = typeof r["offset"] === "number" ? r["offset"] : r["addr"];
+    if (typeof r["name"] !== "string" || typeof start !== "number") continue;
+    const size = typeof r["size"] === "number" ? r["size"] : 1;
+    out.push({ name: r["name"], start, end: start + Math.max(1, size) });
+  }
+  return out;
+}
+
+const hex = (n: number): string => `0x${n.toString(16)}`;
+
+/** Normalizes radare2/rizin `axtj` rows (last document) into the shape shared with Ghidra. */
+function radareXrefs(docs: unknown[]): unknown {
+  const rows = docs.at(-1);
+  if (!Array.isArray(rows) || docs.length < 2)
+    return { references: [], truncated: false, note: "engine returned no reference list" };
+  const ranges = functionRanges(docs[0]);
+  const containing = (addr: number): string | null =>
+    ranges.find((f) => addr >= f.start && addr < f.end)?.name ?? null;
+  const references = rows.slice(0, MAX_XREFS).flatMap((x) => {
+    if (typeof x !== "object" || x === null) return [];
+    const r = x as Record<string, unknown>;
+    const from = typeof r["from"] === "number" ? r["from"] : null;
+    return [
+      {
+        from: from === null ? null : hex(from),
+        type: typeof r["type"] === "string" ? r["type"] : null,
+        function:
+          typeof r["fcn_name"] === "string"
+            ? r["fcn_name"]
+            : from === null
+              ? null
+              : containing(from),
+        opcode: typeof r["opcode"] === "string" ? r["opcode"] : null,
+      },
+    ];
+  });
+  return { references, truncated: rows.length > MAX_XREFS };
+}
+
+/** Applies the search needle to the `aflj` + `izj` documents with one shared result budget. */
+function radareSearch(docs: unknown[], needle: string): unknown {
+  const lower = needle.toLowerCase();
+  const functions: Array<{ name: string; address: string }> = [];
+  const strings: Array<{ value: string; address: string }> = [];
+  let truncated = false;
+  for (const f of functionRanges(docs[0])) {
+    if (!f.name.toLowerCase().includes(lower)) continue;
+    if (functions.length >= MAX_SEARCH_RESULTS) {
+      truncated = true;
+      break;
+    }
+    functions.push({ name: f.name, address: hex(f.start) });
+  }
+  const stringsDoc = docs.at(-1);
+  for (const item of Array.isArray(stringsDoc) && docs.length > 1
+    ? (stringsDoc as unknown[])
+    : []) {
+    if (typeof item !== "object" || item === null) continue;
+    const r = item as Record<string, unknown>;
+    if (typeof r["string"] !== "string" || !r["string"].toLowerCase().includes(lower)) continue;
+    if (functions.length + strings.length >= MAX_SEARCH_RESULTS) {
+      truncated = true;
+      break;
+    }
+    strings.push({
+      value: r["string"].slice(0, MAX_STRING_VALUE),
+      address: typeof r["vaddr"] === "number" ? hex(r["vaddr"]) : "?",
+    });
+  }
+  return { needle, functions, strings, truncated };
+}
+
+/** Projects callers or callees of `spec` out of a normalized call graph. */
+function relation(
+  graph: CallGraph,
+  spec: string | null,
+  kind: "callers" | "callees",
+  limitations: Limitation[],
+): unknown {
+  if (spec === null) {
+    limitations.push({ code: "address_required", message: `${kind} needs an address or symbol.` });
+    return null;
+  }
+  const { node, candidates } = resolveNode(graph, spec);
+  if (!node) {
+    limitations.push({
+      code: candidates.length ? "function_ambiguous" : "function_not_found",
+      message: `No single function matches ${spec}${candidates.length ? `; candidates: ${candidates.slice(0, 5).join(", ")}` : "."}`,
+    });
+    return { function: null, candidates, [kind]: [] };
+  }
+  const ids = kind === "callers" ? callersOf(graph, node.id) : calleesOf(graph, node.id);
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  return {
+    function: node,
+    [kind]: ids.map(
+      (id) => byId.get(id) ?? { id, name: id, address: null, size: null, external: true },
+    ),
+    coverage: graph.truncated ? "partial" : "complete",
+  };
+}
+
+async function contentDigest(path: string): Promise<string> {
+  return createHash("sha256")
+    .update(await readFile(path))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/** Normalized graphs per provider + content digest; concurrent requests share one engine run. */
+const graphCache = new Map<string, Promise<CallGraph>>();
+
+export interface CallGraphResult {
+  graph: CallGraph;
+  /** True when no engine ran because the graph was already known for this content. */
+  cached: boolean;
+  durationMs: number;
+}
+
+/**
+ * The whole-program call graph for a target, read from the engine once per content digest and
+ * kept in memory and under the cache directory. radare2/rizin otherwise re-run `aaa` on every
+ * question and Ghidra re-exports its project.
+ */
+export async function loadCallGraph(
+  request: Omit<ProviderRequest, "operation" | "address" | "text">,
+  statuses?: ProviderStatus[],
+): Promise<CallGraphResult> {
+  const started = performance.now();
+  const digest = await contentDigest(request.targetPath);
+  const key = `${request.provider}:${digest}`;
+  const diskPath = join(cacheRoot(), "graphs", `${request.provider}-${digest}.json`);
+  let cached = true;
+  let pending = graphCache.get(key);
+  if (!pending) {
+    cached = false;
+    pending = (async (): Promise<CallGraph> => {
+      try {
+        const fromDisk = JSON.parse(await readFile(diskPath, "utf8")) as CallGraph;
+        if (Array.isArray(fromDisk.nodes) && Array.isArray(fromDisk.edges)) {
+          cached = true;
+          return fromDisk;
+        }
+      } catch {
+        /* not cached yet */
+      }
+      const run = await runProvider({ ...request, operation: "callgraph" }, statuses);
+      const graph = run.result as CallGraph | null;
+      if (!graph || !Array.isArray(graph.nodes))
+        throw new AnalysisError(
+          "provider_unavailable",
+          `${request.provider} produced no call graph`,
+          {
+            limitations: run.limitations,
+          },
+        );
+      if (!graph.truncated && run.limitations.length === 0) {
+        try {
+          await mkdir(dirname(diskPath), { recursive: true });
+          await writeFile(diskPath, JSON.stringify(graph));
+        } catch {
+          /* cache is best effort */
+        }
+      }
+      return graph;
+    })();
+    graphCache.set(key, pending);
+    pending.catch(() => graphCache.delete(key));
+  }
+  const graph = await pending;
+  return { graph, cached, durationMs: Math.round(performance.now() - started) };
+}
 
 export function cacheRoot(): string {
   return process.env["HEXVERO_CACHE_DIR"] ?? join(homedir(), ".cache", "hexvero");
@@ -149,19 +394,41 @@ export async function runProvider(
   if (request.address !== undefined && !/^[\w.$@]+$/.test(request.address)) {
     throw new AnalysisError("invalid_input", "address must be a hex address or a symbol name");
   }
+  if (request.operation === "search") {
+    if (!request.text || request.text.length > 200)
+      throw new AnalysisError("invalid_input", "search needs text of 1..200 characters");
+  } else if (request.text !== undefined) {
+    throw new AnalysisError("invalid_input", "text is only accepted by the search operation");
+  }
+  if (ADDRESS_OPERATIONS.has(request.operation) && request.address === undefined) {
+    throw new AnalysisError(
+      "invalid_input",
+      `${request.operation} needs an address or symbol name`,
+    );
+  }
   const timeoutMs = request.timeoutMs ?? (request.provider === "ghidra" ? 300_000 : 120_000);
   const limitations: Limitation[] = [];
   const address = request.address ?? null;
+  const needle = request.operation === "search" ? (request.text ?? "") : null;
 
   let run: Exec;
   let result: unknown;
   if (request.provider === "ghidra") {
-    const digest = createHash("sha256")
-      .update(await readFile(request.targetPath))
-      .digest("hex")
-      .slice(0, 16);
+    const digest = await contentDigest(request.targetPath);
     const projectDir = join(cacheRoot(), "ghidra", digest);
-    const outputPath = join(projectDir, `${request.operation}-${address ?? "all"}.json`);
+    const key =
+      needle !== null
+        ? createHash("sha256").update(needle).digest("hex").slice(0, 12)
+        : (address ?? "all");
+    // callers/callees are projected client-side from the whole graph so one export serves both
+    const scriptOperation =
+      request.operation === "callers" || request.operation === "callees"
+        ? "callgraph"
+        : request.operation;
+    const outputPath = join(
+      projectDir,
+      `${scriptOperation}-${key.replace(/[^\w.$@-]/g, "_")}.json`,
+    );
     await mkdir(projectDir, { recursive: true });
     await rm(outputPath, { force: true });
     const exists = await readFile(join(projectDir, "hexvero.gpr")).then(
@@ -176,14 +443,32 @@ export async function runProvider(
       ghidraScriptDir(),
       "-postScript",
       "HexveroExport.java",
-      request.operation,
-      address ?? "-",
+      scriptOperation,
+      // prefixed so a needle like "-scriptlog" can never be taken for a headless option
+      needle !== null ? `text:${needle}` : (address ?? "-"),
       outputPath,
     ];
     run = await exec(status.path, args, timeoutMs);
     if (!run.timedOut) {
       try {
-        result = JSON.parse(await readFile(outputPath, "utf8"));
+        const size = (await stat(outputPath)).size;
+        if (size > MAX_OUTPUT) {
+          run.truncated = true;
+          result = null;
+          limitations.push({
+            code: "output_truncated",
+            message: `The export is ${size} bytes, above the ${MAX_OUTPUT} byte limit; narrow the request.`,
+          });
+        } else {
+          result = JSON.parse(await readFile(outputPath, "utf8"));
+          if (scriptOperation === "callgraph") {
+            const graph = normalizeCallGraph("ghidra", result, { limitations });
+            result =
+              request.operation === "callgraph"
+                ? graph
+                : relation(graph, address, request.operation as "callers" | "callees", limitations);
+          }
+        }
       } catch {
         result = null;
         limitations.push({
@@ -195,7 +480,9 @@ export async function runProvider(
     if (!exists && (run.timedOut || run.code !== 0))
       await rm(projectDir, { recursive: true, force: true });
   } else {
-    const command = RADARE_COMMANDS[request.operation](address);
+    const command = (request.provider === "rizin" ? RIZIN_COMMANDS : RADARE_COMMANDS)[
+      request.operation
+    ](address);
     run = await exec(
       status.path,
       [
@@ -212,6 +499,30 @@ export async function runProvider(
       timeoutMs,
     );
     result = parseJson(run.stdout);
+    const docs = parseJsonDocs(run.stdout);
+    const partial = run.truncated;
+    switch (request.operation) {
+      case "xrefs":
+        result = radareXrefs(docs);
+        break;
+      case "search":
+        result = radareSearch(docs, needle ?? "");
+        break;
+      case "callgraph":
+        result = normalizeCallGraph(request.provider, docs, { partial });
+        break;
+      case "callers":
+      case "callees":
+        result = relation(
+          normalizeCallGraph(request.provider, docs, { partial }),
+          address,
+          request.operation,
+          limitations,
+        );
+        break;
+      default:
+        break;
+    }
     if (request.operation === "decompile" && (result === null || typeof result === "string")) {
       limitations.push({
         code: "decompiler_missing",

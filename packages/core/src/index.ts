@@ -56,8 +56,25 @@ export {
   type StringsQuery,
 } from "./session.js";
 export { compact, type CompactOptions } from "./compact.js";
-export { detectProviders, type ProviderStatus } from "./providers/index.js";
+export { detectProviders, PROVIDER_OPERATIONS, type ProviderStatus } from "./providers/index.js";
 export {
+  callersOf,
+  calleesOf,
+  neighborhood,
+  normalizeCallGraph,
+  resolveNode,
+  tracePath,
+  type CallGraph,
+  type GraphDirection,
+  type GraphEdge,
+  type GraphNode,
+  type Neighborhood,
+  type NeighborhoodOptions,
+  type PathTrace,
+} from "./providers/graph.js";
+export {
+  loadCallGraph,
+  type CallGraphResult,
   runProvider,
   type ProviderRequest,
   type ProviderResult,
