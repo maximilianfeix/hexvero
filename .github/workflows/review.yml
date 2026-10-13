@@ -31,6 +31,8 @@ jobs:
         env:
           REVIEW_REPORT_PATH: review-report.md
       - name: Post or update the review thread
+        # Pull requests from forks run with a read-only token; the report then stays in the job log.
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v9
         with:
           script: |
@@ -47,6 +49,9 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body: full });
             }
+      - name: Print the report for fork pull requests
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: cat review-report.md
       - name: Fail the job when a gate failed
         if: steps.gates.outcome == 'failure'
         run: exit 1

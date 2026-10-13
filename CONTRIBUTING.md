@@ -8,7 +8,11 @@ node packages/cli/bin/hexvero.js analyze /bin/ls
 npm run ui             # start the UI from source
 ```
 
-## Rules the review workflow enforces
+## Rules
+
+Automated by `npm run check` (`scripts/check-shape.mjs`): no `any`, `AnalysisError` instead of bare
+`Error` in parsers, a test per format, `confidence` literals, `console.log` only in the CLI, at most 16
+MCP tools. The rest is checked by reviewers.
 
 - No `any`. `exactOptionalPropertyTypes` is on.
 - Parsers live in `packages/core/src/formats/`, throw `AnalysisError` with a code, and have a test
@@ -35,6 +39,8 @@ npm run release -- 0.2.2
 The script bumps every package and the version constants, moves the notes under the version,
 commits, tags `v0.2.2` and pushes. The Release workflow checks that the tag matches the package
 versions, runs the full check, creates the GitHub release with the tarballs and publishes all four
-packages to npm with provenance. Publishing uses npm trusted publishing (OIDC from this repository's
-`release.yml`); an `NPM_TOKEN` repository secret is used instead when present. Versions that already
-exist on npm are skipped, so a re-run is safe.
+packages to npm with provenance. npm tries trusted publishing first (OIDC from this repository's
+`release.yml`, configured on npmjs.com per package); the `NPM_TOKEN` repository secret is the fallback
+when no trusted publisher exists. Versions that already exist on npm are skipped, so a re-run is safe.
+Run the workflow by hand with "dry run" enabled to exercise the whole pipeline, including
+`npm publish --dry-run`, without releasing anything.
