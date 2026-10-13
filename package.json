@@ -2,7 +2,7 @@
   "name": "hexvero-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "hexvero.dev — reverse engineer anything, locally.",
+  "description": "hexvero.dev \u2014 reverse engineer anything, locally.",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -20,7 +20,8 @@
     "ui": "node packages/cli/bin/hexvero.js ui --open",
     "review": "node scripts/review-report.mjs",
     "check:shape": "node scripts/check-shape.mjs",
-    "publish:all": "npm run check && npm run build && for w in packages/core packages/mcp packages/server packages/cli; do npm publish -w ./$w --access public; done"
+    "publish:all": "npm run check && npm run build && for w in packages/core packages/mcp packages/server packages/cli; do npm publish -w ./$w --access public; done",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

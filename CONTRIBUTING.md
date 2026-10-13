@@ -26,6 +26,15 @@ One issue per feature, one PR per issue, squash-merged. Titles use conventional 
 
 ## Releases
 
-Bump versions in all `packages/*/package.json`, add a CHANGELOG entry, tag `vX.Y.Z` and push the
-tag. The Release workflow packs every package, creates the GitHub release and publishes to npm when
-`NPM_TOKEN` is configured.
+Write the notes under `## [Unreleased]` in CHANGELOG.md, then from a clean `main`:
+
+```bash
+npm run release -- 0.2.2
+```
+
+The script bumps every package and the version constants, moves the notes under the version,
+commits, tags `v0.2.2` and pushes. The Release workflow checks that the tag matches the package
+versions, runs the full check, creates the GitHub release with the tarballs and publishes all four
+packages to npm with provenance. Publishing uses npm trusted publishing (OIDC from this repository's
+`release.yml`); an `NPM_TOKEN` repository secret is used instead when present. Versions that already
+exist on npm are skipped, so a re-run is safe.
