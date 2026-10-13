@@ -498,4 +498,44 @@ describe("items on one side only", () => {
       }).matchedByPosition,
     ).toBe(0);
   });
+
+  it("places a summary row by every file it names, and one that names none by the side's coverage", () => {
+    const partial = {
+      complete: false,
+      read: new Set(["main.js"]),
+      unreadable: new Set(["big.js"]),
+    };
+    const diff = compareItems(
+      [
+        { channel: "open", senders: [], receivers: ["main.js"] },
+        { channel: "tail", senders: [], receivers: ["big.js"] },
+        { channel: "gone", senders: [], receivers: ["main.js"] },
+      ],
+      [{ channel: "open", senders: [], receivers: ["main.js"] }],
+      { collection: "ipcChannels", coverage: { a: wholeSide("main.js", "big.js"), b: partial } },
+    );
+    expect(diff.removed).toEqual(["gone"]);
+    expect(diff.unknown).toEqual([
+      {
+        key: "tail",
+        side: "a",
+        file: "big.js",
+        reason: "file could not be read on the other side",
+      },
+    ]);
+    // no file named: with the other side read in part, nothing is known about the item there
+    const bare = compareItems([{ name: "only-left" }], [], {
+      key: "name",
+      coverage: { a: wholeSide(), b: partial },
+    });
+    expect(bare.removed).toEqual([]);
+    expect(bare.unknown.map((u) => u.reason)).toEqual(["the other side was read only in part"]);
+    // and with both sides read whole it is simply removed
+    expect(
+      compareItems([{ name: "only-left" }], [], {
+        key: "name",
+        coverage: { a: wholeSide(), b: wholeSide() },
+      }).removed,
+    ).toEqual(["only-left"]);
+  });
 });

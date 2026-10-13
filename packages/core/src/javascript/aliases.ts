@@ -468,10 +468,12 @@ export class Constants {
           continue;
         }
         if (known === null) continue;
-        // The same enum compiled into two modules is one enum; a different one is ambiguous.
-        const same = [...members].every(([key, v]) => (known.get(key) ?? v) === v);
-        if (same) for (const [key, v] of members) known.set(key, v);
-        else this.enums.set(name, null);
+        // The same enum compiled into two modules is one enum: equal members, equal values.
+        // Anything else under one name is two enums, and a member of one must not be resolved
+        // where the other is in scope.
+        const same =
+          known.size === members.size && [...members].every(([key, v]) => known.get(key) === v);
+        if (!same) this.enums.set(name, null);
       }
       k = j;
     }

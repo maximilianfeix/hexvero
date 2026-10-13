@@ -122,8 +122,12 @@ export interface WebPreference {
   windowName: string | null;
 }
 
-/** How a setting stands for one window: its literal, computed at run time, or absent from the code. */
-export type SettingState = boolean | "computed" | "not written";
+/**
+ * How a setting stands for one window: its literal, computed at run time, absent from the code,
+ * or `conflicting` when two different literals are written for the window in places whose order
+ * of effect cannot be read (two separate objects), so neither is taken.
+ */
+export type SettingState = boolean | "computed" | "conflicting" | "not written";
 
 /**
  * What holds for a window. `on`/`off`: decided by what the code writes. `default on`/`default
@@ -160,6 +164,13 @@ export interface WindowSummary {
   basis: string;
 }
 
+/** A state from which no value can be taken. */
+const noValue = (state: SettingState): state is "computed" | "conflicting" =>
+  state === "computed" || state === "conflicting";
+
+/** Text taken from the analyzed file, bounded before it goes into a message. */
+const short = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
+
 /** The major version in a package.json range such as `^38.0.0`; null when it names none. */
 export function electronMajor(range: string | null | undefined): number | null {
   const m = /^[\^~>=v\s]*(\d+)(?:\.|\s|$)/.exec(range ?? "");
@@ -176,7 +187,7 @@ export function electronMajor(range: string | null | undefined): number | null {
 export function windowEffects(
   w: Pick<WindowSummary, "nodeIntegration" | "contextIsolation" | "sandbox">,
   major: number | null,
-  enableSandbox: boolean,
+  enableSandbox: boolean | "maybe",
 ): Pick<
   WindowSummary,
   | "nodeIntegrationInEffect"
@@ -200,9 +211,9 @@ export function windowEffects(
   // nodeIntegration was on by default before Electron 5 and is off since.
   let node: Effect;
   if (typeof w.nodeIntegration === "boolean") node = w.nodeIntegration ? "on" : "off";
-  else if (w.nodeIntegration === "computed") {
+  else if (noValue(w.nodeIntegration)) {
     node = "unknown";
-    basis.push("nodeIntegration is computed");
+    basis.push(`nodeIntegration is ${w.nodeIntegration}`);
   } else if (major === null) {
     node = "unknown";
     basis.push("nodeIntegration not written: off by default since Electron 5, version not known");
@@ -216,12 +227,20 @@ export function windowEffects(
   if (typeof w.contextIsolation === "boolean") {
     isolation = w.contextIsolation ? "on" : "off";
     basis.push("contextIsolation as written");
-  } else if (w.contextIsolation === "computed") {
+  } else if (noValue(w.contextIsolation)) {
     isolation = "unknown";
-    basis.push("contextIsolation is computed");
+    basis.push(`contextIsolation is ${w.contextIsolation}`);
   } else isolation = byDefault("contextIsolation", 12);
   let sandbox: Effect;
-  if (enableSandbox) {
+  // Both written: the documentation says Node integration disables the sandbox, and does not
+  // say what an explicit `sandbox: true` next to it does. Nothing is claimed for that pair.
+  const contested = w.nodeIntegration === true && (w.sandbox === true || enableSandbox === true);
+  if (contested) {
+    sandbox = "unknown";
+    basis.push(
+      `nodeIntegration: true and ${w.sandbox === true ? "sandbox: true" : "app.enableSandbox()"} are both written; Electron's documentation does not say which decides`,
+    );
+  } else if (enableSandbox === true) {
     sandbox = "on";
     basis.push("app.enableSandbox() is called, which overrides per-window settings");
   } else if (node === "on") {
@@ -230,10 +249,18 @@ export function windowEffects(
   } else if (typeof w.sandbox === "boolean") {
     sandbox = w.sandbox ? "on" : "off";
     basis.push("sandbox as written");
-  } else if (w.sandbox === "computed" || w.nodeIntegration === "computed") {
+  } else if (noValue(w.sandbox) || noValue(w.nodeIntegration)) {
     sandbox = "unknown";
-    basis.push(`${w.sandbox === "computed" ? "sandbox" : "nodeIntegration"} is computed`);
+    basis.push(
+      noValue(w.sandbox) ? `sandbox is ${w.sandbox}` : `nodeIntegration is ${w.nodeIntegration}`,
+    );
   } else sandbox = byDefault("sandbox", 20);
+  if (enableSandbox === "maybe" && sandbox !== "on") {
+    sandbox = "unknown";
+    basis.push(
+      "app.enableSandbox() is called inside a function or behind a condition; whether it runs was not read",
+    );
+  }
   // A page gets require() only with Node integration on AND context isolation off. The answer
   // is as certain as its least certain part: `by default` when either rests on a default.
   let pageRequire: WindowSummary["pageRequire"];
@@ -244,6 +271,8 @@ export function windowEffects(
   else if (isolation === "unknown") pageRequire = "unknown";
   else if (isolation === "default on") pageRequire = "no by default";
   else pageRequire = node === "on" && isolation === "off" ? "yes" : "yes by default";
+  // If the sandbox does decide for that pair, the renderer has no Node at all.
+  if (contested && pageRequire !== "no") pageRequire = "unknown";
   return {
     nodeIntegrationInEffect: node,
     contextIsolationInEffect: isolation,
@@ -279,7 +308,28 @@ const WINDOW_CLASSES = new Set(["BrowserWindow", "BrowserView", "WebContentsView
  * `webPreferences` object passed to it by name or spread into it, and any other object under a
  * `webPreferences` key. A setting outside these is not a window setting, however near it is.
  */
-function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRange[] {
+/** Past every place of a file: an options value that cannot be followed hides every key. */
+const EVERYWHERE = Number.MAX_SAFE_INTEGER;
+
+/** The ranges of a file, and what could not be followed while locating them. */
+interface WindowRanges {
+  ranges: WindowRange[];
+  /** Names of objects that were followed to their declaration as window options. */
+  traced: Set<string>;
+  /**
+   * Windows whose options take a value that could not be followed (a parameter, a call, a
+   * conditional, a spread of something unknown), with the place up to which keys written for
+   * the window may be replaced by it. A key the code writes after that place stands.
+   */
+  opaque: Map<number, number>;
+}
+
+function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRanges {
+  const traced = new Set<string>();
+  const opaque = new Map<number, number>();
+  const hide = (window: number | null, upTo: number): void => {
+    if (window !== null) opaque.set(window, Math.max(opaque.get(window) ?? -1, upTo));
+  };
   const ranges: WindowRange[] = [];
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
@@ -383,10 +433,16 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
     for (let k = open + 1; k < end; k++) {
       const t = tokens[k]!;
       const next = tokens[k + 1];
-      if (is(k, "...") && next?.type === "ident") {
-        const base = is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
+      if (is(k, "...")) {
+        // `...name`, `...helper()`; anything else (`...(dev ? a : b)`, `...opts.prefs`), or a
+        // name that is not an object of this file, may write any key at this place.
+        const simple = next?.type === "ident" && !is(k + 2, ".") && !is(k + 2, "[");
+        const base = !simple ? -1 : is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
         // Inside a base, everything is applied where that base is applied.
-        if (base !== -1) add(base, window, true, depth + 1, at ?? t.start);
+        if (base !== -1) {
+          if (!is(k + 2, "(")) traced.add(next!.value);
+          add(base, window, true, depth + 1, at ?? t.start);
+        } else hide(window, at ?? t.start);
       } else if (
         t.type === "ident" &&
         t.value === "webPreferences" &&
@@ -396,13 +452,28 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
         const name = tokens[k + 2]!.value;
         if (is(k + 3, ",") || is(k + 3, "}")) {
           const named = objectOf(name);
-          if (named !== -1) add(named, window, inherited, depth + 1, at);
+          if (named !== -1) {
+            traced.add(name);
+            add(named, window, inherited, depth + 1, at);
+          } else hide(window, EVERYWHERE);
         } else if (is(k + 3, "(")) {
           // `webPreferences: helper({ … })`: what the helper returns is the base, its argument
           // (inside this range already) is laid over it.
           const result = returnedBy(name);
-          if (result !== -1) add(result, window, true, depth + 1, at ?? tokens[k + 2]!.start);
-        }
+          // Applied at the very start of the argument object, so the argument's own keys,
+          // which are laid over what the helper returns, come after it in the same object.
+          const applied = is(k + 4, "{") ? tokens[k + 4]!.start + 1 : tokens[k + 2]!.start;
+          if (result !== -1) add(result, window, true, depth + 1, at ?? applied);
+          else hide(window, EVERYWHERE);
+        } else hide(window, EVERYWHERE); // `webPreferences: options.prefs`, `a ? b : c`
+      } else if (
+        t.type === "ident" &&
+        t.value === "webPreferences" &&
+        is(k + 1, ":") &&
+        !is(k + 2, "{")
+      ) {
+        // `webPreferences: dev ? {…} : {…}`, `webPreferences: (…)`: not an object written here
+        hide(window, EVERYWHERE);
       }
     }
   };
@@ -431,7 +502,13 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       const first = tokens[c + 2];
       if (first?.type === "ident" && is(c + 3, ")")) {
         const at = objectOf(first.value);
-        if (at !== -1) add(at, window);
+        if (at !== -1) {
+          traced.add(first.value);
+          add(at, window);
+        } else hide(window, EVERYWHERE); // a parameter, an import: `new BrowserWindow(options)`
+      } else if (!is(c + 2, "{") && !is(c + 2, ")")) {
+        // `new BrowserWindow(dev ? {…} : {…})`, `new BrowserWindow(makeOptions())`
+        hide(window, EVERYWHERE);
       }
       add(c + 1, window);
     } else if (t.value === "webPreferences" && is(k + 1, ":") && is(k + 2, "{")) {
@@ -440,7 +517,7 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       if (!ranges.some((r) => start >= r.start && start < r.end)) add(k + 2, null);
     }
   }
-  return ranges;
+  return { ranges, traced, opaque };
 }
 
 /** One member a preload script exposes to the page through contextBridge. */
@@ -772,10 +849,12 @@ export interface JsCoverage {
   nextFiles: string[];
   /** The files that were passed over (the first 200); nothing is known about their contents. */
   skippedFiles: string[];
+  /** The files that were read only up to the token budget (the first 200). */
+  partialFiles: string[];
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 3;
+export const JS_SCAN_SCHEMA = 5;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -786,6 +865,8 @@ export interface JsScanFacts {
   /** Paths already processed, in scan order. A file is processed exactly once. */
   scanned: string[];
   skippedFiles: string[];
+  /** Files whose reading stopped at the token budget: what follows the cut is not known. */
+  truncatedFiles: string[];
   skipped: number;
   bytes: number;
   modules: JsModule[];
@@ -793,9 +874,24 @@ export interface JsScanFacts {
   externals: Record<string, number>;
   webPreferences: WebPreference[];
   /** Every window constructor call that was located, also one that writes no setting. */
-  windows: Array<{ file: string; window: number; windowName: string; line: number }>;
-  /** `app.enableSandbox()` is called somewhere. */
-  enableSandbox: boolean;
+  windows: Array<{
+    file: string;
+    window: number;
+    windowName: string;
+    line: number;
+    /**
+     * Keys whose value for this window is not what the code next to it says: the options take
+     * something that could not be followed, or the followed object is assigned to later.
+     */
+    computed?: string[];
+    /** The options take a value that could not be followed. */
+    opaque?: true;
+  }>;
+  /**
+   * `app.enableSandbox()`: `always` when it is a statement at the top of a file, `maybe` when it
+   * sits inside a function or behind a condition, false when no such call was read.
+   */
+  enableSandbox: "always" | "maybe" | false;
   contextBridge: BridgeMember[];
   endpoints: AppCandidate[];
   storage: AppCandidate[];
@@ -820,6 +916,7 @@ export function emptyJsScanFacts(): JsScanFacts {
     schema: JS_SCAN_SCHEMA,
     scanned: [],
     skippedFiles: [],
+    truncatedFiles: [],
     skipped: 0,
     bytes: 0,
     modules: [],
@@ -1179,6 +1276,10 @@ export function analyzeJavaScriptTree(
     runBytes += file.size;
     bytes += file.size;
     let ranges: WindowRange[] = [];
+    let located: WindowRanges | null = null;
+    /** Keys of a followed options object that are assigned after its declaration. */
+    const mutated = new Set<string>();
+    let sandboxCall: "always" | "maybe" | null = null;
     // Settings are read from tokens, so text in a comment or a string is never a setting.
     const settingsAt: Array<{
       key: Exclude<PreferenceKey, "preload">;
@@ -1187,17 +1288,106 @@ export function analyzeJavaScriptTree(
       start: number;
     }> = [];
     const preloadsAt = new Set<number>();
+    /** Every `{ … }` of the file as [start, end) offsets, in source order; filled when needed. */
+    let braces: Array<[number, number]> = [];
+    /** The start of the innermost object or block that holds the offset. */
+    const objectAt = (offset: number): number => {
+      let inner = -1;
+      for (const [start, end] of braces) {
+        if (start > offset) break;
+        if (offset < end) inner = start;
+      }
+      return inner;
+    };
     let ambient: ReturnType<typeof collectAmbient> | null = null;
     const scan = scanJavaScript(source, {
       onTokens: (tokens, truncated, context) => {
+        if (source.includes("enableSandbox")) {
+          // Read from tokens, so a comment or a string is no call. Only a statement at the top
+          // of the file that no condition guards is certain to run.
+          let depth = 0;
+          for (let k = 0; k < tokens.length; k++) {
+            const t = tokens[k]!;
+            if (t.type === "punct") {
+              if (t.value === "{" || t.value === "(" || t.value === "[") depth++;
+              else if (t.value === "}" || t.value === ")" || t.value === "]") depth--;
+              continue;
+            }
+            if (
+              t.type !== "ident" ||
+              t.value !== "enableSandbox" ||
+              tokens[k - 1]?.value !== "." ||
+              tokens[k + 1]?.value !== "("
+            )
+              continue;
+            // back to the start of the statement: nothing but `app.` may stand before the call
+            const owner = tokens[k - 2];
+            const before = tokens[k - 3];
+            const plain =
+              depth === 0 &&
+              owner?.type === "ident" &&
+              (!before ||
+                before.line !== owner.line ||
+                (before.type === "punct" && (before.value === ";" || before.value === "}")));
+            if (plain) sandboxCall = "always";
+            else sandboxCall ??= "maybe";
+          }
+        }
         if (
-          /ipcMain|ipcRenderer|\.(on|once|handle|handleOnce|send|invoke|sendSync|sendToHost|postMessage)\(/.test(
+          /ipcMain|ipcRenderer|\.(on|once|handle|handleOnce|send|invoke|sendSync|sendToHost|postMessage)\(|\b(window|self|globalThis|global)\.[\w$]+\s*=[^=]/.test(
             source,
           )
         )
           ambient = collectAmbient(tokens, context.aliases);
-        if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source))
-          ranges = windowRanges(tokens, context.aliases);
+        if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source)) {
+          located = windowRanges(tokens, context.aliases);
+          ranges = located.ranges;
+          // `prefs.sandbox = false`, `prefs["sandbox"] = false`, `Object.assign(prefs, …)` on an
+          // object that was followed as window options: what the declaration says no longer
+          // holds, so the key reads as computed.
+          const { traced } = located;
+          const is = (i: number, value: string): boolean =>
+            tokens[i]?.type === "punct" && tokens[i]!.value === value;
+          for (let k = 0; traced.size && k + 3 < tokens.length; k++) {
+            const t = tokens[k]!;
+            if (t.type !== "ident") continue;
+            if (
+              t.value === "assign" &&
+              is(k - 1, ".") &&
+              tokens[k - 2]?.value === "Object" &&
+              is(k + 1, "(") &&
+              tokens[k + 2]?.type === "ident" &&
+              traced.has(tokens[k + 2]!.value)
+            ) {
+              for (const key of BOOLEAN_KEYS) mutated.add(key);
+              mutated.add("preload");
+              continue;
+            }
+            if (!traced.has(t.value) || is(k - 1, ".")) continue;
+            // `name.key =`, `name.webPreferences.key =`, `name["key"] =`
+            let at = k + 1;
+            if (is(at, ".") && tokens[at + 1]?.value === "webPreferences") at += 2;
+            const key = is(at, ".")
+              ? tokens[at + 1]?.type === "ident"
+                ? tokens[at + 1]!.value
+                : null
+              : is(at, "[") && tokens[at + 1]?.type === "string" && is(at + 2, "]")
+                ? tokens[at + 1]!.value
+                : null;
+            const after = is(at, ".") ? at + 2 : at + 3;
+            if (key !== null && is(after, "=") && !is(after + 1, "=")) mutated.add(key);
+          }
+          const open: number[] = [];
+          const pairs: Array<[number, number]> = [];
+          for (const t of tokens) {
+            if (t.type !== "punct") continue;
+            if (t.value === "{") {
+              open.push(pairs.length);
+              pairs.push([t.start, Number.MAX_SAFE_INTEGER]);
+            } else if (t.value === "}" && open.length) pairs[open.pop()!]![1] = t.end;
+          }
+          braces = pairs;
+        }
         if (
           /nodeIntegration|contextIsolation|sandbox|preload|webSecurity|allowRunningInsecureContent|webviewTag|enableRemoteModule/.test(
             source,
@@ -1271,6 +1461,7 @@ export function analyzeJavaScriptTree(
         if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
       },
     });
+    if (scan.truncated && facts.truncatedFiles.length < 200) facts.truncatedFiles.push(file.path);
     if (scan.truncated && facts.limitations.length < 200)
       facts.limitations.push({
         code: "scan_truncated",
@@ -1278,26 +1469,8 @@ export function analyzeJavaScriptTree(
       });
     const open = ambient as ReturnType<typeof collectAmbient> | null;
     if (open?.ipc.length) {
-      // Only replies can be read twice: the scanner sees `event.sender.send` inside a listener on
-      // a written-out `ipcMain`, and `collectAmbient` sees every one. Rows carry no column, and
-      // minified code has everything on one line, so those are matched as a multiset of
-      // (line, channel) and only as many are dropped as the scanner already has. Every other
-      // row from `collectAmbient` is a call the scanner cannot have, and is always kept.
-      const have = new Map<string, number>();
-      for (const u of scan.ipc)
-        if (u.api === "event.sender.send")
-          have.set(lineAndChannel(u), (have.get(lineAndChannel(u)) ?? 0) + 1);
-      const extra = open.ipc.filter((u) => {
-        if (u.api !== "event.sender.send") return true;
-        const left = have.get(lineAndChannel(u)) ?? 0;
-        if (left === 0) return true;
-        have.set(lineAndChannel(u), left - 1);
-        return false;
-      });
-      if (extra.length) {
-        scan.ipc.push(...extra);
-        scan.ipc.sort((a, b) => a.line - b.line);
-      }
+      scan.ipc.push(...open.ipc);
+      scan.ipc.sort((x, y) => x.line - y.line);
     }
     if (open?.truncated) ambientCapped = true;
     let role: JsModule["role"] = "unknown";
@@ -1340,6 +1513,7 @@ export function analyzeJavaScriptTree(
       windowName: string | null;
       inherited: boolean;
       order: number;
+      scope: number;
     }> => {
       if (ranges.length) {
         // The innermost range decides which window it is; a helper used by two windows has one
@@ -1365,6 +1539,7 @@ export function analyzeJavaScriptTree(
                 inherited: r.inherited,
                 // where the write takes effect: its own place, or where its base is applied
                 order: r.at ?? index,
+                scope: objectAt(r.at ?? index),
               },
             ]),
           ).values(),
@@ -1372,12 +1547,13 @@ export function analyzeJavaScriptTree(
       }
       const before = source.slice(Math.max(0, index - WINDOW_CONTEXT), index);
       return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before)
-        ? [{ window: null, windowName: null, inherited: false, order: index }]
+        ? [{ window: null, windowName: null, inherited: false, order: index, scope: index }]
         : [];
     };
     // Settings of this file first; what a window overrides is dropped before they are kept.
-    const found: Array<WebPreference & { inherited: boolean; order: number }> = [];
-    const record = (pref: WebPreference & { inherited: boolean; order: number }): boolean => {
+    type Written = WebPreference & { inherited: boolean; order: number; scope: number };
+    const found: Written[] = [];
+    const record = (pref: Written): boolean => {
       if (found.length >= MAX_PREFS_PER_FILE || webPreferences.length + found.length >= MAX_PREFS) {
         prefsCapped = true;
         return false;
@@ -1431,20 +1607,37 @@ export function analyzeJavaScriptTree(
     for (const r of ranges) {
       if (r.window === null || r.inherited || facts.windows.length >= MAX_PREFS) continue;
       if (facts.windows.some((w) => w.file === file.path && w.window === r.window)) continue;
+      const hiddenUpTo = (located as WindowRanges | null)?.opaque.get(r.window);
+      const computedKeys = new Set<string>(mutated);
+      if (hiddenUpTo !== undefined)
+        // What could not be followed may write any key; a key the code writes for the window
+        // after that place stands, every other one is not known.
+        for (const key of ["preload", ...BOOLEAN_KEYS])
+          if (!found.some((o) => o.window === r.window && o.key === key && o.order > hiddenUpTo))
+            computedKeys.add(key);
       facts.windows.push({
         file: file.path,
         window: r.window,
         windowName: r.name ?? `#${r.window}`,
         line: lineAt(r.start),
+        ...(computedKeys.size ? { computed: [...computedKeys] } : {}),
+        ...(hiddenUpTo === undefined ? {} : { opaque: true as const }),
       });
     }
-    if (/\benableSandbox\s*\(/.test(source)) facts.enableSandbox = true;
-    for (const { inherited: _inherited, order, ...pref } of found) {
-      // The same key written twice for one window, directly or through a base object: the later
-      // write wins, as in JavaScript. `{ sandbox: true, ...base }` takes the base's value.
+    if (sandboxCall === "always") facts.enableSandbox = "always";
+    else if (sandboxCall === "maybe" && facts.enableSandbox !== "always")
+      facts.enableSandbox = "maybe";
+    for (const { inherited: _inherited, order, scope, ...pref } of found) {
+      // The same key written twice into ONE object, directly or through a base that is spread
+      // into it: the later write wins, as in JavaScript (`{ sandbox: true, ...base }` takes the
+      // base's value). Writes in two separate objects of a window are both kept: which of them
+      // takes effect cannot be read, and dropping one could hide the unsafe value.
       if (
         pref.window !== null &&
-        found.some((o) => o.window === pref.window && o.key === pref.key && o.order > order)
+        found.some(
+          (o) =>
+            o.window === pref.window && o.key === pref.key && o.scope === scope && o.order > order,
+        )
       )
         continue;
       webPreferences.push(pref);
@@ -1483,7 +1676,9 @@ export function analyzeJavaScriptTree(
       sourceMappingUrl: scan.sourceMappingUrl,
       role,
       ...(scan.constants ? { constants: scan.constants } : {}),
-      ...(open && (open.facts.defines || open.facts.calls) ? { ambient: open.facts } : {}),
+      ...(open && (open.facts.defines || open.facts.calls || open.facts.replies)
+        ? { ambient: open.facts }
+        : {}),
     });
     for (const ref of scan.references) {
       if (ref.dynamic) {
@@ -1536,6 +1731,7 @@ export function analyzeJavaScriptTree(
     order: "entry file, then path depth, then path",
     nextFiles: remainingFiles.slice(0, 5).map((f) => f.path),
     skippedFiles: [...facts.skippedFiles],
+    partialFiles: [...(facts.truncatedFiles ?? [])],
   };
   if (tree.truncated)
     limitations.push({
@@ -1599,19 +1795,44 @@ export function analyzeJavaScriptTree(
   }
 
   // IPC calls on names another file defines, now that the files are known.
-  const ambientResult = resolveAmbient(modules);
-  for (const m of modules)
+  const ambientResult = resolveAmbient(
+    modules,
+    new Set(edges.filter((e) => e.resolved).map((e) => e.to)),
+  );
+  for (const m of modules) {
     if (m.role !== "main" && m.ipc.some((u) => u.via === "global" && u.api.startsWith("ipcMain.")))
       m.role = "main";
-  if (ambientResult.unresolved.length) {
+    // Replies and port transfers count only in a file that uses Electron's IPC: it has IPC rows
+    // by now, or it loads the electron module. The scanner reads a reply inside a listener on a
+    // written-out `ipcMain` itself; rows carry no column and minified code has everything on one
+    // line, so those are matched as a multiset of (line, channel) and only as many are dropped
+    // as the scanner already has.
+    const replies = m.ambient?.replies;
+    if (!replies?.length) continue;
+    const usesIpc =
+      m.ipc.length > 0 || m.references.some((r) => /^electron(\/|$)/.test(r.specifier));
+    if (!usesIpc) continue;
+    const have = new Map<string, number>();
+    for (const u of m.ipc)
+      if (u.api === "event.sender.send")
+        have.set(lineAndChannel(u), (have.get(lineAndChannel(u)) ?? 0) + 1);
+    for (const u of replies) {
+      const left = u.api === "event.sender.send" ? (have.get(lineAndChannel(u)) ?? 0) : 0;
+      if (left > 0) have.set(lineAndChannel(u), left - 1);
+      else m.ipc.push(u);
+    }
+    m.ipc.sort((x, y) => x.line - y.line);
+    delete m.ambient!.replies;
+  }
+  if (ambientResult.unresolvedTotal) {
     const sample = ambientResult.unresolved
       .slice(0, 5)
-      .map((u) => `${u.name}.${u.method}("${u.channel}") at ${u.file}:${u.line}`)
+      .map((u) => `${short(u.name)}.${u.method}("${short(u.channel)}") at ${u.file}:${u.line}`)
       .join(", ");
-    const more = ambientResult.unresolved.length - Math.min(5, ambientResult.unresolved.length);
+    const more = ambientResult.unresolvedTotal - Math.min(5, ambientResult.unresolved.length);
     limitations.push({
       code: "ipc_receiver_unresolved",
-      message: `${ambientResult.unresolved.length} call(s) that look like IPC are on a name that could not be traced to ipcMain or ipcRenderer and are not listed: ${sample}${more ? ` … and ${more} more` : ""}.`,
+      message: `${ambientResult.unresolvedTotal} call(s) that look like IPC are on a name that could not be traced to ipcMain or ipcRenderer and are not listed: ${sample}${more ? ` … and ${more} more` : ""}.`,
     });
   }
   // Calls on an IPC object whose channel is a parameter or a computed value: listed without a
@@ -1696,13 +1917,17 @@ export function analyzeJavaScriptTree(
   // One row per window: what is written, and what follows from the settings together.
   const major = electronMajor(electronVersion);
   const windows: WindowSummary[] = (facts.windows ?? []).map((w) => {
-    // A key written twice in one object literal takes its last value in JavaScript, so the
-    // last row of a window decides, never the first.
+    // One row per key is left where the order of writes could be read. Several rows with
+    // different values are writes in separate objects: neither is taken.
     const stateOf = (key: CoreKey): SettingState => {
-      const p = webPreferences.findLast(
+      if (w.computed?.includes(key)) return "computed";
+      const rows = webPreferences.filter(
         (x) => x.file === w.file && x.window === w.window && x.key === key,
       );
-      return !p ? "not written" : typeof p.value === "boolean" ? p.value : "computed";
+      if (!rows.length) return "not written";
+      if (rows.some((p) => typeof p.value !== "boolean")) return "computed";
+      const values = new Set(rows.map((p) => p.value));
+      return values.size === 1 ? (rows[0]!.value as boolean) : "conflicting";
     };
     const states = {
       nodeIntegration: stateOf("nodeIntegration"),
@@ -1716,9 +1941,22 @@ export function analyzeJavaScriptTree(
       ...w,
       ...states,
       preload: typeof preload?.value === "string" ? preload.value : null,
-      ...windowEffects(states, major, facts.enableSandbox === true),
+      ...windowEffects(
+        states,
+        major,
+        facts.enableSandbox === "always" ? true : facts.enableSandbox === "maybe" ? "maybe" : false,
+      ),
     };
   });
+  const opaqueWindows = facts.windows.filter((w) => w.opaque);
+  if (opaqueWindows.length)
+    limitations.push({
+      code: "window_options_unresolved",
+      message: `${opaqueWindows.length} window(s) take options that could not be followed (a parameter, a call, a condition, a spread of something not declared in the file), so settings not written after that are not known and read as computed: ${opaqueWindows
+        .slice(0, 5)
+        .map((w) => `${w.windowName} at ${w.file}:${w.line}`)
+        .join(", ")}${opaqueWindows.length > 5 ? ` … and ${opaqueWindows.length - 5} more` : ""}.`,
+    });
   const computedPrefs = webPreferences.filter((w) => w.value === null);
   if (computedPrefs.length)
     limitations.push({
@@ -1743,7 +1981,7 @@ export function analyzeJavaScriptTree(
       // The window where page scripts get require() is reported before one where they do not.
       const rank = { yes: 0, "yes by default": 1, unknown: 2, "no by default": 3, no: 4 } as const;
       const row = windows
-        .filter((w) => w.nodeIntegration === true)
+        .filter((w) => w.nodeIntegration === true || w.nodeIntegration === "conflicting")
         .toSorted((x, y) => rank[x.pageRequire] - rank[y.pageRequire])[0];
       const sandboxNote = "Node integration keeps the renderer out of the Chromium sandbox.";
       const detail =
@@ -1848,8 +2086,7 @@ export function analyzeJavaScriptTree(
         )} (collections ipcChannels, ipc)`,
         // Calls that could not be traced, or whose channel could not be read, exist: the list
         // is then not known to be complete.
-        confidence:
-          ambientResult.unresolved.length || channelless.length ? "inferred" : "confirmed",
+        confidence: ambientResult.unresolvedTotal || channelless.length ? "inferred" : "confirmed",
         location: first ? `${first.m.id}:${first.u.line}` : undefined,
       });
     }

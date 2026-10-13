@@ -254,7 +254,10 @@ export class Session {
     return {
       complete: app.coverage.complete,
       read: new Set(app.modules.map((m) => m.id)),
-      unreadable: new Set(app.coverage.skippedFiles ?? []),
+      unreadable: new Set([
+        ...(app.coverage.skippedFiles ?? []),
+        ...(app.coverage.partialFiles ?? []),
+      ]),
     };
   }
 

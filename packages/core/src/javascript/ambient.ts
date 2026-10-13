@@ -22,9 +22,12 @@ export type IpcTarget = "ipcMain" | "ipcRenderer";
 
 export interface AmbientDefinition {
   name: string;
-  target: IpcTarget;
-  /** `global`: assigned to window/globalThis/global/self. `top-level`: used at the top of a file. */
+  /** `other`: the name is assigned something that is not an IPC object. */
+  target: IpcTarget | "other";
+  /** `global`: assigned on a global object. `top-level`: used at the top of a file. */
   kind: "global" | "top-level";
+  /** For a global: `page` when assigned on window/self, `any` on global/globalThis. */
+  reach?: "page" | "any";
   line: number;
 }
 
@@ -33,19 +36,30 @@ export interface AmbientCall {
   method: string;
   channel: string;
   line: number;
+  /**
+   * The file binds the name more than once and also uses it at its top as an IPC object: which
+   * binding this call means was not read. It is reported, never resolved.
+   */
+  local?: true;
 }
 
 export interface AmbientFacts {
   defines?: AmbientDefinition[];
   calls?: AmbientCall[];
+  /**
+   * `<x>.sender.send("channel")` and `<x>.webContents.postMessage("channel")`. Their shape alone
+   * does not make them Electron IPC (`mailer.sender.send(…)`), so they wait here and become rows
+   * only if the file turns out to use Electron's IPC.
+   */
+  replies?: IpcUsage[];
 }
 
 export interface UnresolvedCall extends AmbientCall {
   file: string;
   /**
-   * Why it was not resolved: no definition was read, the definitions name different objects, or
-   * the nearest definition names an object that has no such method (`ipcMain.send`), which means
-   * the definition found is probably not the one the call uses.
+   * Why it was not resolved: no definition was read, the definitions name different objects (or
+   * the file itself binds the name twice), or the definition found names an object that has no
+   * such method (`ipcMain.send`), which means it is probably not the one the file uses.
    */
   reason: "undefined" | "ambiguous" | "mismatch";
 }
@@ -55,7 +69,8 @@ const METHODS: Record<IpcTarget, ReadonlySet<string>> = {
   ipcRenderer: new Set(["on", "once", "send", "invoke", "sendSync", "sendToHost", "postMessage"]),
 };
 const ANY_METHOD = new Set([...METHODS.ipcMain, ...METHODS.ipcRenderer]);
-const GLOBAL_OBJECTS = new Set(["window", "globalThis", "global", "self"]);
+const PAGE_OBJECTS = new Set(["window", "self"]);
+const GLOBAL_OBJECTS = new Set(["window", "self", "globalThis", "global"]);
 /** Names that are never an application's own binding for an IPC object. */
 const NOT_A_BINDING = new Set([
   "this",
@@ -67,15 +82,17 @@ const NOT_A_BINDING = new Set([
   "exports",
   ...GLOBAL_OBJECTS,
 ]);
-const MAX_CALLS_PER_FILE = 500;
+/** Per file: open calls, rows and definitions kept. Beyond them the file is marked as cut. */
+const MAX_PER_FILE = 500;
+/** Unresolved calls kept with their location; the total is counted beyond that. */
+const MAX_UNRESOLVED = 1000;
 
 const literal = (t: Token | undefined): string | null =>
   t && (t.type === "string" || (t.type === "template" && !t.value.includes("${"))) ? t.value : null;
 
 /**
  * What one file defines for others, the IPC-shaped calls it makes on names it does not bind, and
- * the handlers it registers on a page's own channel object. `aliases` is the file's own alias
- * resolution.
+ * the IPC rows only this reader sees. `aliases` is the file's own alias resolution.
  */
 export function collectAmbient(
   tokens: Token[],
@@ -83,15 +100,32 @@ export function collectAmbient(
 ): { facts: AmbientFacts; ipc: IpcUsage[]; truncated: boolean } {
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  /**
+   * The IPC object a token names: another name the file resolved, or the member of the electron
+   * module itself (`electron.ipcRenderer`, `require("electron").ipcRenderer`). A property of
+   * any other object (`mocks.ipcRenderer`) is not it.
+   */
   const targetAt = (i: number): IpcTarget | null => {
     const t = tokens[i];
     if (t?.type !== "ident") return null;
-    const name = aliases.get(i) ?? (is(i - 1, ".") ? t.value : null);
-    return name === "ipcMain" || name === "ipcRenderer" ? name : null;
+    const resolved = aliases.get(i);
+    if (resolved === "ipcMain" || resolved === "ipcRenderer") return resolved;
+    if (!is(i - 1, ".") || (t.value !== "ipcMain" && t.value !== "ipcRenderer")) return null;
+    const owner = tokens[i - 2];
+    const fromModule =
+      (owner?.type === "ident" && owner.value === "electron") ||
+      (is(i - 2, ")") &&
+        /^electron(\/|$)/.test(literal(tokens[i - 3]) ?? "") &&
+        is(i - 4, "(") &&
+        tokens[i - 5]?.type === "ident" &&
+        tokens[i - 5]!.value === "require");
+    return fromModule ? t.value : null;
   };
 
   // A name the file binds or hands around is not left open: any occurrence that is not a
-  // property access (`name.x`) counts as that. This also covers parameters and destructuring.
+  // property access (`name.x`) counts as that. This also covers parameters and destructuring,
+  // and it over-counts plain uses (`f(name)`), which is why a count above one is reported
+  // rather than resolved.
   const bound = new Map<string, number>();
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
@@ -101,10 +135,16 @@ export function collectAmbient(
 
   const defines = new Map<string, AmbientDefinition>();
   const calls: AmbientCall[] = [];
-  /** Calls on a name the file binds exactly once, read before that binding was seen. */
-  const early: Array<AmbientCall & { at: number }> = [];
+  /** Calls on a name the file binds itself, not resolved by the file's own alias resolution. */
+  const own: Array<AmbientCall & { bindings: number }> = [];
   const ipc: IpcUsage[] = [];
+  const replies: IpcUsage[] = [];
   let truncated = false;
+  const room = <T>(list: T[]): boolean => {
+    if (list.length < MAX_PER_FILE) return true;
+    truncated = true;
+    return false;
+  };
   let depth = 0;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
@@ -117,14 +157,16 @@ export function collectAmbient(
     if (t.type !== "ident") continue;
     const property = is(i - 1, ".");
 
-    // `window.name = <expression naming ipcMain or ipcRenderer>`
+    // `window.name = …`: every such assignment is recorded, an IPC object as that and anything
+    // else as `other`, so a name that means two things is known to be ambiguous.
     if (
       !property &&
       GLOBAL_OBJECTS.has(t.value) &&
       is(i + 1, ".") &&
       tokens[i + 2]?.type === "ident" &&
       is(i + 3, "=") &&
-      !is(i + 4, "=")
+      !is(i + 4, "=") &&
+      !is(i + 4, "=>")
     ) {
       const name = tokens[i + 2]!.value;
       // The assigned expression must BE the object (`ipcRenderer`, `electron.ipcRenderer`,
@@ -144,9 +186,14 @@ export function collectAmbient(
         if (nested === 0 && p.line !== tokens[j - 1]!.line && !is(j, ".")) break;
         last = j;
       }
-      const target = targetAt(last);
-      if (target && !defines.has(name))
-        defines.set(name, { name, target, kind: "global", line: tokens[i + 2]!.line });
+      const target = targetAt(last) ?? "other";
+      const reach = PAGE_OBJECTS.has(t.value) ? "page" : "any";
+      const known = defines.get(name);
+      if (!known) {
+        if (defines.size < MAX_PER_FILE)
+          defines.set(name, { name, target, kind: "global", reach, line: tokens[i + 2]!.line });
+        else truncated = true;
+      } else if (known.target !== target) known.target = "other";
     }
 
     // `<x>.webContents.ipc.on("channel", …)`: a handler on one page's own channel object.
@@ -161,12 +208,12 @@ export function collectAmbient(
       tokens[i - 4]!.value === "webContents"
     ) {
       const channel = literal(tokens[i + 2]);
-      if (channel !== null)
+      if (channel !== null && room(ipc))
         ipc.push({ api: `ipcMain.${t.value}`, channel, line: t.line, via: "webContents" });
     }
     // Replies and port transfers from the main process that the per-file scanner only sees inside
     // a listener registered on a written-out `ipcMain`: `<event>.sender.send("channel")` and
-    // `<x>.webContents.postMessage("channel")`. The caller drops rows the scanner already has.
+    // `<x>.webContents.postMessage("channel")`. They are kept apart: see `AmbientFacts.replies`.
     if (property && is(i + 1, "(") && tokens[i - 2]?.type === "ident") {
       const owner = tokens[i - 2]!.value;
       const api =
@@ -176,7 +223,7 @@ export function collectAmbient(
             ? "webContents.postMessage"
             : null;
       const channel = api ? literal(tokens[i + 2]) : null;
-      if (api && channel !== null) ipc.push({ api, channel, line: t.line });
+      if (api && channel !== null && room(replies)) replies.push({ api, channel, line: t.line });
     }
     if (property) continue;
 
@@ -192,8 +239,8 @@ export function collectAmbient(
     )
       defines.set(t.value, { name: t.value, target: resolved, kind: "top-level", line: t.line });
 
-    // `name.on("channel", …)` on a name this file neither binds nor resolves.
-    // A top-level name of the file that is not an IPC object maps to itself: still not resolved.
+    // `name.on("channel", …)` on a name the file's own alias resolution did not resolve. A
+    // top-level name of the file that is not an IPC object maps to itself: still not resolved.
     if (
       (resolved === undefined || resolved === t.value) &&
       is(i + 1, ".") &&
@@ -202,46 +249,70 @@ export function collectAmbient(
       is(i + 3, "(") &&
       !NOT_A_BINDING.has(t.value) &&
       t.value !== "ipcMain" &&
-      t.value !== "ipcRenderer" &&
-      (bound.get(t.value) ?? 0) <= 1
+      t.value !== "ipcRenderer"
     ) {
       const channel = literal(tokens[i + 4]);
       if (channel === null) continue;
-      if (bound.has(t.value)) {
-        // Bound once in this file, but not resolved here: a function body written above the
-        // top-level binding it uses. Decided after the loop, when that binding is known.
-        early.push({ name: t.value, method: tokens[i + 2]!.value, channel, line: t.line, at: i });
-        continue;
-      }
-      if (calls.length >= MAX_CALLS_PER_FILE) {
-        truncated = true;
-        continue;
-      }
-      calls.push({ name: t.value, method: tokens[i + 2]!.value, channel, line: t.line });
+      const call = { name: t.value, method: tokens[i + 2]!.value, channel, line: t.line };
+      const bindings = bound.get(t.value) ?? 0;
+      if (bindings === 0) {
+        if (room(calls)) calls.push(call);
+      } else if (room(own)) own.push({ ...call, bindings });
     }
   }
-  for (const call of early) {
+  for (const { bindings, ...call } of own) {
+    // Only a name the file uses at its top as an IPC object is of interest here; any other
+    // name the file binds is an ordinary local.
     const definition = defines.get(call.name);
-    if (definition?.kind !== "top-level" || !METHODS[definition.target].has(call.method)) continue;
-    ipc.push({
-      api: `${definition.target}.${call.method}`,
-      channel: call.channel,
-      line: call.line,
-      via: "alias",
-    });
+    if (definition?.kind !== "top-level" || definition.target === "other") continue;
+    if (bindings > 1) {
+      // Bound more than once (a parameter of the same name, or a plain use that the count cannot
+      // tell from a binding): which one the call means was not read. Reported, not resolved.
+      if (room(calls)) calls.push({ ...call, local: true });
+      continue;
+    }
+    // Bound exactly once: a function body written above the top-level binding it uses.
+    if (METHODS[definition.target].has(call.method) && room(ipc))
+      ipc.push({
+        api: `${definition.target}.${call.method}`,
+        channel: call.channel,
+        line: call.line,
+        via: "alias",
+      });
   }
+  // A global this file assigns itself and then uses by its bare name, further down.
+  const open = calls.filter((call) => {
+    const definition = defines.get(call.name);
+    if (
+      call.local ||
+      definition?.kind !== "global" ||
+      definition.target === "other" ||
+      call.line <= definition.line ||
+      !METHODS[definition.target].has(call.method)
+    )
+      return true;
+    if (room(ipc))
+      ipc.push({
+        api: `${definition.target}.${call.method}`,
+        channel: call.channel,
+        line: call.line,
+        via: "global",
+      });
+    return false;
+  });
   const facts: AmbientFacts = {};
   if (defines.size) facts.defines = [...defines.values()];
-  if (calls.length) facts.calls = calls;
+  if (open.length) facts.calls = open;
+  if (replies.length) facts.replies = replies;
   return { facts, ipc, truncated };
 }
 
-const directory = (file: string): string[] => file.split("/").slice(0, -1);
+const directoryOf = (file: string): string => file.slice(0, Math.max(0, file.lastIndexOf("/")));
 
 /** How many leading directories two files share. */
 function shared(a: string, b: string): number {
-  const x = directory(a);
-  const y = directory(b);
+  const x = directoryOf(a).split("/").filter(Boolean);
+  const y = directoryOf(b).split("/").filter(Boolean);
   let n = 0;
   while (n < x.length && n < y.length && x[n] === y[n]) n++;
   return n;
@@ -249,14 +320,25 @@ function shared(a: string, b: string): number {
 
 /**
  * Joins open calls with the definitions of other files and moves what can be decided into the
- * module's IPC list (`via: "global"`). The definition in the nearest directory decides; a name
- * bound at the top of a file reaches only files of the same directory tree, because only files
- * that are built together share a scope. Calls that stay open remain on the module, so a
- * continued scan that reads the defining file later resolves them then.
+ * module's IPC list (`via: "global"`).
+ *
+ * A name bound at the top of a file reaches another file only when there is evidence that the
+ * two are built into one script: both sit in the same directory, and no file imports or
+ * requires the using file as a module (`imported`). Sharing a parent directory such as `src/`
+ * is the norm for unrelated files and is no such evidence.
+ *
+ * A global assigned on `window` or `self` reaches the scripts of pages, not main-process files;
+ * one assigned on `global` or `globalThis` reaches every file. The nearest definition decides.
+ * Definitions that disagree, including one that assigns the name something that is not an IPC
+ * object, decide nothing.
+ *
+ * Calls that stay open remain on the module, so a continued scan that reads the defining file
+ * later resolves them then.
  */
 export function resolveAmbient(
-  modules: Array<{ id: string; ipc: IpcUsage[]; ambient?: AmbientFacts }>,
-): { resolved: number; unresolved: UnresolvedCall[] } {
+  modules: Array<{ id: string; role?: string; ipc: IpcUsage[]; ambient?: AmbientFacts }>,
+  imported: ReadonlySet<string> = new Set(),
+): { resolved: number; unresolved: UnresolvedCall[]; unresolvedTotal: number } {
   const definitions = new Map<string, Array<AmbientDefinition & { file: string }>>();
   for (const m of modules)
     for (const d of m.ambient?.defines ?? []) {
@@ -265,51 +347,87 @@ export function resolveAmbient(
       definitions.set(d.name, list);
     }
   let resolved = 0;
+  let unresolvedTotal = 0;
   const unresolved: UnresolvedCall[] = [];
+  const report = (call: AmbientCall, file: string, reason: UnresolvedCall["reason"]): void => {
+    unresolvedTotal++;
+    if (unresolved.length < MAX_UNRESOLVED) unresolved.push({ ...call, file, reason });
+  };
+  /** What a name means in a file: an IPC object, something else, nothing known, or unclear. */
+  type Meaning = IpcTarget | "other" | "undefined" | "ambiguous";
+  const meaningOf = (name: string, file: string, role: string | undefined): Meaning => {
+    const all = definitions.get(name);
+    if (!all) return "undefined";
+    // More definitions of one name than any application has: nothing is decided, and the work
+    // per call stays bounded.
+    if (all.length > 200) return "ambiguous";
+    let nearest = -1;
+    let targets = new Set<IpcTarget | "other">();
+    for (const d of all) {
+      if (d.file === file) continue;
+      let near: number;
+      if (d.kind === "top-level") {
+        if (directoryOf(d.file) !== directoryOf(file) || imported.has(file)) continue;
+        // the same directory is nearer than any global
+        near = Number.MAX_SAFE_INTEGER;
+      } else {
+        if (d.reach === "page" && role === "main") continue;
+        near = shared(file, d.file);
+      }
+      if (near > nearest) {
+        nearest = near;
+        targets = new Set([d.target]);
+      } else if (near === nearest) targets.add(d.target);
+    }
+    if (!targets.size) return "undefined";
+    return targets.size === 1 ? [...targets][0]! : "ambiguous";
+  };
   for (const m of modules) {
     const calls = m.ambient?.calls;
     if (!calls?.length) continue;
     const open: AmbientCall[] = [];
+    const meanings = new Map<string, Meaning>();
+    for (const call of calls)
+      if (!meanings.has(call.name)) meanings.set(call.name, meaningOf(call.name, m.id, m.role));
+    // One call the object cannot take (`ipcMain.send`) means the definition found is probably
+    // not the one this file uses: then none of the file's calls on that name is resolved.
+    const mismatched = new Set<string>();
+    for (const call of calls) {
+      const meaning = meanings.get(call.name)!;
+      if (
+        (meaning === "ipcMain" || meaning === "ipcRenderer") &&
+        !METHODS[meaning].has(call.method)
+      )
+        mismatched.add(call.name);
+    }
     let added = false;
     for (const call of calls) {
-      const reachable = (definitions.get(call.name) ?? [])
-        .filter((d) => d.file !== m.id)
-        .map((d) => ({ d, near: shared(m.id, d.file) }))
-        .filter(
-          ({ d, near }) =>
-            d.kind === "global" ||
-            near > 0 ||
-            (directory(m.id).length === 0 && directory(d.file).length === 0),
-        );
-      if (!reachable.length) {
+      const meaning = meanings.get(call.name)!;
+      if (call.local) {
+        open.push(call);
+        report(call, m.id, "ambiguous");
+      } else if (meaning === "other") {
+        // a global of that name that is not an IPC object: not IPC, nothing to report
+      } else if (meaning === "undefined") {
         open.push(call);
         // Only a name that says what it is counts as a likely miss; `emitter.on("x")` does not.
-        if (/ipc/i.test(call.name)) unresolved.push({ ...call, file: m.id, reason: "undefined" });
-        continue;
-      }
-      const nearest = Math.max(...reachable.map((r) => r.near));
-      const targets = new Set(reachable.filter((r) => r.near === nearest).map((r) => r.d.target));
-      if (targets.size !== 1) {
+        if (/ipc/i.test(call.name)) report(call, m.id, "undefined");
+      } else if (meaning === "ambiguous") {
         open.push(call);
-        unresolved.push({ ...call, file: m.id, reason: "ambiguous" });
-        continue;
-      }
-      const [target] = targets as Set<IpcTarget>;
-      // A method the object does not have (`ipcMain.send`): the definition found is probably
-      // not the one this call uses. Reported, never silently dropped and never listed.
-      if (!METHODS[target!].has(call.method)) {
+        report(call, m.id, "ambiguous");
+      } else if (mismatched.has(call.name)) {
         open.push(call);
-        unresolved.push({ ...call, file: m.id, reason: "mismatch" });
-        continue;
+        report(call, m.id, "mismatch");
+      } else {
+        m.ipc.push({
+          api: `${meaning}.${call.method}`,
+          channel: call.channel,
+          line: call.line,
+          via: "global",
+        });
+        added = true;
+        resolved++;
       }
-      m.ipc.push({
-        api: `${target}.${call.method}`,
-        channel: call.channel,
-        line: call.line,
-        via: "global",
-      });
-      added = true;
-      resolved++;
     }
     if (added) m.ipc.sort((a, b) => a.line - b.line);
     if (m.ambient) {
@@ -317,5 +435,5 @@ export function resolveAmbient(
       else delete m.ambient.calls;
     }
   }
-  return { resolved, unresolved };
+  return { resolved, unresolved, unresolvedTotal };
 }

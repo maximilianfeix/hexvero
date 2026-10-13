@@ -48,6 +48,12 @@ const state = (options: string): string =>
     .windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)
     .join();
 
+/** `sandboxInEffect` of a window that writes `sandbox: false`, after `main`. */
+const sandbox = (main: string): string =>
+  analyze(`${main}\nconst w = new BrowserWindow({ webPreferences: { sandbox: false } });`)
+    .windows.map((w) => w.sandboxInEffect)
+    .join();
+
 describe("what follows from a window's settings together", () => {
   it("gives page scripts require() only with nodeIntegration on and contextIsolation off", () => {
     expect(effects(true, false, "not written", 38)).toBe(
@@ -114,7 +120,23 @@ describe("what follows from a window's settings together", () => {
   });
 
   it("lets nodeIntegration and app.enableSandbox() override the sandbox setting", () => {
-    expect(effects(true, true, true, 38)).toBe("node on, isolation on, sandbox off, require no");
+    expect(effects(true, true, "not written", 38)).toBe(
+      "node on, isolation on, sandbox off, require no",
+    );
+    // both written: the documentation does not say which decides, so nothing is claimed
+    expect(effects(true, true, true, 38)).toBe(
+      "node on, isolation on, sandbox unknown, require no",
+    );
+    expect(effects(true, false, true, 38)).toBe(
+      "node on, isolation off, sandbox unknown, require unknown",
+    );
+    // a call that may not run does not make the sandbox certain
+    expect(effects(false, true, false, 38, "maybe")).toBe(
+      "node off, isolation on, sandbox unknown, require no",
+    );
+    expect(effects(false, true, true, 38, "maybe")).toBe(
+      "node off, isolation on, sandbox on, require no",
+    );
     expect(effects(false, true, false, 38, true)).toBe(
       "node off, isolation on, sandbox on, require no",
     );
@@ -291,5 +313,113 @@ describe("window settings as written, computed, or absent", () => {
     expect(state("{ sandbox: true, ...unsafe, contextIsolation: true }")).toBe("false true");
     expect(state("{ sandbox: true, ...base() }")).toBe("false not written");
     expect(state("{ ...base(), sandbox: true }")).toBe("true not written");
+  });
+
+  it("keeps both values when a key is written in two separate objects of one window", () => {
+    // the later, unrelated `sandbox: true` must not hide the `sandbox: false` of webPreferences
+    const info = analyze(
+      "const w = new BrowserWindow({ webPreferences: { sandbox: false, nodeIntegration: true, contextIsolation: false }, tabOptions: { sandbox: true, nodeIntegration: false } });",
+      "^38.0.0",
+    );
+    expect(info.webPreferences.map((p) => `${p.key}=${p.value}`)).toEqual([
+      "sandbox=false",
+      "nodeIntegration=true",
+      "contextIsolation=false",
+      "sandbox=true",
+      "nodeIntegration=false",
+    ]);
+    expect(info.windows.map((w) => `${w.sandbox} ${w.nodeIntegration} ${w.pageRequire}`)).toEqual([
+      "conflicting conflicting unknown",
+    ]);
+    // the least safe value still decides the findings
+    expect(info.findings.map((f) => f.kind)).toEqual(
+      expect.arrayContaining(["electron.sandbox", "electron.node-integration"]),
+    );
+  });
+
+  it("lays a helper's argument over what the helper returns", () => {
+    const info = analyze(
+      "function base (extra) { return { sandbox: false, contextIsolation: false, ...extra } }\nconst w = new BrowserWindow({ webPreferences: base({ sandbox: true }) });",
+    );
+    // The argument's `sandbox: true` is laid over the helper's value. The helper also spreads
+    // its parameter, which is not followed, after `contextIsolation: false`: that key may be
+    // replaced by it, so it is not known.
+    expect(info.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual([
+      "true computed",
+    ]);
+    const plain = analyze(
+      "function base () { return { sandbox: false, contextIsolation: false } }\nconst w = new BrowserWindow({ webPreferences: base({ sandbox: true }) });",
+    );
+    expect(plain.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual(["true false"]);
+  });
+
+  it("reads app.enableSandbox() from code, and only an unconditional top-level call as certain", () => {
+    expect(sandbox("app.enableSandbox();")).toBe("on");
+    expect(sandbox("// we tried app.enableSandbox() once and removed it")).toBe("off");
+    expect(sandbox('const note = "app.enableSandbox()";')).toBe("off");
+    expect(sandbox("if (process.env.SANDBOX) app.enableSandbox();")).toBe("unknown");
+    expect(sandbox("function harden () { app.enableSandbox(); }")).toBe("unknown");
+    expect(sandbox("flag && app.enableSandbox();")).toBe("unknown");
+  });
+
+  it("reads settings as computed when a window's options cannot be followed", () => {
+    const rows = (main: string): string[] =>
+      analyze(main, "^38.0.0").windows.map(
+        (w) => `${w.nodeIntegration} ${w.contextIsolation} ${w.sandbox} ${w.pageRequire}`,
+      );
+    // options passed in as a parameter
+    const info = analyze(
+      "function make (o) { return new BrowserWindow(o); }\nmake({ webPreferences: { nodeIntegration: true, contextIsolation: false } });",
+      "^38.0.0",
+    );
+    expect(info.windows.map((w) => `${w.nodeIntegration} ${w.pageRequire}`)).toEqual([
+      "computed unknown",
+    ]);
+    expect(info.limitations.find((l) => l.code === "window_options_unresolved")?.message).toContain(
+      "#1 at main.js:2",
+    );
+    // a conditional between two objects
+    expect(
+      rows(
+        "const w = new BrowserWindow(dev ? { webPreferences: { nodeIntegration: true, contextIsolation: false } } : { webPreferences: { nodeIntegration: false, contextIsolation: true } });",
+      ),
+    ).toEqual(["computed computed computed unknown"]);
+    expect(
+      rows(
+        "const w = new BrowserWindow({ webPreferences: dev ? { sandbox: false } : { sandbox: true } });",
+      ),
+    ).toEqual(["computed computed computed unknown"]);
+    // a spread of something that is not an object of the file: keys written after it stand
+    expect(
+      rows(
+        "const w = new BrowserWindow({ webPreferences: { nodeIntegration: false, ...extra, contextIsolation: true } });",
+      ),
+    ).toEqual(["computed true computed no"]);
+    expect(
+      rows(
+        "const w = new BrowserWindow({ webPreferences: { ...extra, nodeIntegration: false, sandbox: true } });",
+      ),
+    ).toEqual(["false computed true no"]);
+  });
+
+  it("reads a key as computed when the followed options object is assigned to later", () => {
+    const info = analyze(
+      [
+        "const prefs = { nodeIntegration: false, contextIsolation: true, sandbox: true };",
+        "prefs.nodeIntegration = true;",
+        'prefs["contextIsolation"] = false;',
+        "const w = new BrowserWindow({ webPreferences: prefs });",
+      ].join("\n"),
+      "^38.0.0",
+    );
+    expect(
+      info.windows.map(
+        (w) => `${w.nodeIntegration} ${w.contextIsolation} ${w.sandbox} ${w.pageRequire}`,
+      ),
+    ).toEqual(["computed computed true unknown"]);
+    const assigned = analyze(
+      "const prefs = { nodeIntegration: false };\nObject.assign(prefs, overrides);\nconst w = new BrowserWindow({ webPreferences: prefs });",
+    );
+    expect(assigned.windows.map((w) => w.nodeIntegration)).toEqual(["computed"]);
   });
 });

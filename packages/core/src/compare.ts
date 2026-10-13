@@ -49,7 +49,7 @@ export interface SideCoverage {
   /** Every file was read; a file not in `read` then does not exist on this side. */
   complete: boolean;
   read: ReadonlySet<string>;
-  /** Files that exist but were passed over (too large, not decodable). */
+  /** Files that exist but were passed over (too large, not decodable) or read only in part. */
   unreadable: ReadonlySet<string>;
 }
 
@@ -59,7 +59,10 @@ export interface UnknownItem {
   /** The side the item was found on. */
   side: "a" | "b";
   file: string;
-  reason: "file not read on the other side" | "file could not be read on the other side";
+  reason:
+    | "file not read on the other side"
+    | "file could not be read on the other side"
+    | "the other side was read only in part";
 }
 
 export interface CompareResult {
@@ -125,6 +128,14 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   storage: ["line", "column"],
   urls: ["line", "column"],
   routes: ["line", "column"],
+};
+
+/**
+ * Fields that only restate, in words, what other fields of the same item already say. A change
+ * in them is never a change of its own, and they are not listed as ignored on request.
+ */
+const DERIVED_FIELDS: Record<string, readonly string[]> = {
+  windows: ["basis"],
 };
 
 export function positionalFields(collection: string, formats: readonly string[]): string[] {
@@ -349,12 +360,22 @@ function pair(
   return [matched, restA, restB];
 }
 
-/** Files an item of a one-sided group comes from; an item without a file field is judged as read. */
-const fileOf = (item: unknown): string | null => {
-  if (!isRecord(item)) return null;
-  const file = item["file"] ?? item["module"];
-  return typeof file === "string" ? file : null;
-};
+/**
+ * The files an item comes from: its `file` or `module`, or every file a summary row names
+ * (`senders` and `receivers` of an IPC channel, `modules`, `files`). Empty when the item names
+ * none.
+ */
+function filesOf(item: unknown): string[] {
+  if (!isRecord(item)) return [];
+  const single = item["file"] ?? item["module"];
+  if (typeof single === "string") return [single];
+  const out: string[] = [];
+  for (const field of ["senders", "receivers", "modules", "files"]) {
+    const list = item[field];
+    if (Array.isArray(list)) for (const f of list) if (typeof f === "string") out.push(f);
+  }
+  return out;
+}
 
 export function compareItems(
   left: readonly unknown[],
@@ -362,6 +383,7 @@ export function compareItems(
   options: CompareOptions = {},
 ): CompareResult {
   const ignored = [...(options.ignore ?? [])];
+  const derived = (options.collection && DERIVED_FIELDS[options.collection]) || [];
   const positional = [...(options.positional ?? [])].filter((f) => !ignored.includes(f));
   let field: string | null =
     options.key === undefined ? detectKey(left, right, options.collection) : options.key;
@@ -401,7 +423,8 @@ export function compareItems(
   const content = (item: unknown): string => {
     if (!isRecord(item)) return canonical(item);
     const copy: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(item)) if (!ignored.includes(k)) copy[k] = v;
+    for (const [k, v] of Object.entries(item))
+      if (!ignored.includes(k) && !derived.includes(k)) copy[k] = v;
     return canonical(copy);
   };
   /** Content with address-like position fields removed, for matching items that only moved. */
@@ -409,7 +432,12 @@ export function compareItems(
     if (!isRecord(item)) return canonical(item);
     const copy: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(item))
-      if (!ignored.includes(k) && !(positional.includes(k) && addressLike(v))) copy[k] = v;
+      if (
+        !ignored.includes(k) &&
+        !derived.includes(k) &&
+        !(positional.includes(k) && addressLike(v))
+      )
+        copy[k] = v;
     return canonical(copy);
   };
   const l = group(left);
@@ -420,20 +448,34 @@ export function compareItems(
   /** Records an item found on `side` only: removed/added when the other side read its file. */
   const oneSided = (item: unknown, shown: string, side: "a" | "b"): void => {
     const other = side === "a" ? options.coverage?.b : options.coverage?.a;
-    const file = fileOf(item);
-    if (other && file !== null) {
-      if (other.unreadable.has(file)) {
+    if (other) {
+      const files = filesOf(item);
+      const unreadable = files.find((f) => other.unreadable.has(f));
+      if (unreadable !== undefined) {
         unknown.push({
           key: shown,
           side,
-          file,
+          file: unreadable,
           reason: "file could not be read on the other side",
         });
         return;
       }
-      if (!other.complete && !other.read.has(file)) {
-        unknown.push({ key: shown, side, file, reason: "file not read on the other side" });
-        return;
+      if (!other.complete) {
+        const unread = files.find((f) => !other.read.has(f));
+        // An item that names no file at all cannot be placed: with the other side read only in
+        // part, nothing is known about it there.
+        if (unread !== undefined || files.length === 0) {
+          unknown.push({
+            key: shown,
+            side,
+            file: unread ?? "",
+            reason:
+              unread === undefined
+                ? "the other side was read only in part"
+                : "file not read on the other side",
+          });
+          return;
+        }
       }
     }
     (side === "a" ? removed : added).push(shown);
@@ -474,7 +516,8 @@ export function compareItems(
     const moved: FieldChange[] = [];
     if (isRecord(before) && isRecord(after)) {
       for (const f of [...new Set([...Object.keys(before), ...Object.keys(after)])].toSorted()) {
-        if (ignored.includes(f) || canonical(before[f]) === canonical(after[f])) continue;
+        if (ignored.includes(f) || derived.includes(f)) continue;
+        if (canonical(before[f]) === canonical(after[f])) continue;
         if (positional.includes(f) && addressLike(before[f]) && addressLike(after[f]))
           moved.push({ field: f, before: before[f], after: after[f] });
         else diffPaths(before[f], after[f], f, 1, fields);
