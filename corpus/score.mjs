@@ -92,7 +92,13 @@ function scoreElectron(c, input, o) {
     const key = (w) =>
       `${fileName(w.file)} ${w.key}=${w.key === "preload" ? fileName(w.value) : w.value}`;
     const want = e.webPreferences.present.map(key);
-    const have = o.webPreferences.map(key);
+    // Scored: a literal value for a key the written-down results cover. A row that says the
+    // value is computed (null) claims no value, and a key the results do not list has nothing
+    // to be checked against; both are named in the notes and counted nowhere.
+    const covered = new Set(e.webPreferences.present.map((w) => w.key));
+    const scored = o.webPreferences.filter((w) => w.value !== null && covered.has(w.key));
+    const unscored = o.webPreferences.filter((w) => w.value === null || !covered.has(w.key));
+    const have = scored.map(key);
     const left = [...have];
     const missed = [];
     let hit = 0;
@@ -107,6 +113,9 @@ function scoreElectron(c, input, o) {
     add(...where, "window settings", { hit, missed: missed.length, false: left.length }, [
       ...missed.map((m) => `missed ${m}`),
       ...left.map((w) => `false ${w}`),
+      ...unscored.map(
+        (w) => `not scored ${fileName(w.file)} ${w.key}=${w.value === null ? "computed" : w.value}`,
+      ),
     ]);
   }
   if (e.contextBridge) {
