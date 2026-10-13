@@ -352,6 +352,53 @@ function pageOf(name: string, items: readonly unknown[], query: CollectionQuery)
   return { ...p, collection: name, bytes };
 }
 
+interface ObjcLike {
+  classes: Array<{
+    name: string;
+    swiftName: string | null;
+    superClass: string | null;
+    methods: Array<{ name: string; kind: string; types: string; implementation: string | null }>;
+    protocols: string[];
+    isSwift: boolean;
+    ivars: Array<Record<string, unknown>>;
+    properties: unknown[];
+  }>;
+  protocols: Array<{ name: string }>;
+  categories: unknown[];
+}
+
+function addObjc(
+  out: Record<string, unknown[]>,
+  objc: ObjcLike | undefined,
+  swiftSymbols: unknown[] | undefined,
+): void {
+  if (objc) {
+    out["classes"] = objc.classes.map((c) => ({
+      name: c.name,
+      swiftName: c.swiftName,
+      superClass: c.superClass,
+      methods: c.methods.length,
+      ivars: c.ivars.length,
+      properties: c.properties.length,
+      protocols: c.protocols,
+      swift: c.isSwift,
+    }));
+    out["methods"] = objc.classes.flatMap((c) =>
+      c.methods.map((m) => ({
+        class: c.name,
+        kind: m.kind,
+        selector: m.name,
+        types: m.types,
+        implementation: m.implementation,
+      })),
+    );
+    out["ivars"] = objc.classes.flatMap((c) => c.ivars.map((v) => ({ class: c.name, ...v })));
+    out["protocols"] = objc.protocols;
+    out["categories"] = objc.categories;
+  }
+  if (swiftSymbols?.length) out["swiftSymbols"] = swiftSymbols;
+}
+
 /** Flattens an analysis into named, pageable lists. Universal entries come first. */
 export function collectionsOf(
   analysis: AnyAnalysis,
@@ -404,6 +451,7 @@ export function collectionsOf(
           out["assemblyRefs"] = b.dotnet.assemblyRefs;
         }
       } else if (b.kind === "macho") {
+        addObjc(out, b.objc, b.swiftSymbols);
         out["segments"] = b.macho.segments;
         out["sections"] = b.macho.segments.flatMap((s) =>
           s.sections.map((x) => ({ segment: s.name, ...x })),
@@ -429,6 +477,7 @@ export function collectionsOf(
         }));
         const first = b.slices[0];
         if (first) {
+          addObjc(out, first.objc, first.swiftSymbols);
           out["symbols"] = first.macho.symbols;
           out["libraries"] = first.macho.dylibs.map((x) => ({
             name: x.path,

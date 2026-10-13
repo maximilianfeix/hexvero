@@ -2,6 +2,8 @@ import { parseDotnet, type DotnetInfo } from "../formats/dotnet.js";
 import { parseElf, type ElfInfo } from "../formats/elf.js";
 import { parseGoBuildInfo, type GoBuildInfo, type VaResolver } from "../formats/go.js";
 import { listFatSlices, parseMacho, type MachoInfo } from "../formats/macho.js";
+import { parseObjcMetadata, type ObjcMetadata } from "../formats/machoObjc.js";
+import { demangleSwift, type SwiftSymbol } from "../formats/swiftDemangle.js";
 import { parsePe, type PeInfo } from "../formats/pe.js";
 import { readVersionInfo, type PeVersionInfo } from "../formats/peResources.js";
 import { detectToolchain, type ToolchainFacts } from "../formats/toolchain.js";
@@ -13,6 +15,7 @@ type Go = Omit<GoBuildInfo, "findings" | "limitations">;
 type Dotnet = Omit<DotnetInfo, "findings" | "limitations">;
 type Macho = Omit<MachoInfo, "findings" | "limitations">;
 type Toolchain = Omit<ToolchainFacts, "findings">;
+type Objc = Omit<ObjcMetadata, "findings" | "limitations">;
 
 export type BinaryData =
   | { kind: "elf"; elf: Omit<ElfInfo, "findings" | "limitations">; go?: Go; toolchain?: Toolchain }
@@ -24,7 +27,14 @@ export type BinaryData =
       toolchain?: Toolchain;
       versionInfo?: PeVersionInfo;
     }
-  | { kind: "macho"; macho: Macho; go?: Go; toolchain?: Toolchain }
+  | {
+      kind: "macho";
+      macho: Macho;
+      go?: Go;
+      toolchain?: Toolchain;
+      objc?: Objc;
+      swiftSymbols?: SwiftSymbol[];
+    }
   | {
       kind: "macho-fat";
       slices: Array<{
@@ -34,6 +44,8 @@ export type BinaryData =
         macho: Macho;
         go?: Go;
         toolchain?: Toolchain;
+        objc?: Objc;
+        swiftSymbols?: SwiftSymbol[];
       }>;
     };
 
@@ -78,8 +90,41 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
   const machoSlice = (
     slice: Uint8Array,
     prefix = "",
-  ): { macho: Macho; go?: Go; toolchain: Toolchain } => {
-    const macho = collect(parseMacho(slice), prefix);
+  ): { macho: Macho; go?: Go; toolchain: Toolchain; objc?: Objc; swiftSymbols?: SwiftSymbol[] } => {
+    const parsedMacho = parseMacho(slice);
+    const macho = collect(parsedMacho, prefix);
+    let objc: Objc | undefined;
+    const hasObjc = macho.segments.some((sg) =>
+      sg.sections.some(
+        (x) =>
+          x.name === "__objc_classlist" ||
+          x.name === "__objc_protolist" ||
+          x.name === "__objc_catlist",
+      ),
+    );
+    if (hasObjc) {
+      try {
+        objc = collect(parseObjcMetadata(slice, parsedMacho), prefix);
+      } catch (error) {
+        limitations.push({
+          code: "objc_unreadable",
+          message: `Objective-C metadata: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+    const swiftSymbols = macho.symbols
+      .map((x) => demangleSwift(x.name))
+      .filter((x): x is SwiftSymbol => x !== null);
+    if (swiftSymbols.length) {
+      findings.push({
+        kind: "swift.symbols",
+        title: `${prefix ? `${prefix} ` : ""}${swiftSymbols.length} Swift symbols (names recovered approximately)`,
+        detail: [...new Set(swiftSymbols.map((x) => x.readable.split(".")[0]))]
+          .slice(0, 6)
+          .join(", "),
+        confidence: "inferred",
+      });
+    }
     const toolchain = toolchainOf(slice, {
       sectionNames: macho.segments.flatMap((sg) => [sg.name, ...sg.sections.map((x) => x.name)]),
       symbolNames: macho.symbols.map((x) => x.name),
@@ -96,7 +141,13 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
       ),
       prefix,
     );
-    return go ? { macho, go, toolchain } : { macho, toolchain };
+    return {
+      macho,
+      toolchain,
+      ...(go ? { go } : {}),
+      ...(objc ? { objc } : {}),
+      ...(swiftSymbols.length ? { swiftSymbols } : {}),
+    };
   };
 
   const toolchainOf = (

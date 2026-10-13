@@ -88,3 +88,16 @@ export {
   type RecoveryResult,
   type RecoveredFile,
 } from "./javascript/recover.js";
+export {
+  parseObjcMetadata,
+  type ObjcMetadata,
+  type ObjcClass,
+  type ObjcMethod,
+  type ObjcProtocol,
+} from "./formats/machoObjc.js";
+export {
+  demangleSwift,
+  demangleSwiftClassName,
+  isSwiftSymbol,
+  type SwiftSymbol,
+} from "./formats/swiftDemangle.js";

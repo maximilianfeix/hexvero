@@ -10,6 +10,10 @@ All notable changes to hexvero are listed here. The format follows
 
 - Zero-dependency JavaScript bundle splitting (webpack 4/5, Rspack, browserify, esbuild): module
   boundaries, require graph, export names, endpoint/route/storage candidates, vendor fingerprints.
+- Objective-C metadata from Mach-O images without an engine: classes (methods, ivars, properties,
+  adopted protocols, superclass incl. external binds), protocols, categories; pointers decoded through
+  dyld chained fixups (PTR_64, PTR_64_OFFSET, ARM64E) and dyld_info bind opcodes. Swift class names
+  and mangled symbols are made readable (approximate, no `swift-demangle` needed).
 - `hexvero recover` and the `hexvero_recover` MCP tool write bundle modules or source-map originals to
   disk without an external engine (REA needs Wakaru on Linux x64 for this).
 
