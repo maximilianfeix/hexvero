@@ -20,7 +20,7 @@
 <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP_server-1B1D21?style=for-the-badge" alt="MCP server for AI agents"></a>
 <a href="#what-it-reads"><img src="https://img.shields.io/badge/17_formats-1B1D21?style=for-the-badge" alt="17 formats"></a>
 
-**English** · [Deutsch](README.de.md)
+**English** · [Deutsch](README.de.md) · [Español](README.es.md) · [Français](README.fr.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md) · [中文](README.zh.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 [Install](#install) · [What it reads](#what-it-reads) · [CLI](#cli) · [Web UI](#web-ui) · [For AI agents](#for-ai-agents) · [Engines](#optional-engines) · [Compared with REA](#compared-with-rea) · [How it works](#how-it-works) · [FAQ](#faq)
 
@@ -33,7 +33,7 @@
 ```bash
 npx hexvero analyze /Applications/Notion.app/Contents/Resources/app.asar
 npx hexvero ui --open          # drag any file into the browser
-npx hexvero setup --apply      # register the MCP server with Claude Code, Cursor, Codex …
+npx hexvero setup --apply      # register the MCP server with every detected agent client
 ```
 
 ```text

@@ -11,7 +11,7 @@
 [![npm](https://img.shields.io/npm/v/hexvero?style=flat-square&color=F2B84B&labelColor=1B1D21)](https://www.npmjs.com/package/hexvero)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.12-F2B84B?style=flat-square&labelColor=1B1D21)](package.json)
 [![Runtime dependencies](https://img.shields.io/badge/core_dependencies-0-F2B84B?style=flat-square&labelColor=1B1D21)](packages/core/package.json)
-[![MCP tools](https://img.shields.io/badge/MCP_tools-12-F2B84B?style=flat-square&labelColor=1B1D21)](#for-ai-agents)
+[![MCP tools](https://img.shields.io/badge/MCP_tools-15-F2B84B?style=flat-square&labelColor=1B1D21)](#for-ai-agents)
 [![Network](https://img.shields.io/badge/network-never-F2B84B?style=flat-square&labelColor=1B1D21)](#faq)
 [![License](https://img.shields.io/badge/license-MIT-F2B84B?style=flat-square&labelColor=1B1D21)](LICENSE)
 
@@ -20,7 +20,7 @@
 <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP_server-1B1D21?style=for-the-badge" alt="MCP server for AI agents"></a>
 <a href="#what-it-reads"><img src="https://img.shields.io/badge/17_formats-1B1D21?style=for-the-badge" alt="17 formats"></a>
 
-**Deutsch** · [English](README.md)
+[English](README.md) · **Deutsch** · [Español](README.es.md) · [Français](README.fr.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md) · [中文](README.zh.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 [Installation](#install) · [Unterstützte Formate](#what-it-reads) · [CLI](#cli) · [Weboberfläche](#web-ui) · [Für KI-Agenten](#for-ai-agents) · [Engines](#optional-engines) · [Vergleich mit REA](#compared-with-rea) · [Funktionsweise](#how-it-works) · [FAQ](#faq)
 
@@ -59,7 +59,7 @@ Es gibt bereits Reverse-Engineering-Werkzeuge für Agenten. Sie bringen jedoch �
 
 - **Integriert, ohne Abhängigkeiten.** ELF, PE, Mach-O, Go, .NET, WebAssembly, EVM, SQLite, plist, APK, Electron, JavaScript, Source Maps und HAR werden durch Code in diesem Repository geparst. Kein JDK, kein Python, keine Engine.
 - **Bewusst begrenzte Ausgaben.** Jede Liste wird seitenweise mit `offset`, `limit`, einem Textfilter und einem Byte-Budget ausgegeben. Das vollständige Ergebnis landet mit einem einzigen Befehl in einer Datei, niemals im Kontextfenster.
-- **12 Tools statt 139.** Der MCP-Katalog ist kleiner als 32 KiB und folgt einem Arbeitsablauf: öffnen, analysieren, seitenweise abrufen, Bytes lesen, exportieren.
+- **15 Tools statt 139.** Der MCP-Katalog ist kleiner als 32 KiB und folgt einem Arbeitsablauf: öffnen, analysieren, seitenweise abrufen, Bytes lesen, exportieren.
 - **Transparente Ergebnisse.** Befunde sind mit `confirmed` oder `inferred` gekennzeichnet; `limitations` gibt an, was übersprungen, gekürzt oder nicht lesbar war und warum.
 - **Eine vollwertige Oberfläche.** Gesamtbewertung, Kennzeichnungen für Schutzmaßnahmen, Befunde, virtualisierte Tabellen, ein Hex-Viewer mit Live-Dekodierung und ein Modulgraph für Electron-Apps. Ausschließlich lokal.
 - **Engines bei Bedarf.** radare2, rizin und Ghidra lassen sich über eine einheitliche Schnittstelle für Disassemblierung und Dekompilierung einbinden; hexvero installiert sie niemals selbst.
@@ -175,7 +175,7 @@ Ghidra importiert jedes Analyseobjekt einmal in ein unter `~/.cache/hexvero` zwi
 
 |                                                     | REA                                                                     | hexvero                                                                        |
 | --------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| MCP-Tools / Katalog                                 | 139 Tools, ~2 MB                                                        | 12 Tools, < 32 KiB                                                             |
+| MCP-Tools / Katalog                                 | 139 Tools, ~2 MB                                                        | 15 Tools, < 32 KiB                                                             |
 | Große Ergebnisse                                    | Ein einzelnes JSON-Dokument; 500-MB-Bundles führen zum Abbruch von Node | Seitenweise abrufbare Sammlungen mit Byte-Budgets; Export in eine Datei        |
 | Analyse nativer Binärdateien ohne Engine            | Eingeschränkt                                                           | Vollständiges Parsen der Containerformate, Go, .NET, Fakten zu Schutzmaßnahmen |
 | Installation                                        | Node + Ghidra/Hopper/IDA + JDK/Python für die meisten Analyseobjekte    | Nur Node; Engines optional                                                     |
@@ -190,7 +190,7 @@ REA bietet wesentlich mehr Möglichkeiten für dynamische Analysen und Analysen 
 
 ```text
 packages/core     parsers (formats/*), JavaScript scanner, Session (targets, collections, paging, export)
-packages/mcp      McpServer with 12 tools over one Session
+packages/mcp      McpServer with 15 tools over one Session
 packages/server   loopback HTTP API + static hosting for the UI
 packages/cli      hexvero command; ships the built UI
 packages/web      React + Vite UI

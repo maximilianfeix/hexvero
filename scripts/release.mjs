@@ -43,6 +43,7 @@ const constants = [
   ["packages/mcp/src/index.ts", /SERVER_VERSION = "[^"]+"/, `SERVER_VERSION = "${version}"`],
   ["packages/cli/src/index.ts", /VERSION = "[^"]+"/, `VERSION = "${version}"`],
   ["packages/server/src/index.ts", /version: "[^"]+"/, `version: "${version}"`],
+  ["server.json", /"version": "[^"]+"/g, `"version": "${version}"`],
 ];
 for (const [file, re, replacement] of constants)
   writeFileSync(file, readFileSync(file, "utf8").replace(re, replacement));

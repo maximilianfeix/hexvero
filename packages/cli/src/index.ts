@@ -49,7 +49,7 @@ Commands
   mcp                                           Serve the Model Context Protocol over stdio
   ui [--port n] [--open]                        Start the local web UI
   doctor                                        Check the runtime and optional engines
-  setup [--client name] [--apply]               Register the MCP server with an agent
+  setup [--client name] [--apply] [--all]       Register the MCP server with detected agent clients
   setup --skill [--client name] [--apply]       Install the investigation skill for agents
 
 Options
@@ -424,6 +424,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       return setup(io, {
         client: flagString(args.flags, "client"),
         apply: Boolean(args.flags["apply"]),
+        all: Boolean(args.flags["all"]),
         json,
       });
     }
