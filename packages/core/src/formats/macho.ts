@@ -37,6 +37,12 @@ export interface MachoInfo {
   symbols: MachoSymbol[];
   encrypted: boolean;
   codeSigned: boolean;
+  /** LC_DYLD_CHAINED_FIXUPS linkedit blob, needed to decode pointers in modern arm64 images. */
+  chainedFixups: { offset: number; size: number } | null;
+  /** True when LC_DYLD_INFO rebase/bind opcodes are used (pointers are stored as plain vmaddrs). */
+  dyldInfo: boolean;
+  /** Bind opcode streams from LC_DYLD_INFO; bound pointers are stored as zero and resolved here. */
+  bindStreams: Array<{ offset: number; size: number; kind: "bind" | "weak" | "lazy" }>;
   mitigations: Record<"pie" | "canary" | "arc" | "restrict" | "stripped", boolean>;
   findings: Finding[];
   limitations: Limitation[];
@@ -133,6 +139,9 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
   let entry: string | null = null;
   let encrypted = false;
   let codeSigned = false;
+  let chainedFixups: MachoInfo["chainedFixups"] = null;
+  let dyldInfo = false;
+  const bindStreams: MachoInfo["bindStreams"] = [];
 
   for (let i = 0; i < ncmds; i++) {
     const start = r.offset;
@@ -280,6 +289,28 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
       case 0x1d:
         codeSigned = true;
         break;
+      case 0x80000034:
+        chainedFixups = { offset: r.u32(), size: r.u32() };
+        break;
+      case 0x22:
+      case 0x80000022: {
+        dyldInfo = true;
+        r.skip(8); // rebase_off, rebase_size
+        const bindOff = r.u32();
+        const bindSize = r.u32();
+        const weakOff = r.u32();
+        const weakSize = r.u32();
+        const lazyOff = r.u32();
+        const lazySize = r.u32();
+        for (const [offset, streamSize, kind] of [
+          [bindOff, bindSize, "bind"],
+          [weakOff, weakSize, "weak"],
+          [lazyOff, lazySize, "lazy"],
+        ] as const) {
+          if (offset && streamSize) bindStreams.push({ offset, size: streamSize, kind });
+        }
+        break;
+      }
       case 0x21:
       case 0x2c:
         r.skip(8);
@@ -343,6 +374,9 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
     symbols,
     encrypted,
     codeSigned,
+    chainedFixups,
+    dyldInfo,
+    bindStreams,
     mitigations: {
       pie: (flags & 0x200000) !== 0,
       canary: names.has("___stack_chk_fail"),
