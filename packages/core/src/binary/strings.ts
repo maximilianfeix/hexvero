@@ -3,13 +3,18 @@ import { latin1 } from "./reader.js";
 export interface ExtractedString {
   offset: number;
   encoding: "ascii" | "utf16le";
+  /** The run's text, cut to `maxLength` characters when `length` is present. */
   value: string;
+  /** Full length in characters when the value was cut. */
+  length?: number;
 }
 
 export interface StringsOptions {
   minLength?: number;
   /** Stop after this many strings to bound memory on huge inputs. */
   max?: number;
+  /** Longest value kept per string (default 4096); longer runs report their full `length`. */
+  maxLength?: number;
   utf16?: boolean;
 }
 
@@ -19,6 +24,9 @@ const isPrintable = (b: number): boolean => (b >= 0x20 && b <= 0x7e) || b === 0x
 export function extractStrings(bytes: Uint8Array, options: StringsOptions = {}): ExtractedString[] {
   const minLength = options.minLength ?? 4;
   const max = options.max ?? 50_000;
+  // One minified bundle without newlines is a single multi-megabyte "string"; keep a prefix and
+  // report the real length so pages stay within their byte budget.
+  const maxLength = options.maxLength ?? 4096;
   const out: ExtractedString[] = [];
 
   let start = -1;
@@ -29,18 +37,21 @@ export function extractStrings(bytes: Uint8Array, options: StringsOptions = {}):
       continue;
     }
     if (start !== -1 && i - start >= minLength) {
-      out.push({
+      const length = i - start;
+      const item: ExtractedString = {
         offset: start,
         encoding: "ascii",
-        value: latin1(bytes.subarray(start, i)),
-      });
+        value: latin1(bytes.subarray(start, Math.min(i, start + maxLength))),
+      };
+      if (length > maxLength) item.length = length;
+      out.push(item);
       if (out.length >= max) return out;
     }
     start = -1;
   }
 
   if (options.utf16) {
-    for (const parity of [0, 1]) scanUtf16(bytes, parity, minLength, max, out);
+    for (const parity of [0, 1]) scanUtf16(bytes, parity, minLength, max, out, maxLength);
   }
   return out;
 }
@@ -51,13 +62,18 @@ function scanUtf16(
   minLength: number,
   max: number,
   out: ExtractedString[],
+  maxLength: number,
 ): void {
   let begin = -1;
   const flush = (end: number): void => {
     if (begin === -1 || (end - begin) / 2 < minLength) return;
     let value = "";
-    for (let j = begin; j < end; j += 2) value += String.fromCharCode(bytes[j]!);
-    out.push({ offset: begin, encoding: "utf16le", value });
+    const chars = (end - begin) >> 1;
+    for (let j = begin; j < Math.min(end, begin + maxLength * 2); j += 2)
+      value += String.fromCharCode(bytes[j]!);
+    const item: ExtractedString = { offset: begin, encoding: "utf16le", value };
+    if (chars > maxLength) item.length = chars;
+    out.push(item);
   };
   for (let i = parity; i + 1 < bytes.length && out.length < max; i += 2) {
     if (isPrintable(bytes[i]!) && bytes[i + 1] === 0) {

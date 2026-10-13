@@ -96,6 +96,8 @@ describe("decodeMethodBody", () => {
     const capped = decodeMethodBody(mainBody, 0, undefined, 100_000, 4)!;
     expect(capped.ilSize).toBe(4);
     expect(capped.normalizedSha256).toBeNull();
+    expect(capped.ilSha256).toBeNull(); // a prefix hash is never presented as the body hash
+    expect(clipped.ilSha256).toBeNull();
   });
   it("decodes every switch target so differing tables hash differently", () => {
     const one = decodeMethodBody(wrap(sw(0, 1)), 0)!;

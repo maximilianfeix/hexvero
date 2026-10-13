@@ -65,7 +65,8 @@ export function detectToolchain(
     findings.push({
       kind: "toolchain.rust",
       title: `Rust binary${rustc?.[2] ? ` (rustc ${rustc[2]})` : rustc?.[1] ? ` (rustc ${rustc[1].slice(0, 9)})` : ""}`,
-      confidence: rustSymbol || rustc ? "confirmed" : "inferred",
+      // A rustc version string is proof; a mangled std/core symbol alone is an inference.
+      confidence: rustc ? "confirmed" : "inferred",
     });
   }
 

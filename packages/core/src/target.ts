@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { detectFormat } from "./formats/detect.js";
 import { createHash as hash } from "node:crypto";
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, createReadStream, openSync, readSync } from "node:fs";
 import { AnalysisError, type FormatId, type TargetInfo } from "./model.js";
 
 export interface LoadedTarget {
@@ -49,8 +49,9 @@ export async function loadTarget(
         format,
       });
     }
-    // Identity for lazy targets hashes the first 64 KiB plus the size instead of the whole file.
-    const sha256 = hash("sha256").update(head).update(String(size)).digest("hex");
+    // Lazy targets are still identified by the SHA-256 of the whole file, streamed from disk, so
+    // two archives that share a header never collide and a changed archive gets a new identity.
+    const sha256 = await hashFile(absolute);
     return {
       info: { path: absolute, size, sha256, format },
       bytes: new Uint8Array(),
@@ -92,6 +93,14 @@ export function readWindow(path: string, offset: number, length: number): Uint8A
   } finally {
     closeSync(fd);
   }
+}
+
+/** SHA-256 of a whole file without holding it in memory. */
+async function hashFile(path: string): Promise<string> {
+  const digest = hash("sha256");
+  for await (const chunk of createReadStream(path, { highWaterMark: 4 << 20 }))
+    digest.update(chunk as Buffer);
+  return digest.digest("hex");
 }
 
 function readHead(path: string, length: number): Uint8Array {

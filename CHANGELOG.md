@@ -6,6 +6,17 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Core robustness review: the page byte budget is now an upper bound including the envelope, with
+  oversized items compacted and marked `itemTruncated`; strings longer than 4096 characters are cut
+  and report their full `length`; large (lazy) ASAR targets are identified by the SHA-256 of the
+  whole file instead of a head+size fingerprint labelled as such; binary plists memoize shared
+  objects so a fan-out chain cannot expand exponentially; directory analysis never follows symbolic
+  links; analysis workers get a 2 GiB heap cap by default (`maxWorkerHeapMb`); `ilSha256` is null
+  for clipped IL bodies; a Rust toolchain detected only from mangled symbols is `inferred`; ELF note
+  alignment and ASAR offsets are validated.
+
 ### Changed
 
 - Security review of the MCP and HTTP surfaces: every MCP tool carries explicit annotations

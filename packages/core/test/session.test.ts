@@ -45,10 +45,13 @@ describe("Session", () => {
     });
     expect(filtered.items).toHaveLength(1);
     const tiny = await session.collection(record.id, "sections", {
-      maxBytes: 150,
+      maxBytes: 512,
     });
     expect(tiny.items.length).toBeLessThan(tiny.total);
     expect(tiny.truncated).toBe(true);
+    // the byte budget is an upper bound on the serialized page, envelope included
+    expect(Buffer.byteLength(JSON.stringify(tiny))).toBeLessThanOrEqual(512);
+    expect(tiny.bytes).toBeLessThanOrEqual(512);
     await expect(session.collection(record.id, "nope")).rejects.toThrow(/available: findings/);
   });
 
@@ -66,6 +69,40 @@ describe("Session", () => {
       ascii: ".ELF",
     });
     expect(() => session.bytes(record.id, 1 << 20, 4)).toThrow(/outside/);
+    // a minified one-line file is one printable run: the value is cut, the length reported
+    const oneLine = new Uint8Array(20_000).fill(0x61);
+    oneLine[19_999] = 0;
+    const big = session.register(targetFromBytes(oneLine, "one-line.js"));
+    const run = session.strings(big.id, { limit: 1 });
+    expect(run.items[0]?.value).toHaveLength(4096);
+    expect(run.items[0]?.length).toBe(19_999);
+    expect(run.bytes).toBeLessThan(8192);
+    // one oversized item is compacted instead of breaking the budget
+    const squeezed = session.strings(big.id, { limit: 1, maxBytes: 512 });
+    expect(squeezed.items).toHaveLength(1);
+    expect(squeezed.itemTruncated).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(squeezed))).toBeLessThanOrEqual(512);
+    // boundary budgets around the item size: the page never exceeds them and reports its real size
+    const run3000 = new Uint8Array(3001).fill(0x62);
+    run3000[3000] = 0;
+    const multi = session.register(targetFromBytes(run3000, "run.bin"));
+    for (const budget of [512, 600, 777, 3148, 3149, 3150, 3151, 3200]) {
+      const pg = session.strings(multi.id, { limit: 1, maxBytes: budget, minLength: 1 });
+      expect(pg.items).toHaveLength(1);
+      expect(Buffer.byteLength(JSON.stringify(pg)), String(budget)).toBeLessThanOrEqual(budget);
+      expect(pg.bytes).toBe(Buffer.byteLength(JSON.stringify(pg)));
+    }
+  });
+
+  it("identifies lazy targets by the full file hash", async () => {
+    const { loadTarget } = await import("../src/target.js");
+    const { createHash } = await import("node:crypto");
+    const path = join(dir, "big.asar");
+    const bytes = buildAsar({ "a.js": "x".repeat(4096) });
+    writeFileSync(path, bytes);
+    const lazy = await loadTarget(path, 16);
+    expect(lazy.lazy).toBe(true);
+    expect(lazy.info.sha256).toBe(createHash("sha256").update(bytes).digest("hex"));
   });
 
   it("exports the analysis as JSON and closes targets", async () => {
