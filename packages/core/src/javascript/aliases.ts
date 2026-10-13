@@ -32,7 +32,15 @@ interface Scope {
  * For every identifier that is another name for one of `targets`, the index of the token and the
  * name it stands for. An identifier that is itself a target and is not hidden maps to itself.
  */
-export function resolveAliases(tokens: Token[], targets: ReadonlySet<string>): Map<number, string> {
+export function resolveAliases(
+  tokens: Token[],
+  targets: ReadonlySet<string>,
+  /**
+   * Names declared at the top level of this file (e.g. helper functions) whose uses are wanted
+   * too. Unlike a target, such a name is hidden by any inner declaration of the same name.
+   */
+  own: ReadonlySet<string> = new Set(),
+): Map<number, string> {
   const out = new Map<number, string>();
   const stack: Scope[] = [{ names: new Set(), aliases: new Map(), depth: 0, expression: false }];
   let depth = 0;
@@ -60,6 +68,8 @@ export function resolveAliases(tokens: Token[], targets: ReadonlySet<string>): M
     else if (entries) entries.push(alias);
     else live.set(name, [alias]);
   };
+  /** The top-level declaration of one of the file's own names is the name itself, not a local. */
+  const ownHere = (name: string): boolean => own.has(name) && stack.length === 1;
   const open = (names: Set<string>, expression: boolean): void => {
     const scope: Scope = { names: new Set(), aliases: new Map(), depth, expression };
     if (stack.length >= MAX_SCOPES) {
@@ -80,7 +90,7 @@ export function resolveAliases(tokens: Token[], targets: ReadonlySet<string>): M
   const lookup = (name: string): string | null => {
     const entries = live.get(name);
     if (entries?.length) return entries[entries.length - 1]!;
-    return targets.has(name) ? name : null;
+    return targets.has(name) || own.has(name) ? name : null;
   };
   /** Identifiers between an opening parenthesis and its match; `end` is the closing index. */
   const idents = (start: number): { names: Set<string>; end: number } => {
@@ -165,7 +175,8 @@ export function resolveAliases(tokens: Token[], targets: ReadonlySet<string>): M
       let at = k + 1;
       if (is(tokens[at], "punct", "*")) at++;
       if (is(tokens[at], "ident")) {
-        if (!targets.has(tokens[at]!.value)) declare(top(), tokens[at]!.value, null);
+        if (!targets.has(tokens[at]!.value) && !ownHere(tokens[at]!.value))
+          declare(top(), tokens[at]!.value, null);
         at++;
       }
       if (is(tokens[at], "punct", "(")) {
@@ -236,13 +247,21 @@ export function resolveAliases(tokens: Token[], targets: ReadonlySet<string>): M
         }
         // A target's own name is never recorded as an ordinary local: `const { ipcRenderer } =
         // require("electron")` declares exactly the object that is looked for.
-        if (!top().aliases.has(u.value) && !targets.has(u.value)) declare(top(), u.value, null);
+        if (!top().aliases.has(u.value) && !targets.has(u.value) && !ownHere(u.value))
+          declare(top(), u.value, null);
       }
       continue;
     }
     // `import { ipcMain as bus } from "electron"`
     if (t.value === "as" && is(prev, "ident") && targets.has(prev!.value) && is(next, "ident")) {
       declare(top(), next!.value, prev!.value);
+      continue;
+    }
+    // One of the file's own names, wherever it is used (a constant is used as an argument).
+    if (own.has(t.value) && !is(prev, "punct", ".") && !is(prev, "punct", "?.")) {
+      // It may at the same time be another name for a target (`{ ipcMain: bus }` imports `bus`).
+      const meaning = lookup(t.value);
+      if (meaning) out.set(k, meaning);
       continue;
     }
     // A use: only identifiers that start a member access or a call matter to callers.
@@ -269,29 +288,69 @@ export class Constants {
   private readonly strings = new Map<string, string | null>();
   private readonly tables = new Map<string, Map<string, string>>();
   private readonly requires = new Map<string, string>();
-  /** `module.exports = { K: "v" }`, `exports.K = "v"`, `export const K = "v"` of this file. */
+  /** `import { A as B } from "x"` and `const { A: B } = require("x")`: B is A of module x. */
+  private readonly imported = new Map<string, { specifier: string; property: string }>();
+  private readonly tableKeys = new Map<string, string[]>();
+  /**
+   * What other modules can refer to: `module.exports = { K: "v" }`, `exports.K = "v"`,
+   * `export const K = "v"`, and for an exported table of strings one entry per `TABLE.KEY`.
+   */
   readonly exported: Record<string, string> = {};
+  /**
+   * Token indexes at which a name means its top-level declaration (the result of
+   * `resolveAliases` with `names()` as the file's own names). While it is null, every use counts.
+   */
+  visible: Map<number, string> | null = null;
 
   constructor(private readonly tokens: Token[]) {
     const wrappers = new Map<string, Map<string, string>>();
     /** A bundler's module wrapper being read: `var W = helper({ "file.js"(exports, module) {`. */
-    let wrapper: { name: string; until: number } | null = null;
+    let wrapper: { name: string; until: number; depth: number } | null = null;
+    // Only declarations at the top level of the file, or of a module inside a bundler's wrapper,
+    // are constants of the file. A `const e = "x"` in some function is that function's own, and
+    // in minified code the same short name means something else a few lines on.
+    let depth = 0;
     for (let k = 0; k < tokens.length; k++) {
       if (wrapper && k > wrapper.until) wrapper = null;
       const t = tokens[k]!;
+      if (t.type === "punct") {
+        if (t.value === "{") depth++;
+        else if (t.value === "}") depth--;
+        continue;
+      }
       if (t.type !== "ident") continue;
+      if (wrapper ? depth > wrapper.depth + 2 : depth !== 0) continue;
+      if (
+        (t.value === "import" || /^(const|let|var)$/.test(t.value)) &&
+        is(tokens[k + 1], "punct", "{")
+      )
+        this.bindings(k + 1);
       const eq = is(tokens[k + 1], "punct", "=");
       const value = tokens[k + 2];
+      // `module.exports = Object.freeze({ … })`: the object is what counts
+      const frozen =
+        is(value, "ident", "Object") &&
+        is(tokens[k + 3], "punct", ".") &&
+        is(tokens[k + 4], "ident", "freeze") &&
+        is(tokens[k + 5], "punct", "(") &&
+        is(tokens[k + 6], "punct", "{")
+          ? k + 6
+          : -1;
       if (
         eq &&
         is(tokens[k - 1], "punct", ".") &&
         t.value === "exports" &&
-        is(value, "punct", "{")
+        (is(value, "punct", "{") || frozen !== -1)
       ) {
         // `module.exports = { … }` or, in a wrapper, `<param>.exports = { … }`
-        const table = this.object(k + 2);
+        const at = frozen !== -1 ? frozen : k + 2;
+        const table = this.object(at);
         if (wrapper) wrappers.set(wrapper.name, table);
-        else for (const [key, v] of table) this.exported[key] = v;
+        else {
+          for (const [key, v] of table) this.exported[key] = v;
+          // `module.exports = { CHANNELS, API_ROOT }`: this file's own constants, by name
+          for (const key of this.keys(at, true)) this.export(key);
+        }
         continue;
       }
       if (
@@ -308,6 +367,7 @@ export class Constants {
       const declared = is(tokens[k - 1], "ident") && /^(const|let|var)$/.test(tokens[k - 1]!.value);
       const listed = is(tokens[k - 1], "punct", ",");
       if (!declared && !listed) continue;
+      const exportedHere = declared && is(tokens[k - 2], "ident", "export");
       const literal = text(value);
       const after = tokens[k + 3];
       if (
@@ -320,10 +380,14 @@ export class Constants {
       ) {
         // A second declaration of the name makes it ambiguous.
         this.strings.set(t.value, this.strings.has(t.value) ? null : literal);
-        if (declared && is(tokens[k - 2], "ident", "export")) this.exported[t.value] = literal;
-      } else if (is(value, "punct", "{")) {
-        const table = this.object(k + 2);
+        if (exportedHere) this.export(t.value);
+      } else if (is(value, "punct", "{") || frozen !== -1) {
+        const at = frozen !== -1 ? frozen : k + 2;
+        const table = this.object(at);
         if (table.size) this.tables.set(t.value, table);
+        const keys = this.keys(at);
+        if (keys.length) this.tableKeys.set(t.value, keys);
+        if (exportedHere) this.export(t.value);
       } else if (
         is(value, "ident", "require") &&
         is(tokens[k + 3], "punct", "(") &&
@@ -349,10 +413,78 @@ export class Constants {
               if (d === 0) break;
             }
           }
-          wrapper = { name: t.value, until: end };
+          wrapper = { name: t.value, until: end, depth };
         }
       }
     }
+  }
+
+  /** Every name this file declares a constant, a table or an import under. */
+  names(): string[] {
+    return [
+      ...this.strings.keys(),
+      ...this.tables.keys(),
+      ...this.tableKeys.keys(),
+      ...this.requires.keys(),
+      ...this.imported.keys(),
+    ];
+  }
+
+  private sees(k: number | undefined, name: string): boolean {
+    return k === undefined || this.visible === null || this.visible.get(k) === name;
+  }
+
+  /** Makes a constant or a table of this file known to other modules. */
+  private export(name: string): void {
+    const value = this.strings.get(name);
+    if (value) this.exported[name] = value;
+    for (const [key, v] of this.tables.get(name) ?? []) this.exported[`${name}.${key}`] = v;
+  }
+
+  /** A destructuring pattern at `open`, if it takes names from another module. */
+  private bindings(open: number): void {
+    const tokens = this.tokens;
+    let close = open + 1;
+    while (close < tokens.length && close < open + 400 && !is(tokens[close], "punct", "}")) {
+      if (is(tokens[close], "punct", "{")) return;
+      close++;
+    }
+    // `} from "x"` or `} = require("x")`
+    const specifier = is(tokens[close + 1], "ident", "from")
+      ? text(tokens[close + 2])
+      : is(tokens[close + 1], "punct", "=") &&
+          is(tokens[close + 2], "ident", "require") &&
+          is(tokens[close + 3], "punct", "(")
+        ? text(tokens[close + 4])
+        : null;
+    if (specifier === null) return;
+    for (let k = open + 1; k < close; k++) {
+      const name = tokens[k]!;
+      if (name.type !== "ident") continue;
+      const renamed =
+        (is(tokens[k + 1], "ident", "as") || is(tokens[k + 1], "punct", ":")) &&
+        is(tokens[k + 2], "ident");
+      this.imported.set(renamed ? tokens[k + 2]!.value : name.value, {
+        specifier,
+        property: name.value,
+      });
+      if (renamed) k += 2;
+    }
+  }
+
+  /** Where the value of a name imported from another module is to be looked up. */
+  importOf(name: string, k?: number): { specifier: string; property: string } | null {
+    return this.sees(k, name) ? (this.imported.get(name) ?? null) : null;
+  }
+
+  /** A string constant of this file, as used at token k. */
+  stringOf(name: string, k?: number): string | null {
+    return this.sees(k, name) ? (this.strings.get(name) ?? null) : null;
+  }
+
+  /** The property names of an object literal declared under this name. */
+  keysOf(name: string, k?: number): string[] {
+    return this.sees(k, name) ? (this.tableKeys.get(name) ?? []) : [];
   }
 
   /** `key: "text"` pairs at the top level of the object literal that opens at `open`. */
@@ -380,13 +512,44 @@ export class Constants {
     return table;
   }
 
+  /**
+   * Property names at the top level of the object literal that opens at `open`: those written
+   * with a value (`key: …`, `key() {…}`), or with `shorthand` those written as a bare name.
+   */
+  private keys(open: number, shorthand = false): string[] {
+    const tokens = this.tokens;
+    const out: string[] = [];
+    let d = 0;
+    for (let k = open; k < tokens.length && k < open + 4000; k++) {
+      const t = tokens[k]!;
+      if (t.type === "punct") {
+        if (t.value === "{" || t.value === "(" || t.value === "[") d++;
+        else if (t.value === "}" || t.value === ")" || t.value === "]") {
+          d--;
+          if (d === 0) break;
+        }
+        continue;
+      }
+      if (d !== 1) continue;
+      const start = is(tokens[k - 1], "punct", "{") || is(tokens[k - 1], "punct", ",");
+      const key = t.type === "ident" ? t.value : text(t);
+      if (!start || key === null) continue;
+      const follows = tokens[k + 1];
+      const wanted = shorthand
+        ? is(follows, "punct", ",") || is(follows, "punct", "}")
+        : is(follows, "punct", ":") || is(follows, "punct", "(");
+      if (wanted) out.push(key);
+    }
+    return out;
+  }
+
   /** The string the argument at token k stands for: a literal, a constant, or a table entry. */
   resolve(k: number): Resolved {
     const tokens = this.tokens;
     const t = tokens[k];
     const literal = text(t);
     if (literal !== null) return { value: literal, via: "literal" };
-    if (!t || t.type !== "ident") return null;
+    if (!t || t.type !== "ident" || !this.sees(k, t.value)) return null;
     const next = tokens[k + 1];
     if (is(next, "punct", ".") && is(tokens[k + 2], "ident")) {
       const end = tokens[k + 3];
@@ -395,10 +558,17 @@ export class Constants {
       const value = this.tables.get(t.value)?.get(property);
       if (value !== undefined) return { value, via: "constant" };
       const specifier = this.requires.get(t.value);
-      return specifier ? { ref: { specifier, property } } : null;
+      if (specifier) return { ref: { specifier, property } };
+      // a table imported by name: `const { CHANNELS } = require("./names")`, then CHANNELS.SAVE
+      const table = this.imported.get(t.value);
+      return table
+        ? { ref: { specifier: table.specifier, property: `${table.property}.${property}` } }
+        : null;
     }
     if (!is(next, "punct", ",") && !is(next, "punct", ")")) return null;
     const value = this.strings.get(t.value);
-    return value ? { value, via: "constant" } : null;
+    if (value) return { value, via: "constant" };
+    const ref = this.imported.get(t.value);
+    return ref ? { ref } : null;
   }
 }

@@ -238,12 +238,20 @@ function keyLabel(item: unknown, key: string): string {
  * a few names in both symbol tables; `.ctor` repeats across types) and is handled by multiset
  * matching; a field that mostly repeats (one `init` per class) is no identity.
  */
-function qualifies(sides: Array<Array<Record<string, unknown>>>, key: string): boolean {
+function qualifies(
+  sides: Array<Array<Record<string, unknown>>>,
+  key: string,
+  /** The key is the collection's known identity, not a guess from the field names. */
+  curated = false,
+): boolean {
   for (const side of sides) {
     if (side.length === 0) continue;
     const values = side.map((o) => keyValue(o, key)).filter((v) => v !== undefined);
     if (values.length < side.length * 0.9) return false;
-    if (new Set(values).size < values.length * 0.9) return false;
+    // In a short list one repeated item is already more than a tenth. A known identity keeps its
+    // role there as long as most items are distinct; repeats are matched as multisets.
+    const distinct = curated && values.length <= 20 ? 0.5 : 0.9;
+    if (new Set(values).size < values.length * distinct) return false;
   }
   return true;
 }
@@ -265,7 +273,7 @@ export function detectKey(
     // A part that no item has (an older analysis without the field) rules the key out.
     const everywhere = [...sides[0]!, ...sides[1]!];
     if (fields.some((part) => !everywhere.some((item) => (item[part] ?? null) !== null))) continue;
-    if (qualifies(sides, key)) return key;
+    if (qualifies(sides, key, true)) return key;
   }
   for (const field of KEY_CANDIDATES) if (qualifies(sides, field)) return field;
   return null;

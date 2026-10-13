@@ -1,0 +1,771 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.3.0",
+  "commit": "9d596ca",
+  "node": "v25.2.1",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  }
+ },
+ "totals": [
+  {
+   "set": "validation",
+   "class": "IPC channels",
+   "hit": 39,
+   "missed": 12,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "IPC senders and receivers",
+   "hit": 72,
+   "missed": 12,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "window settings",
+   "hit": 12,
+   "missed": 9,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "bridge members",
+   "hit": 30,
+   "missed": 9,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "bridge member channel",
+   "hit": 18,
+   "missed": 12,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "endpoints",
+   "hit": 26,
+   "missed": 7,
+   "false": 5,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 3,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "requests with an unknown URL shown",
+   "hit": 6,
+   "missed": 0,
+   "false": 5,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "storage keys",
+   "hit": 27,
+   "missed": 6,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "storage read/write/delete",
+   "hit": 24,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "changes in ipcChannels",
+   "hit": 0,
+   "missed": 3,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in storage",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "imports",
+   "hit": 28,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "functions",
+   "hit": 40,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "call paths",
+   "hit": 52,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "direct callers",
+   "hit": 44,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  }
+ ],
+ "rows": [
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "IPC channels",
+   "hit": 13,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed chat:send-message",
+    "missed chat:history",
+    "missed rooms:list",
+    "missed telemetry:hit"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 24,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "rooms:join: receiver main.js missed",
+    "rooms:leave: receiver main.js missed",
+    "presence:typing: sender preload.js missed",
+    "presence:update: sender main.js missed"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "window settings",
+   "hit": 4,
+   "missed": 3,
+   "false": 2,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "false main.js sandbox=true",
+    "false main.js sandbox=false"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "bridge members",
+   "hit": 10,
+   "missed": 3,
+   "false": 2,
+   "notes": [
+    "missed session.bootstrap",
+    "missed session.signOut",
+    "missed session.onPresence",
+    "false [SESSION_API].bootstrap",
+    "false [SESSION_API].signOut"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "chat.sendMessage: expected chat:send-message, got null",
+    "chat.listRooms: expected rooms:list, got null",
+    "chat.history: expected chat:history, got null",
+    "chat.typing: expected presence:typing, got null"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "endpoints",
+   "hit": 7,
+   "missed": 4,
+   "false": 3,
+   "notes": [
+    "missed https://api.chat.example/v2/rooms/…",
+    "missed https://api.chat.example/v2/users/…",
+    "missed wss://gateway.chat.example/socket",
+    "missed https://updates.chat.example/desktop/report",
+    "false ${…}/rooms/${…}/messages?limit=50",
+    "false ${…}/users/${…}",
+    "false https://ghost.chat.example/cache-open"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://api.chat.example/v2/messages: expected POST"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 2,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "storage keys",
+   "hit": 9,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed localStorage auth.token",
+    "missed indexedDB chat-cache-v1"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "IPC channels",
+   "hit": 13,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed chat:send-message",
+    "missed chat:history",
+    "missed rooms:list",
+    "missed telemetry:hit"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 24,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "rooms:join: receiver main.js missed",
+    "rooms:leave: receiver main.js missed",
+    "presence:typing: sender preload.js missed",
+    "presence:update: sender main.js missed"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "window settings",
+   "hit": 4,
+   "missed": 3,
+   "false": 2,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "false main.js sandbox=true",
+    "false main.js sandbox=false"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "bridge members",
+   "hit": 10,
+   "missed": 3,
+   "false": 2,
+   "notes": [
+    "missed session.bootstrap",
+    "missed session.signOut",
+    "missed session.onPresence",
+    "false [SESSION_API].bootstrap",
+    "false [SESSION_API].signOut"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "chat.sendMessage: expected chat:send-message, got null",
+    "chat.listRooms: expected rooms:list, got null",
+    "chat.history: expected chat:history, got null",
+    "chat.typing: expected presence:typing, got null"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "endpoints",
+   "hit": 10,
+   "missed": 1,
+   "false": 1,
+   "notes": [
+    "missed https://updates.chat.example/desktop/report",
+    "false https://ghost.chat.example/cache-open"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://api.chat.example/v2/messages: expected POST"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "storage keys",
+   "hit": 9,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed localStorage auth.token",
+    "missed indexedDB chat-cache-v1"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "IPC channels",
+   "hit": 13,
+   "missed": 4,
+   "false": 1,
+   "notes": [
+    "missed chat:send-message",
+    "missed chat:history",
+    "missed rooms:list",
+    "missed telemetry:hit",
+    "false Register with ipcMain.on('ghost:in-a-string', listener) in main.js"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 24,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "rooms:join: receiver main.js missed",
+    "rooms:leave: receiver main.js missed",
+    "presence:typing: sender preload.js missed",
+    "presence:update: sender main.js missed"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "window settings",
+   "hit": 4,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "bridge members",
+   "hit": 10,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed session.bootstrap",
+    "missed session.signOut",
+    "missed session.onPresence",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "chat.sendMessage: expected chat:send-message, got null",
+    "chat.listRooms: expected rooms:list, got null",
+    "chat.history: expected chat:history, got null",
+    "chat.typing: expected presence:typing, got null"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "endpoints",
+   "hit": 9,
+   "missed": 2,
+   "false": 1,
+   "notes": [
+    "missed wss://gateway.chat.example/socket",
+    "missed https://updates.chat.example/desktop/report",
+    "false https://ghost.chat.example/cache-open"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://api.chat.example/v2/messages: expected POST"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 2,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "storage keys",
+   "hit": 9,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed localStorage auth.token",
+    "missed indexedDB chat-cache-v1"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 0,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed +rooms:directory",
+    "missed -rooms:list",
+    "missed -telemetry:hit"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 4,
+   "notes": [
+    "missed ~contextIsolation: false -> true",
+    "missed ~sandbox: false -> true",
+    "false +{\"file\":\"main.js\",\"key\":\"contextIsolation\",\"line\":93,\"value\":true,\"window\":2}",
+    "false +{\"file\":\"main.js\",\"key\":\"sandbox\",\"line\":101,\"value\":true,\"window\":2}",
+    "false -{\"file\":\"main.js\",\"key\":\"contextIsolation\",\"line\":53,\"value\":false,\"window\":2}",
+    "false -{\"file\":\"main.js\",\"key\":\"sandbox\",\"line\":61,\"value\":false,\"window\":2}"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  }
+ ]
+}

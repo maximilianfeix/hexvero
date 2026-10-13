@@ -1,5 +1,5 @@
 import type { Limitation } from "../model.js";
-import { findCandidates, type Candidate } from "./candidates.js";
+import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
 import { tokenize, type Token } from "./scan.js";
 
 /**
@@ -584,9 +584,10 @@ export function analyzeBundle(source: string, options: { maxTokens?: number } = 
       message: "More endpoints, storage accesses or URLs exist than the 2,000 per list recorded.",
     });
   const candidates = {
-    endpoints: cands.endpoints as BundleCandidate[],
+    // A single file has no other module to look a constant up in.
+    endpoints: (cands.endpoints as BundleCandidate[]).map((c) => resolvePending(c, () => null)),
     routes: cands.routes as BundleCandidate[],
-    storage: cands.storage as BundleCandidate[],
+    storage: (cands.storage as BundleCandidate[]).map((c) => resolvePending(c, () => null)),
     urls: cands.urls as BundleCandidate[],
   };
 

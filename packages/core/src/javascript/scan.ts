@@ -21,9 +21,11 @@ export interface IpcUsage {
   line: number;
   /**
    * How the row was read when not from a literal call on the object's own name: through another
-   * name for ipcMain/ipcRenderer (`alias`), or with a channel name taken from a constant.
+   * name for ipcMain/ipcRenderer (`alias`), with a channel name taken from a constant, through
+   * a helper function of the file that passes its first argument on as the channel (`wrapper`),
+   * or as one of the keys of an object whose entries are registered in a loop (`table`).
    */
-  via?: "alias" | "constant";
+  via?: "alias" | "constant" | "wrapper" | "table";
   /** A channel named by a constant of another module, to be looked up there. */
   channelRef?: { specifier: string; property: string };
 }
@@ -45,6 +47,104 @@ export interface ScanResult {
 export interface ScanContext {
   aliases: Map<number, string>;
   constants: Constants;
+  /** Helper functions of the file that pass their first argument on as an IPC channel. */
+  wrappers: Map<string, string>;
+}
+
+/**
+ * Top-level functions whose first parameter ends up as the channel of an IPC call inside them:
+ * `function route(channel, fn) { ipcMain.handle(channel, …) }`,
+ * `const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args)`,
+ * `const emit = ipcRenderer.send.bind(ipcRenderer)`. Maps the function's name to the IPC API.
+ */
+function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string, string> {
+  const wrappers = new Map<string, string>();
+  const is = (k: number, type: Token["type"], value?: string): boolean => {
+    const t = tokens[k];
+    return !!t && t.type === type && (value === undefined || t.value === value);
+  };
+  const apiAt = (k: number): string | null => {
+    if (!is(k, "ident") || !is(k + 1, "punct", ".") || !is(k + 2, "ident")) return null;
+    const api = `${aliases.get(k) ?? tokens[k]!.value}.${tokens[k + 2]!.value}`;
+    return IPC_APIS.has(api) && !api.startsWith("contextBridge.") ? api : null;
+  };
+  /** The IPC API called with `param` as its first argument between two token positions. */
+  const forwards = (from: number, to: number, param: string): string | null => {
+    for (let k = from; k + 4 < to; k++) {
+      const api = apiAt(k);
+      if (api && is(k + 3, "punct", "(") && is(k + 4, "ident", param)) return api;
+    }
+    return null;
+  };
+  /** End of the function body that starts at `k` (a brace block, or an expression). */
+  const bodyEnd = (k: number): number => {
+    let d = 0;
+    const block = is(k, "punct", "{");
+    for (let j = k; j < tokens.length && j < k + 4000; j++) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+      else if (p.value === "}" || p.value === ")" || p.value === "]") {
+        d--;
+        if (d < 0 || (block && d === 0)) return j;
+      } else if (!block && d === 0 && (p.value === ";" || p.value === ",")) return j;
+    }
+    return Math.min(tokens.length, k + 4000);
+  };
+  let depth = 0;
+  for (let k = 0; k + 4 < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type === "punct") {
+      if (t.value === "{") depth++;
+      else if (t.value === "}") depth--;
+      continue;
+    }
+    if (depth !== 0 || t.type !== "ident") continue;
+    let name: string | null = null;
+    let params = -1;
+    if (t.value === "function" && is(k + 1, "ident") && is(k + 2, "punct", "(")) {
+      name = tokens[k + 1]!.value;
+      params = k + 2;
+    } else if (is(k + 1, "punct", "=") && !is(k - 1, "punct", ".")) {
+      let v = k + 2;
+      // `emit = ipcRenderer.send.bind(ipcRenderer)`
+      const bound = apiAt(v);
+      if (bound && is(v + 3, "punct", ".") && is(v + 4, "ident", "bind")) {
+        wrappers.set(t.value, bound);
+        continue;
+      }
+      if (is(v, "ident", "async")) v++;
+      if (is(v, "ident", "function")) {
+        v++;
+        if (is(v, "ident")) v++;
+      }
+      if (is(v, "punct", "(")) {
+        name = t.value;
+        params = v;
+      } else if (is(v, "ident") && is(v + 1, "punct", "=>")) {
+        const api = forwards(v + 2, bodyEnd(v + 2), tokens[v]!.value);
+        if (api) wrappers.set(t.value, api);
+        continue;
+      }
+    }
+    if (name === null || !is(params + 1, "ident")) continue;
+    const param = tokens[params + 1]!.value;
+    // skip the parameter list
+    let close = params;
+    for (let d = 0; close < tokens.length && close < params + 200; close++) {
+      const p = tokens[close]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(") d++;
+      else if (p.value === ")") {
+        d--;
+        if (d === 0) break;
+      }
+    }
+    const start = is(close + 1, "punct", "=>") ? close + 2 : close + 1;
+    const api = forwards(start, bodyEnd(start), param);
+    if (api) wrappers.set(name, api);
+  }
+  return wrappers;
 }
 
 /** Names whose other names are followed (see aliases.ts). */
@@ -56,6 +156,8 @@ export const ALIAS_TARGETS: ReadonlySet<string> = new Set([
   "BrowserWindow",
   "BrowserView",
   "WebContentsView",
+  "localStorage",
+  "sessionStorage",
 ]);
 
 export interface Token {
@@ -284,9 +386,18 @@ export function scanJavaScript(
   } = {},
 ): ScanResult {
   const { tokens, truncated } = tokenize(source, options.maxTokens);
-  const aliases = resolveAliases(tokens, ALIAS_TARGETS);
+  // Names are resolved with their scope: first the file's constants, then, when the file has
+  // channel-forwarding helpers, those as well (they are found with the first result).
   const constants = new Constants(tokens);
-  options.onTokens?.(tokens, truncated, { aliases, constants });
+  const own = new Set(constants.names());
+  let aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
+  const wrappers = findWrappers(tokens, aliases);
+  if (wrappers.size) {
+    for (const name of wrappers.keys()) own.add(name);
+    aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
+  }
+  constants.visible = aliases;
+  options.onTokens?.(tokens, truncated, { aliases, constants, wrappers });
   const references: ModuleReference[] = [];
   const ipc: IpcUsage[] = [];
   const exports = new Set<string>();
@@ -320,6 +431,35 @@ export function scanJavaScript(
       }
       if (is(j, "punct", ";")) return;
     }
+  };
+
+  /**
+   * The keys of the object a loop variable runs over, when `name` is bound by
+   * `Object.entries(T)`, `Object.keys(T)` or `in T` shortly before token k.
+   */
+  const tableKeys = (k: number, name: string): string[] => {
+    for (let j = k - 1; j >= 0 && j > k - 60; j--) {
+      let table: string | null = null;
+      if (
+        is(j, "ident", "Object") &&
+        is(j + 1, "punct", ".") &&
+        (is(j + 2, "ident", "entries") || is(j + 2, "ident", "keys")) &&
+        is(j + 3, "punct", "(") &&
+        is(j + 4, "ident") &&
+        is(j + 5, "punct", ")")
+      )
+        table = at(j + 4)!.value;
+      else if (is(j, "ident", "in") && is(j + 1, "ident") && is(j + 2, "punct", ")"))
+        table = at(j + 1)!.value;
+      if (table === null) continue;
+      // the variable must be bound right next to it: `[name, …] of Object.entries(T)`,
+      // `name in T`, `Object.keys(T).forEach((name) => …`
+      let bound = false;
+      for (let m = Math.max(0, j - 8); m < j + 14 && m < k; m++)
+        if (is(m, "ident", name)) bound = true;
+      return bound ? constants.keysOf(table, j + (is(j, "ident", "in") ? 1 : 4)) : [];
+    }
+    return [];
   };
 
   /**
@@ -442,8 +582,29 @@ export function scanJavaScript(
         if (named && "ref" in named) usage.channelRef = named.ref;
         if (named && "value" in named && named.via === "constant") usage.via = "constant";
         else if (owner !== t.value) usage.via = "alias";
-        ipc.push(usage);
+        // `for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, fn)`:
+        // one registration per key of the table.
+        const keys = named === null && is(k + 4, "ident") ? tableKeys(k, at(k + 4)!.value) : [];
+        if (keys.length)
+          for (const channel of keys) ipc.push({ api, channel, line: t.line, via: "table" });
+        else ipc.push(usage);
         if (api === "ipcMain.on" || api === "ipcMain.once") replies(k + 3);
+      }
+    }
+    // A call of one of the file's own channel-forwarding helpers: `route("rooms:list", fn)`.
+    if (is(k + 1, "punct", "(") && !is(k - 1, "ident", "function")) {
+      const helper = aliases.get(k);
+      const api = helper === t.value ? wrappers.get(helper) : undefined;
+      if (api) {
+        const named = constants.resolve(k + 2);
+        const usage: IpcUsage = {
+          api,
+          channel: named && "value" in named ? named.value : null,
+          line: t.line,
+          via: "wrapper",
+        };
+        if (named && "ref" in named) usage.channelRef = named.ref;
+        if (usage.channel !== null || usage.channelRef) ipc.push(usage);
       }
     }
   }

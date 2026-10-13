@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "79f36e9+uncommitted",
+  "commit": "9d596ca+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -1159,6 +1159,15 @@
       ]
      },
      {
+      "channel": "chat:history",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "chat:incoming",
       "senders": [
        "main.js"
@@ -1168,15 +1177,28 @@
       ]
      },
      {
+      "channel": "chat:send-message",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "presence:typing",
-      "senders": [],
+      "senders": [
+       "preload.js"
+      ],
       "receivers": [
        "main.js"
       ]
      },
      {
       "channel": "presence:update",
-      "senders": [],
+      "senders": [
+       "main.js"
+      ],
       "receivers": [
        "preload.js",
        "renderer-settings.js"
@@ -1187,14 +1209,27 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "rooms:leave",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:open",
@@ -1231,16 +1266,28 @@
       "receivers": [
        "renderer-settings.js"
       ]
+     },
+     {
+      "channel": "telemetry:hit",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
      }
     ],
     "webPreferences": [
      {
-      "key": "sandbox",
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
       "value": true,
       "file": "main.js"
      },
      {
-      "key": "sandbox",
+      "key": "nodeIntegration",
       "value": false,
       "file": "main.js"
      },
@@ -1269,17 +1316,17 @@
      {
       "api": "chat",
       "member": "sendMessage",
-      "channel": null
+      "channel": "chat:send-message"
      },
      {
       "api": "chat",
       "member": "listRooms",
-      "channel": null
+      "channel": "rooms:list"
      },
      {
       "api": "chat",
       "member": "history",
-      "channel": null
+      "channel": "chat:history"
      },
      {
       "api": "chat",
@@ -1294,7 +1341,7 @@
      {
       "api": "chat",
       "member": "typing",
-      "channel": null
+      "channel": "presence:typing"
      },
      {
       "api": "chat",
@@ -1317,14 +1364,19 @@
       "channel": null
      },
      {
-      "api": "[SESSION_API]",
+      "api": "session",
       "member": "bootstrap",
       "channel": "auth:bootstrap"
      },
      {
-      "api": "[SESSION_API]",
+      "api": "session",
       "member": "signOut",
       "channel": "auth:sign-out"
+     },
+     {
+      "api": "session",
+      "member": "onPresence",
+      "channel": "presence:update"
      }
     ],
     "endpoints": [
@@ -1332,6 +1384,12 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
+      "confidence": "inferred"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/report",
+      "kind": "http-client",
+      "method": "POST",
       "confidence": "inferred"
      },
      {
@@ -1347,13 +1405,13 @@
       "confidence": "literal"
      },
      {
-      "value": "${…}/rooms/${…}/messages?limit=50",
+      "value": "https://api.chat.example/v2/rooms/${…}/messages?limit=50",
       "kind": "fetch",
       "method": null,
       "confidence": "template"
      },
      {
-      "value": "${…}/users/${…}",
+      "value": "https://api.chat.example/v2/users/${…}",
       "kind": "fetch",
       "method": null,
       "confidence": "template"
@@ -1361,12 +1419,18 @@
      {
       "value": "https://api.chat.example/v2/messages",
       "kind": "fetch",
-      "method": null,
+      "method": "POST",
       "confidence": "literal"
      },
      {
       "value": "https://status.chat.example/health.json",
       "kind": "fetch",
+      "method": null,
+      "confidence": "inferred"
+     },
+     {
+      "value": "wss://gateway.chat.example/socket",
+      "kind": "websocket",
       "method": null,
       "confidence": "inferred"
      },
@@ -1381,15 +1445,9 @@
       "kind": "beacon",
       "method": "POST",
       "confidence": "literal"
-     },
-     {
-      "value": "https://ghost.chat.example/cache-open",
-      "kind": "xhr",
-      "method": "GET",
-      "confidence": "literal"
      }
     ],
-    "endpointsUnreadable": 4,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "electron-store",
@@ -1424,6 +1482,14 @@
      },
      {
       "kind": "localStorage",
+      "value": "auth.token",
+      "ops": [
+       "read",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
       "value": "chat.lastRoom",
       "ops": [
        "write",
@@ -1443,6 +1509,13 @@
       "ops": [
        "read",
        "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache-v1",
+      "ops": [
        "delete"
       ]
      },
@@ -1505,6 +1578,15 @@
       ]
      },
      {
+      "channel": "chat:history",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "chat:incoming",
       "senders": [
        "main.js"
@@ -1514,15 +1596,28 @@
       ]
      },
      {
+      "channel": "chat:send-message",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "presence:typing",
-      "senders": [],
+      "senders": [
+       "preload.js"
+      ],
       "receivers": [
        "main.js"
       ]
      },
      {
       "channel": "presence:update",
-      "senders": [],
+      "senders": [
+       "main.js"
+      ],
       "receivers": [
        "preload.js",
        "renderer-settings.js"
@@ -1533,14 +1628,27 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "rooms:leave",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:open",
@@ -1577,16 +1685,28 @@
       "receivers": [
        "renderer-settings.js"
       ]
+     },
+     {
+      "channel": "telemetry:hit",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
      }
     ],
     "webPreferences": [
      {
-      "key": "sandbox",
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
       "value": true,
       "file": "main.js"
      },
      {
-      "key": "sandbox",
+      "key": "nodeIntegration",
       "value": false,
       "file": "main.js"
      },
@@ -1615,17 +1735,17 @@
      {
       "api": "chat",
       "member": "sendMessage",
-      "channel": null
+      "channel": "chat:send-message"
      },
      {
       "api": "chat",
       "member": "listRooms",
-      "channel": null
+      "channel": "rooms:list"
      },
      {
       "api": "chat",
       "member": "history",
-      "channel": null
+      "channel": "chat:history"
      },
      {
       "api": "chat",
@@ -1640,7 +1760,7 @@
      {
       "api": "chat",
       "member": "typing",
-      "channel": null
+      "channel": "presence:typing"
      },
      {
       "api": "chat",
@@ -1663,14 +1783,19 @@
       "channel": null
      },
      {
-      "api": "[SESSION_API]",
+      "api": "session",
       "member": "bootstrap",
       "channel": "auth:bootstrap"
      },
      {
-      "api": "[SESSION_API]",
+      "api": "session",
       "member": "signOut",
       "channel": "auth:sign-out"
+     },
+     {
+      "api": "session",
+      "member": "onPresence",
+      "channel": "presence:update"
      }
     ],
     "endpoints": [
@@ -1678,6 +1803,12 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
+      "confidence": "inferred"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/report",
+      "kind": "http-client",
+      "method": "POST",
       "confidence": "inferred"
      },
      {
@@ -1707,7 +1838,7 @@
      {
       "value": "https://api.chat.example/v2/messages",
       "kind": "fetch",
-      "method": null,
+      "method": "POST",
       "confidence": "literal"
      },
      {
@@ -1733,15 +1864,9 @@
       "kind": "beacon",
       "method": "POST",
       "confidence": "literal"
-     },
-     {
-      "value": "https://ghost.chat.example/cache-open",
-      "kind": "xhr",
-      "method": "GET",
-      "confidence": "literal"
      }
     ],
-    "endpointsUnreadable": 3,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "electron-store",
@@ -1776,6 +1901,14 @@
      },
      {
       "kind": "localStorage",
+      "value": "auth.token",
+      "ops": [
+       "read",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
       "value": "chat.lastRoom",
       "ops": [
        "write",
@@ -1800,6 +1933,13 @@
      },
      {
       "kind": "indexedDB",
+      "value": "chat-cache-v1",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
       "value": "chat-cache",
       "ops": []
      },
@@ -1817,9 +1957,7 @@
   "validation/chat-app.minified.asar": {
    "electron": {
     "complete": true,
-    "limitations": [
-     "context_bridge_members_unreadable"
-    ],
+    "limitations": [],
     "ipcChannels": [
      {
       "channel": "app:locale",
@@ -1859,6 +1997,15 @@
       ]
      },
      {
+      "channel": "chat:history",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "chat:incoming",
       "senders": [
        "main.js"
@@ -1868,27 +2015,31 @@
       ]
      },
      {
+      "channel": "chat:send-message",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "presence:typing",
-      "senders": [],
+      "senders": [
+       "preload.js"
+      ],
       "receivers": [
        "main.js"
       ]
      },
      {
       "channel": "presence:update",
-      "senders": [],
-      "receivers": [
-       "preload.js",
-       "renderer-settings.js"
-      ]
-     },
-     {
-      "channel": "Register with ipcMain.on('ghost:in-a-string', listener) in main.js",
       "senders": [
        "main.js"
       ],
       "receivers": [
-       "main.js"
+       "preload.js",
+       "renderer-settings.js"
       ]
      },
      {
@@ -1896,14 +2047,27 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "rooms:leave",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:open",
@@ -1940,9 +2104,31 @@
       "receivers": [
        "renderer-settings.js"
       ]
+     },
+     {
+      "channel": "telemetry:hit",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
      }
     ],
     "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
      {
       "key": "sandbox",
       "value": true,
@@ -1968,17 +2154,17 @@
      {
       "api": "chat",
       "member": "sendMessage",
-      "channel": null
+      "channel": "chat:send-message"
      },
      {
       "api": "chat",
       "member": "listRooms",
-      "channel": null
+      "channel": "rooms:list"
      },
      {
       "api": "chat",
       "member": "history",
-      "channel": null
+      "channel": "chat:history"
      },
      {
       "api": "chat",
@@ -1993,7 +2179,7 @@
      {
       "api": "chat",
       "member": "typing",
-      "channel": null
+      "channel": "presence:typing"
      },
      {
       "api": "chat",
@@ -2016,9 +2202,19 @@
       "channel": null
      },
      {
-      "api": "[h]",
-      "member": null,
-      "channel": null
+      "api": "session",
+      "member": "bootstrap",
+      "channel": "auth:bootstrap"
+     },
+     {
+      "api": "session",
+      "member": "signOut",
+      "channel": "auth:sign-out"
+     },
+     {
+      "api": "session",
+      "member": "onPresence",
+      "channel": "presence:update"
      }
     ],
     "endpoints": [
@@ -2026,6 +2222,12 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
+      "confidence": "inferred"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/report",
+      "kind": "http-client",
+      "method": "POST",
       "confidence": "inferred"
      },
      {
@@ -2055,12 +2257,18 @@
      {
       "value": "https://api.chat.example/v2/messages",
       "kind": "fetch",
-      "method": null,
+      "method": "POST",
       "confidence": "literal"
      },
      {
       "value": "https://status.chat.example/health.json",
       "kind": "fetch",
+      "method": null,
+      "confidence": "inferred"
+     },
+     {
+      "value": "wss://gateway.chat.example/socket",
+      "kind": "websocket",
       "method": null,
       "confidence": "inferred"
      },
@@ -2075,15 +2283,9 @@
       "kind": "beacon",
       "method": "POST",
       "confidence": "literal"
-     },
-     {
-      "value": "https://ghost.chat.example/cache-open",
-      "kind": "xhr",
-      "method": "GET",
-      "confidence": "literal"
      }
     ],
-    "endpointsUnreadable": 4,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "electron-store",
@@ -2118,6 +2320,14 @@
      },
      {
       "kind": "localStorage",
+      "value": "auth.token",
+      "ops": [
+       "read",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
       "value": "chat.lastRoom",
       "ops": [
        "write",
@@ -2142,6 +2352,13 @@
      },
      {
       "kind": "indexedDB",
+      "value": "chat-cache-v1",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
       "value": "chat-cache",
       "ops": []
      },
@@ -2160,11 +2377,16 @@
    "compare": {
     "ipcChannels": {
      "key": "channel",
-     "added": [],
-     "removed": [],
+     "added": [
+      "rooms:directory"
+     ],
+     "removed": [
+      "rooms:list",
+      "telemetry:hit"
+     ],
      "changed": [],
      "relocated": 0,
-     "unchanged": 13
+     "unchanged": 15
     },
     "contextBridge": {
      "key": "api+member",
@@ -2175,21 +2397,18 @@
       "chat.listRooms"
      ],
      "changed": [],
-     "relocated": 11,
+     "relocated": 12,
      "unchanged": 0
     },
     "webPreferences": {
-     "key": null,
-     "added": [
-      "{\"file\":\"main.js\",\"key\":\"contextIsolation\",\"line\":93,\"value\":true,\"window\":2}",
-      "{\"file\":\"main.js\",\"key\":\"sandbox\",\"line\":101,\"value\":true,\"window\":2}"
+     "key": "file+window+key",
+     "added": [],
+     "removed": [],
+     "changed": [
+      "contextIsolation: false -> true",
+      "sandbox: false -> true"
      ],
-     "removed": [
-      "{\"file\":\"main.js\",\"key\":\"contextIsolation\",\"line\":53,\"value\":false,\"window\":2}",
-      "{\"file\":\"main.js\",\"key\":\"sandbox\",\"line\":61,\"value\":false,\"window\":2}"
-     ],
-     "changed": [],
-     "relocated": 4,
+     "relocated": 5,
      "unchanged": 0
     },
     "endpoints": {
@@ -2203,7 +2422,7 @@
       "https://metrics.chat.example/collect"
      ],
      "changed": [],
-     "relocated": 12,
+     "relocated": 11,
      "unchanged": 0
     },
     "storage": {
@@ -2217,7 +2436,7 @@
       "localStorage ui.density"
      ],
      "changed": [],
-     "relocated": 14,
+     "relocated": 17,
      "unchanged": 0
     }
    }

@@ -4,7 +4,7 @@ import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
-import { findCandidates, type Candidate } from "./candidates.js";
+import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
 import {
   ALIAS_TARGETS,
   scanJavaScript,
@@ -90,6 +90,11 @@ interface WindowRange {
   start: number;
   end: number;
   window: number | null;
+  /**
+   * The object is a base the window's own options are laid over (a spread object, or what a
+   * helper function returns): a key written directly for the window replaces the same key here.
+   */
+  inherited: boolean;
 }
 
 const WINDOW_CLASSES = new Set(["BrowserWindow", "BrowserView", "WebContentsView"]);
@@ -131,26 +136,54 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
     }
     return declared.get(name) ?? -1;
   };
-  const add = (open: number, window: number | null, depth = 0): void => {
+  /** The object literal a function of this file returns: `function f() { return {…} }`, `f = () => ({…})`. */
+  const returnedBy = (name: string): number => {
+    for (let k = 0; k + 3 < tokens.length; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "ident" || t.value !== name) continue;
+      const isDeclaration =
+        (tokens[k - 1]?.type === "ident" &&
+          tokens[k - 1]!.value === "function" &&
+          is(k + 1, "(")) ||
+        (is(k + 1, "=") && !is(k - 1, "."));
+      if (!isDeclaration) continue;
+      for (let j = k + 1; j + 1 < tokens.length && j < k + 300; j++) {
+        if (tokens[j]!.type === "ident" && tokens[j]!.value === "return" && is(j + 1, "{"))
+          return j + 1;
+        if (is(j, "=>") && is(j + 1, "(") && is(j + 2, "{")) return j + 2;
+      }
+      return -1;
+    }
+    return -1;
+  };
+  const add = (open: number, window: number | null, inherited = false, depth = 0): void => {
     const end = close(open);
-    if (end === -1) return;
-    ranges.push({ start: tokens[open]!.start, end: tokens[end]!.end, window });
+    if (end === -1 || ranges.length >= 2000) return;
+    ranges.push({ start: tokens[open]!.start, end: tokens[end]!.end, window, inherited });
     if (depth >= 3) return;
-    // Objects that are named or spread inside belong to the same window.
+    // Objects that are named, spread or returned by a helper inside belong to the same window.
     for (let k = open + 1; k < end; k++) {
       const t = tokens[k]!;
-      if (is(k, "...") && tokens[k + 1]?.type === "ident") {
-        const at = objectOf(tokens[k + 1]!.value);
-        if (at !== -1) add(at, window, depth + 1);
+      const next = tokens[k + 1];
+      if (is(k, "...") && next?.type === "ident") {
+        const at = is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
+        if (at !== -1) add(at, window, true, depth + 1);
       } else if (
         t.type === "ident" &&
         t.value === "webPreferences" &&
         is(k + 1, ":") &&
-        tokens[k + 2]?.type === "ident" &&
-        (is(k + 3, ",") || is(k + 3, "}"))
+        tokens[k + 2]?.type === "ident"
       ) {
-        const at = objectOf(tokens[k + 2]!.value);
-        if (at !== -1) add(at, window, depth + 1);
+        const name = tokens[k + 2]!.value;
+        if (is(k + 3, ",") || is(k + 3, "}")) {
+          const at = objectOf(name);
+          if (at !== -1) add(at, window, inherited, depth + 1);
+        } else if (is(k + 3, "(")) {
+          // `webPreferences: helper({ … })`: what the helper returns is the base, its argument
+          // (inside this range already) is laid over it.
+          const at = returnedBy(name);
+          if (at !== -1) add(at, window, true, depth + 1);
+        }
       }
     }
   };
@@ -235,20 +268,29 @@ export function bridgeMembers(
   const context: ScanContext =
     typeof source !== "string" && source.context
       ? source.context
-      : { aliases: resolveAliases(tokens, ALIAS_TARGETS), constants: new Constants(tokens) };
+      : {
+          aliases: resolveAliases(tokens, ALIAS_TARGETS),
+          constants: new Constants(tokens),
+          wrappers: new Map(),
+        };
   const members: BridgeMember[] = [];
   let truncated = cut;
   let budget = BRIDGE_WALK_BUDGET;
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  /** Named objects whose later `name.member = …` assignments were already collected. */
+  const stepwise = new Set<string>();
   let objects: Map<string, number> | null = null;
   const objectOf = (name: string): number => {
     if (!objects) {
       objects = new Map();
+      // `const api = {`, and in a declaration list (as minifiers write it) `, api = {`
       for (let k = 0; k + 3 < tokens.length; k++) {
         const t = tokens[k]!;
-        if (t.type !== "ident" || (t.value !== "const" && t.value !== "let" && t.value !== "var"))
-          continue;
+        const declares =
+          (t.type === "ident" && (t.value === "const" || t.value === "let" || t.value === "var")) ||
+          (t.type === "punct" && t.value === ",");
+        if (!declares) continue;
         const id = tokens[k + 1]!;
         if (id.type === "ident" && is(k + 2, "=") && is(k + 3, "{") && !objects.has(id.value))
           objects.set(id.value, k + 3);
@@ -298,8 +340,11 @@ export function bridgeMembers(
     }
     const keyToken = tokens[at];
     const simple = is(at + 1, ",");
+    const apiName =
+      simple && keyToken?.type === "ident" ? context.constants.stringOf(keyToken.value, at) : null;
     const api =
       (simple ? textOf(keyToken) : null) ??
+      apiName ??
       (simple && keyToken?.type === "ident" ? `[${keyToken.value}]` : "[computed]");
     let open = -1;
     if (simple) {
@@ -335,7 +380,7 @@ export function bridgeMembers(
       if (name === null) return push(null, null, first.line);
       const channels = new Set<string>();
       const refs: Array<NonNullable<BridgeMember["channelRef"]>> = [];
-      for (let j = s + 1; j + 4 < end; j++) {
+      for (let j = s + 1; j + 2 < end; j++) {
         const callee = tokens[j + 2]!;
         if (
           tokens[j]!.type === "ident" &&
@@ -345,9 +390,19 @@ export function bridgeMembers(
           CHANNEL_CALLS.has(callee.value) &&
           is(j + 3, "(")
         ) {
-          const named = context.constants.resolve(j + 4);
-          if (named && "value" in named) channels.add(named.value);
-          else if (named && "ref" in named) refs.push(named.ref);
+          const channelName = context.constants.resolve(j + 4);
+          if (channelName && "value" in channelName) channels.add(channelName.value);
+          else if (channelName && "ref" in channelName) refs.push(channelName.ref);
+        } else if (
+          tokens[j]!.type === "ident" &&
+          is(j + 1, "(") &&
+          context.aliases.get(j) === tokens[j]!.value &&
+          context.wrappers.get(tokens[j]!.value)?.startsWith("ipcRenderer.")
+        ) {
+          // a helper of the file that forwards its first argument as the channel
+          const channelName = context.constants.resolve(j + 2);
+          if (channelName && "value" in channelName) channels.add(channelName.value);
+          else if (channelName && "ref" in channelName) refs.push(channelName.ref);
         }
       }
       // Two different channels in one member: which one it forwards to is not decidable here.
@@ -375,6 +430,38 @@ export function bridgeMembers(
       } else if (p.value === "," && depth === 1) flush(k);
     }
     if (!closed) truncated = true;
+    // An object put together in steps: `api.onChange = (fn) => …` after `const api = {…}`.
+    const objectName =
+      simple && tokens[at + 2]?.type === "ident" && is(at + 3, ")") ? tokens[at + 2]!.value : null;
+    if (objectName && !stepwise.has(objectName)) {
+      stepwise.add(objectName);
+      budget -= tokens.length;
+      if (budget <= 0) truncated = true;
+      else
+        for (let k = 0; k + 3 < tokens.length; k++) {
+          if (
+            tokens[k]!.type !== "ident" ||
+            tokens[k]!.value !== objectName ||
+            is(k - 1, ".") ||
+            !is(k + 1, ".") ||
+            tokens[k + 2]!.type !== "ident" ||
+            !is(k + 3, "=")
+          )
+            continue;
+          let end = k + 4;
+          for (let d = 0; end < tokens.length && end < k + 2000; end++) {
+            const p = tokens[end]!;
+            if (p.type !== "punct") continue;
+            if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+            else if (p.value === "}" || p.value === ")" || p.value === "]") {
+              if (d === 0) break;
+              d--;
+            } else if (p.value === ";" && d === 0) break;
+          }
+          start = k + 2;
+          flush(end);
+        }
+    }
   }
   return { members, truncated };
 }
@@ -818,11 +905,44 @@ export function analyzeJavaScriptTree(
     runBytes += file.size;
     bytes += file.size;
     let ranges: WindowRange[] = [];
+    // Settings are read from tokens, so text in a comment or a string is never a setting.
+    const settingsAt: Array<{
+      key: "nodeIntegration" | "contextIsolation" | "sandbox";
+      value: boolean;
+      start: number;
+    }> = [];
+    const preloadsAt = new Set<number>();
     const scan = scanJavaScript(source, {
       onTokens: (tokens, truncated, context) => {
         if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source))
           ranges = windowRanges(tokens, context.aliases);
-        const found = findCandidates(tokens, source, undefined, context.aliases);
+        if (/nodeIntegration|contextIsolation|sandbox|preload/.test(source))
+          for (let k = 0; k + 2 < tokens.length; k++) {
+            const t = tokens[k]!;
+            const colon = tokens[k + 1]!;
+            if (t.type !== "ident" || colon.type !== "punct" || colon.value !== ":") continue;
+            if (t.value === "preload") preloadsAt.add(t.start);
+            else if (
+              t.value === "nodeIntegration" ||
+              t.value === "contextIsolation" ||
+              t.value === "sandbox"
+            ) {
+              const v = tokens[k + 2]!;
+              const n = tokens[k + 3];
+              // true, false, and what minifiers write for them: !0 and !1
+              const value =
+                v.type === "ident" && (v.value === "true" || v.value === "false")
+                  ? v.value === "true"
+                  : v.type === "punct" &&
+                      v.value === "!" &&
+                      n?.type === "number" &&
+                      /^[01]$/.test(n.value)
+                    ? n.value === "0"
+                    : null;
+              if (value !== null) settingsAt.push({ key: t.value, value, start: t.start });
+            }
+          }
+        const found = findCandidates(tokens, source, undefined, context.aliases, context.constants);
         if (found.truncated) facts.candidatesCapped = true;
         for (const [from, to] of [
           [found.endpoints, facts.endpoints],
@@ -882,9 +1002,10 @@ export function analyzeJavaScriptTree(
     // `BrowserWindow`. A payment SDK's `{ sandbox: false }` in a renderer file is not Electron's.
     // Where the options of a window could be located in the code (`ranges`), a setting counts
     // only inside them. Only a file where none could be located falls back to nearness.
-    const windowOf = (index: number): number | null | undefined => {
+    const windowsOf = (index: number): Array<{ window: number | null; inherited: boolean }> => {
       if (ranges.length) {
-        // The innermost range decides which window it is.
+        // The innermost range decides which window it is; a helper used by two windows has one
+        // range per window with the same extent, and the setting then counts for each.
         let best: WindowRange | undefined;
         for (const r of ranges)
           if (
@@ -893,48 +1014,80 @@ export function analyzeJavaScriptTree(
             (!best || r.end - r.start < best.end - best.start)
           )
             best = r;
-        return best ? best.window : undefined;
+        if (!best) return [];
+        const { start, end } = best;
+        const same = ranges.filter((r) => r.start === start && r.end === end);
+        return [
+          ...new Map(
+            same.map((r) => [r.window, { window: r.window, inherited: r.inherited }]),
+          ).values(),
+        ];
       }
       const before = source.slice(Math.max(0, index - WINDOW_CONTEXT), index);
       return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before)
-        ? null
-        : undefined;
+        ? [{ window: null, inherited: false }]
+        : [];
     };
-    let settings = 0;
-    const record = (pref: WebPreference): boolean => {
-      if (settings++ >= MAX_PREFS_PER_FILE || webPreferences.length >= MAX_PREFS) {
+    // Settings of this file first; what a window overrides is dropped before they are kept.
+    const found: Array<WebPreference & { inherited: boolean }> = [];
+    const record = (pref: WebPreference & { inherited: boolean }): boolean => {
+      if (found.length >= MAX_PREFS_PER_FILE || webPreferences.length + found.length >= MAX_PREFS) {
         prefsCapped = true;
         return false;
       }
-      webPreferences.push(pref);
+      found.push(pref);
       return true;
     };
     // `preload: <expression>`: the script is the last path-like string literal of the expression
     // (`path.join(__dirname, "dist", "preload.js")`, `__dirname + "/preload.js"`). The expression
     // is read from a bounded window, so no input makes this scan slow.
-    for (let at = source.indexOf("preload"); at !== -1; at = source.indexOf("preload", at + 7)) {
+    preloads: for (
+      let at = source.indexOf("preload");
+      at !== -1;
+      at = source.indexOf("preload", at + 7)
+    ) {
       const m = /^preload\s*:\s*/.exec(source.slice(at, at + 24));
-      const window = m ? windowOf(at) : undefined;
-      if (!m || /[\w$.]/.test(source[at - 1] ?? "") || window === undefined) continue;
-      const expression = preloadExpression(source, at + m[0].length);
+      const windows = m && preloadsAt.has(at) ? windowsOf(at) : [];
+      if (!m || /[\w$.]/.test(source[at - 1] ?? "") || !windows.length) continue;
+      let expression = preloadExpression(source, at + m[0].length);
+      // `preload: PRELOAD` with the path built in a constant: read the constant's initializer.
+      const constant = /^\s*([A-Za-z_$][\w$]*)\s*[,}]?\s*$/.exec(expression)?.[1];
+      if (constant) {
+        const initializer = new RegExp(
+          `(?:\\b(?:const|let|var)\\s+|,\\s*)${constant.replace(/\$/g, "\\$")}\\s*=(?!=)\\s*`,
+        ).exec(source);
+        if (initializer)
+          expression = preloadExpression(source, initializer.index + initializer[0].length);
+      }
       const literals = [...expression.matchAll(/(['"`])((?:(?!\1)[^\\\n])*)\1/g)].map((x) => x[2]!);
       const script = literals.toReversed().find((v) => /\.(c|m)?[jt]s$/.test(v));
       if (!script) continue;
       const value = script.replace(/^\$\{[^}]*\}/, "").replace(/^[\\/]+/, "");
-      preloadScripts.add(value);
-      if (!record({ key: "preload", value, file: file.path, line: lineAt(at), window })) break;
+      for (const w of windows)
+        if (!record({ key: "preload", value, file: file.path, line: lineAt(at), ...w }))
+          break preloads;
     }
-    for (const m of source.matchAll(
-      /\b(nodeIntegration|contextIsolation|sandbox)\s*:\s*(true|false|!0|!1)\b/g,
-    )) {
-      const window = windowOf(m.index);
-      if (window === undefined) continue;
-      const key = m[1] as "nodeIntegration" | "contextIsolation" | "sandbox";
-      const v = m[2] === "true" || m[2] === "!0";
-      if (!record({ key, value: v, file: file.path, line: lineAt(m.index), window })) break;
-      // the least safe value seen in any window decides the app-wide flag
-      flags[key] =
-        key === "nodeIntegration" ? (flags[key] ?? false) || v : (flags[key] ?? true) && v;
+    settings: for (const { key, value, start } of settingsAt)
+      for (const w of windowsOf(start))
+        if (!record({ key, value, file: file.path, line: lineAt(start), ...w })) break settings;
+    for (const { inherited, ...pref } of found) {
+      // A key written for the window itself replaces the same key of a base object.
+      if (
+        inherited &&
+        pref.window !== null &&
+        found.some((o) => !o.inherited && o.window === pref.window && o.key === pref.key)
+      )
+        continue;
+      webPreferences.push(pref);
+      if (pref.key === "preload") preloadScripts.add(String(pref.value));
+      else {
+        // the least safe value seen in any window decides the app-wide flag
+        const v = pref.value === true;
+        flags[pref.key] =
+          pref.key === "nodeIntegration"
+            ? (flags[pref.key] ?? false) || v
+            : (flags[pref.key] ?? true) && v;
+      }
     }
     if (
       /@electron\/remote|require\(['"]electron['"]\)\.remote|enableRemoteModule\s*:\s*true/.test(
@@ -1061,6 +1214,14 @@ export function analyzeJavaScriptTree(
     b.channel = channel;
     delete b.channelRef;
   }
+
+  // Endpoints and storage keys with a part that is a constant of another module.
+  const finished = (rows: AppCandidate[]): AppCandidate[] =>
+    rows.map((row) =>
+      resolvePending(row, (specifier, property) => lookUp(row.file, { specifier, property })),
+    );
+  const endpoints = finished(facts.endpoints);
+  const storage = finished(facts.storage);
 
   // IPC channel matching
   const channels = new Map<string, { senders: Set<string>; receivers: Set<string> }>();
@@ -1211,8 +1372,8 @@ export function analyzeJavaScriptTree(
       confidence: "confirmed",
     });
   for (const [rows, kind, noun, collection] of [
-    [facts.endpoints, "js.endpoints", "network endpoint", "endpoints"],
-    [facts.storage, "js.storage", "storage key", "storage"],
+    [endpoints, "js.endpoints", "network endpoint", "endpoints"],
+    [storage, "js.storage", "storage key", "storage"],
   ] as const) {
     if (!rows.length) continue;
     const values = [...new Set(rows.filter((r) => r.value !== null).map((r) => r.value!))];
@@ -1267,8 +1428,8 @@ export function analyzeJavaScriptTree(
     ipcChannels,
     webPreferences,
     contextBridge,
-    endpoints: facts.endpoints,
-    storage: facts.storage,
+    endpoints,
+    storage,
     urls: facts.urls,
     coverage,
     sourceMaps,

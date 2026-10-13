@@ -14,10 +14,43 @@
  *
  * A URL that merely occurs as a string is not an endpoint. Those go to `urls`.
  */
-import { resolveAliases } from "./aliases.js";
+import { Constants, resolveAliases } from "./aliases.js";
 import type { Token } from "./scan.js";
 
-const FETCH_ONLY: ReadonlySet<string> = new Set(["fetch"]);
+const OWN_TARGETS: ReadonlySet<string> = new Set(["fetch", "localStorage", "sessionStorage"]);
+
+/**
+ * A part of a value that is a constant of another module is written into the value as a
+ * reference between these marks until that module is known; `resolvePending` replaces it.
+ */
+const REF_OPEN = "\u0001";
+const REF_SPLIT = "\u0002";
+// eslint-disable-next-line no-control-regex
+const REF = /\u0001([^\u0001\u0002]*)\u0002([^\u0001\u0002]*)\u0001/g;
+
+/**
+ * Fills in the cross-module constants of a row, or marks them unknown. Returns a row without
+ * references; the stored row is left as it is, so a later run can resolve what this one cannot.
+ */
+export function resolvePending<T extends Candidate>(
+  row: T,
+  lookup: (specifier: string, property: string) => string | null,
+): T {
+  if (row.value === null || !row.value.includes(REF_OPEN)) return row;
+  let unknown = false;
+  const value = row.value.replace(REF, (_all, specifier: string, property: string) => {
+    const found = lookup(specifier, property);
+    if (found === null) unknown = true;
+    return found ?? "${…}";
+  });
+  if (value.replaceAll("${…}", "") === "")
+    return { ...row, value: null, confidence: "unknown", expression: "<expression>" };
+  return {
+    ...row,
+    value,
+    confidence: unknown ? "template" : row.confidence === "literal" ? "inferred" : row.confidence,
+  };
+}
 
 export type CandidateConfidence = "literal" | "template" | "inferred" | "unknown";
 
@@ -95,9 +128,13 @@ export function findCandidates(
   source: string,
   /** Called once per new row with the token it was read at, e.g. to attach a module id. */
   onRow?: (row: Candidate, at: Token) => void,
-  /** Other names for `fetch`, by token index (see aliases.ts); computed here when not given. */
-  aliases: Map<number, string> = resolveAliases(tokens, FETCH_ONLY),
+  /** Other names for fetch and the storage objects, by token index; computed when not given. */
+  aliasesGiven?: Map<number, string>,
+  constantsGiven?: Constants,
 ): Candidates {
+  const constants = constantsGiven ?? new Constants(tokens);
+  const aliases = aliasesGiven ?? resolveAliases(tokens, OWN_TARGETS, new Set(constants.names()));
+  if (!constantsGiven) constants.visible = aliases;
   const out: Candidates = { endpoints: [], routes: [], storage: [], urls: [], truncated: false };
   const seen = new Map<string, Candidate>();
 
@@ -119,27 +156,13 @@ export function findCandidates(
     return t.start - lineStarts[lo]! + 1;
   };
 
-  // `const NAME = "text"` declared exactly once in the file: the only aliasing that is followed.
-  let constants: Map<string, string | null> | null = null;
-  const constantOf = (name: string): string | null => {
-    if (!constants) {
-      constants = new Map();
-      for (let k = 0; k + 3 < tokens.length; k++) {
-        const t = tokens[k]!;
-        if (t.type !== "ident" || (t.value !== "const" && t.value !== "let" && t.value !== "var"))
-          continue;
-        const id = tokens[k + 1]!;
-        if (id.type !== "ident" || !is(tokens[k + 2], "punct", "=")) continue;
-        const v = tokens[k + 3]!;
-        const end = tokens[k + 4];
-        const plain =
-          (v.type === "string" || (v.type === "template" && !v.value.includes("${"))) &&
-          (!end || is(end, "punct", ";") || is(end, "punct", ",") || end.type === "ident");
-        // A second declaration of the same name makes the value ambiguous.
-        constants.set(id.value, constants.has(id.value) || !plain ? null : v.value);
-      }
-    }
-    return constants.get(name) ?? null;
+  // A name stands for a string when it is a constant of this file, or a constant imported from
+  // another module (then a reference is written, to be filled in when that module is known).
+  const constantOf = (name: string, k: number): string | null => {
+    const local = constants.stringOf(name, k);
+    if (local !== null) return local;
+    const ref = constants.importOf(name, k);
+    return ref ? `${REF_OPEN}${ref.specifier}${REF_SPLIT}${ref.property}${REF_OPEN}` : null;
   };
 
   /** Reads the argument that starts at token k: a literal, a template, a constant, or `a + b`. */
@@ -164,7 +187,7 @@ export function findCandidates(
           if (!dynamic) break;
           const expr = tokens[at + 1];
           const direct = expr?.type === "ident" && tokens[at + 2]?.type === "template";
-          const known = direct ? constantOf(expr.value) : null;
+          const known = direct ? constantOf(expr.value, at + 1) : null;
           if (known !== null) {
             value += known;
             if (confidence === "literal") confidence = "inferred";
@@ -188,7 +211,7 @@ export function findCandidates(
         !is(tokens[j + 1], "punct", ".") &&
         !is(tokens[j + 1], "punct", "(")
       ) {
-        const known = constantOf(t.value);
+        const known = constantOf(t.value, j);
         if (known !== null) {
           value += known;
           if (confidence === "literal") confidence = "inferred";
@@ -291,6 +314,59 @@ export function findCandidates(
     }
   }
 
+  // Variables that hold an XMLHttpRequest: only their open() is a request.
+  const xhrs = new Set<string>();
+  if (source.includes("XMLHttpRequest"))
+    for (let k = 0; k + 3 < tokens.length; k++)
+      if (
+        is(tokens[k], "ident") &&
+        is(tokens[k + 1], "punct", "=") &&
+        is(tokens[k + 2], "ident", "new") &&
+        is(tokens[k + 3], "ident", "XMLHttpRequest")
+      )
+        xhrs.add(tokens[k]!.value);
+
+  /** `key: "text"` at the top level of an object literal inside the call that opens at `open`. */
+  const option = (open: number, key: string): string | null => {
+    let d = 0;
+    for (let j = open; j < tokens.length && j < open + 300; j++) {
+      const p = tokens[j]!;
+      if (p.type === "punct") {
+        if (p.value === "(" || p.value === "{" || p.value === "[") d++;
+        else if (p.value === ")" || p.value === "}" || p.value === "]") {
+          d--;
+          if (d === 0) return null;
+        }
+        continue;
+      }
+      if (d === 2 && p.type === "ident" && p.value === key && is(tokens[j + 1], "punct", ":")) {
+        const v = tokens[j + 2];
+        if (v && (v.type === "string" || (v.type === "template" && !v.value.includes("${"))))
+          return v.value;
+      }
+    }
+    return null;
+  };
+  const verb = (open: number): { method?: string } => {
+    const m = option(open, "method");
+    return m && /^[A-Za-z]{3,7}$/.test(m) ? { method: m.toUpperCase() } : {};
+  };
+
+  /** True when the parenthesis at `open` closes right before a `{`: a definition, not a call. */
+  const definesMethod = (open: number): boolean => {
+    let d = 0;
+    for (let j = open; j < tokens.length && j < open + 200; j++) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(") d++;
+      else if (p.value === ")") {
+        d--;
+        if (d === 0) return is(tokens[j + 1], "punct", "{");
+      }
+    }
+    return false;
+  };
+
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type === "string") {
@@ -313,8 +389,10 @@ export function findCandidates(
       // `function fetch(` and `async fetch(` declare a function; they do not call one.
       if (is(prev, "ident", "function") || is(prev, "ident", "async") || is(prev, "punct", "*"))
         continue;
+      // `{ fetch(key) { … } }` defines a method of that name: a parameter list followed by a body.
+      if (definesMethod(k + 1)) continue;
       const r = readArg(k + 2);
-      if (r) push(out.endpoints, "fetch", r, t);
+      if (r) push(out.endpoints, "fetch", r, t, verb(k + 1));
     } else if (called && !member && aliases.get(k) === "fetch") {
       // Another name for fetch (`const request = fetch`): a request, but known by inference.
       const r = readArg(k + 2);
@@ -324,10 +402,24 @@ export function findCandidates(
           "fetch",
           { ...r, confidence: r.confidence === "literal" ? "inferred" : r.confidence },
           t,
+          verb(k + 1),
         );
     } else if (HTTP_VERBS.has(t.value) && member && called) {
       const owner = tokens[k - 2];
       const client = is(owner, "ident") && HTTP_CLIENTS.has(owner!.value);
+      // `net.request({ url: "https://…", method: "POST" })`: the address is an option.
+      const url = is(tokens[k + 2], "punct", "{") ? option(k + 1, "url") : null;
+      if (url !== null) {
+        if (ABSOLUTE.test(url))
+          push(
+            out.endpoints,
+            "http-client",
+            { value: url, confidence: "inferred" },
+            t,
+            verb(k + 1),
+          );
+        continue;
+      }
       const r = readArg(k + 2);
       if (!r || r.value === null) continue;
       // An unknown object with a verb method is only taken for a request when the URL is
@@ -346,9 +438,12 @@ export function findCandidates(
       const r = readArg(k + 2);
       if (r && r.value !== null) push(out.endpoints, "http-client", r, t);
     } else if (t.value === "open" && member && called) {
-      // XMLHttpRequest: open("METHOD", url). indexedDB.open is handled by its owner below.
+      // XMLHttpRequest: open("METHOD", url), on a variable that was created as one. Another
+      // object's open() with the same arguments is not a request.
       const method = tokens[k + 2];
       if (
+        is(tokens[k - 2], "ident") &&
+        xhrs.has(tokens[k - 2]!.value) &&
         is(method, "string") &&
         /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/i.test(method!.value) &&
         is(tokens[k + 3], "punct", ",")
@@ -366,28 +461,43 @@ export function findCandidates(
     } else if (t.value === "sendBeacon" && member && called) {
       const r = readArg(k + 2);
       if (r) push(out.endpoints, "beacon", r, t, { method: "POST" });
-    } else if (t.value === "localStorage" || t.value === "sessionStorage") {
+    } else if (
+      t.value === "localStorage" ||
+      t.value === "sessionStorage" ||
+      (!member && (aliases.get(k) === "localStorage" || aliases.get(k) === "sessionStorage"))
+    ) {
+      const kind = (
+        t.value === "localStorage" || t.value === "sessionStorage" ? t.value : aliases.get(k)
+      ) as "localStorage" | "sessionStorage";
       const next = tokens[k + 2];
       if (is(tokens[k + 1], "punct", ".") && is(next, "ident") && is(tokens[k + 3], "punct", "(")) {
         const op = STORAGE_OPS[next!.value];
         if (!op) continue;
         const r = readArg(k + 4);
-        if (r) push(out.storage, t.value, r, t, { op });
+        if (r) push(out.storage, kind, r, t, { op });
       } else if (is(tokens[k + 1], "punct", "[") && is(tokens[k + 3], "punct", "]")) {
         const r = readArg(k + 2);
         if (r)
-          push(out.storage, t.value, r, t, {
+          push(out.storage, kind, r, t, {
             op: is(tokens[k + 4], "punct", "=") ? "write" : "read",
           });
       }
     } else if (
       (t.value === "indexedDB" || t.value === "caches") &&
       is(tokens[k + 1], "punct", ".") &&
-      is(tokens[k + 2], "ident", "open") &&
+      is(tokens[k + 2], "ident") &&
+      /^(open|deleteDatabase|delete)$/.test(tokens[k + 2]!.value) &&
       is(tokens[k + 3], "punct", "(")
     ) {
       const r = readArg(k + 4);
-      if (r) push(out.storage, t.value === "caches" ? "cache" : "indexedDB", r, t);
+      if (r)
+        push(
+          out.storage,
+          t.value === "caches" ? "cache" : "indexedDB",
+          r,
+          t,
+          tokens[k + 2]!.value === "open" ? {} : { op: "delete" },
+        );
     } else if (t.value === "cookie" && member && is(tokens[k - 2], "ident", "document")) {
       push(out.storage, "cookie", { value: "document.cookie", confidence: "literal" }, t, {
         op: is(tokens[k + 1], "punct", "=") ? "write" : "read",
