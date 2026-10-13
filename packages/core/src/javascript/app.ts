@@ -85,6 +85,13 @@ export interface WebPreference {
    * (returned by a helper, or used to override a child window's options).
    */
   window: number | null;
+  /**
+   * A name for the window that survives code moving and windows being added before it: the
+   * variable the constructor call is assigned to (`promptWindow = new BrowserWindow(…)`), with
+   * `#2`, `#3` appended when a file assigns several windows to the same name; `#<window>` when
+   * the call is not assigned; null where `window` is null. `compare` matches settings by it.
+   */
+  windowName: string | null;
 }
 
 /** A stretch of source that holds a window's options, and which window it is. */
@@ -92,6 +99,7 @@ interface WindowRange {
   start: number;
   end: number;
   window: number | null;
+  name: string | null;
   /**
    * The object is a base the window's own options are laid over (a spread object, or what a
    * helper function returns): a key written directly for the window replaces the same key here.
@@ -163,6 +171,16 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
             returned.set(t.value, j + 1);
             break;
           }
+          // `return ({ … })`
+          if (
+            tokens[j]!.type === "ident" &&
+            tokens[j]!.value === "return" &&
+            is(j + 1, "(") &&
+            is(j + 2, "{")
+          ) {
+            returned.set(t.value, j + 2);
+            break;
+          }
           if (is(j, "=>") && is(j + 1, "(") && is(j + 2, "{")) {
             returned.set(t.value, j + 2);
             break;
@@ -181,7 +199,13 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       return;
     }
     work -= end - open;
-    ranges.push({ start: tokens[open]!.start, end: tokens[end]!.end, window, inherited });
+    ranges.push({
+      start: tokens[open]!.start,
+      end: tokens[end]!.end,
+      window,
+      name: window === null ? null : (names.get(window) ?? `#${window}`),
+      inherited,
+    });
     if (depth >= 3) return;
     // Objects that are named, spread or returned by a helper inside belong to the same window.
     for (let k = open + 1; k < end; k++) {
@@ -210,6 +234,8 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
     }
   };
   let count = 0;
+  const names = new Map<number, string>();
+  const named = new Map<string, number>();
   for (let k = 0; k + 2 < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
@@ -221,6 +247,13 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       if (ctor?.type !== "ident" || !is(c + 1, "(")) continue;
       if (!WINDOW_CLASSES.has(aliases.get(c) ?? ctor.value)) continue;
       const window = ++count;
+      // `name = new BrowserWindow(…)`, also after `const` or `this.`
+      const target = is(k - 1, "=") ? tokens[k - 2] : undefined;
+      if (target?.type === "ident") {
+        const seen = (named.get(target.value) ?? 0) + 1;
+        named.set(target.value, seen);
+        names.set(window, seen === 1 ? target.value : `${target.value}#${seen}`);
+      }
       // `new BrowserWindow(options)` with the options object declared elsewhere
       const first = tokens[c + 2];
       if (first?.type === "ident" && is(c + 3, ")")) {
@@ -1063,7 +1096,9 @@ export function analyzeJavaScriptTree(
     // `BrowserWindow`. A payment SDK's `{ sandbox: false }` in a renderer file is not Electron's.
     // Where the options of a window could be located in the code (`ranges`), a setting counts
     // only inside them. Only a file where none could be located falls back to nearness.
-    const windowsOf = (index: number): Array<{ window: number | null; inherited: boolean }> => {
+    const windowsOf = (
+      index: number,
+    ): Array<{ window: number | null; windowName: string | null; inherited: boolean }> => {
       if (ranges.length) {
         // The innermost range decides which window it is; a helper used by two windows has one
         // range per window with the same extent, and the setting then counts for each.
@@ -1080,13 +1115,16 @@ export function analyzeJavaScriptTree(
         const same = ranges.filter((r) => r.start === start && r.end === end);
         return [
           ...new Map(
-            same.map((r) => [r.window, { window: r.window, inherited: r.inherited }]),
+            same.map((r) => [
+              r.window,
+              { window: r.window, windowName: r.name, inherited: r.inherited },
+            ]),
           ).values(),
         ];
       }
       const before = source.slice(Math.max(0, index - WINDOW_CONTEXT), index);
       return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before)
-        ? [{ window: null, inherited: false }]
+        ? [{ window: null, windowName: null, inherited: false }]
         : [];
     };
     // Settings of this file first; what a window overrides is dropped before they are kept.
@@ -1352,14 +1390,29 @@ export function analyzeJavaScriptTree(
     return hit ? `${hit.file}:${hit.line}` : undefined;
   };
   if (electron) {
-    if (electron.nodeIntegration === true)
+    if (electron.nodeIntegration === true) {
+      // What the flag means depends on contextIsolation of the same window, so the detail is
+      // chosen from that window's own settings, never from another window's.
+      const hit = webPreferences.find((w) => w.key === "nodeIntegration" && w.value === true);
+      const isolation =
+        hit && hit.window !== null
+          ? webPreferences.find(
+              (w) => w.key === "contextIsolation" && w.file === hit.file && w.window === hit.window,
+            )?.value
+          : undefined;
       findings.push({
         kind: "electron.node-integration",
         title: "nodeIntegration: true in a BrowserWindow",
-        detail: "Renderer code can require Node modules; XSS becomes RCE.",
+        detail:
+          isolation === false
+            ? "contextIsolation is off for the same window: page scripts can require Node modules, so script injection there becomes code execution."
+            : isolation === true
+              ? "contextIsolation is on for the same window, so page scripts do not get require(). Node integration still keeps the renderer out of the Chromium sandbox."
+              : "contextIsolation is not written for this window. With it off, page scripts can require Node modules; it is on by default since Electron 12.",
         confidence: "inferred",
         location: where("nodeIntegration", true),
       });
+    }
     if (electron.contextIsolation === false)
       findings.push({
         kind: "electron.context-isolation",

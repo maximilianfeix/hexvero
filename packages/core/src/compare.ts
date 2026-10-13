@@ -85,7 +85,7 @@ const POSITION_FIELDS: Record<string, readonly string[]> = {
  */
 const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   contextBridge: ["line"],
-  webPreferences: ["line"],
+  webPreferences: ["line", "window"],
   endpoints: ["line", "column"],
   storage: ["line", "column"],
   urls: ["line", "column"],
@@ -122,9 +122,11 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   ],
   columns: [["table", "name"]],
   ipc: [["module", "api", "channel", "line"]],
-  // A file may configure several windows; the window number tells their settings apart and,
-  // unlike the line, stays the same when code moves.
+  // A file may configure several windows. The variable a window is assigned to tells their
+  // settings apart and stays the same when code moves or a window is added before it; the
+  // window number is the fallback for an analysis without names.
   webPreferences: [
+    ["file", "windowName", "key"],
     ["file", "window", "key"],
     ["file", "key"],
     ["file", "key", "line"],

@@ -41,6 +41,16 @@ const elfSymbols = (shift: number, extra: string[] = []): object[] => [
   ...extra.map((name) => ({ name, value: "0x9000", type: "FUNC" })),
 ];
 
+/** One `webPreferences` row of a bundled main process. */
+const pref = (windowName: string, window: number, key: string, value: boolean, line: number) => ({
+  key,
+  value,
+  file: "main.build.js",
+  line,
+  window,
+  windowName,
+});
+
 describe("compareItems", () => {
   const a = [
     { name: "main", size: 40, address: "0x1000" },
@@ -191,9 +201,39 @@ describe("compareItems", () => {
     expect(positionalFields("symbols", [])).toEqual([]);
   });
 
+  it("matches window settings by the window's name when a window is added before it", () => {
+    const before = [
+      pref("mainWindow", 1, "nodeIntegration", true, 10),
+      pref("promptWindow", 2, "nodeIntegration", true, 40),
+      pref("promptWindow", 2, "sandbox", false, 41),
+    ];
+    const after = [
+      pref("mainWindow", 1, "nodeIntegration", true, 12),
+      pref("translateWindow", 2, "nodeIntegration", false, 30),
+      pref("promptWindow", 3, "nodeIntegration", false, 60),
+      pref("promptWindow", 3, "sandbox", true, 61),
+    ];
+    const diff = compareItems(before, after, {
+      collection: "webPreferences",
+      positional: positionalFields("webPreferences", ["javascript-app", "javascript-app"]),
+    });
+    expect(diff.key).toBe("file+windowName+key");
+    expect(diff.added).toEqual(["main.build.js::translateWindow::nodeIntegration"]);
+    expect(diff.removed).toEqual([]);
+    expect(diff.changed.map((c) => c.key)).toEqual([
+      "main.build.js::promptWindow::nodeIntegration",
+      "main.build.js::promptWindow::sandbox",
+    ]);
+    // the moved line and the shifted window number are positions, not changes
+    expect(diff.relocated).toBe(1);
+  });
+
   it("treats the source line of an Electron fact as a position, not as content", () => {
     expect(positionalFields("contextBridge", ["asar", "asar"])).toEqual(["line"]);
-    expect(positionalFields("webPreferences", ["asar", "javascript-app"])).toEqual(["line"]);
+    expect(positionalFields("webPreferences", ["asar", "javascript-app"])).toEqual([
+      "line",
+      "window",
+    ]);
     const added = {
       api: "api",
       member: "new",
