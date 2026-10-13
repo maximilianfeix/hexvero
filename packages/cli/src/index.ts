@@ -33,6 +33,8 @@ Commands
   bytes <path> <offset> [length]                Hex dump of a byte window
   compare <a> <b> <collection> [--key field]    Diff a collection between two targets
   export <path> <out.json>                      Write the complete analysis to a file
+  recover <path> <outdir>                       Split a JS bundle into module files or write a
+                                                source map's original sources (no engine needed)
   provider <path> <engine> <op> [--address a]   Run functions/disassemble/decompile/strings/imports
                                                 through radare2, rizin or ghidra (if installed)
   mcp                                           Serve the Model Context Protocol over stdio
@@ -284,6 +286,26 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       else io.out(toJson(compact(r)));
       if (result.limitations.length)
         io.out(`\n${formatLimitations(io, result.limitations).join("\n")}`);
+      return 0;
+    }
+    case "recover": {
+      const target = await session.open(need(0, "path"));
+      const result = await session.recover(target.id, need(1, "outdir"));
+      if (json) {
+        io.out(toJson(result));
+        return 0;
+      }
+      io.out(
+        `${paint(io, "green", "✓")} ${result.written.length} files written to ${result.outputDir} (manifest ${result.manifest})`,
+      );
+      for (const w of result.written.slice(0, 30))
+        io.out(`  ${paint(io, "dim", String(w.bytes).padStart(8))}  ${w.path}`);
+      if (result.written.length > 30)
+        io.out(paint(io, "dim", `  … ${result.written.length - 30} more`));
+      if (result.skipped.length)
+        io.out(
+          paint(io, "yellow", `  ${result.skipped.length} sources skipped (no embedded content)`),
+        );
       return 0;
     }
     case "mcp":

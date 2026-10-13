@@ -70,6 +70,12 @@ export const toolSchemas = {
       "Write the complete analysis as JSON to a file and return its path and size. Use this instead of paging when you need everything.",
     input: { targetId, path: z.string().describe("Destination file path") },
   },
+  hexvero_recover: {
+    title: "Recover sources",
+    description:
+      "Write recoverable sources into a new directory: the modules of a webpack/Rspack/browserify/esbuild bundle (one file each plus hexvero-bundle.json with requires/exports), or the original files embedded in a source map (sourcesContent). No engine needed; nothing is executed.",
+    input: { targetId, outputDir: z.string().describe("Absent or empty directory to write into") },
+  },
   hexvero_compare: {
     title: "Compare collections",
     description:
@@ -173,6 +179,13 @@ export function createHandlers(
     hexvero_bytes: async (a) =>
       session.bytes(str(a["targetId"]), Number(a["offset"]), Number(a["length"])),
     hexvero_export: async (a) => session.export(str(a["targetId"]), str(a["path"])),
+    hexvero_recover: async (a) => {
+      const result = await session.recover(str(a["targetId"]), str(a["outputDir"]));
+      return {
+        ...result,
+        written: { count: result.written.length, sample: result.written.slice(0, 50) },
+      };
+    },
     hexvero_compare: async (a) => {
       const name = str(a["collection"]);
       const [left, right] = await Promise.all([
