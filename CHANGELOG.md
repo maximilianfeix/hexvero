@@ -6,6 +6,17 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-13
+
+### Added
+
+- Analyses run in a worker thread with a timeout (`HEXVERO_ANALYSIS_TIMEOUT_MS`) and per-caller
+  cancellation; MCP and HTTP servers stay responsive and client cancels stop the work.
+- Agent skill (`skills/hexvero/SKILL.md`) shipped in the npm package and installed by
+  `hexvero setup --skill` for Claude Code, Codex and `.agents`.
+- German README; npm metadata for every package; `npm run publish:all`.
+- CI runs typecheck and tests on Windows and macOS.
+
 ## [0.2.0] - 2026-10-13
 
 ### Added
