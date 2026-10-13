@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "9d596ca+uncommitted",
+  "commit": "a6d9b82+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -536,37 +536,37 @@
       "value": "https://api.notes.example/v1/items",
       "kind": "fetch",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.notes.example/v1/users/${…}",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "/v1/login",
       "kind": "http-client",
       "method": "POST",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "wss://live.notes.example/socket",
       "kind": "websocket",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://upload.notes.example/blob",
       "kind": "xhr",
       "method": "PUT",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://alias.notes.example/ping",
       "kind": "fetch",
       "method": null,
-      "confidence": "inferred"
+      "evidence": "inferred"
      }
     ],
     "endpointsUnreadable": 1,
@@ -754,37 +754,37 @@
       "value": "https://api.notes.example/v1/items",
       "kind": "fetch",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.notes.example/v1/users/${…}",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "/v1/login",
       "kind": "http-client",
       "method": "POST",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "wss://live.notes.example/socket",
       "kind": "websocket",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://upload.notes.example/blob",
       "kind": "xhr",
       "method": "PUT",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://alias.notes.example/ping",
       "kind": "fetch",
       "method": null,
-      "confidence": "inferred"
+      "evidence": "inferred"
      }
     ],
     "endpointsUnreadable": 1,
@@ -972,31 +972,31 @@
       "value": "https://api.notes.example/v1/items",
       "kind": "fetch",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.notes.example/v1/users/${…}",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "wss://live.notes.example/socket",
       "kind": "websocket",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://upload.notes.example/blob",
       "kind": "xhr",
       "method": "PUT",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://alias.notes.example/ping",
       "kind": "fetch",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      }
     ],
     "endpointsUnreadable": 1,
@@ -1384,67 +1384,67 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://updates.chat.example/desktop/report",
       "kind": "http-client",
       "method": "POST",
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://api.chat.example/v2/session",
       "kind": "xhr",
       "method": "DELETE",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.chat.example/v2/rooms",
       "kind": "fetch",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.chat.example/v2/rooms/${…}/messages?limit=50",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "https://api.chat.example/v2/users/${…}",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "https://api.chat.example/v2/messages",
       "kind": "fetch",
       "method": "POST",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://status.chat.example/health.json",
       "kind": "fetch",
       "method": null,
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "wss://gateway.chat.example/socket",
       "kind": "websocket",
       "method": null,
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://events.chat.example/presence/stream",
       "kind": "event-source",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://metrics.chat.example/collect",
       "kind": "beacon",
       "method": "POST",
-      "confidence": "literal"
+      "evidence": "literal"
      }
     ],
     "endpointsUnreadable": 2,
@@ -1803,67 +1803,67 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://updates.chat.example/desktop/report",
       "kind": "http-client",
       "method": "POST",
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://api.chat.example/v2/session",
       "kind": "xhr",
       "method": "DELETE",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.chat.example/v2/rooms",
       "kind": "fetch",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.chat.example/v2/rooms/${…}/messages?limit=50",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "https://api.chat.example/v2/users/${…}",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "https://api.chat.example/v2/messages",
       "kind": "fetch",
       "method": "POST",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://status.chat.example/health.json",
       "kind": "fetch",
       "method": null,
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "wss://gateway.chat.example/socket",
       "kind": "websocket",
       "method": null,
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://events.chat.example/presence/stream",
       "kind": "event-source",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://metrics.chat.example/collect",
       "kind": "beacon",
       "method": "POST",
-      "confidence": "literal"
+      "evidence": "literal"
      }
     ],
     "endpointsUnreadable": 2,
@@ -2222,67 +2222,67 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://updates.chat.example/desktop/report",
       "kind": "http-client",
       "method": "POST",
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://api.chat.example/v2/session",
       "kind": "xhr",
       "method": "DELETE",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.chat.example/v2/rooms",
       "kind": "fetch",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://api.chat.example/v2/rooms/${…}/messages?limit=50",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "https://api.chat.example/v2/users/${…}",
       "kind": "fetch",
       "method": null,
-      "confidence": "template"
+      "evidence": "template"
      },
      {
       "value": "https://api.chat.example/v2/messages",
       "kind": "fetch",
       "method": "POST",
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://status.chat.example/health.json",
       "kind": "fetch",
       "method": null,
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "wss://gateway.chat.example/socket",
       "kind": "websocket",
       "method": null,
-      "confidence": "inferred"
+      "evidence": "inferred"
      },
      {
       "value": "https://events.chat.example/presence/stream",
       "kind": "event-source",
       "method": null,
-      "confidence": "literal"
+      "evidence": "literal"
      },
      {
       "value": "https://metrics.chat.example/collect",
       "kind": "beacon",
       "method": "POST",
-      "confidence": "literal"
+      "evidence": "literal"
      }
     ],
     "endpointsUnreadable": 2,

@@ -1388,7 +1388,7 @@ export function analyzeJavaScriptTree(
         values.length && unread ? `; ${unread} more with an unreadable value` : ""
       } (collection ${collection})`.trim(),
       // Confirmed only when every value stands as a literal at its call.
-      confidence: rows.every((r) => r.confidence === "literal") ? "confirmed" : "inferred",
+      confidence: rows.every((r) => r.evidence === "literal") ? "confirmed" : "inferred",
       location: `${first.file}:${first.line}`,
     });
   }

@@ -6,6 +6,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Session } from "@hexvero/core";
 import { createHexveroServer } from "../src/index.js";
+import { buildAsar } from "../../core/test/fixtures/asar.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
 
 describe("hexvero MCP server", () => {
@@ -189,6 +190,53 @@ describe("hexvero MCP server", () => {
       "rizin",
       "ghidra",
     ]);
+  });
+
+  it("continues the scan of a large JavaScript app on request and reports coverage", async () => {
+    const cache = mkdtempSync(join(tmpdir(), "hexvero-mcp-cache-"));
+    const previous = process.env["HEXVERO_CACHE_DIR"];
+    process.env["HEXVERO_CACHE_DIR"] = cache;
+    try {
+      const app = join(cache, "app.asar");
+      writeFileSync(
+        app,
+        buildAsar({
+          "package.json": JSON.stringify({ name: "big", main: "main.js" }),
+          "main.js": 'require("electron").ipcMain.handle("main:start", () => 1);',
+          "src/a.js": 'fetch("https://api.example/a");',
+          "src/b.js": 'fetch("https://api.example/b");',
+        }),
+      );
+      const opened = await call("hexvero_open", { path: app });
+      const id = (opened.body as { id: string }).id;
+      const whole = await call("hexvero_analyze", { targetId: id });
+      expect(whole.body).toMatchObject({ complete: true, coverage: { total: 3, remaining: 0 } });
+      // reading only one path of a fresh scan leaves the rest unread, and the result says so
+      const part = await call("hexvero_analyze", {
+        targetId: id,
+        scan: "fresh",
+        include: ["src/a.js"],
+      });
+      expect(part.body).toMatchObject({ complete: false, coverage: { scanned: 1, remaining: 2 } });
+      expect((part.body as { summary: string }).summary).toMatch(/partial: 1 of 3/);
+      const endpoints = await call("hexvero_collection", { targetId: id, collection: "endpoints" });
+      expect((endpoints.body as { total: number }).total).toBe(1);
+      const rest = await call("hexvero_analyze", { targetId: id, scan: "all" });
+      expect(rest.body).toMatchObject({ complete: true, coverage: { scanned: 3, resumed: true } });
+      expect(
+        (
+          (await call("hexvero_collection", { targetId: id, collection: "endpoints" })).body as {
+            total: number;
+          }
+        ).total,
+      ).toBe(2);
+      // an unknown scan mode is refused by the schema before anything runs
+      await expect(call("hexvero_analyze", { targetId: id, scan: "everything" })).rejects.toThrow();
+    } finally {
+      if (previous === undefined) delete process.env["HEXVERO_CACHE_DIR"];
+      else process.env["HEXVERO_CACHE_DIR"] = previous;
+      rmSync(cache, { recursive: true, force: true });
+    }
   });
 });
 

@@ -2,8 +2,8 @@
  * Network endpoints, storage accesses and URL literals read from a JavaScript token stream.
  *
  * One implementation for standalone bundles and for every file of an application. It works on
- * tokens, so a call inside a comment or a string is never seen. A row says how its value was
- * obtained:
+ * tokens, so a call inside a comment or a string is never seen. A row's `evidence` says how its
+ * value was obtained (a different scale from the confirmed/inferred of a finding):
  *
  * - `literal`: the argument is a string literal at the call.
  * - `template`: part of the value is known and the rest is an expression (`${…}`).
@@ -44,15 +44,15 @@ export function resolvePending<T extends Candidate>(
     return found ?? "${…}";
   });
   if (value.replaceAll("${…}", "") === "")
-    return { ...row, value: null, confidence: "unknown", expression: "<expression>" };
+    return { ...row, value: null, evidence: "unknown", expression: "<expression>" };
   return {
     ...row,
     value,
-    confidence: unknown ? "template" : row.confidence === "literal" ? "inferred" : row.confidence,
+    evidence: unknown ? "template" : row.evidence === "literal" ? "inferred" : row.evidence,
   };
 }
 
-export type CandidateConfidence = "literal" | "template" | "inferred" | "unknown";
+export type CandidateEvidence = "literal" | "template" | "inferred" | "unknown";
 
 export interface Candidate {
   /** The URL, key or name; null when the argument could not be read. */
@@ -73,7 +73,7 @@ export interface Candidate {
     | "cache"
     | "cookie"
     | "electron-store";
-  confidence: CandidateConfidence;
+  evidence: CandidateEvidence;
   line: number;
   /** 1-based column of the call; what makes a position usable in a minified one-line file. */
   column: number;
@@ -119,7 +119,7 @@ const is = (t: Token | undefined, type: Token["type"], value?: string): boolean 
 
 interface Read {
   value: string | null;
-  confidence: CandidateConfidence;
+  evidence: CandidateEvidence;
   expression?: string;
 }
 
@@ -170,7 +170,7 @@ export function findCandidates(
     const first = tokens[k];
     if (!first || is(first, "punct", ")")) return null;
     let value = "";
-    let confidence: CandidateConfidence = "literal";
+    let evidence: CandidateEvidence = "literal";
     let j = k;
     for (let parts = 0; parts < 6; parts++) {
       const t = tokens[j];
@@ -190,10 +190,10 @@ export function findCandidates(
           const known = direct ? constantOf(expr.value, at + 1) : null;
           if (known !== null) {
             value += known;
-            if (confidence === "literal") confidence = "inferred";
+            if (evidence === "literal") evidence = "inferred";
           } else {
             value += "${…}";
-            confidence = "template";
+            evidence = "template";
           }
           let nextPiece = -1;
           for (let m = at + 1; m < tokens.length && m < at + 60; m++)
@@ -201,7 +201,7 @@ export function findCandidates(
               nextPiece = m;
               break;
             }
-          if (nextPiece === -1) return { value, confidence: "template" };
+          if (nextPiece === -1) return { value, evidence: "template" };
           at = nextPiece;
           piece = tokens[at]!;
         }
@@ -214,29 +214,29 @@ export function findCandidates(
         const known = constantOf(t.value, j);
         if (known !== null) {
           value += known;
-          if (confidence === "literal") confidence = "inferred";
+          if (evidence === "literal") evidence = "inferred";
         } else if (parts === 0 && !is(tokens[j + 1], "punct", "+"))
-          return { value: null, confidence: "unknown", expression: t.value };
+          return { value: null, evidence: "unknown", expression: t.value };
         else {
           value += "${…}";
-          confidence = "template";
+          evidence = "template";
         }
       } else if (parts === 0)
-        return { value: null, confidence: "unknown", expression: "<expression>" };
+        return { value: null, evidence: "unknown", expression: "<expression>" };
       else {
         value += "${…}";
-        return { value, confidence: "template" };
+        return { value, evidence: "template" };
       }
       if (!is(tokens[j + 1], "punct", "+")) break;
       j += 2;
     }
-    return { value, confidence };
+    return { value, evidence };
   };
   /** A value with no fixed text at all (only `${…}`) says nothing: it is an unread argument. */
   const readArg = (k: number): Read | null => {
     const r = read(k);
     if (r && r.value !== null && r.value.replaceAll("${…}", "") === "")
-      return { value: null, confidence: "unknown", expression: "<expression>" };
+      return { value: null, evidence: "unknown", expression: "<expression>" };
     return r;
   };
 
@@ -260,7 +260,7 @@ export function findCandidates(
     const row: Candidate = {
       value: r.value,
       kind,
-      confidence: r.confidence,
+      evidence: r.evidence,
       line: t.line,
       column: columnOf(t),
       ...(extra.method ? { method: extra.method } : {}),
@@ -372,9 +372,9 @@ export function findCandidates(
     if (t.type === "string") {
       if (t.value.length < 300) {
         if (ABSOLUTE.test(t.value))
-          push(out.urls, "url-literal", { value: t.value, confidence: "literal" }, t);
+          push(out.urls, "url-literal", { value: t.value, evidence: "literal" }, t);
         else if (/^\/(api|graphql|v\d+|rest|rpc)\b/.test(t.value) && !/\s/.test(t.value))
-          push(out.urls, "path-literal", { value: t.value, confidence: "literal" }, t);
+          push(out.urls, "path-literal", { value: t.value, evidence: "literal" }, t);
       }
       continue;
     }
@@ -400,7 +400,7 @@ export function findCandidates(
         push(
           out.endpoints,
           "fetch",
-          { ...r, confidence: r.confidence === "literal" ? "inferred" : r.confidence },
+          { ...r, evidence: r.evidence === "literal" ? "inferred" : r.evidence },
           t,
           verb(k + 1),
         );
@@ -411,13 +411,7 @@ export function findCandidates(
       const url = is(tokens[k + 2], "punct", "{") ? option(k + 1, "url") : null;
       if (url !== null) {
         if (ABSOLUTE.test(url))
-          push(
-            out.endpoints,
-            "http-client",
-            { value: url, confidence: "inferred" },
-            t,
-            verb(k + 1),
-          );
+          push(out.endpoints, "http-client", { value: url, evidence: "inferred" }, t, verb(k + 1));
         continue;
       }
       const r = readArg(k + 2);
@@ -430,7 +424,7 @@ export function findCandidates(
         push(
           out.endpoints,
           "http-client",
-          client ? r : { ...r, confidence: r.confidence === "template" ? "template" : "inferred" },
+          client ? r : { ...r, evidence: r.evidence === "template" ? "template" : "inferred" },
           t,
           t.value === "request" ? {} : { method: t.value.toUpperCase() },
         );
@@ -499,7 +493,7 @@ export function findCandidates(
           tokens[k + 2]!.value === "open" ? {} : { op: "delete" },
         );
     } else if (t.value === "cookie" && member && is(tokens[k - 2], "ident", "document")) {
-      push(out.storage, "cookie", { value: "document.cookie", confidence: "literal" }, t, {
+      push(out.storage, "cookie", { value: "document.cookie", evidence: "literal" }, t, {
         op: is(tokens[k + 1], "punct", "=") ? "write" : "read",
       });
     } else if (
@@ -516,7 +510,7 @@ export function findCandidates(
         push(
           out.storage,
           "electron-store",
-          { ...r, confidence: r.confidence === "literal" ? "inferred" : r.confidence },
+          { ...r, evidence: r.evidence === "literal" ? "inferred" : r.evidence },
           t,
           { op },
         );
@@ -529,7 +523,7 @@ export function findCandidates(
         v.value.length < 120 &&
         !/\s/.test(v.value)
       )
-        push(out.routes, "route", { value: v.value, confidence: "literal" }, t);
+        push(out.routes, "route", { value: v.value, evidence: "literal" }, t);
     }
   }
   return out;

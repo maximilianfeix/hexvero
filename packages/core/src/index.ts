@@ -61,7 +61,7 @@ export {
 export {
   findCandidates,
   type Candidate,
-  type CandidateConfidence,
+  type CandidateEvidence,
   type Candidates,
 } from "./javascript/candidates.js";
 export type { AppCandidate, JsCoverage, JsScanFacts } from "./javascript/app.js";

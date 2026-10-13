@@ -69,7 +69,35 @@ describe("flow 1: Electron app", () => {
       "electron.ipc",
       "electron.context-bridge",
       "electron.preload",
+      "js.endpoints",
+      "js.storage",
     ]);
+    // endpoints and storage keys of an archive, each with the file, line and column it was read at
+    const endpoints = (await session.collection(target.id, "endpoints")).items as Array<{
+      value: string | null;
+      kind: string;
+      evidence: string;
+      file: string;
+      line: number;
+      column: number;
+    }>;
+    expect(endpoints.map((e) => `${e.kind} ${e.value} [${e.evidence}]`)).toContain(
+      "fetch https://telemetry.notesdesk.example/collect [literal]",
+    );
+    for (const e of endpoints) {
+      expect(e.file).toBe("renderer/app.bundle.js");
+      expect(e.line).toBeGreaterThan(0);
+      expect(e.column).toBeGreaterThan(0);
+    }
+    expect(
+      ((await session.collection(target.id, "storage")).items as Array<{ value: string }>).map(
+        (s) => s.value,
+      ),
+    ).toEqual(["notesdesk.token"]);
+    // a small app is read completely, and says so
+    expect(
+      analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null,
+    ).toMatchObject({ total: 4, scanned: 4, remaining: 0, complete: true });
     // every location names a file and line whose text really is the evidence
     const archive = openAsar(new Uint8Array(readFileSync(v14)));
     const lineOf = (location: string): string => {
@@ -208,10 +236,12 @@ describe.skipIf(!compiler)("flow 2: native binary compiled here", () => {
       // not reachable is a definite answer on a complete graph …
       const reverse = tracePath(graph, system, main.node!);
       expect(reverse.status).toBe("not_reached");
-      // rizin's graph includes tail calls; radare2 says that it cannot see them
-      expect(reverse.limitations.map((l) => l.code)).toEqual(
-        engine.name === "radare2" ? ["callgraph_tail_calls_unknown"] : [],
-      );
+      // both engines' graphs include tail calls (rizin lists them per function, radare2 as
+      // jump references), so the answer needs no reservation
+      expect(
+        reverse.limitations.map((l) => l.code),
+        engine.name,
+      ).toEqual([]);
       // … and an explicit "cannot tell" on a partial one
       const partial = tracePath({ ...graph, truncated: true }, system, main.node!);
       expect(partial.limitations.map((l) => l.code)).toContain("trace_graph_truncated");
@@ -454,7 +484,7 @@ describe("flow 4: a coding agent over MCP stdio", () => {
         analysis: { findings: unknown[] };
       };
       expect(file.unknowns).toHaveLength(1);
-      expect(file.analysis.findings).toHaveLength(5);
+      expect(file.analysis.findings).toHaveLength(7);
       expect((await call("hexvero_export", { targetId: id, path: out })).ok).toBe(false);
 
       // errors are structured, never a crash

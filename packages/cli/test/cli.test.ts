@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { buildAsar } from "../../core/test/fixtures/asar.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
 import type { Io } from "../src/format.js";
 import { main } from "../src/index.js";
@@ -94,6 +95,71 @@ describe("hexvero CLI", () => {
     expect(parsed.summary).toContain("ELF64");
     expect(parsed.overview.kind).toBe("binary");
     expect(existsSync(join(dir, "a.json"))).toBe(true);
+  });
+
+  it("reads a large JavaScript app in batches and never shows a partial scan as complete", async () => {
+    const cache = mkdtempSync(join(tmpdir(), "hexvero-cli-cache-"));
+    const previous = process.env["HEXVERO_CACHE_DIR"];
+    process.env["HEXVERO_CACHE_DIR"] = cache;
+    try {
+      const app = join(dir, "app.asar");
+      writeFileSync(
+        app,
+        buildAsar({
+          "package.json": JSON.stringify({ name: "big", main: "main.js" }),
+          "main.js": 'require("electron").ipcMain.handle("main:start", () => 1);',
+          ...Object.fromEntries(
+            Array.from({ length: 6 }, (_, i) => [
+              `src/part${i}.js`,
+              `require("electron").ipcRenderer.send("part:${i}");`,
+            ]),
+          ),
+        }),
+      );
+      const first = capture();
+      expect(await main(["analyze", app, "--batch", "3", "--continue"], first)).toBe(0);
+      const text = first.stdout.join("\n");
+      expect(text).toContain("partial: 3 of 7 JavaScript files scanned");
+      expect(text).toContain("partial: 3 of 7 JavaScript files scanned (42%), 4 unread");
+      expect(text).toContain("--continue");
+      expect(text).toContain("(js_files_truncated)");
+      // a later, separate invocation sees the stored state and still says partial
+      const json = capture();
+      expect(await main(["analyze", app, "--json"], json)).toBe(0);
+      const stored = JSON.parse(json.stdout.join(""));
+      expect(stored.complete).toBe(false);
+      expect(stored.coverage).toMatchObject({ scanned: 3, remaining: 4, resumed: true });
+      // other commands read the same state
+      const channels = capture();
+      expect(await main(["collection", app, "ipcChannels", "--json"], channels)).toBe(0);
+      expect(JSON.parse(channels.stdout.join("")).total).toBe(3);
+      // files under one path only
+      const picked = capture();
+      expect(await main(["analyze", app, "--include", "src/part5.js", "--json"], picked)).toBe(0);
+      expect(JSON.parse(picked.stdout.join("")).coverage.scanned).toBe(4);
+      const all = capture();
+      expect(await main(["analyze", app, "--all"], all)).toBe(0);
+      expect(all.stdout.join("\n")).toContain("all 7 JavaScript files scanned");
+      expect(all.stdout.join("\n")).not.toContain("partial");
+      const done = capture();
+      expect(await main(["collection", app, "ipcChannels", "--json"], done)).toBe(0);
+      expect(JSON.parse(done.stdout.join("")).total).toBe(7);
+      // --fresh forgets the stored scan
+      const fresh = capture();
+      expect(
+        await main(["analyze", app, "--fresh", "--batch", "2", "--continue", "--json"], fresh),
+      ).toBe(0);
+      expect(JSON.parse(fresh.stdout.join("")).coverage).toMatchObject({
+        scanned: 2,
+        resumed: false,
+      });
+      const bad = capture();
+      expect(await main(["analyze", app, "--batch", "0"], bad)).toBe(2);
+    } finally {
+      if (previous === undefined) delete process.env["HEXVERO_CACHE_DIR"];
+      else process.env["HEXVERO_CACHE_DIR"] = previous;
+      rmSync(cache, { recursive: true, force: true });
+    }
   });
 
   it("pages collections, strings and bytes", async () => {

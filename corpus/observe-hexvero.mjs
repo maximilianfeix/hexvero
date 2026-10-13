@@ -64,7 +64,7 @@ async function electron(path) {
         value: e.value,
         kind: e.kind,
         method: e.method ?? null,
-        confidence: e.confidence,
+        evidence: e.evidence,
       })),
     endpointsUnreadable: endpoints.filter((e) => e.value === null).length,
     storage: [...storage.values()],

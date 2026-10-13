@@ -219,7 +219,8 @@ export function resolveAliases(
               if (target) declare(top(), name!.value, target);
             }
             let e = 0;
-            for (j++; j < tokens.length; j++) {
+            // bounded like the declaration itself, so repeated unclosed initializers stay linear
+            for (j++; j < tokens.length && j < k + 2000; j++) {
               const w = tokens[j]!;
               if (w.type !== "punct") continue;
               if (w.value === "{" || w.value === "(" || w.value === "[") e++;
@@ -252,9 +253,15 @@ export function resolveAliases(
       }
       continue;
     }
-    // `import { ipcMain as bus } from "electron"`
+    // `import { ipcMain as bus } from "electron"`: the name belongs to the scope around the
+    // import's braces, not to the braces.
     if (t.value === "as" && is(prev, "ident") && targets.has(prev!.value) && is(next, "ident")) {
-      declare(top(), next!.value, prev!.value);
+      const outer =
+        stack.length > 1 && top().depth === depth - 1 ? stack[stack.length - 2]! : top();
+      outer.aliases.set(next!.value, prev!.value);
+      const entries = live.get(next!.value);
+      if (entries) entries.unshift(prev!.value);
+      else live.set(next!.value, [prev!.value]);
       continue;
     }
     // One of the file's own names, wherever it is used (a constant is used as an argument).
