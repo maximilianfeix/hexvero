@@ -135,7 +135,7 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
  * in them is never a change of its own, and they are not listed as ignored on request.
  */
 const DERIVED_FIELDS: Record<string, readonly string[]> = {
-  windows: ["basis", "computed", "opaque"],
+  windows: ["basis"],
 };
 
 export function positionalFields(collection: string, formats: readonly string[]): string[] {

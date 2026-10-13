@@ -82,6 +82,17 @@ const namedWindowPref = (windowName: string, window: number) => ({
   windowName,
 });
 
+/** A `windows` row with an explanation and, optionally, keys that could not be read. */
+const windowRow = (computed: string[] | undefined, basis: string) => ({
+  file: "main.js",
+  window: 1,
+  windowName: "win",
+  line: 3,
+  sandbox: true,
+  basis,
+  ...(computed ? { computed } : {}),
+});
+
 describe("compareItems", () => {
   const a = [
     { name: "main", size: 40, address: "0x1000" },
@@ -537,5 +548,20 @@ describe("items on one side only", () => {
         coverage: { a: wholeSide(), b: wholeSide() },
       }).removed,
     ).toEqual(["only-left"]);
+  });
+
+  it("shows a window whose settings stop being readable as changed, and ignores only the explanation", () => {
+    const windowOptions = { collection: "windows", positional: ["line", "window"] };
+    // only the wording of the explanation differs: no change
+    expect(
+      compareItems([windowRow(undefined, "a")], [windowRow(undefined, "b")], windowOptions).changed,
+    ).toEqual([]);
+    // a key outside the three columns became unreadable: a change
+    const diff = compareItems(
+      [windowRow(undefined, "a")],
+      [windowRow(["webSecurity"], "a")],
+      windowOptions,
+    );
+    expect(diff.changed.map((c) => c.fields.map((f) => f.field))).toEqual([["computed"]]);
   });
 });
