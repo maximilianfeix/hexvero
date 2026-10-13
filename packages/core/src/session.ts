@@ -4,10 +4,12 @@ import { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
 import { UnknownsLedger } from "./unknowns.js";
-import { compact } from "./compact.js";
+import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
+
+export type { CollectionPage, CollectionQuery } from "./paging.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
-import { AnalysisError, page, type Page, type TargetInfo } from "./model.js";
+import { AnalysisError, type TargetInfo } from "./model.js";
 import { loadTarget, type LoadedTarget } from "./target.js";
 
 export interface TargetRecord {
@@ -15,23 +17,6 @@ export interface TargetRecord {
   info: TargetInfo;
   openedAt: string;
   analyzed: boolean;
-}
-
-export interface CollectionQuery {
-  offset?: number;
-  limit?: number;
-  /** Case-insensitive substring match against the item's JSON representation. */
-  text?: string;
-  /** Soft byte budget for the serialized page; items are dropped from the end until it fits. */
-  maxBytes?: number;
-}
-
-export interface CollectionPage<T = unknown> extends Page<T> {
-  collection: string;
-  /** Serialized size of this page including its envelope; never above the byte budget. */
-  bytes: number;
-  /** Set when the first item alone exceeded the budget and was returned in compacted form. */
-  itemTruncated?: boolean;
 }
 
 export interface StringsQuery extends CollectionQuery {
@@ -369,79 +354,6 @@ function hashText(text: string): string {
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
-function pageOf(name: string, items: readonly unknown[], query: CollectionQuery): CollectionPage {
-  let filtered = items;
-  if (query.text) {
-    const needle = query.text.toLowerCase();
-    filtered = items.filter((item) =>
-      JSON.stringify(item, replacer).toLowerCase().includes(needle),
-    );
-  }
-  const limit = Math.min(Math.max(query.limit ?? 100, 1), 2000);
-  const p = page(filtered, query.offset ?? 0, limit);
-  // Budgets below 512 bytes cannot hold the envelope plus one compacted item.
-  const maxBytes = Math.max(query.maxBytes ?? 256 * 1024, 512);
-  // The budget is an upper bound on the serialized page. The envelope is measured with its widest
-  // values (every flag true, `bytes` as wide as the budget); an item that alone exceeds the budget
-  // is returned in a compacted form with a marker instead of blowing the page.
-  const envelope = Buffer.byteLength(
-    JSON.stringify({
-      collection: name,
-      total: p.total,
-      offset: p.offset,
-      truncated: true,
-      bytes: maxBytes,
-      items: [],
-      itemTruncated: true,
-    }),
-  );
-  let bytes = envelope;
-  let keep = 0;
-  const kept: unknown[] = [];
-  let itemTruncated = false;
-  for (const item of p.items) {
-    let value = item;
-    let size = Buffer.byteLength(JSON.stringify(item, replacer)) + 1;
-    if (keep === 0 && bytes + size > maxBytes) {
-      value = compactItem(item, maxBytes - bytes - 1);
-      size = Buffer.byteLength(JSON.stringify(value, replacer)) + 1;
-      itemTruncated = true;
-    }
-    if (keep > 0 && bytes + size > maxBytes) break;
-    bytes += size;
-    keep++;
-    kept.push(value);
-  }
-  if (keep < p.items.length) p.truncated = true;
-  p.items = kept;
-  const out: CollectionPage = { ...p, collection: name, bytes: 0 };
-  if (itemTruncated) out.itemTruncated = true;
-  // Report the real serialized size (the estimate above is an upper bound); a second pass settles
-  // the digit count of the bytes field itself.
-  out.bytes = Buffer.byteLength(JSON.stringify(out, replacer));
-  out.bytes = Buffer.byteLength(JSON.stringify(out, replacer));
-  return out;
-}
-
-/** Shrinks one oversized item to fit `budget` bytes: long strings are cut, long arrays sampled. */
-function compactItem(item: unknown, budget: number): unknown {
-  let maxString = 8192;
-  let maxItems = 50;
-  for (let i = 0; i < 8; i++) {
-    const value = compact(item, { maxString, maxItems });
-    if (Buffer.byteLength(JSON.stringify(value, replacer)) <= Math.max(budget, 96)) return value;
-    maxString = Math.max(32, maxString >> 2);
-    maxItems = Math.max(1, maxItems >> 1);
-  }
-  // Still too large (an object with very many keys): keep the key names only.
-  const value = compact(item, { maxString: 32, maxItems: 1 });
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    const keys = Object.keys(value);
-    return { keys: keys.slice(0, 50), keyCount: keys.length, note: "item exceeds the page budget" };
-  }
-  return value;
-}
-
 interface ObjcLike {
   classes: Array<{
     name: string;
@@ -701,6 +613,7 @@ export function collectionsOf(
       out["edges"] = d.app.edges;
       out["externals"] = d.app.externals;
       out["ipcChannels"] = d.app.ipcChannels;
+      if (d.app.webPreferences.length) out["webPreferences"] = d.app.webPreferences;
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       out["sourceMaps"] = d.app.sourceMaps;
       break;

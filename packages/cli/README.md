@@ -1,6 +1,6 @@
 # hexvero
 
-Reverse engineer anything, locally. CLI, MCP server and web UI over zero-dependency parsers for
+The first look at a binary or app bundle: static, execution-free analysis with evidence. CLI, MCP server and web UI over zero-dependency parsers for
 ELF, PE, Mach-O, Go, .NET, WebAssembly, EVM, SQLite, plist, APK, Electron apps, source maps and HAR.
 
 ```bash

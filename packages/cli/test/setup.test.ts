@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Io } from "../src/format.js";
+import { insertJsonc, stripJsonc } from "../src/jsonc.js";
 import { CLIENTS, entryFor, patchToml, setup, type SetupContext } from "../src/setup.js";
 
 function capture(): Io & { stdout: string[]; stderr: string[] } {
@@ -45,13 +46,18 @@ describe("setup", () => {
     }>;
     expect(plan.find((r) => r.client === "cursor")?.action).toBe("would add hexvero");
     expect(plan.find((r) => r.client === "windsurf")?.action).toContain("not detected");
+    expect(plan.find((r) => r.client === "windsurf-legacy")?.action).toContain("not detected");
     expect(existsSync(join(home, ".codeium"))).toBe(false);
 
     const io = capture();
     expect(await setup(io, { apply: true, json: true }, ctx)).toBe(0);
     const cursor = JSON.parse(readFileSync(join(home, ".cursor", "mcp.json"), "utf8"));
     expect(cursor.mcpServers.other).toEqual({ command: "x" });
-    expect(cursor.mcpServers.hexvero).toEqual({ command: "npx", args: ["-y", "hexvero", "mcp"] });
+    expect(cursor.mcpServers.hexvero).toEqual({
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "hexvero", "mcp"],
+    });
     expect(existsSync(join(home, ".cursor", "mcp.json.hexvero-backup"))).toBe(true);
     const opencode = JSON.parse(
       readFileSync(join(home, ".config", "opencode", "opencode.json"), "utf8"),
@@ -131,17 +137,123 @@ describe("setup", () => {
 
   it("refuses to rewrite files it cannot parse and honours --client for undetected clients", async () => {
     mkdirSync(join(home, ".qwen"), { recursive: true });
-    writeFileSync(join(home, ".qwen", "settings.json"), "{ // comment\n}");
+    writeFileSync(join(home, ".qwen", "settings.json"), "{ not json at all");
     const io = capture();
     await setup(io, { client: "qwen-code", apply: true, json: true }, ctx);
     const result = JSON.parse(io.stdout.join("")).results[0];
     expect(result.action).toContain("skipped");
-    expect(readFileSync(join(home, ".qwen", "settings.json"), "utf8")).toBe("{ // comment\n}");
+    expect(readFileSync(join(home, ".qwen", "settings.json"), "utf8")).toBe("{ not json at all");
     const zed = capture();
     await setup(zed, { client: "zed", apply: true, json: true }, ctx);
     const settings = JSON.parse(
       readFileSync(join(home, ".config", "zed", "settings.json"), "utf8"),
     );
-    expect(settings.context_servers.hexvero).toEqual(entryFor("zed"));
+    expect(settings.context_servers.hexvero).toEqual(entryFor("default"));
+  });
+
+  it("edits settings with comments in place and keeps every comment (Zed, VS Code, OpenCode)", async () => {
+    const dir = join(home, ".config", "zed");
+    mkdirSync(dir, { recursive: true });
+    const original = [
+      "// Zed settings",
+      "//",
+      "// For information on how to configure Zed, see the documentation.",
+      "{",
+      '  "theme": "One Dark", // trailing comment',
+      "  /* block */",
+      '  "context_servers": {',
+      '    "other": { "command": "x", "args": [] }, // keep me',
+      "  },",
+      "}",
+      "",
+    ].join("\n");
+    writeFileSync(join(dir, "settings.json"), original);
+    const io = capture();
+    await setup(io, { client: "zed", apply: true, json: true }, ctx);
+    expect(JSON.parse(io.stdout.join("")).results[0].action).toContain("added hexvero");
+    const edited = readFileSync(join(dir, "settings.json"), "utf8");
+    for (const kept of [
+      "// Zed settings",
+      "// trailing comment",
+      "/* block */",
+      "// keep me",
+      '"theme": "One Dark"',
+    ])
+      expect(edited, kept).toContain(kept);
+    const parsed = JSON.parse(stripJsonc(edited));
+    expect(parsed.context_servers.hexvero).toEqual({
+      command: "npx",
+      args: ["-y", "hexvero", "mcp"],
+    });
+    expect(parsed.context_servers.other).toEqual({ command: "x", args: [] });
+    // a second run changes nothing
+    const again = capture();
+    await setup(again, { client: "zed", apply: true, json: true }, ctx);
+    expect(JSON.parse(again.stdout.join("")).results[0].action).toContain("already configured");
+    expect(readFileSync(join(dir, "settings.json"), "utf8")).toBe(edited);
+  });
+
+  it("inserts into JSONC at any depth, creates missing containers and refuses what it cannot parse", () => {
+    const entry = { command: "npx" };
+    const empty = insertJsonc("{}", ["mcpServers"], "hexvero", entry);
+    expect(empty.ok && JSON.parse(empty.content)).toEqual({ mcpServers: { hexvero: entry } });
+    const nested = insertJsonc('{ // c\n  "a": { "b": {} } }', ["a", "b"], "hexvero", entry);
+    expect(nested.ok && JSON.parse(stripJsonc(nested.content))).toEqual({
+      a: { b: { hexvero: entry } },
+    });
+    const missing = insertJsonc('{\n  "x": 1, // one\n}', ["a", "b"], "hexvero", entry);
+    expect(missing.ok && JSON.parse(stripJsonc(missing.content))).toEqual({
+      x: 1,
+      a: { b: { hexvero: entry } },
+    });
+    expect(insertJsonc('{ "mcpServers": [] }', ["mcpServers"], "hexvero", entry)).toEqual({
+      ok: false,
+      reason: "container-not-object",
+    });
+    expect(
+      insertJsonc('{ "mcpServers": { "hexvero": {} } }', ["mcpServers"], "hexvero", entry),
+    ).toEqual({
+      ok: false,
+      reason: "already-present",
+    });
+    expect(insertJsonc("{ not json", ["a"], "hexvero", entry).ok).toBe(false);
+    expect(insertJsonc("[1]", ["a"], "hexvero", entry)).toEqual({
+      ok: false,
+      reason: "not-an-object",
+    });
+    // a brace or comment marker inside a string is not structure
+    const tricky = insertJsonc(
+      '{ "s": "a // } b", "k": { "t": "/* */" } }',
+      ["k"],
+      "hexvero",
+      entry,
+    );
+    expect(tricky.ok && JSON.parse(stripJsonc(tricky.content))).toEqual({
+      s: "a // } b",
+      k: { hexvero: entry, t: "/* */" },
+    });
+  });
+
+  it("honours client environment overrides and refuses to extend an inline TOML table", () => {
+    const env: SetupContext = {
+      home,
+      platform: "darwin",
+      env: {
+        COPILOT_HOME: join(home, "cp"),
+        QWEN_HOME: join(home, "qw"),
+        XDG_CONFIG_HOME: join(home, "xdg"),
+      },
+    };
+    const file = (id: string): string => CLIENTS.find((c) => c.id === id)!.file(env);
+    expect(file("copilot-cli")).toBe(join(home, "cp", "mcp-config.json"));
+    expect(file("qwen-code")).toBe(join(home, "qw", "settings.json"));
+    expect(file("zed")).toBe(join(home, ".config", "zed", "settings.json")); // macOS ignores XDG for Zed
+    expect(file("windsurf")).toBe(join(home, "xdg", "devin", "mcp_config.json"));
+    expect(CLIENTS.find((c) => c.id === "cursor")!.dialect).toBe("stdio");
+    expect(patchToml('mcp_servers = { other = { command = "x" } }\n').skipped).toContain(
+      "inline table",
+    );
+    expect(patchToml('[tools]\nhexvero = "unrelated"\n').skipped).toBeNull();
+    expect(patchToml('[mcp_servers]\nhexvero = { command = "x" }\n').skipped).toContain("already");
   });
 });

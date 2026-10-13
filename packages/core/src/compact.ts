@@ -30,6 +30,7 @@ export function compact(value: unknown, options: CompactOptions = {}, depth = 0)
     };
   }
   if (value instanceof Uint8Array) return `<${value.length} bytes>`;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>))
     out[k] = compact(v, options, depth + 1);

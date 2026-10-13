@@ -191,3 +191,39 @@ describe("hexvero MCP server", () => {
     ]);
   });
 });
+
+describe("page budget over MCP", () => {
+  it("keeps the tool result text within maxBytes and rejects invalid budgets", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hexvero-budget-"));
+    try {
+      const client = new Client({ name: "budget", version: "0" });
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      await createHexveroServer(new Session()).connect(b);
+      await client.connect(a);
+      const path = join(dir, "one-line.js");
+      writeFileSync(path, `var s="${'é\\\\"'.repeat(20000)}";`);
+      const opened = await client.callTool({ name: "hexvero_open", arguments: { path } });
+      const id = (
+        JSON.parse((opened.content as Array<{ text: string }>)[0]!.text) as { id: string }
+      ).id;
+      for (const maxBytes of [512, 1000, 4096]) {
+        const r = await client.callTool({
+          name: "hexvero_strings",
+          arguments: { targetId: id, limit: 5, maxBytes },
+        });
+        const text = (r.content as Array<{ text: string }>)[0]!.text;
+        expect(Buffer.byteLength(text), String(maxBytes)).toBeLessThanOrEqual(maxBytes);
+        const page = JSON.parse(text) as { bytes: number; items: unknown[]; next: number | null };
+        expect(page.bytes).toBe(Buffer.byteLength(text));
+        expect(page.items.length).toBeGreaterThan(0);
+      }
+      const bad = await client.callTool({
+        name: "hexvero_strings",
+        arguments: { targetId: id, maxBytes: 100 },
+      });
+      expect(bad.isError).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

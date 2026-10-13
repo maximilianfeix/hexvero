@@ -2,6 +2,7 @@ import {
   AnalysisError,
   compact,
   compareItems,
+  positionalFields,
   neighborhood,
   originalPositionFor,
   resolveNode,
@@ -22,6 +23,15 @@ const paging = {
   offset: z.number().int().min(0).optional().describe("First item index (default 0)"),
   limit: z.number().int().min(1).max(2000).optional().describe("Items per page (default 100)"),
   text: z.string().optional().describe("Case-insensitive substring filter on each item"),
+  maxBytes: z
+    .number()
+    .int()
+    .min(512)
+    .max(4 * 1024 * 1024)
+    .optional()
+    .describe(
+      "Hard upper bound for the serialized page in bytes (default 262144). A page reports next, bytes and, for an item cut to fit, itemTruncated + itemBytes",
+    ),
 };
 
 export const toolSchemas = {
@@ -112,7 +122,7 @@ export const toolSchemas = {
   hexvero_compare: {
     title: "Compare collections",
     description:
-      "Diff one collection between two targets: added, removed, changed (with the fields that differ) and unchanged items, matched by key (auto-detected: name, channel, id, path, url, … or pass key). States when the comparison is partial.",
+      "Diff one collection between two targets: added, removed, changed (with the fields that differ) and unchanged items, matched by key (auto-detected: name, channel, id, path, url, type+name … or pass key, a+b for composites). States when the comparison is partial.",
     input: {
       targetA: targetId,
       targetB: targetId,
@@ -121,8 +131,12 @@ export const toolSchemas = {
       ignore: z
         .array(z.string())
         .optional()
+        .describe("Fields to exclude from change detection, in addition to the position rule"),
+      strict: z
+        .boolean()
+        .optional()
         .describe(
-          "Fields whose differences do not count (default: address/value/offset-like fields); [] counts everything",
+          "Count every difference. Default false: address fields of native symbols/sections that only moved are reported as relocated, with samples",
         ),
     },
   },
@@ -213,12 +227,19 @@ export interface ProviderBridge {
 }
 
 const str = (v: unknown): string => String(v);
+/** One compared item with its differing fields, bounded for a tool result. */
+const fieldsOf = (c: { key: string; fields: unknown[] }): unknown => ({
+  key: c.key,
+  fields: compact(c.fields.slice(0, 8), { maxString: 200, maxItems: 8 }),
+});
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
 
 const paged = (
   args: Record<string, unknown>,
-): { offset?: number; limit?: number; text?: string } => {
-  const q: { offset?: number; limit?: number; text?: string } = {};
+): { offset?: number; limit?: number; text?: string; maxBytes?: number } => {
+  const q: { offset?: number; limit?: number; text?: string; maxBytes?: number } = {};
+  const maxBytes = num(args["maxBytes"]);
+  if (maxBytes !== undefined) q.maxBytes = maxBytes;
   const offset = num(args["offset"]);
   if (offset !== undefined) q.offset = offset;
   const limit = num(args["limit"]);
@@ -297,40 +318,68 @@ export function createHandlers(
     },
     hexvero_compare: async (a) => {
       const name = str(a["collection"]);
+      const idA = str(a["targetA"]);
+      const idB = str(a["targetB"]);
       const [left, right] = await Promise.all([
-        session.collection(str(a["targetA"]), name, { limit: 2000, maxBytes: 64 << 20 }),
-        session.collection(str(a["targetB"]), name, { limit: 2000, maxBytes: 64 << 20 }),
+        session.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
+        session.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),
       ]);
       const diff = compareItems(left.items, right.items, {
         key: typeof a["key"] === "string" ? a["key"] : undefined,
-        ignore: Array.isArray(a["ignore"]) ? (a["ignore"] as string[]) : undefined,
+        collection: name,
+        ignore: Array.isArray(a["ignore"]) ? (a["ignore"] as string[]) : [],
+        positional:
+          a["strict"] === true
+            ? []
+            : positionalFields(name, [session.get(idA).info.format, session.get(idB).info.format]),
       });
       if (diff.keyMissing)
         throw new AnalysisError(
           "invalid_input",
           `no item in ${name} has a field "${str(a["key"])}"`,
         );
+      const [limitsA, limitsB] = await Promise.all([
+        session.analyze(idA).then((x) => x.limitations.length),
+        session.analyze(idB).then((x) => x.limitations.length),
+      ]);
+      const partial = left.truncated || right.truncated;
       return {
         collection: name,
         key: diff.key,
         ignored: diff.ignored,
-        left: { total: left.total, compared: left.items.length, truncated: left.truncated },
-        right: { total: right.total, compared: right.items.length, truncated: right.truncated },
+        positional: diff.positional,
+        left: {
+          total: left.total,
+          compared: left.items.length,
+          truncated: left.truncated,
+          limitations: limitsA,
+        },
+        right: {
+          total: right.total,
+          compared: right.items.length,
+          truncated: right.truncated,
+          limitations: limitsB,
+        },
+        complete:
+          !partial &&
+          !left.itemTruncated &&
+          !right.itemTruncated &&
+          limitsA === 0 &&
+          limitsB === 0 &&
+          diff.ignored.length === 0,
         unchanged: diff.unchanged,
-        relocated: diff.relocated,
         added: { count: diff.added.length, sample: diff.added.slice(0, 50) },
         removed: { count: diff.removed.length, sample: diff.removed.slice(0, 50) },
-        changed: {
-          count: diff.changed.length,
-          sample: diff.changed.slice(0, 25).map((c) => ({
-            key: c.key,
-            fields: compact(c.fields.slice(0, 8), { maxString: 200, maxItems: 8 }),
-          })),
+        changed: { count: diff.changed.length, sample: diff.changed.slice(0, 25).map(fieldsOf) },
+        relocated: {
+          count: diff.relocated,
+          sample: diff.relocatedSample.slice(0, 5).map(fieldsOf),
         },
         duplicateKeys: diff.duplicateKeys,
-        note:
-          left.truncated || right.truncated
-            ? "Only the first 2000 items per side were compared; the result is partial."
+        note: partial
+          ? "Only the first 2000 items per side were compared; absence of a difference is not established."
+          : limitsA || limitsB
+            ? "All items of this collection were compared, but the analyses carry limitations; read them before treating equal as identical."
             : "Complete comparison of both collections.",
       };
     },

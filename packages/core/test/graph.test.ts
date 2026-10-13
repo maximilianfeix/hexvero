@@ -178,4 +178,79 @@ describe("call graph", () => {
     expect(direct.path).toEqual(["r", "z"]);
     expect(tracePath(graph, main, main).path).toEqual(["main"]);
   });
+
+  it("merges engine aliases by address so rizin graphs keep their edges (regression)", () => {
+    // Real rizin 0.9.1 output shape: the function list says sym._run_tool, the graph says
+    // sym.func.1000005b0 for the same address, and main only exists as a flag on entry0.
+    const rz = normalizeCallGraph("rizin", {
+      functions: [
+        { name: "sym._run_tool", offset: 0x1000005b0, size: 76 },
+        { name: "entry0", offset: 0x1000005fc, size: 108 },
+        { name: "sym.imp.system", offset: 0x10000068c, size: 12 },
+      ],
+      graph: {
+        nodes: [
+          { id: 0, title: "entry0", offset: 0x1000005fc, out_nodes: [1] },
+          { id: 1, title: "sym.func.1000005b0", offset: 0x1000005b0, out_nodes: [] },
+          { id: 2, title: "sym._run_tool", offset: 0x1000005b0, out_nodes: [3] },
+          { id: 3, title: "sym.imp.system", offset: 0x10000068c, out_nodes: [] },
+        ],
+      },
+      flags: [
+        { name: "main", offset: 0x1000005fc },
+        { name: "sym._main", offset: 0x1000005fc },
+        { name: "pc", offset: 0x1000005fc },
+        { name: "sym.func.1000005fc", offset: 0x1000005fc },
+      ],
+    });
+    expect(rz.nodes.map((n) => n.name)).toEqual(["sym._run_tool", "entry0", "sym.imp.system"]);
+    expect(rz.edges).toEqual([
+      { from: "entry0", to: "sym._run_tool" },
+      { from: "sym._run_tool", to: "sym.imp.system" },
+    ]);
+    const main = resolveNode(rz, "main").node!;
+    expect(main.name).toBe("entry0");
+    expect(main.aliases).toEqual(["main", "sym._main"]);
+    expect(resolveNode(rz, "run_tool").node?.name).toBe("sym._run_tool");
+    expect(tracePath(rz, main, resolveNode(rz, "system").node!).path).toEqual([
+      "entry0",
+      "sym._run_tool",
+      "sym.imp.system",
+    ]);
+    // a missing graph section is reported, never mistaken for the function list
+    const noGraph = normalizeCallGraph("rizin", { functions: [{ name: "entry0", offset: 1 }] });
+    expect(noGraph.limitations.map((l) => l.code).toSorted()).toEqual([
+      "callgraph_aliases_missing",
+      "callgraph_missing",
+    ]);
+  });
+
+  it("does not merge unresolved imports at address 0 and reports a missing alias list", () => {
+    const g = normalizeCallGraph("rizin", {
+      functions: [{ name: "entry0", offset: 0x1000, size: 8 }],
+      graph: {
+        nodes: [
+          { id: 0, title: "entry0", offset: 0x1000, out_nodes: [1, 2] },
+          { id: 1, title: "sym.imp.__gmon_start__", offset: 0, out_nodes: [] },
+          { id: 2, title: "sym.imp.puts", offset: 0, out_nodes: [] },
+        ],
+      },
+    });
+    expect(g.edges).toEqual([
+      { from: "entry0", to: "sym.imp.__gmon_start__" },
+      { from: "entry0", to: "sym.imp.puts" },
+    ]);
+    expect(g.limitations.map((l) => l.code)).toEqual(["callgraph_aliases_missing"]);
+    expect(g.truncated).toBe(false);
+    // an alias never re-points another function's real name
+    const clash = normalizeCallGraph("radare2", {
+      functions: [
+        { name: "fcn.1000", addr: 0x1000 },
+        { name: "foo", addr: 0x2000 },
+      ],
+      graph: [{ name: "fcn.1000", imports: ["foo"] }],
+      flags: [{ name: "foo", addr: 0x1000 }],
+    });
+    expect(clash.edges).toEqual([{ from: "fcn.1000", to: "foo" }]);
+  });
 });

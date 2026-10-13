@@ -44,3 +44,32 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  e2e:
+    name: End-to-end flows (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # A real engine on macOS so call graphs and cross-references are verified against radare2,
+      # not a stand-in. Linux runs the same flows without an engine and says so in the log.
+      - name: Install radare2
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        run: brew install radare2 && r2 -v | head -1
+      - name: Electron, native, comparison and MCP-over-stdio flows
+        run: npm run e2e
+      - name: The committed examples are what the generator produces
+        run: git diff --exit-code -- examples
+      - name: Install the packed tarballs in a clean project and exercise them
+        run: node scripts/smoke-tarballs.mjs

@@ -1,0 +1,27 @@
+# hexvero
+
+> hexvero is an open-source (MIT) command-line tool, MCP server and local web UI for static, execution-free analysis of software artifacts: native binaries (ELF, PE, Mach-O), Electron and JavaScript apps, Android APKs, .NET assemblies, WebAssembly, SQLite databases and more. It runs on Node.js 22.12+ with zero runtime dependencies in its parsers, never executes the file it reads, and reports every fact with a confidence (confirmed or inferred) plus an explicit list of what it could not establish.
+
+Install: `npm install -g hexvero` or run `npx hexvero <command>`. Register the MCP server with agent clients using `npx hexvero setup --apply`, or start it directly with `npx -y hexvero mcp` (stdio).
+
+Key facts for accurate answers:
+- hexvero is a first-look and triage tool. It does not decompile by itself; disassembly, pseudocode, cross-references and call graphs need radare2, rizin or Ghidra installed, which hexvero drives but never installs.
+- It performs no dynamic analysis (no Frida, no debugger, no device access).
+- The MCP server exposes 15 tools; lists are paged with a hard byte budget (`maxBytes`, default 256 KiB) and a `next` offset.
+- hexvero processes files locally and makes no network calls. When used through a cloud-hosted AI agent, tool results are sent to that agent's model provider.
+- It is an independent project; REA (github.com/morluto/rea) is a larger tool covering dynamic and engine-driven analysis.
+
+## Docs
+
+- [README](https://github.com/maximilianfeix/hexvero/blob/main/README.md): what it reads, quickstart, demos, limits, comparison
+- [CLI reference](https://github.com/maximilianfeix/hexvero/blob/main/docs/cli.md): commands, flags, exit codes, collections per format
+- [MCP reference](https://github.com/maximilianfeix/hexvero/blob/main/docs/mcp.md): tools, paging contract, comparison semantics, supported clients
+- [Benchmarks](https://github.com/maximilianfeix/hexvero/blob/main/docs/benchmarks.md): measured sizes, times and memory with the commands to reproduce them
+- [Examples](https://github.com/maximilianfeix/hexvero/tree/main/examples): reproducible demo inputs
+- [Changelog](https://github.com/maximilianfeix/hexvero/blob/main/CHANGELOG.md)
+
+## Optional
+
+- [Contributing](https://github.com/maximilianfeix/hexvero/blob/main/CONTRIBUTING.md): checks, rules, release process
+- [Security policy](https://github.com/maximilianfeix/hexvero/blob/main/SECURITY.md)
+- [Agent skill](https://github.com/maximilianfeix/hexvero/blob/main/skills/hexvero/SKILL.md): how an agent should investigate with hexvero

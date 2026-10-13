@@ -1,10 +1,13 @@
+import { isAbsolute, relative } from "node:path";
 import {
   AnalysisError,
   Session,
   compact,
   compareItems,
   loadCallGraph,
+  MAX_PAGE_BYTES,
   neighborhood,
+  positionalFields,
   PROVIDER_OPERATIONS,
   resolveNode,
   runProvider,
@@ -28,17 +31,17 @@ import {
 
 export const VERSION = "0.2.1";
 
-const HELP = `hexvero ${VERSION} — reverse engineer anything, locally.
+const HELP = `hexvero ${VERSION} — the first look at a binary or app bundle, locally.
 
 Usage: hexvero <command> [options]
 
 Commands
   analyze <path> [--json] [--out file.json]     Summary, findings, limitations and overview
-  collection <path> <name> [--text s] [--limit n] [--offset n] [--json]
+  collection <path> <name> [--text s] [--limit n] [--offset n] [--max-bytes n] [--json]
                                                 Page one list (symbols, imports, exports, ...)
   strings <path> [--min n] [--utf16] [--tag t] [--text s] [--limit n] [--json]
   bytes <path> <offset> [length]                Hex dump of a byte window
-  compare <a> <b> <collection> [--key f] [--ignore f,g|none]
+  compare <a> <b> <collection> [--key f[+g]] [--ignore f,g] [--strict]
                                                 Added, removed and changed items between two builds
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
@@ -152,8 +155,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     if (!v) throw new UsageError(`missing <${name}>`);
     return v;
   };
-  const paging = (): { offset?: number; limit?: number; text?: string } => {
-    const q: { offset?: number; limit?: number; text?: string } = {};
+  const paging = (): { offset?: number; limit?: number; text?: string; maxBytes?: number } => {
+    const q: { offset?: number; limit?: number; text?: string; maxBytes?: number } = {};
+    const maxBytes = flagNumber(args.flags, "max-bytes");
+    if (maxBytes !== undefined) q.maxBytes = maxBytes;
     const offset = flagNumber(args.flags, "offset");
     const limit = flagNumber(args.flags, "limit");
     const text = flagString(args.flags, "text");
@@ -194,7 +199,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         return 0;
       }
       io.out(
-        `${heading(io, target.info.path)}\n  ${paint(
+        `${heading(io, displayPath(target.info.path))}\n  ${paint(
           io,
           "dim",
           target.info.format === "directory"
@@ -228,7 +233,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       io.out(
         `${heading(io, `${page.collection} ${rangeLabel(page)}`)}${
           page.truncated ? paint(io, "dim", " (more: --offset/--limit)") : ""
-        }${page.itemTruncated ? paint(io, "yellow", " (an item was cut to fit the byte budget; use --json for its full form)") : ""}`,
+        }${page.itemTruncated ? paint(io, "yellow", ` (an item was cut to fit the byte budget; --offset ${page.offset} --limit 1 --max-bytes ${Math.min((page.itemBytes ?? 0) + 512, MAX_PAGE_BYTES)} --json returns it whole)`) : ""}`,
       );
       io.out(table(page.items as Array<Record<string, unknown>>).join("\n"));
       return 0;
@@ -297,14 +302,20 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         session.collection(a.id, name, { limit: 2000, maxBytes: 64 << 20 }),
         session.collection(b.id, name, { limit: 2000, maxBytes: 64 << 20 }),
       ]);
+      // --ignore a,b excludes those fields on top of the position rules; --strict (or the older
+      // --ignore none) switches the position rules off so every difference counts.
+      const strict = Boolean(args.flags["strict"]) || ignoreFlag === "none";
       const diff = compareItems(left.items, right.items, {
         key: keyFlag,
+        collection: name,
         ignore:
-          ignoreFlag === undefined
-            ? undefined
-            : ignoreFlag === "none"
-              ? []
-              : ignoreFlag.split(",").map((f) => f.trim()),
+          ignoreFlag === undefined || ignoreFlag === "none"
+            ? []
+            : ignoreFlag
+                .split(",")
+                .map((f) => f.trim())
+                .filter(Boolean),
+        positional: strict ? [] : positionalFields(name, [a.info.format, b.info.format]),
       });
       if (diff.keyMissing)
         throw new UsageError(
@@ -318,6 +329,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             .slice(0, 12)
             .join(", ")}`,
         );
+      const [limitsA, limitsB] = await Promise.all([
+        session.analyze(a.id).then((x) => x.limitations.length),
+        session.analyze(b.id).then((x) => x.limitations.length),
+      ]);
       const truncated = left.truncated || right.truncated;
       if (json) {
         io.out(
@@ -325,8 +340,17 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             collection: name,
             ...diff,
             changed: diff.changed.map((c) => ({ key: c.key, fields: c.fields })),
+            relocatedSample: diff.relocatedSample.map((c) => ({ key: c.key, fields: c.fields })),
             totals: { a: left.total, b: right.total },
             truncated,
+            limitations: { a: limitsA, b: limitsB },
+            complete:
+              !truncated &&
+              !left.itemTruncated &&
+              !right.itemTruncated &&
+              limitsA === 0 &&
+              limitsB === 0 &&
+              diff.ignored.length === 0,
           }),
         );
         return 0;
@@ -361,14 +385,21 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       }
       if (lines > MAX_LINES)
         io.out(paint(io, "dim", `  … ${lines - MAX_LINES} more lines (use --json for everything)`));
-      if (diff.relocated)
+      if (diff.relocated) {
+        const sample = diff.relocatedSample[0];
+        const example = sample?.fields[0]
+          ? `, e.g. ${sample.key} ${sample.fields[0].field} ${show(sample.fields[0].before)} → ${show(sample.fields[0].after)}`
+          : "";
         io.out(
           paint(
             io,
             "dim",
-            `  ${diff.relocated} item(s) differ only in ${diff.ignored.join("/")} (ignored; --ignore none to count them)`,
+            `  ${diff.relocated} item(s) only moved (${diff.positional.join("/")} changed${example}); --strict counts them as changed`,
           ),
         );
+      }
+      if (diff.ignored.length)
+        io.out(paint(io, "dim", `  ignored on request: ${diff.ignored.join(", ")}`));
       if (diff.duplicateKeys)
         io.out(
           paint(
@@ -383,6 +414,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             io,
             "yellow",
             `  ! compared only the first ${left.items.length} of ${left.total} (a) and ${right.items.length} of ${right.total} (b) items; the result is partial`,
+          ),
+        );
+      if (!truncated && (limitsA || limitsB))
+        io.out(
+          paint(
+            io,
+            "dim",
+            `  analysis limitations apply (a: ${limitsA}, b: ${limitsB}); see "hexvero collection <path> limitations" before reading this as complete`,
           ),
         );
       return 0;
@@ -499,8 +538,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         for (const id of level.ids) {
           const node = hood.nodes.find((n) => n.id === id);
           const address = node?.address && node.address !== node.name ? ` ${node.address}` : "";
+          const also = node?.aliases?.length ? ` = ${node.aliases.slice(0, 2).join(", ")}` : "";
           io.out(
-            `  ${node?.name ?? id}${paint(io, "dim", address)}${node?.external ? paint(io, "dim", " (external)") : ""}`,
+            `  ${node?.name ?? id}${paint(io, "dim", `${also}${address}`)}${node?.external ? paint(io, "dim", " (external)") : ""}`,
           );
         }
       }
@@ -601,6 +641,12 @@ function engineName(value: string): ProviderName {
   const known = Object.keys(PROVIDER_OPERATIONS);
   if (known.includes(value)) return value as ProviderName;
   throw new UsageError(`unknown engine "${value}"; known: ${known.join(", ")}`);
+}
+
+/** The path relative to the working directory when the target lies inside it, else as resolved. */
+function displayPath(path: string): string {
+  const rel = relative(process.cwd(), path);
+  return rel && !rel.startsWith("..") && !isAbsolute(rel) ? rel : path;
 }
 
 function rangeLabel(page: { offset: number; items: unknown[]; total: number }): string {

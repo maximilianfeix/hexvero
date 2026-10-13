@@ -2,7 +2,7 @@
   "name": "hexvero-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "hexvero.dev — reverse engineer anything, locally.",
+  "description": "hexvero.dev — the first look at a binary or app bundle: static analysis with evidence, locally.",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -11,7 +11,7 @@
   "scripts": {
     "build": "npm run build -w @hexvero/core -w @hexvero/mcp -w @hexvero/server -w hexvero && npm run build -w @hexvero/web",
     "typecheck": "tsc -b packages/core packages/mcp packages/server packages/cli && tsc -p packages/web/tsconfig.json --noEmit",
-    "lint": "oxlint packages --deny-warnings",
+    "lint": "oxlint packages e2e scripts --deny-warnings",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "test": "vitest run",
@@ -20,8 +20,9 @@
     "ui": "node packages/cli/bin/hexvero.js ui --open",
     "review": "node scripts/review-report.mjs",
     "check:shape": "node scripts/check-shape.mjs",
-    "publish:all": "npm run check && npm run build && for w in packages/core packages/mcp packages/server packages/cli; do npm publish -w ./$w --access public; done",
-    "release": "node scripts/release.mjs"
+    "e2e": "npm run build && node scripts/build-examples.mjs && vitest run -c vitest.e2e.config.ts",
+    "release": "node scripts/release.mjs",
+    "release:check": "npm run check && npm run build && node scripts/release-verify.mjs && node scripts/smoke-tarballs.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

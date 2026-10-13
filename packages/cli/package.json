@@ -1,7 +1,7 @@
 {
   "name": "hexvero",
   "version": "0.2.1",
-  "description": "Reverse engineer anything, locally: CLI, MCP server and web UI.",
+  "description": "The first look at a binary or app bundle: static, execution-free analysis with evidence. CLI, MCP server and web UI.",
   "keywords": [
     "apk",
     "asar",

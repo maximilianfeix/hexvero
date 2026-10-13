@@ -4,21 +4,43 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>hexvero — reverse engineer anything, locally</title>
+    <title>hexvero — the first look at a binary or app bundle, locally</title>
     <meta
       name="description"
       content="hexvero reads executables, app bundles, databases and captures on your machine without running them: ELF, PE, Mach-O, Go, .NET, WebAssembly, EVM, SQLite, APK, Electron, Java and more. CLI, MCP server for coding agents, and a local web UI."
     />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://hexvero.dev/" />
-    <meta property="og:title" content="hexvero — reverse engineer anything, locally" />
+    <meta
+      property="og:title"
+      content="hexvero — the first look at a binary or app bundle, locally"
+    />
     <meta
       property="og:description"
-      content="Facts with evidence, honest about what it can't tell. Zero-dependency parsers, 12 MCP tools, a local web UI."
+      content="Facts with evidence, honest about what it can't tell. Zero-dependency parsers, a 15-tool MCP server, a local web UI."
     />
     <meta property="og:image" content="https://hexvero.dev/social-preview.png" />
     <meta property="og:url" content="https://hexvero.dev/" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://hexvero.dev/social-preview.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="hexvero" />
+    <link rel="alternate" type="text/plain" href="https://hexvero.dev/llms.txt" title="llms.txt" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "hexvero",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows",
+        "description": "Static, execution-free analysis of binaries, Electron and Android apps with evidence for every finding. CLI, MCP server for coding agents and a local web UI.",
+        "url": "https://hexvero.dev/",
+        "codeRepository": "https://github.com/maximilianfeix/hexvero",
+        "license": "https://opensource.org/licenses/MIT",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "softwareRequirements": "Node.js 22.12 or newer"
+      }
+    </script>
     <style>
       :root {
         --bg: #1b1d21;
@@ -520,7 +542,7 @@
       </section>
 
       <section id="agents">
-        <h2>12 MCP tools, not 139</h2>
+        <h2>15 MCP tools, a 12.8 KB catalog</h2>
         <p class="sub">
           The catalog stays under 32 KiB so small-context models keep working. Open, analyze, page,
           read bytes, export: it reads like a workflow.
@@ -528,7 +550,8 @@
         <ol class="steps">
           <li>
             <div>
-              Register hexvero with Claude Code, Cursor, Windsurf, Gemini CLI, VS Code or Codex.
+              Register hexvero with the agent clients found on your machine (Claude Code, Codex,
+              Cursor, Windsurf, Gemini CLI, VS Code and more).
               <pre>npx hexvero setup --apply</pre>
             </div>
           </li>

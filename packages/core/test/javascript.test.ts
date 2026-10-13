@@ -29,6 +29,15 @@ export default api;
 `;
 const dbJs = `exports.find = (id) => ({ id });\nexport * from "./missing.js";\n`;
 
+/** Preload scripts hexvero reads from `preload: <expression>` inside a BrowserWindow. */
+const preloadOf = (expression: string): string[] => {
+  const asar = buildAsar({
+    "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+    "main.js": `const w = new BrowserWindow({ webPreferences: { preload: ${expression}, sandbox: true } });`,
+  });
+  return analyzeJavaScriptTree(asarTree(asar, "app.asar")).electron?.preloadScripts ?? [];
+};
+
 describe("tokenize/scanJavaScript", () => {
   it("skips comments, strings, regexes and templates while finding references", () => {
     const scan = scanJavaScript(mainJs);
@@ -242,5 +251,74 @@ describe("directory analysis", () => {
       rmSync(outside, { force: true });
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("reads webPreferences with their positions and ignores HTML preload attributes", () => {
+    const asar = buildAsar({
+      "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+      "main.js": [
+        'const { BrowserWindow, ipcMain } = require("electron");',
+        "new BrowserWindow({ webPreferences: {",
+        '  preload: path.join(__dirname, "preload.js"),',
+        "  contextIsolation: false,",
+        "  sandbox: !1,",
+        "} });",
+        'ipcMain.handle("ping", () => 1);',
+      ].join("\n"),
+      "player.js": 'video.config = { preload: "metadata" }; audio = { preload: "none" };',
+    });
+    const info = analyzeJavaScriptTree(asarTree(asar, "app.asar"));
+    expect(info.webPreferences).toEqual([
+      { key: "preload", value: "preload.js", file: "main.js", line: 3 },
+      { key: "contextIsolation", value: false, file: "main.js", line: 4 },
+      { key: "sandbox", value: false, file: "main.js", line: 5 },
+    ]);
+    expect(info.electron?.preloadScripts).toEqual(["preload.js"]);
+    expect(info.findings.map((f) => `${f.kind} @ ${f.location}`)).toEqual([
+      "electron.context-isolation @ main.js:4",
+      "electron.sandbox @ main.js:5",
+      "electron.ipc @ main.js:7",
+      "electron.preload @ main.js:3",
+    ]);
+  });
+
+  it("finds preload scripts in the usual path expressions and scopes settings to window options", () => {
+    expect(preloadOf('"preload.js"')).toEqual(["preload.js"]);
+    expect(preloadOf('__dirname + "/preload.js"')).toEqual(["preload.js"]);
+    expect(preloadOf("path.join(__dirname, 'dist', 'preload.js')")).toEqual(["preload.js"]);
+    expect(preloadOf("path.resolve(__dirname, '..', 'preload.cjs')")).toEqual(["preload.cjs"]);
+    expect(preloadOf("path.join(app.getAppPath(), 'build/preload.mjs')")).toEqual([
+      "build/preload.mjs",
+    ]);
+    expect(preloadOf("`${__dirname}/preload.js`")).toEqual(["preload.js"]);
+    expect(preloadOf("getPreloadPath()")).toEqual([]);
+
+    // a payment SDK's sandbox flag in a renderer file is not a BrowserWindow setting
+    const asar = buildAsar({
+      "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+      "main.js":
+        "new BrowserWindow({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });",
+      "renderer/pay.js": `${"// filler\n".repeat(200)}PaymentSDK.init({ sandbox: false, key: "pk_live" });`,
+    });
+    const info = analyzeJavaScriptTree(asarTree(asar, "app.asar"));
+    expect(info.electron).toMatchObject({
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    });
+    expect(info.findings.map((f) => f.kind)).not.toContain("electron.sandbox");
+    expect(info.webPreferences.every((w) => w.file === "main.js")).toBe(true);
+  });
+
+  it("scans hostile repetitive input in linear time and caps what it records", () => {
+    const hostile = buildAsar({
+      "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+      "main.js": `new BrowserWindow({});\n${"preload:a(".repeat(60_000)}\n${"x\nwebPreferences: { sandbox: true }\n".repeat(20_000)}`,
+    });
+    const started = performance.now();
+    const info = analyzeJavaScriptTree(asarTree(hostile, "app.asar"));
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(info.webPreferences.length).toBeLessThanOrEqual(200);
+    expect(info.limitations.map((l) => l.code)).toContain("web_preferences_truncated");
   });
 });

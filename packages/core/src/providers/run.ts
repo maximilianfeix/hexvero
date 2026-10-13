@@ -192,6 +192,39 @@ function parseJsonDocs(text: string): unknown[] {
   return docs;
 }
 
+const MARK = (section: string): string => `==hexvero:${section}==`;
+// The flag list is read last and from the symbols flagspace only: that is where `main` lives,
+// and it is a fraction of the full list, so a large binary does not hit the output cap on it.
+const RADARE_GRAPH = `aaa; ?e ${MARK("functions")}; aflj; ?e ${MARK("graph")}; agCj; ?e ${MARK("flags")}; fs symbols; fj`;
+const RIZIN_GRAPH = `aaa; echo ${MARK("functions")}; aflj; echo ${MARK("graph")}; agC json; echo ${MARK("flags")}; fs symbols; flj`;
+
+/**
+ * Splits engine stdout into the labelled JSON documents. Returns null when the engine printed no
+ * markers (then the caller falls back to document order).
+ */
+export function graphSections(stdout: string): Record<string, unknown> | null {
+  const sections: Record<string, unknown> = {};
+  let current: string | null = null;
+  let seen = false;
+  for (const line of stdout.split("\n")) {
+    const text = line.trim();
+    const marker = /^==hexvero:(\w+)==$/.exec(text);
+    if (marker) {
+      current = marker[1]!;
+      seen = true;
+      continue;
+    }
+    if (current === null || sections[current] !== undefined) continue;
+    if (!text.startsWith("[") && !text.startsWith("{")) continue;
+    try {
+      sections[current] = JSON.parse(text);
+    } catch {
+      /* a cut or non-JSON line: the section stays missing */
+    }
+  }
+  return seen ? sections : null;
+}
+
 const RADARE_COMMANDS: Record<ProviderOperation, (address: string | null) => string> = {
   functions: () => "aaa; aflj",
   disassemble: (a) => `aaa; pdfj @ ${a ?? "entry0"}`,
@@ -201,21 +234,22 @@ const RADARE_COMMANDS: Record<ProviderOperation, (address: string | null) => str
   // references to an address or symbol from anywhere; the function list maps each source
   // address to its function (rizin's axtj carries no function name)
   xrefs: (a) => `aaa; aflj; axtj @ ${a ?? "entry0"}`,
-  // callers/callees/callgraph share one whole-program read: functions with addresses plus the
-  // global call graph. The relationship is computed client-side from the cached graph.
-  callers: () => "aaa; aflj; agCj",
-  callees: () => "aaa; aflj; agCj",
-  callgraph: () => "aaa; aflj; agCj",
+  // callers/callees/callgraph share one whole-program read: functions with addresses, the global
+  // call graph and the flag list (other names of the same addresses, e.g. `main`). Marker lines
+  // label the three documents so a missing one cannot be mistaken for another.
+  callers: () => RADARE_GRAPH,
+  callees: () => RADARE_GRAPH,
+  callgraph: () => RADARE_GRAPH,
   // function names and strings; the needle is applied client-side, never interpolated
   search: () => "aaa; aflj; izj",
 };
 
-/** rizin renamed the JSON call graph to `agC json`; everything else matches radare2. */
+/** rizin renamed the JSON call graph (`agC json`), echo (`echo`) and the flag list (`flj`). */
 const RIZIN_COMMANDS: typeof RADARE_COMMANDS = {
   ...RADARE_COMMANDS,
-  callers: () => "aaa; aflj; agC json",
-  callees: () => "aaa; aflj; agC json",
-  callgraph: () => "aaa; aflj; agC json",
+  callers: () => RIZIN_GRAPH,
+  callees: () => RIZIN_GRAPH,
+  callgraph: () => RIZIN_GRAPH,
 };
 
 const ADDRESS_OPERATIONS: ReadonlySet<ProviderOperation> = new Set([
@@ -352,7 +386,10 @@ async function contentDigest(path: string): Promise<string> {
     .slice(0, 16);
 }
 
-/** Normalized graphs per provider + content digest; concurrent requests share one engine run. */
+/** Bump when the engine commands or the normalized graph shape change: old caches become unreachable. */
+const GRAPH_SCHEMA = 4;
+
+/** Normalized graphs per provider, content digest, engine build and schema; concurrent requests share one engine run. */
 const graphCache = new Map<string, Promise<CallGraph>>();
 
 /** Rejects with `cancelled` when the caller aborts while others keep waiting for the shared run. */
@@ -386,8 +423,20 @@ export async function loadCallGraph(
 ): Promise<CallGraphResult> {
   const started = performance.now();
   const digest = await contentDigest(request.targetPath);
-  const key = `${request.provider}:${digest}`;
-  const diskPath = join(cacheRoot(), "graphs", `${request.provider}-${digest}.json`);
+  // A cached graph is only valid for the same file content, the same engine build and the same
+  // way hexvero asks for and normalizes the graph (GRAPH_SCHEMA), so each of them is in the key.
+  const providers = statuses ?? (await detectProviders());
+  const engine = providers.find((p) => p.name === request.provider);
+  // Size and modification time of the engine binary cover engines that report no version (Ghidra).
+  const binary = engine?.path ? await stat(engine.path).catch(() => null) : null;
+  const variant = createHash("sha256")
+    .update(
+      `${GRAPH_SCHEMA}\u0000${engine?.version ?? "unknown"}\u0000${engine?.path ?? ""}\u0000${binary ? `${binary.size}:${Math.round(binary.mtimeMs)}` : ""}`,
+    )
+    .digest("hex")
+    .slice(0, 10);
+  const key = `${request.provider}:${digest}:${variant}`;
+  const diskPath = join(cacheRoot(), "graphs", `${request.provider}-${digest}-${variant}.json`);
   let cached = true;
   let pending = graphCache.get(key);
   if (!pending) {
@@ -405,7 +454,7 @@ export async function loadCallGraph(
       // The run is shared by every concurrent caller, so it must not die with one caller's signal.
       const run = await runProvider(
         { ...request, operation: "callgraph", signal: undefined },
-        statuses,
+        providers,
       );
       const graph = run.result as CallGraph | null;
       if (!graph || !Array.isArray(graph.nodes))
@@ -493,6 +542,7 @@ export async function runProvider(
 
   let run: Exec;
   let result: unknown;
+  let graphOutputComplete = false;
   if (request.provider === "ghidra") {
     const digest = await contentDigest(request.targetPath);
     const projectDir = join(cacheRoot(), "ghidra", digest);
@@ -590,17 +640,25 @@ export async function runProvider(
         result = radareSearch(docs, needle ?? "");
         break;
       case "callgraph":
-        result = normalizeCallGraph(request.provider, docs, { partial });
-        break;
       case "callers":
-      case "callees":
-        result = relation(
-          normalizeCallGraph(request.provider, docs, { partial }),
-          address,
-          request.operation,
-          limitations,
-        );
+      case "callees": {
+        // The run is partial only when the function list or the graph itself was cut. Losing the
+        // trailing flag list costs aliases, which the graph reports as a limitation of its own.
+        const sections = graphSections(run.stdout);
+        const whole =
+          sections !== null &&
+          sections["functions"] !== undefined &&
+          sections["graph"] !== undefined;
+        const graph = normalizeCallGraph(request.provider, sections ?? docs, {
+          partial: partial && !whole,
+        });
+        if (partial && whole) graphOutputComplete = true;
+        result =
+          request.operation === "callgraph"
+            ? graph
+            : relation(graph, address, request.operation, limitations);
         break;
+      }
       default:
         break;
     }
@@ -617,7 +675,7 @@ export async function runProvider(
       `${request.provider} exceeded ${timeoutMs} ms and was killed`,
       { timeoutMs },
     );
-  if (run.truncated)
+  if (run.truncated && !graphOutputComplete)
     limitations.push({
       code: "output_truncated",
       message: `Engine output exceeded ${MAX_OUTPUT} bytes and was cut.`,

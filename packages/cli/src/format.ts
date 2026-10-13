@@ -26,12 +26,18 @@ export function heading(io: Io, text: string): string {
   return paint(io, "bold", text);
 }
 
+/**
+ * One finding per block: the claim and where it was read on the first line, the explanation
+ * below it, so long details never push the evidence off the screen.
+ */
 export function formatFindings(io: Io, findings: Finding[]): string[] {
   if (!findings.length) return [paint(io, "dim", "  (no findings)")];
-  return findings.map((f) => {
+  return findings.flatMap((f) => {
     const badge = f.confidence === "confirmed" ? paint(io, "green", "●") : paint(io, "yellow", "○");
-    const detail = f.detail ? paint(io, "dim", ` — ${f.detail}`) : "";
-    return `  ${badge} ${f.title}${detail}`;
+    const location = f.location ? paint(io, "cyan", `  @ ${f.location}`) : "";
+    const lines = [`  ${badge} ${f.title}${location}`];
+    if (f.detail) lines.push(paint(io, "dim", `      ${f.detail}`));
+    return lines;
   });
 }
 

@@ -61,10 +61,18 @@ export {
   type StringsQuery,
 } from "./session.js";
 export {
+  DEFAULT_PAGE_BYTES,
+  MAX_PAGE_BYTES,
+  MAX_PAGE_ITEMS,
+  MIN_PAGE_BYTES,
+  pageOf,
+  reduceItem,
+} from "./paging.js";
+export {
   canonical,
   compareItems,
   detectKey,
-  VOLATILE_FIELDS,
+  positionalFields,
   type ChangedItem,
   type CompareOptions,
   type CompareResult,
