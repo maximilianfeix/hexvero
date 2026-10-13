@@ -429,6 +429,10 @@ describe("window settings as written, computed, or absent", () => {
       "prefs = loadPrefs();",
       "prefs.extra.deep.sandbox = false;",
       "new Tweaker(prefs);",
+      "tweak({ webPreferences: prefs });",
+      "const copy = { ...prefs }; share(copy);",
+      "prefs?.sandbox;",
+      "prefs[`sandbox`] = false;",
       "const alias = prefs; alias.sandbox = false;",
       "prefs[name] = false;",
       "Object.defineProperty(prefs, 'sandbox', { value: false });",
@@ -460,6 +464,12 @@ describe("window settings as written, computed, or absent", () => {
         "const prefs = { sandbox: true };\nif (prefs.sandbox) log();\nconst w = new BrowserWindow({ webPreferences: prefs });",
       ).windows.map((w) => w.sandbox),
     ).toEqual([true]);
+    // followed and unchanged, also through the module's name
+    expect(
+      analyze(
+        'const electron = require("electron");\nconst opts = { webPreferences: { sandbox: true } };\nconst w = new electron.BrowserWindow(opts);',
+      ).windows.map((w) => w.sandbox),
+    ).toEqual([true]);
     const whole = analyze(
       "const opts = { webPreferences: { sandbox: true } };\nopts.webPreferences = other;\nconst w = new BrowserWindow(opts);",
     );
@@ -485,5 +495,37 @@ describe("window settings as written, computed, or absent", () => {
     // and with every window read, the safe value stands
     const read = analyze("const a = new BrowserWindow({ webPreferences: { sandbox: true } });");
     expect(read.electron?.sandbox).toBe(true);
+  });
+
+  it("replaces a whole webPreferences object by a later write of that key", () => {
+    const BASE =
+      "const base = { webPreferences: { nodeIntegration: true, contextIsolation: false } };\n";
+    // the window's own `webPreferences` comes after the spread: nothing of the base's is left
+    const own = analyze(
+      `${BASE}const w = new BrowserWindow({ ...base, webPreferences: { nodeIntegration: false, contextIsolation: true } });`,
+    );
+    expect(own.windows.map((w) => `${w.nodeIntegration} ${w.contextIsolation}`)).toEqual([
+      "false true",
+    ]);
+    expect(own.findings.map((f) => f.kind)).not.toContain("electron.node-integration");
+    // the spread comes after: the base's object replaces the window's own
+    const base = analyze(
+      `${BASE}const w = new BrowserWindow({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }, ...base });`,
+    );
+    expect(
+      base.windows.map((w) => `${w.nodeIntegration} ${w.contextIsolation} ${w.sandbox}`),
+    ).toEqual(["true false not written"]);
+    expect(base.findings.map((f) => f.kind)).toContain("electron.node-integration");
+  });
+
+  it("attributes the settings of an options object declared above its constructor to that window", () => {
+    const info = analyze(
+      "const opts = { webPreferences: { sandbox: false, contextIsolation: true } };\nconst w = new BrowserWindow(opts);",
+    );
+    expect(info.webPreferences.map((p) => `${p.windowName} ${p.key}=${p.value}`)).toEqual([
+      "w sandbox=false",
+      "w contextIsolation=true",
+    ]);
+    expect(info.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual(["false true"]);
   });
 });

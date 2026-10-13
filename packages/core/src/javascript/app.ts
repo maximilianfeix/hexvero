@@ -1312,6 +1312,8 @@ export function analyzeJavaScriptTree(
     const preloadsAt = new Set<number>();
     /** Every `{ … }` of the file as [start, end) offsets, in source order; filled when needed. */
     let braces: Array<[number, number]> = [];
+    /** For an object that is the value of a `webPreferences:` property: where that key stands. */
+    const preferenceObjects = new Map<number, number>();
     /** The start of the innermost object or block that holds the offset. */
     const objectAt = (offset: number): number => {
       let inner = -1;
@@ -1383,14 +1385,23 @@ export function analyzeJavaScriptTree(
               declared.add(t.value);
               continue;
             }
-            // Its use as options: `new X(name)`, `webPreferences: name`, `...name`.
+            // Its use as options: `new X(name)` for a window class, and `webPreferences: name`
+            // or `...name` INSIDE the options of a located window. The same shapes anywhere
+            // else (`tweak({ webPreferences: name })`, `const copy = { ...name }`, which shares
+            // the nested objects) hand the object on, and what happens to it there is not read.
+            const inWindow = ranges.some(
+              (r) => r.window !== null && t.start >= r.start && t.start < r.end,
+            );
             const asOptions =
               (is(k - 1, "(") &&
                 is(k + 1, ")") &&
-                tokens[k - 3]?.value === "new" &&
+                // `new BrowserWindow(name)`, `new electron.BrowserWindow(name)`
+                (tokens[k - 3]?.value === "new" ||
+                  (is(k - 3, ".") && tokens[k - 5]?.value === "new")) &&
                 WINDOW_CLASSES.has(tokens[k - 2]?.value ?? "")) ||
-              (is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
-              is(k - 1, "...");
+              (inWindow &&
+                ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
+                  is(k - 1, "...")));
             if (asOptions) continue;
             // A write to one key: `name.key =`, `name.webPreferences.key =`, `name["key"] =`.
             let at = k + 1;
@@ -1439,6 +1450,14 @@ export function analyzeJavaScriptTree(
               pairs.push([t.start, Number.MAX_SAFE_INTEGER]);
             } else if (t.value === "}" && open.length) pairs[open.pop()!]![1] = t.end;
           }
+          for (let k = 2; k < tokens.length; k++)
+            if (
+              is(k, "{") &&
+              is(k - 1, ":") &&
+              tokens[k - 2]!.type === "ident" &&
+              tokens[k - 2]!.value === "webPreferences"
+            )
+              preferenceObjects.set(tokens[k]!.start, tokens[k - 2]!.start);
           braces = pairs;
         }
         if (
@@ -1567,44 +1586,83 @@ export function analyzeJavaScriptTree(
       inherited: boolean;
       order: number;
       scope: number;
+      group: number | null;
+      groupOrder: number;
     }> => {
       if (ranges.length) {
         // The innermost range decides which window it is; a helper used by two windows has one
         // range per window with the same extent, and the setting then counts for each.
+        // A range that belongs to a window comes before one that belongs to none: an options
+        // object declared above its `new BrowserWindow(options)` is met first as a bare
+        // `webPreferences: {…}`, and its settings are still that window's.
         let best: WindowRange | undefined;
-        for (const r of ranges)
-          if (
-            index >= r.start &&
-            index < r.end &&
-            (!best || r.end - r.start < best.end - best.start)
-          )
-            best = r;
+        for (const bound of [true, false]) {
+          for (const r of ranges)
+            if (
+              (r.window !== null) === bound &&
+              index >= r.start &&
+              index < r.end &&
+              (!best || r.end - r.start < best.end - best.start)
+            )
+              best = r;
+          if (best) break;
+        }
         if (!best) return [];
         const { start, end } = best;
         const same = ranges.filter((r) => r.start === start && r.end === end);
+        // Where the write takes effect in the window's own options, at two levels.
+        // Key level: the object the key is written into, and the place of the write: its own,
+        // or where its base object is applied. Object level: a `webPreferences: {…}` is itself
+        // one write of the key `webPreferences` into the options (`group`) at the place of that
+        // key (`groupOrder`); a later such write, or a base spread later that brings its own
+        // `webPreferences`, replaces the whole earlier object.
+        const inner = objectAt(index);
+        const placed = (
+          r: WindowRange,
+        ): { order: number; scope: number; group: number | null; groupOrder: number } => {
+          if (r.at !== null && preferenceObjects.has(inner)) {
+            // inside the base's own `webPreferences`: the base replaces that whole object
+            return { scope: inner, order: index, group: objectAt(r.at), groupOrder: r.at };
+          }
+          const order = r.at ?? index;
+          const scope = objectAt(order);
+          const key = preferenceObjects.get(scope);
+          return key === undefined
+            ? { scope, order, group: null, groupOrder: 0 }
+            : { scope, order, group: objectAt(key), groupOrder: key };
+        };
         return [
           ...new Map(
             same.map((r) => [
               r.window,
-              {
-                window: r.window,
-                windowName: r.name,
-                inherited: r.inherited,
-                // where the write takes effect: its own place, or where its base is applied
-                order: r.at ?? index,
-                scope: objectAt(r.at ?? index),
-              },
+              { window: r.window, windowName: r.name, inherited: r.inherited, ...placed(r) },
             ]),
           ).values(),
         ];
       }
       const before = source.slice(Math.max(0, index - WINDOW_CONTEXT), index);
       return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before)
-        ? [{ window: null, windowName: null, inherited: false, order: index, scope: index }]
+        ? [
+            {
+              window: null,
+              windowName: null,
+              inherited: false,
+              order: index,
+              scope: index,
+              group: null,
+              groupOrder: 0,
+            },
+          ]
         : [];
     };
     // Settings of this file first; what a window overrides is dropped before they are kept.
-    type Written = WebPreference & { inherited: boolean; order: number; scope: number };
+    type Written = WebPreference & {
+      inherited: boolean;
+      order: number;
+      scope: number;
+      group: number | null;
+      groupOrder: number;
+    };
     const found: Written[] = [];
     const record = (pref: Written): boolean => {
       if (found.length >= MAX_PREFS_PER_FILE || webPreferences.length + found.length >= MAX_PREFS) {
@@ -1680,19 +1738,32 @@ export function analyzeJavaScriptTree(
     if (sandboxCall === "always") facts.enableSandbox = "always";
     else if (sandboxCall === "maybe" && facts.enableSandbox !== "always")
       facts.enableSandbox = "maybe";
-    for (const { inherited: _inherited, order, scope, ...pref } of found) {
-      // The same key written twice into ONE object, directly or through a base that is spread
-      // into it: the later write wins, as in JavaScript (`{ sandbox: true, ...base }` takes the
-      // base's value). Writes in two separate objects of a window are both kept: which of them
-      // takes effect cannot be read, and dropping one could hide the unsafe value.
-      if (
-        pref.window !== null &&
-        found.some(
-          (o) =>
-            o.window === pref.window && o.key === pref.key && o.scope === scope && o.order > order,
+    for (const { inherited: _inherited, order, scope, group, groupOrder, ...pref } of found) {
+      if (pref.window !== null) {
+        // A whole `webPreferences` object that a later write of that key replaces: gone with
+        // everything in it (`{ ...base, webPreferences: {…} }` keeps nothing of the base's).
+        if (
+          group !== null &&
+          found.some(
+            (o) => o.window === pref.window && o.group === group && o.groupOrder > groupOrder,
+          )
         )
-      )
-        continue;
+          continue;
+        // The same key written twice into ONE object, directly or through a base that is spread
+        // into it: the later write wins, as in JavaScript (`{ sandbox: true, ...base }` takes
+        // the base's value). Writes in two separate objects of a window are both kept: which of
+        // them takes effect cannot be read, and dropping one could hide the unsafe value.
+        if (
+          found.some(
+            (o) =>
+              o.window === pref.window &&
+              o.key === pref.key &&
+              o.scope === scope &&
+              o.order > order,
+          )
+        )
+          continue;
+      }
       webPreferences.push(pref);
       if (pref.key === "preload") preloadScripts.add(String(pref.value));
       // Where windows could be located, an object that belongs to none of them (a base that is
