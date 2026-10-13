@@ -38,8 +38,9 @@ npm run release -- 0.3.0       # bump, gates, commit and tag locally; nothing is
 git push --atomic origin main v0.3.0   # the point of no return (or: npm run release -- 0.3.0 --push)
 ```
 
-`npm run release` bumps every package, the version constants and `server.json`, moves the notes
-under the version and runs every gate the workflow runs (checks, build, version consistency, an
+`npm run release` bumps every package, the version constants and `server.json`, removes the
+"this describes main" note from the READMEs (add it back between the `unreleased-note` markers when
+`main` gains features npm does not have yet), moves the notes under the version and runs every gate the workflow runs (checks, build, version consistency, an
 install of the packed tarballs with a real CLI, MCP and UI session) before it commits and tags.
 Pushing the tag starts the Release workflow:
 
