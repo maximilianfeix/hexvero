@@ -142,4 +142,35 @@ describe("recovery", () => {
     expect(r.skipped).toEqual([{ name: "./src/b.ts", reason: "no sourcesContent" }]);
     expect(existsSync(join(out, "src/a.ts"))).toBe(true);
   });
+
+  it("splits webpack 5 output whose modules are parenthesized arrow functions", () => {
+    const text = `/******/ (() => { // webpackBootstrap
+/******/ var __webpack_modules__ = ({
+/***/ "./src/api.js":
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+__webpack_require__.r(__webpack_exports__);
+__webpack_require__.d(__webpack_exports__, { sync: () => sync });
+const sync = () => fetch("https://api.example.com/v1/sync");
+/***/ }),
+/***/ "./src/index.js":
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+var _api = __webpack_require__("./src/api.js");
+(0,_api.sync)();
+/***/ })
+/******/ });
+/******/ var __webpack_module_cache__ = {};
+/******/ function __webpack_require__(moduleId) { return __webpack_modules__[moduleId]; }
+/******/ __webpack_require__.d = (exports, definition) => {};
+/******/ __webpack_require__.r = (exports) => {};
+/******/ __webpack_require__("./src/index.js");
+/******/ })();
+`;
+    const bundle = analyzeBundle(text);
+    expect(bundle.bundler).toBe("webpack");
+    expect(bundle.modules.map((m) => m.name ?? m.id).toSorted()).toEqual([
+      "./src/api.js",
+      "./src/index.js",
+    ]);
+    expect(bundle.limitations.map((l) => l.code)).not.toContain("bundle_modules_not_found");
+  });
 });

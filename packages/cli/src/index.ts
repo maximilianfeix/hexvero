@@ -2,6 +2,7 @@ import {
   AnalysisError,
   Session,
   compact,
+  compareItems,
   loadCallGraph,
   neighborhood,
   PROVIDER_OPERATIONS,
@@ -37,7 +38,8 @@ Commands
                                                 Page one list (symbols, imports, exports, ...)
   strings <path> [--min n] [--utf16] [--tag t] [--text s] [--limit n] [--json]
   bytes <path> <offset> [length]                Hex dump of a byte window
-  compare <a> <b> <collection> [--key field]    Diff a collection between two targets
+  compare <a> <b> <collection> [--key f] [--ignore f,g|none]
+                                                Added, removed and changed items between two builds
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -289,29 +291,40 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       const a = await session.open(need(0, "a"));
       const b = await session.open(need(1, "b"));
       const name = need(2, "collection");
-      const key = flagString(args.flags, "key") ?? "name";
+      const keyFlag = flagString(args.flags, "key");
+      const ignoreFlag = flagString(args.flags, "ignore");
       const [left, right] = await Promise.all([
         session.collection(a.id, name, { limit: 2000, maxBytes: 64 << 20 }),
         session.collection(b.id, name, { limit: 2000, maxBytes: 64 << 20 }),
       ]);
-      const keyOf = (item: unknown): string => {
-        const o = item as Record<string, unknown>;
-        return o && typeof o === "object" && key in o ? String(o[key]) : JSON.stringify(item);
-      };
-      const l = new Set(left.items.map(keyOf));
-      const r = new Set(right.items.map(keyOf));
-      const added = [...r].filter((k) => !l.has(k));
-      const removed = [...l].filter((k) => !r.has(k));
+      const diff = compareItems(left.items, right.items, {
+        key: keyFlag,
+        ignore:
+          ignoreFlag === undefined
+            ? undefined
+            : ignoreFlag === "none"
+              ? []
+              : ignoreFlag.split(",").map((f) => f.trim()),
+      });
+      if (diff.keyMissing)
+        throw new UsageError(
+          `no item in "${name}" has a field "${keyFlag}"; fields seen: ${[
+            ...new Set(
+              [...left.items, ...right.items].flatMap((i) =>
+                i && typeof i === "object" ? Object.keys(i) : [],
+              ),
+            ),
+          ]
+            .slice(0, 12)
+            .join(", ")}`,
+        );
       const truncated = left.truncated || right.truncated;
       if (json) {
         io.out(
           toJson({
             collection: name,
-            key,
-            added,
-            removed,
-            unchanged: [...l].filter((k) => r.has(k)).length,
-            compared: { a: left.items.length, b: right.items.length },
+            ...diff,
+            changed: diff.changed.map((c) => ({ key: c.key, fields: c.fields })),
             totals: { a: left.total, b: right.total },
             truncated,
           }),
@@ -321,11 +334,49 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       io.out(
         heading(
           io,
-          `${name}: ${added.length} added, ${removed.length} removed, ${[...l].filter((k) => r.has(k)).length} unchanged`,
+          `${name}: ${diff.added.length} added, ${diff.removed.length} removed, ${diff.changed.length} changed, ${diff.unchanged} unchanged${
+            diff.relocated ? `, ${diff.relocated} relocated` : ""
+          }${paint(io, "dim", diff.key ? ` · matched by ${diff.key}` : " · matched by full content")}`,
         ),
       );
-      for (const k of added) io.out(`  ${paint(io, "green", "+")} ${k}`);
-      for (const k of removed) io.out(`  ${paint(io, "red", "-")} ${k}`);
+      const MAX_LINES = 200;
+      let lines = 0;
+      const line = (text: string): void => {
+        if (lines++ < MAX_LINES) io.out(text);
+      };
+      for (const k of diff.added)
+        line(`  ${paint(io, "green", "+")} ${k || paint(io, "dim", "(empty)")}`);
+      for (const k of diff.removed)
+        line(`  ${paint(io, "red", "-")} ${k || paint(io, "dim", "(empty)")}`);
+      for (const c of diff.changed) {
+        const detail = c.fields
+          .slice(0, 4)
+          .map((f) => `${f.field}: ${show(f.before)} → ${show(f.after)}`)
+          .join(", ");
+        line(
+          `  ${paint(io, "yellow", "~")} ${c.key}${detail ? paint(io, "dim", `  ${detail}`) : ""}${
+            c.fields.length > 4 ? paint(io, "dim", ` … ${c.fields.length - 4} more fields`) : ""
+          }`,
+        );
+      }
+      if (lines > MAX_LINES)
+        io.out(paint(io, "dim", `  … ${lines - MAX_LINES} more lines (use --json for everything)`));
+      if (diff.relocated)
+        io.out(
+          paint(
+            io,
+            "dim",
+            `  ${diff.relocated} item(s) differ only in ${diff.ignored.join("/")} (ignored; --ignore none to count them)`,
+          ),
+        );
+      if (diff.duplicateKeys)
+        io.out(
+          paint(
+            io,
+            "dim",
+            `  ${diff.duplicateKeys} identity value(s) occur more than once; those items were matched by content`,
+          ),
+        );
       if (truncated)
         io.out(
           paint(
@@ -534,6 +585,12 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     default:
       throw new UsageError(`unknown command "${args.command}"`);
   }
+}
+
+/** A field value for one terminal line, cut at 80 characters. */
+function show(v: unknown): string {
+  const t = JSON.stringify(v) ?? "undefined";
+  return t.length > 80 ? `${t.slice(0, 79)}…` : t;
 }
 
 function isLoopback(host: string): boolean {

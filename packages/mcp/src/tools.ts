@@ -1,6 +1,7 @@
 import {
   AnalysisError,
   compact,
+  compareItems,
   neighborhood,
   originalPositionFor,
   resolveNode,
@@ -111,12 +112,18 @@ export const toolSchemas = {
   hexvero_compare: {
     title: "Compare collections",
     description:
-      "Diff one collection between two targets (e.g. exports of two versions). Returns added, removed and unchanged counts with samples.",
+      "Diff one collection between two targets: added, removed, changed (with the fields that differ) and unchanged items, matched by key (auto-detected: name, channel, id, path, url, … or pass key). States when the comparison is partial.",
     input: {
       targetA: targetId,
       targetB: targetId,
       collection: z.string(),
       key: z.string().optional().describe("Item field used as identity (default: name, then JSON)"),
+      ignore: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Fields whose differences do not count (default: address/value/offset-like fields); [] counts everything",
+        ),
     },
   },
   hexvero_sourcemap: {
@@ -291,31 +298,40 @@ export function createHandlers(
     hexvero_compare: async (a) => {
       const name = str(a["collection"]);
       const [left, right] = await Promise.all([
-        session.collection(str(a["targetA"]), name, {
-          limit: 2000,
-          maxBytes: 64 << 20,
-        }),
-        session.collection(str(a["targetB"]), name, {
-          limit: 2000,
-          maxBytes: 64 << 20,
-        }),
+        session.collection(str(a["targetA"]), name, { limit: 2000, maxBytes: 64 << 20 }),
+        session.collection(str(a["targetB"]), name, { limit: 2000, maxBytes: 64 << 20 }),
       ]);
-      const keyOf = (item: unknown): string => {
-        const o = item as Record<string, unknown>;
-        const field = typeof a["key"] === "string" ? a["key"] : "name";
-        return o && typeof o === "object" && field in o ? String(o[field]) : JSON.stringify(item);
-      };
-      const l = new Map(left.items.map((i) => [keyOf(i), i]));
-      const r = new Map(right.items.map((i) => [keyOf(i), i]));
-      const added = [...r.keys()].filter((k) => !l.has(k));
-      const removed = [...l.keys()].filter((k) => !r.has(k));
+      const diff = compareItems(left.items, right.items, {
+        key: typeof a["key"] === "string" ? a["key"] : undefined,
+        ignore: Array.isArray(a["ignore"]) ? (a["ignore"] as string[]) : undefined,
+      });
+      if (diff.keyMissing)
+        throw new AnalysisError(
+          "invalid_input",
+          `no item in ${name} has a field "${str(a["key"])}"`,
+        );
       return {
         collection: name,
-        left: { total: left.total, truncated: left.truncated },
-        right: { total: right.total, truncated: right.truncated },
-        unchanged: [...l.keys()].filter((k) => r.has(k)).length,
-        added: { count: added.length, sample: added.slice(0, 50) },
-        removed: { count: removed.length, sample: removed.slice(0, 50) },
+        key: diff.key,
+        ignored: diff.ignored,
+        left: { total: left.total, compared: left.items.length, truncated: left.truncated },
+        right: { total: right.total, compared: right.items.length, truncated: right.truncated },
+        unchanged: diff.unchanged,
+        relocated: diff.relocated,
+        added: { count: diff.added.length, sample: diff.added.slice(0, 50) },
+        removed: { count: diff.removed.length, sample: diff.removed.slice(0, 50) },
+        changed: {
+          count: diff.changed.length,
+          sample: diff.changed.slice(0, 25).map((c) => ({
+            key: c.key,
+            fields: compact(c.fields.slice(0, 8), { maxString: 200, maxItems: 8 }),
+          })),
+        },
+        duplicateKeys: diff.duplicateKeys,
+        note:
+          left.truncated || right.truncated
+            ? "Only the first 2000 items per side were compared; the result is partial."
+            : "Complete comparison of both collections.",
       };
     },
     hexvero_sourcemap: async (a) => {

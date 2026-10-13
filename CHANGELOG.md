@@ -6,8 +6,18 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `compare` (CLI and `hexvero_compare`) now matches items by an auto-detected identity field that
+  is present and distinct on both sides (`name`, `channel`, `id`, `path`, `url`, … or `--key`),
+  reports `changed` items with the fields that differ, treats items that differ only in
+  address-like fields as `relocated` (`--ignore none` to count them), diffs duplicate identities as
+  multisets, rejects an unknown `--key`, and states when a comparison is partial.
+
 ### Fixed
 
+- The JavaScript bundle splitter recognises webpack 5 output whose modules are parenthesized arrow
+  functions (`((module, exports, require) => { … })`), the default for current webpack builds.
 - Web UI accessibility review: "Open file" is a real button reachable by keyboard; the view tabs are
   a navigation with arrow-key, Home/End movement and `aria-current`; Strings and Hex stay usable
   while analysis loads or fails, and a failed analysis offers Retry; tables use non-interactive

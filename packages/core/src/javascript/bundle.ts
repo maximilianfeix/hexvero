@@ -118,12 +118,31 @@ interface FunctionSpan {
   /** Index of the token after the parameter list's closing parenthesis (the body `{`). */
   bodyOpen: number;
   bodyClose: number;
+  /** Last token of the whole value: the body `}` or the `)` of a parenthesized wrapper. */
+  end: number;
   params: string[];
 }
 
 /** Reads a function/arrow/method value starting at `i`; returns null when it is not a function. */
 function readFunction(tokens: Token[], i: number): FunctionSpan | null {
   let k = i;
+  // webpack 5 wraps every module value: `((module, exports, require) => { ... })`
+  if (
+    is(tokens[k], "punct", "(") &&
+    (is(tokens[k + 1], "punct", "(") ||
+      is(tokens[k + 1], "ident", "function") ||
+      is(tokens[k + 1], "ident", "async") ||
+      (is(tokens[k + 1], "ident") && is(tokens[k + 2], "punct", "=>")))
+  ) {
+    const inner = readFunction(tokens, k + 1);
+    if (inner && is(tokens[inner.end + 1], "punct", ")")) {
+      // `((…) => {})()` or `(…).bind(…)` is a call, not a module value
+      const next = tokens[inner.end + 2];
+      if (next && next.type === "punct" && (next.value === "(" || next.value === ".")) return null;
+      return { ...inner, end: inner.end + 1 };
+    }
+    if (inner) return null;
+  }
   if (is(tokens[k], "ident", "async")) k++;
   if (is(tokens[k], "ident", "function")) {
     k++;
@@ -140,7 +159,7 @@ function readFunction(tokens: Token[], i: number): FunctionSpan | null {
       const close = matchBracket(tokens, k + 2);
       return close === -1
         ? null
-        : { bodyOpen: k + 2, bodyClose: close, params: [tokens[k]!.value] };
+        : { bodyOpen: k + 2, bodyClose: close, end: close, params: [tokens[k]!.value] };
     }
     return null;
   }
@@ -154,7 +173,7 @@ function readFunction(tokens: Token[], i: number): FunctionSpan | null {
   if (is(tokens[bodyOpen], "punct", "=>")) bodyOpen++;
   if (!is(tokens[bodyOpen], "punct", "{")) return null;
   const bodyClose = matchBracket(tokens, bodyOpen);
-  return bodyClose === -1 ? null : { bodyOpen, bodyClose, params };
+  return bodyClose === -1 ? null : { bodyOpen, bodyClose, end: bodyClose, params };
 }
 
 interface RawModule {
@@ -220,6 +239,7 @@ function readModuleMap(
         fn = {
           bodyOpen,
           bodyClose,
+          end: bodyClose,
           params: tokens
             .slice(valueStart + 1, paramsClose)
             .filter((t) => t.type === "ident")
@@ -234,7 +254,7 @@ function readModuleMap(
       if (arrClose !== -1 && inner) {
         fn = inner;
         valueEnd = arrClose;
-        const mapOpen = inner.bodyClose + 2;
+        const mapOpen = inner.end + 2;
         if (is(tokens[mapOpen - 1], "punct", ",") && is(tokens[mapOpen], "punct", "{")) {
           const mapClose = matchBracket(tokens, mapOpen);
           depsMap = {};
@@ -250,7 +270,7 @@ function readModuleMap(
       }
     } else {
       fn = readFunction(tokens, valueStart);
-      if (fn) valueEnd = fn.bodyClose;
+      if (fn) valueEnd = fn.end;
     }
     if (!fn) {
       nonModules++;
