@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "a6d9b82+uncommitted",
+  "commit": "8daa850",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -881,9 +881,7 @@
      },
      {
       "channel": "doc:rename",
-      "senders": [
-       "preload.js"
-      ],
+      "senders": [],
       "receivers": [
        "main.js"
       ]
@@ -949,7 +947,7 @@
      {
       "api": "notes",
       "member": "rename",
-      "channel": "doc:rename"
+      "channel": null
      },
      {
       "api": "notes",
@@ -3299,6 +3297,2529 @@
       ]
      }
     ]
+   }
+  },
+  "native:holdout/exprcalc.O0.macho-arm64:radare2": {
+   "native": {
+    "status": "RUN",
+    "engine": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+    "limitations": [],
+    "imports": [
+     "stderrp",
+     "atoi",
+     "fputs",
+     "getenv",
+     "printf",
+     "strchr",
+     "strtol"
+    ],
+    "functions": [
+     "main",
+     "evaluate",
+     "next_token",
+     "state_blank",
+     "state_digits",
+     "state_punctuation",
+     "parse_expression",
+     "parse_term",
+     "parse_factor",
+     "apply",
+     "trace_number",
+     "trace_binary",
+     "count_number",
+     "count_binary",
+     "report",
+     "complain",
+     "debug_level"
+    ],
+    "paths": [
+     {
+      "from": "main",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "main",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "report",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "main",
+       "report",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "parse_factor",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "parse_term",
+       "parse_factor"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "apply",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "apply"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_factor",
+      "to": "parse_term",
+      "found": true,
+      "path": [
+       "parse_factor",
+       "parse_expression",
+       "parse_term"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_term",
+      "to": "parse_expression",
+      "found": true,
+      "path": [
+       "parse_term",
+       "parse_factor",
+       "parse_expression"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_expression",
+      "to": "next_token",
+      "found": true,
+      "path": [
+       "parse_expression",
+       "next_token"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "debug_level",
+      "to": "atoi",
+      "found": true,
+      "path": [
+       "debug_level",
+       "atoi"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "atoi",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "debug_level",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "complain",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "fputs",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "report",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "next_token",
+      "to": "parse_expression",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "strtol",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "apply",
+      "to": "next_token",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ],
+    "callers": [
+     {
+      "of": "debug_level",
+      "callers": []
+     },
+     {
+      "of": "state_blank",
+      "callers": []
+     },
+     {
+      "of": "state_digits",
+      "callers": []
+     },
+     {
+      "of": "state_punctuation",
+      "callers": []
+     },
+     {
+      "of": "trace_number",
+      "callers": []
+     },
+     {
+      "of": "count_number",
+      "callers": []
+     },
+     {
+      "of": "trace_binary",
+      "callers": []
+     },
+     {
+      "of": "count_binary",
+      "callers": []
+     },
+     {
+      "of": "parse_expression",
+      "callers": [
+       "evaluate",
+       "parse_factor"
+      ]
+     },
+     {
+      "of": "parse_term",
+      "callers": [
+       "parse_expression"
+      ]
+     },
+     {
+      "of": "parse_factor",
+      "callers": [
+       "parse_factor",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "next_token",
+      "callers": [
+       "evaluate",
+       "parse_expression",
+       "parse_factor",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "apply",
+      "callers": [
+       "parse_expression",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "evaluate",
+      "callers": [
+       "main"
+      ]
+     },
+     {
+      "of": "report",
+      "callers": [
+       "main"
+      ]
+     },
+     {
+      "of": "complain",
+      "callers": [
+       "main",
+       "report"
+      ]
+     }
+    ]
+   }
+  },
+  "native:holdout/exprcalc.O0.macho-arm64:rizin": {
+   "native": {
+    "status": "RUN",
+    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+    "limitations": [],
+    "imports": [
+     "stderrp",
+     "atoi",
+     "fputs",
+     "getenv",
+     "printf",
+     "strchr",
+     "strtol"
+    ],
+    "functions": [
+     "main",
+     "evaluate",
+     "next_token",
+     "state_blank",
+     "state_digits",
+     "state_punctuation",
+     "parse_expression",
+     "parse_term",
+     "parse_factor",
+     "apply",
+     "trace_number",
+     "trace_binary",
+     "count_number",
+     "count_binary",
+     "report",
+     "complain",
+     "debug_level"
+    ],
+    "paths": [
+     {
+      "from": "main",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "main",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "report",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "main",
+       "report",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "parse_factor",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "parse_term",
+       "parse_factor"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "apply",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "apply"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_factor",
+      "to": "parse_term",
+      "found": true,
+      "path": [
+       "parse_factor",
+       "parse_expression",
+       "parse_term"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_term",
+      "to": "parse_expression",
+      "found": true,
+      "path": [
+       "parse_term",
+       "parse_factor",
+       "parse_expression"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_expression",
+      "to": "next_token",
+      "found": true,
+      "path": [
+       "parse_expression",
+       "next_token"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "debug_level",
+      "to": "atoi",
+      "found": true,
+      "path": [
+       "debug_level",
+       "atoi"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "atoi",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "debug_level",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "complain",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "fputs",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "report",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "next_token",
+      "to": "parse_expression",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "strtol",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "apply",
+      "to": "next_token",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ],
+    "callers": [
+     {
+      "of": "debug_level",
+      "callers": []
+     },
+     {
+      "of": "state_blank",
+      "callers": []
+     },
+     {
+      "of": "state_digits",
+      "callers": []
+     },
+     {
+      "of": "state_punctuation",
+      "callers": []
+     },
+     {
+      "of": "trace_number",
+      "callers": []
+     },
+     {
+      "of": "count_number",
+      "callers": []
+     },
+     {
+      "of": "trace_binary",
+      "callers": []
+     },
+     {
+      "of": "count_binary",
+      "callers": [
+       "next_token"
+      ]
+     },
+     {
+      "of": "parse_expression",
+      "callers": [
+       "evaluate",
+       "parse_factor"
+      ]
+     },
+     {
+      "of": "parse_term",
+      "callers": [
+       "parse_expression"
+      ]
+     },
+     {
+      "of": "parse_factor",
+      "callers": [
+       "parse_factor",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "next_token",
+      "callers": [
+       "evaluate",
+       "parse_expression",
+       "parse_factor",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "apply",
+      "callers": [
+       "parse_expression",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "evaluate",
+      "callers": [
+       "main"
+      ]
+     },
+     {
+      "of": "report",
+      "callers": [
+       "main"
+      ]
+     },
+     {
+      "of": "complain",
+      "callers": [
+       "main",
+       "report"
+      ]
+     }
+    ]
+   }
+  },
+  "native:holdout/exprcalc.O2.macho-arm64:radare2": {
+   "native": {
+    "status": "RUN",
+    "engine": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+    "limitations": [],
+    "imports": [
+     "stderrp",
+     "atoi",
+     "fputs",
+     "getenv",
+     "printf",
+     "strtol"
+    ],
+    "functions": [
+     "main",
+     "evaluate",
+     "next_token",
+     "state_blank",
+     "state_digits",
+     "state_punctuation",
+     "parse_expression",
+     "parse_term",
+     "parse_factor",
+     "apply",
+     "trace_number",
+     "trace_binary",
+     "count_number",
+     "count_binary",
+     "report",
+     "complain",
+     "debug_level"
+    ],
+    "paths": [
+     {
+      "from": "main",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "main",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "report",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "main",
+       "report",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "parse_factor",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "parse_term",
+       "parse_factor"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "apply",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "apply"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_factor",
+      "to": "parse_term",
+      "found": true,
+      "path": [
+       "parse_factor",
+       "parse_expression",
+       "parse_term"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_term",
+      "to": "parse_expression",
+      "found": true,
+      "path": [
+       "parse_term",
+       "parse_factor",
+       "parse_expression"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_expression",
+      "to": "next_token",
+      "found": true,
+      "path": [
+       "parse_expression",
+       "next_token"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "debug_level",
+      "to": "atoi",
+      "found": true,
+      "path": [
+       "debug_level",
+       "atoi"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "atoi",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "debug_level",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "complain",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "fputs",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "report",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "next_token",
+      "to": "parse_expression",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "strtol",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "apply",
+      "to": "next_token",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ],
+    "callers": [
+     {
+      "of": "debug_level",
+      "callers": []
+     },
+     {
+      "of": "state_blank",
+      "callers": []
+     },
+     {
+      "of": "state_digits",
+      "callers": []
+     },
+     {
+      "of": "state_punctuation",
+      "callers": []
+     },
+     {
+      "of": "trace_number",
+      "callers": []
+     },
+     {
+      "of": "count_number",
+      "callers": []
+     },
+     {
+      "of": "trace_binary",
+      "callers": []
+     },
+     {
+      "of": "count_binary",
+      "callers": []
+     },
+     {
+      "of": "parse_expression",
+      "callers": [
+       "evaluate",
+       "parse_factor"
+      ]
+     },
+     {
+      "of": "parse_term",
+      "callers": [
+       "parse_expression"
+      ]
+     },
+     {
+      "of": "parse_factor",
+      "callers": [
+       "parse_factor",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "next_token",
+      "callers": [
+       "evaluate",
+       "parse_expression",
+       "parse_factor",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "apply",
+      "callers": [
+       "parse_expression",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "evaluate",
+      "callers": [
+       "main"
+      ]
+     },
+     {
+      "of": "report",
+      "callers": [
+       "main"
+      ]
+     },
+     {
+      "of": "complain",
+      "callers": [
+       "main",
+       "report"
+      ]
+     }
+    ]
+   }
+  },
+  "native:holdout/exprcalc.O2.macho-arm64:rizin": {
+   "native": {
+    "status": "RUN",
+    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+    "limitations": [],
+    "imports": [
+     "stderrp",
+     "atoi",
+     "fputs",
+     "getenv",
+     "printf",
+     "strtol"
+    ],
+    "functions": [
+     "main",
+     "evaluate",
+     "next_token",
+     "state_blank",
+     "state_digits",
+     "state_punctuation",
+     "parse_expression",
+     "parse_term",
+     "parse_factor",
+     "apply",
+     "trace_number",
+     "trace_binary",
+     "count_number",
+     "count_binary",
+     "report",
+     "complain",
+     "debug_level"
+    ],
+    "paths": [
+     {
+      "from": "main",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "main",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "report",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "main",
+       "report",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "parse_factor",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "parse_term",
+       "parse_factor"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "apply",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "apply"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_factor",
+      "to": "parse_term",
+      "found": true,
+      "path": [
+       "parse_factor",
+       "parse_expression",
+       "parse_term"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_term",
+      "to": "parse_expression",
+      "found": true,
+      "path": [
+       "parse_term",
+       "parse_factor",
+       "parse_expression"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_expression",
+      "to": "next_token",
+      "found": true,
+      "path": [
+       "parse_expression",
+       "next_token"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "debug_level",
+      "to": "atoi",
+      "found": false,
+      "hedged": false,
+      "unresolved": "atoi"
+     },
+     {
+      "from": "main",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "atoi",
+      "found": false,
+      "hedged": false,
+      "unresolved": "atoi"
+     },
+     {
+      "from": "main",
+      "to": "debug_level",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "complain",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "fputs",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "report",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "next_token",
+      "to": "parse_expression",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "strtol",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "apply",
+      "to": "next_token",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ],
+    "callers": [
+     {
+      "of": "debug_level",
+      "callers": []
+     },
+     {
+      "of": "state_blank",
+      "callers": [
+       "next_token"
+      ]
+     },
+     {
+      "of": "state_digits",
+      "callers": []
+     },
+     {
+      "of": "state_punctuation",
+      "callers": []
+     },
+     {
+      "of": "trace_number",
+      "callers": []
+     },
+     {
+      "of": "count_number",
+      "callers": []
+     },
+     {
+      "of": "trace_binary",
+      "callers": []
+     },
+     {
+      "of": "count_binary",
+      "callers": []
+     },
+     {
+      "of": "parse_expression",
+      "callers": [
+       "evaluate",
+       "parse_factor"
+      ]
+     },
+     {
+      "of": "parse_term",
+      "callers": [
+       "parse_expression"
+      ]
+     },
+     {
+      "of": "parse_factor",
+      "callers": [
+       "parse_factor",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "next_token",
+      "callers": [
+       "evaluate",
+       "parse_expression",
+       "parse_factor",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "apply",
+      "callers": [
+       "parse_expression",
+       "parse_term"
+      ]
+     },
+     {
+      "of": "evaluate",
+      "callers": [
+       "main"
+      ]
+     },
+     {
+      "of": "report",
+      "callers": [
+       "main"
+      ]
+     },
+     {
+      "of": "complain",
+      "callers": [
+       "main",
+       "report"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout/time-tracker.plain.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "context_bridge_members_unreadable"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "tracker",
+      "member": "startTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "stopTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onTick",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "listProjects",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "renameProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "exportInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onceExported",
+      "channel": "invoice:exported"
+     },
+     {
+      "api": "tracker",
+      "member": "startSync",
+      "channel": "sync:start"
+     },
+     {
+      "api": "tracker",
+      "member": "cancelSync",
+      "channel": "sync:cancel"
+     },
+     {
+      "api": "tracker",
+      "member": "onSyncProgress",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setting",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "activate",
+      "channel": "license:activate"
+     },
+     {
+      "api": "tracker",
+      "member": "onNewEntry",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onUpdateReady",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "formatDuration",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "copy",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "runtime",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setBadge",
+      "channel": "dock:badge"
+     },
+     {
+      "api": "[computed]",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "kind": "http-client",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://status.punchclock.example/api/v2/summary.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://telemetry.punchclock.example/v1/events",
+      "kind": "beacon",
+      "method": "POST",
+      "evidence": "literal"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "literal"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/projects/${…}/entries?week=${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://rates.punchclock.example/latest?base=${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/entries/${…}",
+      "kind": "fetch",
+      "method": "DELETE",
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "kind": "fetch",
+      "method": "PATCH",
+      "evidence": "literal"
+     },
+     {
+      "value": "${…}/team/${…}",
+      "kind": "websocket",
+      "method": null,
+      "evidence": "template"
+     }
+    ],
+    "endpointsUnreadable": 5,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.lastRun",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-v3",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-entries",
+      "ops": []
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     }
+    ]
+   }
+  },
+  "holdout/time-tracker.bundled.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "context_bridge_members_unreadable"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:export",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:progress",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "timer:start",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:stop",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "tracker",
+      "member": "startTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "stopTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onTick",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "listProjects",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "renameProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "exportInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onceExported",
+      "channel": "invoice:exported"
+     },
+     {
+      "api": "tracker",
+      "member": "startSync",
+      "channel": "sync:start"
+     },
+     {
+      "api": "tracker",
+      "member": "cancelSync",
+      "channel": "sync:cancel"
+     },
+     {
+      "api": "tracker",
+      "member": "onSyncProgress",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setting",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "activate",
+      "channel": "license:activate"
+     },
+     {
+      "api": "tracker",
+      "member": "onNewEntry",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onUpdateReady",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "formatDuration",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "copy",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "runtime",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setBadge",
+      "channel": "dock:badge"
+     },
+     {
+      "api": "[computed]",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "kind": "http-client",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "${…}/feed/stable.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://status.punchclock.example/api/v2/summary.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://telemetry.punchclock.example/v1/events",
+      "kind": "beacon",
+      "method": "POST",
+      "evidence": "literal"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "literal"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/projects/${…}/entries?week=${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://rates.punchclock.example/latest?base=${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/entries/${…}",
+      "kind": "fetch",
+      "method": "DELETE",
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "kind": "fetch",
+      "method": "PATCH",
+      "evidence": "literal"
+     },
+     {
+      "value": "${…}/team/${…}",
+      "kind": "websocket",
+      "method": null,
+      "evidence": "template"
+     }
+    ],
+    "endpointsUnreadable": 5,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.lastRun",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-v3",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-entries",
+      "ops": []
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     }
+    ]
+   }
+  },
+  "holdout/time-tracker.minified.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "context_bridge_members_unreadable"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:export",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:progress",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "timer:start",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:stop",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "tracker",
+      "member": "startTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "stopTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onTick",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "listProjects",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "renameProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "exportInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onceExported",
+      "channel": "invoice:exported"
+     },
+     {
+      "api": "tracker",
+      "member": "startSync",
+      "channel": "sync:start"
+     },
+     {
+      "api": "tracker",
+      "member": "cancelSync",
+      "channel": "sync:cancel"
+     },
+     {
+      "api": "tracker",
+      "member": "onSyncProgress",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setting",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "activate",
+      "channel": "license:activate"
+     },
+     {
+      "api": "tracker",
+      "member": "onNewEntry",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onUpdateReady",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "formatDuration",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "copy",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "runtime",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setBadge",
+      "channel": "dock:badge"
+     },
+     {
+      "api": "[computed]",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "kind": "http-client",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "${…}/feed/stable.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://status.punchclock.example/api/v2/summary.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://telemetry.punchclock.example/v1/events",
+      "kind": "beacon",
+      "method": "POST",
+      "evidence": "literal"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "literal"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/projects/${…}/entries?week=${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://rates.punchclock.example/latest?base=${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/entries/${…}",
+      "kind": "fetch",
+      "method": "DELETE",
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "kind": "fetch",
+      "method": "PATCH",
+      "evidence": "literal"
+     },
+     {
+      "value": "${…}/team/${…}",
+      "kind": "websocket",
+      "method": null,
+      "evidence": "template"
+     }
+    ],
+    "endpointsUnreadable": 5,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.lastRun",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-v3",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-entries",
+      "ops": []
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     }
+    ]
+   }
+  },
+  "compare:holdout/time-tracker.plain.asar|holdout/time-tracker-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "key": "channel",
+     "added": [],
+     "removed": [
+      "widget:close"
+     ],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 10
+    },
+    "contextBridge": {
+     "key": "api+member",
+     "added": [
+      "tracker.retitleProject"
+     ],
+     "removed": [
+      "tracker.renameProject"
+     ],
+     "changed": [],
+     "relocated": 20,
+     "unchanged": 0
+    },
+    "webPreferences": {
+     "key": "file+window+key",
+     "added": [],
+     "removed": [
+      "main.js::2::sandbox"
+     ],
+     "changed": [],
+     "relocated": 2,
+     "unchanged": 0
+    },
+    "endpoints": {
+     "key": "file+kind+value",
+     "added": [
+      "https://api.punchclock.example/v4/projects/${…}/entries?week=${…}",
+      "https://api.punchclock.example/v4/entries/${…}"
+     ],
+     "removed": [
+      "https://api.punchclock.example/v3/projects/${…}/entries?week=${…}",
+      "https://api.punchclock.example/v3/entries/${…}"
+     ],
+     "changed": [],
+     "relocated": 12,
+     "unchanged": 0
+    },
+    "storage": {
+     "key": "file+kind+value+op",
+     "added": [],
+     "removed": [
+      "indexedDB punchclock-v3"
+     ],
+     "changed": [],
+     "relocated": 26,
+     "unchanged": 0
+    }
    }
   },
   "robust:damaged/empty.asar": {

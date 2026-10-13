@@ -1,6 +1,6 @@
 # hexvero 0.3.0 on the hexvero corpus
 
-Tool: name hexvero · version 0.3.0 · commit a6d9b82+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.3.0 · commit 8daa850 · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -13,10 +13,10 @@ Tool: name hexvero · version 0.3.0 · commit a6d9b82+uncommitted · node v25.2.
 | dev | call paths | 4 | 16 | 0 | 0 |  |
 | dev | direct callers | 4 | 16 | 0 | 0 |  |
 | dev | IPC channels | 3 | 18 | 0 | 0 |  |
-| dev | IPC senders and receivers | 3 | 33 | 0 | 0 |  |
+| dev | IPC senders and receivers | 3 | 32 | 1 | 0 |  |
 | dev | window settings | 3 | 21 | 0 | 0 |  |
 | dev | bridge members | 3 | 18 | 0 | 0 |  |
-| dev | bridge member channel | 3 | 18 | 0 | 0 |  |
+| dev | bridge member channel | 3 | 17 | 1 | 0 |  |
 | dev | endpoints | 3 | 17 | 1 | 0 |  |
 | dev | endpoint method | 3 | 5 | 0 | 0 |  |
 | dev | requests with an unknown URL shown | 3 | 3 | 0 | 0 |  |
@@ -91,10 +91,10 @@ Tool: name hexvero · version 0.3.0 · commit a6d9b82+uncommitted · node v25.2.
 | dev | dev/notes-app.bundled.asar | storage keys | 7 | 0 | 0 |  |
 | dev | dev/notes-app.bundled.asar | storage read/write/delete | 6 | 0 | 0 |  |
 | dev | dev/notes-app.minified.asar | IPC channels | 6 | 0 | 0 |  |
-| dev | dev/notes-app.minified.asar | IPC senders and receivers | 11 | 0 | 0 |  |
+| dev | dev/notes-app.minified.asar | IPC senders and receivers | 10 | 1 | 0 | doc:rename: sender preload.js missed |
 | dev | dev/notes-app.minified.asar | window settings | 7 | 0 | 0 |  |
 | dev | dev/notes-app.minified.asar | bridge members | 6 | 0 | 0 |  |
-| dev | dev/notes-app.minified.asar | bridge member channel | 6 | 0 | 0 |  |
+| dev | dev/notes-app.minified.asar | bridge member channel | 5 | 1 | 0 | notes.rename: expected doc:rename, got null |
 | dev | dev/notes-app.minified.asar | endpoints | 5 | 1 | 0 | missed /v1/login |
 | dev | dev/notes-app.minified.asar | endpoint method | 1 | 0 | 0 |  |
 | dev | dev/notes-app.minified.asar | requests with an unknown URL shown | 1 | 0 | 0 |  |

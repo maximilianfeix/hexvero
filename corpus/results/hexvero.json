@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "a6d9b82+uncommitted",
+  "commit": "8daa850",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -77,8 +77,8 @@
   {
    "set": "dev",
    "class": "IPC senders and receivers",
-   "hit": 33,
-   "missed": 0,
+   "hit": 32,
+   "missed": 1,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -104,8 +104,8 @@
   {
    "set": "dev",
    "class": "bridge member channel",
-   "hit": 18,
-   "missed": 0,
+   "hit": 17,
+   "missed": 1,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -745,10 +745,12 @@
    "set": "dev",
    "input": "dev/notes-app.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 11,
-   "missed": 0,
+   "hit": 10,
+   "missed": 1,
    "false": 0,
-   "notes": []
+   "notes": [
+    "doc:rename: sender preload.js missed"
+   ]
   },
   {
    "set": "dev",
@@ -772,10 +774,12 @@
    "set": "dev",
    "input": "dev/notes-app.minified.asar",
    "class": "bridge member channel",
-   "hit": 6,
-   "missed": 0,
+   "hit": 5,
+   "missed": 1,
    "false": 0,
-   "notes": []
+   "notes": [
+    "notes.rename: expected doc:rename, got null"
+   ]
   },
   {
    "set": "dev",

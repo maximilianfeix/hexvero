@@ -223,7 +223,16 @@ function scoreCompare(c, o) {
       ]);
       continue;
     }
-    const s = sets3(tag(want), [], tag(got), true);
+    // An expected endpoint may be the known leading part of an address that ends in run-time
+    // text (as in the single-build expectations): a reported address that starts with it counts.
+    const expected = tag(want);
+    const reported =
+      name === "endpoints"
+        ? tag(got).map(
+            (g) => expected.find((e) => e[0] === g[0] && g.slice(1).startsWith(e.slice(1))) ?? g,
+          )
+        : tag(got);
+    const s = sets3(expected, [], [...new Set(reported)], true);
     add(
       c.set,
       `${c.a} → ${c.b}`,
