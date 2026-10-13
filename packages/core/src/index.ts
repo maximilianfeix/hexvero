@@ -102,3 +102,11 @@ export {
   type SwiftSymbol,
 } from "./formats/swiftDemangle.js";
 export { UnknownsLedger, type Unknown } from "./unknowns.js";
+export { parseArsc, type ArscInfo, type ArscEntry } from "./formats/arsc.js";
+export {
+  summarizeFlutter,
+  inspectDartLibrary,
+  readDartSnapshotHeader,
+  type FlutterInfo,
+  type DartSnapshot,
+} from "./formats/flutter.js";

@@ -73,7 +73,8 @@ function decodeTypedValue(type: number, data: number, strings: string[]): string
   }
 }
 
-function readStringPool(r: ByteReader, chunkStart: number, chunkSize: number): string[] {
+/** ResStringPool chunk body (UTF-8 or UTF-16); `r` is positioned right after the 8-byte chunk header. */
+export function readStringPool(r: ByteReader, chunkStart: number, chunkSize: number): string[] {
   const count = r.u32();
   r.u32(); // style count
   const flags = r.u32();

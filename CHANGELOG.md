@@ -14,6 +14,9 @@ All notable changes to hexvero are listed here. The format follows
   adopted protocols, superclass incl. external binds), protocols, categories; pointers decoded through
   dyld chained fixups (PTR_64, PTR_64_OFFSET, ARM64E) and dyld_info bind opcodes. Swift class names
   and mangled symbols are made readable (approximate, no `swift-demangle` needed).
+- Android resources.arsc decoder (packages, types, default values, locales, densities) that resolves
+  manifest references such as the application label; Flutter/Dart AOT snapshot facts (version hash,
+  features, engine build ids, per-ABI digests) without Apktool or any engine.
 - Guided MCP prompts (investigate_feature, compare_versions, triage_binary, map_electron_app, explain_apk)
   and an unknowns ledger tool (`hexvero_unknowns`) whose entries ship with exports.
 - `hexvero recover` and the `hexvero_recover` MCP tool write bundle modules or source-map originals to
