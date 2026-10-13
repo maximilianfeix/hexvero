@@ -73,6 +73,8 @@ export {
   type PathTrace,
 } from "./providers/graph.js";
 export {
+  killEngines,
+  isAddress,
   loadCallGraph,
   type CallGraphResult,
   runProvider,

@@ -77,7 +77,11 @@ export const toolSchemas = {
     title: "Export analysis",
     description:
       "Write the complete analysis as JSON to a file and return its path and size. Use this instead of paging when you need everything.",
-    input: { targetId, path: z.string().describe("Destination file path") },
+    input: {
+      targetId,
+      path: z.string().describe("Absolute destination file path; refused when the file exists"),
+      overwrite: z.boolean().optional().describe("Replace an existing file (default false)"),
+    },
   },
   hexvero_recover: {
     title: "Recover sources",
@@ -183,16 +187,22 @@ export type ToolName = keyof typeof toolSchemas;
 
 export interface ProviderBridge {
   detect(): Promise<unknown>;
-  run(args: {
-    targetPath: string;
-    provider: string;
-    operation: string;
-    address?: string;
-    text?: string;
-    timeoutMs?: number;
-  }): Promise<unknown>;
+  run(
+    args: {
+      targetPath: string;
+      provider: string;
+      operation: string;
+      address?: string;
+      text?: string;
+      timeoutMs?: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<unknown>;
   /** The normalized whole-program call graph (the `callgraph` operation's result). */
-  callGraph(args: { targetPath: string; provider: string; timeoutMs?: number }): Promise<CallGraph>;
+  callGraph(
+    args: { targetPath: string; provider: string; timeoutMs?: number },
+    signal?: AbortSignal,
+  ): Promise<CallGraph>;
 }
 
 const str = (v: unknown): string => String(v);
@@ -243,12 +253,15 @@ export function createHandlers(
     },
     hexvero_bytes: async (a) =>
       session.bytes(str(a["targetId"]), Number(a["offset"]), Number(a["length"])),
-    hexvero_export: async (a) => session.export(str(a["targetId"]), str(a["path"])),
+    hexvero_export: async (a) =>
+      session.export(str(a["targetId"]), str(a["path"]), { overwrite: a["overwrite"] === true }),
     hexvero_recover: async (a) => {
       const result = await session.recover(str(a["targetId"]), str(a["outputDir"]));
       return {
         ...result,
         written: { count: result.written.length, sample: result.written.slice(0, 50) },
+        skipped: { count: result.skipped.length, sample: result.skipped.slice(0, 50) },
+        note: "The manifest in outputDir lists every written and skipped file.",
       };
     },
     hexvero_unknowns: async (a) => {
@@ -319,7 +332,7 @@ export function createHandlers(
       );
     },
     hexvero_providers: async () => providers.detect(),
-    hexvero_provider_run: async (a) => {
+    hexvero_provider_run: async (a, signal) => {
       const target = session.get(str(a["targetId"]));
       const req: Parameters<ProviderBridge["run"]>[0] = {
         targetPath: target.info.path,
@@ -330,7 +343,7 @@ export function createHandlers(
       if (typeof a["text"] === "string") req.text = a["text"];
       const timeoutMs = num(a["timeoutMs"]);
       if (timeoutMs !== undefined) req.timeoutMs = timeoutMs;
-      const result = (await providers.run(req)) as { result?: unknown } | null;
+      const result = (await providers.run(req, signal)) as { result?: unknown } | null;
       if (result && typeof result === "object" && "result" in result) {
         return {
           ...result,
@@ -340,7 +353,7 @@ export function createHandlers(
       }
       return result;
     },
-    hexvero_call_graph: async (a) => {
+    hexvero_call_graph: async (a, signal) => {
       const target = session.get(str(a["targetId"]));
       const req: Parameters<ProviderBridge["callGraph"]>[0] = {
         targetPath: target.info.path,
@@ -348,7 +361,7 @@ export function createHandlers(
       };
       const timeoutMs = num(a["timeoutMs"]);
       if (timeoutMs !== undefined) req.timeoutMs = timeoutMs;
-      const graph = await providers.callGraph(req);
+      const graph = await providers.callGraph(req, signal);
       const root = resolveNode(graph, str(a["root"]));
       if (!root.node)
         throw new AnalysisError("invalid_input", `No function matches ${str(a["root"])}`, {

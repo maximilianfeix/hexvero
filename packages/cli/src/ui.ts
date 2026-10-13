@@ -1,3 +1,4 @@
+import { killEngines } from "@hexvero/core";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -39,6 +40,7 @@ export async function startUi(
   if (options.open) openBrowser(url);
   await new Promise<void>((resolve) => {
     const stop = (): void => {
+      killEngines();
       void running.close().then(resolve);
     };
     process.once("SIGINT", stop);

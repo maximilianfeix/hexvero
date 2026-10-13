@@ -83,6 +83,8 @@ describe("Session", () => {
     const out = join(dir, "export.json");
     const result = await session.export(record.id, out);
     expect(result.bytes).toBeGreaterThan(100);
+    expect(result.path).toBe(out);
+    await expect(session.export(record.id, out)).rejects.toThrow(/overwrite/);
     const exportedJson = JSON.parse(readFileSync(out, "utf8"));
     expect(exportedJson.analysis.summary).toContain("Electron ASAR");
     session.unknowns.record({
@@ -90,7 +92,7 @@ describe("Session", () => {
       question: "Where is the preload registered?",
       checked: ["modules"],
     });
-    await session.export(record.id, out);
+    await session.export(record.id, out, { overwrite: true });
     expect(JSON.parse(readFileSync(out, "utf8")).unknowns).toHaveLength(1);
     expect(session.close(record.id)).toBe(true);
     expect(() => session.get(record.id)).toThrow(/No open target/);

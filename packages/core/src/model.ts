@@ -84,6 +84,7 @@ export class AnalysisError extends Error {
       | "malformed"
       | "not_found"
       | "too_large"
+      | "cancelled"
       | "provider_unavailable"
       | "invalid_input",
     message: string,

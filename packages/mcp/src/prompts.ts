@@ -35,12 +35,12 @@ export const GUIDED_PROMPTS: GuidedPrompt[] = [
         required: false,
       },
     },
-    render: (
-      a,
-    ) => `Investigate "${a["feature"]}"${a["path"] ? ` in ${a["path"]}` : ""} with hexvero.
+    render: (a) => `Investigate the feature named in the arguments with hexvero.
 
-1. ${a["path"] ? `hexvero_open { path: "${a["path"]}" }` : "hexvero_list to find the open target"}, then hexvero_analyze { targetId }. Read summary, findings and limitations first.
-2. Find seeds: hexvero_strings { text: "${a["feature"]}" } and, depending on the format, hexvero_collection with text: "${a["feature"]}" on symbols, imports, exports, methods, classes, modules, ipcChannels, endpoints or routes.
+${argumentsBlock(a)}
+
+1. ${a["path"] ? `hexvero_open { path: ${q(a["path"])} }` : "hexvero_list to find the open target"}, then hexvero_analyze { targetId }. Read summary, findings and limitations first.
+2. Find seeds: hexvero_strings { text: ${q(a["feature"])} } and, depending on the format, hexvero_collection with text: ${q(a["feature"])} on symbols, imports, exports, methods, classes, modules, ipcChannels, endpoints or routes.
 3. Follow the seed: for native binaries page imports/exports and, with an engine, hexvero_provider_run { operation: "disassemble" | "decompile" | "xrefs", address } and hexvero_call_graph { root, direction } to see who calls what; for JavaScript bundles use bundleModules/edges and hexvero_recover to read the module files; for Electron apps follow ipcChannels from renderer to main.
 4. Corroborate with hexvero_bytes at reported offsets when a claim depends on exact data.
 

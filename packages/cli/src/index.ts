@@ -127,7 +127,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       const analysis = await session.analyze(target.id);
       const collections = await session.collections(target.id);
       const out = flagString(args.flags, "out");
-      if (out) await session.export(target.id, out);
+      if (out) await session.export(target.id, out, { overwrite: true });
       if (json) {
         io.out(
           toJson({
@@ -257,7 +257,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     }
     case "export": {
       const target = await session.open(need(0, "path"));
-      const result = await session.export(target.id, need(1, "out.json"));
+      const result = await session.export(target.id, need(1, "out.json"), { overwrite: true });
       io.out(
         json ? toJson(result) : `${paint(io, "green", "✓")} ${result.path} (${result.bytes} bytes)`,
       );
