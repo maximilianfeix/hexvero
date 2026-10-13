@@ -428,7 +428,8 @@ describe("window settings as written, computed, or absent", () => {
       "tweak(prefs);",
       "prefs = loadPrefs();",
       "prefs.extra.deep.sandbox = false;",
-      "delete prefs.sandbox;",
+      "new Tweaker(prefs);",
+      "const alias = prefs; alias.sandbox = false;",
       "prefs[name] = false;",
       "Object.defineProperty(prefs, 'sandbox', { value: false });",
     ])
@@ -438,6 +439,21 @@ describe("window settings as written, computed, or absent", () => {
         ).windows.map((w) => `${w.sandbox} ${w.contextIsolation}`),
         change,
       ).toEqual(["computed computed"]);
+    // a compound write to one key is a write to that key
+    for (const change of [
+      "prefs.sandbox ||= other;",
+      "prefs.sandbox &&= other;",
+      "prefs.sandbox ??= other;",
+      "prefs.sandbox ^= true;",
+      "prefs.sandbox++;",
+      "delete prefs.sandbox;",
+    ])
+      expect(
+        analyze(
+          `const prefs = { sandbox: true, contextIsolation: true };\n${change}\nconst w = new BrowserWindow({ webPreferences: prefs });`,
+        ).windows.map((w) => `${w.sandbox} ${w.contextIsolation}`),
+        change,
+      ).toEqual(["computed true"]);
     // a read of a key is not a change
     expect(
       analyze(

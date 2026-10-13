@@ -79,6 +79,28 @@ function list(items: string[], max: number): string {
     : items.join(", ");
 }
 
+/** What may follow `object.key` when the key is only read. */
+const READ_FOLLOWERS = new Set([
+  ")",
+  ",",
+  ";",
+  "}",
+  "]",
+  "?",
+  ":",
+  "&&",
+  "||",
+  "??",
+  "===",
+  "!==",
+  "==",
+  "!=",
+  "<",
+  ">",
+  "<=",
+  ">=",
+]);
+
 /** Where a reply was read and what it sends: rows carry no column. */
 const lineAndChannel = (u: IpcUsage): string => `${u.line}\0${u.channel}`;
 
@@ -1363,7 +1385,10 @@ export function analyzeJavaScriptTree(
             }
             // Its use as options: `new X(name)`, `webPreferences: name`, `...name`.
             const asOptions =
-              (is(k - 1, "(") && is(k + 1, ")") && tokens[k - 3]?.value === "new") ||
+              (is(k - 1, "(") &&
+                is(k + 1, ")") &&
+                tokens[k - 3]?.value === "new" &&
+                WINDOW_CLASSES.has(tokens[k - 2]?.value ?? "")) ||
               (is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
               is(k - 1, "...");
             if (asOptions) continue;
@@ -1384,16 +1409,22 @@ export function analyzeJavaScriptTree(
               else mutated.add(key);
               continue;
             }
-            // A plain read of one key (`name.key` in an expression) changes nothing.
-            if (
-              tokens[k - 1]?.value !== "delete" &&
+            // A plain read of one key changes nothing. Only what is certainly a read counts as
+            // one: the key followed by the end of an expression or by a comparison or logical
+            // operator. `name.key ||= x`, `name.key += 1`, `name.key++` and anything else that is
+            // not on this list is a write.
+            const follower = tokens[after];
+            const reads =
               key !== null &&
-              !is(after, "=") &&
-              !is(after, ".") &&
-              !is(after, "[") &&
-              !is(after, "(")
-            )
+              tokens[k - 1]?.value !== "delete" &&
+              tokens[k - 1]?.value !== "++" &&
+              tokens[k - 1]?.value !== "--" &&
+              (!follower || (follower.type === "punct" && READ_FOLLOWERS.has(follower.value)));
+            if (reads) continue;
+            if (key !== null && !is(after, ".") && !is(after, "[") && !is(after, "(")) {
+              mutated.add(key);
               continue;
+            }
             // Anything else may change the object in a way that is not read here: a second
             // assignment to the name, a deeper or computed write, `delete`, the object handed to
             // a function (`Object.assign(name, …)`, `tweak(name)`), a method called on it.
