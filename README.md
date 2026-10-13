@@ -11,7 +11,7 @@
 [![npm](https://img.shields.io/npm/v/hexvero?style=flat-square&color=F2B84B&labelColor=1B1D21)](https://www.npmjs.com/package/hexvero)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.12-F2B84B?style=flat-square&labelColor=1B1D21)](package.json)
 [![Runtime dependencies](https://img.shields.io/badge/core_dependencies-0-F2B84B?style=flat-square&labelColor=1B1D21)](packages/core/package.json)
-[![MCP tools](https://img.shields.io/badge/MCP_tools-14-F2B84B?style=flat-square&labelColor=1B1D21)](#for-ai-agents)
+[![MCP tools](https://img.shields.io/badge/MCP_tools-15-F2B84B?style=flat-square&labelColor=1B1D21)](#for-ai-agents)
 [![Network](https://img.shields.io/badge/network-never-F2B84B?style=flat-square&labelColor=1B1D21)](#faq)
 [![License](https://img.shields.io/badge/license-MIT-F2B84B?style=flat-square&labelColor=1B1D21)](LICENSE)
 
@@ -59,7 +59,7 @@ Reverse-engineering tooling for agents exists, but it ships 100+ MCP tools and a
 
 - **Built in, zero dependencies.** ELF, PE, Mach-O, Go, .NET, WebAssembly, EVM, SQLite, plist, APK, Electron, JavaScript, source maps and HAR are parsed by code in this repository. No JDK, no Python, no engine.
 - **Bounded by design.** Every list is a page with `offset`, `limit`, a text filter and a byte budget. The complete result goes to a file with one command, never into your context window.
-- **12 tools, not 139.** The MCP catalog is under 32 KiB and reads like a workflow: open, analyze, page, read bytes, export.
+- **15 tools, not 139.** The MCP catalog is under 32 KiB and reads like a workflow: open, analyze, page, read bytes, export.
 - **Honest output.** Findings carry `confirmed` or `inferred`; `limitations` say what was skipped, truncated or unreadable and why.
 - **A real UI.** Verdict, hardening marks, findings, virtualized tables, a hex viewer with live decoding and a module graph for Electron apps. Local only.
 - **Engines when you want them.** radare2, rizin and Ghidra plug in behind one interface for disassembly and decompilation; hexvero never installs them for you.
@@ -112,7 +112,10 @@ hexvero bytes <path> <offset> [length]                hex dump
 hexvero compare <a> <b> <collection> [--key field]    added / removed between two builds
 hexvero export <path> <out.json>                      the complete analysis
 hexvero recover <path> <outdir>                       bundle modules or source-map originals as files
-hexvero provider <path> radare2|rizin|ghidra functions|disassemble|decompile|strings|imports [--address a]
+hexvero provider <path> radare2|rizin|ghidra <op> [--address a] [--text s]
+                                                      functions, disassemble, decompile, strings, imports,
+                                                      xrefs, callers, callees, callgraph, search
+hexvero calls <path> <engine> <root> [--direction callers|callees|both] [--depth n] [--goal g]
 hexvero mcp · hexvero ui [--port n] [--open] · hexvero doctor · hexvero setup [--client c] [--apply]
 ```
 
@@ -151,7 +154,8 @@ Supported: Claude Code, Claude Desktop, Cursor, Windsurf, Gemini CLI, VS Code, C
 | `hexvero_export`                             | The complete analysis to a file                                                           |
 | `hexvero_compare`                            | Diff one collection between two targets                                                   |
 | `hexvero_sourcemap`                          | Original position for a generated line/column                                             |
-| `hexvero_providers` · `hexvero_provider_run` | Detect and drive radare2, rizin or Ghidra                                                 |
+| `hexvero_providers` · `hexvero_provider_run` | Detect and drive radare2, rizin or Ghidra (incl. xrefs, callers, callees, search)         |
+| `hexvero_call_graph`                         | Bounded call-graph neighborhood or shortest call path, one cached engine run per target   |
 | `hexvero_list` · `hexvero_close`             | Session housekeeping                                                                      |
 
 Ask your agent: _"Open ~/Downloads/app.asar with hexvero, tell me which IPC channels the renderer can reach and whether nodeIntegration is on."_ See [docs/mcp.md](docs/mcp.md).
@@ -165,9 +169,15 @@ hexvero detects `r2`/`radare2`, `rizin` and Ghidra's `analyzeHeadless` on `PATH`
 ```bash
 hexvero provider ./program radare2 functions
 hexvero provider ./program ghidra decompile --address main
+hexvero provider ./program radare2 xrefs --address sym.imp.system
+hexvero provider ./program ghidra search --text password
+hexvero calls ./program radare2 main --depth 3
+hexvero calls ./program ghidra entry --goal system
 ```
 
 Ghidra imports each target once into a project cached under `~/.cache/hexvero` and reuses it. Engine output is bounded, timeouts kill the whole process group, and decompiler plugins that are missing are reported as a limitation rather than an empty result.
+
+Call graphs are read from the engine once per target (radare2 `aflj` + `agCj`, Ghidra's reference manager) and walked locally: `hexvero calls` and `hexvero_call_graph` answer callers, callees, bounded neighborhoods and shortest paths without one engine round-trip per function, and every result states which depth, node or engine limit cut it.
 
 <a id="compared-with-rea"></a>
 
@@ -177,10 +187,11 @@ Ghidra imports each target once into a project cached under `~/.cache/hexvero` a
 
 |                                               | REA                                                    | hexvero                                             |
 | --------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------- |
-| MCP tools / catalog                           | 139 tools, ~2 MB                                       | 12 tools, < 32 KiB                                  |
+| MCP tools / catalog                           | 139 tools, ~2 MB                                       | 15 tools, < 32 KiB                                  |
 | Large results                                 | Single JSON document; 500 MB bundles abort Node        | Paged collections with byte budgets; export to file |
 | Native analysis without an engine             | Limited                                                | Full container parsing, Go, .NET, hardening facts   |
 | Install                                       | Node + Ghidra/Hopper/IDA + JDK/Python for most targets | Node only; engines optional                         |
+| Call graph / cross-references                 | One engine request per node, unbounded walk            | One cached engine read, bounded local walk          |
 | GUI                                           | None                                                   | Local web UI                                        |
 | Dynamic analysis, Frida, ADB, process capture | Yes                                                    | Not in scope                                        |
 
@@ -192,7 +203,7 @@ REA covers far more ground in dynamic and provider-driven analysis. If you need 
 
 ```text
 packages/core     parsers (formats/*), JavaScript scanner, Session (targets, collections, paging, export)
-packages/mcp      McpServer with 12 tools over one Session
+packages/mcp      McpServer with 15 tools over one Session
 packages/server   loopback HTTP API + static hosting for the UI
 packages/cli      hexvero command; ships the built UI
 packages/web      React + Vite UI

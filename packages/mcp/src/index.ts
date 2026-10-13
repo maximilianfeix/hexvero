@@ -5,6 +5,7 @@ import {
   AnalysisError,
   Session,
   detectProviders,
+  loadCallGraph,
   runProvider,
   type ProviderName,
   type ProviderOperation,
@@ -26,8 +27,17 @@ const defaultProviders: ProviderBridge = {
       provider: args.provider as ProviderName,
       operation: args.operation as ProviderOperation,
       address: args.address,
+      text: args.text,
       timeoutMs: args.timeoutMs,
     }),
+  callGraph: async (args) =>
+    (
+      await loadCallGraph({
+        targetPath: args.targetPath,
+        provider: args.provider as ProviderName,
+        timeoutMs: args.timeoutMs,
+      })
+    ).graph,
 };
 
 const replacer = (_key: string, value: unknown): unknown =>
