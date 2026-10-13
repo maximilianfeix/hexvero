@@ -9,6 +9,7 @@ import {
 } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
+import type { SideCoverage } from "./compare.js";
 import { UnknownsLedger } from "./unknowns.js";
 import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
 
@@ -239,6 +240,22 @@ export class Session {
     if (analysis.data.kind !== "javascript-app" || analysis.data.app.coverage.complete) return null;
     const { scanned, total, remaining, skipped } = analysis.data.app.coverage;
     return { scanned, total, remaining, skipped };
+  }
+
+  /**
+   * Which files a JavaScript application's analysis read, for `compareItems`: an item that sits
+   * in a file the other side did not read is unknown there, not added or removed. Null for other
+   * targets, whose analyses are whole.
+   */
+  async coverage(id: string): Promise<SideCoverage | null> {
+    const analysis = await this.analyze(id);
+    if (analysis.data.kind !== "javascript-app") return null;
+    const { app } = analysis.data;
+    return {
+      complete: app.coverage.complete,
+      read: new Set(app.modules.map((m) => m.id)),
+      unreadable: new Set(app.coverage.skippedFiles ?? []),
+    };
   }
 
   /** Names of the list-like collections available for this target after analysis. */
@@ -658,6 +675,7 @@ export function collectionsOf(
       out["externals"] = d.app.externals;
       out["ipcChannels"] = d.app.ipcChannels;
       if (d.app.webPreferences.length) out["webPreferences"] = d.app.webPreferences;
+      if (d.app.windows?.length) out["windows"] = d.app.windows;
       if (d.app.contextBridge.length) out["contextBridge"] = d.app.contextBridge;
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;

@@ -410,7 +410,10 @@ describe("directory analysis", () => {
     expect(detail("nodeIntegration: true, contextIsolation: true")).toMatch(
       /^contextIsolation is on for the same window, so page scripts do not get require\(\)/,
     );
-    expect(detail("nodeIntegration: true")).toMatch(/^contextIsolation is not written/);
+    // not written, and the fixture names no Electron version: nothing is assumed
+    expect(detail("nodeIntegration: true")).toMatch(
+      /^Whether page scripts get require\(\) depends/,
+    );
     expect(detail("nodeIntegration: false")).toBeUndefined();
   });
 

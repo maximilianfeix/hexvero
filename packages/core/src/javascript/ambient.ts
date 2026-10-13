@@ -42,8 +42,12 @@ export interface AmbientFacts {
 
 export interface UnresolvedCall extends AmbientCall {
   file: string;
-  /** Why it was not resolved: no definition was read, or the definitions name different objects. */
-  reason: "undefined" | "ambiguous";
+  /**
+   * Why it was not resolved: no definition was read, the definitions name different objects, or
+   * the nearest definition names an object that has no such method (`ipcMain.send`), which means
+   * the definition found is probably not the one the call uses.
+   */
+  reason: "undefined" | "ambiguous" | "mismatch";
 }
 
 const METHODS: Record<IpcTarget, ReadonlySet<string>> = {
@@ -123,13 +127,26 @@ export function collectAmbient(
       !is(i + 4, "=")
     ) {
       const name = tokens[i + 2]!.value;
-      for (let j = i + 4; j < tokens.length && j < i + 14 && !is(j, ";") && !is(j, ","); j++) {
-        const target = targetAt(j);
-        if (!target) continue;
-        if (!defines.has(name))
-          defines.set(name, { name, target, kind: "global", line: tokens[i + 2]!.line });
-        break;
+      // The assigned expression must BE the object (`ipcRenderer`, `electron.ipcRenderer`,
+      // `require("electron").ipcRenderer`), not merely mention it (`wrap(ipcRenderer)`): its last
+      // token, before the `;`, the `,` or the next statement's line, has to name the object.
+      let last = i + 4;
+      let nested = 0;
+      for (let j = i + 4; j < tokens.length && j < i + 14; j++) {
+        const p = tokens[j]!;
+        if (p.type === "punct") {
+          if (p.value === "(" || p.value === "[" || p.value === "{") nested++;
+          else if (p.value === ")" || p.value === "]" || p.value === "}") {
+            if (nested === 0) break;
+            nested--;
+          } else if (nested === 0 && (p.value === ";" || p.value === ",")) break;
+        }
+        if (nested === 0 && p.line !== tokens[j - 1]!.line && !is(j, ".")) break;
+        last = j;
       }
+      const target = targetAt(last);
+      if (target && !defines.has(name))
+        defines.set(name, { name, target, kind: "global", line: tokens[i + 2]!.line });
     }
 
     // `<x>.webContents.ipc.on("channel", …)`: a handler on one page's own channel object.
@@ -278,8 +295,13 @@ export function resolveAmbient(
         continue;
       }
       const [target] = targets as Set<IpcTarget>;
-      // A method the object does not have (`ipcMain.send`) is not a call on it: dropped.
-      if (!METHODS[target!].has(call.method)) continue;
+      // A method the object does not have (`ipcMain.send`): the definition found is probably
+      // not the one this call uses. Reported, never silently dropped and never listed.
+      if (!METHODS[target!].has(call.method)) {
+        open.push(call);
+        unresolved.push({ ...call, file: m.id, reason: "mismatch" });
+        continue;
+      }
       m.ipc.push({
         api: `${target}.${call.method}`,
         channel: call.channel,

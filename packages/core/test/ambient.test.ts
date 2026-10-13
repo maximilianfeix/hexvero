@@ -124,7 +124,7 @@ describe("IPC through names another file defines", () => {
     );
   });
 
-  it("drops a method the resolved object does not have", () => {
+  it("reports, and does not list, a method the resolved object does not have", () => {
     const info = analyze({
       "main/main.js": MAIN,
       "main/x.js": 'ipc.send("notIpcMain");\nipc.on("fine", () => {});',
@@ -133,6 +133,23 @@ describe("IPC through names another file defines", () => {
       "main/main.js ipcMain.on boot 3 alias",
       "main/x.js ipcMain.on fine 2 global",
     ]);
+    expect(info.limitations.find((l) => l.code === "ipc_receiver_unresolved")?.message).toContain(
+      'ipc.send("notIpcMain") at main/x.js:1',
+    );
+  });
+
+  it("takes a global only when the assigned value is the object itself", () => {
+    const info = analyze({
+      "js/default.js": [
+        'const { ipcRenderer } = require("electron");',
+        "window.bus = wrap(ipcRenderer);",
+        "window.count = 1, window.other = ipcRenderer.listenerCount;",
+        'window.rpc = require("electron").ipcRenderer',
+        "start()",
+      ].join("\n"),
+      "js/use.js": 'bus.on("wrapped", () => {});\nrpc.send("direct");',
+    });
+    expect(rows(info)).toEqual(["js/use.js ipcRenderer.send direct 2 global"]);
   });
 });
 
@@ -208,5 +225,21 @@ describe("a call written above the binding it uses", () => {
       ].join("\n"),
     });
     expect(rows(info)).toEqual(["main/main.js ipcMain.on boot 5 alias"]);
+  });
+});
+
+describe("several calls on one line of minified code", () => {
+  it("keeps rows that share line and channel but are different calls", () => {
+    const info = analyze({
+      "main/main.js":
+        'const{ipcMain:a,BrowserWindow:b}=require("electron");const w=new b({});a.on("x",e=>{e.sender.send("x")});w.webContents.ipc.on("x",()=>{});w.webContents.postMessage("x");e.sender.send("x");',
+    });
+    expect(rows(info)).toEqual([
+      "main/main.js ipcMain.on x 1 alias",
+      "main/main.js event.sender.send x 1",
+      "main/main.js ipcMain.on x 1 webContents",
+      "main/main.js webContents.postMessage x 1",
+      "main/main.js event.sender.send x 1",
+    ]);
   });
 });

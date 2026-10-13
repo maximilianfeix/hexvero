@@ -79,10 +79,32 @@ function list(items: string[], max: number): string {
     : items.join(", ");
 }
 
+/** Where a reply was read and what it sends: rows carry no column. */
+const lineAndChannel = (u: IpcUsage): string => `${u.line}\0${u.channel}`;
+
+/** The settings that decide what a page's scripts and its preload can reach. */
+const CORE_KEYS = ["nodeIntegration", "contextIsolation", "sandbox"] as const;
+type CoreKey = (typeof CORE_KEYS)[number];
+/** Further boolean settings read as written; each has a finding of its own or none. */
+const OTHER_KEYS = [
+  "webSecurity",
+  "allowRunningInsecureContent",
+  "webviewTag",
+  "nodeIntegrationInSubFrames",
+  "nodeIntegrationInWorker",
+  "enableRemoteModule",
+] as const;
+const BOOLEAN_KEYS: ReadonlySet<string> = new Set([...CORE_KEYS, ...OTHER_KEYS]);
+const isCoreKey = (key: string): key is CoreKey => (CORE_KEYS as readonly string[]).includes(key);
+export type PreferenceKey = "preload" | CoreKey | (typeof OTHER_KEYS)[number];
+
 /** One BrowserWindow setting as written in the source: the evidence behind the Electron flags. */
 export interface WebPreference {
-  key: "preload" | "nodeIntegration" | "contextIsolation" | "sandbox";
-  value: string | boolean;
+  key: PreferenceKey;
+  /** The literal written in the code; null when the value is computed at run time. */
+  value: string | boolean | null;
+  /** The expression in place of a literal (`!isDev`, `options.sandbox`), shortened. */
+  computed?: string;
   file: string;
   line: number;
   /**
@@ -98,6 +120,106 @@ export interface WebPreference {
    * the call is not assigned; null where `window` is null. `compare` matches settings by it.
    */
   windowName: string | null;
+}
+
+/** How a setting stands for one window: its literal, computed at run time, or absent from the code. */
+export type SettingState = boolean | "computed" | "not written";
+
+/**
+ * One window with its core settings side by side, and what follows from them together. `…InEffect`
+ * and `pageRequire` are derived from Electron's documented rules (docs/electron-findings.md):
+ * they say `unknown` whenever a value is computed, or absent while the Electron version is not
+ * known. They describe the configuration, not the behaviour of a running app.
+ */
+export interface WindowSummary {
+  file: string;
+  window: number;
+  windowName: string;
+  line: number;
+  nodeIntegration: SettingState;
+  contextIsolation: SettingState;
+  sandbox: SettingState;
+  preload: string | null;
+  contextIsolationInEffect: "on" | "off" | "unknown";
+  sandboxInEffect: "on" | "off" | "unknown";
+  /** Whether the page's own scripts get Node's `require`. */
+  pageRequire: "yes" | "no" | "unknown";
+  /** The rule each derived value rests on. */
+  basis: string;
+}
+
+/** The major version in a package.json range such as `^38.0.0`; null when it names none. */
+export function electronMajor(range: string | null | undefined): number | null {
+  const m = /^[\^~>=v\s]*(\d+)(?:\.|\s|$)/.exec(range ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * The derived columns of a window. Sources, all electronjs.org: breaking changes (5.0
+ * nodeIntegration off, 12.0 contextIsolation on and `require()` in a page only with
+ * nodeIntegration on and contextIsolation off, 20.0 sandbox on unless nodeIntegration is on or
+ * sandbox is false), the WebPreferences structure, and the sandbox tutorial (app.enableSandbox
+ * overrides `sandbox: false`).
+ */
+export function windowEffects(
+  w: Pick<WindowSummary, "nodeIntegration" | "contextIsolation" | "sandbox">,
+  major: number | null,
+  enableSandbox: boolean,
+): Pick<WindowSummary, "contextIsolationInEffect" | "sandboxInEffect" | "pageRequire" | "basis"> {
+  const basis: string[] = [];
+  let isolation: "on" | "off" | "unknown";
+  if (typeof w.contextIsolation === "boolean") {
+    isolation = w.contextIsolation ? "on" : "off";
+    basis.push("contextIsolation as written");
+  } else if (w.contextIsolation === "computed") {
+    isolation = "unknown";
+    basis.push("contextIsolation is computed");
+  } else if (major === null) {
+    isolation = "unknown";
+    basis.push("contextIsolation not written: on by default since Electron 12, version not known");
+  } else {
+    isolation = major >= 12 ? "on" : "off";
+    basis.push(
+      `contextIsolation not written: ${isolation} by default in Electron ${major} (on since 12)`,
+    );
+  }
+  let sandbox: "on" | "off" | "unknown";
+  if (enableSandbox) {
+    sandbox = "on";
+    basis.push("app.enableSandbox() is called, which overrides per-window settings");
+  } else if (w.nodeIntegration === true) {
+    sandbox = "off";
+    basis.push("nodeIntegration: true disables the sandbox");
+  } else if (typeof w.sandbox === "boolean") {
+    sandbox = w.sandbox ? "on" : "off";
+    basis.push("sandbox as written");
+  } else if (w.sandbox === "computed" || w.nodeIntegration === "computed") {
+    sandbox = "unknown";
+    basis.push(`${w.sandbox === "computed" ? "sandbox" : "nodeIntegration"} is computed`);
+  } else if (major === null) {
+    sandbox = "unknown";
+    basis.push("sandbox not written: on by default since Electron 20, version not known");
+  } else {
+    sandbox = major >= 20 ? "on" : "off";
+    basis.push(`sandbox not written: ${sandbox} by default in Electron ${major} (on since 20)`);
+  }
+  // nodeIntegration is off by default since Electron 5; older versions are not modelled.
+  const pageRequire =
+    w.nodeIntegration === "computed"
+      ? "unknown"
+      : w.nodeIntegration !== true
+        ? "no"
+        : isolation === "off"
+          ? "yes"
+          : isolation === "on"
+            ? "no"
+            : "unknown";
+  return {
+    contextIsolationInEffect: isolation,
+    sandboxInEffect: sandbox,
+    pageRequire,
+    basis: basis.join("; "),
+  };
 }
 
 /** A stretch of source that holds a window's options, and which window it is. */
@@ -558,6 +680,8 @@ export interface JsAppInfo {
   externals: Array<{ specifier: string; count: number; builtin: boolean }>;
   /** BrowserWindow settings as written in the sources, each with file and line. */
   webPreferences: WebPreference[];
+  /** One row per window with its core settings and what follows from them together. */
+  windows: WindowSummary[];
   /** What preload scripts expose to pages through contextBridge, member by member. */
   contextBridge: BridgeMember[];
   ipcChannels: Array<{
@@ -601,10 +725,12 @@ export interface JsCoverage {
   order: "entry file, then path depth, then path";
   /** The first files that are still unread, in scan order. */
   nextFiles: string[];
+  /** The files that were passed over (the first 200); nothing is known about their contents. */
+  skippedFiles: string[];
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 1;
+export const JS_SCAN_SCHEMA = 2;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -621,6 +747,10 @@ export interface JsScanFacts {
   edges: JsEdge[];
   externals: Record<string, number>;
   webPreferences: WebPreference[];
+  /** Every window constructor call that was located, also one that writes no setting. */
+  windows: Array<{ file: string; window: number; windowName: string; line: number }>;
+  /** `app.enableSandbox()` is called somewhere. */
+  enableSandbox: boolean;
   contextBridge: BridgeMember[];
   endpoints: AppCandidate[];
   storage: AppCandidate[];
@@ -651,6 +781,8 @@ export function emptyJsScanFacts(): JsScanFacts {
     edges: [],
     externals: {},
     webPreferences: [],
+    windows: [],
+    enableSandbox: false,
     contextBridge: [],
     endpoints: [],
     storage: [],
@@ -1004,8 +1136,9 @@ export function analyzeJavaScriptTree(
     let ranges: WindowRange[] = [];
     // Settings are read from tokens, so text in a comment or a string is never a setting.
     const settingsAt: Array<{
-      key: "nodeIntegration" | "contextIsolation" | "sandbox";
-      value: boolean;
+      key: Exclude<PreferenceKey, "preload">;
+      value: boolean | null;
+      computed?: string;
       start: number;
     }> = [];
     const preloadsAt = new Set<number>();
@@ -1020,17 +1153,18 @@ export function analyzeJavaScriptTree(
           ambient = collectAmbient(tokens, context.aliases);
         if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source))
           ranges = windowRanges(tokens, context.aliases);
-        if (/nodeIntegration|contextIsolation|sandbox|preload/.test(source))
+        if (
+          /nodeIntegration|contextIsolation|sandbox|preload|webSecurity|allowRunningInsecureContent|webviewTag|enableRemoteModule/.test(
+            source,
+          )
+        )
           for (let k = 0; k + 2 < tokens.length; k++) {
             const t = tokens[k]!;
             const colon = tokens[k + 1]!;
             if (t.type !== "ident" || colon.type !== "punct" || colon.value !== ":") continue;
             if (t.value === "preload") preloadsAt.add(t.start);
-            else if (
-              t.value === "nodeIntegration" ||
-              t.value === "contextIsolation" ||
-              t.value === "sandbox"
-            ) {
+            else if (BOOLEAN_KEYS.has(t.value)) {
+              const key = t.value as Exclude<PreferenceKey, "preload">;
               const v = tokens[k + 2]!;
               const n = tokens[k + 3];
               // true, false, and what minifiers write for them: !0 and !1
@@ -1047,7 +1181,27 @@ export function analyzeJavaScriptTree(
               const after = tokens[v.type === "ident" ? k + 3 : k + 4];
               const ends =
                 !after || (after.type === "punct" && (after.value === "," || after.value === "}"));
-              if (value !== null && ends) settingsAt.push({ key: t.value, value, start: t.start });
+              if (value !== null && ends) settingsAt.push({ key, value, start: t.start });
+              else {
+                // Not a literal: the value is decided at run time. The expression is kept, up
+                // to the `,` or `}` that ends the property, so a reader sees what decides it.
+                let nested = 0;
+                let end = k + 2;
+                for (; end < tokens.length && end < k + 60; end++) {
+                  const p = tokens[end]!;
+                  if (p.type !== "punct") continue;
+                  if (p.value === "(" || p.value === "[" || p.value === "{") nested++;
+                  else if (p.value === ")" || p.value === "]" || p.value === "}") {
+                    if (nested === 0) break;
+                    nested--;
+                  } else if (p.value === "," && nested === 0) break;
+                }
+                const computed = source
+                  .slice(v.start, tokens[end - 1]?.end ?? v.end)
+                  .replace(/\s+/g, " ")
+                  .slice(0, 80);
+                settingsAt.push({ key, value: null, computed, start: t.start });
+              }
             }
           }
         const found = findCandidates(tokens, source, undefined, context.aliases, context.constants);
@@ -1079,9 +1233,22 @@ export function analyzeJavaScriptTree(
       });
     const open = ambient as ReturnType<typeof collectAmbient> | null;
     if (open?.ipc.length) {
-      // The scanner reads some of these itself (a reply inside an `ipcMain.on` listener).
-      const seen = new Set(scan.ipc.map((u) => `${u.line}\0${u.channel}`));
-      const extra = open.ipc.filter((u) => !seen.has(`${u.line}\0${u.channel}`));
+      // Only replies can be read twice: the scanner sees `event.sender.send` inside a listener on
+      // a written-out `ipcMain`, and `collectAmbient` sees every one. Rows carry no column, and
+      // minified code has everything on one line, so those are matched as a multiset of
+      // (line, channel) and only as many are dropped as the scanner already has. Every other
+      // row from `collectAmbient` is a call the scanner cannot have, and is always kept.
+      const have = new Map<string, number>();
+      for (const u of scan.ipc)
+        if (u.api === "event.sender.send")
+          have.set(lineAndChannel(u), (have.get(lineAndChannel(u)) ?? 0) + 1);
+      const extra = open.ipc.filter((u) => {
+        if (u.api !== "event.sender.send") return true;
+        const left = have.get(lineAndChannel(u)) ?? 0;
+        if (left === 0) return true;
+        have.set(lineAndChannel(u), left - 1);
+        return false;
+      });
       if (extra.length) {
         scan.ipc.push(...extra);
         scan.ipc.sort((a, b) => a.line - b.line);
@@ -1191,9 +1358,31 @@ export function analyzeJavaScriptTree(
         if (!record({ key: "preload", value, file: file.path, line: lineAt(at), ...w }))
           break preloads;
     }
-    settings: for (const { key, value, start } of settingsAt)
+    settings: for (const { key, value, computed, start } of settingsAt)
       for (const w of windowsOf(start))
-        if (!record({ key, value, file: file.path, line: lineAt(start), ...w })) break settings;
+        if (
+          !record({
+            key,
+            value,
+            ...(computed === undefined ? {} : { computed }),
+            file: file.path,
+            line: lineAt(start),
+            ...w,
+          })
+        )
+          break settings;
+    // Every located window, so one that writes no setting at all is still a row.
+    for (const r of ranges) {
+      if (r.window === null || r.inherited || facts.windows.length >= MAX_PREFS) continue;
+      if (facts.windows.some((w) => w.file === file.path && w.window === r.window)) continue;
+      facts.windows.push({
+        file: file.path,
+        window: r.window,
+        windowName: r.name ?? `#${r.window}`,
+        line: lineAt(r.start),
+      });
+    }
+    if (/\benableSandbox\s*\(/.test(source)) facts.enableSandbox = true;
     for (const { inherited, ...pref } of found) {
       // A key written for the window itself replaces the same key of a base object.
       if (
@@ -1206,7 +1395,11 @@ export function analyzeJavaScriptTree(
       if (pref.key === "preload") preloadScripts.add(String(pref.value));
       // Where windows could be located, an object that belongs to none of them (a base that is
       // spread and overridden, options only handed to a function) does not speak for the app.
-      else if (pref.window !== null || !ranges.some((r) => r.window !== null)) {
+      else if (
+        isCoreKey(pref.key) &&
+        typeof pref.value === "boolean" &&
+        (pref.window !== null || !ranges.some((r) => r.window !== null))
+      ) {
         // the least safe value seen in any window decides the app-wide flag
         const v = pref.value === true;
         flags[pref.key] =
@@ -1286,6 +1479,7 @@ export function analyzeJavaScriptTree(
     resumed,
     order: "entry file, then path depth, then path",
     nextFiles: remainingFiles.slice(0, 5).map((f) => f.path),
+    skippedFiles: [...facts.skippedFiles],
   };
   if (tree.truncated)
     limitations.push({
@@ -1431,6 +1625,40 @@ export function analyzeJavaScriptTree(
         }
       : null;
 
+  // One row per window: what is written, and what follows from the settings together.
+  const major = electronMajor(electronVersion);
+  const windows: WindowSummary[] = (facts.windows ?? []).map((w) => {
+    const stateOf = (key: CoreKey): SettingState => {
+      const p = webPreferences.find(
+        (x) => x.file === w.file && x.window === w.window && x.key === key,
+      );
+      return !p ? "not written" : typeof p.value === "boolean" ? p.value : "computed";
+    };
+    const states = {
+      nodeIntegration: stateOf("nodeIntegration"),
+      contextIsolation: stateOf("contextIsolation"),
+      sandbox: stateOf("sandbox"),
+    };
+    const preload = webPreferences.find(
+      (x) => x.file === w.file && x.window === w.window && x.key === "preload",
+    );
+    return {
+      ...w,
+      ...states,
+      preload: typeof preload?.value === "string" ? preload.value : null,
+      ...windowEffects(states, major, facts.enableSandbox === true),
+    };
+  });
+  const computedPrefs = webPreferences.filter((w) => w.value === null);
+  if (computedPrefs.length)
+    limitations.push({
+      code: "webpreferences_computed",
+      message: `${computedPrefs.length} window setting(s) are computed at run time, so their value is not known: ${computedPrefs
+        .slice(0, 5)
+        .map((w) => `${w.key} at ${w.file}:${w.line} (${w.computed})`)
+        .join(", ")}${computedPrefs.length > 5 ? ` … and ${computedPrefs.length - 5} more` : ""}.`,
+    });
+
   /** `file:line` of the first place a setting was read with the given value. */
   const where = (key: WebPreference["key"], value?: boolean): string | undefined => {
     const hit = webPreferences.find(
@@ -1440,24 +1668,21 @@ export function analyzeJavaScriptTree(
   };
   if (electron) {
     if (electron.nodeIntegration === true) {
-      // What the flag means depends on contextIsolation of the same window, so the detail is
-      // chosen from that window's own settings, never from another window's.
+      // What the flag means depends on the other settings of the same window, so the detail is
+      // chosen from that window's row, never from another window's (docs/electron-findings.md).
       const hit = webPreferences.find((w) => w.key === "nodeIntegration" && w.value === true);
-      const isolation =
-        hit && hit.window !== null
-          ? webPreferences.find(
-              (w) => w.key === "contextIsolation" && w.file === hit.file && w.window === hit.window,
-            )?.value
-          : undefined;
+      const row = hit
+        ? windows.find((w) => w.file === hit.file && w.window === hit.window)
+        : undefined;
       findings.push({
         kind: "electron.node-integration",
         title: "nodeIntegration: true in a BrowserWindow",
         detail:
-          isolation === false
+          row?.pageRequire === "yes"
             ? "contextIsolation is off for the same window: page scripts can require Node modules, so script injection there becomes code execution."
-            : isolation === true
+            : row?.pageRequire === "no"
               ? "contextIsolation is on for the same window, so page scripts do not get require(). Node integration still keeps the renderer out of the Chromium sandbox."
-              : "contextIsolation is not written for this window. With it off, page scripts can require Node modules; it is on by default since Electron 12.",
+              : "Whether page scripts get require() depends on contextIsolation of the same window, which is not known here (computed, or not written with the Electron version unknown). Node integration keeps the renderer out of the Chromium sandbox.",
         confidence: "inferred",
         location: where("nodeIntegration", true),
       });
@@ -1477,6 +1702,38 @@ export function analyzeJavaScriptTree(
         detail: "The renderer process runs without the Chromium sandbox.",
         confidence: "inferred",
         location: where("sandbox", false),
+      });
+    const written = (key: PreferenceKey, value: boolean): WebPreference | undefined =>
+      webPreferences.find((w) => w.key === key && w.value === value);
+    const at = (p: WebPreference): string => `${p.file}:${p.line}`;
+    const noWebSecurity = written("webSecurity", false);
+    if (noWebSecurity)
+      findings.push({
+        kind: "electron.web-security",
+        title: "webSecurity: false in a BrowserWindow",
+        detail:
+          "Turns off the same-origin policy for the window and allows insecure content unless allowRunningInsecureContent is set otherwise.",
+        confidence: "inferred",
+        location: at(noWebSecurity),
+      });
+    const insecureContent = written("allowRunningInsecureContent", true);
+    if (insecureContent)
+      findings.push({
+        kind: "electron.insecure-content",
+        title: "allowRunningInsecureContent: true in a BrowserWindow",
+        detail: "An https page may run scripts, styles or plugins loaded from http URLs.",
+        confidence: "inferred",
+        location: at(insecureContent),
+      });
+    const webview = written("webviewTag", true);
+    if (webview)
+      findings.push({
+        kind: "electron.webview-tag",
+        title: "webviewTag: true in a BrowserWindow",
+        detail:
+          "The <webview> tag is enabled; a preload script configured on a <webview> runs with Node integration.",
+        confidence: "inferred",
+        location: at(webview),
       });
     if (electron.remoteModule)
       findings.push({
@@ -1612,6 +1869,7 @@ export function analyzeJavaScriptTree(
       .toSorted((a, b) => b.count - a.count),
     ipcChannels,
     webPreferences,
+    windows,
     contextBridge,
     endpoints,
     storage,

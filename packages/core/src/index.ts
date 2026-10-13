@@ -90,6 +90,8 @@ export {
   type CompareOptions,
   type CompareResult,
   type FieldChange,
+  type SideCoverage,
+  type UnknownItem,
 } from "./compare.js";
 export { compact, type CompactOptions } from "./compact.js";
 export { detectProviders, PROVIDER_OPERATIONS, type ProviderStatus } from "./providers/index.js";

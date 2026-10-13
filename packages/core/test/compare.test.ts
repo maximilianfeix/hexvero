@@ -51,6 +51,37 @@ const pref = (windowName: string, window: number, key: string, value: boolean, l
   windowName,
 });
 
+const ipcRow = (file: string, channel: string): Record<string, unknown> => ({
+  module: file,
+  api: "ipcMain.on",
+  channel,
+  line: 1,
+});
+
+const wholeSide = (...files: string[]) => ({
+  complete: true,
+  read: new Set(files),
+  unreadable: new Set<string>(),
+});
+
+const filePref = (file: string, windowName: string, value: boolean) => ({
+  key: "sandbox",
+  value,
+  file,
+  line: 3,
+  window: 1,
+  windowName,
+});
+
+const namedWindowPref = (windowName: string, window: number) => ({
+  key: "sandbox",
+  value: true,
+  file: "main.js",
+  line: window,
+  window,
+  windowName,
+});
+
 describe("compareItems", () => {
   const a = [
     { name: "main", size: 40, address: "0x1000" },
@@ -370,5 +401,101 @@ describe("compareItems", () => {
     });
     expect(typed.changed).toEqual([]);
     expect(typed.added).toHaveLength(1);
+  });
+});
+
+describe("items on one side only", () => {
+  const old = [ipcRow("main.js", "open"), ipcRow("main.js", "quit"), ipcRow("extra.js", "debug")];
+  const next = [ipcRow("main.js", "open"), ipcRow("main.js", "update")];
+  const options = { collection: "ipc", key: "channel" };
+
+  it("calls an item removed when it exists on the left and the right read everything", () => {
+    const diff = compareItems(old, next, {
+      ...options,
+      coverage: { a: wholeSide("main.js", "extra.js"), b: wholeSide("main.js") },
+    });
+    expect(diff.removed.toSorted()).toEqual(["debug", "quit"]);
+    expect(diff.added).toEqual(["update"]);
+    expect(diff.unknown).toEqual([]);
+  });
+
+  it("swaps added and removed, and nothing else, when the direction is reversed", () => {
+    const forward = compareItems(old, next, options);
+    const backward = compareItems(next, old, options);
+    expect(backward.added.toSorted()).toEqual(forward.removed.toSorted());
+    expect(backward.removed.toSorted()).toEqual(forward.added.toSorted());
+    expect(backward.unchanged).toBe(forward.unchanged);
+    expect(backward.changed.length).toBe(forward.changed.length);
+  });
+
+  it("calls an item unknown when the other side did not read its file", () => {
+    // the right side stopped before extra.js; main.js was read on both
+    const partial = { complete: false, read: new Set(["main.js"]), unreadable: new Set<string>() };
+    const diff = compareItems(old, next, {
+      ...options,
+      coverage: { a: wholeSide("main.js", "extra.js"), b: partial },
+    });
+    expect(diff.removed).toEqual(["quit"]);
+    expect(diff.added).toEqual(["update"]);
+    expect(diff.unknown).toEqual([
+      { key: "debug", side: "a", file: "extra.js", reason: "file not read on the other side" },
+    ]);
+    // and in the other direction it is not "added" either
+    const reversed = compareItems(next, old, {
+      ...options,
+      coverage: { a: partial, b: wholeSide("main.js", "extra.js") },
+    });
+    expect(reversed.added).toEqual(["quit"]);
+    expect(reversed.removed).toEqual(["update"]);
+    expect(reversed.unknown).toEqual([
+      { key: "debug", side: "b", file: "extra.js", reason: "file not read on the other side" },
+    ]);
+  });
+
+  it("calls an item unknown when its file exists on the other side but could not be read", () => {
+    const diff = compareItems(old, next, {
+      ...options,
+      coverage: {
+        a: wholeSide("main.js", "extra.js"),
+        b: { complete: false, read: new Set(["main.js"]), unreadable: new Set(["extra.js"]) },
+      },
+    });
+    expect(diff.unknown).toEqual([
+      {
+        key: "debug",
+        side: "a",
+        file: "extra.js",
+        reason: "file could not be read on the other side",
+      },
+    ]);
+  });
+
+  it("does not pair same-named settings of different files or different windows", () => {
+    const diff = compareItems(
+      [filePref("main.js", "win", false), filePref("other.js", "win", true)],
+      [filePref("main.js", "win", true), filePref("main.js", "prompt", false)],
+      { collection: "webPreferences", positional: ["line", "window"] },
+    );
+    expect(diff.key).toBe("file+windowName+key");
+    expect(diff.changed.map((c) => c.key)).toEqual(["main.js::win::sandbox"]);
+    expect(diff.added).toEqual(["main.js::prompt::sandbox"]);
+    expect(diff.removed).toEqual(["other.js::win::sandbox"]);
+  });
+
+  it("says how many settings were matched by a window's position because it has no name", () => {
+    const diff = compareItems(
+      [namedWindowPref("win", 1), namedWindowPref("#2", 2)],
+      [namedWindowPref("win", 1), namedWindowPref("#2", 2)],
+      {
+        collection: "webPreferences",
+        positional: ["line", "window"],
+      },
+    );
+    expect(diff.matchedByPosition).toBe(2);
+    expect(
+      compareItems([namedWindowPref("win", 1)], [namedWindowPref("win", 1)], {
+        collection: "webPreferences",
+      }).matchedByPosition,
+    ).toBe(0);
   });
 });

@@ -36,6 +36,30 @@ export interface CompareOptions {
   ignore?: readonly string[] | undefined;
   /** Position fields: differences count as relocation only when both values look like addresses. */
   positional?: readonly string[] | undefined;
+  /**
+   * What each side read, for collections whose items name the file they come from (`file` or
+   * `module`). An item found on one side only is `added` or `removed` only if the other side
+   * read that file; otherwise nothing is known about it there and it is `unknown`.
+   */
+  coverage?: { a?: SideCoverage | null; b?: SideCoverage | null } | undefined;
+}
+
+/** Which files an analysis read. */
+export interface SideCoverage {
+  /** Every file was read; a file not in `read` then does not exist on this side. */
+  complete: boolean;
+  read: ReadonlySet<string>;
+  /** Files that exist but were passed over (too large, not decodable). */
+  unreadable: ReadonlySet<string>;
+}
+
+/** An item present on one side whose file the other side did not read. */
+export interface UnknownItem {
+  key: string;
+  /** The side the item was found on. */
+  side: "a" | "b";
+  file: string;
+  reason: "file not read on the other side" | "file could not be read on the other side";
 }
 
 export interface CompareResult {
@@ -52,12 +76,22 @@ export interface CompareResult {
   /** Item identities (keys) only present on the right side; duplicates listed once per extra item. */
   added: string[];
   removed: string[];
+  /**
+   * Items found on one side only, in a file the other side did not read: neither added nor
+   * removed. Empty unless the caller passed `coverage`.
+   */
+  unknown: UnknownItem[];
   changed: ChangedItem[];
   /** Matched items that differ only in ignored fields. */
   relocated: number;
   unchanged: number;
   /** Identities shared by more than one item on a side; those items are matched by content. */
   duplicateKeys: number;
+  /**
+   * Items of windows that have no name of their own (`#2`: the second window of the file). They
+   * are matched by that position, so a window added before them pairs different windows.
+   */
+  matchedByPosition: number;
   compared: { a: number; b: number };
 }
 
@@ -86,6 +120,7 @@ const POSITION_FIELDS: Record<string, readonly string[]> = {
 const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   contextBridge: ["line"],
   webPreferences: ["line", "window"],
+  windows: ["line", "window"],
   endpoints: ["line", "column"],
   storage: ["line", "column"],
   urls: ["line", "column"],
@@ -131,6 +166,7 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
     ["file", "key"],
     ["file", "key", "line"],
   ],
+  windows: [["file", "windowName"]],
   cil: [["method", "offset"]],
   contextBridge: [["api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.
@@ -313,6 +349,13 @@ function pair(
   return [matched, restA, restB];
 }
 
+/** Files an item of a one-sided group comes from; an item without a file field is judged as read. */
+const fileOf = (item: unknown): string | null => {
+  if (!isRecord(item)) return null;
+  const file = item["file"] ?? item["module"];
+  return typeof file === "string" ? file : null;
+};
+
 export function compareItems(
   left: readonly unknown[],
   right: readonly unknown[],
@@ -373,6 +416,28 @@ export function compareItems(
   const r = group(right);
   const added: string[] = [];
   const removed: string[] = [];
+  const unknown: UnknownItem[] = [];
+  /** Records an item found on `side` only: removed/added when the other side read its file. */
+  const oneSided = (item: unknown, shown: string, side: "a" | "b"): void => {
+    const other = side === "a" ? options.coverage?.b : options.coverage?.a;
+    const file = fileOf(item);
+    if (other && file !== null) {
+      if (other.unreadable.has(file)) {
+        unknown.push({
+          key: shown,
+          side,
+          file,
+          reason: "file could not be read on the other side",
+        });
+        return;
+      }
+      if (!other.complete && !other.read.has(file)) {
+        unknown.push({ key: shown, side, file, reason: "file not read on the other side" });
+        return;
+      }
+    }
+    (side === "a" ? removed : added).push(shown);
+  };
   const changed: ChangedItem[] = [];
   const relocatedSample: ChangedItem[] = [];
   let unchanged = 0;
@@ -381,7 +446,7 @@ export function compareItems(
   for (const [typed, { shown, items }] of l) {
     const other = r.get(typed);
     if (!other) {
-      for (let i = 0; i < items.length; i++) removed.push(shown);
+      for (const item of items) oneSided(item, shown, "a");
       continue;
     }
     if (items.length > 1 || other.items.length > 1) {
@@ -395,8 +460,8 @@ export function compareItems(
       // Which duplicate moved where cannot be told apart, so the sample names the identity only.
       if (moved > 0 && relocatedSample.length < 20)
         relocatedSample.push({ key: shown, fields: [], before: restA, after: restB });
-      for (let i = 0; i < goneA.length; i++) removed.push(shown);
-      for (let i = 0; i < goneB.length; i++) added.push(shown);
+      for (const item of goneA) oneSided(item, shown, "a");
+      for (const item of goneB) oneSided(item, shown, "b");
       continue;
     }
     const before = items[0];
@@ -424,7 +489,7 @@ export function compareItems(
     changed.push({ key: shown, fields, before, after });
   }
   for (const [typed, { shown, items }] of r)
-    if (!l.has(typed)) for (let i = 0; i < items.length; i++) added.push(shown);
+    if (!l.has(typed)) for (const item of items) oneSided(item, shown, "b");
   return {
     key: field,
     keyMissing,
@@ -432,11 +497,17 @@ export function compareItems(
     positional,
     added,
     removed,
+    unknown,
     changed,
     relocated,
     relocatedSample,
     unchanged,
     duplicateKeys,
+    matchedByPosition: field?.split("+").includes("windowName")
+      ? [...left, ...right].filter(
+          (item) => isRecord(item) && /^#\d+$/.test(String(item["windowName"] ?? "")),
+        ).length
+      : 0,
     compared: { a: left.length, b: right.length },
   };
 }

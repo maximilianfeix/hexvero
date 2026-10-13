@@ -379,6 +379,7 @@ export function createHandlers(
           a["strict"] === true
             ? []
             : positionalFields(name, [session.get(idA).info.format, session.get(idB).info.format]),
+        coverage: { a: await session.coverage(idA), b: await session.coverage(idB) },
       });
       if (diff.keyMissing)
         throw new AnalysisError(
@@ -425,6 +426,8 @@ export function createHandlers(
         unchanged: diff.unchanged,
         added: { count: diff.added.length, sample: diff.added.slice(0, 50) },
         removed: { count: diff.removed.length, sample: diff.removed.slice(0, 50) },
+        // Found on one side, in a file the other side did not read: neither added nor removed.
+        unknown: { count: diff.unknown.length, sample: diff.unknown.slice(0, 50) },
         changed: { count: diff.changed.length, sample: diff.changed.slice(0, 25).map(fieldsOf) },
         relocated: {
           count: diff.relocated,
