@@ -22,3 +22,8 @@ Codes: `not_found`, `invalid_input`, `unsupported_format`, `malformed`, `too_lar
 
 The tool catalog is under 32 KiB. Default pages are 100 items and at most 256 KiB serialized; `limit` goes up to 2000.
 The compact overview samples arrays longer than eight items and says how many more exist and which collection holds them.
+
+## Guided prompts
+
+`prompts/list` returns `investigate_feature`, `compare_versions`, `triage_binary`, `map_electron_app` and `explain_apk`.
+Each takes a few string arguments (feature, path, pathA/pathB, focus) and renders a numbered plan that names the hexvero tools to call and the rules for citing evidence. Open questions go into the ledger with `hexvero_unknowns { action: "record" }` and come back with `hexvero_export`.

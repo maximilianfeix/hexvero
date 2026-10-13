@@ -76,6 +76,25 @@ export const toolSchemas = {
       "Write recoverable sources into a new directory: the modules of a webpack/Rspack/browserify/esbuild bundle (one file each plus hexvero-bundle.json with requires/exports), or the original files embedded in a source map (sourcesContent). No engine needed; nothing is executed.",
     input: { targetId, outputDir: z.string().describe("Absent or empty directory to write into") },
   },
+  hexvero_unknowns: {
+    title: "Unknowns ledger",
+    description:
+      "Record a material question the investigation could not answer (with what was already checked), list open or resolved unknowns, or resolve one. Unknowns are exported with the analysis so reports never silently drop them.",
+    input: {
+      action: z.enum(["record", "list", "resolve", "remove"]),
+      targetId: z.string().optional().describe("Target the question belongs to"),
+      question: z.string().optional().describe("record: the open question"),
+      checked: z
+        .array(z.string())
+        .optional()
+        .describe("record: collections, offsets or tools already examined"),
+      id: z.string().optional().describe("resolve: the unknown's id"),
+      resolution: z.string().optional().describe("resolve: what settled it, with evidence"),
+      status: z.enum(["open", "resolved"]).optional().describe("list: filter by status"),
+      offset: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).max(1000).optional(),
+    },
+  },
   hexvero_compare: {
     title: "Compare collections",
     description:
@@ -185,6 +204,30 @@ export function createHandlers(
         ...result,
         written: { count: result.written.length, sample: result.written.slice(0, 50) },
       };
+    },
+    hexvero_unknowns: async (a) => {
+      const action = str(a["action"]);
+      const owner = typeof a["targetId"] === "string" ? a["targetId"] : null;
+      if (action === "record") {
+        if (typeof a["question"] !== "string")
+          throw new AnalysisError("invalid_input", "record needs a question");
+        const checked = Array.isArray(a["checked"]) ? a["checked"].map(String) : [];
+        return session.unknowns.record({ targetId: owner, question: a["question"], checked });
+      }
+      if (action === "resolve") {
+        if (typeof a["id"] !== "string" || typeof a["resolution"] !== "string")
+          throw new AnalysisError("invalid_input", "resolve needs id and resolution");
+        return session.unknowns.resolve(a["id"], a["resolution"]);
+      }
+      if (action === "remove") {
+        if (typeof a["id"] !== "string")
+          throw new AnalysisError("invalid_input", "remove needs id");
+        return { removed: session.unknowns.remove(a["id"]) };
+      }
+      const filter: Parameters<typeof session.unknowns.list>[0] = paged(a);
+      if (owner !== null) filter.targetId = owner;
+      if (a["status"] === "open" || a["status"] === "resolved") filter.status = a["status"];
+      return session.unknowns.list(filter);
     },
     hexvero_compare: async (a) => {
       const name = str(a["collection"]);

@@ -83,7 +83,15 @@ describe("Session", () => {
     const out = join(dir, "export.json");
     const result = await session.export(record.id, out);
     expect(result.bytes).toBeGreaterThan(100);
-    expect(JSON.parse(readFileSync(out, "utf8")).analysis.summary).toContain("Electron ASAR");
+    const exportedJson = JSON.parse(readFileSync(out, "utf8"));
+    expect(exportedJson.analysis.summary).toContain("Electron ASAR");
+    session.unknowns.record({
+      targetId: record.id,
+      question: "Where is the preload registered?",
+      checked: ["modules"],
+    });
+    await session.export(record.id, out);
+    expect(JSON.parse(readFileSync(out, "utf8")).unknowns).toHaveLength(1);
     expect(session.close(record.id)).toBe(true);
     expect(() => session.get(record.id)).toThrow(/No open target/);
   });

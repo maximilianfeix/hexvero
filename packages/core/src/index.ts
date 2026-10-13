@@ -101,3 +101,4 @@ export {
   isSwiftSymbol,
   type SwiftSymbol,
 } from "./formats/swiftDemangle.js";
+export { UnknownsLedger, type Unknown } from "./unknowns.js";
