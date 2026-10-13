@@ -2,12 +2,12 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "8daa850",
+  "commit": "1ca224b",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
    "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
-   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+   "rizin": "not installed"
   }
  },
  "observations": {
@@ -130,7 +130,7 @@
   "native:dev/calls.O0.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+    "engine": null,
     "limitations": [],
     "imports": [
      "snprintf_chk",
@@ -314,7 +314,7 @@
   "native:dev/calls.O2.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+    "engine": null,
     "limitations": [],
     "imports": [
      "stack_chk_fail",
@@ -881,7 +881,9 @@
      },
      {
       "channel": "doc:rename",
-      "senders": [],
+      "senders": [
+       "preload.js"
+      ],
       "receivers": [
        "main.js"
       ]
@@ -947,7 +949,7 @@
      {
       "api": "notes",
       "member": "rename",
-      "channel": null
+      "channel": "doc:rename"
      },
      {
       "api": "notes",
@@ -2657,7 +2659,7 @@
   "native:validation/dispatch.O0.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+    "engine": null,
     "limitations": [],
     "imports": [
      "atoi",
@@ -3087,7 +3089,7 @@
   "native:validation/dispatch.O2.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+    "engine": null,
     "limitations": [],
     "imports": [
      "atoi",
@@ -3609,7 +3611,7 @@
   "native:holdout/exprcalc.O0.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+    "engine": null,
     "limitations": [],
     "imports": [
      "stderrp",
@@ -4224,7 +4226,7 @@
   "native:holdout/exprcalc.O2.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+    "engine": null,
     "limitations": [],
     "imports": [
      "stderrp",

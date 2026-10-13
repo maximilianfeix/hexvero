@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "8daa850",
+  "commit": "1ca224b",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
