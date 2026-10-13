@@ -106,6 +106,10 @@ All notable changes to hexvero are listed here. The format follows
   always, which could show the safe value where the unsafe one is in effect. Two different values
   in separate objects of one window are `conflicting`, not one of the two.
 - A helper that returns its options as `return ({ … })` was not followed.
+- Settings of an options object declared above its `new BrowserWindow(options)` were rows without
+  a window, and the window read as not written.
+- `{ ...base, webPreferences: {…} }`: the later `webPreferences` now replaces the whole object the
+  base brought, and the other way round.
 - Settings of a window whose options could not be followed (a parameter, a call, a condition, a
   spread of something unknown), or whose options object is assigned to later, read as
   `computed`; they used to read as not written.

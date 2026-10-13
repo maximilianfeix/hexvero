@@ -28,12 +28,20 @@ A setting also reads as `computed` where the code next to the window does not de
   (`new BrowserWindow(options)`), a call, a condition between two objects, or a spread of a name
   that is not an object of the file. A key written after that place stands; every other key is
   not known. The limitation `window_options_unresolved` names these windows;
-- the options object that was followed is assigned to later (`prefs.sandbox = false`,
-  `prefs["sandbox"] = false`, `Object.assign(prefs, …)`).
+- the options object that was followed may be changed after its declaration. A write to one key
+  (`prefs.sandbox = false`, `prefs.sandbox ||= x`, `delete prefs.sandbox`) makes that key
+  computed; anything that may change the object without being read here makes every key
+  computed: a second assignment to the name, the object handed to a function
+  (`Object.assign(prefs, …)`, `tweak(prefs)`) or copied elsewhere, a deeper or computed write.
+  This is a reading of the file's text, not a data-flow analysis: it concerns windows that take
+  options from a named object, and it errs towards `computed`.
 
 Within one object the later write of a key wins, as in JavaScript, also when one of the two is in
 an object that is spread into it (`{ sandbox: true, ...base }` takes `base`'s value) or returned
-by a helper whose argument is laid over it.
+by a helper whose argument is laid over it. The same holds one level up: `webPreferences` is a
+key of the window's options, so in `{ ...base, webPreferences: {…} }` the later object replaces
+the whole `webPreferences` that `base` brought, and in `{ webPreferences: {…}, ...base }` it is
+the other way round.
 
 ## Defaults are assumptions
 
