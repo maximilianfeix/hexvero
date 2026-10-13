@@ -20,22 +20,22 @@ Exit codes: `0` success, `1` analysis error (`{"error":{"code","message","detail
 
 ## Collections by format
 
-| Format               | Collections                                                                                                          |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| ELF                  | sections, segments, symbols, imports, exports, libraries, goDependencies                                             |
-| PE                   | sections, imports, exports, libraries, goDependencies; .NET adds types, methods, pinvokes, userStrings, assemblyRefs |
-| Mach-O               | segments, sections, symbols, imports, exports, libraries, goDependencies; fat adds slices                            |
-| WASM                 | imports, exports, types, sections                                                                                    |
-| EVM                  | selectors, instructions, opcodes                                                                                     |
-| SQLite               | tables, columns, indexes, triggers, samples                                                                          |
-| HAR                  | requests, hosts, endpoints                                                                                           |
-| APK                  | permissions, components, libraries, files, classes, packages, dexFiles                                               |
-| JAR                  | classes, packages, manifest                                                                                          |
-| Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                     |
-| DEX                  | classes, packages, dexStrings                                                                                        |
-| ZIP                  | files                                                                                                                |
-| Electron / directory | modules, edges, externals, ipcChannels, ipc, sourceMaps                                                              |
-| JavaScript file      | references, ipc, exports                                                                                             |
-| Source map           | sources, packages                                                                                                    |
+| Format               | Collections                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ELF                  | sections, segments, symbols, imports, exports, libraries, goDependencies                                                                         |
+| PE                   | sections, imports, exports, libraries, goDependencies; .NET adds types, methods (with IL facts), calls, cil, pinvokes, userStrings, assemblyRefs |
+| Mach-O               | segments, sections, symbols, imports, exports, libraries, goDependencies; fat adds slices                                                        |
+| WASM                 | imports, exports, types, sections                                                                                                                |
+| EVM                  | selectors, instructions, opcodes                                                                                                                 |
+| SQLite               | tables, columns, indexes, triggers, samples                                                                                                      |
+| HAR                  | requests, hosts, endpoints                                                                                                                       |
+| APK                  | permissions, components, libraries, files, classes, packages, dexFiles                                                                           |
+| JAR                  | classes, packages, manifest                                                                                                                      |
+| Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                                                 |
+| DEX                  | classes, packages, dexStrings                                                                                                                    |
+| ZIP                  | files                                                                                                                                            |
+| Electron / directory | modules, edges, externals, ipcChannels, ipc, sourceMaps                                                                                          |
+| JavaScript file      | references, ipc, exports                                                                                                                         |
+| Source map           | sources, packages                                                                                                                                |
 
 `findings` and `limitations` exist for every format.

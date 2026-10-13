@@ -445,12 +445,28 @@ export function collectionsOf(
         if (b.dotnet) {
           out["types"] = b.dotnet.types;
           out["methods"] = b.dotnet.types.flatMap((t) =>
-            t.methods.map((m) => ({
+            t.members.map((m) => ({
               type: t.namespace ? `${t.namespace}.${t.name}` : t.name,
-              name: m,
+              name: m.name,
+              flags: m.flags,
+              rva: m.rva,
+              ilSize: m.il?.size ?? null,
+              instructions: m.il?.instructions ?? null,
+              calls: m.il?.calls.length ?? null,
+              strings: m.il?.strings.length ?? null,
+              ilSha256: m.il?.ilSha256 ?? null,
             })),
           );
           out["pinvokes"] = b.dotnet.pinvokes;
+          out["calls"] = b.dotnet.types.flatMap((t) =>
+            t.members.flatMap((m) =>
+              (m.il?.calls ?? []).map((callee) => ({
+                from: `${t.namespace ? `${t.namespace}.` : ""}${t.name}::${m.name}`,
+                to: callee,
+              })),
+            ),
+          );
+          if (b.dotnet.instructions.length) out["cil"] = b.dotnet.instructions;
           out["userStrings"] = b.dotnet.userStrings.map((value) => ({ value }));
           out["assemblyRefs"] = b.dotnet.assemblyRefs;
         }
