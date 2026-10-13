@@ -60,18 +60,38 @@ export function resolveAliases(
   // bound to a target somewhere in the file. A declaration of any other name hides nothing that
   // is looked up, so it is ignored. That keeps the bookkeeping to a handful of names per file.
   const tracked = new Set<string>(own);
-  for (let k = 0; k < tokens.length; k++) {
-    const t = tokens[k]!;
-    if (t.type !== "ident" || !targets.has(t.value)) continue;
-    const next = tokens[k + 1];
-    const bound = tokens[k + 2];
-    // `{ target: name }`, `target as name`
-    if ((is(next, "punct", ":") || is(next, "ident", "as")) && is(bound, "ident"))
-      tracked.add(bound!.value);
-    // `name = target`, `name = x.target`
-    if (is(tokens[k - 1], "punct", "=") && is(tokens[k - 2], "ident")) tracked.add(tokens[k - 2]!.value);
-    if (is(tokens[k - 1], "punct", ".") && is(tokens[k - 3], "punct", "=") && is(tokens[k - 4], "ident"))
-      tracked.add(tokens[k - 4]!.value);
+  // A name bound to a target, or to a name that is itself bound to one (`n = t` after
+  // `{ ipcRenderer: t }`, as minifiers write it). Chains are followed a few links deep.
+  const bound = new Set<string>();
+  let sources: ReadonlySet<string> = targets;
+  for (let round = 0; round < 4; round++) {
+    const added = new Set<string>();
+    const add = (name: string): void => {
+      // `bound` and not `tracked` decides: one of the file's own names (an import) is tracked
+      // from the start and may still be the first link of a chain.
+      if (!bound.has(name)) added.add(name);
+      bound.add(name);
+      tracked.add(name);
+    };
+    for (let k = 0; k < tokens.length; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "ident" || !sources.has(t.value)) continue;
+      const next = tokens[k + 1];
+      const renamed = tokens[k + 2];
+      // `{ target: name }`, `target as name`
+      if ((is(next, "punct", ":") || is(next, "ident", "as")) && is(renamed, "ident"))
+        add(renamed!.value);
+      // `name = target`, `name = x.target`
+      if (is(tokens[k - 1], "punct", "=") && is(tokens[k - 2], "ident")) add(tokens[k - 2]!.value);
+      if (
+        is(tokens[k - 1], "punct", ".") &&
+        is(tokens[k - 3], "punct", "=") &&
+        is(tokens[k - 4], "ident")
+      )
+        add(tokens[k - 4]!.value);
+    }
+    if (added.size === 0) break;
+    sources = added;
   }
   const declare = (scope: Scope, name: string, alias: string | null): void => {
     if (!tracked.has(name)) return;

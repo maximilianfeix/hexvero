@@ -166,6 +166,17 @@ describe("names and scope", () => {
     ).toEqual(["bus@5=ipcMain", "ipc@5=ipcRenderer", "s@5=ipcRenderer", "im@5=ipcMain"]);
   });
 
+  it("follows a chain of names as a minifier writes it", () => {
+    // `o` is ipcRenderer and also an imported name of the file; `a` is another name for `o`
+    const source =
+      'var{contextBridge:p,ipcRenderer:o}=require("electron"),s=i(),a=o;p.exposeInMainWorld("n",{r:(e,n)=>a.invoke("doc:rename",e,n),q:e=>o.send("app:ping")});';
+    expect(scanJavaScript(source).ipc.map((u) => `${u.api} ${u.channel}`)).toEqual([
+      "contextBridge.exposeInMainWorld n",
+      "ipcRenderer.invoke doc:rename",
+      "ipcRenderer.send app:ping",
+    ]);
+  });
+
   it("does not take a local of the same name for the alias", () => {
     // minified shape: `n` is ipcMain at the top, and a parameter inside the functions
     const source = [
