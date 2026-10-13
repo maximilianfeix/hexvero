@@ -1,0 +1,2878 @@
+{
+ "tool": {
+  "name": "REA",
+  "version": "6.4.0",
+  "package": "rea-agents",
+  "cli": "6.4.0",
+  "node": "v24.21.0",
+  "platform": "darwin arm64",
+  "mapping": "alternative: store calls counted as storage",
+  "deep providers": "none installed (Ghidra, Hopper, IDA)"
+ },
+ "notRun": [
+  {
+   "key": "dev/calls.O2.macho-arm64 → dev/calls-v2.O2.macho-arm64",
+   "class": "*",
+   "reason": "REA 6.4.0 has no call that compares the import or symbol tables of two Mach-O files: compare-application-versions takes JavaScript application Evidence, compare-artifacts compares archive inventories, compare-functions needs function Evidence from a deep provider (none installed)"
+  },
+  {
+   "key": "dev/calls.O0.macho-arm64 (inspect-macho)",
+   "class": "functions",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "dev/calls.O0.macho-arm64 (inspect-macho)",
+   "class": "call paths",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "dev/calls.O0.macho-arm64 (inspect-macho)",
+   "class": "direct callers",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "dev/calls.O2.macho-arm64 (inspect-macho)",
+   "class": "functions",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "dev/calls.O2.macho-arm64 (inspect-macho)",
+   "class": "call paths",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "dev/calls.O2.macho-arm64 (inspect-macho)",
+   "class": "direct callers",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "dev/notes-app.plain.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "dev/notes-app.bundled.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "dev/notes-app.minified.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "validation/chat-app.plain.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "validation/chat-app.bundled.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "validation/chat-app.minified.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "validation/dispatch.O0.macho-arm64 (inspect-macho)",
+   "class": "functions",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "validation/dispatch.O0.macho-arm64 (inspect-macho)",
+   "class": "call paths",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "validation/dispatch.O0.macho-arm64 (inspect-macho)",
+   "class": "direct callers",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "validation/dispatch.O2.macho-arm64 (inspect-macho)",
+   "class": "functions",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "validation/dispatch.O2.macho-arm64 (inspect-macho)",
+   "class": "call paths",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "validation/dispatch.O2.macho-arm64 (inspect-macho)",
+   "class": "direct callers",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "holdout/exprcalc.O0.macho-arm64 (inspect-macho)",
+   "class": "functions",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "holdout/exprcalc.O0.macho-arm64 (inspect-macho)",
+   "class": "call paths",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "holdout/exprcalc.O0.macho-arm64 (inspect-macho)",
+   "class": "direct callers",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "holdout/exprcalc.O2.macho-arm64 (inspect-macho)",
+   "class": "functions",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "holdout/exprcalc.O2.macho-arm64 (inspect-macho)",
+   "class": "call paths",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "holdout/exprcalc.O2.macho-arm64 (inspect-macho)",
+   "class": "direct callers",
+   "reason": "rea function … answered provider_unavailable: candidates ghidra, hopper, ida; none is installed. REA 6.4.0 has no radare2 or rizin provider"
+  },
+  {
+   "key": "holdout/time-tracker.plain.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "holdout/time-tracker.bundled.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "holdout/time-tracker.minified.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  }
+ ],
+ "observations": {
+  "native:dev/calls.O0.macho-arm64:inspect-macho": {
+   "native": {
+    "status": "RUN",
+    "engine": "rea inspect-macho (system nm, dyld_info, otool)",
+    "limitations": [],
+    "imports": [
+     "_puts",
+     "_printf",
+     "_atoi",
+     "_strlen",
+     "___stack_chk_guard",
+     "___snprintf_chk",
+     "_system",
+     "___stack_chk_fail"
+    ],
+    "exportsSeen": [
+     "__mh_execute_header",
+     "_main"
+    ],
+    "functions": [],
+    "paths": [],
+    "callers": [],
+    "deepProvider": null
+   }
+  },
+  "native:dev/calls.O2.macho-arm64:inspect-macho": {
+   "native": {
+    "status": "RUN",
+    "engine": "rea inspect-macho (system nm, dyld_info, otool)",
+    "limitations": [],
+    "imports": [
+     "___stack_chk_fail",
+     "___stack_chk_guard",
+     "_atoi",
+     "_printf",
+     "_puts",
+     "_snprintf",
+     "_strlen",
+     "_system"
+    ],
+    "exportsSeen": [
+     "__mh_execute_header",
+     "_main"
+    ],
+    "functions": [],
+    "paths": [],
+    "callers": [],
+    "deepProvider": null
+   }
+  },
+  "dev/notes-app.plain.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "doc:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:rename",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:ping",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:changed",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 5,
+    "webPreferences": [
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 31,
+      "status": "dynamic",
+      "unread": []
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "notes",
+      "member": "onChanged",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "open",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "ping",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "rename",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "save",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "version",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://upload.notes.example/blob",
+      "method": null,
+      "mechanism": "call:xhr.open"
+     },
+     {
+      "value": "wss://live.notes.example/socket",
+      "method": null,
+      "mechanism": "call:WebSocket"
+     },
+     {
+      "value": "/local/route",
+      "method": "GET",
+      "mechanism": "call:router.get"
+     },
+     {
+      "value": "https://alias.notes.example/ping",
+      "method": null,
+      "mechanism": "call:request"
+     },
+     {
+      "value": "https://api.notes.example/v1/items",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "items",
+      "method": null,
+      "mechanism": "call:cache.fetch"
+     },
+     {
+      "value": "/v1/login",
+      "method": "POST",
+      "mechanism": "call:axios.post"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 2,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "token",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "draft",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "notes-db",
+      "ops": []
+     }
+    ],
+    "storageKeysUnread": 0,
+    "notes": []
+   }
+  },
+  "dev/notes-app.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "doc:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:ping",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:rename",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:changed",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 5,
+    "webPreferences": [
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 45,
+      "status": "dynamic",
+      "unread": []
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "notes",
+      "member": "onChanged",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "open",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "ping",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "rename",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "save",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "version",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.notes.example/v1/items",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "wss://live.notes.example/socket",
+      "method": null,
+      "mechanism": "call:WebSocket"
+     },
+     {
+      "value": "https://upload.notes.example/blob",
+      "method": null,
+      "mechanism": "call:xhr.open"
+     },
+     {
+      "value": "/local/route",
+      "method": "GET",
+      "mechanism": "call:router.get"
+     },
+     {
+      "value": "/v1/login",
+      "method": "POST",
+      "mechanism": "call:axios.post"
+     },
+     {
+      "value": "items",
+      "method": null,
+      "mechanism": "call:cache.fetch"
+     },
+     {
+      "value": "https://alias.notes.example/ping",
+      "method": null,
+      "mechanism": "call:request"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 2,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "draft",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "theme",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "notes-db",
+      "ops": []
+     },
+     {
+      "kind": "localStorage",
+      "value": "token",
+      "ops": [
+       "delete"
+      ]
+     }
+    ],
+    "storageKeysUnread": 0,
+    "notes": []
+   }
+  },
+  "dev/notes-app.minified.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "doc:rename",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:ping",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:changed",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "doc:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 5,
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 1,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 1,
+      "status": "object-literal",
+      "unread": [
+       "contextIsolation (dynamic)",
+       "nodeIntegration (dynamic)",
+       "sandbox (dynamic)"
+      ]
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "notes",
+      "member": "onChanged",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "open",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "ping",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "rename",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "save",
+      "channel": null
+     },
+     {
+      "api": "notes",
+      "member": "version",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "wss://live.notes.example/socket",
+      "method": null,
+      "mechanism": "call:WebSocket"
+     },
+     {
+      "value": "items",
+      "method": null,
+      "mechanism": "call:e.fetch"
+     },
+     {
+      "value": "https://alias.notes.example/ping",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "https://api.notes.example/v1/items",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "/v1/login",
+      "method": "POST",
+      "mechanism": "call:t.post"
+     },
+     {
+      "value": "https://upload.notes.example/blob",
+      "method": null,
+      "mechanism": "call:e.open"
+     },
+     {
+      "value": "/local/route",
+      "method": "GET",
+      "mechanism": "call:t.get"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 0,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "draft",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "notes-db",
+      "ops": []
+     },
+     {
+      "kind": "localStorage",
+      "value": "token",
+      "ops": [
+       "delete"
+      ]
+     }
+    ],
+    "storageKeysUnread": 0,
+    "notes": []
+   }
+  },
+  "compare:dev/notes-app.plain.asar|dev/notes-app-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "added": [
+      "doc:duplicate"
+     ],
+     "removed": [
+      "doc:rename"
+     ],
+     "changed": [],
+     "relocated": 3,
+     "sameNameOnBothSides": 3
+    },
+    "contextBridge": {
+     "added": [
+      "notes.duplicate"
+     ],
+     "removed": [
+      "notes.rename"
+     ],
+     "changed": [],
+     "relocated": 0,
+     "sameNameOnBothSides": 0
+    },
+    "endpoints": {
+     "added": [
+      "https://api.notes.example/v2/search",
+      "wss://live.notes.example/v2/socket"
+     ],
+     "removed": [
+      "wss://live.notes.example/socket"
+     ],
+     "changed": [],
+     "relocated": 7,
+     "sameNameOnBothSides": 0
+    },
+    "storage": {
+     "added": [
+      "localStorage lastSync"
+     ],
+     "removed": [
+      "localStorage token"
+     ],
+     "changed": [],
+     "relocated": 3,
+     "sameNameOnBothSides": 0
+    },
+    "webPreferences": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "windowsLeftOnly": 2,
+     "windowsRightOnly": 2,
+     "windowsUnread": 2
+    },
+    "literal": {
+     "summary": {
+      "unchanged": 0,
+      "added": 0,
+      "removed": 0,
+      "changed": 24,
+      "unknown": 84
+     },
+     "coverage": "partial",
+     "matching": {
+      "exact_node_identity": 3,
+      "exact_content_digest": 2,
+      "exact_module_source_digest": 0,
+      "source_map_identity": 0,
+      "structural_fingerprint": 0,
+      "semantic_key": 26,
+      "ambiguous": 0,
+      "unmatched": 77
+     }
+    }
+   }
+  },
+  "validation/chat-app.plain.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:renderer-ready",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:typing",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:update",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "rooms:leave",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:save",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:incoming",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "rooms:join",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "auth:sign-out",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:reset",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:bootstrap",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:locale",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 10,
+    "webPreferences": [
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 37,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 56,
+      "status": "object-literal",
+      "unread": [
+       "[spread@2185] (dynamic: LEGACY_PREFERENCES)"
+      ]
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "chat",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "history",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "join",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "leave",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "listRooms",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "onIncoming",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "openSettings",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "sendMessage",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "typing",
+      "channel": null
+     },
+     {
+      "api": null,
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://ghost.chat.example/cache-key",
+      "method": null,
+      "mechanism": "call:avatarCache.fetch"
+     },
+     {
+      "value": "https://api.chat.example/v2/messages",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "https://ghost.chat.example/cache-open",
+      "method": null,
+      "mechanism": "call:avatarCache.open"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/latest.json",
+      "method": "GET",
+      "mechanism": "call:https.get"
+     },
+     {
+      "value": "https://api.chat.example/v2/session",
+      "method": null,
+      "mechanism": "call:xhr.open"
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms",
+      "method": null,
+      "mechanism": "call:fetch"
+     }
+    ],
+    "routes": [
+     {
+      "value": "rooms:list",
+      "kind": "route",
+      "mechanism": "call:route"
+     }
+    ],
+    "endpointsUnreadable": 4,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "ghost.map-key",
+      "ops": [
+       "delete",
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.zoom",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "auth.refreshToken",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.zoom-draft",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.density",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "composer.unsent",
+      "ops": [
+       "write",
+       "delete",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "chat.lastRoom",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache",
+      "ops": []
+     }
+    ],
+    "storageKeysUnread": 0,
+    "notes": []
+   }
+  },
+  "validation/chat-app.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "app:renderer-ready",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:reset",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:incoming",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "app:locale",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:sign-out",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:save",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:typing",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:update",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "rooms:join",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "auth:bootstrap",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:leave",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     }
+    ],
+    "unresolvedChannelOperations": 10,
+    "webPreferences": [
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 58,
+      "status": "object-literal",
+      "unread": [
+       "[spread@2147] (dynamic: LEGACY_PREFERENCES)"
+      ]
+     },
+     {
+      "line": 42,
+      "status": "dynamic",
+      "unread": []
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "chat",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "history",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "join",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "leave",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "listRooms",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "onIncoming",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "openSettings",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "sendMessage",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "typing",
+      "channel": null
+     },
+     {
+      "api": null,
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.chat.example/v2/messages",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/latest.json",
+      "method": "GET",
+      "mechanism": "call:https.get"
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "https://ghost.chat.example/cache-open",
+      "method": null,
+      "mechanism": "call:avatarCache.open"
+     },
+     {
+      "value": "https://api.chat.example/v2/session",
+      "method": null,
+      "mechanism": "call:xhr.open"
+     },
+     {
+      "value": "https://ghost.chat.example/cache-key",
+      "method": null,
+      "mechanism": "call:avatarCache.fetch"
+     }
+    ],
+    "routes": [
+     {
+      "value": "rooms:list",
+      "kind": "route",
+      "mechanism": "call:route"
+     }
+    ],
+    "endpointsUnreadable": 4,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "ghost.map-key",
+      "ops": [
+       "delete",
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "auth.refreshToken",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.zoom",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache",
+      "ops": []
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.density",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "composer.unsent",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.zoom-draft",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "chat.lastRoom",
+      "ops": [
+       "write",
+       "read"
+      ]
+     }
+    ],
+    "storageKeysUnread": 0,
+    "notes": []
+   }
+  },
+  "validation/chat-app.minified.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "presence:update",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:bootstrap",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:locale",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:reset",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:incoming",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "app:renderer-ready",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:sign-out",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:join",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "rooms:leave",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:save",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:typing",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 10,
+    "webPreferences": [],
+    "windowsUnread": [
+     {
+      "line": 1,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 1,
+      "status": "object-literal",
+      "unread": [
+       "[spread@1108] (dynamic: A)",
+       "sandbox (dynamic)",
+       "webSecurity (dynamic: !1)"
+      ]
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "chat",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "history",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "join",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "leave",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "listRooms",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "onIncoming",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "openSettings",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "sendMessage",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "typing",
+      "channel": null
+     },
+     {
+      "api": null,
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://ghost.chat.example/cache-open",
+      "method": null,
+      "mechanism": "call:i.open"
+     },
+     {
+      "value": "https://api.chat.example/v2/session",
+      "method": null,
+      "mechanism": "call:e.open"
+     },
+     {
+      "value": "https://ghost.chat.example/cache-key",
+      "method": null,
+      "mechanism": "call:i.fetch"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/latest.json",
+      "method": "GET",
+      "mechanism": "call:v.get"
+     },
+     {
+      "value": "https://api.chat.example/v2/messages",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms",
+      "method": null,
+      "mechanism": "call:fetch"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 0,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "auth.refreshToken",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ghost.map-key",
+      "ops": [
+       "read",
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.zoom",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.zoom-draft",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "chat.lastRoom",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "composer.unsent",
+      "ops": [
+       "delete",
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.density",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache",
+      "ops": []
+     }
+    ],
+    "storageKeysUnread": 0,
+    "notes": []
+   }
+  },
+  "compare:validation/chat-app.plain.asar|validation/chat-app-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 12,
+     "sameNameOnBothSides": 10
+    },
+    "contextBridge": {
+     "added": [
+      "chat.listDirectory"
+     ],
+     "removed": [
+      "chat.listRooms"
+     ],
+     "changed": [],
+     "relocated": 0,
+     "sameNameOnBothSides": 0
+    },
+    "endpoints": {
+     "added": [
+      "auth.sessionKey",
+      "https://api.chat.example/v3/rooms"
+     ],
+     "removed": [
+      "auth.refreshToken",
+      "https://api.chat.example/v2/rooms"
+     ],
+     "changed": [],
+     "relocated": 8,
+     "sameNameOnBothSides": 0
+    },
+    "storage": {
+     "added": [
+      "localStorage ui.scale"
+     ],
+     "removed": [
+      "localStorage ui.density"
+     ],
+     "changed": [],
+     "relocated": 4,
+     "sameNameOnBothSides": 0
+    },
+    "webPreferences": {
+     "added": [],
+     "removed": [],
+     "changed": [
+      "sandbox: false -> true"
+     ],
+     "relocated": 0,
+     "windowsLeftOnly": 2,
+     "windowsRightOnly": 2,
+     "windowsUnread": 4
+    },
+    "literal": {
+     "summary": {
+      "unchanged": 0,
+      "added": 0,
+      "removed": 0,
+      "changed": 38,
+      "unknown": 115
+     },
+     "coverage": "partial",
+     "matching": {
+      "exact_node_identity": 3,
+      "exact_content_digest": 2,
+      "exact_module_source_digest": 0,
+      "source_map_identity": 0,
+      "structural_fingerprint": 0,
+      "semantic_key": 40,
+      "ambiguous": 0,
+      "unmatched": 108
+     }
+    }
+   }
+  },
+  "native:validation/dispatch.O0.macho-arm64:inspect-macho": {
+   "native": {
+    "status": "RUN",
+    "engine": "rea inspect-macho (system nm, dyld_info, otool)",
+    "limitations": [],
+    "imports": [
+     "_remove",
+     "_strcmp",
+     "_printf",
+     "_puts",
+     "_strlen",
+     "_atoi",
+     "_getenv"
+    ],
+    "exportsSeen": [
+     "__mh_execute_header",
+     "_main"
+    ],
+    "functions": [],
+    "paths": [],
+    "callers": [],
+    "deepProvider": null
+   }
+  },
+  "native:validation/dispatch.O2.macho-arm64:inspect-macho": {
+   "native": {
+    "status": "RUN",
+    "engine": "rea inspect-macho (system nm, dyld_info, otool)",
+    "limitations": [],
+    "imports": [
+     "_atoi",
+     "_getenv",
+     "_printf",
+     "_puts",
+     "_remove",
+     "_strcmp",
+     "_strlen"
+    ],
+    "exportsSeen": [
+     "__mh_execute_header",
+     "_main"
+    ],
+    "functions": [],
+    "paths": [],
+    "callers": [],
+    "deepProvider": null
+   }
+  },
+  "robust:damaged/empty.asar": {
+   "robust": {
+    "outcome": "error",
+    "code": "artifact_operation_failed",
+    "message": "Artifact inventory classified $BUILT/damaged/empty.asar as file, not asar",
+    "command": "rea analyze-javascript-application",
+    "exit": 1,
+    "wallMs": 990
+   }
+  },
+  "robust:damaged/header-cut.asar": {
+   "robust": {
+    "outcome": "error",
+    "code": "artifact_operation_failed",
+    "message": "ASAR header leaves its container or has invalid pickle extents",
+    "command": "rea analyze-javascript-application",
+    "exit": 1,
+    "wallMs": 677
+   }
+  },
+  "robust:damaged/header-length-lies.asar": {
+   "robust": {
+    "outcome": "error",
+    "code": "artifact_operation_failed",
+    "message": "Artifact inventory classified $BUILT/damaged/header-length-lies.asar as file, not asar",
+    "command": "rea analyze-javascript-application",
+    "exit": 1,
+    "wallMs": 651
+   }
+  },
+  "robust:damaged/contents-cut.asar": {
+   "robust": {
+    "outcome": "error",
+    "code": "artifact_operation_failed",
+    "message": "ASAR entry range is outside its container: package.json",
+    "command": "rea analyze-javascript-application",
+    "exit": 1,
+    "wallMs": 656
+   }
+  },
+  "robust:damaged/load-commands-cut.macho-arm64": {
+   "robust": {
+    "outcome": "error",
+    "code": "target_unavailable",
+    "message": "truncated Mach-O load commands: the header declares 1208 bytes after its 32-byte header; the file has 600",
+    "command": "rea inspect-macho",
+    "exit": 1,
+    "wallMs": 697
+   }
+  },
+  "robust:damaged/body-cut.macho-arm64": {
+   "robust": {
+    "outcome": "error",
+    "code": "execution_failure",
+    "message": "Analysis could not complete. Retry once; if it continues, run `rea doctor`.",
+    "command": "rea inspect-macho",
+    "exit": 1,
+    "wallMs": 3373
+   }
+  },
+  "native:holdout/exprcalc.O0.macho-arm64:inspect-macho": {
+   "native": {
+    "status": "RUN",
+    "engine": "rea inspect-macho (system nm, dyld_info, otool)",
+    "limitations": [],
+    "imports": [
+     "_getenv",
+     "_atoi",
+     "___stderrp",
+     "_fputs",
+     "_printf",
+     "_strtol",
+     "_strchr"
+    ],
+    "exportsSeen": [
+     "__mh_execute_header",
+     "_main"
+    ],
+    "functions": [],
+    "paths": [],
+    "callers": [],
+    "deepProvider": null
+   }
+  },
+  "native:holdout/exprcalc.O2.macho-arm64:inspect-macho": {
+   "native": {
+    "status": "RUN",
+    "engine": "rea inspect-macho (system nm, dyld_info, otool)",
+    "limitations": [],
+    "imports": [
+     "___stderrp",
+     "_atoi",
+     "_fputs",
+     "_getenv",
+     "_printf",
+     "_strtol"
+    ],
+    "exportsSeen": [
+     "__mh_execute_header",
+     "_main"
+    ],
+    "functions": [],
+    "paths": [],
+    "callers": [],
+    "deepProvider": null
+   }
+  },
+  "holdout/time-tracker.plain.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 28,
+    "webPreferences": [],
+    "windowsUnread": [
+     {
+      "line": 94,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 119,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 71,
+      "status": "dynamic",
+      "unread": []
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "tracker",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": null,
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "/entries/changed",
+      "method": "POST",
+      "mechanism": "call:localBus.post"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "method": null,
+      "mechanism": "call:window.fetch"
+     },
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "method": null,
+      "mechanism": "call:https.request"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "method": null,
+      "mechanism": "call:fetch"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 9,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "note",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "hours",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ghost.form-field",
+      "ops": [
+       "delete",
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     }
+    ],
+    "storageKeysUnread": 5,
+    "notes": []
+   }
+  },
+  "holdout/time-tracker.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 28,
+    "webPreferences": [],
+    "windowsUnread": [
+     {
+      "line": 135,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 153,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 176,
+      "status": "dynamic",
+      "unread": []
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "tracker",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": null,
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "/entries/changed",
+      "method": "POST",
+      "mechanism": "call:localBus.post"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "method": null,
+      "mechanism": "call:window.fetch"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "method": null,
+      "mechanism": "call:import_node_https.default.request"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 9,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "note",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "hours",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ghost.form-field",
+      "ops": [
+       "delete",
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "write"
+      ]
+     }
+    ],
+    "storageKeysUnread": 5,
+    "notes": []
+   }
+  },
+  "holdout/time-tracker.minified.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     }
+    ],
+    "unresolvedChannelOperations": 28,
+    "webPreferences": [],
+    "windowsUnread": [
+     {
+      "line": 1,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 1,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 1,
+      "status": "dynamic",
+      "unread": []
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": null,
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "method": null,
+      "mechanism": "call:P.default.request"
+     },
+     {
+      "value": "/entries/changed",
+      "method": "POST",
+      "mechanism": "call:S.post"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "method": null,
+      "mechanism": "call:window.fetch"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 1,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "hours",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ghost.form-field",
+      "ops": [
+       "read",
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "note",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ],
+    "storageKeysUnread": 5,
+    "notes": []
+   }
+  },
+  "compare:holdout/time-tracker.plain.asar|holdout/time-tracker-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "added": [],
+     "removed": [
+      "widget:close"
+     ],
+     "changed": [],
+     "relocated": 10,
+     "sameNameOnBothSides": 9
+    },
+    "contextBridge": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "sameNameOnBothSides": 0
+    },
+    "endpoints": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 13,
+     "sameNameOnBothSides": 0
+    },
+    "storage": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 4,
+     "sameNameOnBothSides": 0
+    },
+    "webPreferences": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "windowsLeftOnly": 3,
+     "windowsRightOnly": 3,
+     "windowsUnread": 6
+    },
+    "literal": {
+     "summary": {
+      "unchanged": 0,
+      "added": 0,
+      "removed": 0,
+      "changed": 55,
+      "unknown": 170
+     },
+     "coverage": "partial",
+     "matching": {
+      "exact_node_identity": 3,
+      "exact_content_digest": 2,
+      "exact_module_source_digest": 0,
+      "source_map_identity": 0,
+      "structural_fingerprint": 0,
+      "semantic_key": 57,
+      "ambiguous": 0,
+      "unmatched": 163
+     }
+    }
+   }
+  }
+ },
+ "raw": {
+  "native:dev/calls.O0.macho-arm64:inspect-macho": {
+   "exit": 0,
+   "wallMs": 4012,
+   "stdoutBytes": 12301,
+   "sha256": "67de88a923fc998cadb8aace9c4bb478f34c185123b5a10e49496419ecf28b8f"
+  },
+  "function:dev/calls.O0.macho-arm64": {
+   "exit": 1,
+   "wallMs": 964,
+   "stdoutBytes": 2325,
+   "code": "provider_unavailable"
+  },
+  "native:dev/calls.O2.macho-arm64:inspect-macho": {
+   "exit": 0,
+   "wallMs": 3348,
+   "stdoutBytes": 12296,
+   "sha256": "656df5c1692371103362f7c2c0725b77f82fc8ee30392a612b98c8bd88314f41"
+  },
+  "function:dev/calls.O2.macho-arm64": {
+   "exit": 1,
+   "wallMs": 939,
+   "stdoutBytes": 2325,
+   "code": "provider_unavailable"
+  },
+  "analyze:dev/notes-app.plain.asar": {
+   "bytes": 1052406,
+   "sha256": "623ee0b4e312ae154a7b754006bffe8245f6b6481fd3f6642049a3774e31c830"
+  },
+  "analyze:dev/notes-app.bundled.asar": {
+   "bytes": 1246912,
+   "sha256": "455aca25b86c5bc590e33f14ef0b32b58f6bc450334574076627ff18150a5136"
+  },
+  "analyze:dev/notes-app.minified.asar": {
+   "bytes": 1145530,
+   "sha256": "e675640ce5c0f13b2f5320c7f3d0c68d99b9abd21356cfbddc9840056437aa3c"
+  },
+  "analyze:dev/notes-app-v2.plain.asar": {
+   "bytes": 1059202,
+   "sha256": "d83499ee392565d1299a448a4aca12595a444b852914b0c3f23bb8b9cd1bf73d"
+  },
+  "compare:dev/notes-app.plain.asar|dev/notes-app-v2.plain.asar": {
+   "exit": 0,
+   "wallMs": 891,
+   "stdoutBytes": 666796,
+   "inputBytes": 2111624,
+   "sha256": "37f1ee2991bb467ca896ed669845d239fde40a441d37d456daa54544ffd88baa"
+  },
+  "analyze:validation/chat-app.plain.asar": {
+   "bytes": 3021423,
+   "sha256": "1eb38d93d97032f7f0e4627cb47bc3281e64413677794c978dcfa19ebf108f37"
+  },
+  "analyze:validation/chat-app.bundled.asar": {
+   "bytes": 3139988,
+   "sha256": "496f237a605fe6a8a14ca74befc53d834aab3eab2176516abe85477cc228f22c"
+  },
+  "analyze:validation/chat-app.minified.asar": {
+   "bytes": 3062483,
+   "sha256": "2e9741eca93e96242171c8939ec7fecd577bc653b79653f1f8bca69bd26c1d6f"
+  },
+  "analyze:validation/chat-app-v2.plain.asar": {
+   "bytes": 3018614,
+   "sha256": "17cd854b0e195602184a6e591c7e6d03e5da9507a43c6084adfd1fa47ab5a4e2"
+  },
+  "compare:validation/chat-app.plain.asar|validation/chat-app-v2.plain.asar": {
+   "exit": 0,
+   "wallMs": 1108,
+   "stdoutBytes": 868042,
+   "inputBytes": 6040053,
+   "sha256": "7da06b7585c3e85bcec47ac565c75c2b696f323b936295df2e17adc7b90e81b3"
+  },
+  "native:validation/dispatch.O0.macho-arm64:inspect-macho": {
+   "exit": 0,
+   "wallMs": 3429,
+   "stdoutBytes": 12333,
+   "sha256": "fab66a9629b14d068ad93e1967c5d39230cfd1f06f41cd1d9bed970d7c97c4fe"
+  },
+  "function:validation/dispatch.O0.macho-arm64": {
+   "exit": 1,
+   "wallMs": 1187,
+   "stdoutBytes": 2325,
+   "code": "provider_unavailable"
+  },
+  "native:validation/dispatch.O2.macho-arm64:inspect-macho": {
+   "exit": 0,
+   "wallMs": 3469,
+   "stdoutBytes": 12334,
+   "sha256": "39bb962e48bbaa55445d1becf885bb16b7b6e68b946eb38ad0477274d27c9c53"
+  },
+  "function:validation/dispatch.O2.macho-arm64": {
+   "exit": 1,
+   "wallMs": 1253,
+   "stdoutBytes": 2325,
+   "code": "provider_unavailable"
+  },
+  "native:holdout/exprcalc.O0.macho-arm64:inspect-macho": {
+   "exit": 0,
+   "wallMs": 2548,
+   "stdoutBytes": 12306,
+   "sha256": "e07a5d42b20b1e56b71ca5631a57f2589cb4b3136f5b39932a675540a1ce2c25"
+  },
+  "function:holdout/exprcalc.O0.macho-arm64": {
+   "exit": 1,
+   "wallMs": 842,
+   "stdoutBytes": 2325,
+   "code": "provider_unavailable"
+  },
+  "native:holdout/exprcalc.O2.macho-arm64:inspect-macho": {
+   "exit": 0,
+   "wallMs": 3643,
+   "stdoutBytes": 12223,
+   "sha256": "ba68562a4feba2e49ea24c29c03b5dc4b0cb1cf7bc741d7e95ae2a6a67c133c8"
+  },
+  "function:holdout/exprcalc.O2.macho-arm64": {
+   "exit": 1,
+   "wallMs": 1730,
+   "stdoutBytes": 2325,
+   "code": "provider_unavailable"
+  },
+  "analyze:holdout/time-tracker.plain.asar": {
+   "bytes": 5684518,
+   "sha256": "694536b50cd77254c956f523b87cd6f2cbf1465bb3cd2d31fe4c4477af132fec"
+  },
+  "analyze:holdout/time-tracker.bundled.asar": {
+   "bytes": 6470270,
+   "sha256": "6cb05fe7da58ee76aeddda9a8b2581e7445d3eae2024f7eb5adfc5b17fd1de0d"
+  },
+  "analyze:holdout/time-tracker.minified.asar": {
+   "bytes": 6314924,
+   "sha256": "0841c97b3da5f67790e003a199e364410f746dd91883da81519719a5c4a986d5"
+  },
+  "analyze:holdout/time-tracker-v2.plain.asar": {
+   "bytes": 5671602,
+   "sha256": "e3e3dba52be8e7f20e255f41e4b4be1f5ab900cc176a056d5ff20dbc250a1127"
+  },
+  "compare:holdout/time-tracker.plain.asar|holdout/time-tracker-v2.plain.asar": {
+   "exit": 0,
+   "wallMs": 3184,
+   "stdoutBytes": 1410140,
+   "inputBytes": 11356136,
+   "sha256": "6fb640f1f6c548ce735b3a887fa760314e844b634d20fac70bf16d9e2f01dc9d"
+  }
+ }
+}

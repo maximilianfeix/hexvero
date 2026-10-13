@@ -1,0 +1,91 @@
+{
+ "tool": {
+  "name": "REA",
+  "version": "6.4.0",
+  "package": "rea-agents",
+  "cli": "6.4.0",
+  "node": "v24.21.0",
+  "platform": "darwin arm64",
+  "mapping": "default",
+  "deep providers": "none installed (Ghidra, Hopper, IDA)"
+ },
+ "totals": [
+  {
+   "set": "damaged",
+   "class": "damaged input",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  }
+ ],
+ "rows": [
+  {
+   "set": "damaged",
+   "input": "damaged/empty.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error artifact_operation_failed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/header-cut.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error artifact_operation_failed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/header-length-lies.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error artifact_operation_failed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/contents-cut.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error artifact_operation_failed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/load-commands-cut.macho-arm64",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error target_unavailable"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/body-cut.macho-arm64",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error execution_failure"
+   ]
+  }
+ ]
+}

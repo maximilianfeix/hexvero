@@ -8,8 +8,9 @@
  * wall time, the peak resident memory (from /usr/bin/time) and the size of the JSON result. It
  * also measures the MCP catalog and one real MCP session on the largest input. Inputs that do
  * not exist on this machine are listed as skipped. Nothing is cached between runs: the CLI keeps
- * no analysis cache, so "cold" and "warm" differ only by the operating system's file cache; the
- * first run of each input is reported separately for that reason.
+ * no analysis cache for a target it reads in one run, and runs with --fresh for large JavaScript
+ * apps (whose scan state is otherwise stored), so "cold" and "warm" differ only by the operating
+ * system's file cache; the first run of each input is reported separately for that reason.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -67,7 +68,9 @@ for (const input of inputs) {
     continue;
   }
   const bytes = statSync(input).size;
-  const runs = [1, 2, 3].map(() => measure(["analyze", input, "--json"]));
+  // --fresh: a large JavaScript app stores what a scan has read, and a second `analyze` would
+  // then only show the stored state. Every run here reads the first batch again.
+  const runs = [1, 2, 3].map(() => measure(["analyze", input, "--json", "--fresh"]));
   if (!runs[0].ok) {
     console.log(`| \`${input}\` | ${size(bytes)} | failed | | | |`);
     continue;

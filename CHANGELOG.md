@@ -36,8 +36,20 @@ All notable changes to hexvero are listed here. The format follows
   options of `new BrowserWindow(…)`, including an object passed by name, spread in, or returned by
   a helper; a key written for the window replaces the same key of its base object.
 
+- Results that are derived from a partly read application say so themselves: a collection page
+  carries `partial`, a comparison `partialScan` and a warning, and counts in findings read "in
+  the scanned part" with confidence `inferred`. An archive with files that could not be read, or a
+  folder whose listing was cut, is `complete: false` and described as incomplete.
+- `hexvero_analyze` accepts `batch` and `fresh` next to `scan` and `include`.
+
 ### Changed
 
+- Analyzing a JavaScript application takes about twice as long as in 0.3.0 (measured: 6.3 s
+  against 2.7 s on a 47 MiB archive, same memory). The time goes into following names.
+- A large JavaScript application now leaves scan state under `~/.cache/hexvero/scans` (or
+  `HEXVERO_CACHE_DIR`); a later `analyze` shows that state until `--fresh` is given.
+- Rows of `endpoints` and `storage` may have `value: null` (a call whose argument could not be
+  read) and carry `evidence`, `count`, `column` and, for IPC rows, `via`.
 - `endpoints` no longer contains URLs that merely occur as strings; those are in `urls`. An
   endpoint row's value is the address alone, with the method in its own field (previously
   `"POST /login"`). `XMLHttpRequest.open` counts only on an object created as one, and a verb
@@ -52,6 +64,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Fixed
 
+- The CLI cut large output at a buffer boundary when it was piped (`--json | …`); it now exits
+  only after standard output has been written.
+- A folder with more than 50,000 files was listed only in part without a word, and dependencies
+  under `node_modules` could use up that limit before the application's own files were reached.
 - Settings were read from raw text, so `sandbox: false` in a comment or in an unrelated options
   object near a window counted as a window setting.
 - A Mach-O, ELF or PE file that is cut short was analyzed without any limitation when its headers

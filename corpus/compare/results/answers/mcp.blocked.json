@@ -1,0 +1,243 @@
+[
+ {
+  "tool": "rea",
+  "question": "Q4",
+  "unit": "dev/calls.O2.macho-arm64 → dev/calls-v2.O2.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "REA 6.4.0 has no tool that compares the import or symbol tables of two Mach-O files"
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "dev/calls.O0.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed (operation procedure_address)",
+  "attempt": [
+   {
+    "tool": "open_binary",
+    "arguments": "{\"path\":\"$BUILT/dev/calls.O0.macho-arm64\"}",
+    "ms": 497,
+    "resultBytes": 526,
+    "textBytes": 222,
+    "structuredBytes": 222,
+    "isError": false,
+    "error": null
+   },
+   {
+    "tool": "trace_call_path",
+    "arguments": "{\"start\":\"main\",\"goal\":\"validate\",\"direction\":\"forward\"}",
+    "ms": 4,
+    "resultBytes": 2601,
+    "textBytes": 2309,
+    "structuredBytes": 0,
+    "isError": true,
+    "error": "{\"error\":{\"code\":\"provider_unavailable\",\"category\":\"unavailable\",\"message\":\"The selected analysis provider is unavailable. Review the reported local diagnostics or run `rea doctor`, then retry.\",\"retryable\":true,\"remediation\":{\"action\":\"The selected analysis provider is unavailable. Review the repor",
+    "errorDetail": {
+     "code": "provider_unavailable",
+     "operation": "procedure_address",
+     "resource": null,
+     "providers": [
+      "ghidra",
+      "hopper",
+      "ida"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "dev/calls.O2.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed (operation procedure_address)",
+  "attempt": [
+   {
+    "tool": "open_binary",
+    "arguments": "{\"path\":\"$BUILT/dev/calls.O2.macho-arm64\"}",
+    "ms": 109,
+    "resultBytes": 526,
+    "textBytes": 222,
+    "structuredBytes": 222,
+    "isError": false,
+    "error": null
+   },
+   {
+    "tool": "trace_call_path",
+    "arguments": "{\"start\":\"main\",\"goal\":\"validate\",\"direction\":\"forward\"}",
+    "ms": 4,
+    "resultBytes": 2601,
+    "textBytes": 2309,
+    "structuredBytes": 0,
+    "isError": true,
+    "error": "{\"error\":{\"code\":\"provider_unavailable\",\"category\":\"unavailable\",\"message\":\"The selected analysis provider is unavailable. Review the reported local diagnostics or run `rea doctor`, then retry.\",\"retryable\":true,\"remediation\":{\"action\":\"The selected analysis provider is unavailable. Review the repor",
+    "errorDetail": {
+     "code": "provider_unavailable",
+     "operation": "procedure_address",
+     "resource": null,
+     "providers": [
+      "ghidra",
+      "hopper",
+      "ida"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "validation/dispatch.O0.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed (operation procedure_address)",
+  "attempt": [
+   {
+    "tool": "open_binary",
+    "arguments": "{\"path\":\"$BUILT/validation/dispatch.O0.macho-arm64\"}",
+    "ms": 89,
+    "resultBytes": 546,
+    "textBytes": 232,
+    "structuredBytes": 232,
+    "isError": false,
+    "error": null
+   },
+   {
+    "tool": "trace_call_path",
+    "arguments": "{\"start\":\"main\",\"goal\":\"strlen\",\"direction\":\"forward\"}",
+    "ms": 4,
+    "resultBytes": 2601,
+    "textBytes": 2309,
+    "structuredBytes": 0,
+    "isError": true,
+    "error": "{\"error\":{\"code\":\"provider_unavailable\",\"category\":\"unavailable\",\"message\":\"The selected analysis provider is unavailable. Review the reported local diagnostics or run `rea doctor`, then retry.\",\"retryable\":true,\"remediation\":{\"action\":\"The selected analysis provider is unavailable. Review the repor",
+    "errorDetail": {
+     "code": "provider_unavailable",
+     "operation": "procedure_address",
+     "resource": null,
+     "providers": [
+      "ghidra",
+      "hopper",
+      "ida"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "validation/dispatch.O2.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed (operation procedure_address)",
+  "attempt": [
+   {
+    "tool": "open_binary",
+    "arguments": "{\"path\":\"$BUILT/validation/dispatch.O2.macho-arm64\"}",
+    "ms": 48,
+    "resultBytes": 546,
+    "textBytes": 232,
+    "structuredBytes": 232,
+    "isError": false,
+    "error": null
+   },
+   {
+    "tool": "trace_call_path",
+    "arguments": "{\"start\":\"main\",\"goal\":\"strlen\",\"direction\":\"forward\"}",
+    "ms": 4,
+    "resultBytes": 2601,
+    "textBytes": 2309,
+    "structuredBytes": 0,
+    "isError": true,
+    "error": "{\"error\":{\"code\":\"provider_unavailable\",\"category\":\"unavailable\",\"message\":\"The selected analysis provider is unavailable. Review the reported local diagnostics or run `rea doctor`, then retry.\",\"retryable\":true,\"remediation\":{\"action\":\"The selected analysis provider is unavailable. Review the repor",
+    "errorDetail": {
+     "code": "provider_unavailable",
+     "operation": "procedure_address",
+     "resource": null,
+     "providers": [
+      "ghidra",
+      "hopper",
+      "ida"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "holdout/exprcalc.O0.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed (operation procedure_address)",
+  "attempt": [
+   {
+    "tool": "open_binary",
+    "arguments": "{\"path\":\"$BUILT/holdout/exprcalc.O0.macho-arm64\"}",
+    "ms": 75,
+    "resultBytes": 540,
+    "textBytes": 229,
+    "structuredBytes": 229,
+    "isError": false,
+    "error": null
+   },
+   {
+    "tool": "trace_call_path",
+    "arguments": "{\"start\":\"main\",\"goal\":\"fputs\",\"direction\":\"forward\"}",
+    "ms": 4,
+    "resultBytes": 2601,
+    "textBytes": 2309,
+    "structuredBytes": 0,
+    "isError": true,
+    "error": "{\"error\":{\"code\":\"provider_unavailable\",\"category\":\"unavailable\",\"message\":\"The selected analysis provider is unavailable. Review the reported local diagnostics or run `rea doctor`, then retry.\",\"retryable\":true,\"remediation\":{\"action\":\"The selected analysis provider is unavailable. Review the repor",
+    "errorDetail": {
+     "code": "provider_unavailable",
+     "operation": "procedure_address",
+     "resource": null,
+     "providers": [
+      "ghidra",
+      "hopper",
+      "ida"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "holdout/exprcalc.O2.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed (operation procedure_address)",
+  "attempt": [
+   {
+    "tool": "open_binary",
+    "arguments": "{\"path\":\"$BUILT/holdout/exprcalc.O2.macho-arm64\"}",
+    "ms": 79,
+    "resultBytes": 540,
+    "textBytes": 229,
+    "structuredBytes": 229,
+    "isError": false,
+    "error": null
+   },
+   {
+    "tool": "trace_call_path",
+    "arguments": "{\"start\":\"main\",\"goal\":\"fputs\",\"direction\":\"forward\"}",
+    "ms": 4,
+    "resultBytes": 2601,
+    "textBytes": 2309,
+    "structuredBytes": 0,
+    "isError": true,
+    "error": "{\"error\":{\"code\":\"provider_unavailable\",\"category\":\"unavailable\",\"message\":\"The selected analysis provider is unavailable. Review the reported local diagnostics or run `rea doctor`, then retry.\",\"retryable\":true,\"remediation\":{\"action\":\"The selected analysis provider is unavailable. Review the repor",
+    "errorDetail": {
+     "code": "provider_unavailable",
+     "operation": "procedure_address",
+     "resource": null,
+     "providers": [
+      "ghidra",
+      "hopper",
+      "ida"
+     ]
+    }
+   }
+  ]
+ }
+]

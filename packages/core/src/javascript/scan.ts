@@ -65,6 +65,8 @@ function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string
   };
   const apiAt = (k: number): string | null => {
     if (!is(k, "ident") || !is(k + 1, "punct", ".") || !is(k + 2, "ident")) return null;
+    // the method name decides first: almost no token pair gets as far as building a string
+    if (!IPC_METHODS.has(tokens[k + 2]!.value)) return null;
     const api = `${aliases.get(k) ?? tokens[k]!.value}.${tokens[k + 2]!.value}`;
     return IPC_APIS.has(api) && !api.startsWith("contextBridge.") ? api : null;
   };
@@ -158,6 +160,10 @@ function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string
   return wrappers;
 }
 
+/** A file that contains none of these cannot have a finding that depends on following a name. */
+const NAMES_SOMETHING =
+  /ipcMain|ipcRenderer|contextBridge|fetch|BrowserWindow|BrowserView|WebContentsView|localStorage|sessionStorage|webContents|exposeIn/;
+
 /** Names whose other names are followed (see aliases.ts). */
 export const ALIAS_TARGETS: ReadonlySet<string> = new Set([
   "ipcMain",
@@ -210,6 +216,7 @@ const IPC_APIS = new Set([
   "webContents.send",
   "contextBridge.exposeInMainWorld",
 ]);
+const IPC_METHODS = new Set([...IPC_APIS].map((api) => api.split(".")[1]!));
 const PUNCT3 = new Set(["===", "!==", "...", ">>>", "**=", "<<=", ">>=", "&&=", "||=", "??="]);
 const PUNCT2 = new Set([
   "=>",
@@ -400,14 +407,21 @@ export function scanJavaScript(
   // Names are resolved with their scope: first the file's constants, then, when the file has
   // channel-forwarding helpers, those as well (they are found with the first result).
   const constants = new Constants(tokens);
-  const own = new Set(constants.names());
-  let aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
-  const wrappers = findWrappers(tokens, aliases);
-  if (wrappers.size) {
-    for (const name of wrappers.keys()) own.add(name);
+  // Most files of a large application name none of the objects whose other names are followed
+  // (icons, locale tables, vendored libraries). For those the resolution is skipped: nothing
+  // would use it, and it is the most expensive step of a scan.
+  let aliases = new Map<number, string>();
+  let wrappers = new Map<string, string>();
+  if (NAMES_SOMETHING.test(source)) {
+    const own = new Set(constants.names());
     aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
+    if (/ipc|webContents/.test(source)) wrappers = findWrappers(tokens, aliases);
+    if (wrappers.size) {
+      for (const name of wrappers.keys()) own.add(name);
+      aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
+    }
+    constants.visible = aliases;
   }
-  constants.visible = aliases;
   options.onTokens?.(tokens, truncated, { aliases, constants, wrappers });
   const references: ModuleReference[] = [];
   const ipc: IpcUsage[] = [];
