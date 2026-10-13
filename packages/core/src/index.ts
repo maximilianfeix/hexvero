@@ -69,3 +69,8 @@ export { parseDex, descriptorToName, type DexInfo, type DexClass } from "./forma
 export { analyzeAppBundle, isAppBundle, type BundleInfo } from "./formats/bundle.js";
 export { detectToolchain, type ToolchainFacts } from "./formats/toolchain.js";
 export { readVersionInfo, type PeVersionInfo } from "./formats/peResources.js";
+export {
+  analyzeInWorker,
+  DEFAULT_ANALYSIS_TIMEOUT_MS,
+  type WorkerOptions,
+} from "./analyzers/worker.js";

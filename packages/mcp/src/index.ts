@@ -58,9 +58,9 @@ export function createHexveroServer(
           openWorldHint: false,
         },
       },
-      async (args: Record<string, unknown>) => {
+      async (args: Record<string, unknown>, extra: { signal?: AbortSignal }) => {
         try {
-          const result = await handlers[name](args ?? {});
+          const result = await handlers[name](args ?? {}, extra.signal);
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result, replacer) }],
           };

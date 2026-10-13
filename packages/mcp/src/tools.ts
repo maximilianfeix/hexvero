@@ -142,14 +142,14 @@ const paged = (
 export function createHandlers(
   session: Session,
   providers: ProviderBridge,
-): Record<ToolName, (args: Record<string, unknown>) => Promise<unknown>> {
+): Record<ToolName, (args: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>> {
   return {
     hexvero_open: async (a) => session.open(str(a["path"])),
     hexvero_list: async () => ({ targets: session.list() }),
     hexvero_close: async (a) => ({ closed: session.close(str(a["targetId"])) }),
-    hexvero_analyze: async (a) => {
+    hexvero_analyze: async (a, signal) => {
       const id = str(a["targetId"]);
-      const analysis = await session.analyze(id);
+      const analysis = await session.analyze(id, signal);
       return {
         target: session.get(id),
         summary: analysis.summary,
