@@ -25,6 +25,18 @@ const MAIN = [
   'ipc.on("boot", () => {});',
 ].join("\n");
 
+/** IPC rows of a main file that defines the enum `Channels` and then runs `extra`. */
+const channel = (extra: string): string[] =>
+  rows(
+    analyze({
+      "main/main.js": [
+        'const { ipcMain } = require("electron");',
+        '(function(Channels){Channels.SAVE="doc:save"})(Channels||(exports.Channels=Channels={}));',
+        extra,
+      ].join("\n"),
+    }),
+  );
+
 describe("IPC through names another file defines", () => {
   it("resolves a renderer global assigned on window", () => {
     const info = analyze({
@@ -322,5 +334,24 @@ describe("channels named by a compiled TypeScript enum", () => {
       ].join("\n"),
     });
     expect(rows(info)).toEqual(["main/main.js ipcMain.on null 4"]);
+  });
+
+  it("resolves nothing through an enum name that the file also binds to something else", () => {
+    // a local of the same name is a different object
+    expect(
+      channel(
+        'function f () { const Channels = { SAVE: "other" }; ipcMain.on(Channels.SAVE, g); }',
+      ),
+    ).toEqual(["main/main.js ipcMain.on null 3"]);
+    expect(channel("function f (Channels) { ipcMain.on(Channels.SAVE, g); }")).toEqual([
+      "main/main.js ipcMain.on null 3",
+    ]);
+    expect(channel('other.Channels = { SAVE: "x" }; ipcMain.on(other.Channels.SAVE, g);')).toEqual([
+      "main/main.js ipcMain.on null 3",
+    ]);
+    // the forms compilers emit around the definition leave it resolvable
+    expect(
+      channel("var Channels;\nexports.Channels = void 0;\nipcMain.on(Channels.SAVE, g);"),
+    ).toEqual(["main/main.js ipcMain.on doc:save 5 constant"]);
   });
 });

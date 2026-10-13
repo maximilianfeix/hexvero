@@ -260,6 +260,12 @@ interface WindowRange {
   window: number | null;
   name: string | null;
   /**
+   * For a base object (`inherited`): the place in the window's own options where it is applied,
+   * the `...` of a spread or the helper call. JavaScript lets the later of two writes of a key
+   * win, so a base applied after a key replaces it, and one applied before is replaced.
+   */
+  at: number | null;
+  /**
    * The object is a base the window's own options are laid over (a spread object, or what a
    * helper function returns): a key written directly for the window replaces the same key here.
    */
@@ -350,7 +356,13 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
     return returned.get(name) ?? -1;
   };
   let work = 400_000;
-  const add = (open: number, window: number | null, inherited = false, depth = 0): void => {
+  const add = (
+    open: number,
+    window: number | null,
+    inherited = false,
+    depth = 0,
+    at: number | null = null,
+  ): void => {
     if (ranges.length >= 2000 || work <= 0) return;
     const end = close(open);
     if (end === -1) {
@@ -364,6 +376,7 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       window,
       name: window === null ? null : (names.get(window) ?? `#${window}`),
       inherited,
+      at,
     });
     if (depth >= 3) return;
     // Objects that are named, spread or returned by a helper inside belong to the same window.
@@ -371,8 +384,9 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       const t = tokens[k]!;
       const next = tokens[k + 1];
       if (is(k, "...") && next?.type === "ident") {
-        const at = is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
-        if (at !== -1) add(at, window, true, depth + 1);
+        const base = is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
+        // Inside a base, everything is applied where that base is applied.
+        if (base !== -1) add(base, window, true, depth + 1, at ?? t.start);
       } else if (
         t.type === "ident" &&
         t.value === "webPreferences" &&
@@ -381,13 +395,13 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       ) {
         const name = tokens[k + 2]!.value;
         if (is(k + 3, ",") || is(k + 3, "}")) {
-          const at = objectOf(name);
-          if (at !== -1) add(at, window, inherited, depth + 1);
+          const named = objectOf(name);
+          if (named !== -1) add(named, window, inherited, depth + 1, at);
         } else if (is(k + 3, "(")) {
           // `webPreferences: helper({ … })`: what the helper returns is the base, its argument
           // (inside this range already) is laid over it.
-          const at = returnedBy(name);
-          if (at !== -1) add(at, window, true, depth + 1);
+          const result = returnedBy(name);
+          if (result !== -1) add(result, window, true, depth + 1, at ?? tokens[k + 2]!.start);
         }
       }
     }
@@ -1321,7 +1335,12 @@ export function analyzeJavaScriptTree(
     // only inside them. Only a file where none could be located falls back to nearness.
     const windowsOf = (
       index: number,
-    ): Array<{ window: number | null; windowName: string | null; inherited: boolean }> => {
+    ): Array<{
+      window: number | null;
+      windowName: string | null;
+      inherited: boolean;
+      order: number;
+    }> => {
       if (ranges.length) {
         // The innermost range decides which window it is; a helper used by two windows has one
         // range per window with the same extent, and the setting then counts for each.
@@ -1340,19 +1359,25 @@ export function analyzeJavaScriptTree(
           ...new Map(
             same.map((r) => [
               r.window,
-              { window: r.window, windowName: r.name, inherited: r.inherited },
+              {
+                window: r.window,
+                windowName: r.name,
+                inherited: r.inherited,
+                // where the write takes effect: its own place, or where its base is applied
+                order: r.at ?? index,
+              },
             ]),
           ).values(),
         ];
       }
       const before = source.slice(Math.max(0, index - WINDOW_CONTEXT), index);
       return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before)
-        ? [{ window: null, windowName: null, inherited: false }]
+        ? [{ window: null, windowName: null, inherited: false, order: index }]
         : [];
     };
     // Settings of this file first; what a window overrides is dropped before they are kept.
-    const found: Array<WebPreference & { inherited: boolean }> = [];
-    const record = (pref: WebPreference & { inherited: boolean }): boolean => {
+    const found: Array<WebPreference & { inherited: boolean; order: number }> = [];
+    const record = (pref: WebPreference & { inherited: boolean; order: number }): boolean => {
       if (found.length >= MAX_PREFS_PER_FILE || webPreferences.length + found.length >= MAX_PREFS) {
         prefsCapped = true;
         return false;
@@ -1414,12 +1439,12 @@ export function analyzeJavaScriptTree(
       });
     }
     if (/\benableSandbox\s*\(/.test(source)) facts.enableSandbox = true;
-    for (const { inherited, ...pref } of found) {
-      // A key written for the window itself replaces the same key of a base object.
+    for (const { inherited: _inherited, order, ...pref } of found) {
+      // The same key written twice for one window, directly or through a base object: the later
+      // write wins, as in JavaScript. `{ sandbox: true, ...base }` takes the base's value.
       if (
-        inherited &&
         pref.window !== null &&
-        found.some((o) => !o.inherited && o.window === pref.window && o.key === pref.key)
+        found.some((o) => o.window === pref.window && o.key === pref.key && o.order > order)
       )
         continue;
       webPreferences.push(pref);

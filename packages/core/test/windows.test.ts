@@ -40,6 +40,14 @@ const detail = (prefs: string, electron?: string): string | undefined =>
     (f) => f.kind === "electron.node-integration",
   )?.detail;
 
+/** `sandbox contextIsolation` of a window created with these webPreferences, next to two bases. */
+const state = (options: string): string =>
+  analyze(
+    `const unsafe = { sandbox: false, contextIsolation: false };\nfunction base () { return { sandbox: false } }\nconst w = new BrowserWindow({ webPreferences: ${options} });`,
+  )
+    .windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)
+    .join();
+
 describe("what follows from a window's settings together", () => {
   it("gives page scripts require() only with nodeIntegration on and contextIsolation off", () => {
     expect(effects(true, false, "not written", 38)).toBe(
@@ -274,5 +282,14 @@ describe("window settings as written, computed, or absent", () => {
     expect(finding?.detail).toContain("package.json asks for Electron ^4.0.1");
     const current = analyze("const mainWindow = new BrowserWindow({ width: 800 });", "^38.0.0");
     expect(current.findings.map((f) => f.kind)).not.toContain("electron.node-integration-default");
+  });
+
+  it("lets a base object spread after a key replace it, and one spread before be replaced", () => {
+    // JavaScript: the later write wins
+    expect(state("{ sandbox: true, contextIsolation: true, ...unsafe }")).toBe("false false");
+    expect(state("{ ...unsafe, sandbox: true, contextIsolation: true }")).toBe("true true");
+    expect(state("{ sandbox: true, ...unsafe, contextIsolation: true }")).toBe("false true");
+    expect(state("{ sandbox: true, ...base() }")).toBe("false not written");
+    expect(state("{ ...base(), sandbox: true }")).toBe("true not written");
   });
 });

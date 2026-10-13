@@ -403,6 +403,8 @@ export class Constants {
   /** Reads the compiled string enums of the file into `enums`. */
   private readEnums(): void {
     const tokens = this.tokens;
+    /** Token ranges of the enum definitions themselves. */
+    const spans: Array<[number, number]> = [];
     for (let k = 0; k + 6 < tokens.length; k++) {
       if (
         !is(tokens[k], "ident", "function") ||
@@ -443,7 +445,9 @@ export class Constants {
       if (is(tokens[open], "punct", ")")) open++;
       if (!is(tokens[open], "punct", "(")) continue;
       const names = new Set<string>();
+      let argumentsEnd = open + 1;
       for (let a = open + 1, depth = 1; a < tokens.length && a < open + 24 && depth > 0; a++) {
+        argumentsEnd = a;
         const t = tokens[a]!;
         if (t.type === "punct") {
           if (t.value === "(") depth++;
@@ -456,6 +460,7 @@ export class Constants {
           names.add(t.value);
       }
       if (parameter.length > 2) names.add(parameter);
+      spans.push([k, argumentsEnd]);
       for (const name of names) {
         const known = this.enums.get(name);
         if (known === undefined) {
@@ -469,6 +474,37 @@ export class Constants {
         else this.enums.set(name, null);
       }
       k = j;
+    }
+    if (!this.enums.size) return;
+    // The enum's name must mean the enum everywhere in the file. Outside the definitions, any
+    // other binding of the name (a declaration with a value, an assignment, a parameter, a
+    // destructured or imported name) makes it ambiguous, and nothing is resolved through it:
+    // a local `const Channels = { SAVE: "other" }` must not be read through the enum's table.
+    let span = 0;
+    for (let k = 0; k < tokens.length; k++) {
+      while (span < spans.length && spans[span]![1] < k) span++;
+      if (span < spans.length && k >= spans[span]![0]) continue;
+      const t = tokens[k]!;
+      if (t.type !== "ident" || this.enums.get(t.value) == null) continue;
+      const next = tokens[k + 1];
+      const property = is(tokens[k - 1], "punct", ".");
+      // `x.Name = void 0` is how compiled modules announce the export before defining it;
+      // `var Name;` is the declaration TypeScript emits in front of the enum.
+      const announced =
+        is(next, "punct", "=") &&
+        is(tokens[k + 2], "ident", "void") &&
+        tokens[k + 3]?.value === "0";
+      const rebound =
+        (is(next, "punct", "=") && !is(tokens[k + 2], "punct", "=") && !announced) ||
+        (!property &&
+          !is(next, "punct", ".") &&
+          !is(next, "punct", ";") &&
+          !(next && next.line !== t.line) &&
+          (is(next, "punct", ",") ||
+            is(next, "punct", ")") ||
+            is(next, "punct", "}") ||
+            is(next, "punct", ":")));
+      if (rebound) this.enums.set(t.value, null);
     }
   }
 
