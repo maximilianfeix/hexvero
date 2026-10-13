@@ -103,7 +103,8 @@ console.log(report);
 process.exit(ok ? 0 : 1);
 
 function trim(text, max) {
+  // Keep the tail: that is where test runners and compilers print the failure summary.
   return text.length > max
-    ? `${text.slice(0, max)}\n… (${text.length - max} more characters)`
+    ? `… (${text.length - max} earlier characters omitted)\n${text.slice(-max)}`
     : text;
 }

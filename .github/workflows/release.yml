@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run the whole pipeline including npm publish --dry-run, without releasing"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -20,12 +26,14 @@ jobs:
           node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
-      - name: Use an npm that supports trusted publishing
-        run: npm install -g npm@latest && npm --version
+      - name: Use a pinned npm that supports trusted publishing
+        # Pinned on purpose: this job holds publish credentials, so it must not run whatever npm is latest.
+        run: npm install -g npm@11.6.2 && npm --version
       - run: npm ci
       - run: npm run check
       - run: npm run build
       - name: Verify the tag matches the package versions
+        if: github.event_name == 'push'
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           for w in packages/core packages/mcp packages/server packages/cli; do
@@ -38,8 +46,10 @@ jobs:
           for w in packages/core packages/mcp packages/server packages/cli; do npm pack -w ./$w --pack-destination release >/dev/null; done
           ls -la release
       - name: Release notes
+        if: github.event_name == 'push'
         run: node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release/NOTES.md
       - name: GitHub release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v3
         with:
           body_path: release/NOTES.md
@@ -47,13 +57,15 @@ jobs:
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: |
-          # With a trusted publisher configured on npmjs.com this needs no token (OIDC + provenance).
-          # If NPM_TOKEN is set as a repository secret it is used instead.
-          if [ -n "$NODE_AUTH_TOKEN" ]; then echo "publishing with NPM_TOKEN"; else echo "publishing with trusted publishing (OIDC)"; fi
+          # npm tries trusted publishing (OIDC from this workflow) first and uses that token when a
+          # trusted publisher is configured on npmjs.com; NPM_TOKEN is only the fallback when none is.
+          echo "npm $(npm --version); NPM_TOKEN secret present: $([ -n "$NODE_AUTH_TOKEN" ] && echo yes || echo no); dry run: ${DRY_RUN:-false}"
+          EXTRA=""; [ "${DRY_RUN}" = "true" ] && EXTRA="--dry-run"
           for w in packages/core packages/mcp packages/server packages/cli; do
             V=$(node -p "require('./$w/package.json').version")
             N=$(node -p "require('./$w/package.json').name")
-            if npm view "$N@$V" version >/dev/null 2>&1; then echo "$N@$V already on npm, skipping"; continue; fi
-            npm publish -w ./$w --access public --provenance
+            if [ -z "$EXTRA" ] && npm view "$N@$V" version >/dev/null 2>&1; then echo "$N@$V already on npm, skipping"; continue; fi
+            npm publish -w ./$w --access public --provenance $EXTRA
           done
