@@ -60,6 +60,16 @@ export {
   type CollectionPage,
   type StringsQuery,
 } from "./session.js";
+export {
+  canonical,
+  compareItems,
+  detectKey,
+  VOLATILE_FIELDS,
+  type ChangedItem,
+  type CompareOptions,
+  type CompareResult,
+  type FieldChange,
+} from "./compare.js";
 export { compact, type CompactOptions } from "./compact.js";
 export { detectProviders, PROVIDER_OPERATIONS, type ProviderStatus } from "./providers/index.js";
 export {
