@@ -180,8 +180,16 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       if (!sub) return json(res, 200, session.get(id));
       if (sub === "analysis") {
         const controller = new AbortController();
-        req.once("close", () => controller.abort());
-        const analysis = await session.analyze(id, controller.signal);
+        const onClose = (): void => {
+          if (!res.writableEnded) controller.abort();
+        };
+        res.once("close", onClose);
+        let analysis;
+        try {
+          analysis = await session.analyze(id, controller.signal);
+        } finally {
+          res.removeListener("close", onClose);
+        }
         const full = q.get("full") === "1";
         return json(res, 200, {
           target: session.get(id),

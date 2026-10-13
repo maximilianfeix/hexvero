@@ -33,6 +33,13 @@ export function analyzeInWorker(
   target: LoadedTarget,
   options: WorkerOptions = {},
 ): Promise<AnyAnalysis> {
+  if (options.signal?.aborted) {
+    return Promise.reject(
+      new AnalysisError("invalid_input", "Analysis cancelled by the caller", {
+        path: target.info.path,
+      }),
+    );
+  }
   const timeoutMs = options.timeoutMs ?? DEFAULT_ANALYSIS_TIMEOUT_MS;
   const here = dirname(fileURLToPath(import.meta.url));
   // Built output sits next to this file; when running from TypeScript sources (tests) use the compiled worker in dist.
@@ -45,7 +52,8 @@ export function analyzeInWorker(
       "provider_unavailable",
       "Analysis worker is not built; run npm run build",
     );
-  const copy = target.bytes.slice();
+  // An owned copy: Buffer.slice shares pooled storage, which cannot be transferred and would detach the session's bytes.
+  const copy = new Uint8Array(target.bytes);
   const worker = new Worker(entry, {
     workerData: { info: target.info, bytes: copy, lazy: target.lazy ?? false },
     transferList: [copy.buffer],
@@ -83,7 +91,6 @@ export function analyzeInWorker(
           }),
         ),
       );
-    if (options.signal?.aborted) onAbort();
     options.signal?.addEventListener("abort", onAbort, { once: true });
     worker.once("message", (message: WorkerMessage) => {
       finish(() => {
@@ -105,7 +112,9 @@ export function analyzeInWorker(
           new AnalysisError(
             oom ? "too_large" : "malformed",
             `${oom ? "Analysis ran out of memory" : "Analysis failed"}: ${error.message}`,
-            { path: target.info.path },
+            {
+              path: target.info.path,
+            },
           ),
         ),
       );

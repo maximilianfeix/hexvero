@@ -40,11 +40,17 @@ interface TaggedString {
   tags: string[];
 }
 
+interface Pending {
+  controller: AbortController;
+  waiters: number;
+  promise: Promise<AnyAnalysis>;
+}
+
 interface Entry {
   record: TargetRecord;
   loaded: LoadedTarget;
   analysis?: AnyAnalysis;
-  pending?: Promise<AnyAnalysis>;
+  pending?: Pending;
   strings?: { key: string; items: TaggedString[] };
   collections?: Record<string, unknown[]>;
 }
@@ -111,26 +117,83 @@ export class Session {
     return e;
   }
 
+  /**
+   * Analyzes once per target. Concurrent callers share the running analysis;
+   * each caller can cancel its own wait, and the worker is stopped only when
+   * nobody is waiting any more.
+   */
   async analyze(id: string, signal?: AbortSignal): Promise<AnyAnalysis> {
     const e = this.entry(id);
-    if (!e.analysis) {
-      if (!e.pending) {
-        e.pending = this.options.worker
-          ? analyzeInWorker(e.loaded, {
-              ...(this.options.analysisTimeoutMs
-                ? { timeoutMs: this.options.analysisTimeoutMs }
-                : {}),
-              ...(signal ? { signal } : {}),
-            })
-          : analyzeTarget(e.loaded);
-        e.pending.finally(() => {
-          delete e.pending;
-        });
-      }
-      e.analysis = await e.pending;
-      e.record.analyzed = true;
+    if (e.analysis) return e.analysis;
+    if (signal?.aborted)
+      throw new AnalysisError("invalid_input", "Analysis cancelled by the caller", {
+        path: e.loaded.info.path,
+      });
+    if (!e.pending) {
+      const controller = new AbortController();
+      const run = this.options.worker
+        ? analyzeInWorker(e.loaded, {
+            ...(this.options.analysisTimeoutMs
+              ? { timeoutMs: this.options.analysisTimeoutMs }
+              : {}),
+            signal: controller.signal,
+          })
+        : analyzeTarget(e.loaded);
+      const pending: Pending = { controller, waiters: 0, promise: run };
+      pending.promise = run.then(
+        (analysis) => {
+          if (e.pending === pending) delete e.pending;
+          e.analysis = analysis;
+          e.record.analyzed = true;
+          return analysis;
+        },
+        (error: unknown) => {
+          if (e.pending === pending) delete e.pending;
+          throw error;
+        },
+      );
+      e.pending = pending;
     }
-    return e.analysis;
+    const pending = e.pending;
+    pending.waiters++;
+    const release = (): void => {
+      pending.waiters--;
+      if (pending.waiters === 0 && !e.analysis) pending.controller.abort();
+    };
+    if (!signal) {
+      try {
+        return await pending.promise;
+      } finally {
+        release();
+      }
+    }
+    return new Promise<AnyAnalysis>((resolve, reject) => {
+      const onAbort = (): void => {
+        release();
+        reject(
+          new AnalysisError("invalid_input", "Analysis cancelled by the caller", {
+            path: e.loaded.info.path,
+          }),
+        );
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      pending.promise.then(
+        (analysis) => {
+          signal.removeEventListener("abort", onAbort);
+          if (!signal.aborted) {
+            release();
+            resolve(analysis);
+          }
+        },
+        (error: unknown) => {
+          signal.removeEventListener("abort", onAbort);
+          if (!signal.aborted) {
+            release();
+            reject(error);
+          }
+        },
+      );
+    });
   }
 
   /** Names of the list-like collections available for this target after analysis. */
