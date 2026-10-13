@@ -88,3 +88,16 @@ describe("hexvero CLI", () => {
     expect(cio.stdout[0]).toContain("[mcp_servers.hexvero]");
   });
 });
+
+describe("setup --skill", () => {
+  it("dry-runs and installs the skill into a temporary home", async () => {
+    const { installSkill, skillTargets } = await import("../src/skill.js");
+    const home = mkdtempSync(join(tmpdir(), "hexvero-skill-"));
+    const targets = skillTargets(home);
+    expect(targets.map((t) => t.id)).toEqual(["claude-code", "codex", "agents"]);
+    const io = capture();
+    expect(installSkill(io, { client: "claude-code", apply: false, json: true })).toBe(0);
+    expect(JSON.parse(io.stdout.join("")).results[0].action).toBe("would install");
+    rmSync(home, { recursive: true, force: true });
+  });
+});

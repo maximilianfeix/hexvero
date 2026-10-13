@@ -2,19 +2,53 @@
   "name": "hexvero",
   "version": "0.2.0",
   "description": "Reverse engineer anything, locally: CLI, MCP server and web UI.",
+  "keywords": [
+    "apk",
+    "asar",
+    "binary-analysis",
+    "cli",
+    "dotnet",
+    "electron",
+    "elf",
+    "evm",
+    "go",
+    "mach-o",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "pe",
+    "reverse-engineering",
+    "sqlite",
+    "static-analysis",
+    "wasm"
+  ],
+  "homepage": "https://hexvero.dev",
+  "bugs": {
+    "url": "https://github.com/maximilianfeix/hexvero/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maximilianfeix/hexvero.git",
+    "directory": "packages/cli"
+  },
   "bin": {
     "hexvero": "./bin/hexvero.js"
   },
   "files": [
     "dist",
     "bin",
-    "ui"
+    "ui",
+    "skills"
   ],
   "type": "module",
   "main": "./dist/index.js",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "prepack": "node -e \"require('node:fs').cpSync('../../skills','./skills',{recursive:true})\""
   },
   "dependencies": {
     "@hexvero/core": "0.2.0",
