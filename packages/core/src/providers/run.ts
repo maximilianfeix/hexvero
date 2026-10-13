@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -30,6 +30,20 @@ export interface ProviderRequest {
   /** Case-insensitive needle for `search` (function names and strings); never passed to a shell. */
   text?: string | undefined;
   timeoutMs?: number | undefined;
+  /** Aborting kills the engine's whole process group. */
+  signal?: AbortSignal | undefined;
+}
+
+/**
+ * A hex address or one symbol/flag name. Deliberately excludes radare2's `@@`/`@@@` iterators and
+ * `$$`-style variables as well as every shell metacharacter: the value is spliced into an engine
+ * command string (argv, never a shell), and iterators turn one function into a whole-program dump.
+ */
+export const ADDRESS_PATTERN = /^(?:(?:0x)?[0-9a-fA-F]{1,16}|[A-Za-z_.][\w.$:]{0,255})$/;
+
+/** True for one hex address or one symbol name; engine iterators (`@@`), `$$` and shell characters never pass. */
+export function isAddress(value: string): boolean {
+  return ADDRESS_PATTERN.test(value) && !value.includes("$$") && !value.includes("@");
 }
 
 export interface ProviderResult {
@@ -53,25 +67,65 @@ interface Exec {
   timedOut: boolean;
 }
 
-function exec(command: string, args: string[], timeoutMs: number, cwd?: string): Promise<Exec> {
+/** Engines still running; killed as a group when this process exits or is interrupted. */
+const children = new Set<ChildProcess>();
+let exitHooksInstalled = false;
+
+function killGroup(child: ChildProcess): void {
+  try {
+    if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
+    else child.kill("SIGKILL");
+  } catch {
+    /* already gone */
+  }
+}
+
+function installExitHooks(): void {
+  if (exitHooksInstalled) return;
+  exitHooksInstalled = true;
+  // Only the exit hook lives here: signal handling belongs to the entry point (CLI, MCP server),
+  // which calls killEngines() before shutting down so the process keeps control of its exit code.
+  process.once("exit", killEngines);
+}
+
+/** Kills every engine process group still running; entry points call this on SIGINT/SIGTERM. */
+export function killEngines(): number {
+  const n = children.size;
+  for (const c of children) killGroup(c);
+  children.clear();
+  return n;
+}
+
+function exec(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  signal?: AbortSignal,
+  cwd?: string,
+): Promise<Exec> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new AnalysisError("cancelled", "the request was cancelled before the engine started"));
+      return;
+    }
+    installExitHooks();
     const child = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
       ...(cwd ? { cwd } : {}),
     });
+    children.add(child);
     let stdout = "";
     let stderr = "";
     let truncated = false;
     let timedOut = false;
-    const kill = (): void => {
-      try {
-        if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
-        else child.kill("SIGKILL");
-      } catch {
-        /* already gone */
-      }
+    let cancelled = false;
+    const kill = (): void => killGroup(child);
+    const onAbort = (): void => {
+      cancelled = true;
+      kill();
     };
+    signal?.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(() => {
       timedOut = true;
       kill();
@@ -87,13 +141,19 @@ function exec(command: string, args: string[], timeoutMs: number, cwd?: string):
     child.stderr.on("data", (chunk: Buffer) => {
       if (stderr.length < 64 * 1024) stderr += chunk.toString();
     });
-    child.once("error", (error) => {
+    const done = (): void => {
       clearTimeout(timer);
+      children.delete(child);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    child.once("error", (error) => {
+      done();
       reject(error);
     });
     child.once("close", (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, code, truncated, timedOut });
+      done();
+      if (cancelled) reject(new AnalysisError("cancelled", "the engine run was cancelled"));
+      else resolve({ stdout, stderr, code, truncated, timedOut });
     });
   });
 }
@@ -295,6 +355,19 @@ async function contentDigest(path: string): Promise<string> {
 /** Normalized graphs per provider + content digest; concurrent requests share one engine run. */
 const graphCache = new Map<string, Promise<CallGraph>>();
 
+/** Rejects with `cancelled` when the caller aborts while others keep waiting for the shared run. */
+function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted)
+    return Promise.reject(new AnalysisError("cancelled", "the request was cancelled"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void =>
+      reject(new AnalysisError("cancelled", "the request was cancelled while the engine ran"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 export interface CallGraphResult {
   graph: CallGraph;
   /** True when no engine ran because the graph was already known for this content. */
@@ -329,7 +402,11 @@ export async function loadCallGraph(
       } catch {
         /* not cached yet */
       }
-      const run = await runProvider({ ...request, operation: "callgraph" }, statuses);
+      // The run is shared by every concurrent caller, so it must not die with one caller's signal.
+      const run = await runProvider(
+        { ...request, operation: "callgraph", signal: undefined },
+        statuses,
+      );
       const graph = run.result as CallGraph | null;
       if (!graph || !Array.isArray(graph.nodes))
         throw new AnalysisError(
@@ -352,7 +429,7 @@ export async function loadCallGraph(
     graphCache.set(key, pending);
     pending.catch(() => graphCache.delete(key));
   }
-  const graph = await pending;
+  const graph = await abortable(pending, request.signal);
   return { graph, cached, durationMs: Math.round(performance.now() - started) };
 }
 
@@ -391,8 +468,11 @@ export async function runProvider(
       `${request.provider} does not support ${request.operation}; supported: ${status.operations.join(", ")}`,
     );
   }
-  if (request.address !== undefined && !/^[\w.$@]+$/.test(request.address)) {
-    throw new AnalysisError("invalid_input", "address must be a hex address or a symbol name");
+  if (request.address !== undefined && !isAddress(request.address)) {
+    throw new AnalysisError(
+      "invalid_input",
+      "address must be a hex address (0x…) or a single symbol name; engine iterators such as @@ are not accepted",
+    );
   }
   if (request.operation === "search") {
     if (!request.text || request.text.length > 200)
@@ -448,7 +528,7 @@ export async function runProvider(
       needle !== null ? `text:${needle}` : (address ?? "-"),
       outputPath,
     ];
-    run = await exec(status.path, args, timeoutMs);
+    run = await exec(status.path, args, timeoutMs, request.signal);
     if (!run.timedOut) {
       try {
         const size = (await stat(outputPath)).size;
@@ -497,6 +577,7 @@ export async function runProvider(
         request.targetPath,
       ],
       timeoutMs,
+      request.signal,
     );
     result = parseJson(run.stdout);
     const docs = parseJsonDocs(run.stdout);

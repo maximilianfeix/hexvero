@@ -1,9 +1,10 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createRequire } from "node:module";
 import { createReadStream, existsSync, statSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
-import { extname, join, normalize, sep } from "node:path";
+import { basename, extname, join, normalize, sep } from "node:path";
 import { AnalysisError, compact, detectProviders, Session, targetFromBytes } from "@hexvero/core";
 
 export interface ServerOptions {
@@ -23,6 +24,18 @@ export interface RunningServer {
   token: string;
   session: Session;
   close(): Promise<void>;
+}
+
+const VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
+
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+const WILDCARD = new Set(["0.0.0.0", "::", "[::]"]);
+
+/** Host header without port and trailing dot, lower-cased; IPv6 keeps its brackets. */
+function hostNameOf(header: string | undefined): string {
+  const h = (header ?? "").trim().toLowerCase();
+  const stripped = h.startsWith("[") ? h.replace(/\]:\d+$/, "]") : h.replace(/:\d+$/, "");
+  return stripped.replace(/\.$/, "");
 }
 
 const MIME: Record<string, string> = {
@@ -53,9 +66,11 @@ const fail = (res: ServerResponse, error: unknown): void => {
         ? 404
         : error.code === "too_large"
           ? 413
-          : error.code === "provider_unavailable"
-            ? 501
-            : 400;
+          : error.code === "cancelled"
+            ? 499
+            : error.code === "provider_unavailable"
+              ? 501
+              : 400;
     json(res, status, {
       error: {
         code: error.code,
@@ -97,15 +112,42 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const token = options.token ?? randomBytes(18).toString("base64url");
   const host = options.host ?? "127.0.0.1";
   const maxUpload = options.maxUploadBytes ?? 512 * 1024 * 1024;
-  const uploadDir = join(tmpdir(), "hexvero-uploads");
+  // A private per-server directory: a fixed name in the shared tmpdir could be pre-created by another local user.
+  let uploadDir: string | null = null;
 
+  const sameToken = (candidate: string | null): boolean => {
+    if (candidate === null) return false;
+    const a = Buffer.from(candidate);
+    const b = Buffer.from(token);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
   const authorized = (req: IncomingMessage, url: URL): boolean => {
     const header = req.headers.authorization;
-    if (header === `Bearer ${token}`) return true;
-    return url.searchParams.get("token") === token;
+    if (header?.startsWith("Bearer ") && sameToken(header.slice(7))) return true;
+    // The query form exists for the UI's download link only; every other route needs the header.
+    return (
+      req.method === "GET" &&
+      /^\/api\/targets\/[^/]+\/export$/.test(url.pathname) &&
+      sameToken(url.searchParams.get("token"))
+    );
   };
 
   const api = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+    // DNS rebinding: a page on evil.test resolving to 127.0.0.1 sends Host: evil.test and a matching
+    // Origin; both must name the bound loopback host, not merely agree with each other.
+    const hostName = hostNameOf(req.headers.host);
+    const bound = host.toLowerCase();
+    const boundOk =
+      WILDCARD.has(bound) ||
+      hostName === bound ||
+      hostName === `[${bound}]` ||
+      LOOPBACK.has(hostName);
+    if (!boundOk) {
+      json(res, 403, {
+        error: { code: "forbidden", message: "requests must address the loopback host" },
+      });
+      return;
+    }
     const origin = req.headers.origin;
     const originHost = origin ? (URL.canParse(origin) ? new URL(origin).host : "") : undefined;
     if (originHost !== undefined && originHost !== req.headers.host) {
@@ -146,13 +188,18 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     };
 
     if (req.method === "GET" && parts[0] === "health")
-      return json(res, 200, { ok: true, version: "0.2.1" });
+      return json(res, 200, { ok: true, version: VERSION });
     if (req.method === "GET" && parts[0] === "targets" && parts.length === 1)
       return json(res, 200, { targets: session.list() });
     if (req.method === "POST" && parts[0] === "targets" && parts.length === 1) {
-      const body = JSON.parse(new TextDecoder().decode(await readBody(req, 1 << 20))) as {
-        path?: string;
-      };
+      let body: { path?: string };
+      try {
+        body = JSON.parse(new TextDecoder().decode(await readBody(req, 1 << 20))) as {
+          path?: string;
+        };
+      } catch {
+        throw new AnalysisError("invalid_input", "request body must be a JSON object with a path");
+      }
       if (!body.path) throw new AnalysisError("invalid_input", "body.path is required");
       return json(res, 201, await session.open(body.path));
     }
@@ -161,7 +208,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       const bytes = await readBody(req, maxUpload);
       const loaded = targetFromBytes(bytes, name);
       if (loaded.info.format === "sqlite") {
-        await mkdir(uploadDir, { recursive: true });
+        uploadDir ??= await mkdtemp(join(tmpdir(), "hexvero-uploads-"));
         const path = join(uploadDir, `${loaded.info.sha256.slice(0, 16)}-${name}`);
         await writeFile(path, bytes);
         return json(res, 201, await session.open(path));
@@ -212,16 +259,12 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         return json(res, 200, session.strings(id, query));
       }
       if (sub === "bytes")
-        return json(
-          res,
-          200,
-          session.bytes(id, Number(q.get("offset") ?? 0), Number(q.get("length") ?? 4096)),
-        );
+        return json(res, 200, session.bytes(id, num("offset") ?? 0, num("length") ?? 4096));
       if (sub === "export") {
         const analysis = await session.analyze(id);
         res.writeHead(200, {
           "content-type": "application/json; charset=utf-8",
-          "content-disposition": `attachment; filename="${id}.hexvero.json"`,
+          "content-disposition": `attachment; filename="${basename(session.get(id).info.path).replace(/[^\w.-]+/g, "_")}.hexvero.json"`,
         });
         res.end(
           JSON.stringify(
@@ -295,6 +338,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     url: `http://${host}:${port}`,
     token,
     session,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: async () => {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (uploadDir) await rm(uploadDir, { recursive: true, force: true }).catch(() => undefined);
+    },
   };
 }

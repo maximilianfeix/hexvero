@@ -6,6 +6,17 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Security review of the MCP and HTTP surfaces: every MCP tool carries explicit annotations
+  (export, recover, provider_run and call_graph are no longer advertised as read-only);
+  `hexvero_export` refuses to replace an existing file unless `overwrite: true` and returns the
+  absolute path; `hexvero_recover` bounds its `skipped` list; engine processes are killed when the
+  server exits or the client cancels (`cancelled` error code); `address` rejects radare2 iterator
+  syntax; the loopback server rejects requests whose Host is not the bound host (DNS rebinding),
+  accepts `?token=` only for the export download, compares tokens in constant time, answers 400 to
+  malformed JSON and keeps uploads in a private per-server directory.
+
 ### Added
 
 - `hexvero setup` knows 18 agent clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf,

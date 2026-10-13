@@ -115,6 +115,36 @@ esac
         address: "x; rm -rf /",
       }),
     ).rejects.toThrow(/address must be/);
+    for (const iterator of ["entry0@@F", "entry0@@@F", "$$", "entry0$$", "-", "0x", "a@b"])
+      await expect(
+        runProvider({
+          targetPath: target,
+          provider: "radare2",
+          operation: "disassemble",
+          address: iterator,
+        }),
+      ).rejects.toThrow(/address must be/);
+    for (const ok of [
+      "0x1000",
+      "00101000",
+      "main",
+      "sym.imp.__assert_rtn",
+      "fcn.00001a78",
+      "FUN_00101000",
+      "Foo::bar",
+      "_start",
+      ".hidden",
+    ])
+      expect(
+        (
+          await runProvider({
+            targetPath: target,
+            provider: "radare2",
+            operation: "disassemble",
+            address: ok,
+          })
+        ).address,
+      ).toBe(ok);
   });
 
   it("runs Ghidra headless against a cached project", async () => {
@@ -265,6 +295,28 @@ esac
     expect(
       (xrefs.result as { references: Array<{ function: string }> }).references[0]?.function,
     ).toBe("entry0");
+  });
+
+  it("kills the engine when the caller aborts", async () => {
+    writeFileSync(
+      join(dir, "rizin"),
+      '#!/bin/sh\nif [ "$1" = "-v" ]; then echo slow; exit 0; fi\nsleep 5\n',
+    );
+    chmodSync(join(dir, "rizin"), 0o755);
+    const target = join(dir, "bin7");
+    writeFileSync(target, "q");
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 200);
+    const started = performance.now();
+    await expect(
+      runProvider({
+        targetPath: target,
+        provider: "rizin",
+        operation: "functions",
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow(/cancelled/);
+    expect(performance.now() - started).toBeLessThan(3000);
   });
 
   it("kills engines that exceed the timeout", async () => {

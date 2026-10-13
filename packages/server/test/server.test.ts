@@ -45,6 +45,25 @@ describe("hexvero HTTP API", () => {
     });
     expect(cross.status).toBe(403);
     expect((await api("/health")).body).toMatchObject({ ok: true });
+    // DNS rebinding: Host and Origin agree but neither is the loopback host
+    const port = new URL(running.url).port;
+    const rebound = await fetch(`${running.url}/api/health`, {
+      headers: {
+        authorization: `Bearer ${running.token}`,
+        host: `evil.test:${port}`,
+        origin: `http://evil.test:${port}`,
+      },
+    });
+    expect(rebound.status).toBe(403);
+    // the query-string token only unlocks the export download
+    expect((await fetch(`${running.url}/api/health?token=${running.token}`)).status).toBe(401);
+    const badJson = await api("/targets", {
+      method: "POST",
+      body: "{bad json",
+      headers: { "content-type": "application/json" },
+    });
+    expect(badJson.status).toBe(400);
+    expect((badJson.body["error"] as { code: string }).code).toBe("invalid_input");
   });
 
   it("registers targets by path and by upload", async () => {
@@ -83,6 +102,12 @@ describe("hexvero HTTP API", () => {
     expect(((await exported.json()) as { hexvero: number }).hexvero).toBe(1);
     const missing = await api(`/targets/t_nope/analysis`);
     expect(missing.status).toBe(404);
+    expect((await api(`/targets/${targetId}/bytes?offset=abc`)).status).toBe(400);
+    const download = await fetch(
+      `${running.url}/api/targets/${targetId}/export?token=${running.token}`,
+    );
+    expect(download.status).toBe(200);
+    expect(download.headers.get("content-disposition")).toContain(".hexvero.json");
   });
 
   it("serves the static UI with an SPA fallback", async () => {
@@ -92,5 +117,25 @@ describe("hexvero HTTP API", () => {
     expect(await deep.text()).toContain("<title>ui</title>");
     const traversal = await fetch(`${running.url}/../../etc/passwd`);
     expect(await traversal.text()).toContain("<title>ui</title>");
+  });
+
+  it("accepts the configured bind host and the loopback names", async () => {
+    const custom = await startServer({ host: "127.0.0.1", staticDir: dir });
+    try {
+      const port = new URL(custom.url).port;
+      for (const h of [
+        `localhost:${port}`,
+        `127.0.0.1:${port}`,
+        `[::1]:${port}`,
+        `localhost.:${port}`,
+      ]) {
+        const r = await fetch(`${custom.url}/api/health`, {
+          headers: { authorization: `Bearer ${custom.token}`, host: h },
+        });
+        expect(r.status, h).toBe(200);
+      }
+    } finally {
+      await custom.close();
+    }
   });
 });

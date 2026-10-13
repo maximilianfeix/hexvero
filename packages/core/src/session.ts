@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { resolve as resolvePath } from "node:path";
 import { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
@@ -303,7 +304,16 @@ export class Session {
     );
   }
 
-  async export(id: string, destination: string): Promise<{ path: string; bytes: number }> {
+  /**
+   * Writes the complete analysis as JSON. Refuses to replace an existing file unless `overwrite`
+   * is set, so an agent steered by target content cannot clobber arbitrary files by accident.
+   */
+  async export(
+    id: string,
+    destination: string,
+    options: { overwrite?: boolean | undefined } = {},
+  ): Promise<{ path: string; bytes: number }> {
+    const path = resolvePath(destination);
     const analysis = await this.analyze(id);
     const text = JSON.stringify(
       {
@@ -316,8 +326,19 @@ export class Session {
       replacer,
       2,
     );
-    await writeFile(destination, text);
-    return { path: destination, bytes: Buffer.byteLength(text) };
+    try {
+      await writeFile(path, text, { flag: options.overwrite ? "w" : "wx" });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EEXIST")
+        throw new AnalysisError("invalid_input", `${path} exists; pass overwrite to replace it`, {
+          path,
+        });
+      if (code === "ENOENT" || code === "EACCES" || code === "EISDIR" || code === "EPERM")
+        throw new AnalysisError("invalid_input", `cannot write ${path} (${code})`, { path, code });
+      throw error;
+    }
+    return { path, bytes: Buffer.byteLength(text) };
   }
 }
 
