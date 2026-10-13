@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "9e18fe2+uncommitted",
+  "commit": "0c6879f",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -407,7 +407,9 @@
   "dev/notes-app.plain.asar": {
    "electron": {
     "complete": true,
-    "limitations": [],
+    "limitations": [
+     "ipc_channel_unresolved"
+    ],
     "ipcChannels": [
      {
       "channel": "app:ping",
@@ -625,7 +627,9 @@
   "dev/notes-app.bundled.asar": {
    "electron": {
     "complete": true,
-    "limitations": [],
+    "limitations": [
+     "ipc_channel_unresolved"
+    ],
     "ipcChannels": [
      {
       "channel": "app:ping",
@@ -843,7 +847,9 @@
   "dev/notes-app.minified.asar": {
    "electron": {
     "complete": true,
-    "limitations": [],
+    "limitations": [
+     "ipc_channel_unresolved"
+    ],
     "ipcChannels": [
      {
       "channel": "app:ping",
@@ -1079,7 +1085,7 @@
      "unchanged": 0
     },
     "webPreferences": {
-     "key": "file+window+key",
+     "key": "file+windowName+key",
      "added": [],
      "removed": [],
      "changed": [
@@ -1119,7 +1125,10 @@
   "validation/chat-app.plain.asar": {
    "electron": {
     "complete": true,
-    "limitations": [],
+    "limitations": [
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
+    ],
     "ipcChannels": [
      {
       "channel": "app:locale",
@@ -1308,6 +1317,11 @@
      },
      {
       "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
       "value": false,
       "file": "main.js"
      }
@@ -1538,7 +1552,10 @@
   "validation/chat-app.bundled.asar": {
    "electron": {
     "complete": true,
-    "limitations": [],
+    "limitations": [
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
+    ],
     "ipcChannels": [
      {
       "channel": "app:locale",
@@ -1727,6 +1744,11 @@
      },
      {
       "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
       "value": false,
       "file": "main.js"
      }
@@ -1957,7 +1979,9 @@
   "validation/chat-app.minified.asar": {
    "electron": {
     "complete": true,
-    "limitations": [],
+    "limitations": [
+     "ipc_channel_unresolved"
+    ],
     "ipcChannels": [
      {
       "channel": "app:locale",
@@ -2146,6 +2170,11 @@
      },
      {
       "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
       "value": false,
       "file": "main.js"
      }
@@ -2401,14 +2430,14 @@
      "unchanged": 0
     },
     "webPreferences": {
-     "key": "file+window+key",
+     "key": "file+windowName+key",
      "added": [],
      "removed": [],
      "changed": [
       "contextIsolation: false -> true",
       "sandbox: false -> true"
      ],
-     "relocated": 5,
+     "relocated": 6,
      "unchanged": 0
     },
     "endpoints": {
@@ -4530,7 +4559,9 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "context_bridge_members_unreadable"
+     "context_bridge_members_unreadable",
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
     ],
     "ipcChannels": [
      {
@@ -4594,7 +4625,9 @@
      },
      {
       "channel": "timer:port",
-      "senders": [],
+      "senders": [
+       "main.js"
+      ],
       "receivers": [
        "preload.js"
       ]
@@ -4915,7 +4948,9 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "context_bridge_members_unreadable"
+     "context_bridge_members_unreadable",
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
     ],
     "ipcChannels": [
      {
@@ -4967,6 +5002,13 @@
       ]
      },
      {
+      "channel": "menu:new-entry",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "sync:cancel",
       "senders": [
        "preload.js"
@@ -4993,7 +5035,9 @@
      },
      {
       "channel": "timer:port",
-      "senders": [],
+      "senders": [
+       "main.js"
+      ],
       "receivers": [
        "preload.js"
       ]
@@ -5011,6 +5055,13 @@
       "receivers": [
        "main.js"
       ]
+     },
+     {
+      "channel": "update:ready",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
      },
      {
       "channel": "widget:close",
@@ -5334,7 +5385,10 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "context_bridge_members_unreadable"
+     "context_bridge_members_unreadable",
+     "ipc_channel_unresolved",
+     "window_options_unresolved",
+     "webpreferences_computed"
     ],
     "ipcChannels": [
      {
@@ -5412,7 +5466,9 @@
      },
      {
       "channel": "timer:port",
-      "senders": [],
+      "senders": [
+       "main.js"
+      ],
       "receivers": [
        "preload.js"
       ]
@@ -5472,6 +5528,11 @@
       "file": "main.js"
      },
      {
+      "key": "nodeIntegration",
+      "value": null,
+      "file": "main.js"
+     },
+     {
       "key": "sandbox",
       "value": false,
       "file": "main.js"
@@ -5484,6 +5545,11 @@
      {
       "key": "nodeIntegration",
       "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": null,
       "file": "main.js"
      }
     ],
@@ -5789,10 +5855,10 @@
      "unchanged": 0
     },
     "webPreferences": {
-     "key": "file+window+key",
+     "key": "file+windowName+key",
      "added": [],
      "removed": [
-      "main.js::2::sandbox"
+      "main.js::win::sandbox"
      ],
      "changed": [],
      "relocated": 2,
@@ -5852,7 +5918,8 @@
     "format": "asar",
     "limitations": [
      "package_json_invalid",
-     "js_files_skipped"
+     "js_files_skipped",
+     "ipc_channel_unresolved"
     ],
     "summary": "Electron ASAR, incomplete: 2 of 4 JavaScript files could not be read, 6 IPC channels in the rest"
    }

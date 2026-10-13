@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "9e18fe2+uncommitted",
+  "commit": "0c6879f",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -410,8 +410,8 @@
   {
    "set": "holdout",
    "class": "IPC channels",
-   "hit": 41,
-   "missed": 31,
+   "hit": 43,
+   "missed": 29,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -419,8 +419,8 @@
   {
    "set": "holdout",
    "class": "IPC senders and receivers",
-   "hit": 59,
-   "missed": 20,
+   "hit": 64,
+   "missed": 19,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -1065,7 +1065,9 @@
    "hit": 7,
    "missed": 0,
    "false": 0,
-   "notes": []
+   "notes": [
+    "not scored: 1 row(s) with other keys"
+   ]
   },
   {
    "set": "validation",
@@ -1155,7 +1157,9 @@
    "hit": 7,
    "missed": 0,
    "false": 0,
-   "notes": []
+   "notes": [
+    "not scored: 1 row(s) with other keys"
+   ]
   },
   {
    "set": "validation",
@@ -1245,7 +1249,9 @@
    "hit": 7,
    "missed": 0,
    "false": 0,
-   "notes": []
+   "notes": [
+    "not scored: 1 row(s) with other keys"
+   ]
   },
   {
    "set": "validation",
@@ -1685,14 +1691,13 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "IPC senders and receivers",
-   "hit": 17,
-   "missed": 4,
+   "hit": 18,
+   "missed": 3,
    "false": 0,
    "notes": [
     "widget:pin: receiver main.js missed",
     "widget:close: receiver main.js missed",
-    "invoice:exported: sender main.js missed",
-    "timer:port: sender main.js missed"
+    "invoice:exported: sender main.js missed"
    ]
   },
   {
@@ -1815,8 +1820,8 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "IPC channels",
-   "hit": 15,
-   "missed": 9,
+   "hit": 17,
+   "missed": 7,
    "false": 0,
    "notes": [
     "missed timer:tick",
@@ -1825,8 +1830,6 @@
     "missed projects:rename",
     "missed invoice:create",
     "missed config:get-sync",
-    "missed menu:new-entry",
-    "missed update:ready",
     "missed theme:changed"
    ]
   },
@@ -1834,8 +1837,8 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "IPC senders and receivers",
-   "hit": 21,
-   "missed": 8,
+   "hit": 24,
+   "missed": 9,
    "false": 0,
    "notes": [
     "timer:start: sender preload.js missed",
@@ -1845,7 +1848,8 @@
     "invoice:export: sender preload.js missed",
     "invoice:exported: sender main.js missed",
     "sync:progress: receiver preload.js missed",
-    "timer:port: sender main.js missed"
+    "menu:new-entry: receiver preload.js missed",
+    "update:ready: receiver preload.js missed"
    ]
   },
   {
@@ -1988,8 +1992,8 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 21,
-   "missed": 8,
+   "hit": 22,
+   "missed": 7,
    "false": 0,
    "notes": [
     "timer:start: sender preload.js missed",
@@ -1998,8 +2002,7 @@
     "widget:close: receiver main.js missed",
     "invoice:export: sender preload.js missed",
     "invoice:exported: sender main.js missed",
-    "sync:progress: receiver preload.js missed",
-    "timer:port: sender main.js missed"
+    "sync:progress: receiver preload.js missed"
    ]
   },
   {
@@ -2014,7 +2017,8 @@
     "missed main.js nodeIntegration=false",
     "missed main.js preload=preload.js",
     "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false"
+    "missed main.js nodeIntegration=false",
+    "not scored: 2 row(s) with a computed value"
    ]
   },
   {
@@ -2151,7 +2155,7 @@
    "notes": [
     "missed ~sandbox: false -> true",
     "missed ~contextIsolation: true -> false",
-    "false -main.js::2::sandbox"
+    "false -main.js::win::sandbox"
    ]
   },
   {
@@ -2220,7 +2224,7 @@
    "missed": 0,
    "false": 0,
    "notes": [
-    "flagged (package_json_invalid, js_files_skipped)"
+    "flagged (package_json_invalid, js_files_skipped, ipc_channel_unresolved)"
    ]
   },
   {
