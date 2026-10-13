@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
+import { analyzeInWorker } from "./analyzers/worker.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
 import { AnalysisError, page, type Page, type TargetInfo } from "./model.js";
@@ -43,6 +44,7 @@ interface Entry {
   record: TargetRecord;
   loaded: LoadedTarget;
   analysis?: AnyAnalysis;
+  pending?: Promise<AnyAnalysis>;
   strings?: { key: string; items: TaggedString[] };
   collections?: Record<string, unknown[]>;
 }
@@ -54,7 +56,15 @@ interface Entry {
 export class Session {
   private readonly entries = new Map<string, Entry>();
 
-  constructor(private readonly options: { maxTargets?: number; maxBytes?: number } = {}) {}
+  constructor(
+    private readonly options: {
+      maxTargets?: number;
+      maxBytes?: number;
+      /** Run analyses in a worker thread so servers stay responsive and can cancel. */
+      worker?: boolean;
+      analysisTimeoutMs?: number;
+    } = {},
+  ) {}
 
   list(): TargetRecord[] {
     return [...this.entries.values()].map((e) => e.record);
@@ -101,10 +111,23 @@ export class Session {
     return e;
   }
 
-  async analyze(id: string): Promise<AnyAnalysis> {
+  async analyze(id: string, signal?: AbortSignal): Promise<AnyAnalysis> {
     const e = this.entry(id);
     if (!e.analysis) {
-      e.analysis = await analyzeTarget(e.loaded);
+      if (!e.pending) {
+        e.pending = this.options.worker
+          ? analyzeInWorker(e.loaded, {
+              ...(this.options.analysisTimeoutMs
+                ? { timeoutMs: this.options.analysisTimeoutMs }
+                : {}),
+              ...(signal ? { signal } : {}),
+            })
+          : analyzeTarget(e.loaded);
+        e.pending.finally(() => {
+          delete e.pending;
+        });
+      }
+      e.analysis = await e.pending;
       e.record.analyzed = true;
     }
     return e.analysis;

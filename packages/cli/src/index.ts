@@ -286,7 +286,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       return 0;
     }
     case "mcp":
-      await serveStdio(session);
+      await serveStdio(new Session({ worker: true }));
       await new Promise(() => {});
       return 0;
     case "ui": {

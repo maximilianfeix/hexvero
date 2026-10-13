@@ -9,7 +9,8 @@
     "no-console": "off",
     "unicorn/no-null": "off",
     "no-unmodified-loop-condition": "off",
-    "import/no-unassigned-import": "off"
+    "import/no-unassigned-import": "off",
+    "unicorn/require-post-message-target-origin": "off"
   },
   "ignorePatterns": ["**/dist/**", "**/node_modules/**", "packages/cli/ui/**"]
 }

@@ -93,7 +93,7 @@ async function readBody(req: IncomingMessage, max: number): Promise<Uint8Array> 
  * the UI receives it through the page URL hash so it never hits the server log.
  */
 export async function startServer(options: ServerOptions = {}): Promise<RunningServer> {
-  const session = options.session ?? new Session();
+  const session = options.session ?? new Session({ worker: true });
   const token = options.token ?? randomBytes(18).toString("base64url");
   const host = options.host ?? "127.0.0.1";
   const maxUpload = options.maxUploadBytes ?? 512 * 1024 * 1024;
@@ -179,7 +179,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       const sub = parts[2];
       if (!sub) return json(res, 200, session.get(id));
       if (sub === "analysis") {
-        const analysis = await session.analyze(id);
+        const controller = new AbortController();
+        req.once("close", () => controller.abort());
+        const analysis = await session.analyze(id, controller.signal);
         const full = q.get("full") === "1";
         return json(res, 200, {
           target: session.get(id),
