@@ -126,10 +126,18 @@ export interface WebPreference {
 export type SettingState = boolean | "computed" | "not written";
 
 /**
- * One window with its core settings side by side, and what follows from them together. `…InEffect`
- * and `pageRequire` are derived from Electron's documented rules (docs/electron-findings.md):
- * they say `unknown` whenever a value is computed, or absent while the Electron version is not
- * known. They describe the configuration, not the behaviour of a running app.
+ * What holds for a window. `on`/`off`: decided by what the code writes. `default on`/`default
+ * off`: the setting is not written, and this is Electron's default for the version package.json
+ * asks for. That version is a statement of the application's own metadata, not the runtime that
+ * is shipped, so a default is an assumption and never reads as a fact. `unknown`: computed, or
+ * not written with no version named.
+ */
+export type Effect = "on" | "off" | "default on" | "default off" | "unknown";
+
+/**
+ * One window with its core settings side by side, and what follows from them together, by
+ * Electron's documented rules (docs/electron-findings.md). This describes the configuration, not
+ * the behaviour of a running app.
  */
 export interface WindowSummary {
   file: string;
@@ -140,10 +148,14 @@ export interface WindowSummary {
   contextIsolation: SettingState;
   sandbox: SettingState;
   preload: string | null;
-  contextIsolationInEffect: "on" | "off" | "unknown";
-  sandboxInEffect: "on" | "off" | "unknown";
-  /** Whether the page's own scripts get Node's `require`. */
-  pageRequire: "yes" | "no" | "unknown";
+  nodeIntegrationInEffect: Effect;
+  contextIsolationInEffect: Effect;
+  sandboxInEffect: Effect;
+  /**
+   * Whether the page's own scripts get Node's `require`. `… by default` rests on a default of the
+   * version package.json names, see `Effect`.
+   */
+  pageRequire: "yes" | "no" | "yes by default" | "no by default" | "unknown";
   /** The rule each derived value rests on. */
   basis: string;
 }
@@ -159,35 +171,60 @@ export function electronMajor(range: string | null | undefined): number | null {
  * nodeIntegration off, 12.0 contextIsolation on and `require()` in a page only with
  * nodeIntegration on and contextIsolation off, 20.0 sandbox on unless nodeIntegration is on or
  * sandbox is false), the WebPreferences structure, and the sandbox tutorial (app.enableSandbox
- * overrides `sandbox: false`).
+ * overrides `sandbox: false`). `major` is the version package.json asks for, or null.
  */
 export function windowEffects(
   w: Pick<WindowSummary, "nodeIntegration" | "contextIsolation" | "sandbox">,
   major: number | null,
   enableSandbox: boolean,
-): Pick<WindowSummary, "contextIsolationInEffect" | "sandboxInEffect" | "pageRequire" | "basis"> {
+): Pick<
+  WindowSummary,
+  | "nodeIntegrationInEffect"
+  | "contextIsolationInEffect"
+  | "sandboxInEffect"
+  | "pageRequire"
+  | "basis"
+> {
   const basis: string[] = [];
-  let isolation: "on" | "off" | "unknown";
+  const byDefault = (name: string, since: number): Effect => {
+    if (major === null) {
+      basis.push(`${name} not written: on by default since Electron ${since}, version not known`);
+      return "unknown";
+    }
+    const on = major >= since;
+    basis.push(
+      `${name} not written: ${on ? "on" : "off"} by default in Electron ${major}, the version package.json asks for (on since ${since}); the shipped runtime was not checked`,
+    );
+    return on ? "default on" : "default off";
+  };
+  // nodeIntegration was on by default before Electron 5 and is off since.
+  let node: Effect;
+  if (typeof w.nodeIntegration === "boolean") node = w.nodeIntegration ? "on" : "off";
+  else if (w.nodeIntegration === "computed") {
+    node = "unknown";
+    basis.push("nodeIntegration is computed");
+  } else if (major === null) {
+    node = "unknown";
+    basis.push("nodeIntegration not written: off by default since Electron 5, version not known");
+  } else {
+    node = major < 5 ? "default on" : "default off";
+    basis.push(
+      `nodeIntegration not written: ${major < 5 ? "on" : "off"} by default in Electron ${major}, the version package.json asks for (off since 5); the shipped runtime was not checked`,
+    );
+  }
+  let isolation: Effect;
   if (typeof w.contextIsolation === "boolean") {
     isolation = w.contextIsolation ? "on" : "off";
     basis.push("contextIsolation as written");
   } else if (w.contextIsolation === "computed") {
     isolation = "unknown";
     basis.push("contextIsolation is computed");
-  } else if (major === null) {
-    isolation = "unknown";
-    basis.push("contextIsolation not written: on by default since Electron 12, version not known");
-  } else {
-    isolation = major >= 12 ? "on" : "off";
-    basis.push(
-      `contextIsolation not written: ${isolation} by default in Electron ${major} (on since 12)`,
-    );
-  }
-  let sandbox: "on" | "off" | "unknown";
+  } else isolation = byDefault("contextIsolation", 12);
+  let sandbox: Effect;
   if (enableSandbox) {
     sandbox = "on";
     basis.push("app.enableSandbox() is called, which overrides per-window settings");
-  } else if (w.nodeIntegration === true) {
+  } else if (node === "on") {
     sandbox = "off";
     basis.push("nodeIntegration: true disables the sandbox");
   } else if (typeof w.sandbox === "boolean") {
@@ -196,25 +233,19 @@ export function windowEffects(
   } else if (w.sandbox === "computed" || w.nodeIntegration === "computed") {
     sandbox = "unknown";
     basis.push(`${w.sandbox === "computed" ? "sandbox" : "nodeIntegration"} is computed`);
-  } else if (major === null) {
-    sandbox = "unknown";
-    basis.push("sandbox not written: on by default since Electron 20, version not known");
-  } else {
-    sandbox = major >= 20 ? "on" : "off";
-    basis.push(`sandbox not written: ${sandbox} by default in Electron ${major} (on since 20)`);
-  }
-  // nodeIntegration is off by default since Electron 5; older versions are not modelled.
-  const pageRequire =
-    w.nodeIntegration === "computed"
-      ? "unknown"
-      : w.nodeIntegration !== true
-        ? "no"
-        : isolation === "off"
-          ? "yes"
-          : isolation === "on"
-            ? "no"
-            : "unknown";
+  } else sandbox = byDefault("sandbox", 20);
+  // A page gets require() only with Node integration on AND context isolation off. The answer
+  // is as certain as its least certain part: `by default` when either rests on a default.
+  let pageRequire: WindowSummary["pageRequire"];
+  if (node === "off") pageRequire = "no";
+  else if (node === "unknown") pageRequire = isolation === "on" ? "no" : "unknown";
+  else if (node === "default off") pageRequire = isolation === "on" ? "no" : "no by default";
+  else if (isolation === "on") pageRequire = "no";
+  else if (isolation === "unknown") pageRequire = "unknown";
+  else if (isolation === "default on") pageRequire = "no by default";
+  else pageRequire = node === "on" && isolation === "off" ? "yes" : "yes by default";
   return {
+    nodeIntegrationInEffect: node,
     contextIsolationInEffect: isolation,
     sandboxInEffect: sandbox,
     pageRequire,
@@ -730,7 +761,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 2;
+export const JS_SCAN_SCHEMA = 3;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -1558,6 +1589,18 @@ export function analyzeJavaScriptTree(
       message: `${ambientResult.unresolved.length} call(s) that look like IPC are on a name that could not be traced to ipcMain or ipcRenderer and are not listed: ${sample}${more ? ` … and ${more} more` : ""}.`,
     });
   }
+  // Calls on an IPC object whose channel is a parameter or a computed value: listed without a
+  // channel, and said so, because the channel list is then not the whole picture.
+  const channelless = modules.flatMap((m) =>
+    m.ipc
+      .filter((u) => u.channel === null && !u.channelRef && !u.api.startsWith("contextBridge."))
+      .map((u) => `${u.api} at ${m.id}:${u.line}`),
+  );
+  if (channelless.length)
+    limitations.push({
+      code: "ipc_channel_unresolved",
+      message: `${channelless.length} IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ${channelless.slice(0, 5).join(", ")}${channelless.length > 5 ? ` … and ${channelless.length - 5} more` : ""}.`,
+    });
   if (ambientCapped)
     limitations.push({
       code: "ipc_open_calls_capped",
@@ -1628,8 +1671,10 @@ export function analyzeJavaScriptTree(
   // One row per window: what is written, and what follows from the settings together.
   const major = electronMajor(electronVersion);
   const windows: WindowSummary[] = (facts.windows ?? []).map((w) => {
+    // A key written twice in one object literal takes its last value in JavaScript, so the
+    // last row of a window decides, never the first.
     const stateOf = (key: CoreKey): SettingState => {
-      const p = webPreferences.find(
+      const p = webPreferences.findLast(
         (x) => x.file === w.file && x.window === w.window && x.key === key,
       );
       return !p ? "not written" : typeof p.value === "boolean" ? p.value : "computed";
@@ -1639,7 +1684,7 @@ export function analyzeJavaScriptTree(
       contextIsolation: stateOf("contextIsolation"),
       sandbox: stateOf("sandbox"),
     };
-    const preload = webPreferences.find(
+    const preload = webPreferences.findLast(
       (x) => x.file === w.file && x.window === w.window && x.key === "preload",
     );
     return {
@@ -1670,23 +1715,46 @@ export function analyzeJavaScriptTree(
     if (electron.nodeIntegration === true) {
       // What the flag means depends on the other settings of the same window, so the detail is
       // chosen from that window's row, never from another window's (docs/electron-findings.md).
-      const hit = webPreferences.find((w) => w.key === "nodeIntegration" && w.value === true);
-      const row = hit
-        ? windows.find((w) => w.file === hit.file && w.window === hit.window)
-        : undefined;
+      // The window where page scripts get require() is reported before one where they do not.
+      const rank = { yes: 0, "yes by default": 1, unknown: 2, "no by default": 3, no: 4 } as const;
+      const row = windows
+        .filter((w) => w.nodeIntegration === true)
+        .toSorted((x, y) => rank[x.pageRequire] - rank[y.pageRequire])[0];
+      const sandboxNote = "Node integration keeps the renderer out of the Chromium sandbox.";
+      const detail =
+        row?.pageRequire === "yes"
+          ? "contextIsolation is off for the same window: page scripts can require Node modules, so script injection there becomes code execution."
+          : row?.pageRequire === "no"
+            ? `contextIsolation is on for the same window, so page scripts do not get require(). ${sandboxNote}`
+            : row?.pageRequire === "yes by default"
+              ? `contextIsolation is not written for the same window and is off by default in the Electron version package.json asks for (${electronVersion}): if that is the runtime, page scripts can require Node modules. ${sandboxNote}`
+              : row?.pageRequire === "no by default"
+                ? `contextIsolation is not written for the same window. It is on by default in the Electron version package.json asks for (${electronVersion}), and then page scripts do not get require(); the shipped runtime was not checked. ${sandboxNote}`
+                : `Whether page scripts get require() depends on contextIsolation of the same window, which is not known here (computed, or not written with the Electron version unknown). ${sandboxNote}`;
+      const pref =
+        row &&
+        webPreferences.findLast(
+          (w) => w.file === row.file && w.window === row.window && w.key === "nodeIntegration",
+        );
       findings.push({
         kind: "electron.node-integration",
         title: "nodeIntegration: true in a BrowserWindow",
-        detail:
-          row?.pageRequire === "yes"
-            ? "contextIsolation is off for the same window: page scripts can require Node modules, so script injection there becomes code execution."
-            : row?.pageRequire === "no"
-              ? "contextIsolation is on for the same window, so page scripts do not get require(). Node integration still keeps the renderer out of the Chromium sandbox."
-              : "Whether page scripts get require() depends on contextIsolation of the same window, which is not known here (computed, or not written with the Electron version unknown). Node integration keeps the renderer out of the Chromium sandbox.",
+        detail,
         confidence: "inferred",
-        location: where("nodeIntegration", true),
+        location: pref ? `${pref.file}:${pref.line}` : where("nodeIntegration", true),
       });
     }
+    const defaultRequire = windows.find(
+      (w) => w.nodeIntegration === "not written" && w.pageRequire === "yes by default",
+    );
+    if (defaultRequire)
+      findings.push({
+        kind: "electron.node-integration-default",
+        title: "nodeIntegration is not written and on by default before Electron 5",
+        detail: `package.json asks for Electron ${electronVersion}. If that is the runtime, page scripts of this window can require Node modules; the shipped runtime was not checked.`,
+        confidence: "inferred",
+        location: `${defaultRequire.file}:${defaultRequire.line}`,
+      });
     if (electron.contextIsolation === false)
       findings.push({
         kind: "electron.context-isolation",
@@ -1753,8 +1821,10 @@ export function analyzeJavaScriptTree(
           ipcChannels.map((c) => c.channel),
           8,
         )} (collections ipcChannels, ipc)`,
-        // Calls that could not be traced exist: the list is then not known to be complete.
-        confidence: ambientResult.unresolved.length ? "inferred" : "confirmed",
+        // Calls that could not be traced, or whose channel could not be read, exist: the list
+        // is then not known to be complete.
+        confidence:
+          ambientResult.unresolved.length || channelless.length ? "inferred" : "confirmed",
         location: first ? `${first.m.id}:${first.u.line}` : undefined,
       });
     }

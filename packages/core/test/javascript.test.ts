@@ -217,7 +217,12 @@ describe("ASAR", () => {
       "electron.context-bridge",
       "electron.preload",
     ]);
-    expect(info.limitations.map((l) => l.code)).toEqual(["unresolved_references"]);
+    // `ipcMain.on(channelName, …)`: the call is listed, its channel is not readable
+    expect(info.limitations.map((l) => l.code)).toEqual([
+      "ipc_channel_unresolved",
+      "unresolved_references",
+    ]);
+    expect(info.limitations[0]!.message).toContain("ipcMain.on at main.js:10");
   });
 });
 

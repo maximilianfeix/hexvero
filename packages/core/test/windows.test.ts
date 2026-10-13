@@ -32,7 +32,7 @@ const effects = (
   enableSandbox = false,
 ): string => {
   const e = windowEffects({ nodeIntegration, contextIsolation, sandbox }, major, enableSandbox);
-  return `isolation ${e.contextIsolationInEffect}, sandbox ${e.sandboxInEffect}, require ${e.pageRequire}`;
+  return `node ${e.nodeIntegrationInEffect}, isolation ${e.contextIsolationInEffect}, sandbox ${e.sandboxInEffect}, require ${e.pageRequire}`;
 };
 
 const detail = (prefs: string, electron?: string): string | undefined =>
@@ -42,43 +42,74 @@ const detail = (prefs: string, electron?: string): string | undefined =>
 
 describe("what follows from a window's settings together", () => {
   it("gives page scripts require() only with nodeIntegration on and contextIsolation off", () => {
-    expect(effects(true, false, "not written", 38)).toBe("isolation off, sandbox off, require yes");
-    expect(effects(true, true, "not written", 38)).toBe("isolation on, sandbox off, require no");
-    expect(effects(false, false, "not written", 38)).toBe("isolation off, sandbox on, require no");
+    expect(effects(true, false, "not written", 38)).toBe(
+      "node on, isolation off, sandbox off, require yes",
+    );
+    expect(effects(true, true, "not written", 38)).toBe(
+      "node on, isolation on, sandbox off, require no",
+    );
+    expect(effects(false, false, "not written", 38)).toBe(
+      "node off, isolation off, sandbox default on, require no",
+    );
   });
 
   it("uses the default of the Electron version for a setting that is not written", () => {
+    // a default is an assumption about the runtime and never reads as a written value
     expect(effects(true, "not written", "not written", 38)).toBe(
-      "isolation on, sandbox off, require no",
+      "node on, isolation default on, sandbox off, require no by default",
     );
     expect(effects(true, "not written", "not written", 11)).toBe(
-      "isolation off, sandbox off, require yes",
+      "node on, isolation default off, sandbox off, require yes by default",
     );
     expect(effects("not written", "not written", "not written", 19)).toBe(
-      "isolation on, sandbox off, require no",
+      "node default off, isolation default on, sandbox default off, require no by default",
     );
     expect(effects("not written", "not written", "not written", 20)).toBe(
-      "isolation on, sandbox on, require no",
+      "node default off, isolation default on, sandbox default on, require no by default",
+    );
+  });
+
+  it("knows that nodeIntegration was on by default before Electron 5", () => {
+    expect(effects("not written", "not written", "not written", 4)).toBe(
+      "node default on, isolation default off, sandbox default off, require yes by default",
+    );
+    expect(effects("not written", true, "not written", 4)).toBe(
+      "node default on, isolation on, sandbox default off, require no",
+    );
+    expect(effects(false, "not written", "not written", 4)).toBe(
+      "node off, isolation default off, sandbox default off, require no",
     );
   });
 
   it("says unknown when the version is not known or a value is computed", () => {
     expect(effects(true, "not written", "not written", null)).toBe(
-      "isolation unknown, sandbox off, require unknown",
+      "node on, isolation unknown, sandbox off, require unknown",
     );
     expect(effects("not written", "not written", "not written", null)).toBe(
-      "isolation unknown, sandbox unknown, require no",
+      "node unknown, isolation unknown, sandbox unknown, require unknown",
     );
-    expect(effects("computed", true, true, 38)).toBe("isolation on, sandbox on, require unknown");
-    expect(effects(false, true, "computed", 38)).toBe("isolation on, sandbox unknown, require no");
+    expect(effects("not written", true, "not written", null)).toBe(
+      "node unknown, isolation on, sandbox unknown, require no",
+    );
+    expect(effects("computed", true, true, 38)).toBe(
+      "node unknown, isolation on, sandbox on, require no",
+    );
+    expect(effects("computed", false, true, 38)).toBe(
+      "node unknown, isolation off, sandbox on, require unknown",
+    );
+    expect(effects(false, true, "computed", 38)).toBe(
+      "node off, isolation on, sandbox unknown, require no",
+    );
     expect(effects("computed", true, "not written", 38)).toBe(
-      "isolation on, sandbox unknown, require unknown",
+      "node unknown, isolation on, sandbox unknown, require no",
     );
   });
 
   it("lets nodeIntegration and app.enableSandbox() override the sandbox setting", () => {
-    expect(effects(true, true, true, 38)).toBe("isolation on, sandbox off, require no");
-    expect(effects(false, true, false, 38, true)).toBe("isolation on, sandbox on, require no");
+    expect(effects(true, true, true, 38)).toBe("node on, isolation on, sandbox off, require no");
+    expect(effects(false, true, false, 38, true)).toBe(
+      "node off, isolation on, sandbox on, require no",
+    );
   });
 
   it("reads the major version from a package.json range", () => {
@@ -110,11 +141,11 @@ describe("window settings as written, computed, or absent", () => {
           `${w.windowName}:${w.line} ni=${w.nodeIntegration} ci=${w.contextIsolation} sb=${w.sandbox} preload=${w.preload} -> ${w.contextIsolationInEffect}/${w.sandboxInEffect}/${w.pageRequire}`,
       ),
     ).toEqual([
-      "main:2 ni=not written ci=not written sb=not written preload=null -> on/on/no",
+      "main:2 ni=not written ci=not written sb=not written preload=null -> default on/default on/no by default",
       "prompt:3 ni=true ci=false sb=not written preload=prompt.js -> off/off/yes",
     ]);
-    expect(info.windows[0]!.basis).toBe(
-      "contextIsolation not written: on by default in Electron 38 (on since 12); sandbox not written: on by default in Electron 38 (on since 20)",
+    expect(info.windows[0]!.basis).toContain(
+      "nodeIntegration not written: off by default in Electron 38, the version package.json asks for (off since 5); the shipped runtime was not checked",
     );
   });
 
@@ -149,8 +180,16 @@ describe("window settings as written, computed, or absent", () => {
   });
 
   it("words the nodeIntegration finding from the same window and the Electron version", () => {
-    expect(detail("nodeIntegration: true", "^38.0.0")).toMatch(/^contextIsolation is on/);
-    expect(detail("nodeIntegration: true", "^11.0.0")).toMatch(/^contextIsolation is off/);
+    expect(detail("nodeIntegration: true, contextIsolation: true", "^38.0.0")).toMatch(
+      /^contextIsolation is on for the same window, so page scripts do not get require\(\)/,
+    );
+    // a default taken from package.json is worded as an assumption, never as a fact
+    expect(detail("nodeIntegration: true", "^38.0.0")).toMatch(
+      /^contextIsolation is not written for the same window\. It is on by default in the Electron version package\.json asks for \(\^38\.0\.0\), and then page scripts do not get require\(\); the shipped runtime was not checked\./,
+    );
+    expect(detail("nodeIntegration: true", "^11.0.0")).toMatch(
+      /^contextIsolation is not written for the same window and is off by default .* if that is the runtime, page scripts can require Node modules\./,
+    );
     expect(detail("nodeIntegration: true")).toMatch(
       /^Whether page scripts get require\(\) depends/,
     );
@@ -198,5 +237,42 @@ describe("window settings as written, computed, or absent", () => {
       "^38.0.0",
     );
     expect(info.windows.map((w) => `${w.sandbox} ${w.sandboxInEffect}`)).toEqual(["false on"]);
+  });
+
+  it("lets the last of two values written for one key decide, as JavaScript does", () => {
+    const info = analyze(
+      "const w = new BrowserWindow({ webPreferences: { sandbox: true, contextIsolation: true, sandbox: false, contextIsolation: false, nodeIntegration: true } });",
+      "^38.0.0",
+    );
+    expect(info.windows.map((w) => `${w.sandbox} ${w.contextIsolation} ${w.pageRequire}`)).toEqual([
+      "false false yes",
+    ]);
+    expect(info.findings.find((f) => f.kind === "electron.node-integration")?.detail).toMatch(
+      /^contextIsolation is off for the same window/,
+    );
+  });
+
+  it("reports the window where page scripts get require() before one where they do not", () => {
+    const info = analyze(
+      [
+        "const safe = new BrowserWindow({ webPreferences: { nodeIntegration: true, contextIsolation: true } });",
+        "const open = new BrowserWindow({ webPreferences: { nodeIntegration: true, contextIsolation: false } });",
+      ].join("\n"),
+    );
+    const finding = info.findings.find((f) => f.kind === "electron.node-integration");
+    expect(finding?.detail).toMatch(/^contextIsolation is off for the same window/);
+    expect(finding?.location).toBe("main.js:3");
+  });
+
+  it("raises a finding when nothing is written and the named Electron version predates 5", () => {
+    const old = analyze("const mainWindow = new BrowserWindow({ width: 800 });", "^4.0.1");
+    expect(old.windows.map((w) => `${w.nodeIntegrationInEffect} ${w.pageRequire}`)).toEqual([
+      "default on yes by default",
+    ]);
+    const finding = old.findings.find((f) => f.kind === "electron.node-integration-default");
+    expect(finding?.location).toBe("main.js:2");
+    expect(finding?.detail).toContain("package.json asks for Electron ^4.0.1");
+    const current = analyze("const mainWindow = new BrowserWindow({ width: 800 });", "^38.0.0");
+    expect(current.findings.map((f) => f.kind)).not.toContain("electron.node-integration-default");
   });
 });

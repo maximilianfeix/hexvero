@@ -243,3 +243,84 @@ describe("several calls on one line of minified code", () => {
     ]);
   });
 });
+
+describe("another name bound from the module itself", () => {
+  it('resolves `const ipc = require("electron").ipcRenderer`', () => {
+    const info = analyze({
+      "renderer/tray.js": [
+        "const ipc = require('electron').ipcRenderer",
+        "const bus = require('events').ipcRenderer",
+        "ipc.send('put-in-tray')",
+        "ipc.on('tray-removed', function () {",
+        "  ipc.send('remove-tray')",
+        "})",
+        "bus.send('notElectron')",
+      ].join("\n"),
+      "main/tray.js":
+        "const ipc = require('electron/main').ipcMain\nipc.on('put-in-tray', () => {})",
+    });
+    expect(rows(info).toSorted()).toEqual([
+      "main/tray.js ipcMain.on put-in-tray 2 alias",
+      "renderer/tray.js ipcRenderer.on tray-removed 4 alias",
+      "renderer/tray.js ipcRenderer.send put-in-tray 3 alias",
+      "renderer/tray.js ipcRenderer.send remove-tray 5 alias",
+    ]);
+  });
+});
+
+describe("channels named by a compiled TypeScript enum", () => {
+  const ENUM =
+    'var Channels;(function(Channels){Channels["SAVE"]="doc:save";Channels.OPEN="doc:open"})(Channels||(exports.Channels=Channels={}));';
+  const MINIFIED =
+    '7(e,n){var i;n.IpcEvents=void 0,function(e){e.RUN="FIDDLE_RUN",e.QUIT="CONFIRM_QUIT"}(i||(n.IpcEvents=i={}))},';
+
+  it("resolves Enum.MEMBER and module.Enum.MEMBER, also in minified output", () => {
+    const info = analyze({
+      "main/main.js": [
+        'const { ipcMain } = require("electron");',
+        ENUM,
+        "ipcMain.handle(Channels.SAVE, () => {});",
+        "ipcMain.on(shared.Channels.OPEN, () => {});",
+        "ipcMain.on(Channels.MISSING, () => {});",
+        "ipcMain.on(Other.SAVE, () => {});",
+      ].join("\n"),
+      "main/bundle.js": `const t=require("electron");var m={${MINIFIED}9(e,n,i){const c=i(7);t.ipcMain.handle(c.IpcEvents.RUN,()=>{});t.ipcMain.on(c.IpcEvents.QUIT,()=>{});t.ipcMain.on(i.RUN,()=>{})}};`,
+    });
+    expect(rows(info)).toEqual([
+      "main/main.js ipcMain.handle doc:save 3 constant",
+      "main/main.js ipcMain.on doc:open 4 constant",
+      "main/main.js ipcMain.on null 5",
+      "main/main.js ipcMain.on null 6",
+      "main/bundle.js ipcMain.handle FIDDLE_RUN 1 constant",
+      "main/bundle.js ipcMain.on CONFIRM_QUIT 1 constant",
+      // `i` is the minifier's local for the enum inside one function, and something else here
+      "main/bundle.js ipcMain.on null 1",
+    ]);
+  });
+
+  it("says where a channel could not be read and lowers the finding's confidence", () => {
+    const info = analyze({
+      "main/main.js": [
+        'const { ipcMain } = require("electron");',
+        'ipcMain.on("known", () => {});',
+        "names.forEach((name) => ipcMain.on(name, () => {}));",
+      ].join("\n"),
+    });
+    const limitation = info.limitations.find((l) => l.code === "ipc_channel_unresolved");
+    expect(limitation?.message).toMatch(/^1 IPC call\(s\) pass a channel that is not a literal/);
+    expect(limitation?.message).toContain("ipcMain.on at main/main.js:3");
+    expect(info.findings.find((f) => f.kind === "electron.ipc")?.confidence).toBe("inferred");
+  });
+
+  it("resolves nothing through an enum name that two different enums share", () => {
+    const info = analyze({
+      "main/main.js": [
+        'const { ipcMain } = require("electron");',
+        '(function(Kind){Kind.A="one"})(Kind||(Kind={}));',
+        '(function(Kind){Kind.A="two"})(Kind||(Kind={}));',
+        "ipcMain.on(Kind.A, () => {});",
+      ].join("\n"),
+    });
+    expect(rows(info)).toEqual(["main/main.js ipcMain.on null 4"]);
+  });
+});
