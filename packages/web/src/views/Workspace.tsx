@@ -1,4 +1,5 @@
-import type { ReactElement } from "react";
+import type { KeyboardEvent, ReactElement } from "react";
+import { useState } from "react";
 import { api, formatBytes, formatCount, type TargetRecord } from "../lib/api.js";
 import { navigate } from "../lib/route.js";
 import { useAsync } from "../lib/useAsync.js";
@@ -20,7 +21,29 @@ export function Workspace({
   tab: string;
   query: URLSearchParams;
 }): ReactElement {
-  const analysis = useAsync(`analysis:${target.id}`, () => api.analysis(target.id));
+  const [attempt, setAttempt] = useState(0);
+  const analysis = useAsync(`analysis:${target.id}:${attempt}`, () => api.analysis(target.id));
+  const standalone = new Set(["strings", "hex"]);
+  const onTabKey = (event: KeyboardEvent<HTMLElement>): void => {
+    if (event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    const names = tabs.filter((name) => analysis.data || standalone.has(name));
+    const index = names.indexOf(tab);
+    const next =
+      event.key === "ArrowRight"
+        ? names[(index + 1) % names.length]
+        : event.key === "ArrowLeft"
+          ? names[(index - 1 + names.length) % names.length]
+          : event.key === "Home"
+            ? names[0]
+            : event.key === "End"
+              ? names[names.length - 1]
+              : undefined;
+    if (next) {
+      event.preventDefault();
+      navigate(target.id, next);
+      (event.currentTarget.querySelector(`[data-tab="${next}"]`) as HTMLElement | null)?.focus();
+    }
+  };
   const isDirectory = target.info.format === "directory";
   const collections = analysis.data?.collections ?? {};
   const dynamic = Object.entries(collections)
@@ -54,21 +77,25 @@ export function Workspace({
           </p>
         )}
         {analysis.error && (
-          <p className="verdict" style={{ color: "var(--alert)" }}>
-            {analysis.error.message}
+          <p className="verdict" role="alert" style={{ color: "var(--alert)" }}>
+            {analysis.error.message}{" "}
+            <button type="button" className="btn" onClick={() => setAttempt((n) => n + 1)}>
+              Retry
+            </button>
           </p>
         )}
         {analysis.data && <h1 className="verdict">{analysis.data.summary}</h1>}
       </div>
-      <nav className="tabs" role="tablist" aria-label="Views">
+      <nav className="tabs" aria-label="Views" onKeyDown={onTabKey}>
         {tabs.map((name) => (
           <button
             key={name}
-            role="tab"
+            type="button"
+            data-tab={name}
             className="tab"
-            aria-selected={tab === name}
+            aria-current={tab === name ? "page" : undefined}
             onClick={() => navigate(target.id, name)}
-            disabled={!analysis.data}
+            disabled={!analysis.data && !standalone.has(name)}
           >
             {label(name)}
             {collections[name] !== undefined && (
@@ -77,7 +104,7 @@ export function Workspace({
           </button>
         ))}
       </nav>
-      <section className="panel" role="tabpanel">
+      <section className="panel" aria-label={label(tab)}>
         {analysis.data && tab === "overview" && <Overview analysis={analysis.data} />}
         {analysis.data && tab === "findings" && <Overview analysis={analysis.data} findingsOnly />}
         {analysis.data && dynamic.includes(tab) && (

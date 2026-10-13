@@ -30,6 +30,8 @@ export function HexView({
   const rows = Math.ceil(size / perRow);
   const parentRef = useRef<HTMLDivElement>(null);
   const [chunks, setChunks] = useState<Map<number, Uint8Array>>(new Map());
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const [selected, setSelected] = useState<number | null>(
     query.get("sel") ? Number(query.get("sel")) : null,
   );
@@ -48,12 +50,16 @@ export function HexView({
     const end = Math.floor((last * perRow) / CHUNK);
     for (let c = start; c <= end; c++) {
       if (chunks.has(c) || c * CHUNK >= size) continue;
-      void api.bytes(targetId, c * CHUNK, CHUNK).then((w) => {
-        const bytes = Uint8Array.from(w.hex.match(/../g) ?? [], (h) => parseInt(h, 16));
-        setChunks((m) => (m.has(c) ? m : new Map(m).set(c, bytes)));
-      });
+      api.bytes(targetId, c * CHUNK, CHUNK).then(
+        (w) => {
+          const bytes = Uint8Array.from(w.hex.match(/../g) ?? [], (h) => parseInt(h, 16));
+          setChunks((m) => (m.has(c) ? m : new Map(m).set(c, bytes)));
+          setLoadError(null);
+        },
+        (e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)),
+      );
     }
-  }, [first, last, perRow, chunks, size, targetId]);
+  }, [first, last, perRow, chunks, size, targetId, retry]);
 
   const byteAt = (offset: number): number | undefined =>
     chunks.get(Math.floor(offset / CHUNK))?.[offset % CHUNK];
@@ -76,6 +82,7 @@ export function HexView({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
       if (selected === null || (e.target as HTMLElement | null)?.closest("input, select, textarea"))
         return;
       const delta =
@@ -118,11 +125,36 @@ export function HexView({
           Go
         </button>
         <span className="status">
-          {formatBytes(size)} · {perRow} bytes per row · click a byte to decode it
+          {formatBytes(size)} · {perRow} bytes per row · select a byte (click or arrow keys) to
+          decode it
         </span>
       </form>
+      {loadError && (
+        <p className="empty" role="alert" style={{ color: "var(--alert)", padding: "8px 24px" }}>
+          Could not read bytes: {loadError}{" "}
+          <button
+            type="button"
+            className="btn"
+            onClick={() => (setLoadError(null), setRetry((n) => n + 1))}
+          >
+            Retry
+          </button>
+        </p>
+      )}
       <div className="hex">
-        <div className="hex-scroll" ref={parentRef}>
+        <div
+          className="hex-scroll"
+          ref={parentRef}
+          tabIndex={0}
+          role="region"
+          aria-label="Hex dump; arrow keys move the selection"
+          onFocus={() => {
+            if (selected === null && size > 0) {
+              setSelected(0);
+              navigate(targetId, "hex", { sel: "0" }, true);
+            }
+          }}
+        >
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {items.map((item) => {
               const base = item.index * perRow;
@@ -230,13 +262,22 @@ function decode(
     out.push(["u16 LE / BE", `${view(b2).getUint16(0, true)} / ${view(b2).getUint16(0, false)}`]);
   if (b4) {
     out.push(["u32 LE / BE", `${view(b4).getUint32(0, true)} / ${view(b4).getUint32(0, false)}`]);
-    out.push(["i32 LE", String(view(b4).getInt32(0, true))]);
-    out.push(["f32 LE", view(b4).getFloat32(0, true).toPrecision(6)]);
+    out.push(["i32 LE / BE", `${view(b4).getInt32(0, true)} / ${view(b4).getInt32(0, false)}`]);
+    out.push([
+      "f32 LE / BE",
+      `${view(b4).getFloat32(0, true).toPrecision(6)} / ${view(b4).getFloat32(0, false).toPrecision(6)}`,
+    ]);
   }
   if (b8) {
-    out.push(["u64 LE", view(b8).getBigUint64(0, true).toString()]);
+    out.push([
+      "u64 LE / BE",
+      `${view(b8).getBigUint64(0, true).toString()} / ${view(b8).getBigUint64(0, false).toString()}`,
+    ]);
     out.push(["u64 LE hex", `0x${view(b8).getBigUint64(0, true).toString(16)}`]);
-    out.push(["f64 LE", view(b8).getFloat64(0, true).toPrecision(8)]);
+    out.push([
+      "f64 LE / BE",
+      `${view(b8).getFloat64(0, true).toPrecision(8)} / ${view(b8).getFloat64(0, false).toPrecision(8)}`,
+    ]);
   }
   const text = take(16);
   if (text)

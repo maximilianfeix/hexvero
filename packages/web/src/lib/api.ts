@@ -17,6 +17,8 @@ export interface Finding {
   title: string;
   detail?: string;
   confidence: "confirmed" | "inferred";
+  /** Where the fact was read: a path, section or byte offset, when the parser recorded one. */
+  location?: string;
 }
 export interface Limitation {
   code: string;
