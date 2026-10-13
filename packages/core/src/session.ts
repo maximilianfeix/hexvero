@@ -313,7 +313,12 @@ export class Session {
     if (analysis.data.kind === "source-map") return recoverSourceMap(text(), outputDir);
     throw new AnalysisError(
       "invalid_input",
-      `Recovery works on JavaScript bundles and source maps, not ${analysis.data.kind}`,
+      `recover needs a single JavaScript bundle file or a source map; this target is ${analysis.data.kind}.${
+        analysis.data.kind === "javascript-app"
+          ? " For an app or .asar, page its modules (hexvero collection <path> modules) and recover one bundle file."
+          : ""
+      }`,
+      { kind: analysis.data.kind },
     );
   }
 

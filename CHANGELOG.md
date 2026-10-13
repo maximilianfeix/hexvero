@@ -8,6 +8,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Fixed
 
+- CLI usability review: `--help` exits 0; `*.map` files are recognised as source maps (so `recover`
+  accepts them); `ui --host` is honoured with a warning for non-loopback hosts; value flags without
+  a value, out-of-range `--limit`/`--offset` and unknown `--tag` or engine names are usage errors
+  instead of silent clamps; `bytes` and `compare` say when their output was clamped or partial;
+  empty pages read "0 of N"; `recover` explains what it accepts and when no module boundaries were
+  found; a busy port and unknown-function errors get plain messages (`HEXVERO_DEBUG=1` for stacks);
+  directory targets no longer print a size and hash.
 - Core robustness review: the page byte budget is now an upper bound including the envelope, with
   oversized items compacted and marked `itemTruncated`; strings longer than 4096 characters are cut
   and report their full `length`; large (lazy) ASAR targets are identified by the SHA-256 of the

@@ -107,11 +107,11 @@ Or run without installing: `npx hexvero <command>`.
 ```text
 hexvero analyze <path> [--json] [--out file.json]     summary, findings, limitations, overview
 hexvero collection <path> <name> [--text s] [--limit n] [--offset n]
-hexvero strings <path> [--min n] [--utf16] [--tag url|path|email|ip|format|secret-ish]
+hexvero strings <path> [--min n] [--utf16] [--tag url|path|email|ip|format|secret-ish|base64-ish]
 hexvero bytes <path> <offset> [length]                hex dump
 hexvero compare <a> <b> <collection> [--key field]    added / removed between two builds
 hexvero export <path> <out.json>                      the complete analysis
-hexvero recover <path> <outdir>                       bundle modules or source-map originals as files
+hexvero recover <bundle.js|map> <outdir>              split one JS bundle into module files, or write a source map's originals
 hexvero provider <path> radare2|rizin|ghidra <op> [--address a] [--text s]
                                                       functions, disassemble, decompile, strings, imports,
                                                       xrefs, callers, callees, callgraph, search

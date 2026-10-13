@@ -4,8 +4,10 @@ import {
   compact,
   loadCallGraph,
   neighborhood,
+  PROVIDER_OPERATIONS,
   resolveNode,
   runProvider,
+  STRING_TAGS,
   tracePath,
   type ProviderName,
   type ProviderOperation,
@@ -47,7 +49,7 @@ Commands
                                                 Bounded call-graph neighborhood, or the shortest
                                                 call path from root to goal
   mcp                                           Serve the Model Context Protocol over stdio
-  ui [--port n] [--open]                        Start the local web UI
+  ui [--port n] [--host h] [--open]             Start the local web UI (loopback by default)
   doctor                                        Check the runtime and optional engines
   setup [--client name] [--apply] [--all]       Register the MCP server with detected agent clients
   setup --skill [--client name] [--apply]       Install the investigation skill for agents
@@ -58,7 +60,7 @@ Options
   -h, --help  Show help
   -v, --version
 
-Exit codes: 0 ok · 1 analysis failed · 2 usage error`;
+Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces`;
 
 export async function main(argv: string[], io: Io = defaultIo()): Promise<number> {
   let args: ParsedArgs;
@@ -69,14 +71,34 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
       io.out(VERSION);
       return 0;
     }
-    if (!args.command || args.flags["help"]) {
+    if (args.flags["help"]) {
       io.out(HELP);
-      return args.command ? 0 : 2;
+      return 0;
+    }
+    if (!args.command) {
+      io.err(HELP);
+      return 2;
     }
     return await run(args, io);
   } catch (error) {
     if (error instanceof UsageError) {
-      io.err(`${paint(io, "red", "usage:")} ${error.message}\n\n${HELP}`);
+      const command = args!.command;
+      const lines: string[] = [];
+      if (command) {
+        const all = HELP.split("\n");
+        for (let i = 0; i < all.length; i++) {
+          if (!all[i]!.trim().startsWith(`${command} `)) continue;
+          lines.push(all[i]!);
+          // continuation lines are indented past the command column and name no command
+          for (let j = i + 1; j < all.length && /^\s{40,}\S/.test(all[j]!); j++)
+            lines.push(all[j]!);
+        }
+      }
+      io.err(
+        `${paint(io, "red", "usage:")} ${error.message}${
+          lines.length ? `\n\n${lines.join("\n")}` : ""
+        }\n\n${paint(io, "dim", 'Run "hexvero --help" for all commands.')}`,
+      );
       return 2;
     }
     if (error instanceof AnalysisError) {
@@ -90,12 +112,30 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
             },
           }),
         );
-      else io.err(`${paint(io, "red", `error (${error.code}):`)} ${error.message}`);
+      else {
+        const candidates = (error.details as { candidates?: unknown } | undefined)?.candidates;
+        io.err(
+          `${paint(io, "red", `error (${error.code}):`)} ${error.message}${
+            Array.isArray(candidates) && candidates.length
+              ? `\n  did you mean: ${candidates.slice(0, 5).join(", ")}`
+              : ""
+          }`,
+        );
+      }
+      return 1;
+    }
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === "EADDRINUSE") {
+      io.err(`${paint(io, "red", "error:")} the port is already in use; pick another with --port`);
       return 1;
     }
     io.err(
       `${paint(io, "red", "error:")} ${
-        error instanceof Error ? (error.stack ?? error.message) : String(error)
+        error instanceof Error
+          ? process.env["HEXVERO_DEBUG"]
+            ? (error.stack ?? error.message)
+            : error.message
+          : String(error)
       }`,
     );
     return 1;
@@ -115,8 +155,16 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     const offset = flagNumber(args.flags, "offset");
     const limit = flagNumber(args.flags, "limit");
     const text = flagString(args.flags, "text");
-    if (offset !== undefined) q.offset = offset;
-    if (limit !== undefined) q.limit = limit;
+    if (offset !== undefined) {
+      if (offset < 0 || !Number.isInteger(offset))
+        throw new UsageError("--offset must be a whole number >= 0");
+      q.offset = offset;
+    }
+    if (limit !== undefined) {
+      if (limit < 1 || limit > 2000 || !Number.isInteger(limit))
+        throw new UsageError("--limit must be a whole number between 1 and 2000");
+      q.limit = limit;
+    }
     if (text !== undefined) q.text = text;
     return q;
   };
@@ -144,7 +192,13 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         return 0;
       }
       io.out(
-        `${heading(io, target.info.path)}\n  ${paint(io, "dim", `${target.info.format} · ${target.info.size} bytes · sha256 ${target.info.sha256.slice(0, 16)}… · ${analysis.durationMs} ms`)}`,
+        `${heading(io, target.info.path)}\n  ${paint(
+          io,
+          "dim",
+          target.info.format === "directory"
+            ? `directory · ${analysis.durationMs} ms`
+            : `${target.info.format} · ${formatBytes(target.info.size)} · sha256 ${target.info.sha256.slice(0, 16)}… · ${analysis.durationMs} ms`,
+        )}`,
       );
       io.out(`\n${heading(io, "Summary")}\n  ${analysis.summary}`);
       io.out(`\n${heading(io, "Findings")}\n${formatFindings(io, analysis.findings).join("\n")}`);
@@ -170,9 +224,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         return 0;
       }
       io.out(
-        `${heading(io, `${page.collection} ${page.offset + 1}-${page.offset + page.items.length} of ${page.total}`)}${
+        `${heading(io, `${page.collection} ${rangeLabel(page)}`)}${
           page.truncated ? paint(io, "dim", " (more: --offset/--limit)") : ""
-        }`,
+        }${page.itemTruncated ? paint(io, "yellow", " (an item was cut to fit the byte budget; use --json for its full form)") : ""}`,
       );
       io.out(table(page.items as Array<Record<string, unknown>>).join("\n"));
       return 0;
@@ -184,14 +238,20 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       const tag = flagString(args.flags, "tag");
       if (min !== undefined) q.minLength = min;
       if (args.flags["utf16"]) q.utf16 = true;
-      if (tag) q.tag = tag;
+      if (tag) {
+        if (!(STRING_TAGS as readonly string[]).includes(tag))
+          throw new UsageError(`unknown tag "${tag}"; known: ${STRING_TAGS.join(", ")}`);
+        q.tag = tag;
+      }
       const page = session.strings(target.id, q);
       if (json) {
         io.out(toJson(page));
         return 0;
       }
       io.out(
-        `${heading(io, `strings ${page.offset + 1}-${page.offset + page.items.length} of ${page.total}`)}`,
+        `${heading(io, `strings ${rangeLabel(page)}`)}${
+          page.truncated ? paint(io, "dim", " (more: --offset/--limit)") : ""
+        }`,
       );
       for (const s of page.items)
         io.out(
@@ -215,6 +275,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         return 0;
       }
       io.out(hexdump(window.hex, window.ascii, window.offset).join("\n"));
+      if (window.length < length && window.offset + window.length < target.info.size)
+        io.out(
+          paint(
+            io,
+            "yellow",
+            `  window clamped to ${window.length} bytes (max 65536 per call); continue with offset ${window.offset + window.length}`,
+          ),
+        );
       return 0;
     }
     case "compare": {
@@ -234,13 +302,18 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       const r = new Set(right.items.map(keyOf));
       const added = [...r].filter((k) => !l.has(k));
       const removed = [...l].filter((k) => !r.has(k));
+      const truncated = left.truncated || right.truncated;
       if (json) {
         io.out(
           toJson({
             collection: name,
+            key,
             added,
             removed,
             unchanged: [...l].filter((k) => r.has(k)).length,
+            compared: { a: left.items.length, b: right.items.length },
+            totals: { a: left.total, b: right.total },
+            truncated,
           }),
         );
         return 0;
@@ -253,6 +326,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       );
       for (const k of added) io.out(`  ${paint(io, "green", "+")} ${k}`);
       for (const k of removed) io.out(`  ${paint(io, "red", "-")} ${k}`);
+      if (truncated)
+        io.out(
+          paint(
+            io,
+            "yellow",
+            `  ! compared only the first ${left.items.length} of ${left.total} (a) and ${right.items.length} of ${right.total} (b) items; the result is partial`,
+          ),
+        );
       return 0;
     }
     case "export": {
@@ -264,9 +345,13 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       return 0;
     }
     case "provider": {
-      const target = await session.open(need(0, "path"));
-      const provider = need(1, "engine") as ProviderName;
+      const provider = engineName(need(1, "engine"));
       const operation = need(2, "operation") as ProviderOperation;
+      const target = await session.open(need(0, "path"));
+      if (!(PROVIDER_OPERATIONS[provider] as readonly string[]).includes(operation))
+        throw new UsageError(
+          `${provider} does not support "${operation}"; operations: ${PROVIDER_OPERATIONS[provider].join(", ")}`,
+        );
       const result = await runProvider({
         targetPath: target.info.path,
         provider,
@@ -299,8 +384,8 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       return 0;
     }
     case "calls": {
+      const provider = engineName(need(1, "engine"));
       const target = await session.open(need(0, "path"));
-      const provider = need(1, "engine") as ProviderName;
       const rootSpec = need(2, "root");
       const graphRun = await loadCallGraph({
         targetPath: target.info.path,
@@ -379,6 +464,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         io.out(toJson(result));
         return 0;
       }
+      if (result.written.length === 0) {
+        io.out(
+          result.skipped.length
+            ? `${paint(io, "yellow", "!")} ${result.skipped.length} sources listed in the map carry no embedded content (sourcesContent); nothing but the manifest was written to ${result.outputDir}.`
+            : `${paint(io, "yellow", "!")} no module boundaries recognised; nothing but the manifest was written to ${result.outputDir}. Supported: webpack 4/5, Rspack, browserify, esbuild bundles and source maps with embedded sources.`,
+        );
+        return 0;
+      }
       io.out(
         `${paint(io, "green", "✓")} ${result.written.length} files written to ${result.outputDir} (manifest ${result.manifest})`,
       );
@@ -398,11 +491,21 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       return 0;
     case "ui": {
       const { startUi } = await import("./ui.js");
+      const host = flagString(args.flags, "host");
+      if (host && !isLoopback(host))
+        io.err(
+          paint(
+            io,
+            "yellow",
+            `! binding to ${host} exposes the token-protected API to that network; only loopback is recommended`,
+          ),
+        );
       return startUi(
         session,
         {
           port: flagNumber(args.flags, "port") ?? 7331,
           open: Boolean(args.flags["open"]),
+          ...(host ? { host } : {}),
         },
         io,
       );
@@ -431,6 +534,37 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     default:
       throw new UsageError(`unknown command "${args.command}"`);
   }
+}
+
+function isLoopback(host: string): boolean {
+  return /^(127\.\d+\.\d+\.\d+|localhost\.?|\[?::1\]?)$/i.test(host);
+}
+
+function engineName(value: string): ProviderName {
+  const known = Object.keys(PROVIDER_OPERATIONS);
+  if (known.includes(value)) return value as ProviderName;
+  throw new UsageError(`unknown engine "${value}"; known: ${known.join(", ")}`);
+}
+
+function rangeLabel(page: { offset: number; items: unknown[]; total: number }): string {
+  if (page.items.length === 0)
+    return page.offset > 0 && page.offset >= page.total
+      ? `0 of ${page.total} (offset ${page.offset} is past the end)`
+      : `0 of ${page.total}`;
+  return `${page.offset + 1}-${page.offset + page.items.length} of ${page.total}`;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} bytes`;
+  const units = ["KiB", "MiB", "GiB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  const shown = v.toFixed(v >= 100 ? 0 : 1);
+  return `${shown === "1024.0" || shown === "1024" ? `${(v / 1024).toFixed(1)} ${units[Math.min(i + 1, units.length - 1)]}` : `${shown} ${units[i]}`} (${n} bytes)`;
 }
 
 export function defaultIo(): Io {

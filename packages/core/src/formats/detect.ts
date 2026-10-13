@@ -39,6 +39,8 @@ export function detectFormat(bytes: Uint8Array, name = ""): FormatId {
   const lower = name.toLowerCase();
   if (lower.endsWith(".asar") || isAsarHeader(bytes)) return "asar";
   if (lower.endsWith(".json") || lower.endsWith(".har")) return "json";
+  // `.map` is also used by linker maps; only a JSON object is a source map
+  if (lower.endsWith(".map") && /^\s*\{/.test(latin1(bytes.subarray(0, 64)))) return "json";
   if (/\.(m?js|cjs|jsx|ts|tsx)$/.test(lower)) return "javascript";
   if (lower.endsWith(".plist")) return "plist-xml";
   return "unknown";
