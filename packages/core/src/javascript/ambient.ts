@@ -26,8 +26,8 @@ export interface AmbientDefinition {
   target: IpcTarget | "other";
   /** `global`: assigned on a global object. `top-level`: used at the top of a file. */
   kind: "global" | "top-level";
-  /** For a global: `page` when assigned on window/self, `any` on global/globalThis. */
-  reach?: "page" | "any";
+  /** For a global: `page` when assigned on window/self, `all` on global/globalThis. */
+  reach?: "page" | "all";
   line: number;
 }
 
@@ -187,7 +187,7 @@ export function collectAmbient(
         last = j;
       }
       const target = targetAt(last) ?? "other";
-      const reach = PAGE_OBJECTS.has(t.value) ? "page" : "any";
+      const reach = PAGE_OBJECTS.has(t.value) ? "page" : "all";
       const known = defines.get(name);
       if (!known) {
         if (defines.size < MAX_PER_FILE)
