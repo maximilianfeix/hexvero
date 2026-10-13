@@ -969,6 +969,9 @@ export function emptyJsScanFacts(): JsScanFacts {
 }
 
 const MAX_CANDIDATES = 5000;
+/** Every detector of candidates.ts needs one of these in the source to report anything. */
+const CAN_HOLD_CANDIDATES =
+  /https?:|wss?:|fetch|Storage|indexedDB|cookie|caches|axios|\.(get|post|put|patch|delete|head|options|request|open)\(|sendBeacon|EventSource|WebSocket|path\s*:|electron-store|["'`]\/(api|graphql|v\d|rest|rpc)/;
 const pathDepth = (path: string): number => path.split("/").length;
 
 /** `src/**`, `renderer/` or `*.min.js`: a path prefix, or a pattern with `*` wildcards. */
@@ -1518,19 +1521,28 @@ export function analyzeJavaScriptTree(
               }
             }
           }
-        const found = findCandidates(tokens, source, undefined, context.aliases, context.constants);
-        if (found.truncated) facts.candidatesCapped = true;
-        for (const [from, to] of [
-          [found.endpoints, facts.endpoints],
-          [found.storage, facts.storage],
-          [found.urls, facts.urls],
-        ] as const) {
-          for (const row of from) {
-            if (to.length >= MAX_CANDIDATES) {
-              facts.candidatesCapped = true;
-              break;
+        // Endpoints, storage and URL literals: only where the text can contain one at all.
+        if (CAN_HOLD_CANDIDATES.test(source)) {
+          const found = findCandidates(
+            tokens,
+            source,
+            undefined,
+            context.aliases,
+            context.constants,
+          );
+          if (found.truncated) facts.candidatesCapped = true;
+          for (const [from, to] of [
+            [found.endpoints, facts.endpoints],
+            [found.storage, facts.storage],
+            [found.urls, facts.urls],
+          ] as const) {
+            for (const row of from) {
+              if (to.length >= MAX_CANDIDATES) {
+                facts.candidatesCapped = true;
+                break;
+              }
+              to.push({ file: file.path, ...row });
             }
-            to.push({ file: file.path, ...row });
           }
         }
         if (!source.includes("exposeIn")) return;

@@ -1,0 +1,600 @@
+{
+ "tool": {
+  "name": "rea.complete via cli"
+ },
+ "totals": [
+  {
+   "set": "dev",
+   "class": "comparison",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "native analysis",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 2
+  },
+  {
+   "set": "dev",
+   "class": "IPC channels",
+   "hit": 12,
+   "missed": 6,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 3,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "window settings",
+   "hit": 9,
+   "missed": 12,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "bridge members",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "bridge member channel",
+   "hit": 3,
+   "missed": 15,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "endpoints",
+   "hit": 15,
+   "missed": 3,
+   "false": 9,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 3,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 1,
+   "false": 2,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "storage keys",
+   "hit": 12,
+   "missed": 9,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "storage read/write/delete",
+   "hit": 9,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "changes in ipcChannels",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in endpoints",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in storage",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  }
+ ],
+ "rows": [
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 → dev/calls-v2.O2.macho-arm64",
+   "class": "comparison",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "NOT RUN: no observation"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64",
+   "class": "native analysis",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "NOT RUN: no observation"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64",
+   "class": "native analysis",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "NOT RUN: no observation"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "IPC channels",
+   "hit": 4,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed doc:save",
+    "missed app:pong"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 7,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "doc:changed: sender main.js missed"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "window settings",
+   "hit": 4,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed main.js nodeIntegration=true",
+    "missed main.js contextIsolation=false",
+    "missed main.js sandbox=false"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "bridge member channel",
+   "hit": 1,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "notes.open: expected doc:open, got null",
+    "notes.save: expected doc:save, got null",
+    "notes.rename: expected doc:rename, got null",
+    "notes.ping: expected app:ping, got null",
+    "notes.onChanged: expected doc:changed, got null"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 3,
+   "notes": [
+    "missed https://api.notes.example/v1/users/…",
+    "false /local/route",
+    "false window.bounds",
+    "false items"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://upload.notes.example/blob: expected PUT"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed cookie document.cookie",
+    "missed electron-store window.lastOpened",
+    "missed electron-store window.bounds"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "IPC channels",
+   "hit": 4,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed doc:save",
+    "missed app:pong"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 7,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "doc:changed: sender main.js missed"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "window settings",
+   "hit": 4,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed main.js nodeIntegration=true",
+    "missed main.js contextIsolation=false",
+    "missed main.js sandbox=false"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 1,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "notes.open: expected doc:open, got null",
+    "notes.save: expected doc:save, got null",
+    "notes.rename: expected doc:rename, got null",
+    "notes.ping: expected app:ping, got null",
+    "notes.onChanged: expected doc:changed, got null"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 3,
+   "notes": [
+    "missed https://api.notes.example/v1/users/…",
+    "false /local/route",
+    "false items",
+    "false window.bounds"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://upload.notes.example/blob: expected PUT"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed cookie document.cookie",
+    "missed electron-store window.lastOpened",
+    "missed electron-store window.bounds"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "IPC channels",
+   "hit": 4,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed doc:save",
+    "missed app:pong"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 7,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "doc:changed: sender main.js missed"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "window settings",
+   "hit": 1,
+   "missed": 6,
+   "false": 0,
+   "notes": [
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true",
+    "missed main.js nodeIntegration=true",
+    "missed main.js contextIsolation=false",
+    "missed main.js sandbox=false"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "bridge member channel",
+   "hit": 1,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "notes.open: expected doc:open, got null",
+    "notes.save: expected doc:save, got null",
+    "notes.rename: expected doc:rename, got null",
+    "notes.ping: expected app:ping, got null",
+    "notes.onChanged: expected doc:changed, got null"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 3,
+   "notes": [
+    "missed https://api.notes.example/v1/users/…",
+    "false items",
+    "false window.bounds",
+    "false /local/route"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://upload.notes.example/blob: expected PUT"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed cookie document.cookie",
+    "missed electron-store window.lastOpened",
+    "missed electron-store window.bounds"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed ~nodeIntegration: true -> false",
+    "missed ~sandbox: false -> true"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  }
+ ]
+}

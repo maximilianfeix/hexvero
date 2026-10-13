@@ -1,0 +1,93 @@
+[
+ {
+  "tool": "rea",
+  "question": "Q4",
+  "unit": "dev/calls.O2.macho-arm64 → dev/calls-v2.O2.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "REA 6.4.0 has no call that compares the import or symbol tables of two Mach-O files"
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "dev/calls.O0.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed",
+  "attempt": {
+   "command": "rea function $BUILT/dev/calls.O0.macho-arm64 main --json",
+   "exit": 1,
+   "wallMs": 1206,
+   "stdoutBytes": 2325,
+   "stderrBytes": 0
+  }
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "dev/calls.O2.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed",
+  "attempt": {
+   "command": "rea function $BUILT/dev/calls.O2.macho-arm64 main --json",
+   "exit": 1,
+   "wallMs": 900,
+   "stdoutBytes": 2325,
+   "stderrBytes": 0
+  }
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "validation/dispatch.O0.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed",
+  "attempt": {
+   "command": "rea function $BUILT/validation/dispatch.O0.macho-arm64 main --json",
+   "exit": 1,
+   "wallMs": 806,
+   "stdoutBytes": 2325,
+   "stderrBytes": 0
+  }
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "validation/dispatch.O2.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed",
+  "attempt": {
+   "command": "rea function $BUILT/validation/dispatch.O2.macho-arm64 main --json",
+   "exit": 1,
+   "wallMs": 738,
+   "stdoutBytes": 2325,
+   "stderrBytes": 0
+  }
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "holdout/exprcalc.O0.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed",
+  "attempt": {
+   "command": "rea function $BUILT/holdout/exprcalc.O0.macho-arm64 main --json",
+   "exit": 1,
+   "wallMs": 728,
+   "stdoutBytes": 2325,
+   "stderrBytes": 0
+  }
+ },
+ {
+  "tool": "rea",
+  "question": "Q5",
+  "unit": "holdout/exprcalc.O2.macho-arm64",
+  "status": "NOT RUN",
+  "reason": "provider_unavailable: providers ghidra, hopper, ida are not installed",
+  "attempt": {
+   "command": "rea function $BUILT/holdout/exprcalc.O2.macho-arm64 main --json",
+   "exit": 1,
+   "wallMs": 716,
+   "stdoutBytes": 2325,
+   "stderrBytes": 0
+  }
+ }
+]

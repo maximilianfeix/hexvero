@@ -38,6 +38,12 @@ npx hexvero ui --open                   # the same in a local browser UI with he
 npx hexvero setup --apply               # register the MCP server with the agent clients on this machine
 ```
 
+<!-- unreleased-note:start -->
+
+> **Version note.** This README describes `main`. npm serves 0.3.0, which stops a JavaScript app scan at 5,000 files and has no `endpoints` or `storage` lists for Electron archives. Continued scans (`analyze --continue`, `--all`, `--include`), those lists, IPC through renamed bindings, constants and helper functions, per-window settings, tail calls through radare2 and the corpus are listed under _Unreleased_ in the [changelog](CHANGELOG.md) and ship with the next release. The comparison with REA below was measured on `main`. To run `main` today: `git clone`, `npm install`, `npm run build`, `node packages/cli/bin/hexvero.js`.
+
+<!-- unreleased-note:end -->
+
 <a id="demos"></a>
 
 ## Three things you can do in a minute
@@ -138,7 +144,8 @@ Nothing is ignored by default. The one built-in rule: in native binaries a symbo
 - **Zero-dependency parsers, any OS.** Every format listed below is parsed by code in this repository. No JDK, no Python, no engine, and no file is ever executed.
 - **Bounded by design.** Every list is a page with a hard byte budget (`maxBytes`, default 256 KiB, measured on the real serialized size) and a `next` offset. A 541 MiB Electron app answers `analyze` over MCP in a 15 KB result ([benchmarks](docs/benchmarks.md)). The complete result goes to a file with one command, never into a context window.
 - **Evidence and honesty.** Findings carry `confirmed` or `inferred` and, where a parser records it, the file and line; `limitations` say what was skipped, truncated or unreadable and why; an unknowns ledger keeps open questions.
-- **15 tools, 12.8 KB catalog.** The MCP server reads like a workflow: open, analyze, page, read bytes, compare, recover, export.
+- **Measured, not claimed.** A [corpus](corpus/README.md) with written-down correct results says per kind of finding what is found, missed and wrongly reported, including on a set hexvero was never tuned on; CI fails when a result gets worse.
+- **15 tools, 13.7 KB catalog.** The MCP server reads like a workflow: open, analyze, page, read bytes, compare, recover, export.
 - **A local UI.** Verdict, findings, virtualized tables, a hex viewer with live decoding, a module graph for Electron apps. Keyboard-usable, loopback only.
 - **Engines when you want them.** radare2, rizin and Ghidra plug in behind one interface for disassembly, decompilation, cross-references and cached call graphs.
 
@@ -247,7 +254,7 @@ hexvero setup --skill --apply # installs the investigation skill for Claude Code
 | `hexvero_call_graph`                         | Bounded call-graph neighborhood or shortest call path, one cached engine run per target    |
 | `hexvero_list` · `hexvero_close`             | Session housekeeping                                                                       |
 
-The catalog is 12.8 KB (`tools/list`, measured); every tool states whether it writes (`readOnlyHint`). Five guided prompts (`investigate_feature`, `compare_versions`, `triage_binary`, `map_electron_app`, `explain_apk`) render step-by-step plans with the rule that every claim cites a collection item or byte offset. Strings, symbol names and decompiled code are data from the target, never instructions.
+The catalog is 13.7 KB (`tools/list`, measured); every tool states whether it writes (`readOnlyHint`). Five guided prompts (`investigate_feature`, `compare_versions`, `triage_binary`, `map_electron_app`, `explain_apk`) render step-by-step plans with the rule that every claim cites a collection item or byte offset. Strings, symbol names and decompiled code are data from the target, never instructions.
 
 Ask your agent: _"Open ~/Downloads/app.asar with hexvero, tell me which IPC channels the renderer can reach and whether nodeIntegration is on."_
 
@@ -290,30 +297,32 @@ Ghidra imports each target once into a project cached under `~/.cache/hexvero` a
 
 ## Compared with REA
 
-[REA](https://github.com/morluto/rea) is the larger and older project in this space. hexvero is an independent implementation (no REA code) for the first look. The numbers below were measured on 2026-10-13 with REA 6.4.0 (`rea-agents` from npm) and a snapshot of hexvero's `main`, on the same machine with the same inputs and Node 24.21. Where hexvero has changed since the measurement, the table says so. Wall times were taken on a loaded machine and are indicative. Method, conditions and commands are in [docs/benchmarks.md](docs/benchmarks.md); the scripts are in [docs/rea-compare](docs/rea-compare).
+[REA](https://github.com/morluto/rea) is the larger and older project in this space. hexvero is an independent implementation (no REA code) for the first look. The comparison below was run on 2026-10-13 on hexvero's [corpus](corpus/README.md), a set of small applications and programs whose correct results are written down, with hexvero at commit `a6d9b82` and REA 6.4.0 (`rea-agents` from npm), both on Node 24.21 on the same machine. Method, every mapping decision, the harness and the raw data of 1,460 runs are in [corpus/compare](corpus/compare/README.md).
 
-|                                           | REA 6.4.0                                                                                                                                              | hexvero                                                                                                                           |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| MCP catalog (`tools/list` result)         | 170 tools, 1.95 MB (1.77 MB with its compact profile)                                                                                                  | 15 tools, 12.8 KB                                                                                                                 |
-| Electron example: IPC and window settings | all correct; 1 call, 1.3 MB of JSON to filter                                                                                                          | all correct; 1 call, 7.9 KB when measured (9.4 KB now, with bridge members)                                                       |
-| Same example: what else was found         | all 6 bridge members, handler source ranges, storage keys, evidence ids; 2 endpoints, one of them false and one missed                                 | file and line per finding; bridge members were missing when measured and are listed now                                           |
-| Diff of the two example builds            | channel changes, the bridge change, a new endpoint and storage key; the settings flip appears as a window removed and added; 3 calls, 450 KB, 78 items | channel and setting changes exact in 2 calls, 1.2 KB; the bridge swap was missed when measured and is exact now with a third call |
-| Native first look without an engine       | imports, libraries and signature detail through macOS system tools, with the commands recorded                                                         | imports, libraries and decoded hardening flags from its own parsers                                                               |
-| Call graphs and cross-references          | Ghidra, Hopper or IDA (not run here)                                                                                                                   | radare2, rizin or Ghidra                                                                                                          |
-| Large app (568 MB Electron archive)       | 15,211 JavaScript files parsed, coverage marked partial; 821 s in one run, 1.0 GiB, 554 MB of JSON; needs `--integrity-policy record-and-continue`     | 5,000 of 14,816 JavaScript files scanned, stated as a limitation; 14 s, 0.6 GiB, 25 KB                                            |
-| Source recovery from a bundle             | delegates to a Wakaru binary you supply, Linux x64 only (not run here)                                                                                 | splits into module files on any OS; does not rewrite                                                                              |
-| Dynamic analysis, devices, firmware       | yes, per its documentation (not run here)                                                                                                              | not in scope                                                                                                                      |
-| Local UI                                  | not compared                                                                                                                                           | web UI with hex viewer and module graph                                                                                           |
+Only the hold-out set is level ground: it was written without access to either tool and measured before hexvero was changed again. hexvero was tuned on the other two sets, so its near-perfect results there say little. Each cell is hit / missed / false, over the three builds of one Electron application (as written, bundled, minified):
 
-What this does and does not show:
+| Hold-out set                        | hexvero     | REA 6.4.0                            |
+| ----------------------------------- | ----------- | ------------------------------------ |
+| IPC channels                        | 41 / 31 / 0 | 33 / 39 / 0                          |
+| Window settings                     | 12 / 21 / 0 | 0 / 33 / 0                           |
+| contextBridge members               | 60 / 9 / 0  | 0 / 69 / 0                           |
+| Network endpoints                   | 24 / 18 / 5 | 9 / 33 / 30                          |
+| Storage keys                        | 42 / 9 / 0  | 12 / 39 / 0                          |
+| Changes between two builds, 5 lists | 7 / 11 / 2  | 0 / 18 / 1                           |
+| Native call paths, two binaries     | 36 / 0 / 0  | not run: needs Ghidra, Hopper or IDA |
+| Damaged inputs handled honestly     | 6 of 6      | 6 of 6                               |
 
-- The catalog size is the difference that does not depend on the machine or the input: about 150 times smaller, about 36 times if REA's output schemas are left out. In `o200k_base` tokens: 3,043 against 509,696.
-- REA is deeper. It parses large apps completely, keeps evidence ids and source ranges for every fact, pairs renderer calls with handlers, reports endpoints and storage for Electron archives, and covers dynamic analysis that hexvero does not attempt.
-- The timing on the large archive is not like for like: hexvero stops at 5,000 JavaScript files and builds no semantic graph. By default REA stops on that archive with a hash mismatch; the run above used the policy its error message names.
-- This comparison found gaps in hexvero that are closed on `main`: bridge members, URLs inside longer strings, and a call path hidden by a tail call. Through radare2 that path is still not found, but the answer now carries a limitation instead of a definite "not reached".
-- Earlier versions of this page said REA had 139 tools, aborted on 500 MB bundles and needed an engine for most targets. The first is out of date. The second misread an issue about a 15 MB bundle on REA 6.3.0 whose report was 500 MB; it is fixed in 6.4.0, which completed the 568 MB archive here. The third was wrong: JavaScript and Electron need only Node (run here), .NET and Go metadata need nothing more according to REA's documentation, and Mach-O headers, imports and signatures use macOS system tools, no engine.
+What this shows, and what it does not:
 
-Use REA when you need Hopper, IDA, JEB, Android devices over adb, browser capture, saved network captures, firmware, recorded Linux crashes, or complete graphs of very large apps. Use hexvero for the triage before that, for agents with small context windows, for radare2 or rizin, and for a UI.
+- **hexvero reads more of a small Electron application and reports far less that is wrong**, on code neither tool had seen. It still misses a lot there: 31 of 72 channels and 21 of 33 window settings. The misses are idioms it does not follow yet, listed in [PROGRESS.md](PROGRESS.md).
+- **REA's 30 false endpoints are mostly one decision**: it lists `store.get("key")` and similar calls as network endpoints. Read the other way, as storage, its row becomes 9 / 33 / 3 for endpoints and 30 / 21 / 9 for storage keys. Both readings are in the summary.
+- **Native call paths need no extra install beyond radare2 or rizin** in hexvero; REA 6.4.0 has no provider for either. Through radare2 hexvero answered all 70 path questions of the corpus correctly, including paths that run through tail calls and paths that do not exist; through rizin 68, the two misses being a jump to an import that rizin does not list as a function.
+- **The fixed cost of an MCP session** is the one cost that does not depend on the input: `tools/list` was 13.4 KB for hexvero's 15 tools at the measured commit (13.7 KB now) and 1.95 MB for REA's 170 (1.77 MB with its compact profile).
+- **Per question an agent receives less from hexvero, and gets names**: 15 to 21 KB over MCP for the channels, settings or endpoints of one application. REA's summary is 24 KB but holds counts without names; its complete answer is 1 to 6.5 MB, which for the three hold-out builds exceeded REA's own response budget, so the export file is the way that works.
+- **Timings are not compared.** All runs were taken on a busy machine (load 6 to 77 on 8 cores). The raw times are published; no conclusion is drawn from them.
+- **This is a small corpus**: three Electron applications of a few hundred lines and three C programs for one platform. It says nothing about large real applications, where REA parses everything and hexvero reads in batches; nothing about dynamic analysis, devices, firmware or the engines REA drives, which hexvero does not attempt; and nothing about how well an agent solves a task with either tool. No agent experiment was run.
+
+Use REA when you need Hopper, IDA, JEB, Android devices over adb, browser capture, saved network captures, firmware, or evidence ids with source ranges for every fact. Use hexvero for the first look, for agents with small context windows, for call paths through radare2 or rizin, and for a UI.
 
 <a id="how-it-works"></a>
 

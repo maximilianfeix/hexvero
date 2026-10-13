@@ -1,0 +1,93 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.3.0",
+  "commit": "a6d9b82",
+  "node": "v24.21.0",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  },
+  "observer": "corpus/observe-hexvero.mjs of that commit, unmodified"
+ },
+ "totals": [
+  {
+   "set": "damaged",
+   "class": "damaged input",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  }
+ ],
+ "rows": [
+  {
+   "set": "damaged",
+   "input": "damaged/empty.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error malformed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/header-cut.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error malformed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/header-length-lies.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error malformed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/contents-cut.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "flagged (package_json_invalid, js_files_skipped)"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/load-commands-cut.macho-arm64",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "flagged (load_command_invalid, file_truncated)"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/body-cut.macho-arm64",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "flagged (file_truncated)"
+   ]
+  }
+ ]
+}

@@ -265,10 +265,13 @@ let commit = "unknown";
 try {
   commit = execFileSync("git", ["-C", corpusRoot, "rev-parse", "--short", "HEAD"], {
     encoding: "utf8",
+    // outside a checkout (a copy of the tree) there is no commit; say "unknown" quietly
+    stdio: ["ignore", "pipe", "ignore"],
   }).trim();
   if (
     execFileSync("git", ["-C", corpusRoot, "status", "--porcelain", "--", "../packages"], {
       encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
     }).trim()
   )
     commit += "+uncommitted";

@@ -1,0 +1,279 @@
+{
+ "before": {
+  "at": "2026-10-13T19:01:36.173Z",
+  "local": "Di. 13 Okt. 2026 21:01:36 CEST",
+  "uptime": "21:01  up 22:16, 5 users, load averages: 14,97 12,82 11,95",
+  "loadavg": "{ 14,97 12,82 11,95 }",
+  "memoryPressure": [
+   "Pages free: 3766 ",
+   "Swap I/O:",
+   "Swapins: 21103997 ",
+   "Swapouts: 22533419 ",
+   "Pages active: 72929 ",
+   "Pages wired down: 122867 ",
+   "Pageouts: 928256 ",
+   "System-wide memory free percentage: 30%"
+  ]
+ },
+ "hexvero": {
+  "version": "0.3.0",
+  "commit": "a6d9b82",
+  "how": "git archive of the commit, npm ci, npm run build; the working tree was not measured",
+  "doctor": [
+   "✓ Node.js 24.21.0 ",
+   "✓ node:sqlite available",
+   "✓ radare2 /opt/homebrew/bin/r2 radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "✓ rizin /opt/homebrew/bin/rizin rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
+   "✗ ghidra not installed (optional)",
+   "",
+   "Built-in analyzers need nothing else. Engines add disassembly and decompilation."
+  ]
+ },
+ "rea": {
+  "package": "rea-agents@6.4.0",
+  "cli": "6.4.0",
+  "gitTag": "rea-agents-6.4.0",
+  "deepProviders": "none: Ghidra, Hopper and IDA are not installed"
+ },
+ "node": {
+  "version": "v24.21.0",
+  "path": "the same binary runs both tools",
+  "v8": "13.6.233.17-node.53"
+ },
+ "os": {
+  "name": "macOS",
+  "version": "26.5.2",
+  "build": "25F84",
+  "kernel": "25.5.0 arm64"
+ },
+ "machine": {
+  "cpu": "Apple M2",
+  "cores": 8,
+  "memoryBytes": 8589934592
+ },
+ "engines": {
+  "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+  "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+ },
+ "compiler": "Apple clang version 17.0.0 (clang-1700.3.19.1)",
+ "systemTools": {
+  "nm": "/Library/Developer/CommandLineTools/usr/bin/nm",
+  "note": "rea inspect-macho runs the system's nm, otool, dyld_info, lipo, vtool"
+ },
+ "expectations": [
+  {
+   "file": "dev/native/expected-compare.json",
+   "sha256": "4c19168a6e76fdabe8ba039c723d4e1e910c3838dc6ff73a3f492040492386b2",
+   "modified": "2026-10-13T17:47:59.583Z"
+  },
+  {
+   "file": "dev/native/expected.json",
+   "sha256": "742b313e7b12fdbc35c9e61bc2face37585a929c85a3beb8922483716fab739e",
+   "modified": "2026-10-13T17:47:59.582Z"
+  },
+  {
+   "file": "dev/notes-app/expected.json",
+   "sha256": "d658908da2971ca1349c6562a65189d26cdddf6622acf6818aa16f9d8d75be58",
+   "modified": "2026-10-13T17:47:59.584Z"
+  },
+  {
+   "file": "dev/notes-app-v2/expected.json",
+   "sha256": "16c0a436d65bdf7e869ef477af35a85cf32f584ce785d638ba8e82b646c7c56b",
+   "modified": "2026-10-13T17:34:52.362Z"
+  },
+  {
+   "file": "validation/chat-app/expected.json",
+   "sha256": "cc5b0ed608d63eed40a045c44f7c2702796dd4797f6c085f91380c16ed60010b",
+   "modified": "2026-10-13T17:47:59.580Z"
+  },
+  {
+   "file": "validation/chat-app-v2/expected.json",
+   "sha256": "35a130476a5a28f22d45984bac997e9d6e5dc3f1e4a7bb1354b0ebfc1a49fffd",
+   "modified": "2026-10-13T17:44:00.957Z"
+  },
+  {
+   "file": "validation/native/expected.json",
+   "sha256": "74aac04950c53e62cfc19848a8aeebf8c9eb58757a2de670de29a2dd24e481c9",
+   "modified": "2026-10-13T17:47:59.575Z"
+  },
+  {
+   "file": "holdout/native/expected.json",
+   "sha256": "222f8f531c3ec6da5c6921c96a0680b66d2e538f09572770b8d0c4a3f4acbd83",
+   "modified": "2026-10-13T18:22:52.993Z"
+  },
+  {
+   "file": "holdout/time-tracker/expected.json",
+   "sha256": "0bdc4b28247e4c7648577942c2bab64601962d4bc875727c5f782079f7431ae0",
+   "modified": "2026-10-13T18:31:47.416Z"
+  },
+  {
+   "file": "holdout/time-tracker-v2/expected.json",
+   "sha256": "9e51570437ced70f6fe9017ce09d0918844a3ac69045fa93346e40529319664f",
+   "modified": "2026-10-13T18:30:29.391Z"
+  },
+  {
+   "file": "damaged/expected.json",
+   "sha256": "598e2be7c8320220265e7d08a500861918b5b9e1a6a19602b1ad602a3b11b5fa",
+   "modified": "2026-10-13T18:56:40.765Z"
+  },
+  {
+   "file": "score.mjs",
+   "sha256": "23769cd5daf3e6e29de06a945a19e116ca606b0bf68e090f1298b01931722a9f",
+   "modified": "2026-10-13T18:56:32.296Z"
+  },
+  {
+   "file": "cases.mjs",
+   "sha256": "daaa2b518c0838afae94f11624dbd89b5e84e97f747fb035c1de17d7c2a47a97",
+   "modified": "2026-10-13T18:16:55.709Z"
+  }
+ ],
+ "inputs": [
+  {
+   "file": "damaged/body-cut.macho-arm64",
+   "sha256": "e09fe9d468e092a890fb4873440eef8a33da50660d046e29daf28a1f7373a4d8",
+   "matchesFile": true
+  },
+  {
+   "file": "damaged/contents-cut.asar",
+   "sha256": "c8fe8ea404745a9a37ad431c9328c25b5596f9ba62216984309f1bb9f6a27f0f",
+   "matchesFile": true
+  },
+  {
+   "file": "damaged/empty.asar",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "matchesFile": true
+  },
+  {
+   "file": "damaged/header-cut.asar",
+   "sha256": "152ebc8b06218232fb32b7399ac9eda5340ad426dc40b738544d01d490b34ce8",
+   "matchesFile": true
+  },
+  {
+   "file": "damaged/header-length-lies.asar",
+   "sha256": "9c316e2c7b9f40431c24925b627ad1b9830ee3c1d7cbc62f1df56a864b439e59",
+   "matchesFile": true
+  },
+  {
+   "file": "damaged/load-commands-cut.macho-arm64",
+   "sha256": "1f0733038bb3b57d8f1ffbbd7f70d89b1f0ae98461784fdc281e190198e6e611",
+   "matchesFile": true
+  },
+  {
+   "file": "dev/calls-v2.O0.macho-arm64",
+   "sha256": "6dab8b33062d04bc593dfe9b23b6bfccee79d88fd14caeb938b86d9f7070dcd2",
+   "matchesFile": true
+  },
+  {
+   "file": "dev/calls-v2.O2.macho-arm64",
+   "sha256": "32325db496acbb6d6f28144e8d810b2f8ec30d26f4138b36b9f9ae7c4f830e5b",
+   "matchesFile": true
+  },
+  {
+   "file": "dev/calls.O0.macho-arm64",
+   "sha256": "7b3f1e9efa51f03fd54ec0fef0376285a2fb022a0af20729543ec64176878592",
+   "matchesFile": true
+  },
+  {
+   "file": "dev/calls.O2.macho-arm64",
+   "sha256": "0aa1fad97793f6b6b53afff58cfc2d9801c6f4527b0aa3501de36978955a4533",
+   "matchesFile": true
+  },
+  {
+   "file": "dev/notes-app-v2.plain.asar",
+   "sha256": "26944407b05c95cd36cc59b914aa8351cb987b114285099a031f00c7d3acffd2",
+   "matchesFile": true
+  },
+  {
+   "file": "dev/notes-app.bundled.asar",
+   "sha256": "797e5a3366af1db45bd6b0689255a9f7d42a594f42095f2fc12d12b5f51529f4",
+   "matchesFile": true
+  },
+  {
+   "file": "dev/notes-app.minified.asar",
+   "sha256": "a8d88f7c116680c4455df75f40a5a0ace65911ae33fb6165fbd4071cdead722d",
+   "matchesFile": true
+  },
+  {
+   "file": "dev/notes-app.plain.asar",
+   "sha256": "3ab2f7deb28b223cba7f49ceb0e0af663f99c2397fdee1e9171cca24b9b70456",
+   "matchesFile": true
+  },
+  {
+   "file": "holdout/exprcalc.O0.macho-arm64",
+   "sha256": "1cbd8d2416b9e4a096a8297d32a7c6031f22dbda3c8e5dc0f1d4328fe480bc4f",
+   "matchesFile": true
+  },
+  {
+   "file": "holdout/exprcalc.O2.macho-arm64",
+   "sha256": "dc6225f9482a7a4911e9ba2c0894401e0d716ace2b43b2f22f85429a4abb2d4e",
+   "matchesFile": true
+  },
+  {
+   "file": "holdout/time-tracker-v2.plain.asar",
+   "sha256": "d7c41f30e06484a96577eb56eb6bcee5ff09fd5b3a33d5b106f814a04c1bc118",
+   "matchesFile": true
+  },
+  {
+   "file": "holdout/time-tracker.bundled.asar",
+   "sha256": "6f0915627fa37b17d37d277b97bb53155a6dad50c98f4f17acbed41ddebeae05",
+   "matchesFile": true
+  },
+  {
+   "file": "holdout/time-tracker.minified.asar",
+   "sha256": "f6383715c1242830dcda170d99aa592586afd1806e38dff3bd9c66b6e1119f53",
+   "matchesFile": true
+  },
+  {
+   "file": "holdout/time-tracker.plain.asar",
+   "sha256": "f49f56ac418692fbd410826b5329d36a391b58ccbbc993a4e4b4a4e6bf3d41c8",
+   "matchesFile": true
+  },
+  {
+   "file": "validation/chat-app-v2.plain.asar",
+   "sha256": "fe54eab84486ed34393efae6161bb126d08a51ca92297f6c5ebb726803545a98",
+   "matchesFile": true
+  },
+  {
+   "file": "validation/chat-app.bundled.asar",
+   "sha256": "22e4032e6ede3b1b19941558a8261584d4f824e6d3433763a676a4e598d94f6e",
+   "matchesFile": true
+  },
+  {
+   "file": "validation/chat-app.minified.asar",
+   "sha256": "c92649f38a3fa95773823cd7bbc4cac3c539d029aabf898b86df27fe88d64cf5",
+   "matchesFile": true
+  },
+  {
+   "file": "validation/chat-app.plain.asar",
+   "sha256": "451c9f6d04f3b277af944562b1053a6f5a08566db27a407d01a237f649d1112d",
+   "matchesFile": true
+  },
+  {
+   "file": "validation/dispatch.O0.macho-arm64",
+   "sha256": "777b498826f0723fa9c90be23b11348ef7a132dc6a9ff339028b846b0711145f",
+   "matchesFile": true
+  },
+  {
+   "file": "validation/dispatch.O2.macho-arm64",
+   "sha256": "07d5489da1f1364d377fa527fea8368e20cff371dacfc8e6481b04141bf7872b",
+   "matchesFile": true
+  }
+ ],
+ "allInputsMatchSums": true,
+ "after": {
+  "at": "2026-10-13T20:33:09.039Z",
+  "local": "Di. 13 Okt. 2026 22:33:09 CEST",
+  "uptime": "22:33  up 23:47, 6 users, load averages: 11,42 12,69 13,14",
+  "loadavg": "{ 11,42 12,69 13,14 }",
+  "memoryPressure": [
+   "Pages free: 12478 ",
+   "Swap I/O:",
+   "Swapins: 38323932 ",
+   "Swapouts: 40216479 ",
+   "Pages active: 72950 ",
+   "Pages wired down: 123210 ",
+   "Pageouts: 1122224 ",
+   "System-wide memory free percentage: 32%"
+  ]
+ }
+}

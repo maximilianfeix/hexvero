@@ -1,6 +1,6 @@
 # hexvero 0.3.0 on the hexvero corpus
 
-Tool: name hexvero · version 0.3.0 · commit 0c6879f · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.3.0 · commit db2d988+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 

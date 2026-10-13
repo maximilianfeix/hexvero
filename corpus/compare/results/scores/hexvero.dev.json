@@ -1,0 +1,694 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.3.0",
+  "commit": "a6d9b82",
+  "node": "v24.21.0",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  },
+  "observer": "corpus/observe-hexvero.mjs of that commit, unmodified"
+ },
+ "totals": [
+  {
+   "set": "dev",
+   "class": "changes in imports",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in symbols",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "imports",
+   "hit": 24,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "dev",
+   "class": "functions",
+   "hit": 28,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "dev",
+   "class": "call paths",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "dev",
+   "class": "direct callers",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "dev",
+   "class": "IPC channels",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "IPC senders and receivers",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "window settings",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "bridge members",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "bridge member channel",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "endpoints",
+   "hit": 17,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "endpoint method",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "requests with an unknown URL shown",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "storage keys",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "storage read/write/delete",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "changes in ipcChannels",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in webPreferences",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in endpoints",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in storage",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  }
+ ],
+ "rows": [
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 → dev/calls-v2.O2.macho-arm64",
+   "class": "changes in imports",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 → dev/calls-v2.O2.macho-arm64",
+   "class": "changes in symbols",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "by_pointer: indirect caller main reported"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "by_pointer: indirect caller main reported"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "storage keys",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "storage keys",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed /v1/login"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "storage keys",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  }
+ ]
+}

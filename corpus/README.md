@@ -116,6 +116,37 @@ graph may be incomplete.
 - Engines are not ground truth either. Native rows are scored per engine, and a row for an engine
   that is not installed says NOT RUN instead of counting as passed.
 
+## Results so far
+
+hexvero, hit of expected (plus false reports), from `results/hexvero.json` and `results/round2/`:
+
+| Class                                | dev      | validation | hold-out (blind)  |
+| ------------------------------------ | -------- | ---------- | ----------------- |
+| IPC channels                         | 18 of 18 | 51 of 51   | 41 of 72          |
+| IPC senders and receivers            | 33 of 33 | 105 of 105 | 59 of 79          |
+| Window settings                      | 21 of 21 | 21 of 21   | 12 of 33          |
+| Bridge members                       | 18 of 18 | 39 of 39   | 60 of 69          |
+| Bridge member channel                | 18 of 18 | 39 of 39   | 24 of 60          |
+| Endpoints                            | 17 of 18 | 33 of 33   | 24 of 42, 5 false |
+| Storage keys                         | 21 of 21 | 33 of 33   | 42 of 51          |
+| Changes between builds, all lists    | 14 of 14 | 15 of 15   | 7 of 18, 2 false  |
+| Native call paths, radare2 and rizin | 16 of 16 | 52 of 52   | 70 of 72          |
+| Native direct callers                | 16 of 16 | 44 of 44   | 91 of 91, 1 false |
+| Damaged inputs                       | 6 of 6   |            |                   |
+
+The first two columns are sets the tool was tuned on; they show that the idioms in them are
+handled and guard against regressions. Only the last column says how the tool does on code it was
+not fitted to. The same blind measurement of the `validation` set, before it was used, is in
+`results/round1/`: 39 of 51 IPC channels, 12 of 21 window settings, 30 of 39 bridge members, 26 of
+33 endpoints with 5 false, and 52 of 52 native call paths.
+
+What the hold-out misses have in common, as far as the scorer's notes show without tuning on them:
+channels registered from a class, an array or a Map; channel names built from a prefix and a
+literal or re-exported through an index module; window options assembled with `Object.assign`, a
+config module or a class field; requests made through `new URL(…)` or a `Request` object.
+
+REA 6.4.0 on the same corpus, with the harness and every mapping decision: `compare/`.
+
 ## Limits
 
 The corpus is small: three Electron applications of a few hundred lines and three C programs. It

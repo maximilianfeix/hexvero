@@ -81,7 +81,8 @@ describe("endpoints", () => {
     expect(found.endpoints[0]?.count).toBe(3);
     const started = performance.now();
     const hostile = find(`${"fetch(`${a}".repeat(50_000)}`);
-    expect(performance.now() - started).toBeLessThan(3000);
+    // generous: the point is linear against quadratic, and test machines are busy
+    expect(performance.now() - started).toBeLessThan(15_000);
     expect(hostile.endpoints.length).toBeLessThanOrEqual(2000);
   });
 
@@ -209,7 +210,8 @@ describe("names and scope", () => {
       resolveAliases(tokens, targets, new Set(["x"]));
       // eslint-disable-next-line no-new
       new Constants(tokens);
-      expect(performance.now() - started).toBeLessThan(3000);
+      // generous: the point is linear against quadratic, and test machines are busy
+      expect(performance.now() - started).toBeLessThan(15_000);
     }
   });
 

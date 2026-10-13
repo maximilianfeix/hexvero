@@ -19,9 +19,12 @@ const is = (t: Token | undefined, type: Token["type"], value?: string): boolean 
 const text = (t: Token | undefined): string | null =>
   t && (t.type === "string" || (t.type === "template" && !t.value.includes("${"))) ? t.value : null;
 
+const NO_NAMES: ReadonlySet<string> = new Set();
+
 interface Scope {
-  names: Set<string>;
-  aliases: Map<string, string>;
+  /** Allocated when the scope declares something; most scopes declare nothing tracked. */
+  names: Set<string> | null;
+  aliases: Map<string, string> | null;
   /** Bracket depth the scope was opened at. */
   depth: number;
   /** An arrow function with an expression body ends with its expression, not with a brace. */
@@ -44,9 +47,7 @@ export function resolveAliases(
   own: ReadonlySet<string> = new Set(),
 ): Map<number, string> {
   const out = new Map<number, string>();
-  const stack: Scope[] = [
-    { names: new Set(), aliases: new Map(), depth: 0, expression: false, fn: true },
-  ];
+  const stack: Scope[] = [{ names: null, aliases: null, depth: 0, expression: false, fn: true }];
   let depth = 0;
   // Deeper nesting than any real program has: beyond it no further scope is opened and its
   // names are declared in the enclosing one, which can only hide an alias, never invent one.
@@ -98,13 +99,25 @@ export function resolveAliases(
     if (added.size === 0) break;
     sources = added;
   }
+  // No name is bound to a target and the file has no names of its own: a target can then only
+  // be meant by its own name, which callers assume anyway.
+  if (tracked.size === 0) return out;
+  const interesting = new Set<string>([
+    ...tracked,
+    ...targets,
+    "function",
+    "const",
+    "let",
+    "var",
+    "as",
+  ]);
   const declare = (scope: Scope, name: string, alias: string | null): void => {
     if (!tracked.has(name)) return;
-    const had = scope.aliases.has(name) || scope.names.has(name);
+    const had = (scope.aliases?.has(name) ?? false) || (scope.names?.has(name) ?? false);
     if (alias) {
-      scope.names.delete(name);
-      scope.aliases.set(name, alias);
-    } else scope.names.add(name);
+      scope.names?.delete(name);
+      (scope.aliases ??= new Map()).set(name, alias);
+    } else (scope.names ??= new Set()).add(name);
     const entries = live.get(name);
     // Declarations are only ever added to the innermost scope, so the last entry is this scope's.
     if (had && entries?.length) entries[entries.length - 1] = alias;
@@ -113,8 +126,8 @@ export function resolveAliases(
   };
   /** The top-level declaration of one of the file's own names is the name itself, not a local. */
   const ownHere = (name: string): boolean => own.has(name) && stack.length === 1;
-  const open = (names: Set<string>, expression: boolean, fn: boolean): void => {
-    const scope: Scope = { names: new Set(), aliases: new Map(), depth, expression, fn };
+  const open = (names: ReadonlySet<string>, expression: boolean, fn: boolean): void => {
+    const scope: Scope = { names: null, aliases: null, depth, expression, fn };
     if (stack.length >= MAX_SCOPES) {
       for (const name of names) if (!targets.has(name)) declare(top(), name, null);
       return;
@@ -131,7 +144,8 @@ export function resolveAliases(
   };
   const close = (): void => {
     const scope = stack.pop()!;
-    for (const name of [...scope.names, ...scope.aliases.keys()]) {
+    if (!scope.names && !scope.aliases) return;
+    for (const name of [...(scope.names ?? []), ...(scope.aliases?.keys() ?? [])]) {
       const entries = live.get(name);
       entries?.pop();
       if (entries?.length === 0) live.delete(name);
@@ -167,7 +181,7 @@ export function resolveAliases(
       if (v === "{" || v === "(" || v === "[") {
         if (v === "{") {
           open(
-            pending && pending.at === k ? pending.names : new Set(),
+            pending && pending.at === k ? pending.names : NO_NAMES,
             false,
             !!pending && pending.at === k && pending.fn,
           );
@@ -229,7 +243,8 @@ export function resolveAliases(
       }
       continue;
     }
-    if (t.type !== "ident") continue;
+    // Nearly every identifier is neither a keyword that declares nor a name that is tracked.
+    if (t.type !== "ident" || !interesting.has(t.value)) continue;
     const next = tokens[k + 1];
     const prev = tokens[k - 1];
 
@@ -330,7 +345,7 @@ export function resolveAliases(
         }
         // A target's own name is never recorded as an ordinary local: `const { ipcRenderer } =
         // require("electron")` declares exactly the object that is looked for.
-        if (!top().aliases.has(u.value) && !targets.has(u.value) && !ownHere(u.value))
+        if (!top().aliases?.has(u.value) && !targets.has(u.value) && !ownHere(u.value))
           put(u.value, null);
       }
       continue;
@@ -340,7 +355,7 @@ export function resolveAliases(
     if (t.value === "as" && is(prev, "ident") && targets.has(prev!.value) && is(next, "ident")) {
       const outer =
         stack.length > 1 && top().depth === depth - 1 ? stack[stack.length - 2]! : top();
-      outer.aliases.set(next!.value, prev!.value);
+      (outer.aliases ??= new Map()).set(next!.value, prev!.value);
       const entries = live.get(next!.value);
       if (entries) entries.unshift(prev!.value);
       else live.set(next!.value, [prev!.value]);
