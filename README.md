@@ -38,7 +38,11 @@ npx hexvero ui --open                   # the same in a local browser UI with he
 npx hexvero setup --apply               # register the MCP server with the agent clients on this machine
 ```
 
+<!-- unreleased-note:start -->
+
 > **Version note.** This README describes `main`. npm currently serves the version on the badge above; evidence locations on findings, `webPreferences`, `recover`, `calls`, the new `compare` and the 18-client `setup` are listed under _Unreleased_ in the [changelog](CHANGELOG.md) and ship with the next release. To run `main` today: `git clone`, `npm install`, `npm run build`, `node packages/cli/bin/hexvero.js`.
+
+<!-- unreleased-note:end -->
 
 <a id="demos"></a>
 

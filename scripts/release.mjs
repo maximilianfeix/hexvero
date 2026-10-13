@@ -52,6 +52,16 @@ const constants = [
 for (const [file, re, replacement] of constants)
   writeFileSync(file, readFileSync(file, "utf8").replace(re, replacement));
 
+// The READMEs carry a note that says "this describes main, npm serves an older version". It is
+// only true between releases, so the release removes it.
+for (const file of ["README.md", "README.de.md"]) {
+  const text = readFileSync(file, "utf8");
+  writeFileSync(
+    file,
+    text.replace(/<!-- unreleased-note:start -->[\s\S]*?<!-- unreleased-note:end -->\n\n?/, ""),
+  );
+}
+
 const today = new Date().toISOString().slice(0, 10);
 const changelog = readFileSync("CHANGELOG.md", "utf8");
 if (!changelog.includes("## [Unreleased]"))

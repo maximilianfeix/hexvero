@@ -22,7 +22,11 @@
 
 ![hexvero analysiert eine Electron-App im Terminal](docs/demo/demo.gif)
 
+<!-- unreleased-note:start -->
+
 > **Versionshinweis.** Diese Seite beschreibt `main`. Über npm kommt die Version aus dem Badge; Neuerungen seitdem stehen unter _Unreleased_ im [Changelog](CHANGELOG.md).
+
+<!-- unreleased-note:end -->
 
 ## Installation
 

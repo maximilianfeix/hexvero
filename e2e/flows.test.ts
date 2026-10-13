@@ -272,9 +272,10 @@ describe.skipIf(!compiler)("flow 3: comparing two controlled builds", () => {
         positional: strict ? [] : positionalFields(collection, formats),
       });
     };
-    // known change 1: v2 imports getenv and strlen
+    // known change 1: v2 imports getenv
     const imports = await diff("imports");
-    expect(plainAll(imports.added)).toEqual(expect.arrayContaining(["getenv", "strlen"]));
+    // (strlen is also new on macOS; gcc on Linux reduces `strlen(x) ? …` to a byte test)
+    expect(plainAll(imports.added)).toContain("getenv");
     expect(imports.removed).toEqual([]);
     // known change 2: v2 defines read_config
     const symbols = await diff("symbols");
