@@ -100,7 +100,8 @@ export const STRING_TAGS = [
 /** Heuristic buckets that make a strings dump useful at a glance. */
 export function classifyString(value: string): string[] {
   const tags: string[] = [];
-  if (/^https?:\/\//i.test(value)) tags.push("url");
+  // a URL anywhere in the string: source lines and JSON carry them mid-text
+  if (/\bhttps?:\/\/[^\s"'<>\\]/i.test(value)) tags.push("url");
   if (
     /^[A-Za-z]:\\|^\/(usr|etc|var|home|Users|tmp|lib|lib64|opt|bin|sbin|System|Library|Applications|private|dev|proc|sys)\//.test(
       value,

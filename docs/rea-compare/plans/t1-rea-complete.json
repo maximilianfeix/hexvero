@@ -1,0 +1,6 @@
+[
+  {
+    "tool": "analyze_javascript_application",
+    "args": { "input_path": "$EXAMPLES/notesdesk-1.5.0.asar" }
+  }
+]

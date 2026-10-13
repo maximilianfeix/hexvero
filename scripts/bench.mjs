@@ -96,11 +96,12 @@ if (largest) {
   await text("hexvero_analyze", { targetId: opened.id });
   const again = (performance.now() - t) / 1000;
   const collections = Object.keys(JSON.parse(analysis).collections ?? {});
+  const paged = collections.includes("modules") ? "modules" : collections.at(-1);
   const page = collections.length
-    ? await text("hexvero_collection", { targetId: opened.id, collection: collections.at(-1) })
+    ? await text("hexvero_collection", { targetId: opened.id, collection: paged })
     : "";
   console.log(
-    `MCP session on \`${largest.input}\` (${size(largest.bytes)}): open + analyze answered in ${first.toFixed(1)} s with a ${Buffer.byteLength(analysis)}-byte result (3 tool calls to the first page of data); the same analyze again took ${again.toFixed(2)} s (in-session cache); one default page of \`${collections.at(-1)}\` is ${Buffer.byteLength(page)} bytes.`,
+    `MCP session on \`${largest.input}\` (${size(largest.bytes)}): open + analyze answered in ${first.toFixed(1)} s with a ${Buffer.byteLength(analysis)}-byte result (3 tool calls to the first page of data); the same analyze again took ${again.toFixed(2)} s (in-session cache); one default page of \`${paged}\` is ${Buffer.byteLength(page)} bytes.`,
   );
 }
 await client.close();

@@ -28,6 +28,12 @@ Node.js ≥ 22.12 requis. `npx hexvero` fonctionne sans installation ; `npm i -g
 
 ELF, PE, Mach-O (y compris fat), Go buildinfo, assemblies .NET (métadonnées et corps CIL), WebAssembly, bytecode EVM, SQLite, plist, HAR, ZIP/ZIP64, APK (AXML, resources.arsc, DEX), JAR/classes Java, ASAR Electron, bundles JavaScript (webpack, Rspack, browserify, esbuild) avec source maps, bundles .app Apple avec métadonnées Objective-C et Swift, snapshots Flutter. Chaque résultat porte une confiance (`confirmed` ou `inferred`) et des limitations explicites.
 
+<!-- unreleased-note:start -->
+
+> **Note de version.** Cette page décrit `main`. npm sert la version du badge ; `recover`, `calls` et les autres nouveautés figurent sous _Unreleased_ dans le [changelog](CHANGELOG.md) et arrivent avec la prochaine version.
+
+<!-- unreleased-note:end -->
+
 ## CLI
 
 ```bash

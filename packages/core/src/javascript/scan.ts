@@ -247,8 +247,16 @@ const EXPORT_DECLARATIONS = new Set([
   "async",
 ]);
 
-export function scanJavaScript(source: string, options: { maxTokens?: number } = {}): ScanResult {
+export function scanJavaScript(
+  source: string,
+  options: {
+    maxTokens?: number;
+    /** Receives the token stream once, for a second reader that should not tokenize again. */
+    onTokens?: (tokens: Token[], truncated: boolean) => void;
+  } = {},
+): ScanResult {
   const { tokens, truncated } = tokenize(source, options.maxTokens);
+  options.onTokens?.(tokens, truncated);
   const references: ModuleReference[] = [];
   const ipc: IpcUsage[] = [];
   const exports = new Set<string>();

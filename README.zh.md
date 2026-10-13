@@ -28,6 +28,12 @@
 
 ELF、PE、Mach-O（含 fat）、Go buildinfo、.NET 程序集（元数据与 CIL 方法体）、WebAssembly、EVM 字节码、SQLite、plist、HAR、ZIP/ZIP64、APK（AXML、resources.arsc、DEX）、JAR/Java 类、Electron ASAR、JavaScript 打包文件（webpack、Rspack、browserify、esbuild）及 source map、带 Objective-C 与 Swift 元数据的 Apple .app 包、Flutter 快照。每条结果都标注置信度（`confirmed` 或 `inferred`）并明确列出局限。
 
+<!-- unreleased-note:start -->
+
+> **版本说明。** 本页描述的是 `main`。npm 上提供的是徽章所示的版本；`recover`、`calls` 等新功能列在 [changelog](CHANGELOG.md) 的 _Unreleased_ 中，将随下一个版本发布。
+
+<!-- unreleased-note:end -->
+
 ## CLI
 
 ```bash

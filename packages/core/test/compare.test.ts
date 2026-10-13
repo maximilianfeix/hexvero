@@ -8,6 +8,26 @@ const dotnetMethods = (shift: number, extra: object[] = []): object[] => [
   ...extra,
 ];
 
+const bridgeRows = (shift: number, extra: object[] = []): object[] => [
+  ...Array.from({ length: 12 }, (_, i) => ({
+    api: "api",
+    member: `m${i}`,
+    channel: `c:${i}`,
+    world: "main",
+    file: "preload.js",
+    line: 4 + i + shift,
+  })),
+  {
+    api: "legacy",
+    member: null,
+    channel: null,
+    world: "main",
+    file: "old.js",
+    line: 2 + shift,
+  },
+  ...extra,
+];
+
 const elfSymbols = (shift: number, extra: string[] = []): object[] => [
   ...Array.from({ length: 40 }, (_, i) => ({
     name: `fn_${i}`,
@@ -169,6 +189,32 @@ describe("compareItems", () => {
     expect(positionalFields("symbols", ["macho", "asar"])).toEqual([]);
     expect(positionalFields("manifest", ["jar", "jar"])).toEqual([]);
     expect(positionalFields("symbols", [])).toEqual([]);
+  });
+
+  it("treats the source line of an Electron fact as a position, not as content", () => {
+    expect(positionalFields("contextBridge", ["asar", "asar"])).toEqual(["line"]);
+    expect(positionalFields("webPreferences", ["asar", "javascript-app"])).toEqual(["line"]);
+    const added = {
+      api: "api",
+      member: "new",
+      channel: null,
+      world: "main",
+      file: "preload.js",
+      line: 3,
+    };
+    const diff = compareItems(bridgeRows(0), bridgeRows(7, [added]), {
+      collection: "contextBridge",
+      positional: positionalFields("contextBridge", ["asar", "asar"]),
+    });
+    expect(diff.key).toBe("api+member");
+    expect(diff.added).toEqual(["api::new"]);
+    expect(diff.removed).toEqual([]);
+    expect(diff.changed).toEqual([]);
+    expect(diff.unchanged + diff.relocated).toBe(13);
+    // strict mode keeps the line as content
+    expect(
+      compareItems(bridgeRows(0), bridgeRows(7), { collection: "contextBridge" }).changed,
+    ).toHaveLength(12);
   });
 
   it("reports nested changes by path", () => {

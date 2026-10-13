@@ -1,0 +1,4 @@
+[
+  { "tool": "hexvero_open", "args": { "path": "$EXAMPLES/notesdesk-1.5.0.asar" } },
+  { "tool": "hexvero_analyze", "args": { "targetId": "$0.id" } }
+]

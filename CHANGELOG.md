@@ -8,6 +8,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- `contextBridge` collection and finding: every function a preload script exposes to pages
+  (`window.<api>.<member>`), with file, line and the IPC channel it forwards to; `compare` matches
+  it by `api+member`, so a swapped bridge function shows up as one added and one removed. An object
+  passed by name is followed to its definition in the same file; what cannot be read (a value built
+  elsewhere, a spread, a computed key) is listed as such and reported as a limitation.
 - Electron findings carry evidence: each names the file and line it was read from
   (`nodeIntegration: true @ main.js:14`), the CLI prints it, and a new `webPreferences` collection
   lists every BrowserWindow setting with its position. A `sandbox: false` finding was added; HTML
@@ -22,9 +27,43 @@ All notable changes to hexvero are listed here. The format follows
   reports `changed` items with the fields that differ, treats items that differ only in
   address-like fields as `relocated` (`--ignore none` to count them), diffs duplicate identities as
   multisets, rejects an unknown `--key`, and states when a comparison is partial.
+- `hexvero setup` knows 18 agent clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf,
+  Gemini CLI, Antigravity, VS Code, Trae, OpenCode, GitHub Copilot CLI, Qwen Code, Qoder, Devin, Pi,
+  Kiro, Amp, Zed), writes each client's own entry dialect including Codex TOML, honours their
+  environment overrides, configures only detected clients unless `--all`, and never rewrites a file
+  it cannot parse. MCP registry manifest `server.json`. README translations in eight languages.
+- Cross-references and call graphs through engines: provider operations `xrefs`, `callers`,
+  `callees`, `callgraph` and `search` for radare2, rizin and Ghidra with one normalized shape; the
+  whole-program graph is read once and walked locally with depth/node bounds (`hexvero calls`,
+  `hexvero_call_graph`), including shortest call paths and explicit truncation facts.
+- Zero-dependency JavaScript bundle splitting (webpack 4/5, Rspack, browserify, esbuild): module
+  boundaries, require graph, export names, endpoint/route/storage candidates, vendor fingerprints.
+- Objective-C metadata from Mach-O images without an engine: classes (methods, ivars, properties,
+  adopted protocols, superclass incl. external binds), protocols, categories; pointers decoded through
+  dyld chained fixups (PTR_64, PTR_64_OFFSET, ARM64E) and dyld_info bind opcodes. Swift class names
+  and mangled symbols are made readable (approximate, no `swift-demangle` needed).
+- CIL method-body decoder for .NET assemblies: every opcode, tiny/fat headers, exception clauses, call
+  targets resolved to names, string literals, raw and normalized IL digests; `methods`, `calls` and
+  `cil` collections and a finding for process/reflection/network/crypto/file/registry calls.
+- Android resources.arsc decoder (packages, types, default values, locales, densities) that resolves
+  manifest references such as the application label; Flutter/Dart AOT snapshot facts (version hash,
+  features, engine build ids, per-ABI digests) without Apktool or any engine.
+- Guided MCP prompts (investigate_feature, compare_versions, triage_binary, map_electron_app, explain_apk)
+  and an unknowns ledger tool (`hexvero_unknowns`) whose entries ship with exports.
+- `hexvero recover` and the `hexvero_recover` MCP tool write bundle modules or source-map originals to
+  disk without an external engine (REA needs Wakaru on Linux x64 for this).
 
 ### Fixed
 
+- Call graphs now include tail calls when rizin provides the code references; through radare2,
+  which does not, the graph carries a `callgraph_tail_calls_unknown` limitation so "not reached"
+  is never presented as definite there; cached graphs from earlier versions are not reused.
+  `strings --tag url` finds URLs inside longer strings. In `compare`, the source line of a
+  `webPreferences` or `contextBridge` entry is a position, so code moving above it is not a change
+  (`--strict` keeps it as content).
+- The comparison with REA in the README and docs/benchmarks.md is replaced by measurements against
+  REA 6.4.0; three earlier statements (139 tools, aborting on 500 MB bundles, needing an engine for
+  most targets) were out of date or wrong and are corrected.
 - `hexvero setup`, checked client by client against each client's documentation or source:
   settings files with comments (Zed's default file, VS Code, OpenCode) are edited in place with
   every comment preserved instead of being skipped; Windsurf now targets the directory Cascade
@@ -90,34 +129,6 @@ All notable changes to hexvero are listed here. The format follows
   syntax; the loopback server rejects requests whose Host is not the bound host (DNS rebinding),
   accepts `?token=` only for the export download, compares tokens in constant time, answers 400 to
   malformed JSON and keeps uploads in a private per-server directory.
-
-### Added
-
-- `hexvero setup` knows 18 agent clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf,
-  Gemini CLI, Antigravity, VS Code, Trae, OpenCode, GitHub Copilot CLI, Qwen Code, Qoder, Devin, Pi,
-  Kiro, Amp, Zed), writes each client's own entry dialect including Codex TOML, honours their
-  environment overrides, configures only detected clients unless `--all`, and never rewrites a file
-  it cannot parse. MCP registry manifest `server.json`. README translations in eight languages.
-- Cross-references and call graphs through engines: provider operations `xrefs`, `callers`,
-  `callees`, `callgraph` and `search` for radare2, rizin and Ghidra with one normalized shape; the
-  whole-program graph is read once and walked locally with depth/node bounds (`hexvero calls`,
-  `hexvero_call_graph`), including shortest call paths and explicit truncation facts.
-- Zero-dependency JavaScript bundle splitting (webpack 4/5, Rspack, browserify, esbuild): module
-  boundaries, require graph, export names, endpoint/route/storage candidates, vendor fingerprints.
-- Objective-C metadata from Mach-O images without an engine: classes (methods, ivars, properties,
-  adopted protocols, superclass incl. external binds), protocols, categories; pointers decoded through
-  dyld chained fixups (PTR_64, PTR_64_OFFSET, ARM64E) and dyld_info bind opcodes. Swift class names
-  and mangled symbols are made readable (approximate, no `swift-demangle` needed).
-- CIL method-body decoder for .NET assemblies: every opcode, tiny/fat headers, exception clauses, call
-  targets resolved to names, string literals, raw and normalized IL digests; `methods`, `calls` and
-  `cil` collections and a finding for process/reflection/network/crypto/file/registry calls.
-- Android resources.arsc decoder (packages, types, default values, locales, densities) that resolves
-  manifest references such as the application label; Flutter/Dart AOT snapshot facts (version hash,
-  features, engine build ids, per-ABI digests) without Apktool or any engine.
-- Guided MCP prompts (investigate_feature, compare_versions, triage_binary, map_electron_app, explain_apk)
-  and an unknowns ledger tool (`hexvero_unknowns`) whose entries ship with exports.
-- `hexvero recover` and the `hexvero_recover` MCP tool write bundle modules or source-map originals to
-  disk without an external engine (REA needs Wakaru on Linux x64 for this).
 
 ## [0.2.1] - 2026-10-13
 

@@ -28,6 +28,12 @@ Node.js ≥ 22.12 が必要です。`npx hexvero` はインストールなしで
 
 ELF、PE、Mach-O（fat 含む）、Go buildinfo、.NET アセンブリ（メタデータと CIL メソッド本体）、WebAssembly、EVM バイトコード、SQLite、plist、HAR、ZIP/ZIP64、APK（AXML、resources.arsc、DEX）、JAR/Java クラス、Electron ASAR、JavaScript バンドル（webpack、Rspack、browserify、esbuild）と source map、Objective-C/Swift メタデータ付き Apple .app バンドル、Flutter スナップショット。すべての結果に確信度（`confirmed` または `inferred`）と明示的な制限が付きます。
 
+<!-- unreleased-note:start -->
+
+> **バージョンに関する注記。** このページは `main` の内容です。npm で配布中のバージョンはバッジのとおりで、`recover`、`calls` などの新機能は [changelog](CHANGELOG.md) の _Unreleased_ にあり、次のリリースに含まれます。
+
+<!-- unreleased-note:end -->
+
 ## CLI
 
 ```bash
