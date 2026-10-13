@@ -1,5 +1,7 @@
 import { parseAxml, type AxmlElement } from "./axml.js";
+import { parseArsc, type ArscEntry } from "./arsc.js";
 import { parseDex, type DexClass } from "./dex.js";
+import { summarizeFlutter, type FlutterInfo } from "./flutter.js";
 import { openZip, type ZipEntry } from "./zip.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
@@ -44,6 +46,15 @@ export interface ApkInfo {
   classes: DexClass[];
   packages: Array<{ name: string; classes: number }>;
   signatureSchemes: string[];
+  resources: {
+    packages: string[];
+    entries: number;
+    strings: number;
+    locales: string[];
+    densities: string[];
+  } | null;
+  resourceEntries: ArscEntry[];
+  flutter: Omit<FlutterInfo, "findings" | "limitations"> | null;
   fileCount: number;
   largestFiles: Array<{ name: string; size: number }>;
   manifest: AxmlElement;
@@ -55,6 +66,7 @@ const DANGEROUS =
   /^android\.permission\.(READ_SMS|SEND_SMS|RECEIVE_SMS|READ_CONTACTS|WRITE_CONTACTS|RECORD_AUDIO|CAMERA|ACCESS_FINE_LOCATION|ACCESS_BACKGROUND_LOCATION|READ_CALL_LOG|READ_PHONE_STATE|SYSTEM_ALERT_WINDOW|REQUEST_INSTALL_PACKAGES|BIND_ACCESSIBILITY_SERVICE|READ_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE|QUERY_ALL_PACKAGES|BIND_DEVICE_ADMIN)$/;
 
 const bool = (v: string | undefined): boolean | null => (v === undefined ? null : v === "true");
+const identity = (value: string | undefined): string | undefined => value;
 
 export function parseApk(bytes: Uint8Array): ApkInfo {
   const zip = openZip(bytes);
@@ -63,6 +75,41 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
   const manifestEntry = zip.find("AndroidManifest.xml");
   if (!manifestEntry) throw new AnalysisError("malformed", "APK has no AndroidManifest.xml");
   const manifest = parseAxml(zip.read(manifestEntry, 8 << 20));
+  // resources.arsc resolves @0x7f… references (labels, permission descriptions) without Apktool
+  let resources: ApkInfo["resources"] = null;
+  let resourceEntries: ArscEntry[] = [];
+  let resolve: (value: string | undefined) => string | undefined = identity;
+  const arscEntry = zip.find("resources.arsc");
+  if (arscEntry) {
+    try {
+      const arsc = parseArsc(zip.read(arscEntry, 64 << 20));
+      resourceEntries = arsc.entries;
+      resources = {
+        packages: arsc.packages.map((p) => p.name),
+        entries: arsc.entries.length,
+        strings: arsc.entries.filter((e) => e.type === "string").length,
+        locales: [...new Set(arsc.packages.flatMap((p) => p.locales))].toSorted(),
+        densities: [...new Set(arsc.packages.flatMap((p) => p.densities))].toSorted(),
+      };
+      resolve = (value) =>
+        value && value.startsWith("@") ? (arsc.resolve(value) ?? value) : value;
+    } catch (error) {
+      limitations.push({
+        code: "arsc_unreadable",
+        message: `resources.arsc: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+  const resolveTree = (el: AxmlElement): void => {
+    for (const [k, v] of Object.entries(el.attributes)) {
+      if (v.startsWith("@0x")) {
+        const r = resolve(v);
+        if (r !== undefined && r !== v) el.attributes[k] = r;
+      }
+    }
+    el.children.forEach(resolveTree);
+  };
+  resolveTree(manifest);
   const a = manifest.attributes;
   const app = manifest.children.find((c) => c.tag === "application") ?? {
     tag: "application",
@@ -139,6 +186,26 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
     if (/^META-INF\/.+\.(RSA|DSA|EC)$/.test(e.name)) signatureSchemes.push("v1 (JAR)");
   }
   if (hasApkSigningBlock(bytes)) signatureSchemes.push("v2/v3 (APK Signing Block)");
+  let flutter: ApkInfo["flutter"] = null;
+  const flutterLibs = zip.entries.filter((e) => /^lib\/[^/]+\/lib(app|flutter)\.so$/.test(e.name));
+  if (flutterLibs.some((e) => e.name.endsWith("libflutter.so"))) {
+    const loaded: Array<{ abi: string; name: string; bytes: Uint8Array }> = [];
+    for (const e of flutterLibs) {
+      const parts = e.name.split("/");
+      try {
+        loaded.push({ abi: parts[1]!, name: parts[2]!, bytes: zip.read(e, 256 << 20) });
+      } catch (error) {
+        limitations.push({
+          code: "flutter_lib_unreadable",
+          message: `${e.name}: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+    const { findings: f, limitations: l, ...rest } = summarizeFlutter(loaded);
+    findings.push(...f);
+    limitations.push(...l);
+    flutter = rest;
+  }
   if (!signatureSchemes.length)
     limitations.push({
       code: "apk_unsigned",
@@ -181,6 +248,9 @@ export function parseApk(bytes: Uint8Array): ApkInfo {
       .map(([name, n]) => ({ name, classes: n }))
       .toSorted((x, y) => y.classes - x.classes),
     signatureSchemes,
+    resources,
+    resourceEntries,
+    flutter,
     fileCount: zip.entries.length,
     largestFiles: zip.entries
       .filter((e) => !e.isDirectory)

@@ -535,6 +535,8 @@ export function collectionsOf(
       out["classes"] = d.apk.classes;
       out["packages"] = d.apk.packages;
       out["dexFiles"] = d.apk.dexFiles;
+      if (d.apk.resourceEntries.length) out["resources"] = d.apk.resourceEntries;
+      if (d.apk.flutter) out["dartSnapshots"] = d.apk.flutter.snapshots;
       break;
     case "bundle":
       out["frameworks"] = d.bundle.frameworks.map((name) => ({ name }));
