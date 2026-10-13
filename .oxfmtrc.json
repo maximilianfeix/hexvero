@@ -6,6 +6,10 @@
     "**/node_modules/**",
     "package-lock.json",
     "examples/*.js",
-    "examples/*.asar"
+    "examples/*.asar",
+    "corpus/dev/*/src/**",
+    "corpus/validation/*/src/**",
+    "corpus/built/**",
+    "corpus/results/**"
   ]
 }

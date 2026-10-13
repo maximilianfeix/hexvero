@@ -360,6 +360,17 @@ export function parseMacho(bytes: Uint8Array): MachoInfo {
       confidence: "confirmed",
     });
 
+  // Load commands are at the front, so a file cut short still parses. What they point to may
+  // lie beyond the end; a result that looked whole would hide that the body is missing.
+  const beyond = segments
+    .filter((seg) => seg.fileSize > 0 && seg.fileOffset + seg.fileSize > bytes.length)
+    .map((seg) => seg.name);
+  if (beyond.length)
+    limitations.push({
+      code: "file_truncated",
+      message: `The file is ${bytes.length} bytes, but ${beyond.join(", ")} ${beyond.length === 1 ? "extends" : "extend"} beyond its end: the file is cut short, so sections, symbols and anything read from those parts are missing or incomplete.`,
+    });
+
   return {
     bits,
     cpu: CPUS[cpu] ?? hex(cpu),

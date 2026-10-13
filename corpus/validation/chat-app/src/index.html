@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- A policy names hosts the page MAY talk to. Naming a host here requests nothing. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' https://media.chat.example; connect-src https: wss:"
+    />
+    <title>Chat</title>
+  </head>
+  <body>
+    <ul id="rooms"></ul>
+    <ol id="messages"></ol>
+    <form id="composer"><input id="draft" autocomplete="off" /><button>Send</button></form>
+    <p id="help"></p>
+    <section id="settings" hidden>
+      <button id="save">Save</button>
+      <button id="reset">Reset</button>
+      <button id="sign-out">Sign out</button>
+    </section>
+    <script type="module" src="renderer.js"></script>
+    <script type="module" src="renderer-settings.js"></script>
+  </body>
+</html>

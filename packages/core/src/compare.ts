@@ -122,7 +122,10 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   ],
   columns: [["table", "name"]],
   ipc: [["module", "api", "channel", "line"]],
+  // A file may configure several windows; the window number tells their settings apart and,
+  // unlike the line, stays the same when code moves.
   webPreferences: [
+    ["file", "window", "key"],
     ["file", "key"],
     ["file", "key", "line"],
   ],
@@ -203,13 +206,22 @@ function sortKeys(value: unknown): unknown {
  */
 function keyValue(item: unknown, key: string): string | undefined {
   if (!isRecord(item)) return undefined;
-  const parts: Array<string | number> = [];
-  for (const part of key.split("+")) {
+  const names = key.split("+");
+  const parts: Array<string | number | null> = [];
+  let known = 0;
+  for (const part of names) {
     const v = item[part];
-    if (typeof v !== "string" && typeof v !== "number") return undefined;
-    parts.push(v);
+    if (typeof v === "string" || typeof v === "number") {
+      parts.push(v);
+      known++;
+    } else if ((v === null || v === undefined) && names.length > 1) {
+      // In a composite key one part may be "none" (a bridge entry without a readable member, a
+      // request whose URL is unknown, a storage access without an operation): the item is still
+      // identified by the parts it has.
+      parts.push(null);
+    } else return undefined;
   }
-  return JSON.stringify(parts);
+  return known ? JSON.stringify(parts) : undefined;
 }
 
 /** The same key as people read it: `Type::name`. */
@@ -250,6 +262,9 @@ export function detectKey(
   if (sides.every((s) => s.length === 0)) return null;
   for (const fields of (collection && COMPOSITE_KEYS[collection]) || []) {
     const key = fields.join("+");
+    // A part that no item has (an older analysis without the field) rules the key out.
+    const everywhere = [...sides[0]!, ...sides[1]!];
+    if (fields.some((part) => !everywhere.some((item) => (item[part] ?? null) !== null))) continue;
     if (qualifies(sides, key)) return key;
   }
   for (const field of KEY_CANDIDATES) if (qualifies(sides, field)) return field;
@@ -300,7 +315,13 @@ export function compareItems(
   let keyMissing = false;
   if (field !== null) {
     const key = field;
-    if (![...left, ...right].some((item) => keyValue(item, key) !== undefined)) {
+    // A key is missing when no item has a value for it, or, for a composite key, when one of
+    // its parts exists on no item at all (a part may be empty on single items, never on all).
+    const everywhere = [...left, ...right];
+    const absentPart = key
+      .split("+")
+      .some((part) => !everywhere.some((item) => isRecord(item) && (item[part] ?? null) !== null));
+    if (absentPart || !everywhere.some((item) => keyValue(item, key) !== undefined)) {
       keyMissing = true;
       field = null;
     }

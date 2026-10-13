@@ -1,0 +1,37 @@
+{
+  "case": "damaged-inputs",
+  "kind": "robustness",
+  "license": "MIT, cut from this corpus's own built inputs by build.mjs",
+  "method": "Each input is a built corpus file cut or altered at a fixed place. What is expected is a property of any honest tool: it ends within the time limit, it does not crash, and it either refuses with a structured error or returns a result that says what is missing. A result that looks complete is wrong.",
+  "timeLimitSeconds": 30,
+  "expect": {
+    "robustness": [
+      { "input": "damaged/empty.asar", "allowed": ["error", "flagged"], "why": "zero bytes" },
+      {
+        "input": "damaged/header-cut.asar",
+        "allowed": ["error"],
+        "why": "the file directory is incomplete; nothing can be listed"
+      },
+      {
+        "input": "damaged/header-length-lies.asar",
+        "allowed": ["error"],
+        "why": "the announced directory is longer than the file"
+      },
+      {
+        "input": "damaged/contents-cut.asar",
+        "allowed": ["error", "flagged"],
+        "why": "the directory is intact but the contents of later files are missing; a result must say that files could not be read"
+      },
+      {
+        "input": "damaged/load-commands-cut.macho-arm64",
+        "allowed": ["error", "flagged"],
+        "why": "the file ends inside the load commands"
+      },
+      {
+        "input": "damaged/body-cut.macho-arm64",
+        "allowed": ["error", "flagged"],
+        "why": "headers intact, sections and symbols missing"
+      }
+    ]
+  }
+}

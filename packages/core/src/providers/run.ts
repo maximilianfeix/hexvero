@@ -195,7 +195,9 @@ function parseJsonDocs(text: string): unknown[] {
 const MARK = (section: string): string => `==hexvero:${section}==`;
 // The flag list is read last and from the symbols flagspace only: that is where `main` lives,
 // and it is a fraction of the full list, so a large binary does not hit the output cap on it.
-const RADARE_GRAPH = `aaa; ?e ${MARK("functions")}; aflj; ?e ${MARK("graph")}; agCj; ?e ${MARK("flags")}; fs symbols; fj`;
+// The jump references come last: on a large binary they are the longest part, so an output cut
+// by the size limit loses them and nothing else (the graph then says tail calls are unknown).
+const RADARE_GRAPH = `aaa; ?e ${MARK("functions")}; aflj; ?e ${MARK("graph")}; agCj; ?e ${MARK("flags")}; fs symbols; fj; ?e ${MARK("jumps")}; ax~CODE:; ?e ${MARK("jumpsEnd")}`;
 const RIZIN_GRAPH = `aaa; echo ${MARK("functions")}; aflj; echo ${MARK("graph")}; agC json; echo ${MARK("flags")}; fs symbols; flj`;
 
 /**
@@ -212,6 +214,14 @@ export function graphSections(stdout: string): Record<string, unknown> | null {
     if (marker) {
       current = marker[1]!;
       seen = true;
+      // Two sections are plain text: the jump references, and the marker that proves they
+      // were printed to the end.
+      if (current === "jumps") sections[current] = [];
+      if (current === "jumpsEnd") sections[current] = true;
+      continue;
+    }
+    if (current === "jumps") {
+      if (text) (sections[current] as string[]).push(text);
       continue;
     }
     if (current === null || sections[current] !== undefined) continue;
@@ -387,7 +397,7 @@ async function contentDigest(path: string): Promise<string> {
 }
 
 /** Bump when the engine commands or the normalized graph shape change: old caches become unreachable. */
-const GRAPH_SCHEMA = 5;
+const GRAPH_SCHEMA = 6;
 
 /** Normalized graphs per provider, content digest, engine build and schema; concurrent requests share one engine run. */
 const graphCache = new Map<string, Promise<CallGraph>>();

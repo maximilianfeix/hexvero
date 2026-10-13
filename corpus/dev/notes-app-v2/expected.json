@@ -1,0 +1,30 @@
+{
+  "case": "notes-app-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "a": "dev/notes-app.plain.asar",
+  "b": "dev/notes-app-v2.plain.asar",
+  "method": "v2 is built from v1 by the edits in changes.json plus 25 comment lines in front of every JavaScript file. The expected differences are those edits and nothing else: every fact the edits do not touch sits on another line in v2 and must not be reported as changed, added or removed.",
+  "expect": {
+    "compare": {
+      "ipcChannels": { "added": ["doc:duplicate"], "removed": ["doc:rename"], "changed": [] },
+      "contextBridge": { "added": ["notes.duplicate"], "removed": ["notes.rename"], "changed": [] },
+      "webPreferences": {
+        "added": [],
+        "removed": [],
+        "changed": ["nodeIntegration: true -> false", "sandbox: false -> true"],
+        "why": "only the print window's settings change; the main window's four settings and the print window's contextIsolation only move"
+      },
+      "endpoints": {
+        "added": ["https://api.notes.example/v2/search", "wss://live.notes.example/v2/socket"],
+        "removed": ["wss://live.notes.example/socket"],
+        "changed": []
+      },
+      "storage": {
+        "added": ["localStorage lastSync"],
+        "removed": ["localStorage token"],
+        "changed": []
+      }
+    }
+  }
+}

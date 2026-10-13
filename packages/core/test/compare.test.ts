@@ -214,7 +214,8 @@ describe("compareItems", () => {
     // strict mode keeps the line as content
     expect(
       compareItems(bridgeRows(0), bridgeRows(7), { collection: "contextBridge" }).changed,
-    ).toHaveLength(12);
+      // the 12 members and the entry without a readable member, which is matched by its api
+    ).toHaveLength(13);
   });
 
   it("reports nested changes by path", () => {

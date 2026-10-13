@@ -25,7 +25,9 @@
     "release:check": "npm run check && npm run build && node scripts/release-verify.mjs && node scripts/smoke-tarballs.mjs"
   },
   "devDependencies": {
+    "@electron/asar": "4.3.1",
     "@types/node": "^26.6.5",
+    "esbuild": "0.28.2",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.0.0",
     "typescript": "^7.0.2",

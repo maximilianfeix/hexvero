@@ -283,9 +283,9 @@ describe("directory analysis", () => {
     });
     const info = analyzeJavaScriptTree(asarTree(asar, "app.asar"));
     expect(info.webPreferences).toEqual([
-      { key: "preload", value: "preload.js", file: "main.js", line: 3 },
-      { key: "contextIsolation", value: false, file: "main.js", line: 4 },
-      { key: "sandbox", value: false, file: "main.js", line: 5 },
+      { key: "preload", value: "preload.js", file: "main.js", line: 3, window: 1 },
+      { key: "contextIsolation", value: false, file: "main.js", line: 4, window: 1 },
+      { key: "sandbox", value: false, file: "main.js", line: 5, window: 1 },
     ]);
     expect(info.electron?.preloadScripts).toEqual(["preload.js"]);
     expect(info.findings.map((f) => `${f.kind} @ ${f.location}`)).toEqual([

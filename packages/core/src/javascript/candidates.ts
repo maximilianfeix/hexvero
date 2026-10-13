@@ -14,7 +14,10 @@
  *
  * A URL that merely occurs as a string is not an endpoint. Those go to `urls`.
  */
+import { resolveAliases } from "./aliases.js";
 import type { Token } from "./scan.js";
+
+const FETCH_ONLY: ReadonlySet<string> = new Set(["fetch"]);
 
 export type CandidateConfidence = "literal" | "template" | "inferred" | "unknown";
 
@@ -92,6 +95,8 @@ export function findCandidates(
   source: string,
   /** Called once per new row with the token it was read at, e.g. to attach a module id. */
   onRow?: (row: Candidate, at: Token) => void,
+  /** Other names for `fetch`, by token index (see aliases.ts); computed here when not given. */
+  aliases: Map<number, string> = resolveAliases(tokens, FETCH_ONLY),
 ): Candidates {
   const out: Candidates = { endpoints: [], routes: [], storage: [], urls: [], truncated: false };
   const seen = new Map<string, Candidate>();
@@ -149,11 +154,35 @@ export function findCandidates(
       if (!t) break;
       if (t.type === "string") value += t.value;
       else if (t.type === "template") {
-        value += t.value;
-        if (t.value.includes("${")) {
-          // The expression and the rest of the template follow as further tokens.
-          return { value, confidence: "template" };
+        // A template with expressions arrives as: text, the expression's tokens, text, … The
+        // text pieces are joined; an expression that is one known constant is filled in.
+        let piece: Token = t;
+        let at = j;
+        for (let pieces = 0; pieces < 12; pieces++) {
+          const dynamic = piece.value.endsWith("${…}");
+          value += dynamic ? piece.value.slice(0, -"${…}".length) : piece.value;
+          if (!dynamic) break;
+          const expr = tokens[at + 1];
+          const direct = expr?.type === "ident" && tokens[at + 2]?.type === "template";
+          const known = direct ? constantOf(expr.value) : null;
+          if (known !== null) {
+            value += known;
+            if (confidence === "literal") confidence = "inferred";
+          } else {
+            value += "${…}";
+            confidence = "template";
+          }
+          let nextPiece = -1;
+          for (let m = at + 1; m < tokens.length && m < at + 60; m++)
+            if (tokens[m]!.type === "template") {
+              nextPiece = m;
+              break;
+            }
+          if (nextPiece === -1) return { value, confidence: "template" };
+          at = nextPiece;
+          piece = tokens[at]!;
         }
+        j = at;
       } else if (
         t.type === "ident" &&
         !is(tokens[j + 1], "punct", ".") &&
@@ -222,16 +251,41 @@ export function findCandidates(
   };
 
   // Variables that hold an electron-store instance; only looked for when the package is named.
+  // The class is whatever `require("electron-store")` was bound to (minifiers rename it), or
+  // the `.default` of a bundler's interop object.
   const stores = new Set<string>();
   if (source.includes("electron-store") || source.includes("electron-settings")) {
-    for (let k = 0; k + 4 < tokens.length; k++) {
+    const classes = new Set<string>(["Store", "ElectronStore"]);
+    const interop = new Set<string>();
+    for (let k = 0; k + 5 < tokens.length; k++) {
+      if (!is(tokens[k], "ident") || !is(tokens[k + 1], "punct", "=")) continue;
+      const direct = is(tokens[k + 2], "ident", "require") ? k + 2 : -1;
+      const wrapped =
+        is(tokens[k + 2], "ident") &&
+        is(tokens[k + 3], "punct", "(") &&
+        is(tokens[k + 4], "ident", "require")
+          ? k + 4
+          : -1;
+      const req = direct !== -1 ? direct : wrapped;
+      if (req === -1 || !is(tokens[req + 1], "punct", "(")) continue;
+      const spec = tokens[req + 2];
+      if (spec?.type !== "string" || !/^electron-(store|settings)$/.test(spec.value)) continue;
+      (wrapped !== -1 ? interop : classes).add(tokens[k]!.value);
+    }
+    for (let k = 0; k + 3 < tokens.length; k++) {
       if (
-        is(tokens[k], "ident") &&
-        is(tokens[k + 1], "punct", "=") &&
-        is(tokens[k + 2], "ident", "new") &&
-        is(tokens[k + 3], "ident") &&
-        /^(Store|ElectronStore)$/.test(tokens[k + 3]!.value) &&
-        is(tokens[k + 4], "punct", "(")
+        !is(tokens[k], "ident") ||
+        !is(tokens[k + 1], "punct", "=") ||
+        !is(tokens[k + 2], "ident", "new")
+      )
+        continue;
+      const ctor = tokens[k + 3]!;
+      if (ctor.type !== "ident") continue;
+      if (
+        classes.has(ctor.value) ||
+        (interop.has(ctor.value) &&
+          is(tokens[k + 4], "punct", ".") &&
+          is(tokens[k + 5], "ident", "default"))
       )
         stores.add(tokens[k]!.value);
     }
@@ -261,6 +315,16 @@ export function findCandidates(
         continue;
       const r = readArg(k + 2);
       if (r) push(out.endpoints, "fetch", r, t);
+    } else if (called && !member && aliases.get(k) === "fetch") {
+      // Another name for fetch (`const request = fetch`): a request, but known by inference.
+      const r = readArg(k + 2);
+      if (r)
+        push(
+          out.endpoints,
+          "fetch",
+          { ...r, confidence: r.confidence === "literal" ? "inferred" : r.confidence },
+          t,
+        );
     } else if (HTTP_VERBS.has(t.value) && member && called) {
       const owner = tokens[k - 2];
       const client = is(owner, "ident") && HTTP_CLIENTS.has(owner!.value);

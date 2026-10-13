@@ -6,6 +6,8 @@
  * as `dynamic` so that callers never mistake a guess for a fact.
  */
 
+import { Constants, resolveAliases } from "./aliases.js";
+
 export interface ModuleReference {
   specifier: string;
   kind: "import" | "require" | "dynamic-import" | "export-from";
@@ -17,6 +19,13 @@ export interface IpcUsage {
   api: string;
   channel: string | null;
   line: number;
+  /**
+   * How the row was read when not from a literal call on the object's own name: through another
+   * name for ipcMain/ipcRenderer (`alias`), or with a channel name taken from a constant.
+   */
+  via?: "alias" | "constant";
+  /** A channel named by a constant of another module, to be looked up there. */
+  channelRef?: { specifier: string; property: string };
 }
 
 export interface ScanResult {
@@ -28,7 +37,26 @@ export interface ScanResult {
   lines: number;
   minified: boolean;
   truncated: boolean;
+  /** String constants this file exports; other files' channel names may refer to them. */
+  constants?: Record<string, string>;
 }
+
+/** What a second reader of the same token stream needs to follow names. */
+export interface ScanContext {
+  aliases: Map<number, string>;
+  constants: Constants;
+}
+
+/** Names whose other names are followed (see aliases.ts). */
+export const ALIAS_TARGETS: ReadonlySet<string> = new Set([
+  "ipcMain",
+  "ipcRenderer",
+  "contextBridge",
+  "fetch",
+  "BrowserWindow",
+  "BrowserView",
+  "WebContentsView",
+]);
 
 export interface Token {
   type: "ident" | "string" | "punct" | "template" | "regex" | "number";
@@ -252,11 +280,13 @@ export function scanJavaScript(
   options: {
     maxTokens?: number;
     /** Receives the token stream once, for a second reader that should not tokenize again. */
-    onTokens?: (tokens: Token[], truncated: boolean) => void;
+    onTokens?: (tokens: Token[], truncated: boolean, context: ScanContext) => void;
   } = {},
 ): ScanResult {
   const { tokens, truncated } = tokenize(source, options.maxTokens);
-  options.onTokens?.(tokens, truncated);
+  const aliases = resolveAliases(tokens, ALIAS_TARGETS);
+  const constants = new Constants(tokens);
+  options.onTokens?.(tokens, truncated, { aliases, constants });
   const references: ModuleReference[] = [];
   const ipc: IpcUsage[] = [];
   const exports = new Set<string>();
@@ -289,6 +319,59 @@ export function scanJavaScript(
         return;
       }
       if (is(j, "punct", ";")) return;
+    }
+  };
+
+  /**
+   * Inside an `ipcMain.on(channel, (event, …) => { … })` listener, `event.reply("x")` and
+   * `event.sender.send("x")` send on a channel. `open` is the call's opening parenthesis.
+   */
+  const replies = (open: number): void => {
+    let d = 0;
+    let end = open;
+    for (; end < tokens.length && end < open + 20_000; end++) {
+      const p = tokens[end]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "{" || p.value === "[") d++;
+      else if (p.value === ")" || p.value === "}" || p.value === "]") {
+        d--;
+        if (d === 0) break;
+      }
+    }
+    // The listener's first parameter: after the first top-level comma of the call.
+    let j = open + 1;
+    for (let e = 0; j < end; j++) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "{" || p.value === "[") e++;
+      else if (p.value === ")" || p.value === "}" || p.value === "]") e--;
+      else if (p.value === "," && e === 0) break;
+    }
+    j++;
+    if (is(j, "ident", "async")) j++;
+    if (is(j, "ident", "function")) {
+      j++;
+      if (is(j, "ident")) j++;
+    }
+    if (is(j, "punct", "(")) j++;
+    const event = at(j);
+    if (!event || event.type !== "ident") return;
+    for (let m = j + 1; m + 4 < end; m++) {
+      if (!is(m, "ident", event.value) || !is(m + 1, "punct", ".")) continue;
+      const direct = is(m + 2, "ident", "reply") && is(m + 3, "punct", "(");
+      const viaSender =
+        is(m + 2, "ident", "sender") &&
+        is(m + 3, "punct", ".") &&
+        is(m + 4, "ident", "send") &&
+        is(m + 5, "punct", "(");
+      if (!direct && !viaSender) continue;
+      const named = constants.resolve(m + (direct ? 4 : 6));
+      if (named && "value" in named)
+        ipc.push({
+          api: direct ? "event.reply" : "event.sender.send",
+          channel: named.value,
+          line: at(m)!.line,
+        });
     }
   };
 
@@ -347,8 +430,21 @@ export function scanJavaScript(
         break;
     }
     if (is(k + 1, "punct", ".") && is(k + 2, "ident") && is(k + 3, "punct", "(")) {
-      const api = `${t.value}.${at(k + 2)!.value}`;
-      if (IPC_APIS.has(api)) ipc.push({ api, channel: literal(at(k + 4)), line: t.line });
+      const owner = aliases.get(k) ?? t.value;
+      const api = `${owner}.${at(k + 2)!.value}`;
+      if (IPC_APIS.has(api)) {
+        const named = constants.resolve(k + 4);
+        const usage: IpcUsage = {
+          api,
+          channel: named && "value" in named ? named.value : null,
+          line: t.line,
+        };
+        if (named && "ref" in named) usage.channelRef = named.ref;
+        if (named && "value" in named && named.via === "constant") usage.via = "constant";
+        else if (owner !== t.value) usage.via = "alias";
+        ipc.push(usage);
+        if (api === "ipcMain.on" || api === "ipcMain.once") replies(k + 3);
+      }
     }
   }
 
@@ -364,5 +460,6 @@ export function scanJavaScript(
     lines,
     minified: source.length > 2000 && source.length / lines > 500,
     truncated,
+    ...(Object.keys(constants.exported).length ? { constants: constants.exported } : {}),
   };
 }

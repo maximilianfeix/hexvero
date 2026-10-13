@@ -3,10 +3,13 @@ import { join, posix, relative, sep } from "node:path";
 import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
+import { Constants, resolveAliases } from "./aliases.js";
 import { findCandidates, type Candidate } from "./candidates.js";
 import {
+  ALIAS_TARGETS,
   scanJavaScript,
   tokenize,
+  type ScanContext,
   type IpcUsage,
   type ModuleReference,
   type Token,
@@ -34,6 +37,8 @@ export interface JsModule {
   ipc: IpcUsage[];
   sourceMappingUrl: string | null;
   role: "main" | "preload" | "renderer" | "unknown";
+  /** String constants the file exports, kept so other files' channel names can be resolved. */
+  constants?: Record<string, string>;
 }
 
 /** How far back a setting may be from `webPreferences` / `BrowserWindow` to count as a window option. */
@@ -72,6 +77,109 @@ export interface WebPreference {
   value: string | boolean;
   file: string;
   line: number;
+  /**
+   * Which window of the file the setting belongs to, counted in source order from 1; null when
+   * the setting sits in a `webPreferences` object that is not part of a window constructor call
+   * (returned by a helper, or used to override a child window's options).
+   */
+  window: number | null;
+}
+
+/** A stretch of source that holds a window's options, and which window it is. */
+interface WindowRange {
+  start: number;
+  end: number;
+  window: number | null;
+}
+
+const WINDOW_CLASSES = new Set(["BrowserWindow", "BrowserView", "WebContentsView"]);
+
+/**
+ * Where window options are written in a file: the argument of every `new BrowserWindow(…)`, a
+ * `webPreferences` object passed to it by name or spread into it, and any other object under a
+ * `webPreferences` key. A setting outside these is not a window setting, however near it is.
+ */
+function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRange[] {
+  const ranges: WindowRange[] = [];
+  const is = (i: number, value: string): boolean =>
+    tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  const close = (open: number): number => {
+    let d = 0;
+    for (let k = open; k < tokens.length && k < open + 20_000; k++) {
+      const p = tokens[k]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+      else if (p.value === "}" || p.value === ")" || p.value === "]") {
+        d--;
+        if (d === 0) return k;
+      }
+    }
+    return -1;
+  };
+  let declared: Map<string, number> | null = null;
+  const objectOf = (name: string): number => {
+    if (!declared) {
+      declared = new Map();
+      for (let k = 0; k + 2 < tokens.length; k++)
+        if (
+          tokens[k]!.type === "ident" &&
+          is(k + 1, "=") &&
+          is(k + 2, "{") &&
+          !declared.has(tokens[k]!.value)
+        )
+          declared.set(tokens[k]!.value, k + 2);
+    }
+    return declared.get(name) ?? -1;
+  };
+  const add = (open: number, window: number | null, depth = 0): void => {
+    const end = close(open);
+    if (end === -1) return;
+    ranges.push({ start: tokens[open]!.start, end: tokens[end]!.end, window });
+    if (depth >= 3) return;
+    // Objects that are named or spread inside belong to the same window.
+    for (let k = open + 1; k < end; k++) {
+      const t = tokens[k]!;
+      if (is(k, "...") && tokens[k + 1]?.type === "ident") {
+        const at = objectOf(tokens[k + 1]!.value);
+        if (at !== -1) add(at, window, depth + 1);
+      } else if (
+        t.type === "ident" &&
+        t.value === "webPreferences" &&
+        is(k + 1, ":") &&
+        tokens[k + 2]?.type === "ident" &&
+        (is(k + 3, ",") || is(k + 3, "}"))
+      ) {
+        const at = objectOf(tokens[k + 2]!.value);
+        if (at !== -1) add(at, window, depth + 1);
+      }
+    }
+  };
+  let count = 0;
+  for (let k = 0; k + 2 < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident") continue;
+    if (t.value === "new") {
+      // `new BrowserWindow(`, `new electron.BrowserWindow(`, or a renamed binding of it
+      let c = k + 1;
+      if (tokens[c]?.type === "ident" && is(c + 1, ".") && tokens[c + 2]?.type === "ident") c += 2;
+      const ctor = tokens[c];
+      if (ctor?.type !== "ident" || !is(c + 1, "(")) continue;
+      if (!WINDOW_CLASSES.has(aliases.get(c) ?? ctor.value)) continue;
+      const window = ++count;
+      // `new BrowserWindow(options)` with the options object declared elsewhere
+      const first = tokens[c + 2];
+      if (first?.type === "ident" && is(c + 3, ")")) {
+        const at = objectOf(first.value);
+        if (at !== -1) add(at, window);
+      }
+      add(c + 1, window);
+    } else if (t.value === "webPreferences" && is(k + 1, ":") && is(k + 2, "{")) {
+      const start = tokens[k + 2]!.start;
+      // Already inside a window's range: nothing to add.
+      if (!ranges.some((r) => start >= r.start && start < r.end)) add(k + 2, null);
+    }
+  }
+  return ranges;
 }
 
 /** One member a preload script exposes to the page through contextBridge. */
@@ -85,6 +193,8 @@ export interface BridgeMember {
   world: "main" | "isolated";
   file: string;
   line: number;
+  /** A channel named by a constant of another module, until that module has been read. */
+  channelRef?: { specifier: string; property: string };
 }
 
 /** What one source file exposes, and whether a cap or an unclosed literal cut the reading short. */
@@ -118,10 +228,14 @@ const textOf = (t: Token | undefined): string | null =>
  * be read as a member (spread, computed key, a value built elsewhere) is a row with member null.
  */
 export function bridgeMembers(
-  source: string | { tokens: Token[]; truncated: boolean },
+  source: string | { tokens: Token[]; truncated: boolean; context?: ScanContext },
   file: string,
 ): BridgeScan {
   const { tokens, truncated: cut } = typeof source === "string" ? tokenize(source) : source;
+  const context: ScanContext =
+    typeof source !== "string" && source.context
+      ? source.context
+      : { aliases: resolveAliases(tokens, ALIAS_TARGETS), constants: new Constants(tokens) };
   const members: BridgeMember[] = [];
   let truncated = cut;
   let budget = BRIDGE_WALK_BUDGET;
@@ -148,9 +262,23 @@ export function bridgeMembers(
     if (t.value !== "exposeInMainWorld" && t.value !== "exposeInIsolatedWorld") continue;
     if (!(is(i - 1, ".") || is(i - 1, "?.")) || !is(i + 1, "(")) continue;
     const world = t.value === "exposeInMainWorld" ? "main" : "isolated";
-    const push = (member: string | null, channel: string | null, line: number): void => {
+    const push = (
+      member: string | null,
+      channel: string | null,
+      line: number,
+      channelRef?: BridgeMember["channelRef"],
+    ): void => {
       if (members.length >= MAX_BRIDGE_PER_FILE) truncated = true;
-      else members.push({ api, member, channel, world, file, line });
+      else
+        members.push({
+          api,
+          member,
+          channel,
+          world,
+          file,
+          line,
+          ...(channelRef ? { channelRef } : {}),
+        });
     };
     let at = i + 2;
     if (world === "isolated") {
@@ -206,22 +334,30 @@ export function bridgeMembers(
           : textOf(nameToken);
       if (name === null) return push(null, null, first.line);
       const channels = new Set<string>();
+      const refs: Array<NonNullable<BridgeMember["channelRef"]>> = [];
       for (let j = s + 1; j + 4 < end; j++) {
         const callee = tokens[j + 2]!;
         if (
           tokens[j]!.type === "ident" &&
-          tokens[j]!.value === "ipcRenderer" &&
+          (context.aliases.get(j) ?? tokens[j]!.value) === "ipcRenderer" &&
           is(j + 1, ".") &&
           callee.type === "ident" &&
           CHANNEL_CALLS.has(callee.value) &&
           is(j + 3, "(")
         ) {
-          const channel = textOf(tokens[j + 4]);
-          if (channel !== null) channels.add(channel);
+          const named = context.constants.resolve(j + 4);
+          if (named && "value" in named) channels.add(named.value);
+          else if (named && "ref" in named) refs.push(named.ref);
         }
       }
       // Two different channels in one member: which one it forwards to is not decidable here.
-      push(name, channels.size === 1 ? [...channels][0]! : null, first.line);
+      const only = channels.size + refs.length === 1;
+      push(
+        name,
+        only && channels.size === 1 ? [...channels][0]! : null,
+        first.line,
+        only && refs.length === 1 ? refs[0] : undefined,
+      );
     };
     let depth = 0;
     let closed = false;
@@ -681,9 +817,12 @@ export function analyzeJavaScriptTree(
     }
     runBytes += file.size;
     bytes += file.size;
+    let ranges: WindowRange[] = [];
     const scan = scanJavaScript(source, {
-      onTokens: (tokens, truncated) => {
-        const found = findCandidates(tokens, source);
+      onTokens: (tokens, truncated, context) => {
+        if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source))
+          ranges = windowRanges(tokens, context.aliases);
+        const found = findCandidates(tokens, source, undefined, context.aliases);
         if (found.truncated) facts.candidatesCapped = true;
         for (const [from, to] of [
           [found.endpoints, facts.endpoints],
@@ -699,7 +838,7 @@ export function analyzeJavaScriptTree(
           }
         }
         if (!source.includes("exposeIn")) return;
-        const bridge = bridgeMembers({ tokens, truncated }, file.path);
+        const bridge = bridgeMembers({ tokens, truncated, context }, file.path);
         const room = MAX_BRIDGE - contextBridge.length;
         contextBridge.push(...bridge.members.slice(0, room));
         if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
@@ -741,9 +880,25 @@ export function analyzeJavaScriptTree(
     };
     // A setting counts only where it can belong to a BrowserWindow: near `webPreferences` or
     // `BrowserWindow`. A payment SDK's `{ sandbox: false }` in a renderer file is not Electron's.
-    const inWindowOptions = (index: number): boolean => {
+    // Where the options of a window could be located in the code (`ranges`), a setting counts
+    // only inside them. Only a file where none could be located falls back to nearness.
+    const windowOf = (index: number): number | null | undefined => {
+      if (ranges.length) {
+        // The innermost range decides which window it is.
+        let best: WindowRange | undefined;
+        for (const r of ranges)
+          if (
+            index >= r.start &&
+            index < r.end &&
+            (!best || r.end - r.start < best.end - best.start)
+          )
+            best = r;
+        return best ? best.window : undefined;
+      }
       const before = source.slice(Math.max(0, index - WINDOW_CONTEXT), index);
-      return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before);
+      return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before)
+        ? null
+        : undefined;
     };
     let settings = 0;
     const record = (pref: WebPreference): boolean => {
@@ -759,22 +914,24 @@ export function analyzeJavaScriptTree(
     // is read from a bounded window, so no input makes this scan slow.
     for (let at = source.indexOf("preload"); at !== -1; at = source.indexOf("preload", at + 7)) {
       const m = /^preload\s*:\s*/.exec(source.slice(at, at + 24));
-      if (!m || /[\w$.]/.test(source[at - 1] ?? "") || !inWindowOptions(at)) continue;
+      const window = m ? windowOf(at) : undefined;
+      if (!m || /[\w$.]/.test(source[at - 1] ?? "") || window === undefined) continue;
       const expression = preloadExpression(source, at + m[0].length);
       const literals = [...expression.matchAll(/(['"`])((?:(?!\1)[^\\\n])*)\1/g)].map((x) => x[2]!);
       const script = literals.toReversed().find((v) => /\.(c|m)?[jt]s$/.test(v));
       if (!script) continue;
       const value = script.replace(/^\$\{[^}]*\}/, "").replace(/^[\\/]+/, "");
       preloadScripts.add(value);
-      if (!record({ key: "preload", value, file: file.path, line: lineAt(at) })) break;
+      if (!record({ key: "preload", value, file: file.path, line: lineAt(at), window })) break;
     }
     for (const m of source.matchAll(
       /\b(nodeIntegration|contextIsolation|sandbox)\s*:\s*(true|false|!0|!1)\b/g,
     )) {
-      if (!inWindowOptions(m.index)) continue;
+      const window = windowOf(m.index);
+      if (window === undefined) continue;
       const key = m[1] as "nodeIntegration" | "contextIsolation" | "sandbox";
       const v = m[2] === "true" || m[2] === "!0";
-      if (!record({ key, value: v, file: file.path, line: lineAt(m.index) })) break;
+      if (!record({ key, value: v, file: file.path, line: lineAt(m.index), window })) break;
       // the least safe value seen in any window decides the app-wide flag
       flags[key] =
         key === "nodeIntegration" ? (flags[key] ?? false) || v : (flags[key] ?? true) && v;
@@ -797,6 +954,7 @@ export function analyzeJavaScriptTree(
       ipc: scan.ipc,
       sourceMappingUrl: scan.sourceMappingUrl,
       role,
+      ...(scan.constants ? { constants: scan.constants } : {}),
     });
     for (const ref of scan.references) {
       if (ref.dynamic) {
@@ -879,6 +1037,30 @@ export function analyzeJavaScriptTree(
       code: "js_files_skipped",
       message: `${skipped} files were not read because they exceed the per-file size limit or could not be decoded (e.g. ${facts.skippedFiles.slice(0, 3).join(", ")}).`,
     });
+
+  // Channel names that are constants of another module: looked up now that modules are known.
+  // A reference stays in place while its module is unread, so a continued scan resolves it later.
+  const moduleById = new Map(modules.map((m) => [m.id, m]));
+  const lookUp = (from: string, ref: { specifier: string; property: string }): string | null => {
+    const target = resolveSpecifier(from, ref.specifier, known);
+    return (target ? moduleById.get(target)?.constants?.[ref.property] : undefined) ?? null;
+  };
+  for (const m of modules)
+    for (const u of m.ipc) {
+      if (u.channel !== null || !u.channelRef) continue;
+      const channel = lookUp(m.id, u.channelRef);
+      if (channel === null) continue;
+      u.channel = channel;
+      u.via = "constant";
+      delete u.channelRef;
+    }
+  for (const b of contextBridge) {
+    if (b.channel !== null || !b.channelRef) continue;
+    const channel = lookUp(b.file, b.channelRef);
+    if (channel === null) continue;
+    b.channel = channel;
+    delete b.channelRef;
+  }
 
   // IPC channel matching
   const channels = new Map<string, { senders: Set<string>; receivers: Set<string> }>();

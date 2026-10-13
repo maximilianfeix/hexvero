@@ -183,6 +183,16 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
       memSize,
     });
   }
+  // Program headers sit at the front, so a file cut short still parses; say when a segment's
+  // bytes are not all there.
+  const beyondEnd = rawSegments.filter(
+    (seg) => seg.fileSize > 0 && seg.offset + seg.fileSize > bytes.length,
+  );
+  if (beyondEnd.length)
+    limitations.push({
+      code: "file_truncated",
+      message: `The file is ${bytes.length} bytes, but ${beyondEnd.length} segment(s) extend beyond its end: the file is cut short, so sections, symbols and anything read from those parts are missing or incomplete.`,
+    });
 
   // Section headers
   type RawSection = ElfSection & {

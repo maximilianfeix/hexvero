@@ -1,0 +1,14 @@
+{
+  "from": "calls.c",
+  "why": "v2 adds one function and one import near the top of the text section, so every later function moves without changing.",
+  "edits": [
+    {
+      "find": "/* Called by parse with an ordinary call. */",
+      "replace": "/* New in v2: reads an environment variable. */\nNOINLINE static int audit(void) { return getenv(\"CORPUS_AUDIT\") != NULL; }\n\n/* Called by parse with an ordinary call. */"
+    },
+    {
+      "find": "  int n = parse(argc > 1 ? argv[1] : \"1\");",
+      "replace": "  int n = parse(argc > 1 ? argv[1] : \"1\") + audit();"
+    }
+  ]
+}

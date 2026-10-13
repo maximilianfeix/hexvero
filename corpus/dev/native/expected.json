@@ -1,0 +1,79 @@
+{
+  "case": "native-calls",
+  "kind": "native",
+  "license": "MIT, written for this corpus",
+  "inputs": ["dev/calls.O0.macho-arm64", "dev/calls.O2.macho-arm64"],
+  "method": "Expectations come from calls.c and, for which calls are jumps, from the system disassembler (otool -tV), not from any engine under test. At -O0 every call is a call instruction. At -O2 main ends in a jump to dispatch and dispatch is a single jump to run_command: two tail calls on the way from main to system.",
+  "expect": {
+    "imports": {
+      "present": ["system", "printf", "strlen", "atoi", "puts"],
+      "presentByInput": {
+        "dev/calls.O0.macho-arm64": ["snprintf_chk"],
+        "dev/calls.O2.macho-arm64": ["snprintf"]
+      },
+      "presentByInputWhy": "checked with nm -u: without optimization clang calls the fortified ___snprintf_chk, with -O2 plain _snprintf; names are compared without leading underscores",
+      "absent": ["getenv", "execve"]
+    },
+    "functions": {
+      "present": [
+        "main",
+        "parse",
+        "validate",
+        "dispatch",
+        "run_command",
+        "unused_helper",
+        "by_pointer"
+      ]
+    },
+    "paths": [
+      {
+        "from": "main",
+        "to": "validate",
+        "expect": "path",
+        "via": ["parse"],
+        "why": "main calls parse, parse calls validate; ordinary calls at both levels"
+      },
+      {
+        "from": "main",
+        "to": "system",
+        "expect": "path",
+        "via": ["dispatch", "run_command"],
+        "why": "main returns dispatch(), dispatch returns run_command(), run_command calls system; at -O2 the first two are jumps"
+      },
+      {
+        "from": "main",
+        "to": "puts",
+        "expect": "no-path",
+        "why": "puts is used only by unused_helper, which nothing calls"
+      },
+      {
+        "from": "parse",
+        "to": "system",
+        "expect": "no-path",
+        "why": "parse reaches validate, strlen and atoi only"
+      }
+    ],
+    "callers": [
+      {
+        "of": "unused_helper",
+        "expect": [],
+        "why": "kept by the used attribute, called by nobody"
+      },
+      {
+        "of": "by_pointer",
+        "expect": [],
+        "why": "reached only through a pointer table that main reads; no call instruction names it. An engine that follows the pointer and reports main is right; one that reports nobody is also right, as long as it does not conclude the function is dead",
+        "indirect": ["main"]
+      },
+      {
+        "of": "validate",
+        "expect": ["parse"]
+      },
+      {
+        "of": "run_command",
+        "expect": ["dispatch"],
+        "why": "a jump at -O2"
+      }
+    ]
+  }
+}
