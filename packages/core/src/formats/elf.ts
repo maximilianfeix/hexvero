@@ -322,10 +322,11 @@ export function parseElf(bytes: Uint8Array): ElfInfo {
       const namesz = r.u32();
       const descsz = r.u32();
       const ntype = r.u32();
+      if (namesz > end - r.offset || descsz > end - r.offset) break; // sizes past the section
       const name = cstringAt(bytes, r.offset, namesz);
-      r.skip((namesz + 3) & ~3);
+      r.skip(Math.min(end - r.offset, Math.ceil(namesz / 4) * 4));
       const desc = r.bytesAt(Math.min(descsz, end - r.offset));
-      r.seek(Math.min(end, r.offset + ((descsz + 3) & ~3) - desc.length));
+      r.seek(Math.min(end, r.offset + Math.ceil(descsz / 4) * 4 - desc.length));
       if (name === "GNU" && ntype === 3) buildId = Buffer.from(desc).toString("hex");
       if (name === "Go" && ntype === 4) {
         findings.push({

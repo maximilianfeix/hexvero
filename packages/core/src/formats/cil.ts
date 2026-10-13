@@ -53,7 +53,8 @@ export interface CilBody {
   calls: string[];
   strings: string[];
   branches: number;
-  ilSha256: string;
+  /** SHA-256 of the IL bytes; null when the body was clipped, so it is never a prefix hash. */
+  ilSha256: string | null;
   normalizedSha256: string | null;
   limitations: Limitation[];
 }
@@ -523,7 +524,8 @@ export function decodeMethodBody(
       at += size;
     }
   }
-  const ilSha256 = createHash("sha256").update(il).digest("hex");
+  const clipped = limitations.some((l) => l.code === "cil_body_truncated");
+  const ilSha256 = clipped ? null : createHash("sha256").update(il).digest("hex");
   const normalizedSha256 = complete
     ? createHash("sha256").update(JSON.stringify(normalized)).digest("hex")
     : null;

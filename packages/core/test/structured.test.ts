@@ -58,6 +58,31 @@ describe("parsePlist", () => {
       .u64(table);
     expect(parsePlist(b.done())).toEqual({ name: "hexvero", nums: [7, true] });
   });
+  it("decodes shared objects once instead of expanding a fan-out chain", () => {
+    // obj0 = [obj1 ×40], obj1 = [obj2 ×40], …, obj5 = 7: naive DFS would realize 40^5 leaves.
+    const levels = 6;
+    const fanOut = 40;
+    const b = new Builder(false).ascii("bplist00");
+    const offsets: number[] = [];
+    for (let i = 0; i < levels - 1; i++) {
+      offsets.push(b.length);
+      b.u8(0xaf).u8(0x10).u8(fanOut);
+      for (let k = 0; k < fanOut; k++) b.u8(i + 1);
+    }
+    offsets.push(b.length);
+    b.u8(0x10).u8(7);
+    const table = b.length;
+    for (const o of offsets) b.u16(o);
+    b.pad(b.length + 6)
+      .u8(2)
+      .u8(1)
+      .u64(offsets.length)
+      .u64(0)
+      .u64(table);
+    const value = parsePlist(b.done()) as unknown[];
+    expect(value).toHaveLength(fanOut);
+    expect((value[0] as unknown[])[0]).toBe((value[1] as unknown[])[0]);
+  });
   it("rejects malformed XML", () => {
     expect(() => parsePlist(new TextEncoder().encode("<plist><dict><key>a</key></plist>"))).toThrow(
       /unexpected|unclosed/,

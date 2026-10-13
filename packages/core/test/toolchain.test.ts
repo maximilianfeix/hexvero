@@ -33,6 +33,17 @@ describe("detectToolchain", () => {
       "toolchain.build-path:confirmed",
     ]);
     expect(facts.findings[3]?.detail).toBe("/home/dev/project/src/main.rs");
+    // a mangled std symbol alone is an inference, not a confirmed toolchain fact
+    const symbolOnly = detectToolchain(text("nothing here"), {
+      comment: null,
+      sectionNames: [".text"],
+      symbolNames: ["_ZN3std2rt19lang_start_internal17h0123456789abcdefE"],
+      libraries: [],
+    });
+    expect(symbolOnly.rust).toBe("detected");
+    expect(symbolOnly.findings.find((f) => f.kind === "toolchain.rust")?.confidence).toBe(
+      "inferred",
+    );
   });
   it("detects clang from strings and Swift/ObjC from Mach-O sections", () => {
     const facts = detectToolchain(text("Apple clang version 16.0.0 (clang-1600.0.26.3)"), {

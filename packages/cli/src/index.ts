@@ -196,8 +196,8 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       for (const s of page.items)
         io.out(
           `  ${paint(io, "dim", s.offset.toString(16).padStart(8, "0"))}  ${s.value}${
-            s.tags.length ? paint(io, "cyan", `  [${s.tags.join(",")}]`) : ""
-          }`,
+            s.length ? paint(io, "dim", `… (+${s.length - s.value.length} chars)`) : ""
+          }${s.tags.length ? paint(io, "cyan", `  [${s.tags.join(",")}]`) : ""}`,
         );
       return 0;
     }

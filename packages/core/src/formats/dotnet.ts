@@ -14,7 +14,7 @@ export interface DotnetMethod {
     branches: number;
     calls: string[];
     strings: string[];
-    ilSha256: string;
+    ilSha256: string | null;
     normalizedSha256: string | null;
     exceptionClauses: number;
   } | null;

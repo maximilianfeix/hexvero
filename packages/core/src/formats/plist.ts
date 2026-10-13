@@ -56,12 +56,20 @@ function parseBinaryPlist(bytes: Uint8Array): PlistValue {
     return Number(readInt(1 << (marker & 0xf)));
   };
   const seen = new Set<number>();
+  // Realized containers, strings and data are memoized by object index: a DAG that references one
+  // object many times is decoded once, so a crafted fan-out chain cannot expand exponentially.
+  // The cap counts container realizations only; scalars are cheap.
+  const memo = new Map<number, PlistValue>();
+  let realized = 0;
+  const MAX_REALIZED = 2_000_000;
   const object = (index: number, depth = 0): PlistValue => {
     if (depth > 64) throw new AnalysisError("malformed", "binary plist nests too deeply");
     const offset = offsets[index];
     if (offset === undefined || offset >= bytes.length)
       throw new AnalysisError("malformed", `object ${index} out of range`);
     if (seen.has(index)) return null; // cycle guard
+    const known = memo.get(index);
+    if (known !== undefined) return known;
     r.seek(offset);
     const marker = r.u8();
     const type = marker >> 4;
@@ -86,30 +94,40 @@ function parseBinaryPlist(bytes: Uint8Array): PlistValue {
         const seconds = r.view.getFloat64(r.offset, false);
         return { $date: new Date((seconds + 978307200) * 1000).toISOString() };
       }
-      case 0x4:
-        return {
-          $data: Buffer.from(r.bytesAt(count(lower))).toString("base64"),
-        };
-      case 0x5:
-        return utf8String(r.bytesAt(count(lower)));
+      case 0x4: {
+        const data = { $data: Buffer.from(r.bytesAt(count(lower))).toString("base64") };
+        memo.set(index, data);
+        return data;
+      }
+      case 0x5: {
+        const text = utf8String(r.bytesAt(count(lower)));
+        memo.set(index, text);
+        return text;
+      }
       case 0x6: {
         const n = count(lower);
         let s = "";
         for (let i = 0; i < n; i++) s += String.fromCharCode(r.u16());
+        memo.set(index, s);
         return s;
       }
       case 0x8:
         return { $uid: Number(readInt(lower + 1)) };
       case 0xa:
       case 0xc: {
+        if (++realized > MAX_REALIZED)
+          throw new AnalysisError("too_large", "binary plist holds more than 2000000 containers");
         const n = count(lower);
         const refs = Array.from({ length: n }, () => Number(readInt(refSize)));
         seen.add(index);
         const out = refs.map((ref) => object(ref, depth + 1));
         seen.delete(index);
+        memo.set(index, out);
         return out;
       }
       case 0xd: {
+        if (++realized > MAX_REALIZED)
+          throw new AnalysisError("too_large", "binary plist holds more than 2000000 containers");
         const n = count(lower);
         const keys = Array.from({ length: n }, () => Number(readInt(refSize)));
         const values = Array.from({ length: n }, () => Number(readInt(refSize)));
@@ -118,6 +136,7 @@ function parseBinaryPlist(bytes: Uint8Array): PlistValue {
         for (let i = 0; i < n; i++)
           out[String(object(keys[i]!, depth + 1))] = object(values[i]!, depth + 1);
         seen.delete(index);
+        memo.set(index, out);
         return out;
       }
       default:

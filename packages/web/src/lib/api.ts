@@ -43,6 +43,8 @@ export interface StringItem {
   offset: number;
   encoding: string;
   value: string;
+  /** Full length when the value was cut to 4096 characters. */
+  length?: number;
   tags: string[];
 }
 export interface ByteWindow {

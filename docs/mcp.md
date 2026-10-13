@@ -24,7 +24,7 @@ Codes: `not_found`, `invalid_input`, `unsupported_format`, `malformed`, `too_lar
 
 ## Budget
 
-The tool catalog is under 32 KiB. Default pages are 100 items and at most 256 KiB serialized; `limit` goes up to 2000.
+The tool catalog is under 32 KiB. Default pages are 100 items and at most 256 KiB serialized, envelope included; that budget is an upper bound. An item that alone exceeds it comes back compacted (long strings cut, long arrays sampled) with `itemTruncated: true`, so a huge SQLite `CREATE` statement or a minified one-line bundle never produces an oversized page. Strings longer than 4096 characters are cut and carry their full `length`. `limit` goes up to 2000.
 The compact overview samples arrays longer than eight items and says how many more exist and which collection holds them.
 
 ## Guided prompts

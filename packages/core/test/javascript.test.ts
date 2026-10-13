@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -212,5 +212,35 @@ describe("directory analysis", () => {
     ]);
     expect(info.nativeAddons).toEqual(["addon.node"]);
     expect(info.totals).toMatchObject({ javascript: 2, skipped: 0 });
+  });
+
+  it("follows symbolic links only while they stay inside the analyzed directory", () => {
+    const root = mkdtempSync(join(tmpdir(), "hexvero-symlink-"));
+    const outside = join(tmpdir(), `hexvero-outside-${process.pid}.js`);
+    try {
+      writeFileSync(join(root, "index.js"), "module.exports = 1;");
+      mkdirSync(join(root, "pkg"));
+      writeFileSync(join(root, "pkg", "lib.js"), "module.exports = 2;");
+      symlinkSync(join(root, "pkg"), join(root, "linked"));
+      writeFileSync(outside, "process.env.SECRET");
+      symlinkSync(outside, join(root, "evil.js"));
+      symlinkSync(tmpdir(), join(root, "escape"));
+      const tree = directoryTree(root);
+      expect(tree.files.map((f) => f.path).toSorted()).toEqual([
+        "index.js",
+        "linked/lib.js",
+        "pkg/lib.js",
+      ]);
+      expect(tree.skippedLinks?.toSorted()).toEqual(["escape", "evil.js"]);
+      expect(() => tree.read("evil.js")).toThrow(/outside the root/);
+      expect(() => tree.read("escape/hexvero-outside-" + process.pid + ".js")).toThrow(
+        /outside the root/,
+      );
+      expect(new TextDecoder().decode(tree.read("linked/lib.js"))).toContain("2");
+      expect(existsSync(join(root, "evil.js"))).toBe(true);
+    } finally {
+      rmSync(outside, { force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

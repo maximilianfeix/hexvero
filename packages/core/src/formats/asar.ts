@@ -38,6 +38,8 @@ export function openAsar(bytes: Uint8Array): AsarArchive {
   );
   const read = (file: AsarFile, maxBytes = 64 * 1024 * 1024): Uint8Array => {
     checkReadable(file, maxBytes);
+    if (file.offset === null || file.offset < 0)
+      throw new AnalysisError("malformed", `${file.path} has no valid offset`);
     const start = dataStart + file.offset!;
     if (start + file.size > bytes.length)
       throw new AnalysisError("malformed", `${file.path} extends past the archive`);
@@ -68,6 +70,8 @@ export function openAsarFile(path: string): AsarArchive {
   const { headerSize, files, dataStart } = header;
   const read = (file: AsarFile, maxBytes = 64 * 1024 * 1024): Uint8Array => {
     checkReadable(file, maxBytes);
+    if (file.offset === null || file.offset < 0)
+      throw new AnalysisError("malformed", `${file.path} has no valid offset`);
     const h = openSync(path, "r");
     try {
       const out = new Uint8Array(file.size);
@@ -127,7 +131,7 @@ function parseHeader(
       files.push({
         path: filePath,
         size: child.size ?? 0,
-        offset: child.offset !== undefined && !child.unpacked ? Number(child.offset) : null,
+        offset: child.offset !== undefined && !child.unpacked ? safeOffset(child.offset) : null,
         unpacked: Boolean(child.unpacked),
         executable: Boolean(child.executable),
         integrity: child.integrity?.hash ?? null,
@@ -136,4 +140,10 @@ function parseHeader(
   };
   walk(tree, "", 0);
   return { headerSize, files, dataStart: 8 + headerSize };
+}
+
+/** ASAR offsets are JSON strings; anything but a non-negative safe integer is treated as absent. */
+function safeOffset(raw: unknown): number | null {
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
 }

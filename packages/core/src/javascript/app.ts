@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join, posix, relative, sep } from "node:path";
 import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
@@ -12,6 +12,8 @@ export interface FileTree {
   root: string;
   files: Array<{ path: string; size: number }>;
   read(path: string, maxBytes?: number): Uint8Array;
+  /** Symbolic links that pointed outside the root and were therefore not followed. */
+  skippedLinks?: string[];
 }
 
 export interface JsModule {
@@ -107,6 +109,10 @@ const NODE_BUILTINS = new Set([
 export function directoryTree(root: string, options: { maxFiles?: number } = {}): FileTree {
   const maxFiles = options.maxFiles ?? 50_000;
   const files: FileTree["files"] = [];
+  const skippedLinks: string[] = [];
+  const realRoot = realpathSync(root);
+  const inside = (real: string): boolean => real === realRoot || real.startsWith(realRoot + sep);
+  const visitedDirs = new Set<string>([realRoot]);
   const walk = (dir: string, depth: number): void => {
     if (depth > 32 || files.length >= maxFiles) return;
     let entries: string[];
@@ -120,7 +126,22 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
       const full = join(dir, name);
       let st;
       try {
-        st = statSync(full);
+        st = lstatSync(full);
+        if (st.isSymbolicLink()) {
+          // Follow a link only when its target stays inside the root (pnpm/workspace layouts);
+          // anything pointing outside is recorded and never read.
+          const real = realpathSync(full);
+          if (!inside(real)) {
+            if (skippedLinks.length < 200)
+              skippedLinks.push(relative(root, full).split(sep).join("/"));
+            continue;
+          }
+          st = statSync(real);
+          if (st.isDirectory()) {
+            if (visitedDirs.has(real)) continue;
+            visitedDirs.add(real);
+          }
+        }
       } catch {
         continue;
       }
@@ -139,11 +160,19 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
     kind: "directory",
     root,
     files,
+    ...(skippedLinks.length ? { skippedLinks } : {}),
     read: (path, maxBytes = 64 << 20) => {
       const full = join(root, ...path.split("/"));
       if (relative(root, full).startsWith(".."))
         throw new AnalysisError("invalid_input", `${path} escapes the root`);
-      const size = statSync(full).size;
+      // Resolve every component: an intermediate directory link may leave the root too.
+      const real = realpathSync(full);
+      if (!inside(real))
+        throw new AnalysisError(
+          "invalid_input",
+          `${path} resolves outside the root and is not read`,
+        );
+      const size = statSync(real).size;
       if (size > maxBytes) throw new AnalysisError("too_large", `${path} is ${size} bytes`);
       return new Uint8Array(readFileSync(full));
     },
@@ -237,6 +266,11 @@ export function analyzeJavaScriptTree(
     }
   }
 
+  if (tree.skippedLinks?.length)
+    limitations.push({
+      code: "symlinks_skipped",
+      message: `${tree.skippedLinks.length} symbolic link(s) point outside the analyzed directory and were not followed (e.g. ${tree.skippedLinks[0]}).`,
+    });
   const jsFiles = tree.files.filter(
     (f) => JS_EXT.test(f.path) && !f.path.includes("node_modules/"),
   );
