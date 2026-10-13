@@ -57,6 +57,7 @@ const SHORT: Record<string, string> = {
 
 export function flagString(flags: ParsedArgs["flags"], key: string): string | undefined {
   const v = flags[key];
+  if (v === true) throw new UsageError(`--${key} needs a value`);
   return typeof v === "string" ? v : undefined;
 }
 

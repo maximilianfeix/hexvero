@@ -26,9 +26,60 @@ describe("hexvero CLI", () => {
   it("prints help and version", async () => {
     const io = capture();
     expect(await main([], io)).toBe(2);
-    expect(io.stdout[0]).toContain("Usage: hexvero");
+    expect(io.stderr[0]).toContain("Usage: hexvero");
+    const help = capture();
+    expect(await main(["--help"], help)).toBe(0);
+    expect(help.stdout[0]).toContain("Usage: hexvero");
     expect(await main(["--version"], io)).toBe(0);
     expect(io.stdout.at(-1)).toMatch(/^\d+\.\d+\.\d+/);
+  });
+
+  it("turns silent clamps into usage errors and reports partial output", async () => {
+    for (const argv of [
+      ["collection", so, "symbols", "--limit", "0"],
+      ["collection", so, "symbols", "--offset", "-1"],
+      ["strings", so, "--tag", "nope"],
+      ["strings", so, "--text"],
+      ["provider", so, "hopper", "functions"],
+      ["provider", so, "ghidra", "strings"],
+    ]) {
+      const io = capture();
+      expect(await main(argv, io), argv.join(" ")).toBe(2);
+      expect(io.stderr[0]).toMatch(/usage:/);
+      expect(io.stderr[0]).not.toContain("Usage: hexvero"); // short, not the whole help
+    }
+    const empty = capture();
+    expect(await main(["collection", so, "symbols", "--text", "zzz-none"], empty)).toBe(0);
+    expect(empty.stdout[0]).toContain("symbols 0 of 0");
+    const map = join(dir, "app.js.map");
+    writeFileSync(
+      map,
+      JSON.stringify({
+        version: 3,
+        sources: ["a.ts"],
+        sourcesContent: ["let a = 1;"],
+        names: [],
+        mappings: "AAAA",
+      }),
+    );
+    const linker = join(dir, "linker.map");
+    writeFileSync(linker, "Archive member included to satisfy reference by file\n");
+    const lio = capture();
+    expect(await main(["analyze", linker, "--json"], lio)).toBe(0);
+    expect(JSON.parse(lio.stdout.join("")).target.info.format).toBe("unknown");
+    const bio = capture();
+    expect(await main(["bytes", so, "0", "100000"], bio)).toBe(0);
+    expect(bio.stdout.join("\n")).not.toContain("clamped"); // the file ends first
+    const cio = capture();
+    expect(await main(["compare", so, so, "symbols", "--json"], cio)).toBe(0);
+    expect(JSON.parse(cio.stdout.join(""))).toMatchObject({
+      truncated: false,
+      compared: { a: 2, b: 2 },
+    });
+    const mio = capture();
+    expect(await main(["analyze", map, "--json"], mio)).toBe(0);
+    expect(JSON.parse(mio.stdout.join("")).target.info.format).toBe("json");
+    expect(JSON.parse(mio.stdout.join("")).summary.toLowerCase()).toContain("source map");
   });
 
   it("analyzes a file in human and JSON form", async () => {

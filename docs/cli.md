@@ -14,11 +14,11 @@ All commands accept `--json` for machine-readable output and `--no-color`. Paths
 | `provider <path> <engine> <operation> [--address a] [--text s] [--timeout ms]`     | Runs radare2/rizin/ghidra operations: functions, disassemble, decompile, strings, imports, xrefs, callers, callees, callgraph, search.              |
 | `calls <path> <engine> <root> [--direction d] [--depth n] [--max n] [--goal g]`    | Bounded call-graph neighborhood around a function, or the shortest call path to `--goal`.                                                           |
 | `mcp`                                                                              | Serves MCP over stdio.                                                                                                                              |
-| `ui [--port n] [--host h] [--open]`                                                | Starts the local web UI (default port 7331).                                                                                                        |
+| `ui [--port n] [--host h] [--open]`                                                | Starts the local web UI (default port 7331, loopback only unless `--host` is given, which prints a warning).                                        |
 | `doctor`                                                                           | Checks Node, `node:sqlite` and engines.                                                                                                             |
 | `setup [--client c] [--apply]`                                                     | Registers the MCP server; dry run by default.                                                                                                       |
 
-Exit codes: `0` success, `1` analysis error (`{"error":{"code","message","details"}}` with `--json`), `2` usage error.
+Exit codes: `0` success (including `--help`), `1` analysis error (`{"error":{"code","message","details"}}` with `--json`), `2` usage error. Set `HEXVERO_DEBUG=1` for stack traces.
 
 ## Collections by format
 

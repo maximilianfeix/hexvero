@@ -86,6 +86,17 @@ function scanUtf16(
   if (out.length < max) flush(bytes.length - ((bytes.length - parity) % 2));
 }
 
+/** Every tag `classifyString` can assign, for validation and UI menus. */
+export const STRING_TAGS = [
+  "url",
+  "path",
+  "email",
+  "ip",
+  "format",
+  "secret-ish",
+  "base64-ish",
+] as const;
+
 /** Heuristic buckets that make a strings dump useful at a glance. */
 export function classifyString(value: string): string[] {
   const tags: string[] = [];
