@@ -1,6 +1,6 @@
 {
   "name": "hexvero",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Reverse engineer anything, locally: CLI, MCP server and web UI.",
   "keywords": [
     "apk",
@@ -51,9 +51,9 @@
     "prepack": "node -e \"require('node:fs').cpSync('../../skills','./skills',{recursive:true})\""
   },
   "dependencies": {
-    "@hexvero/core": "0.2.0",
-    "@hexvero/mcp": "0.2.0",
-    "@hexvero/server": "0.2.0"
+    "@hexvero/core": "0.2.1",
+    "@hexvero/mcp": "0.2.1",
+    "@hexvero/server": "0.2.1"
   },
   "engines": {
     "node": ">=22.12.0"
