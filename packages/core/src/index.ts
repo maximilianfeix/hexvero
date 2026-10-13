@@ -110,3 +110,9 @@ export {
   type FlutterInfo,
   type DartSnapshot,
 } from "./formats/flutter.js";
+export {
+  decodeMethodBody,
+  type CilBody,
+  type CilInstruction,
+  type CilResolver,
+} from "./formats/cil.js";

@@ -63,8 +63,8 @@ export function buildDotnetMetadata(): Uint8Array {
     .u16(1)
     .u16(1);
   // MethodDef rows: rva, implflags, flags, name, sig, paramlist
-  t.u32(0x2000).u16(0).u16(0x16).u16(idx["Main"]!).u16(0).u16(1);
-  t.u32(0).u16(0).u16(0x2016).u16(idx["Run"]!).u16(0).u16(1);
+  t.u32(0x2300).u16(0).u16(0x16).u16(idx["Main"]!).u16(0).u16(1);
+  t.u32(0x2340).u16(0).u16(0x2016).u16(idx["Run"]!).u16(0).u16(1);
   // ModuleRef
   t.u16(idx["kernel32.dll"]!);
   // ImplMap: flags, MemberForwarded = MethodDef#2 (tag 1), import name, scope

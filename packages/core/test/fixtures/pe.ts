@@ -2,7 +2,12 @@ import { Builder } from "./builder.js";
 
 /** Minimal PE32+ DLL with one import DLL (two names, one ordinal) and exports (one named, one forwarder). */
 export function buildPe(
-  options: { clr?: boolean | Uint8Array; resources?: Uint8Array } = {},
+  options: {
+    clr?: boolean | Uint8Array;
+    resources?: Uint8Array;
+    /** Raw method bodies placed at absolute file offsets (inside .rdata, RVA = 0x2000 + offset - 0x400). */
+    bodies?: Array<{ fileOffset: number; bytes: Uint8Array }>;
+  } = {},
 ): Uint8Array {
   const b = new Builder(true);
   b.ascii("MZ").pad(0x3c).u32(0x40).pad(0x40);
@@ -92,6 +97,9 @@ export function buildPe(
     // CLR header: cb, major 2, minor 5, metadata RVA/size, flags ILONLY, entry token
     b.u32(72).u16(2).u16(5).u32(0x2148).u32(metadata.length).u32(1).u32(0x06000001).pad(0x548);
     b.bytes(metadata);
+  }
+  for (const body of options.bodies ?? []) {
+    b.pad(body.fileOffset).bytes(body.bytes);
   }
   if (options.resources) {
     // Resource directory lives in .rdata at RVA 0x2500 (file 0x900); the fixture's data entries are relative to that RVA.

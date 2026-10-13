@@ -14,6 +14,9 @@ All notable changes to hexvero are listed here. The format follows
   adopted protocols, superclass incl. external binds), protocols, categories; pointers decoded through
   dyld chained fixups (PTR_64, PTR_64_OFFSET, ARM64E) and dyld_info bind opcodes. Swift class names
   and mangled symbols are made readable (approximate, no `swift-demangle` needed).
+- CIL method-body decoder for .NET assemblies: every opcode, tiny/fat headers, exception clauses, call
+  targets resolved to names, string literals, raw and normalized IL digests; `methods`, `calls` and
+  `cil` collections and a finding for process/reflection/network/crypto/file/registry calls.
 - Android resources.arsc decoder (packages, types, default values, locales, densities) that resolves
   manifest references such as the application label; Flutter/Dart AOT snapshot facts (version hash,
   features, engine build ids, per-ABI digests) without Apktool or any engine.

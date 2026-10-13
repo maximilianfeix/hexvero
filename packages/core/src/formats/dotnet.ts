@@ -1,6 +1,24 @@
 import { ByteReader, cstringAt, latin1 } from "../binary/reader.js";
+import { decodeMethodBody, type CilBody, type CilResolver } from "./cil.js";
 import { AnalysisError, type Finding, type Limitation } from "../model.js";
 import type { PeInfo } from "./pe.js";
+
+export interface DotnetMethod {
+  name: string;
+  rva: string | null;
+  flags: string[];
+  /** Decoded body facts; null for abstract, P/Invoke or unreadable methods. */
+  il: {
+    size: number;
+    instructions: number;
+    branches: number;
+    calls: string[];
+    strings: string[];
+    ilSha256: string;
+    normalizedSha256: string | null;
+    exceptionClauses: number;
+  } | null;
+}
 
 export interface DotnetType {
   namespace: string;
@@ -9,6 +27,7 @@ export interface DotnetType {
   kind: "class" | "interface" | "enum" | "struct" | "delegate" | "unknown";
   extends: string | null;
   methods: string[];
+  members: DotnetMethod[];
 }
 
 export interface DotnetPInvoke {
@@ -34,6 +53,8 @@ export interface DotnetInfo {
   types: DotnetType[];
   pinvokes: DotnetPInvoke[];
   userStrings: string[];
+  /** Flat decoded instructions across all method bodies (bounded) for the `cil` collection. */
+  instructions: Array<{ method: string; offset: number; opcode: string; operand: string | null }>;
   findings: Finding[];
   limitations: Limitation[];
 }
@@ -183,6 +204,7 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
     types: [],
     pinvokes: [],
     userStrings: us ? readUserStrings(us) : [],
+    instructions: [],
     findings,
     limitations,
   };
@@ -298,8 +320,7 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
     const name = str(v[1]!);
     const ns = str(v[2]!);
     const base = resolveTypeDefOrRef(v[3]!);
-    const first = v[5]! - 1;
-    const last = (typeDefs[i + 1]?.values[5] ?? methods.length + 1) - 1;
+    const [first, last] = methodRange(typeDefs, i, methods.length);
     const vis = flags & 7;
     const kind: DotnetType["kind"] =
       flags & 0x20
@@ -319,11 +340,22 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
       visibility: vis === 1 ? "public" : vis >= 2 ? "nested" : "internal",
       kind,
       extends: base,
-      methods: methods
-        .slice(Math.max(0, first), Math.max(first, last))
-        .map((m) => str(m.values[3]!)),
+      methods: methods.slice(first, last).map((m) => str(m.values[3]!)),
+      members: [],
     });
   }
+
+  decodeBodies(bytes, pe, info, {
+    typeDefs,
+    typeRefs,
+    methods,
+    memberRefs: data[0x0a] ?? [],
+    fields: data[0x04] ?? [],
+    moduleRefs: data[0x1a] ?? [],
+    str,
+    us,
+    limitations,
+  });
 
   for (const row of data[0x1c] ?? []) {
     const v = row.values;
@@ -353,6 +385,23 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
       confidence: "inferred",
     });
   }
+  const allCalls = info.types.flatMap((t) => t.members.flatMap((m) => m.il?.calls ?? []));
+  const sensitive = allCalls.filter((c) =>
+    /System\.Diagnostics\.Process::Start|System\.Reflection\.Assembly::Load|System\.Net\.(Http|WebClient|Sockets)|System\.Security\.Cryptography|System\.IO\.File::(Write|Delete)|Microsoft\.Win32\.Registry/.test(
+      c,
+    ),
+  );
+  if (sensitive.length) {
+    findings.push({
+      kind: "dotnet.sensitive-calls",
+      title: `${new Set(sensitive).size} calls into process, reflection, network, crypto, file or registry APIs`,
+      detail: [...new Set(sensitive)]
+        .slice(0, 5)
+        .map((c) => c.replace(/^System\./, ""))
+        .join(", "),
+      confidence: "confirmed",
+    });
+  }
   if (!info.flags.ilOnly)
     findings.push({
       kind: "dotnet.mixed",
@@ -370,6 +419,216 @@ export function parseDotnet(bytes: Uint8Array, pe: PeInfo): DotnetInfo {
       message: "No #Blob heap; signatures unavailable.",
     });
   return info;
+}
+
+interface BodyContext {
+  typeDefs: Row[];
+  typeRefs: Row[];
+  methods: Row[];
+  memberRefs: Row[];
+  fields: Row[];
+  moduleRefs: Row[];
+  str: (index: number) => string;
+  us: Uint8Array | null;
+  limitations: Limitation[];
+}
+
+const BODY_CAP = 50_000;
+const WORK_CAP = 2_000_000;
+const BYTE_CAP = 64 << 20;
+const FACT_CAP = 500_000;
+
+const METHOD_FLAGS: Array<[number, string]> = [
+  [0x0010, "static"],
+  [0x0020, "final"],
+  [0x0040, "virtual"],
+  [0x0400, "abstract"],
+  [0x2000, "pinvoke"],
+];
+
+/**
+ * Method rows [first, last) owned by TypeDef `i`, bounded by the retained MethodDef table and
+ * forced monotonic so forged MethodList values cannot produce huge or overlapping ranges.
+ */
+function methodRange(
+  typeDefs: Array<{ values: number[] }>,
+  i: number,
+  methodCount: number,
+): [number, number] {
+  const first = Math.min(Math.max(0, typeDefs[i]!.values[5]! - 1), methodCount);
+  const nextRaw = typeDefs[i + 1]?.values[5];
+  const last =
+    nextRaw === undefined ? methodCount : Math.min(Math.max(first, nextRaw - 1), methodCount);
+  return [first, last];
+}
+
+/** Decodes every IL method body (bounded) and attaches calls, strings and digests to the owning type. */
+function decodeBodies(bytes: Uint8Array, pe: PeInfo, info: DotnetInfo, ctx: BodyContext): void {
+  const { typeDefs, typeRefs, methods, memberRefs, fields, moduleRefs, str, us, limitations } = ctx;
+  const typeRefName = (index: number): string => {
+    const t = typeRefs[index - 1];
+    return t ? typeName(str(t.values[2]!), str(t.values[1]!)) : `TypeRef#${index}`;
+  };
+  const typeDefName = (index: number): string => {
+    const t = typeDefs[index - 1];
+    return t ? typeName(str(t.values[2]!), str(t.values[1]!)) : `TypeDef#${index}`;
+  };
+  const ownerOf = new Map<number, string>();
+  typeDefs.forEach((t, i) => {
+    const [first, last] = methodRange(typeDefs, i, methods.length);
+    for (let m = first; m < last; m++)
+      ownerOf.set(m, typeName(str(t.values[2]!), str(t.values[1]!)));
+  });
+  const resolver: CilResolver = {
+    name: (token) => {
+      const table = token >>> 24;
+      const row = token & 0xffffff;
+      if (table === 0x06) {
+        const m = methods[row - 1];
+        return m ? `${ownerOf.get(row - 1) ?? "?"}::${str(m.values[3]!)}` : null;
+      }
+      if (table === 0x0a) {
+        const m = memberRefs[row - 1];
+        if (!m) return null;
+        const parent = m.values[0]!;
+        const tag = parent & 7;
+        const idx = parent >> 3;
+        const owner =
+          tag === 0
+            ? typeDefName(idx)
+            : tag === 1
+              ? typeRefName(idx)
+              : tag === 2
+                ? str(moduleRefs[idx - 1]?.values[0] ?? 0)
+                : tag === 3
+                  ? methods[idx - 1]
+                    ? str(methods[idx - 1]!.values[3]!)
+                    : "?"
+                  : "<TypeSpec>";
+        return `${owner}::${str(m.values[1]!)}`;
+      }
+      if (table === 0x01) return typeRefName(row);
+      if (table === 0x02) return typeDefName(row);
+      if (table === 0x04) {
+        const f = fields[row - 1];
+        return f ? str(f.values[1]!) : null;
+      }
+      return null;
+    },
+    userString: (token) => (us ? readUserStringAt(us, token & 0xffffff) : null),
+  };
+  let decodedInstructions = 0;
+  const instructionCap = 200_000;
+  // Aggregate budgets across all bodies: decoded instructions (work), IL bytes read (hashing), and
+  // retained call/string facts (memory). Once spent, remaining methods keep `il: null`.
+  let bodyBudget = BODY_CAP;
+  let workBudget = WORK_CAP;
+  let byteBudget = BYTE_CAP;
+  let factBudget = FACT_CAP;
+  let budgetExhausted = false;
+  typeDefs.forEach((t, i) => {
+    const type = info.types[i]!;
+    const [first, last] = methodRange(typeDefs, i, methods.length);
+    for (let m = first; m < last; m++) {
+      const row = methods[m]!;
+      const rva = row.values[0]!;
+      const implFlags = row.values[1]!;
+      const flags = row.values[2]!;
+      const name = str(row.values[3]!);
+      const flagNames = METHOD_FLAGS.filter(([bit]) => flags & bit).map(([, n]) => n);
+      if ((flags & 7) === 6) flagNames.unshift("public");
+      const member: DotnetMethod = {
+        name,
+        rva: rva ? `0x${rva.toString(16)}` : null,
+        flags: flagNames,
+        il: null,
+      };
+      const isIl = rva !== 0 && (implFlags & 0x3) === 0 && (flags & 0x2000) === 0;
+      const withinBudget = bodyBudget > 0 && workBudget > 0 && byteBudget > 0 && factBudget > 0;
+      if (isIl && !withinBudget) budgetExhausted = true;
+      if (isIl && withinBudget) {
+        bodyBudget--;
+        const offset = pe.rvaToOffset(rva);
+        const body: CilBody | null =
+          offset === null
+            ? null
+            : decodeMethodBody(bytes, offset, resolver, Math.min(20_000, workBudget), byteBudget);
+        if (body) {
+          workBudget -= body.instructions.length;
+          byteBudget -= body.ilSize;
+          factBudget -= body.calls.length + body.strings.length;
+          member.il = {
+            size: body.ilSize,
+            instructions: body.instructions.length,
+            branches: body.branches,
+            calls: body.calls,
+            strings: body.strings,
+            ilSha256: body.ilSha256,
+            normalizedSha256: body.normalizedSha256,
+            exceptionClauses: body.exceptionClauses.length,
+          };
+          for (const l of body.limitations)
+            if (limitations.length < 50)
+              limitations.push({ code: l.code, message: `${type.name}::${name}: ${l.message}` });
+          const label = `${typeName(type.namespace, type.name)}::${name}`;
+          for (const ins of body.instructions) {
+            if (decodedInstructions++ >= instructionCap) break;
+            info.instructions.push({
+              method: label,
+              offset: ins.offset,
+              opcode: ins.opcode,
+              operand: ins.operand,
+            });
+          }
+        } else if (offset === null) {
+          limitations.push({
+            code: "cil_rva_unmapped",
+            message: `${type.name}::${name}: method RVA ${member.rva} is outside every section.`,
+          });
+        }
+      }
+      type.members.push(member);
+    }
+  });
+  if (decodedInstructions >= instructionCap)
+    limitations.push({
+      code: "cil_instructions_capped",
+      message: `The cil collection stops at ${instructionCap} instructions; per-method facts stay complete.`,
+    });
+  if (budgetExhausted)
+    limitations.push({
+      code: "cil_bodies_capped",
+      message: `IL decoding stopped after ${BODY_CAP - bodyBudget} bodies; the shared budget (${BODY_CAP} bodies, ${WORK_CAP} instructions, ${BYTE_CAP} IL bytes, ${FACT_CAP} call/string facts) is spent. Remaining methods report il: null.`,
+    });
+}
+
+/** One #US heap string at `offset` (the low 24 bits of an ldstr token). */
+function readUserStringAt(us: Uint8Array, offset: number): string | null {
+  if (offset <= 0 || offset >= us.length) return null;
+  const first = us[offset]!;
+  let len: number;
+  let header: number;
+  if ((first & 0x80) === 0) {
+    len = first;
+    header = 1;
+  } else if ((first & 0xc0) === 0x80) {
+    len = ((first & 0x3f) << 8) | (us[offset + 1] ?? 0);
+    header = 2;
+  } else {
+    len =
+      ((first & 0x1f) << 24) |
+      ((us[offset + 1] ?? 0) << 16) |
+      ((us[offset + 2] ?? 0) << 8) |
+      (us[offset + 3] ?? 0);
+    header = 4;
+  }
+  const start = offset + header;
+  if (len === 0 || start + len > us.length) return null;
+  const chars = us.subarray(start, start + len - 1);
+  let out = "";
+  for (let i = 0; i + 1 < chars.length; i += 2)
+    out += String.fromCharCode(chars[i]! | (chars[i + 1]! << 8));
+  return out;
 }
 
 /** #US heap: blob-length-prefixed UTF-16LE strings with a trailing flag byte. */
