@@ -3,9 +3,15 @@
  * field: the caller's `key`, or the first common field that is present and
  * distinct on both sides (`name`, `channel`, `id`, `path`, …), or the whole item
  * as JSON when nothing fits. Matched items whose content differs are `changed`
- * with the fields that differ; fields that move between any two builds anyway
- * (addresses, offsets) are ignored unless the caller says otherwise, so a symbol
- * whose address moved is `relocated`, not changed.
+ * with the paths that differ.
+ *
+ * Nothing is ignored by default. Two mechanisms can set a difference aside:
+ * - `positional`: fields that hold a position in the file for this kind of
+ *   collection (a symbol's `value`, a section's `offset`). A difference there is
+ *   `relocated` only when both sides look like an address or a number; a `value`
+ *   that changes from "old" to "new" is always a content change.
+ * - `ignore`: fields the caller explicitly excludes, whatever they contain.
+ * Both are echoed in the result, with samples of what was set aside.
  */
 
 export interface FieldChange {
@@ -22,10 +28,14 @@ export interface ChangedItem {
 }
 
 export interface CompareOptions {
-  /** Identity field; undefined picks one, null forces full-content matching. */
+  /** Identity field (`a+b` for a composite); undefined picks one, null forces full-content matching. */
   key?: string | null | undefined;
-  /** Fields whose differences do not count as a change (default: VOLATILE_FIELDS). */
+  /** Collection name, used to pick a composite identity such as `type+name` for methods. */
+  collection?: string | undefined;
+  /** Fields excluded from change detection unconditionally (default: none). */
   ignore?: readonly string[] | undefined;
+  /** Position fields: differences count as relocation only when both values look like addresses. */
+  positional?: readonly string[] | undefined;
 }
 
 export interface CompareResult {
@@ -33,8 +43,12 @@ export interface CompareResult {
   key: string | null;
   /** Set when the caller named a key that no item on either side carries. */
   keyMissing: boolean;
-  /** Fields excluded from change detection. */
+  /** Fields the caller excluded from change detection. */
   ignored: string[];
+  /** Position fields whose address-like differences were classified as relocation. */
+  positional: string[];
+  /** Up to 20 relocated items with the position fields that moved, so nothing is set aside unseen. */
+  relocatedSample: ChangedItem[];
   /** Item identities (keys) only present on the right side; duplicates listed once per extra item. */
   added: string[];
   removed: string[];
@@ -47,18 +61,73 @@ export interface CompareResult {
   compared: { a: number; b: number };
 }
 
-/** Fields that differ between any two builds without meaning anything changed. */
-export const VOLATILE_FIELDS = [
-  "address",
-  "value",
-  "offset",
-  "rva",
-  "vaddr",
-  "paddr",
-  "fileOffset",
-  "start",
-  "end",
-] as const;
+/** Formats whose collections carry file positions (addresses, offsets) next to content. */
+const NATIVE_FORMATS = new Set(["elf", "pe", "macho", "macho-fat", "wasm"]);
+
+/** Position fields per collection of a native binary. `size` is content and never listed. */
+const POSITION_FIELDS: Record<string, readonly string[]> = {
+  symbols: ["value"],
+  exports: ["value", "rva"],
+  sections: ["address", "offset", "rva", "vaddr", "fileOffset", "rawOffset", "virtualAddress"],
+  segments: ["offset", "vaddr", "paddr", "vmaddr", "fileoff", "fileOffset"],
+  slices: ["offset"],
+  methods: ["rva", "implementation"], // .NET method bodies (rva), Objective-C IMPs (implementation)
+  swiftSymbols: ["value"],
+};
+
+/**
+ * Position fields for `collection` when both targets are native binaries; empty otherwise, so
+ * an Electron setting or a manifest entry named `value` is never treated as an address.
+ */
+export function positionalFields(collection: string, formats: readonly string[]): string[] {
+  if (formats.length === 0 || !formats.every((f) => NATIVE_FORMATS.has(f))) return [];
+  return [...(POSITION_FIELDS[collection] ?? [])];
+}
+
+/**
+ * Only a number or a `0x…` literal can be a position. Plain text, decimal strings, null and a
+ * field present on one side only are content, so "10" → "11" or null → "new" stay changes.
+ */
+function addressLike(v: unknown): boolean {
+  return (
+    typeof v === "number" ||
+    typeof v === "bigint" ||
+    (typeof v === "string" && /^0x[0-9a-fA-F]{1,16}$/.test(v))
+  );
+}
+
+/** Identity made of several fields for collections whose single fields repeat by nature. */
+const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
+  methods: [
+    ["type", "name"],
+    ["class", "name"],
+    ["class", "selector"],
+  ],
+  columns: [["table", "name"]],
+  ipc: [["module", "api", "channel", "line"]],
+  webPreferences: [
+    ["file", "key"],
+    ["file", "key", "line"],
+  ],
+  cil: [["method", "offset"]],
+};
+
+/** Paths (dotted, up to three levels) at which two values differ. */
+function diffPaths(
+  before: unknown,
+  after: unknown,
+  prefix: string,
+  depth: number,
+  out: FieldChange[],
+): void {
+  if (canonical(before) === canonical(after)) return;
+  if (depth < 3 && isRecord(before) && isRecord(after)) {
+    for (const k of [...new Set([...Object.keys(before), ...Object.keys(after)])].toSorted())
+      diffPaths(before[k], after[k], prefix ? `${prefix}.${k}` : k, depth + 1, out);
+    return;
+  }
+  out.push({ field: prefix, before, after });
+}
 
 const KEY_CANDIDATES = [
   "name",
@@ -98,35 +167,96 @@ function sortKeys(value: unknown): unknown {
   return value;
 }
 
-const typedKey = (v: unknown): string => (typeof v === "number" ? `n:${v}` : `s:${String(v)}`);
+/**
+ * Typed value of a key that may be composite (`type+name`), or undefined when a part is missing.
+ * Parts keep their types and are joined unambiguously, so "a::b"+"c" and "a"+"b::c" differ and
+ * 1 is not "1".
+ */
+function keyValue(item: unknown, key: string): string | undefined {
+  if (!isRecord(item)) return undefined;
+  const parts: Array<string | number> = [];
+  for (const part of key.split("+")) {
+    const v = item[part];
+    if (typeof v !== "string" && typeof v !== "number") return undefined;
+    parts.push(v);
+  }
+  return JSON.stringify(parts);
+}
+
+/** The same key as people read it: `Type::name`. */
+function keyLabel(item: unknown, key: string): string {
+  return key
+    .split("+")
+    .map((part) => String((item as Record<string, unknown>)[part]))
+    .join("::");
+}
 
 /**
- * First candidate field that is a string or number on at least 90% of the items of each side
- * and distinct on at least 99% of them, so `name` on symbols wins but `selector` on Objective-C
- * methods (one `init` per class) does not.
+ * A key qualifies when it is present on ≥90% of the items of each side and distinct on ≥90%.
+ * Some repetition is normal for a real identity (every gcc ELF lists `crtstuff.c` twice and has
+ * a few names in both symbol tables; `.ctor` repeats across types) and is handled by multiset
+ * matching; a field that mostly repeats (one `init` per class) is no identity.
  */
-export function detectKey(left: readonly unknown[], right: readonly unknown[]): string | null {
+function qualifies(sides: Array<Array<Record<string, unknown>>>, key: string): boolean {
+  for (const side of sides) {
+    if (side.length === 0) continue;
+    const values = side.map((o) => keyValue(o, key)).filter((v) => v !== undefined);
+    if (values.length < side.length * 0.9) return false;
+    if (new Set(values).size < values.length * 0.9) return false;
+  }
+  return true;
+}
+
+/**
+ * The identity to match items by: a composite key known for this collection (`type+name` for
+ * methods, where `.ctor` repeats per type), else the first single candidate field, so `name` on
+ * symbols wins but `selector` on Objective-C methods (one `init` per class) does not.
+ */
+export function detectKey(
+  left: readonly unknown[],
+  right: readonly unknown[],
+  collection?: string,
+): string | null {
   const sides = [left.filter(isRecord), right.filter(isRecord)];
   if (sides.every((s) => s.length === 0)) return null;
-  for (const field of KEY_CANDIDATES) {
-    let ok = true;
-    for (const side of sides) {
-      if (side.length === 0) continue;
-      const values = side
-        .map((o) => o[field])
-        .filter((v) => typeof v === "string" || typeof v === "number");
-      if (values.length < side.length * 0.9) {
-        ok = false;
-        break;
-      }
-      if (new Set(values.map(typedKey)).size < values.length * 0.99) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) return field;
+  for (const fields of (collection && COMPOSITE_KEYS[collection]) || []) {
+    const key = fields.join("+");
+    if (qualifies(sides, key)) return key;
   }
+  for (const field of KEY_CANDIDATES) if (qualifies(sides, field)) return field;
   return null;
+}
+
+function tally(list: unknown[], by: (x: unknown) => string): Map<string, unknown[]> {
+  const m = new Map<string, unknown[]>();
+  for (const it of list) {
+    const k = by(it);
+    const bucket = m.get(k);
+    if (bucket) bucket.push(it);
+    else m.set(k, [it]);
+  }
+  return m;
+}
+
+/** Multiset pairing of two lists under an equivalence; returns the matched count and both rests. */
+function pair(
+  as: unknown[],
+  bs: unknown[],
+  by: (x: unknown) => string,
+): [matched: number, restA: unknown[], restB: unknown[]] {
+  const ma = tally(as, by);
+  const mb = tally(bs, by);
+  let matched = 0;
+  const restA: unknown[] = [];
+  const restB: unknown[] = [];
+  for (const [c, items] of ma) {
+    const n = Math.min(items.length, mb.get(c)?.length ?? 0);
+    matched += n;
+    restA.push(...items.slice(n));
+  }
+  for (const [c, items] of mb)
+    restB.push(...items.slice(Math.min(items.length, ma.get(c)?.length ?? 0)));
+  return [matched, restA, restB];
 }
 
 export function compareItems(
@@ -134,20 +264,23 @@ export function compareItems(
   right: readonly unknown[],
   options: CompareOptions = {},
 ): CompareResult {
-  const ignored = [...(options.ignore ?? VOLATILE_FIELDS)];
-  let field: string | null = options.key === undefined ? detectKey(left, right) : options.key;
+  const ignored = [...(options.ignore ?? [])];
+  const positional = [...(options.positional ?? [])].filter((f) => !ignored.includes(f));
+  let field: string | null =
+    options.key === undefined ? detectKey(left, right, options.collection) : options.key;
   let keyMissing = false;
   if (field !== null) {
-    const carries = (item: unknown): boolean => isRecord(item) && field !== null && field in item;
-    if (![...left, ...right].some(carries)) {
+    const key = field;
+    if (![...left, ...right].some((item) => keyValue(item, key) !== undefined)) {
       keyMissing = true;
       field = null;
     }
   }
-  const keyOf = (item: unknown): [typed: string, shown: string] =>
-    field !== null && isRecord(item) && field in item
-      ? [typedKey(item[field]), String(item[field])]
-      : [`j:${canonical(item)}`, canonical(item)];
+  const keyOf = (item: unknown): [typed: string, shown: string] => {
+    const value = field === null ? undefined : keyValue(item, field);
+    if (value === undefined || field === null) return [`j:${canonical(item)}`, canonical(item)];
+    return [`k:${value}`, keyLabel(item, field)];
+  };
   const group = (items: readonly unknown[]): Map<string, { shown: string; items: unknown[] }> => {
     const m = new Map<string, { shown: string; items: unknown[] }>();
     for (const item of items) {
@@ -158,10 +291,19 @@ export function compareItems(
     }
     return m;
   };
-  const stripped = (item: unknown): string => {
+  /** The item without caller-ignored fields; position fields stay, they are judged per pair. */
+  const content = (item: unknown): string => {
     if (!isRecord(item)) return canonical(item);
     const copy: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(item)) if (!ignored.includes(k)) copy[k] = v;
+    return canonical(copy);
+  };
+  /** Content with address-like position fields removed, for matching items that only moved. */
+  const withoutPositions = (item: unknown): string => {
+    if (!isRecord(item)) return canonical(item);
+    const copy: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(item))
+      if (!ignored.includes(k) && !(positional.includes(k) && addressLike(v))) copy[k] = v;
     return canonical(copy);
   };
   const l = group(left);
@@ -169,6 +311,7 @@ export function compareItems(
   const added: string[] = [];
   const removed: string[] = [];
   const changed: ChangedItem[] = [];
+  const relocatedSample: ChangedItem[] = [];
   let unchanged = 0;
   let relocated = 0;
   let duplicateKeys = 0;
@@ -179,35 +322,41 @@ export function compareItems(
       continue;
     }
     if (items.length > 1 || other.items.length > 1) {
-      // duplicate identities: a multiset diff of the content, counted per item
+      // Duplicate identities cannot be paired one to one: match exact content first, then content
+      // without address-like position fields (those count as relocated), the rest is added/removed.
       duplicateKeys++;
-      const a = new Map<string, number>();
-      for (const it of items) a.set(stripped(it), (a.get(stripped(it)) ?? 0) + 1);
-      const b = new Map<string, number>();
-      for (const it of other.items) b.set(stripped(it), (b.get(stripped(it)) ?? 0) + 1);
-      for (const [c, n] of a) {
-        const m = b.get(c) ?? 0;
-        unchanged += Math.min(n, m);
-        for (let i = m; i < n; i++) removed.push(shown);
-      }
-      for (const [c, m] of b) {
-        const n = a.get(c) ?? 0;
-        for (let i = n; i < m; i++) added.push(shown);
-      }
+      const [same, restA, restB] = pair(items, other.items, content);
+      const [moved, goneA, goneB] = pair(restA, restB, withoutPositions);
+      unchanged += same;
+      relocated += moved;
+      // Which duplicate moved where cannot be told apart, so the sample names the identity only.
+      if (moved > 0 && relocatedSample.length < 20)
+        relocatedSample.push({ key: shown, fields: [], before: restA, after: restB });
+      for (let i = 0; i < goneA.length; i++) removed.push(shown);
+      for (let i = 0; i < goneB.length; i++) added.push(shown);
       continue;
     }
     const before = items[0];
     const after = other.items[0];
-    if (stripped(before) === stripped(after)) {
-      if (canonical(before) === canonical(after)) unchanged++;
-      else relocated++;
+    if (content(before) === content(after)) {
+      unchanged++;
       continue;
     }
     const fields: FieldChange[] = [];
+    const moved: FieldChange[] = [];
     if (isRecord(before) && isRecord(after)) {
-      for (const f of [...new Set([...Object.keys(before), ...Object.keys(after)])].toSorted())
-        if (!ignored.includes(f) && canonical(before[f]) !== canonical(after[f]))
-          fields.push({ field: f, before: before[f], after: after[f] });
+      for (const f of [...new Set([...Object.keys(before), ...Object.keys(after)])].toSorted()) {
+        if (ignored.includes(f) || canonical(before[f]) === canonical(after[f])) continue;
+        if (positional.includes(f) && addressLike(before[f]) && addressLike(after[f]))
+          moved.push({ field: f, before: before[f], after: after[f] });
+        else diffPaths(before[f], after[f], f, 1, fields);
+      }
+    }
+    if (fields.length === 0 && moved.length > 0) {
+      relocated++;
+      if (relocatedSample.length < 20)
+        relocatedSample.push({ key: shown, fields: moved, before, after });
+      continue;
     }
     changed.push({ key: shown, fields, before, after });
   }
@@ -217,10 +366,12 @@ export function compareItems(
     key: field,
     keyMissing,
     ignored,
+    positional,
     added,
     removed,
     changed,
     relocated,
+    relocatedSample,
     unchanged,
     duplicateKeys,
     compared: { a: left.length, b: right.length },

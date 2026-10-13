@@ -1,22 +1,34 @@
 name: Release
 
+# A release is a tag vX.Y.Z on main. Order of events:
+#   verify          checks, build, pack, install the tarballs and exercise them, validate version
+#                   and source (no credentials)
+#   publish         draft GitHub release -> npm publish of exactly those tarballs with provenance
+#                   -> read back from the registry until the integrity matches
+#   registry-smoke  install from the registry and exercise it (no credentials)
+#   finalize        only now the GitHub release becomes public
+# Running the workflow by hand performs the verify job only (a rehearsal; packages whose version
+# is already on npm are reported as SKIPPED). Publishing exists only on the tag path.
+# After a failure use "Re-run failed jobs": it reuses the tarballs already published from.
+
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Run the whole pipeline including npm publish --dry-run, without releasing"
-        type: boolean
-        default: true
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  verify:
+    name: Verify, build and smoke-test the packages
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -25,47 +37,131 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          registry-url: https://registry.npmjs.org
-      - name: Use a pinned npm that supports trusted publishing
-        # Pinned on purpose: this job holds publish credentials, so it must not run whatever npm is latest.
+      - name: Pin npm so the packed tarballs are reproducible across runs
         run: npm install -g npm@11.6.2 && npm --version
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - name: Verify the tag matches the package versions
+      - name: Version is consistent (and matches the tag)
+        id: version
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then node scripts/release-verify.mjs "${GITHUB_REF_NAME}"; else node scripts/release-verify.mjs; fi
+          echo "version=$(node -p "require('./packages/cli/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: The tagged commit is on main
         if: github.event_name == 'push'
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          for w in packages/core packages/mcp packages/server packages/cli; do
-            V=$(node -p "require('./$w/package.json').version")
-            [ "$V" = "$TAG" ] || { echo "$w is $V but tag is $TAG"; exit 1; }
-          done
-      - name: Pack
+          git fetch origin main
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main || { echo "tag ${GITHUB_REF_NAME} does not point to a commit on main"; exit 1; }
+      - name: Pack, install the tarballs in a clean project and exercise CLI, MCP and UI
+        run: node scripts/smoke-tarballs.mjs --out release
+      - name: Publish dry run (no credentials)
+        # On a tag, a version that already exists with other content stops the release here.
+        # A manual rehearsal on an unreleased tree reports it and continues.
         run: |
-          mkdir -p release
-          for w in packages/core packages/mcp packages/server packages/cli; do npm pack -w ./$w --pack-destination release >/dev/null; done
-          ls -la release
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then node scripts/publish-tarballs.mjs release --dry-run; else node scripts/publish-tarballs.mjs release --dry-run --allow-existing; fi
       - name: Release notes
-        if: github.event_name == 'push'
-        run: node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release/NOTES.md
-      - name: GitHub release
-        if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v3
+        run: node scripts/release-notes.mjs "v${{ steps.version.outputs.version }}" > release/NOTES.md
+      - uses: actions/upload-artifact@v4
         with:
-          body_path: release/NOTES.md
-          files: release/*.tgz
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          name: release-${{ steps.version.outputs.version }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish to npm
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the draft GitHub release
+      id-token: write # npm trusted publishing and provenance
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Use a pinned npm that supports trusted publishing
+        # Pinned on purpose: this job holds publish credentials, so it must not run whatever npm is latest.
+        run: npm install -g npm@11.6.2 && npm --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.verify.outputs.version }}
+          path: release
+      - name: Tarballs are the ones the verify job tested
         run: |
-          # npm tries trusted publishing (OIDC from this workflow) first and uses that token when a
-          # trusted publisher is configured on npmjs.com; NPM_TOKEN is only the fallback when none is.
-          echo "npm $(npm --version); NPM_TOKEN secret present: $([ -n "$NODE_AUTH_TOKEN" ] && echo yes || echo no); dry run: ${DRY_RUN:-false}"
-          EXTRA=""; [ "${DRY_RUN}" = "true" ] && EXTRA="--dry-run"
-          for w in packages/core packages/mcp packages/server packages/cli; do
-            V=$(node -p "require('./$w/package.json').version")
-            N=$(node -p "require('./$w/package.json').name")
-            if [ -z "$EXTRA" ] && npm view "$N@$V" version >/dev/null 2>&1; then echo "$N@$V already on npm, skipping"; continue; fi
-            npm publish -w ./$w --access public --provenance $EXTRA
+          node -e '
+            const { createHash } = require("node:crypto");
+            const { readFileSync } = require("node:fs");
+            const m = JSON.parse(readFileSync("release/manifest.json", "utf8"));
+            if (m.version !== process.env.VERSION) throw new Error("manifest version mismatch");
+            for (const t of m.tarballs) {
+              const sum = createHash("sha256").update(readFileSync("release/" + t.file)).digest("hex");
+              if (sum !== t.sha256) throw new Error(t.file + " changed after verification");
+              console.log("ok", t.file, sum);
+            }'
+      - name: Draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release ${GITHUB_REF_NAME} exists; refreshing notes and assets"
+            gh release edit "${GITHUB_REF_NAME}" --notes-file release/NOTES.md
+            gh release upload "${GITHUB_REF_NAME}" release/*.tgz --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" release/*.tgz --draft --verify-tag --title "${GITHUB_REF_NAME}" --notes-file release/NOTES.md
+          fi
+      - name: Publish to npm and verify the registry
+        env:
+          # npm tries trusted publishing (OIDC from this workflow) first; NPM_TOKEN is the fallback
+          # when no trusted publisher is configured on npmjs.com.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "npm $(npm --version); NPM_TOKEN fallback present: $([ -n "${NODE_AUTH_TOKEN}" ] && echo yes || echo no)"
+          node scripts/publish-tarballs.mjs release
+
+  registry-smoke:
+    name: Install from the registry and exercise the release
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    # No credentials here: this job installs and runs third-party dependencies.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.verify.outputs.version }}
+          path: release
+      - name: Published packages are the released tarballs and work when installed
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if node scripts/smoke-tarballs.mjs --registry --out release; then exit 0; fi
+            echo "registry install failed (attempt ${attempt}); waiting for propagation"; sleep 20
           done
+          exit 1
+
+  finalize:
+    name: Make the GitHub release public
+    needs: [verify, registry-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          case "${VERSION}" in
+            *-*) gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false --prerelease ;;
+            *) gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest ;;
+          esac

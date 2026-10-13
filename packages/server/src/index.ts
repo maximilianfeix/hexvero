@@ -177,8 +177,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         throw new AnalysisError("invalid_input", `${key} must be a non-negative number`);
       return value;
     };
-    const paging = (): { offset?: number; limit?: number; text?: string } => {
-      const out: { offset?: number; limit?: number; text?: string } = {};
+    const paging = (): { offset?: number; limit?: number; text?: string; maxBytes?: number } => {
+      const out: { offset?: number; limit?: number; text?: string; maxBytes?: number } = {};
+      const maxBytes = num("maxBytes");
+      if (maxBytes !== undefined) out.maxBytes = maxBytes;
       const offset = num("offset");
       const limit = num("limit");
       if (offset !== undefined) out.offset = offset;

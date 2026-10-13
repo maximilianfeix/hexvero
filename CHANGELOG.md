@@ -8,6 +8,15 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- Electron findings carry evidence: each names the file and line it was read from
+  (`nodeIntegration: true @ main.js:14`), the CLI prints it, and a new `webPreferences` collection
+  lists every BrowserWindow setting with its position. A `sandbox: false` finding was added; HTML
+  `preload="metadata"` attributes are no longer reported as preload scripts.
+- `examples/`: a small Electron app in two versions and a C program in two versions, generated
+  reproducibly by `scripts/build-examples.mjs`, used by the README demos and by `npm run e2e`.
+- `npm run e2e`: the four core flows on real inputs (Electron evidence, a native binary compiled
+  on the spot with call graphs through every installed engine, comparison of two controlled
+  builds, a real MCP client over stdio). CI runs them on Linux and, with radare2, on macOS.
 - `compare` (CLI and `hexvero_compare`) now matches items by an auto-detected identity field that
   is present and distinct on both sides (`name`, `channel`, `id`, `path`, `url`, … or `--key`),
   reports `changed` items with the fields that differ, treats items that differ only in
@@ -16,6 +25,30 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Fixed
 
+- `hexvero setup`, checked client by client against each client's documentation or source:
+  settings files with comments (Zed's default file, VS Code, OpenCode) are edited in place with
+  every comment preserved instead of being skipped; Windsurf now targets the directory Cascade
+  reads; `COPILOT_HOME` and `QWEN_HOME` are honoured; Zed's macOS path no longer follows
+  `XDG_CONFIG_HOME`; Cursor entries carry `type: "stdio"`; Amp's `settings.jsonc` is used when
+  present; Codex configs with an inline `mcp_servers` table are left untouched instead of being
+  broken; a client that already has the entry is reported as configured. The client table in
+  docs/mcp.md states for each row what was verified and how.
+- Call graphs through rizin lost every edge when rizin named a call target differently in its
+  graph than in its function list (found by running the real engine). Functions are now unified
+  by address, other names become aliases (`main` for `entry0`), and engine output is labelled so
+  a missing document cannot be mistaken for another. The graph cache key includes the engine
+  build and a schema version, so an engine upgrade or a changed file never serves a stale graph.
+- Page budgets are a strict, documented contract: `maxBytes` bounds the real UTF-8 size of the page
+  JSON for every shape of item (multibyte text, escapes, long keys, thousands of fields, deep
+  nesting); budgets outside 512 … 64 MiB are rejected instead of being raised silently; an item that
+  cannot fit is reduced to a measured form or a `$truncated` placeholder with `itemBytes`; pages name
+  the `next` offset and `bytes` is exact. `maxBytes` is available on `hexvero_collection`,
+  `hexvero_strings`, the HTTP API and `--max-bytes`.
+- `compare` no longer sets differences aside by field name alone. Nothing is ignored by default;
+  address fields of native symbols, exports, sections and segments count as `relocated` only when
+  both values look like addresses, with samples shown; a `value` that changes from `old` to `new`
+  is always a change. Nested changes are reported by path, and results state whether the comparison
+  is complete (`truncated`, analysis limitations).
 - The JavaScript bundle splitter recognises webpack 5 output whose modules are parenthesized arrow
   functions (`((module, exports, require) => { … })`), the default for current webpack builds.
 - Web UI accessibility review: "Open file" is a real button reachable by keyboard; the view tabs are
@@ -44,6 +77,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Changed
 
+- Release pipeline: the packed tarballs are installed into an empty project and exercised (CLI,
+  shipped UI and skill, a real MCP session over stdio, the UI server) before anything is published;
+  version, tag and source branch are validated on every path; the GitHub release stays a draft
+  until npm holds exactly the tested tarballs and an install from the registry passes; identical
+  re-publishes are accepted, differing ones fail; a manual run can only dry-run.
 - Security review of the MCP and HTTP surfaces: every MCP tool carries explicit annotations
   (export, recover, provider_run and call_graph are no longer advertised as read-only);
   `hexvero_export` refuses to replace an existing file unless `overwrite: true` and returns the

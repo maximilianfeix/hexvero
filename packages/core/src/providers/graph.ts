@@ -19,6 +19,8 @@ export interface GraphNode {
   address: string | null;
   size: number | null;
   external: boolean;
+  /** Other engine names for the same address (`main` for `entry0`, `sym._main`, …). */
+  aliases?: string[];
 }
 
 export interface GraphEdge {
@@ -140,76 +142,116 @@ export function normalizeCallGraph(
     if (nodes.size === 0 && !options.partial)
       limitations.push({ code: "callgraph_empty", message: "Ghidra reported no functions." });
   } else {
-    // radare2/rizin: stdout holds the function list (`aflj`: name/offset/size) and the global call
-    // graph. radare2 prints `agCj` as [{name, imports:[names]}]; rizin prints `agC json` as
-    // {nodes:[{id, title, out_nodes:[ids]}]}. Flag names are unique per engine, so they serve as ids.
-    const docs = Array.isArray(raw) ? raw : [raw];
+    // radare2/rizin. `raw` is either labelled sections { functions, graph, flags } (what the
+    // runner produces from the marker lines it asks the engine to print) or, for older callers,
+    // a plain list of JSON documents in command order.
+    const sections: Record<string, unknown> = isRecord(raw)
+      ? raw
+      : (() => {
+          const docs = Array.isArray(raw) ? raw : [raw];
+          return {
+            functions: docs.find((d) => Array.isArray(d) && !isGraph(d)),
+            graph: docs.find(isGraph),
+          };
+        })();
+    // Functions are the nodes. Engines know one function under several names (rizin's graph says
+    // `sym.func.1000005b0` where its function list says `sym._run_tool`), so every other name is
+    // resolved to the function at the same address instead of becoming a second, edgeless node.
+    const byAddress = new Map<string, GraphNode>();
+    const byName = new Map<string, GraphNode>();
+    const alias = (node: GraphNode, name: string): void => {
+      // a real function name is never re-pointed by another function's alias
+      if (!byName.has(name)) byName.set(name, node);
+      if (name === node.name || GENERIC_FLAG.test(name)) return;
+      node.aliases ??= [];
+      if (!node.aliases.includes(name) && node.aliases.length < 8) node.aliases.push(name);
+    };
     let sawFunctions = false;
+    for (const item of asArray(sections["functions"])) {
+      if (!isRecord(item) || typeof item["name"] !== "string") continue;
+      const at = offsetOf(item);
+      if (at === null) continue;
+      sawFunctions = true;
+      const node = addNode({
+        id: item["name"],
+        name: item["name"],
+        address: hex(at),
+        size: typeof item["size"] === "number" ? item["size"] : null,
+        external: external(item["name"]),
+      });
+      if (!node) continue;
+      byName.set(node.name, node);
+      if (at !== 0 && !byAddress.has(hex(at))) byAddress.set(hex(at), node);
+    }
+    if (sawFunctions && sections["flags"] === undefined && isRecord(raw))
+      limitations.push({
+        code: "callgraph_aliases_missing",
+        message: `${provider} returned no flag list, so functions answer only to the engine's own names (rizin: \`entry0\` rather than \`main\`).`,
+      });
+    for (const flag of asArray(sections["flags"])) {
+      if (!isRecord(flag) || typeof flag["name"] !== "string") continue;
+      const at = offsetOf(flag);
+      const node = at === null ? undefined : byAddress.get(hex(at));
+      if (node) alias(node, flag["name"]);
+    }
+    /** The node a graph entry refers to: by address first, then by any known name, else a new one. */
+    const nodeFor = (name: string, at: number | null, size: number | null): GraphNode | null => {
+      // Address 0 means "unresolved" for imports; several of them must not collapse into one.
+      const known =
+        (at === null || at === 0 ? undefined : byAddress.get(hex(at))) ?? byName.get(name);
+      if (known) {
+        alias(known, name);
+        return known;
+      }
+      const node = addNode({
+        id: name,
+        name,
+        address: at === null ? null : hex(at),
+        size,
+        external: external(name),
+      });
+      if (node) {
+        byName.set(name, node);
+        if (at !== null && at !== 0) byAddress.set(hex(at), node);
+      }
+      return node;
+    };
     let sawGraph = false;
-    for (const doc of docs) {
-      if (Array.isArray(doc)) {
-        for (const item of doc) {
-          if (!isRecord(item) || typeof item["name"] !== "string") continue;
-          // radare2 ≥ 6 names the entry `addr`; older radare2 and rizin use `offset`.
-          const at = typeof item["offset"] === "number" ? item["offset"] : item["addr"];
-          if (typeof at === "number") {
-            sawFunctions = true;
-            addNode({
-              id: item["name"],
-              name: item["name"],
-              address: `0x${at.toString(16)}`,
-              size: typeof item["size"] === "number" ? item["size"] : null,
-              external: external(item["name"]),
-            });
-          }
+    const graph = sections["graph"];
+    if (Array.isArray(graph)) {
+      // radare2 `agCj`: [{ name, size, imports: [names] }]
+      for (const item of graph) {
+        if (!isRecord(item) || typeof item["name"] !== "string" || !Array.isArray(item["imports"]))
+          continue;
+        sawGraph = true;
+        const from = nodeFor(
+          item["name"],
+          null,
+          typeof item["size"] === "number" ? item["size"] : null,
+        );
+        if (!from) continue;
+        for (const to of item["imports"]) {
+          if (typeof to !== "string") continue;
+          const target = nodeFor(to, null, null);
+          if (target) addEdge(from.id, target.id);
         }
       }
-    }
-    for (const doc of docs) {
-      if (Array.isArray(doc)) {
-        for (const item of doc) {
-          if (
-            !isRecord(item) ||
-            typeof item["name"] !== "string" ||
-            !Array.isArray(item["imports"])
-          )
-            continue;
-          sawGraph = true;
-          const from = item["name"];
-          addNode({
-            id: from,
-            name: from,
-            address: null,
-            size: typeof item["size"] === "number" ? item["size"] : null,
-            external: external(from),
-          });
-          for (const to of item["imports"]) {
-            if (typeof to !== "string") continue;
-            addNode({ id: to, name: to, address: null, size: null, external: external(to) });
-            addEdge(from, to);
-          }
-        }
-      } else if (isRecord(doc) && Array.isArray(doc["nodes"])) {
-        sawGraph = true;
-        const titles = new Map<number, string>();
-        for (const n of doc["nodes"] as unknown[]) {
-          if (!isRecord(n) || typeof n["id"] !== "number" || typeof n["title"] !== "string")
-            continue;
-          titles.set(n["id"], n["title"]);
-          addNode({
-            id: n["title"],
-            name: n["title"],
-            address: typeof n["offset"] === "number" ? `0x${n["offset"].toString(16)}` : null,
-            size: null,
-            external: external(n["title"]),
-          });
-        }
-        for (const n of doc["nodes"] as unknown[]) {
-          if (!isRecord(n) || typeof n["title"] !== "string") continue;
-          for (const out of asArray(n["out_nodes"])) {
-            const to = typeof out === "number" ? titles.get(out) : undefined;
-            if (to !== undefined) addEdge(n["title"], to);
-          }
+    } else if (isRecord(graph) && Array.isArray(graph["nodes"])) {
+      // rizin `agC json`: { nodes: [{ id, title, offset, out_nodes: [ids] }] }
+      sawGraph = true;
+      const byId = new Map<number, GraphNode>();
+      for (const n of graph["nodes"] as unknown[]) {
+        if (!isRecord(n) || typeof n["id"] !== "number" || typeof n["title"] !== "string") continue;
+        const node = nodeFor(n["title"], offsetOf(n), null);
+        if (node) byId.set(n["id"], node);
+      }
+      for (const n of graph["nodes"] as unknown[]) {
+        if (!isRecord(n) || typeof n["id"] !== "number") continue;
+        const from = byId.get(n["id"]);
+        if (!from) continue;
+        for (const out of asArray(n["out_nodes"])) {
+          const to = typeof out === "number" ? byId.get(out) : undefined;
+          if (to) addEdge(from.id, to.id);
         }
       }
     }
@@ -236,9 +278,35 @@ function external(name: string): boolean {
   return /^sym\.imp\.|^reloc\./.test(name);
 }
 
-/** Lower-cased name without radare2/Ghidra prefixes (`sym.imp.`, `sym.`, `fcn.`, `FUN_`, leading underscores). */
+/** True for either engine's call-graph document (rizin: `{nodes}`, radare2: `[{imports}]`). */
+function isGraph(d: unknown): boolean {
+  return (
+    (isRecord(d) && Array.isArray(d["nodes"])) ||
+    (Array.isArray(d) && d.some((i) => isRecord(i) && Array.isArray(i["imports"])))
+  );
+}
+
+/** Entry address of an engine record: radare2 ≥ 6 says `addr`, older radare2 and rizin `offset`. */
+function offsetOf(item: Record<string, unknown>): number | null {
+  const at = typeof item["offset"] === "number" ? item["offset"] : item["addr"];
+  return typeof at === "number" ? at : null;
+}
+
+const hex = (n: number): string => `0x${n.toString(16)}`;
+
+/** Engine-internal flag names that say nothing about a function's identity. */
+const GENERIC_FLAG =
+  /^(pc|sp|bp|lr|entry\d*|section\.|segment\.|loc\.|str\.|sym\.func\.|fcn\.[0-9a-f]+$|reloc\.|obj\.)/i;
+
+/** Lower-cased name without engine prefixes (`sym.imp.`, `sym.`, `fcn.`, `FUN_`, leading underscores), applied repeatedly. */
 function bare(name: string): string {
-  return name.toLowerCase().replace(/^(sym\.imp\.|sym\.|fcn\.|fun_|_+)/, "");
+  let out = name.toLowerCase();
+  for (let i = 0; i < 4; i++) {
+    const next = out.replace(/^(sym\.imp\.|sym\.|fcn\.|fun_|_+)/, "");
+    if (next === out) break;
+    out = next;
+  }
+  return out;
 }
 
 function canonicalAddress(text: string): string | null {
@@ -263,9 +331,10 @@ export function resolveNode(
       return { node: null, candidates: list.slice(0, 20).map((n) => `${n.name} (${n.id})`) };
     return null;
   };
+  const names = (n: GraphNode): string[] => [n.name, ...(n.aliases ?? [])];
   const byId = graph.nodes.find((n) => n.id === wanted);
   if (byId) return { node: byId, candidates: [] };
-  const exact = pick(graph.nodes.filter((n) => n.name === wanted));
+  const exact = pick(graph.nodes.filter((n) => names(n).includes(wanted)));
   if (exact) return exact;
   const address = canonicalAddress(wanted);
   if (address) {
@@ -276,10 +345,12 @@ export function resolveNode(
   }
   const lower = wanted.toLowerCase();
   const loose = pick(
-    graph.nodes.filter((n) => n.name.toLowerCase() === lower || bare(n.name) === bare(lower)),
+    graph.nodes.filter((n) =>
+      names(n).some((x) => x.toLowerCase() === lower || bare(x) === bare(lower)),
+    ),
   );
   if (loose) return loose;
-  const contains = graph.nodes.filter((n) => n.name.toLowerCase().includes(lower));
+  const contains = graph.nodes.filter((n) => names(n).some((x) => x.toLowerCase().includes(lower)));
   return { node: null, candidates: contains.slice(0, 20).map((n) => `${n.name} (${n.id})`) };
 }
 

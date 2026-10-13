@@ -10,6 +10,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { UsageError } from "./args.js";
+import { insertJsonc } from "./jsonc.js";
 import { paint, toJson, type Io } from "./format.js";
 
 /**
@@ -26,7 +27,7 @@ export interface SetupContext {
   env: Readonly<Record<string, string | undefined>>;
 }
 
-type Dialect = "default" | "stdio" | "copilot" | "opencode" | "zed" | "toml";
+type Dialect = "default" | "stdio" | "copilot" | "opencode" | "toml";
 
 export interface Client {
   id: string;
@@ -76,6 +77,17 @@ const codexDir = envDir("CODEX_HOME", ".codex");
 const geminiDir = (ctx: SetupContext): string =>
   join(ctx.env["GEMINI_CLI_HOME"] || ctx.home, ".gemini");
 const piDir = envDir("PI_CODING_AGENT_DIR", ".pi", "agent");
+const copilotDir = envDir("COPILOT_HOME", ".copilot");
+const qwenDir = envDir("QWEN_HOME", ".qwen");
+const devinDir = (ctx: SetupContext): string =>
+  ctx.platform === "win32" ? join(appData(ctx), "devin") : join(xdg(ctx), "devin");
+/** Zed reads ~/.config/zed on macOS regardless of XDG_CONFIG_HOME; Linux follows XDG. */
+const zedDir = (ctx: SetupContext): string =>
+  ctx.platform === "win32"
+    ? join(appData(ctx), "Zed")
+    : ctx.platform === "darwin"
+      ? join(ctx.home, ".config", "zed")
+      : join(xdg(ctx), "zed");
 const opencodeDir = (ctx: SetupContext): string =>
   ctx.env["OPENCODE_CONFIG_DIR"] || join(xdg(ctx), "opencode");
 
@@ -111,12 +123,22 @@ export const CLIENTS: Client[] = [
     marker: homeDir(".cursor"),
     file: homeDir(".cursor", "mcp.json"),
     key: ["mcpServers"],
-    dialect: "default",
+    dialect: "stdio",
   },
   {
+    // Current Windsurf (Cascade) reads the Devin config directory; see docs/mcp.md.
     id: "windsurf",
     name: "Windsurf",
     marker: homeDir(".codeium", "windsurf"),
+    file: (ctx) => join(devinDir(ctx), "mcp_config.json"),
+    key: ["mcpServers"],
+    dialect: "default",
+  },
+  {
+    // Older Windsurf builds read this file; only offered when it already exists.
+    id: "windsurf-legacy",
+    name: "Windsurf (legacy config)",
+    marker: homeDir(".codeium", "windsurf", "mcp_config.json"),
     file: homeDir(".codeium", "windsurf", "mcp_config.json"),
     key: ["mcpServers"],
     dialect: "default",
@@ -164,16 +186,16 @@ export const CLIENTS: Client[] = [
   {
     id: "copilot-cli",
     name: "GitHub Copilot CLI",
-    marker: homeDir(".copilot"),
-    file: homeDir(".copilot", "mcp-config.json"),
+    marker: copilotDir,
+    file: (ctx) => join(copilotDir(ctx), "mcp-config.json"),
     key: ["mcpServers"],
     dialect: "copilot",
   },
   {
     id: "qwen-code",
     name: "Qwen Code",
-    marker: homeDir(".qwen"),
-    file: homeDir(".qwen", "settings.json"),
+    marker: qwenDir,
+    file: (ctx) => join(qwenDir(ctx), "settings.json"),
     key: ["mcpServers"],
     dialect: "default",
   },
@@ -188,13 +210,8 @@ export const CLIENTS: Client[] = [
   {
     id: "devin",
     name: "Devin",
-    marker: (ctx) =>
-      ctx.platform === "win32" ? join(appData(ctx), "devin") : join(xdg(ctx), "devin"),
-    file: (ctx) =>
-      join(
-        ctx.platform === "win32" ? join(appData(ctx), "devin") : join(xdg(ctx), "devin"),
-        "mcp_config.json",
-      ),
+    marker: devinDir,
+    file: (ctx) => join(devinDir(ctx), "mcp_config.json"),
     key: ["mcpServers"],
     dialect: "default",
   },
@@ -218,20 +235,20 @@ export const CLIENTS: Client[] = [
     id: "amp",
     name: "Amp",
     marker: (ctx) => join(xdg(ctx), "amp"),
-    file: (ctx) => join(xdg(ctx), "amp", "settings.json"),
+    file: (ctx) => {
+      const jsonc = join(xdg(ctx), "amp", "settings.jsonc");
+      return existsSync(jsonc) ? jsonc : join(xdg(ctx), "amp", "settings.json");
+    },
     key: ["amp.mcpServers"],
     dialect: "default",
   },
   {
     id: "zed",
     name: "Zed",
-    marker: (ctx) => (ctx.platform === "win32" ? join(appData(ctx), "Zed") : join(xdg(ctx), "zed")),
-    file: (ctx) =>
-      ctx.platform === "win32"
-        ? join(appData(ctx), "Zed", "settings.json")
-        : join(xdg(ctx), "zed", "settings.json"),
+    marker: zedDir,
+    file: (ctx) => join(zedDir(ctx), "settings.json"),
     key: ["context_servers"],
-    dialect: "zed",
+    dialect: "default",
   },
 ];
 
@@ -244,8 +261,6 @@ export function entryFor(dialect: Dialect): Record<string, unknown> {
       return { type: "stdio", command: COMMAND, args: ARGS, tools: ["*"] };
     case "opencode":
       return { type: "local", command: [COMMAND, ...ARGS], enabled: true };
-    case "zed":
-      return { source: "custom", command: COMMAND, args: ARGS };
     default:
       return { command: COMMAND, args: ARGS };
   }
@@ -259,7 +274,17 @@ const TOML_BLOCK = `[mcp_servers.hexvero]\ncommand = "${COMMAND}"\nargs = [${ARG
  * that ends inside a multi-line string is returned unchanged with a reason.
  */
 export function patchToml(existing: string): { content: string; skipped: string | null } {
-  if (/mcp_servers\s*\.\s*["']?hexvero["']?|^\s*hexvero\s*=/m.test(existing))
+  if (/mcp_servers\s*\.\s*["']?hexvero["']?/.test(existing))
+    return { content: existing, skipped: "already mentions mcp_servers.hexvero; left untouched" };
+  // `mcp_servers = { … }` (inline table) or a `[mcp_servers]` table with keys cannot be extended
+  // by appending `[mcp_servers.hexvero]`; TOML rejects that.
+  if (/^\s*mcp_servers\s*=/m.test(existing))
+    return {
+      content: existing,
+      skipped: "mcp_servers is an inline table; add hexvero inside it by hand",
+    };
+  const table = /^\s*\[mcp_servers\]\s*$([\s\S]*?)(?=^\s*\[|(?![\s\S]))/m.exec(existing);
+  if (table && /^\s*["']?hexvero["']?\s*=/m.test(table[1] ?? ""))
     return { content: existing, skipped: "already mentions mcp_servers.hexvero; left untouched" };
   const tripleQuotes = (existing.match(/"{3}|'{3}/g) ?? []).length;
   if (tripleQuotes % 2 === 1)
@@ -349,46 +374,70 @@ export async function setup(
       }
       content = patched.content;
     } else {
-      let config: Record<string, unknown> = {};
+      const text = exists ? readFileSync(file, "utf8") : "";
+      let config: Record<string, unknown> | null = {};
       if (exists) {
         try {
-          const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
+          const parsed: unknown = JSON.parse(text);
           if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
             throw new Error("not an object");
           config = parsed as Record<string, unknown>;
         } catch {
+          config = null;
+        }
+      }
+      if (config === null) {
+        // Comments or trailing commas (Zed, VS Code, OpenCode …): insert the entry as text and
+        // leave every other character of the file alone.
+        const edit = insertJsonc(text, client.key, "hexvero", entryFor(client.dialect));
+        if (!edit.ok) {
           results.push({
             client: client.id,
             file,
             detected,
             action:
-              "skipped: existing file is not plain JSON (comments or trailing commas?); add the entry by hand",
+              edit.reason === "already-present"
+                ? "already configured; left untouched"
+                : edit.reason === "container-not-object"
+                  ? `skipped: "${client.key.join(".")}" is not an object in the existing file; left untouched`
+                  : "skipped: existing file is neither JSON nor JSON with comments; add the entry by hand",
           });
           continue;
         }
-      }
-      let node: Record<string, unknown> | null = config;
-      for (const k of client.key) {
-        const existing = node[k];
-        if (existing === undefined) {
-          node[k] = {};
-        } else if (typeof existing !== "object" || existing === null || Array.isArray(existing)) {
-          node = null;
-          break;
+        content = edit.content;
+      } else {
+        let node: Record<string, unknown> | null = config;
+        for (const k of client.key) {
+          const existing = node[k];
+          if (existing === undefined) {
+            node[k] = {};
+          } else if (typeof existing !== "object" || existing === null || Array.isArray(existing)) {
+            node = null;
+            break;
+          }
+          node = node[k] as Record<string, unknown>;
         }
-        node = node[k] as Record<string, unknown>;
+        if (node === null) {
+          results.push({
+            client: client.id,
+            file,
+            detected,
+            action: `skipped: "${client.key.join(".")}" is not an object in the existing file; left untouched`,
+          });
+          continue;
+        }
+        if (JSON.stringify(node["hexvero"]) === JSON.stringify(entryFor(client.dialect))) {
+          results.push({
+            client: client.id,
+            file,
+            detected,
+            action: "already configured; left untouched",
+          });
+          continue;
+        }
+        node["hexvero"] = entryFor(client.dialect);
+        content = `${JSON.stringify(config, null, 2)}\n`;
       }
-      if (node === null) {
-        results.push({
-          client: client.id,
-          file,
-          detected,
-          action: `skipped: "${client.key.join(".")}" is not an object in the existing file; left untouched`,
-        });
-        continue;
-      }
-      node["hexvero"] = entryFor(client.dialect);
-      content = `${JSON.stringify(config, null, 2)}\n`;
     }
     mkdirSync(dirname(file), { recursive: true });
     const saved = exists ? backup(file) : null;

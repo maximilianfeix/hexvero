@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
-<title id="title">hexvero — Reverse engineer anything, locally.</title>
+<title id="title">hexvero — the first look at any binary or app bundle, locally.</title>
 <desc id="desc">A local reverse-engineering workbench. Facts with evidence, honest about its limits. An illustrative hex viewer highlights the ELF magic bytes, with inferred and confirmed evidence markers.</desc>
 <defs><clipPath id="frame"><rect width="1280" height="640" rx="24"/></clipPath><style>text {font-family:"IBM Plex Sans", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;fill:#E8E6E1} .wordmark {font-size:34px;font-weight:600;letter-spacing:-1.2px} .headline {font-size:46px;font-weight:500;letter-spacing:-1.6px} .sub {font-size:20px;fill:#9A9EA7} .mono {font-family:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;font-size:15px;font-variant-ligatures:none} .small {font-family:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;font-size:13px} .muted {fill:#9A9EA7} .offset {font-size:13px;fill:#F2B84B;opacity:.65}</style></defs>
 <g clip-path="url(#frame)"><path fill="#1B1D21" d="M0 0H1280V640H0Z"/>
@@ -10,9 +10,9 @@
 <g fill="none" stroke="#F2B84B" stroke-linecap="round"><path d="M20 16V48 M44 16V48 M20 30H44" stroke-width="6.5"/><circle cx="28" cy="42" r="2.5" stroke-width="1.5"/><circle cx="36" cy="42" r="3.25" fill="#F2B84B" stroke="none"/></g>
 </g>
 <text x="112" y="84" class="wordmark" >hexvero</text>
-<text x="48" y="152" class="headline" >Reverse engineer</text>
-<text x="48" y="208" class="headline" >anything, locally.</text>
-<text x="48" y="248" class="sub" >Facts with evidence. Honest about its limits.</text>
+<text x="48" y="152" class="headline" >The first look at</text>
+<text x="48" y="208" class="headline" >any binary, locally.</text>
+<text x="48" y="248" class="sub" >Facts with the evidence next to them.</text>
 <rect x="48" y="280" width="168" height="32" rx="16" fill="#23262C" stroke="#31353D"/>
 <text x="132.0" y="301" class="small muted" text-anchor="middle">ELF · PE · Mach-O</text>
 <rect x="224" y="280" width="120" height="32" rx="16" fill="#23262C" stroke="#31353D"/>

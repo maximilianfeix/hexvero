@@ -29,6 +29,44 @@ export interface JsModule {
   role: "main" | "preload" | "renderer" | "unknown";
 }
 
+/** How far back a setting may be from `webPreferences` / `BrowserWindow` to count as a window option. */
+const WINDOW_CONTEXT = 1500;
+const MAX_PREFS_PER_FILE = 200;
+const MAX_PREFS = 2000;
+
+/** The expression after `preload:` up to the `,`, `}` or line end that closes it, at most 300 characters. */
+function preloadExpression(source: string, start: number): string {
+  let depth = 0;
+  let i = start;
+  const end = Math.min(source.length, start + 300);
+  for (; i < end; i++) {
+    const c = source[i]!;
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (c === "}") {
+      if (depth === 0) break;
+      depth--;
+    } else if (depth <= 0 && (c === "," || c === "\n")) break;
+    if (depth < 0) break;
+  }
+  return source.slice(start, i);
+}
+
+/** A short comma list that says how many items it left out instead of cutting silently. */
+function list(items: string[], max: number): string {
+  return items.length > max
+    ? `${items.slice(0, max).join(", ")} … and ${items.length - max} more`
+    : items.join(", ");
+}
+
+/** One BrowserWindow setting as written in the source: the evidence behind the Electron flags. */
+export interface WebPreference {
+  key: "preload" | "nodeIntegration" | "contextIsolation" | "sandbox";
+  value: string | boolean;
+  file: string;
+  line: number;
+}
+
 export interface JsEdge {
   from: string;
   to: string;
@@ -58,6 +96,8 @@ export interface JsAppInfo {
   modules: JsModule[];
   edges: JsEdge[];
   externals: Array<{ specifier: string; count: number; builtin: boolean }>;
+  /** BrowserWindow settings as written in the sources, each with file and line. */
+  webPreferences: WebPreference[];
   ipcChannels: Array<{
     channel: string;
     senders: string[];
@@ -282,6 +322,9 @@ export function analyzeJavaScriptTree(
   let skipped = 0;
   let electronSeen = false;
   const preloadScripts = new Set<string>();
+  /** Every webPreferences-style setting read from source, with the place it was read. */
+  const webPreferences: WebPreference[] = [];
+  let prefsCapped = false;
   const flags = {
     nodeIntegration: null as boolean | null,
     contextIsolation: null as boolean | null,
@@ -323,19 +366,59 @@ export function analyzeJavaScriptTree(
     )
       role = "renderer";
     if (pkg?.main && posix.normalize(pkg.main) === file.path) role = "main";
-    for (const m of source.matchAll(/preload\s*:\s*[^,}\n]*?['"`]([^'"`]+)['"`]/g))
-      preloadScripts.add(m[1]!);
-    for (const m of source.matchAll(/preload\s*:\s*path\.join\([^)]*['"`]([^'"`]+\.c?js)['"`]\)/g))
-      preloadScripts.add(m[1]!);
-    const bool = (key: string): boolean | null => {
-      const m = new RegExp(`${key}\\s*:\\s*(true|false)`).exec(source);
-      return m ? m[1] === "true" : null;
+    // Line starts once per file; positions are then found by binary search.
+    const lineStarts = [0];
+    for (let i = source.indexOf("\n"); i !== -1; i = source.indexOf("\n", i + 1))
+      lineStarts.push(i + 1);
+    const lineAt = (index: number): number => {
+      let lo = 0;
+      let hi = lineStarts.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (lineStarts[mid]! <= index) lo = mid;
+        else hi = mid - 1;
+      }
+      return lo + 1;
     };
-    for (const key of ["nodeIntegration", "contextIsolation", "sandbox"] as const) {
-      const v = bool(key);
-      if (v !== null)
-        flags[key] =
-          key === "nodeIntegration" ? (flags[key] ?? false) || v : (flags[key] ?? true) && v;
+    // A setting counts only where it can belong to a BrowserWindow: near `webPreferences` or
+    // `BrowserWindow`. A payment SDK's `{ sandbox: false }` in a renderer file is not Electron's.
+    const inWindowOptions = (index: number): boolean => {
+      const before = source.slice(Math.max(0, index - WINDOW_CONTEXT), index);
+      return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before);
+    };
+    let settings = 0;
+    const record = (pref: WebPreference): boolean => {
+      if (settings++ >= MAX_PREFS_PER_FILE || webPreferences.length >= MAX_PREFS) {
+        prefsCapped = true;
+        return false;
+      }
+      webPreferences.push(pref);
+      return true;
+    };
+    // `preload: <expression>`: the script is the last path-like string literal of the expression
+    // (`path.join(__dirname, "dist", "preload.js")`, `__dirname + "/preload.js"`). The expression
+    // is read from a bounded window, so no input makes this scan slow.
+    for (let at = source.indexOf("preload"); at !== -1; at = source.indexOf("preload", at + 7)) {
+      const m = /^preload\s*:\s*/.exec(source.slice(at, at + 24));
+      if (!m || /[\w$.]/.test(source[at - 1] ?? "") || !inWindowOptions(at)) continue;
+      const expression = preloadExpression(source, at + m[0].length);
+      const literals = [...expression.matchAll(/(['"`])((?:(?!\1)[^\\\n])*)\1/g)].map((x) => x[2]!);
+      const script = literals.toReversed().find((v) => /\.(c|m)?[jt]s$/.test(v));
+      if (!script) continue;
+      const value = script.replace(/^\$\{[^}]*\}/, "").replace(/^[\\/]+/, "");
+      preloadScripts.add(value);
+      if (!record({ key: "preload", value, file: file.path, line: lineAt(at) })) break;
+    }
+    for (const m of source.matchAll(
+      /\b(nodeIntegration|contextIsolation|sandbox)\s*:\s*(true|false|!0|!1)\b/g,
+    )) {
+      if (!inWindowOptions(m.index)) continue;
+      const key = m[1] as "nodeIntegration" | "contextIsolation" | "sandbox";
+      const v = m[2] === "true" || m[2] === "!0";
+      if (!record({ key, value: v, file: file.path, line: lineAt(m.index) })) break;
+      // the least safe value seen in any window decides the app-wide flag
+      flags[key] =
+        key === "nodeIntegration" ? (flags[key] ?? false) || v : (flags[key] ?? true) && v;
     }
     if (
       /@electron\/remote|require\(['"]electron['"]\)\.remote|enableRemoteModule\s*:\s*true/.test(
@@ -397,6 +480,11 @@ export function analyzeJavaScriptTree(
       code: "js_files_truncated",
       message: `Scanned ${maxJsFiles} of ${jsFiles.length} JavaScript files.`,
     });
+  if (prefsCapped)
+    limitations.push({
+      code: "web_preferences_truncated",
+      message: `More BrowserWindow settings exist than the ${MAX_PREFS_PER_FILE} per file / ${MAX_PREFS} in total that are recorded.`,
+    });
   if (skipped)
     limitations.push({
       code: "js_files_skipped",
@@ -455,6 +543,13 @@ export function analyzeJavaScriptTree(
         }
       : null;
 
+  /** `file:line` of the first place a setting was read with the given value. */
+  const where = (key: WebPreference["key"], value?: boolean): string | undefined => {
+    const hit = webPreferences.find(
+      (w) => w.key === key && (value === undefined || w.value === value),
+    );
+    return hit ? `${hit.file}:${hit.line}` : undefined;
+  };
   if (electron) {
     if (electron.nodeIntegration === true)
       findings.push({
@@ -462,12 +557,23 @@ export function analyzeJavaScriptTree(
         title: "nodeIntegration: true in a BrowserWindow",
         detail: "Renderer code can require Node modules; XSS becomes RCE.",
         confidence: "inferred",
+        location: where("nodeIntegration", true),
       });
     if (electron.contextIsolation === false)
       findings.push({
         kind: "electron.context-isolation",
         title: "contextIsolation: false",
+        detail: "Preload and page share one JavaScript world.",
         confidence: "inferred",
+        location: where("contextIsolation", false),
+      });
+    if (electron.sandbox === false)
+      findings.push({
+        kind: "electron.sandbox",
+        title: "sandbox: false in a BrowserWindow",
+        detail: "The renderer process runs without the Chromium sandbox.",
+        confidence: "inferred",
+        location: where("sandbox", false),
       });
     if (electron.remoteModule)
       findings.push({
@@ -475,22 +581,29 @@ export function analyzeJavaScriptTree(
         title: "Uses the remote module",
         confidence: "confirmed",
       });
-    if (ipcChannels.length)
+    if (ipcChannels.length) {
+      // evidence: the first handler registration in the main process
+      const first = modules
+        .flatMap((m) => m.ipc.map((u) => ({ m, u })))
+        .find(({ u }) => u.channel && /\.(on|once|handle|handleOnce)$/.test(u.api));
       findings.push({
         kind: "electron.ipc",
         title: `${ipcChannels.length} IPC channels`,
-        detail: ipcChannels
-          .slice(0, 8)
-          .map((c) => c.channel)
-          .join(", "),
+        detail: `${list(
+          ipcChannels.map((c) => c.channel),
+          8,
+        )} (collections ipcChannels, ipc)`,
         confidence: "confirmed",
+        location: first ? `${first.m.id}:${first.u.line}` : undefined,
       });
+    }
     if (preloadScripts.size)
       findings.push({
         kind: "electron.preload",
-        title: `${preloadScripts.size} preload scripts`,
-        detail: [...preloadScripts].join(", "),
+        title: `${preloadScripts.size} preload script${preloadScripts.size === 1 ? "" : "s"}`,
+        detail: list([...preloadScripts], 5),
         confidence: "inferred",
+        location: where("preload"),
       });
   }
   if (sourceMaps.length)
@@ -533,6 +646,7 @@ export function analyzeJavaScriptTree(
       }))
       .toSorted((a, b) => b.count - a.count),
     ipcChannels,
+    webPreferences,
     sourceMaps,
     nativeAddons,
     totals: {

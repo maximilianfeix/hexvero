@@ -33,14 +33,31 @@ One issue per feature, one PR per issue, squash-merged. Titles use conventional 
 Write the notes under `## [Unreleased]` in CHANGELOG.md, then from a clean `main`:
 
 ```bash
-npm run release -- 0.2.2
+npm run release:check          # optional rehearsal: checks, build, version gate, tarball smoke test
+npm run release -- 0.3.0       # bump, gates, commit and tag locally; nothing is pushed
+git push --atomic origin main v0.3.0   # the point of no return (or: npm run release -- 0.3.0 --push)
 ```
 
-The script bumps every package and the version constants, moves the notes under the version,
-commits, tags `v0.2.2` and pushes. The Release workflow checks that the tag matches the package
-versions, runs the full check, creates the GitHub release with the tarballs and publishes all four
-packages to npm with provenance. npm tries trusted publishing first (OIDC from this repository's
-`release.yml`, configured on npmjs.com per package); the `NPM_TOKEN` repository secret is the fallback
-when no trusted publisher exists. Versions that already exist on npm are skipped, so a re-run is safe.
-Run the workflow by hand with "dry run" enabled to exercise the whole pipeline, including
-`npm publish --dry-run`, without releasing anything.
+`npm run release` bumps every package, the version constants and `server.json`, moves the notes
+under the version and runs every gate the workflow runs (checks, build, version consistency, an
+install of the packed tarballs with a real CLI, MCP and UI session) before it commits and tags.
+Pushing the tag starts the Release workflow:
+
+1. `verify` (no credentials): checks, build, the version matches the tag, the tagged commit is on
+   `main`, pack, install the tarballs into an empty project and exercise them, `npm publish
+   --dry-run`.
+2. `publish`: a **draft** GitHub release with the tested tarballs, `npm publish` of exactly those
+   tarballs with provenance, then read-back from the registry until every integrity matches.
+3. `registry-smoke` (no credentials): installs the release from npm, requires the installed
+   packages to be the released tarballs, and runs the same smoke test.
+4. `finalize`: only now the GitHub release becomes public (`--prerelease` and npm tag `next` for
+   versions like `1.0.0-rc.1`).
+
+npm tries trusted publishing first (OIDC from this repository's `release.yml`); the `NPM_TOKEN`
+repository secret is the fallback. The first workflow-driven release is the first real test of
+that path: confirm the trusted publisher or the token's scope on npmjs.com before tagging.
+
+If a run fails after some packages were published, use **Re-run failed jobs**: it reuses the
+tarballs of the first attempt, and versions already on npm with identical content are accepted. A
+version with different content fails the run; nothing is skipped silently. Starting the workflow
+by hand runs `verify` only; packages whose version is already on npm are reported as SKIPPED.
