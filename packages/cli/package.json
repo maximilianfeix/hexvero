@@ -33,7 +33,7 @@
     "directory": "packages/cli"
   },
   "bin": {
-    "hexvero": "./bin/hexvero.js"
+    "hexvero": "bin/hexvero.js"
   },
   "files": [
     "dist",
