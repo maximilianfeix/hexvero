@@ -22,12 +22,6 @@
 
 ![hexvero analysiert eine Electron-App im Terminal](docs/demo/demo.gif)
 
-<!-- unreleased-note:start -->
-
-> **Versionshinweis.** Diese Seite beschreibt `main`. Über npm kommt die Version aus dem Badge; `recover`, `calls`, `webPreferences`, `contextBridge` und weitere Neuerungen seitdem stehen unter _Unreleased_ im [Changelog](CHANGELOG.md).
-
-<!-- unreleased-note:end -->
-
 ## Installation
 
 Benötigt Node.js ≥ 22.12. `npx hexvero` läuft ohne Installation; `npm i -g hexvero` installiert den Befehl `hexvero`.

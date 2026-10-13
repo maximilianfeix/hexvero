@@ -38,12 +38,6 @@ npx hexvero ui --open                   # the same in a local browser UI with he
 npx hexvero setup --apply               # register the MCP server with the agent clients on this machine
 ```
 
-<!-- unreleased-note:start -->
-
-> **Version note.** This README describes `main`. npm currently serves the version on the badge above, which has 12 MCP tools, no guided prompts and a 6-client `setup`. Evidence locations on findings, `webPreferences`, `contextBridge`, `recover`, `calls` and engine cross-references (`hexvero_call_graph`), the unknowns ledger and guided prompts, the new `compare` (`--strict`, `--ignore`), `--max-bytes`, URL tagging inside longer strings and the 18-client `setup` are listed under _Unreleased_ in the [changelog](CHANGELOG.md) and ship with the next release. The comparison with REA below was measured on `main`. To run `main` today: `git clone`, `npm install`, `npm run build`, `node packages/cli/bin/hexvero.js`.
-
-<!-- unreleased-note:end -->
-
 <a id="demos"></a>
 
 ## Three things you can do in a minute

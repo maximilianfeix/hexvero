@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-13
+
 ### Added
 
 - `contextBridge` collection and finding: every function a preload script exposes to pages

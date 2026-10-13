@@ -28,12 +28,6 @@ Node.js ≥ 22.12가 필요합니다. `npx hexvero`는 설치 없이 동작하�
 
 ELF, PE, Mach-O(fat 포함), Go buildinfo, .NET 어셈블리(메타데이터와 CIL 메서드 본문), WebAssembly, EVM 바이트코드, SQLite, plist, HAR, ZIP/ZIP64, APK(AXML, resources.arsc, DEX), JAR/Java 클래스, Electron ASAR, JavaScript 번들(webpack, Rspack, browserify, esbuild)과 source map, Objective-C/Swift 메타데이터가 있는 Apple .app 번들, Flutter 스냅샷. 모든 결과에는 신뢰도(`confirmed` 또는 `inferred`)와 명시적인 한계가 붙습니다.
 
-<!-- unreleased-note:start -->
-
-> **버전 안내.** 이 문서는 `main` 기준입니다. npm에는 배지에 표시된 버전이 배포되어 있으며, `recover`, `calls` 등 새 기능은 [changelog](CHANGELOG.md)의 _Unreleased_ 항목에 있고 다음 릴리스에 포함됩니다.
-
-<!-- unreleased-note:end -->
-
 ## CLI
 
 ```bash
