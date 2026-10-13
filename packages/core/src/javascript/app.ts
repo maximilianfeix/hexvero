@@ -1348,23 +1348,26 @@ export function analyzeJavaScriptTree(
           const { traced } = located;
           const is = (i: number, value: string): boolean =>
             tokens[i]?.type === "punct" && tokens[i]!.value === value;
-          for (let k = 0; traced.size && k + 3 < tokens.length; k++) {
+          const everyKey = (): void => {
+            for (const key of BOOLEAN_KEYS) mutated.add(key);
+            mutated.add("preload");
+          };
+          const declared = new Set<string>();
+          for (let k = 0; traced.size && k + 1 < tokens.length; k++) {
             const t = tokens[k]!;
-            if (t.type !== "ident") continue;
-            if (
-              t.value === "assign" &&
-              is(k - 1, ".") &&
-              tokens[k - 2]?.value === "Object" &&
-              is(k + 1, "(") &&
-              tokens[k + 2]?.type === "ident" &&
-              traced.has(tokens[k + 2]!.value)
-            ) {
-              for (const key of BOOLEAN_KEYS) mutated.add(key);
-              mutated.add("preload");
+            if (t.type !== "ident" || !traced.has(t.value) || is(k - 1, ".")) continue;
+            // The declaration that was followed: `name = {`, once.
+            if (is(k + 1, "=") && is(k + 2, "{") && !declared.has(t.value)) {
+              declared.add(t.value);
               continue;
             }
-            if (!traced.has(t.value) || is(k - 1, ".")) continue;
-            // `name.key =`, `name.webPreferences.key =`, `name["key"] =`
+            // Its use as options: `new X(name)`, `webPreferences: name`, `...name`.
+            const asOptions =
+              (is(k - 1, "(") && is(k + 1, ")") && tokens[k - 3]?.value === "new") ||
+              (is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
+              is(k - 1, "...");
+            if (asOptions) continue;
+            // A write to one key: `name.key =`, `name.webPreferences.key =`, `name["key"] =`.
             let at = k + 1;
             if (is(at, ".") && tokens[at + 1]?.value === "webPreferences") at += 2;
             const key = is(at, ".")
@@ -1375,7 +1378,26 @@ export function analyzeJavaScriptTree(
                 ? tokens[at + 1]!.value
                 : null;
             const after = is(at, ".") ? at + 2 : at + 3;
-            if (key !== null && is(after, "=") && !is(after + 1, "=")) mutated.add(key);
+            if (key !== null && is(after, "=") && !is(after + 1, "=")) {
+              // `name.webPreferences = other` replaces every key
+              if (key === "webPreferences") everyKey();
+              else mutated.add(key);
+              continue;
+            }
+            // A plain read of one key (`name.key` in an expression) changes nothing.
+            if (
+              tokens[k - 1]?.value !== "delete" &&
+              key !== null &&
+              !is(after, "=") &&
+              !is(after, ".") &&
+              !is(after, "[") &&
+              !is(after, "(")
+            )
+              continue;
+            // Anything else may change the object in a way that is not read here: a second
+            // assignment to the name, a deeper or computed write, `delete`, the object handed to
+            // a function (`Object.assign(name, …)`, `tweak(name)`), a method called on it.
+            everyKey();
           }
           const open: number[] = [];
           const pairs: Array<[number, number]> = [];
@@ -1902,14 +1924,28 @@ export function analyzeJavaScriptTree(
   }
   const nativeAddons = tree.files.filter((f) => f.path.endsWith(".node")).map((f) => f.path);
 
+  /**
+   * The app-wide flag of a setting: the least safe literal written for any window. A safe value
+   * stands only if no window leaves the setting open; where one does (a computed value, options
+   * that could not be followed, an object assigned to later), the flag is null, not "safe".
+   */
+  const appWide = (key: CoreKey): boolean | null => {
+    const value = flags[key];
+    const safe = key !== "nodeIntegration";
+    if (value !== safe) return value;
+    const open =
+      webPreferences.some((p) => p.key === key && p.value === null) ||
+      (facts.windows ?? []).some((w) => w.computed?.includes(key));
+    return open ? null : value;
+  };
   const electron =
     electronSeen || electronVersion || tree.kind === "asar"
       ? {
           version: electronVersion,
           preloadScripts: [...preloadScripts],
-          nodeIntegration: flags.nodeIntegration,
-          contextIsolation: flags.contextIsolation,
-          sandbox: flags.sandbox,
+          nodeIntegration: appWide("nodeIntegration"),
+          contextIsolation: appWide("contextIsolation"),
+          sandbox: appWide("sandbox"),
           remoteModule: flags.remoteModule,
         }
       : null;

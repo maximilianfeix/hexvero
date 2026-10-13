@@ -422,4 +422,52 @@ describe("window settings as written, computed, or absent", () => {
     );
     expect(assigned.windows.map((w) => w.nodeIntegration)).toEqual(["computed"]);
   });
+
+  it("reads every key as computed when the followed object may be changed in a way it does not read", () => {
+    for (const change of [
+      "tweak(prefs);",
+      "prefs = loadPrefs();",
+      "prefs.extra.deep.sandbox = false;",
+      "delete prefs.sandbox;",
+      "prefs[name] = false;",
+      "Object.defineProperty(prefs, 'sandbox', { value: false });",
+    ])
+      expect(
+        analyze(
+          `let prefs = { sandbox: true, contextIsolation: true };\n${change}\nconst w = new BrowserWindow({ webPreferences: prefs });`,
+        ).windows.map((w) => `${w.sandbox} ${w.contextIsolation}`),
+        change,
+      ).toEqual(["computed computed"]);
+    // a read of a key is not a change
+    expect(
+      analyze(
+        "const prefs = { sandbox: true };\nif (prefs.sandbox) log();\nconst w = new BrowserWindow({ webPreferences: prefs });",
+      ).windows.map((w) => w.sandbox),
+    ).toEqual([true]);
+    const whole = analyze(
+      "const opts = { webPreferences: { sandbox: true } };\nopts.webPreferences = other;\nconst w = new BrowserWindow(opts);",
+    );
+    expect(whole.windows.map((w) => w.sandbox)).toEqual(["computed"]);
+  });
+
+  it("does not call a setting safe app-wide while a window leaves it open", () => {
+    // written safe in one window, computed in another
+    const mixed = analyze(
+      "const a = new BrowserWindow({ webPreferences: { sandbox: true, nodeIntegration: false } });\nconst b = new BrowserWindow({ webPreferences: { sandbox: !isDev, nodeIntegration: flag } });",
+    );
+    expect(mixed.electron).toMatchObject({ sandbox: null, nodeIntegration: null });
+    // options that could not be followed
+    const opaque = analyze(
+      "const a = new BrowserWindow({ webPreferences: { sandbox: true, contextIsolation: true } });\nconst b = new BrowserWindow(options);",
+    );
+    expect(opaque.electron).toMatchObject({ sandbox: null, contextIsolation: null });
+    // an unsafe literal still decides
+    const unsafe = analyze(
+      "const a = new BrowserWindow({ webPreferences: { sandbox: false } });\nconst b = new BrowserWindow(options);",
+    );
+    expect(unsafe.electron?.sandbox).toBe(false);
+    // and with every window read, the safe value stands
+    const read = analyze("const a = new BrowserWindow({ webPreferences: { sandbox: true } });");
+    expect(read.electron?.sandbox).toBe(true);
+  });
 });
