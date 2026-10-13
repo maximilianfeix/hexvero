@@ -1,0 +1,212 @@
+import { describe, expect, it } from "vitest";
+import { analyzeJavaScriptTree, asarTree } from "../src/javascript/app.js";
+import { buildAsar } from "./fixtures/asar.js";
+
+/** Analysis of an app made of these files; `package.json` is added. */
+function analyze(files: Record<string, string>): ReturnType<typeof analyzeJavaScriptTree> {
+  return analyzeJavaScriptTree(
+    asarTree(
+      buildAsar({ "package.json": JSON.stringify({ name: "x", main: "main/main.js" }), ...files }),
+      "app.asar",
+    ),
+  );
+}
+
+/** `file api channel line via` of every IPC row, in file order. */
+function rows(info: ReturnType<typeof analyzeJavaScriptTree>): string[] {
+  return info.modules.flatMap((m) =>
+    m.ipc.map((u) => `${m.id} ${u.api} ${u.channel} ${u.line}${u.via ? ` ${u.via}` : ""}`),
+  );
+}
+
+const MAIN = [
+  'const electron = require("electron");',
+  "const { app, BrowserWindow, ipcMain: ipc } = electron;",
+  'ipc.on("boot", () => {});',
+].join("\n");
+
+describe("IPC through names another file defines", () => {
+  it("resolves a renderer global assigned on window", () => {
+    const info = analyze({
+      "js/default.js": 'window.electron = require("electron");\nwindow.ipc = electron.ipcRenderer;',
+      "js/tabs.js": [
+        'ipc.send("tab:close", 1);',
+        'ipc.on("tab:closed", () => {});',
+        "function later () {",
+        '  return ipc.invoke("tab:list");',
+        "}",
+      ].join("\n"),
+    });
+    expect(rows(info)).toEqual([
+      "js/tabs.js ipcRenderer.send tab:close 1 global",
+      "js/tabs.js ipcRenderer.on tab:closed 2 global",
+      "js/tabs.js ipcRenderer.invoke tab:list 4 global",
+    ]);
+    expect(info.limitations.map((l) => l.code)).not.toContain("ipc_receiver_unresolved");
+  });
+
+  it("resolves a name bound at the top of a main-process file in its sibling files", () => {
+    const info = analyze({
+      "main/main.js": MAIN,
+      "main/download.js": 'ipc.on("cancelDownload", () => {});\nipc.handle("downloads", () => []);',
+    });
+    expect(rows(info)).toEqual([
+      "main/main.js ipcMain.on boot 3 alias",
+      "main/download.js ipcMain.on cancelDownload 1 global",
+      "main/download.js ipcMain.handle downloads 2 global",
+    ]);
+    expect(info.modules.find((m) => m.id === "main/download.js")?.role).toBe("main");
+    expect(info.ipcChannels.map((c) => c.channel).toSorted()).toEqual([
+      "boot",
+      "cancelDownload",
+      "downloads",
+    ]);
+  });
+
+  it("lets the nearest definition decide when main and renderer use the same name", () => {
+    const info = analyze({
+      "main/main.js": MAIN,
+      "main/menu.js": 'ipc.on("menu", () => {});',
+      "js/default.js": 'window.ipc = require("electron").ipcRenderer;',
+      "js/ui.js": 'ipc.send("menu");',
+    });
+    expect(rows(info)).toContain("main/menu.js ipcMain.on menu 1 global");
+    expect(rows(info)).toContain("js/ui.js ipcRenderer.send menu 1 global");
+    expect(info.ipcChannels).toEqual([
+      { channel: "boot", senders: [], receivers: ["main/main.js"] },
+      { channel: "menu", senders: ["js/ui.js"], receivers: ["main/menu.js"] },
+    ]);
+  });
+
+  it("does not take a name the file binds itself, or an unrelated emitter", () => {
+    const info = analyze({
+      "main/main.js": MAIN,
+      "main/a.js": 'function wire (ipc) {\n  ipc.on("param", () => {});\n}',
+      "main/b.js": 'const ipc = makeBus();\nipc.on("own", () => {});',
+      "main/c.js": 'emitter.on("event", () => {});\nsocket.send("frame");',
+    });
+    expect(rows(info)).toEqual(["main/main.js ipcMain.on boot 3 alias"]);
+    expect(info.limitations.map((l) => l.code)).not.toContain("ipc_receiver_unresolved");
+  });
+
+  it("does not let a name bound at the top of a file reach another directory tree", () => {
+    const info = analyze({
+      "main/main.js": MAIN,
+      "tools/report.js": 'ipc.on("report", () => {});',
+    });
+    expect(rows(info)).toEqual(["main/main.js ipcMain.on boot 3 alias"]);
+    const limitation = info.limitations.find((l) => l.code === "ipc_receiver_unresolved");
+    expect(limitation?.message).toContain('ipc.on("report") at tools/report.js:1');
+  });
+
+  it("reports calls it cannot trace with their location and lowers the finding's confidence", () => {
+    const info = analyze({
+      "main/main.js": 'const { ipcMain } = require("electron");\nipcMain.on("known", () => {});',
+      "main/late.js": 'ipc.on("lost", () => {});\nipc.handle("alsoLost", () => {});',
+    });
+    expect(rows(info)).toEqual(["main/main.js ipcMain.on known 2"]);
+    const limitation = info.limitations.find((l) => l.code === "ipc_receiver_unresolved");
+    expect(limitation?.message).toMatch(/^2 call\(s\) that look like IPC/);
+    expect(limitation?.message).toContain('ipc.on("lost") at main/late.js:1');
+    expect(limitation?.message).toContain('ipc.handle("alsoLost") at main/late.js:2');
+    expect(info.findings.find((f) => f.kind === "electron.ipc")?.confidence).toBe("inferred");
+  });
+
+  it("does not choose between definitions that disagree", () => {
+    const info = analyze({
+      "a/one.js": 'window.bus = require("electron").ipcRenderer;',
+      "b/two.js": 'global.bus = require("electron").ipcMain;',
+      "c/use.js": 'bus.on("which", () => {});',
+    });
+    expect(rows(info)).toEqual([]);
+    expect(info.limitations.find((l) => l.code === "ipc_receiver_unresolved")?.message).toContain(
+      'bus.on("which") at c/use.js:1',
+    );
+  });
+
+  it("drops a method the resolved object does not have", () => {
+    const info = analyze({
+      "main/main.js": MAIN,
+      "main/x.js": 'ipc.send("notIpcMain");\nipc.on("fine", () => {});',
+    });
+    expect(rows(info)).toEqual([
+      "main/main.js ipcMain.on boot 3 alias",
+      "main/x.js ipcMain.on fine 2 global",
+    ]);
+  });
+});
+
+describe("IPC on a page's own channel object", () => {
+  it("lists handlers registered on webContents.ipc and not webContents events", () => {
+    const info = analyze({
+      "main/main.js": [
+        'const { BrowserWindow } = require("electron");',
+        "const win = new BrowserWindow({});",
+        'win.webContents.ipc.on("set-title", () => {});',
+        'win.webContents.on("did-finish-load", () => {});',
+        'win.webContents.send("state", 1);',
+      ].join("\n"),
+    });
+    expect(rows(info)).toEqual([
+      "main/main.js ipcMain.on set-title 3 webContents",
+      "main/main.js webContents.send state 5",
+    ]);
+  });
+});
+
+describe("main-to-page messages outside a written-out ipcMain listener", () => {
+  it("lists replies in listeners registered under a global name, once", () => {
+    const info = analyze({
+      "main/main.js": MAIN,
+      "main/actions.js": [
+        'ipc.on("minimize", function (e) {',
+        '  e.sender.send("minimized");',
+        "});",
+        'const { ipcMain } = require("electron");',
+        'ipcMain.on("ask", (event) => {',
+        '  event.sender.send("answer");',
+        "});",
+        'sender.send("notElectron");',
+        'win.webContents.postMessage("port", null, [port]);',
+      ].join("\n"),
+    });
+    expect(rows(info).filter((r) => r.startsWith("main/actions.js"))).toEqual([
+      "main/actions.js ipcMain.on minimize 1 global",
+      "main/actions.js event.sender.send minimized 2",
+      "main/actions.js ipcMain.on ask 5",
+      "main/actions.js event.sender.send answer 6",
+      "main/actions.js webContents.postMessage port 9",
+    ]);
+  });
+});
+
+describe("a call written above the binding it uses", () => {
+  it("resolves it when the file binds the name exactly once", () => {
+    const info = analyze({
+      "main/main.js": [
+        "function settings () {",
+        '  ipc.on("settingChanged", () => {});',
+        "}",
+        'const { ipcMain: ipc } = require("electron");',
+        'ipc.on("boot", () => {});',
+      ].join("\n"),
+    });
+    expect(rows(info)).toEqual([
+      "main/main.js ipcMain.on settingChanged 2 alias",
+      "main/main.js ipcMain.on boot 5 alias",
+    ]);
+  });
+
+  it("leaves it alone when the name is bound a second time", () => {
+    const info = analyze({
+      "main/main.js": [
+        "function settings (ipc) {",
+        '  ipc.on("local", () => {});',
+        "}",
+        'const { ipcMain: ipc } = require("electron");',
+        'ipc.on("boot", () => {});',
+      ].join("\n"),
+    });
+    expect(rows(info)).toEqual(["main/main.js ipcMain.on boot 5 alias"]);
+  });
+});

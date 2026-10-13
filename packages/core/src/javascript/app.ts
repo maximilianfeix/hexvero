@@ -4,6 +4,7 @@ import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
+import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
 import {
   ALIAS_TARGETS,
@@ -41,6 +42,11 @@ export interface JsModule {
   role: "main" | "preload" | "renderer" | "unknown";
   /** String constants the file exports, kept so other files' channel names can be resolved. */
   constants?: Record<string, string>;
+  /**
+   * IPC names the file defines for other files, and its calls on names it does not bind that are
+   * still waiting for a definition (see `ambient.ts`).
+   */
+  ambient?: AmbientFacts;
 }
 
 /** How far back a setting may be from `webPreferences` / `BrowserWindow` to count as a window option. */
@@ -934,6 +940,7 @@ export function analyzeJavaScriptTree(
   /** Every webPreferences-style setting read from source, with the place it was read. */
   let prefsCapped = facts.prefsCapped;
   let bridgeCapped = facts.bridgeCapped;
+  let ambientCapped = false;
   /** Writes the running counters back, so `facts` is a complete, storable state. */
   const sync = (): JsScanFacts => {
     facts.bytes = bytes;
@@ -1002,8 +1009,15 @@ export function analyzeJavaScriptTree(
       start: number;
     }> = [];
     const preloadsAt = new Set<number>();
+    let ambient: ReturnType<typeof collectAmbient> | null = null;
     const scan = scanJavaScript(source, {
       onTokens: (tokens, truncated, context) => {
+        if (
+          /ipcMain|ipcRenderer|\.(on|once|handle|handleOnce|send|invoke|sendSync|sendToHost|postMessage)\(/.test(
+            source,
+          )
+        )
+          ambient = collectAmbient(tokens, context.aliases);
         if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source))
           ranges = windowRanges(tokens, context.aliases);
         if (/nodeIntegration|contextIsolation|sandbox|preload/.test(source))
@@ -1063,6 +1077,17 @@ export function analyzeJavaScriptTree(
         code: "scan_truncated",
         message: `${file.path}: token budget exhausted; references after the cut are missing.`,
       });
+    const open = ambient as ReturnType<typeof collectAmbient> | null;
+    if (open?.ipc.length) {
+      // The scanner reads some of these itself (a reply inside an `ipcMain.on` listener).
+      const seen = new Set(scan.ipc.map((u) => `${u.line}\0${u.channel}`));
+      const extra = open.ipc.filter((u) => !seen.has(`${u.line}\0${u.channel}`));
+      if (extra.length) {
+        scan.ipc.push(...extra);
+        scan.ipc.sort((a, b) => a.line - b.line);
+      }
+    }
+    if (open?.truncated) ambientCapped = true;
     let role: JsModule["role"] = "unknown";
     const usesElectron = scan.references.some((r) => r.specifier === "electron");
     if (usesElectron) electronSeen = true;
@@ -1209,6 +1234,7 @@ export function analyzeJavaScriptTree(
       sourceMappingUrl: scan.sourceMappingUrl,
       role,
       ...(scan.constants ? { constants: scan.constants } : {}),
+      ...(open && (open.facts.defines || open.facts.calls) ? { ambient: open.facts } : {}),
     });
     for (const ref of scan.references) {
       if (ref.dynamic) {
@@ -1321,6 +1347,29 @@ export function analyzeJavaScriptTree(
     b.channel = channel;
     delete b.channelRef;
   }
+
+  // IPC calls on names another file defines, now that the files are known.
+  const ambientResult = resolveAmbient(modules);
+  for (const m of modules)
+    if (m.role !== "main" && m.ipc.some((u) => u.via === "global" && u.api.startsWith("ipcMain.")))
+      m.role = "main";
+  if (ambientResult.unresolved.length) {
+    const sample = ambientResult.unresolved
+      .slice(0, 5)
+      .map((u) => `${u.name}.${u.method}("${u.channel}") at ${u.file}:${u.line}`)
+      .join(", ");
+    const more = ambientResult.unresolved.length - Math.min(5, ambientResult.unresolved.length);
+    limitations.push({
+      code: "ipc_receiver_unresolved",
+      message: `${ambientResult.unresolved.length} call(s) that look like IPC are on a name that could not be traced to ipcMain or ipcRenderer and are not listed: ${sample}${more ? ` … and ${more} more` : ""}.`,
+    });
+  }
+  if (ambientCapped)
+    limitations.push({
+      code: "ipc_open_calls_capped",
+      message:
+        "A file has more calls on undeclared names than are kept for cross-file resolution; IPC through a name defined in another file may be missing there.",
+    });
 
   // Endpoints and storage keys with a part that is a constant of another module.
   const finished = (rows: AppCandidate[]): AppCandidate[] =>
@@ -1447,7 +1496,8 @@ export function analyzeJavaScriptTree(
           ipcChannels.map((c) => c.channel),
           8,
         )} (collections ipcChannels, ipc)`,
-        confidence: "confirmed",
+        // Calls that could not be traced exist: the list is then not known to be complete.
+        confidence: ambientResult.unresolved.length ? "inferred" : "confirmed",
         location: first ? `${first.m.id}:${first.u.line}` : undefined,
       });
     }
