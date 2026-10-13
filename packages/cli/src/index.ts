@@ -38,7 +38,8 @@ Commands
   mcp                                           Serve the Model Context Protocol over stdio
   ui [--port n] [--open]                        Start the local web UI
   doctor                                        Check the runtime and optional engines
-  setup [--client name] [--apply]               Register hexvero with an agent
+  setup [--client name] [--apply]               Register the MCP server with an agent
+  setup --skill [--client name] [--apply]       Install the investigation skill for agents
 
 Options
   --json      Machine-readable output
@@ -305,6 +306,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       return doctor(io, json);
     }
     case "setup": {
+      if (args.flags["skill"]) {
+        const { installSkill } = await import("./skill.js");
+        return installSkill(io, {
+          client: flagString(args.flags, "client"),
+          apply: Boolean(args.flags["apply"]),
+          json,
+        });
+      }
       const { setup } = await import("./setup.js");
       return setup(io, {
         client: flagString(args.flags, "client"),

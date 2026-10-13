@@ -19,7 +19,8 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "ui": "node packages/cli/bin/hexvero.js ui --open",
     "review": "node scripts/review-report.mjs",
-    "check:shape": "node scripts/check-shape.mjs"
+    "check:shape": "node scripts/check-shape.mjs",
+    "publish:all": "npm run check && npm run build && for w in packages/core packages/mcp packages/server packages/cli; do npm publish -w ./$w --access public; done"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

@@ -2,7 +2,23 @@
   "name": "@hexvero/mcp",
   "version": "0.2.0",
   "description": "Compact Model Context Protocol server for hexvero analyzers.",
+  "keywords": [
+    "hexvero",
+    "mcp",
+    "mcp-server",
+    "reverse-engineering",
+    "static-analysis"
+  ],
+  "homepage": "https://hexvero.dev",
+  "bugs": {
+    "url": "https://github.com/maximilianfeix/hexvero/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maximilianfeix/hexvero.git",
+    "directory": "packages/mcp"
+  },
   "files": [
     "dist"
   ],
@@ -14,6 +30,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -b"

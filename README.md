@@ -20,6 +20,8 @@
 <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP_server-1B1D21?style=for-the-badge" alt="MCP server for AI agents"></a>
 <a href="#what-it-reads"><img src="https://img.shields.io/badge/17_formats-1B1D21?style=for-the-badge" alt="17 formats"></a>
 
+**English** · [Deutsch](README.de.md)
+
 [Install](#install) · [What it reads](#what-it-reads) · [CLI](#cli) · [Web UI](#web-ui) · [For AI agents](#for-ai-agents) · [Engines](#optional-engines) · [Compared with REA](#compared-with-rea) · [How it works](#how-it-works) · [FAQ](#faq)
 
 </div>
@@ -133,6 +135,7 @@ Starts a loopback server with a per-session token and opens the browser. Drop a 
 hexvero setup                 # shows what would change
 hexvero setup --apply         # writes the MCP registration, backs up existing files
 hexvero setup --client codex  # prints the TOML snippet for ~/.codex/config.toml
+hexvero setup --skill --apply # installs the investigation skill for Claude Code, Codex and .agents
 ```
 
 Supported: Claude Code, Claude Desktop, Cursor, Windsurf, Gemini CLI, VS Code, Codex. Any other client can run `npx -y hexvero mcp` over stdio.
