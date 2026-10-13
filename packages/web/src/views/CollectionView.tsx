@@ -33,7 +33,7 @@ export function CollectionView({
           page.data ? statusLine(page.data, text) : page.error ? page.error.message : "Loading…"
         }
       />
-      <Table rows={page.data?.items ?? []} loading={page.loading} />
+      <Table rows={page.data?.items ?? []} loading={page.loading} label={name} />
       {page.data && (page.data.truncated || offset > 0) && (
         <div className="pager">
           <button
@@ -102,7 +102,15 @@ export function Toolbar({
 const cellText = (v: unknown): string =>
   v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
 
-export function Table({ rows, loading }: { rows: Row[]; loading: boolean }): ReactElement {
+export function Table({
+  rows,
+  loading,
+  label,
+}: {
+  rows: Row[];
+  loading: boolean;
+  label?: string;
+}): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
   const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((c) =>
     rows.some((r) => r[c] !== undefined && r[c] !== null),
@@ -124,7 +132,15 @@ export function Table({ rows, loading }: { rows: Row[]; loading: boolean }): Rea
   });
   const cols = widths.join(" ");
   return (
-    <div className="table-wrap" ref={parentRef} role="grid" aria-busy={loading}>
+    <div
+      className="table-wrap"
+      ref={parentRef}
+      role="table"
+      aria-label={label ?? "rows"}
+      aria-busy={loading}
+      aria-rowcount={rows.length + 1}
+      tabIndex={0}
+    >
       {rows.length === 0 ? (
         <p className="empty" style={{ padding: 24 }}>
           {loading ? "Loading…" : "No rows match."}
@@ -159,7 +175,7 @@ export function Table({ rows, loading }: { rows: Row[]; loading: boolean }): Rea
                     <div
                       key={c}
                       className={`cell${numeric[i] ? " num" : ""}`}
-                      role="gridcell"
+                      role="cell"
                       title={cellText(row[c])}
                     >
                       <Cell value={row[c]} />

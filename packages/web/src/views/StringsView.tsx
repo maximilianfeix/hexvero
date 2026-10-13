@@ -81,7 +81,7 @@ export function StringsView({
           UTF-16
         </label>
       </Toolbar>
-      <Table rows={rows} loading={page.loading} />
+      <Table rows={rows} loading={page.loading} label="strings" />
       {page.data && (page.data.truncated || offset > 0) && (
         <div className="pager">
           <button

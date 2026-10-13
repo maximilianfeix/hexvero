@@ -1,10 +1,33 @@
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useState, type DragEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { api, formatBytes, type TargetRecord } from "./lib/api.js";
 import { navigate, useRoute } from "./lib/route.js";
 import { Workspace } from "./views/Workspace.js";
 
 const THEME_KEY = "hexvero.theme";
+const MOD =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
+/** What the parsers read, kept in step with the README's format table. */
+const FORMATS = [
+  "ELF",
+  "PE",
+  "Mach-O",
+  "Go",
+  ".NET",
+  "WebAssembly",
+  "EVM bytecode",
+  "SQLite",
+  "plist",
+  "Android APK / DEX",
+  "Java class / JAR",
+  "ZIP",
+  "Electron ASAR",
+  "Apple .app bundles",
+  "Flutter",
+  "JavaScript bundles",
+  "source maps",
+  "HAR",
+];
 
 function useTheme(): [string, () => void] {
   const [theme, setTheme] = useState(() => {
@@ -31,6 +54,8 @@ function useTheme(): [string, () => void] {
 export function App(): ReactElement {
   const route = useRoute();
   const [targets, setTargets] = useState<TargetRecord[]>([]);
+  const [targetsLoaded, setTargetsLoaded] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -41,6 +66,7 @@ export function App(): ReactElement {
     try {
       setTargets((await api.targets()).targets);
       setError(null);
+      setTargetsLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -164,16 +190,27 @@ export function App(): ReactElement {
             Open path
           </button>
         </form>
-        <label className="btn primary">
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => fileInput.current?.click()}
+          disabled={busy !== null}
+        >
           Open file
-          <input
-            id="file-input"
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => e.target.files && void openFiles(e.target.files)}
-          />
-        </label>
+        </button>
+        <input
+          id="file-input"
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={(e) => e.target.files && void openFiles(e.target.files)}
+        />
+        <span className="status" aria-live="polite">
+          {busy ?? ""}
+        </span>
         <span className="spacer" />
         <button
           className="btn quiet"
@@ -214,7 +251,7 @@ export function App(): ReactElement {
         <div className={`dropzone${dragging ? " active" : ""}`}>
           {busy ?? (
             <>
-              Drop files here or press <strong>⌘O</strong>
+              Drop files here or press <strong>{MOD}O</strong>
             </>
           )}
         </div>
@@ -222,12 +259,48 @@ export function App(): ReactElement {
 
       <main className="workspace">
         {error && (
-          <div className="empty" style={{ padding: "12px 24px", color: "var(--alert)" }}>
-            {error}
+          <div
+            className="empty"
+            role="alert"
+            style={{
+              padding: "12px 24px",
+              color: "var(--alert)",
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+            }}
+          >
+            <span style={{ flex: 1 }}>{error}</span>
+            <button type="button" className="btn quiet" onClick={() => setError(null)}>
+              Dismiss
+            </button>
           </div>
         )}
         {current ? (
           <Workspace key={current.id} target={current} tab={route.tab} query={route.query} />
+        ) : route.targetId && !targetsLoaded ? (
+          <section className="welcome" aria-busy="true">
+            <p>Loading targets…</p>
+          </section>
+        ) : route.targetId ? (
+          <section className="welcome">
+            <h1>This target is no longer open.</h1>
+            <p>
+              The server was restarted or the target was closed. Open the file again to continue.
+            </p>
+            <p>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => fileInput.current?.click()}
+              >
+                Open file
+              </button>{" "}
+              <button type="button" className="btn" onClick={() => navigate(null)}>
+                Back to start
+              </button>
+            </p>
+          </section>
         ) : (
           <section className="welcome">
             <h1>See what a file is before you trust it, run it or rebuild it.</h1>
@@ -237,22 +310,7 @@ export function App(): ReactElement {
               establish.
             </p>
             <ul className="formats">
-              {[
-                "ELF",
-                "PE",
-                "Mach-O",
-                "Go",
-                ".NET",
-                "WebAssembly",
-                "EVM bytecode",
-                "SQLite",
-                "plist",
-                "Android APK",
-                "Electron ASAR",
-                "JavaScript",
-                "source maps",
-                "HAR",
-              ].map((f) => (
+              {FORMATS.map((f) => (
                 <li key={f}>{f}</li>
               ))}
             </ul>

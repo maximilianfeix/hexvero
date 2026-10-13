@@ -62,6 +62,11 @@ export function Overview({
                   <span className="confidence">{f.confidence}</span>
                   <span className="kind">{f.kind}</span>
                   {f.detail && <div className="detail">{f.detail}</div>}
+                  {f.location && (
+                    <div className="detail">
+                      <code className="location">{f.location}</code>
+                    </div>
+                  )}
                 </div>
               </li>
             ))}

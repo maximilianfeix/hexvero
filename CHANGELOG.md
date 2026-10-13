@@ -8,6 +8,14 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Fixed
 
+- Web UI accessibility review: "Open file" is a real button reachable by keyboard; the view tabs are
+  a navigation with arrow-key, Home/End movement and `aria-current`; Strings and Hex stay usable
+  while analysis loads or fails, and a failed analysis offers Retry; tables use non-interactive
+  table roles with a row count; the hex dump is focusable, reports read errors with Retry and decodes
+  i32/f32/u64/f64 in both byte orders; graph nodes are keyboard-selectable and edge truncation is
+  shown; the error banner is announced and dismissible, upload progress is announced in the top bar;
+  a stale target URL explains that the target is no longer open; the shortcut hint says Ctrl+O off
+  macOS; the format list matches the README; findings show their location when a parser records one.
 - CLI usability review: `--help` exits 0; `*.map` files are recognised as source maps (so `recover`
   accepts them); `ui --host` is honoured with a warning for non-loopback hosts; value flags without
   a value, out-of-range `--limit`/`--offset` and unknown `--tag` or engine names are usage errors

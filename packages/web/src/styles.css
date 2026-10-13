@@ -147,6 +147,25 @@ code,
   display: block;
 }
 
+.topbar .status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.graph .node:focus-visible {
+  outline: none;
+}
+
+.graph .node:focus-visible rect {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
 .topbar form {
   display: flex;
   flex: 1;
@@ -429,11 +448,11 @@ code,
   color: var(--ink);
 }
 
-.tab[aria-selected="true"] {
+.tab[aria-current="page"] {
   color: var(--ink);
 }
 
-.tab[aria-selected="true"]::after {
+.tab[aria-current="page"]::after {
   content: "";
   position: absolute;
   left: 10px;

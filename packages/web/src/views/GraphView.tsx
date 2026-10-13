@@ -90,14 +90,20 @@ export function GraphView({ targetId }: { targetId: string }): ReactElement {
         <span>
           {layout.edges.length} resolved imports between {layout.pos.size} modules
         </span>
-        {layout.truncated && <span>· showing the first {MAX_NODES}</span>}
-        <span>· click a module to trace its imports</span>
+        {layout.truncated && <span>· showing the first {MAX_NODES} modules</span>}
+        {edges.data?.truncated && (
+          <span>
+            · {edges.data.items.length} of {edges.data.total} imports loaded; relationships beyond
+            that are not drawn
+          </span>
+        )}
+        <span>· select a module (click or Tab + Enter) to trace its imports</span>
       </div>
       <div className="graph">
         <svg
           width={layout.width}
           height={layout.height}
-          role="img"
+          role="group"
           aria-label="Module dependency graph"
         >
           {layout.columns.map((c) => (
@@ -139,6 +145,16 @@ export function GraphView({ targetId }: { targetId: string }): ReactElement {
                   }`}
                   transform={`translate(${p.x},${p.y})`}
                   onClick={() => setSelected(selected === m.id ? null : m.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelected(selected === m.id ? null : m.id);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={selected === m.id}
+                  aria-label={`${m.id}, ${m.references} references`}
                   style={{ cursor: "pointer" }}
                 >
                   <rect width={NODE_W} height={NODE_H} />
