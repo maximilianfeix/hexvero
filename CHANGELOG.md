@@ -6,6 +6,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Zero-dependency JavaScript bundle splitting (webpack 4/5, Rspack, browserify, esbuild): module
+  boundaries, require graph, export names, endpoint/route/storage candidates, vendor fingerprints.
+- `hexvero recover` and the `hexvero_recover` MCP tool write bundle modules or source-map originals to
+  disk without an external engine (REA needs Wakaru on Linux x64 for this).
+
 ## [0.2.1] - 2026-10-13
 
 ### Added

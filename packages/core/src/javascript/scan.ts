@@ -34,6 +34,9 @@ export interface Token {
   type: "ident" | "string" | "punct" | "template" | "regex" | "number";
   value: string;
   line: number;
+  /** Byte offsets into the source (end is exclusive). */
+  start: number;
+  end: number;
 }
 
 const KEYWORDS_BEFORE_REGEX = new Set([
@@ -144,7 +147,7 @@ export function tokenize(
         value += source[j];
         j++;
       }
-      tokens.push({ type: "string", value, line: startLine });
+      tokens.push({ type: "string", value, line: startLine, start: i, end: j + 1 });
       i = j + 1;
       continue;
     }
@@ -181,6 +184,8 @@ export function tokenize(
         type: "template",
         value: dynamic ? `${value}\${…}` : value,
         line: startLine,
+        start: i,
+        end: dynamic ? j : j + 1,
       });
       i = dynamic ? j : j + 1;
       if (dynamic) braceDepth++;
@@ -200,21 +205,21 @@ export function tokenize(
         j++;
       }
       while (j + 1 < n && /[a-z]/.test(source[j + 1]!)) j++;
-      tokens.push({ type: "regex", value: source.slice(i, j + 1), line });
+      tokens.push({ type: "regex", value: source.slice(i, j + 1), line, start: i, end: j + 1 });
       i = j + 1;
       continue;
     }
     if (isIdentStart(c)) {
       let j = i + 1;
       while (j < n && isIdentPart(source[j]!)) j++;
-      tokens.push({ type: "ident", value: source.slice(i, j), line });
+      tokens.push({ type: "ident", value: source.slice(i, j), line, start: i, end: j });
       i = j;
       continue;
     }
     if (/\d/.test(c) || (c === "." && /\d/.test(source[i + 1] ?? ""))) {
       let j = i + 1;
       while (j < n && /[\w.]/.test(source[j]!)) j++;
-      tokens.push({ type: "number", value: source.slice(i, j), line });
+      tokens.push({ type: "number", value: source.slice(i, j), line, start: i, end: j });
       i = j;
       continue;
     }
@@ -223,7 +228,7 @@ export function tokenize(
     const three = source.slice(i, i + 3);
     const two = source.slice(i, i + 2);
     const punct = PUNCT3.has(three) ? three : PUNCT2.has(two) ? two : c;
-    tokens.push({ type: "punct", value: punct, line });
+    tokens.push({ type: "punct", value: punct, line, start: i, end: i + punct.length });
     i += punct.length;
   }
   return { tokens, truncated: i < n };

@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
+import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
 import { AnalysisError, page, type Page, type TargetInfo } from "./model.js";
@@ -286,6 +287,19 @@ export class Session {
     };
   }
 
+  /** Writes recoverable sources (bundle modules or source-map originals) into a new directory. */
+  async recover(id: string, outputDir: string): Promise<RecoveryResult> {
+    const analysis = await this.analyze(id);
+    const e = this.entry(id);
+    const text = (): string => new TextDecoder().decode(e.loaded.bytes);
+    if (analysis.data.kind === "javascript") return recoverBundle(text(), outputDir);
+    if (analysis.data.kind === "source-map") return recoverSourceMap(text(), outputDir);
+    throw new AnalysisError(
+      "invalid_input",
+      `Recovery works on JavaScript bundles and source maps, not ${analysis.data.kind}`,
+    );
+  }
+
   async export(id: string, destination: string): Promise<{ path: string; bytes: number }> {
     const analysis = await this.analyze(id);
     const text = JSON.stringify(
@@ -537,6 +551,11 @@ export function collectionsOf(
       out["references"] = d.script.references;
       out["ipc"] = d.script.ipc;
       out["exports"] = d.script.exports.map((name) => ({ name }));
+      if (d.bundle.modules.length) out["bundleModules"] = d.bundle.modules;
+      if (d.bundle.endpoints.length) out["endpoints"] = d.bundle.endpoints;
+      if (d.bundle.routes.length) out["routes"] = d.bundle.routes;
+      if (d.bundle.storage.length) out["storage"] = d.bundle.storage;
+      if (d.bundle.vendors.length) out["vendors"] = d.bundle.vendors.map((name) => ({ name }));
       break;
     case "source-map":
       out["sources"] = d.map.sources.map((path) => ({ path }));

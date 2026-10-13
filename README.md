@@ -11,7 +11,7 @@
 [![npm](https://img.shields.io/npm/v/hexvero?style=flat-square&color=F2B84B&labelColor=1B1D21)](https://www.npmjs.com/package/hexvero)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.12-F2B84B?style=flat-square&labelColor=1B1D21)](package.json)
 [![Runtime dependencies](https://img.shields.io/badge/core_dependencies-0-F2B84B?style=flat-square&labelColor=1B1D21)](packages/core/package.json)
-[![MCP tools](https://img.shields.io/badge/MCP_tools-12-F2B84B?style=flat-square&labelColor=1B1D21)](#for-ai-agents)
+[![MCP tools](https://img.shields.io/badge/MCP_tools-13-F2B84B?style=flat-square&labelColor=1B1D21)](#for-ai-agents)
 [![Network](https://img.shields.io/badge/network-never-F2B84B?style=flat-square&labelColor=1B1D21)](#faq)
 [![License](https://img.shields.io/badge/license-MIT-F2B84B?style=flat-square&labelColor=1B1D21)](LICENSE)
 
@@ -111,6 +111,7 @@ hexvero strings <path> [--min n] [--utf16] [--tag url|path|email|ip|format|secre
 hexvero bytes <path> <offset> [length]                hex dump
 hexvero compare <a> <b> <collection> [--key field]    added / removed between two builds
 hexvero export <path> <out.json>                      the complete analysis
+hexvero recover <path> <outdir>                       bundle modules or source-map originals as files
 hexvero provider <path> radare2|rizin|ghidra functions|disassemble|decompile|strings|imports [--address a]
 hexvero mcp · hexvero ui [--port n] [--open] · hexvero doctor · hexvero setup [--client c] [--apply]
 ```

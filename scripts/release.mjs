@@ -24,12 +24,19 @@ if (sh("git branch --show-current") !== "main") {
 }
 sh("git pull --ff-only origin main");
 
-const packages = ["packages/core", "packages/mcp", "packages/server", "packages/cli", "packages/web"];
+const packages = [
+  "packages/core",
+  "packages/mcp",
+  "packages/server",
+  "packages/cli",
+  "packages/web",
+];
 for (const dir of packages) {
   const path = `${dir}/package.json`;
   const pkg = JSON.parse(readFileSync(path, "utf8"));
   pkg.version = version;
-  for (const dep of Object.keys(pkg.dependencies ?? {})) if (dep.startsWith("@hexvero/")) pkg.dependencies[dep] = version;
+  for (const dep of Object.keys(pkg.dependencies ?? {}))
+    if (dep.startsWith("@hexvero/")) pkg.dependencies[dep] = version;
   writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 const constants = [
@@ -37,21 +44,31 @@ const constants = [
   ["packages/cli/src/index.ts", /VERSION = "[^"]+"/, `VERSION = "${version}"`],
   ["packages/server/src/index.ts", /version: "[^"]+"/, `version: "${version}"`],
 ];
-for (const [file, re, replacement] of constants) writeFileSync(file, readFileSync(file, "utf8").replace(re, replacement));
+for (const [file, re, replacement] of constants)
+  writeFileSync(file, readFileSync(file, "utf8").replace(re, replacement));
 
 const today = new Date().toISOString().slice(0, 10);
 const changelog = readFileSync("CHANGELOG.md", "utf8");
-if (!changelog.includes("## [Unreleased]")) throw new Error("CHANGELOG.md has no Unreleased section");
-const unreleasedBody = changelog.split("## [Unreleased]")[1].split(/\n## \[/)[0].trim();
+if (!changelog.includes("## [Unreleased]"))
+  throw new Error("CHANGELOG.md has no Unreleased section");
+const unreleasedBody = changelog
+  .split("## [Unreleased]")[1]
+  .split(/\n## \[/)[0]
+  .trim();
 if (!unreleasedBody) {
   console.error("CHANGELOG.md: the Unreleased section is empty; write the notes first");
   process.exit(1);
 }
-writeFileSync("CHANGELOG.md", changelog.replace("## [Unreleased]\n", `## [Unreleased]\n\n## [${version}] - ${today}\n`));
+writeFileSync(
+  "CHANGELOG.md",
+  changelog.replace("## [Unreleased]\n", `## [Unreleased]\n\n## [${version}] - ${today}\n`),
+);
 
 sh("npm install --no-audit --no-fund");
 sh("npm run check");
 sh(`git add -A && git commit -q -m "chore(release): ${version}"`);
 sh(`git tag -a v${version} -m "hexvero ${version}"`);
 sh("git push origin main --follow-tags");
-console.log(`released v${version}; the Release workflow publishes it: https://github.com/maximilianfeix/hexvero/actions`);
+console.log(
+  `released v${version}; the Release workflow publishes it: https://github.com/maximilianfeix/hexvero/actions`,
+);

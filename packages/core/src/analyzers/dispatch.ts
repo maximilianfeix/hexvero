@@ -15,6 +15,7 @@ import {
   directoryTree,
   type JsAppInfo,
 } from "../javascript/app.js";
+import { analyzeBundle, type JsBundleInfo } from "../javascript/bundle.js";
 import { scanJavaScript, type ScanResult } from "../javascript/scan.js";
 import { summarizeSourceMap, type SourceMapSummary } from "../javascript/sourcemap.js";
 import { AnalysisError, type Analysis, type Finding, type Limitation } from "../model.js";
@@ -37,7 +38,7 @@ export type AnalysisData =
   | { kind: "java-class"; javaClass: Strip<JavaClassInfo> }
   | { kind: "dex"; dex: Strip<DexInfo> }
   | { kind: "javascript-app"; app: Strip<JsAppInfo> }
-  | { kind: "javascript"; script: ScanResult }
+  | { kind: "javascript"; script: ScanResult; bundle: Omit<JsBundleInfo, "limitations"> }
   | { kind: "source-map"; map: SourceMapSummary }
   | { kind: "json"; json: { topLevelKeys: string[]; bytes: number } }
   | { kind: "unknown"; preview: string };
@@ -198,18 +199,48 @@ async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
       );
     }
     case "javascript": {
-      const script = scanJavaScript(decode(bytes));
+      const text = decode(bytes);
+      const script = scanJavaScript(text);
       if (script.truncated)
-        limitations.push({
-          code: "scan_truncated",
-          message: "Token budget exhausted.",
+        limitations.push({ code: "scan_truncated", message: "Token budget exhausted." });
+      const { limitations: bundleLimits, ...bundle } = analyzeBundle(text);
+      limitations.push(...bundleLimits.filter((l) => l.code !== "scan_truncated"));
+      if (bundle.bundler) {
+        findings.push({
+          kind: "js.bundle",
+          title: `${bundle.bundler} bundle with ${bundle.modules.length} modules${bundle.hasRuntime ? " and runtime" : ""}`,
+          detail:
+            bundle.vendors
+              .filter((v) => v !== bundle.bundler)
+              .slice(0, 8)
+              .join(", ") || undefined,
+          confidence: "confirmed",
         });
-      return done(
-        `JavaScript (${script.moduleSystem}): ${script.references.length} references, ${script.exports.length} exports${
-          script.minified ? ", minified" : ""
-        }`,
-        { kind: "javascript", script },
-      );
+      }
+      if (bundle.endpoints.length)
+        findings.push({
+          kind: "js.endpoints",
+          title: `${bundle.endpoints.length} endpoint candidates`,
+          detail: bundle.endpoints
+            .slice(0, 5)
+            .map((e) => e.value)
+            .join(", "),
+          confidence: "inferred",
+        });
+      if (bundle.storage.length)
+        findings.push({
+          kind: "js.storage",
+          title: `${bundle.storage.length} client-side storage keys`,
+          detail: bundle.storage
+            .slice(0, 5)
+            .map((e) => `${e.kind}:${e.value}`)
+            .join(", "),
+          confidence: "confirmed",
+        });
+      const summary = bundle.bundler
+        ? `JavaScript ${bundle.bundler} bundle: ${bundle.modules.length} modules, ${bundle.endpoints.length} endpoint candidates${script.minified ? ", minified" : ""}`
+        : `JavaScript (${script.moduleSystem}): ${script.references.length} references, ${script.exports.length} exports${script.minified ? ", minified" : ""}`;
+      return done(summary, { kind: "javascript", script, bundle });
     }
     case "json": {
       const text = decode(bytes);

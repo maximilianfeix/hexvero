@@ -23,7 +23,7 @@ export { inspectSqlite, type SqliteInfo, type SqliteTable } from "./formats/sqli
 export { openZip, type ZipArchive, type ZipEntry } from "./formats/zip.js";
 export { parseAxml, type AxmlElement } from "./formats/axml.js";
 export { parseApk, type ApkInfo, type ApkComponent } from "./formats/apk.js";
-export { openAsar, type AsarArchive, type AsarFile } from "./formats/asar.js";
+export { openAsar, openAsarFile, type AsarArchive, type AsarFile } from "./formats/asar.js";
 export {
   scanJavaScript,
   tokenize,
@@ -74,3 +74,17 @@ export {
   DEFAULT_ANALYSIS_TIMEOUT_MS,
   type WorkerOptions,
 } from "./analyzers/worker.js";
+export {
+  analyzeBundle,
+  type JsBundleInfo,
+  type BundleModule,
+  type BundleCandidate,
+  type Bundler,
+} from "./javascript/bundle.js";
+export {
+  recoverBundle,
+  recoverSourceMap,
+  safeRelativePath,
+  type RecoveryResult,
+  type RecoveredFile,
+} from "./javascript/recover.js";
