@@ -1,0 +1,15 @@
+{
+  "name": "punchclock",
+  "productName": "Punchclock",
+  "version": "4.2.0",
+  "description": "Corpus application: a desktop time tracker with a floating timer widget and invoices.",
+  "license": "MIT",
+  "main": "main.js",
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "esbuild": "^0.28.0"
+  }
+}

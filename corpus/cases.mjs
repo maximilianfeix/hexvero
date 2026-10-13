@@ -15,7 +15,7 @@ const walk = (dir) =>
     });
 
 /** set is "dev", "validation" or "damaged"; cases carry it so results are never mixed up. */
-export function loadCases(sets = ["dev", "validation", "damaged"]) {
+export function loadCases(sets = ["dev", "validation", "holdout", "damaged"]) {
   const cases = [];
   for (const set of sets) {
     let files = [];

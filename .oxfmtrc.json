@@ -10,6 +10,9 @@
     "corpus/dev/*/src/**",
     "corpus/validation/*/src/**",
     "corpus/built/**",
-    "corpus/results/**"
+    "corpus/results/**",
+    "corpus/holdout/*/src/**",
+    "corpus/holdout/verify/**",
+    "corpus/compare/**"
   ]
 }

@@ -1,0 +1,230 @@
+{
+  "case": "native-exprcalc",
+  "kind": "native",
+  "license": "MIT, written for this corpus",
+  "inputs": ["holdout/exprcalc.O0.macho-arm64", "holdout/exprcalc.O2.macho-arm64"],
+  "method": "Expectations come from exprcalc.c and, for the symbols and for which calls are calls, jumps or calls through a register, from the system tools nm and otool -tV run on the two built files, not from any engine under test. Verified in the built files: both have a symbol for main and for each of the sixteen static functions (all are noinline; none was inlined, cloned or dropped). Undefined symbols (nm -u) of the -O0 file: atoi, fputs, getenv, printf, strchr, strtol and the data symbol ___stderrp; the -O2 file has the same without strchr, because the compiler replaced strchr(\"+-*/\", c) by a comparison. ___stderrp is the variable behind `stderr`, not a function, and is in no list below. At -O0 every call in the source is a bl and every call through a pointer is a blr. At -O2 these are jumps (b): main -> complain (the usage message), main -> report, report -> complain, complain -> fputs, debug_level -> atoi; these stay bl: main -> evaluate, evaluate -> next_token, evaluate -> parse_expression, parse_expression -> parse_term (twice), parse_expression -> next_token, parse_expression -> apply, parse_term -> parse_factor (twice), parse_term -> next_token, parse_term -> apply, parse_factor -> next_token (three instructions for the four calls of the source), parse_factor -> parse_expression, parse_factor -> parse_factor, report -> printf, trace_number -> printf, trace_binary -> printf, state_digits -> strtol, debug_level -> getenv; calls through a register (blr) are in next_token (the state table), in parse_factor (visitor->number) and in parse_expression and parse_term (visitor->binary). So at -O2 fputs is reached from main only by jumps (main -> complain -> fputs, or main -> report -> complain -> fputs), and no bl lies on the way. A path means a chain of direct calls or jumps to named functions. The calls through the state table and through the visitor are part of no expected path, and no question is asked whose answer depends on them: every no-path below also holds when the pointers are followed. Callers are the functions that contain a direct call or jump to the function; functions that reach it only through a pointer are listed under indirect.",
+  "expect": {
+    "imports": {
+      "present": ["printf", "fputs", "strtol", "getenv", "atoi"],
+      "presentByInput": {
+        "holdout/exprcalc.O0.macho-arm64": ["strchr"],
+        "holdout/exprcalc.O2.macho-arm64": []
+      },
+      "presentByInputWhy": "checked with nm -u: without optimization state_punctuation calls _strchr; with -O2 the call is gone (the search in the four-character string became a comparison), so the optimized file does not import strchr. Names are compared without leading underscores",
+      "absent": ["puts", "fprintf", "write", "strlen", "system", "execve", "exit"]
+    },
+    "functions": {
+      "present": [
+        "main",
+        "evaluate",
+        "next_token",
+        "state_blank",
+        "state_digits",
+        "state_punctuation",
+        "parse_expression",
+        "parse_term",
+        "parse_factor",
+        "apply",
+        "trace_number",
+        "trace_binary",
+        "count_number",
+        "count_binary",
+        "report",
+        "complain",
+        "debug_level"
+      ]
+    },
+    "paths": [
+      {
+        "from": "main",
+        "to": "fputs",
+        "expect": "path",
+        "via": ["complain"],
+        "why": "main returns complain() when it has too many arguments and complain returns fputs(); at -O2 both are jumps. The other way, main -> report -> complain -> fputs, is three jumps at -O2. No call instruction leads from main to fputs in the optimized file"
+      },
+      {
+        "from": "report",
+        "to": "fputs",
+        "expect": "path",
+        "via": ["complain"],
+        "why": "report returns complain() on a syntax error, complain returns fputs(); two jumps at -O2"
+      },
+      {
+        "from": "main",
+        "to": "printf",
+        "expect": "path",
+        "via": ["report"],
+        "why": "main returns report() (a jump at -O2), report calls printf with an ordinary call. This path needs no pointer; trace_number and trace_binary also call printf but are reached only through the visitor"
+      },
+      {
+        "from": "main",
+        "to": "parse_factor",
+        "expect": "path",
+        "via": ["evaluate", "parse_expression", "parse_term"],
+        "why": "ordinary calls at both levels: main -> evaluate -> parse_expression -> parse_term -> parse_factor"
+      },
+      {
+        "from": "main",
+        "to": "apply",
+        "expect": "path",
+        "via": ["evaluate", "parse_expression"],
+        "why": "parse_expression calls apply directly (parse_term does too); ordinary calls at both levels"
+      },
+      {
+        "from": "parse_factor",
+        "to": "parse_term",
+        "expect": "path",
+        "via": ["parse_expression"],
+        "why": "the recursion of the grammar: parse_factor calls parse_expression for a parenthesis, parse_expression calls parse_term"
+      },
+      {
+        "from": "parse_term",
+        "to": "parse_expression",
+        "expect": "path",
+        "via": ["parse_factor"],
+        "why": "the same cycle from another point: parse_term calls parse_factor, parse_factor calls parse_expression"
+      },
+      {
+        "from": "parse_expression",
+        "to": "next_token",
+        "expect": "path",
+        "via": [],
+        "why": "a direct call in the loop of parse_expression, at both levels"
+      },
+      {
+        "from": "debug_level",
+        "to": "atoi",
+        "expect": "path",
+        "via": [],
+        "why": "a direct call at -O0, a jump at -O2 (debug_level returns atoi())"
+      },
+      {
+        "from": "main",
+        "to": "getenv",
+        "expect": "no-path",
+        "why": "getenv is used only by debug_level, which nothing calls and which is in no table"
+      },
+      {
+        "from": "main",
+        "to": "atoi",
+        "expect": "no-path",
+        "why": "atoi is used only by debug_level; numbers of the expression are read with strtol"
+      },
+      {
+        "from": "main",
+        "to": "debug_level",
+        "expect": "no-path",
+        "why": "kept by the used attribute; no call, jump or table entry refers to it"
+      },
+      {
+        "from": "complain",
+        "to": "printf",
+        "expect": "no-path",
+        "why": "complain reaches fputs only; printf is called by its caller report, and a path does not run from a function back to its caller"
+      },
+      {
+        "from": "evaluate",
+        "to": "fputs",
+        "expect": "no-path",
+        "why": "evaluate reaches the tokenizer and the parser; through the pointers these reach strtol, strchr and printf, never fputs, which only complain calls"
+      },
+      {
+        "from": "evaluate",
+        "to": "report",
+        "expect": "no-path",
+        "why": "main calls evaluate and then report, one after the other; evaluate does not call report"
+      },
+      {
+        "from": "next_token",
+        "to": "parse_expression",
+        "expect": "no-path",
+        "why": "next_token only runs the state functions, and no state function calls the parser"
+      },
+      {
+        "from": "report",
+        "to": "strtol",
+        "expect": "no-path",
+        "why": "report reaches complain, fputs and printf only; strtol is called by state_digits in the tokenizer"
+      },
+      {
+        "from": "apply",
+        "to": "next_token",
+        "expect": "no-path",
+        "why": "apply does arithmetic and calls nothing"
+      }
+    ],
+    "callers": [
+      {
+        "of": "debug_level",
+        "expect": [],
+        "why": "kept by the used attribute, called by nobody, in no table"
+      },
+      {
+        "of": "state_blank",
+        "expect": [],
+        "why": "an entry of the table `states`; next_token calls through the table (blr). No call instruction names it, and a tool that reports no caller should not conclude it is dead",
+        "indirect": ["next_token"]
+      },
+      {
+        "of": "state_digits",
+        "expect": [],
+        "why": "an entry of the table `states`, like state_blank",
+        "indirect": ["next_token"]
+      },
+      {
+        "of": "state_punctuation",
+        "expect": [],
+        "why": "an entry of the table `states`, like state_blank",
+        "indirect": ["next_token"]
+      },
+      {
+        "of": "trace_number",
+        "expect": [],
+        "why": "the member `number` of the visitor `tracing`, which main selects when a second argument is given; parse_factor calls visitor->number (blr)",
+        "indirect": ["parse_factor"]
+      },
+      {
+        "of": "count_number",
+        "expect": [],
+        "why": "the member `number` of the visitor `counting`, the default; called like trace_number",
+        "indirect": ["parse_factor"]
+      },
+      {
+        "of": "trace_binary",
+        "expect": [],
+        "why": "the member `binary` of the visitor `tracing`; parse_expression and parse_term call visitor->binary (blr)",
+        "indirect": ["parse_expression", "parse_term"]
+      },
+      {
+        "of": "count_binary",
+        "expect": [],
+        "why": "the member `binary` of the visitor `counting`; called like trace_binary",
+        "indirect": ["parse_expression", "parse_term"]
+      },
+      {
+        "of": "parse_expression",
+        "expect": ["evaluate", "parse_factor"],
+        "why": "evaluate starts the parser; parse_factor calls it for a parenthesis"
+      },
+      { "of": "parse_term", "expect": ["parse_expression"] },
+      {
+        "of": "parse_factor",
+        "expect": ["parse_term", "parse_factor"],
+        "why": "parse_term calls it, and it calls itself for a minus sign; the result is negated afterwards, so the call to itself is a bl at both levels"
+      },
+      {
+        "of": "next_token",
+        "expect": ["evaluate", "parse_expression", "parse_term", "parse_factor"]
+      },
+      { "of": "apply", "expect": ["parse_expression", "parse_term"] },
+      { "of": "evaluate", "expect": ["main"] },
+      { "of": "report", "expect": ["main"], "why": "a jump at -O2" },
+      {
+        "of": "complain",
+        "expect": ["main", "report"],
+        "why": "both are jumps at -O2"
+      }
+    ]
+  }
+}

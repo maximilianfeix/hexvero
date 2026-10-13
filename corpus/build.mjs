@@ -101,7 +101,7 @@ async function bundle(src, stage, minify) {
 
 const temp = mkdtempSync(join(tmpdir(), "hexvero-corpus-stage-"));
 try {
-  for (const set of ["dev", "validation"]) {
+  for (const set of ["dev", "validation", "holdout"]) {
     const setDir = join(root, set);
     if (!existsSync(setDir)) continue;
     for (const name of readdirSync(setDir).toSorted()) {

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- The policy allows these hosts. Allowing a host requests nothing from it. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; font-src 'self' https://cdn.punchclock.example; connect-src https: wss:"
+    />
+    <title>Punchclock</title>
+  </head>
+  <body>
+    <aside id="sidebar">
+      <ul id="projects"></ul>
+      <button id="new-project">New project</button>
+    </aside>
+    <main id="app">
+      <output id="clock">0:00:00</output>
+      <button id="toggle">Start</button>
+      <button id="sync">Sync</button>
+      <form id="entry-form">
+        <input name="hours" type="number" step="0.25" />
+        <input name="note" />
+        <button>Add entry</button>
+      </form>
+      <table id="entries"></table>
+      <p id="rate"></p>
+      <p id="docs"></p>
+      <button id="invoice">Create invoice</button>
+      <button id="sign-out">Sign out</button>
+    </main>
+    <section id="widget" hidden>
+      <output id="widget-clock">0:00:00</output>
+      <button id="pin">Pin</button>
+      <span id="status"></span>
+    </section>
+    <script type="module" src="renderer.js"></script>
+    <script type="module" src="renderer-widget.js"></script>
+  </body>
+</html>
