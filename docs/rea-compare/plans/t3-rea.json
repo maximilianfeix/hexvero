@@ -1,0 +1,23 @@
+[
+  {
+    "tool": "analyze_javascript_application",
+    "args": { "input_path": "$EXAMPLES/notesdesk-1.4.0.asar", "detail": "summary" }
+  },
+  {
+    "tool": "analyze_javascript_application",
+    "args": { "input_path": "$EXAMPLES/notesdesk-1.5.0.asar", "detail": "summary" }
+  },
+  {
+    "tool": "compare_application_versions",
+    "args": {
+      "left": {
+        "kind": "retained-evidence",
+        "evidence_id": "$0.normalized_result.parent_evidence_id"
+      },
+      "right": {
+        "kind": "retained-evidence",
+        "evidence_id": "$1.normalized_result.parent_evidence_id"
+      }
+    }
+  }
+]

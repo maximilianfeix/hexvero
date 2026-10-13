@@ -69,6 +69,20 @@ describe("Session", () => {
       ascii: ".ELF",
     });
     expect(() => session.bytes(record.id, 1 << 20, 4)).toThrow(/outside/);
+    // a URL inside a longer string is still a URL
+    const js = session.register(
+      targetFromBytes(
+        new TextEncoder().encode(
+          'const BASE = "https://api.example.com/v1";\u0000plain text here\u0000https://%s/api/v2\u0000http://[::1]:8080/x\u0000foo_http://nope\u0000',
+        ),
+        "u.bin",
+      ),
+    );
+    expect(session.strings(js.id, { tag: "url" }).items.map((s) => s.value)).toEqual([
+      'const BASE = "https://api.example.com/v1";',
+      "https://%s/api/v2",
+      "http://[::1]:8080/x",
+    ]);
     // a minified one-line file is one printable run: the value is cut, the length reported
     const oneLine = new Uint8Array(20_000).fill(0x61);
     oneLine[19_999] = 0;

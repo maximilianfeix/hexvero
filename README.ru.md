@@ -28,6 +28,12 @@
 
 ELF, PE, Mach-O (включая fat), Go buildinfo, сборки .NET (метаданные и тела CIL), WebAssembly, байткод EVM, SQLite, plist, HAR, ZIP/ZIP64, APK (AXML, resources.arsc, DEX), JAR/классы Java, ASAR Electron, JavaScript-бандлы (webpack, Rspack, browserify, esbuild) с source maps, .app-бандлы Apple с метаданными Objective-C и Swift, снапшоты Flutter. Каждый результат имеет уровень уверенности (`confirmed` или `inferred`) и явный список ограничений.
 
+<!-- unreleased-note:start -->
+
+> **Примечание о версии.** Эта страница описывает `main`. В npm опубликована версия со значка; `recover`, `calls` и другие новшества перечислены в разделе _Unreleased_ [changelog](CHANGELOG.md) и выйдут со следующим релизом.
+
+<!-- unreleased-note:end -->
+
 ## CLI
 
 ```bash

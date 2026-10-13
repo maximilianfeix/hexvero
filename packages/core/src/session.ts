@@ -614,6 +614,7 @@ export function collectionsOf(
       out["externals"] = d.app.externals;
       out["ipcChannels"] = d.app.ipcChannels;
       if (d.app.webPreferences.length) out["webPreferences"] = d.app.webPreferences;
+      if (d.app.contextBridge.length) out["contextBridge"] = d.app.contextBridge;
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       out["sourceMaps"] = d.app.sourceMaps;
       break;

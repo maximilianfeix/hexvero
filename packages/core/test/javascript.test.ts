@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { openAsar } from "../src/formats/asar.js";
-import { analyzeJavaScriptTree, asarTree, directoryTree } from "../src/javascript/app.js";
+import {
+  analyzeJavaScriptTree,
+  asarTree,
+  bridgeMembers,
+  directoryTree,
+} from "../src/javascript/app.js";
 import { scanJavaScript, tokenize } from "../src/javascript/scan.js";
 import { decodeVlq, originalPositionFor, summarizeSourceMap } from "../src/javascript/sourcemap.js";
 import { buildAsar } from "./fixtures/asar.js";
@@ -37,6 +42,13 @@ const preloadOf = (expression: string): string[] => {
   });
   return analyzeJavaScriptTree(asarTree(asar, "app.asar")).electron?.preloadScripts ?? [];
 };
+
+const showBridge = (text: string): string[] =>
+  bridgeMembers(text, "p.js").members.map((b) => `${b.api}.${b.member} → ${b.channel}`);
+const showBridgeLines = (text: string): string[] =>
+  bridgeMembers(text, "preload.js").members.map(
+    (b) => `${b.world}:${b.api}.${b.member} → ${b.channel} @${b.line}`,
+  );
 
 describe("tokenize/scanJavaScript", () => {
   it("skips comments, strings, regexes and templates while finding references", () => {
@@ -189,6 +201,7 @@ describe("ASAR", () => {
       "electron.node-integration",
       "electron.context-isolation",
       "electron.ipc",
+      "electron.context-bridge",
       "electron.preload",
     ]);
     expect(info.limitations.map((l) => l.code)).toEqual(["unresolved_references"]);
@@ -320,5 +333,115 @@ describe("directory analysis", () => {
     expect(performance.now() - started).toBeLessThan(5000);
     expect(info.webPreferences.length).toBeLessThanOrEqual(200);
     expect(info.limitations.map((l) => l.code)).toContain("web_preferences_truncated");
+  });
+
+  it("lists what contextBridge exposes, member by member, with the channel each forwards to", () => {
+    const source = [
+      'const { contextBridge, ipcRenderer } = require("electron");',
+      'contextBridge.exposeInMainWorld("api", {',
+      '  read: (p) => ipcRenderer.invoke("fs:read", p),',
+      "  async write(p, d) { return ipcRenderer.invoke('fs:write', { p, d }); },",
+      '  "quoted-name": () => 1,',
+      "  version: process.versions.electron,",
+      '  nested: { deep: () => ipcRenderer.send("never-a-member") },',
+      "});",
+      'contextBridge.exposeInIsolatedWorld(7, "iso", makeApi());',
+    ].join("\n");
+    expect(showBridgeLines(source)).toEqual([
+      "main:api.read → fs:read @3",
+      "main:api.write → fs:write @4",
+      "main:api.quoted-name → null @5",
+      "main:api.version → null @6",
+      "main:api.nested → never-a-member @7",
+      "isolated:iso.null → null @9",
+    ]);
+  });
+
+  it("reads bridge members through comments, regex, templates, shorthand and a named object", () => {
+    expect(
+      showBridge(
+        [
+          'contextBridge.exposeInMainWorld("api", {',
+          "  // read a file, don't cache",
+          '  read: (p) => ipcRenderer.invoke("fs:read", p.replace(/[({]/g, "")),',
+          "  /* b */ tpl: () => `x${`}`}y`,",
+          "  quit,",
+          "  ...base,",
+          "  [KEY]: 1,",
+          "  get ver() { return 1 },",
+          "  *gen() {},",
+          '  two: () => { ipcRenderer.removeAllListeners("old"); return ipcRenderer.invoke("real"); },',
+          '  both: () => { ipcRenderer.send("a"); ipcRenderer.send("b"); },',
+          "  dyn: (x) => ipcRenderer.invoke(`dyn:${x}`),",
+          "});",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "api.read → fs:read",
+      "api.tpl → null",
+      "api.quit → null",
+      "api.null → null",
+      "api.null → null",
+      "api.ver → null",
+      "api.gen → null",
+      "api.two → real",
+      "api.both → null",
+      "api.dyn → null",
+    ]);
+    // the most common preload shape: the object is built first and passed by name
+    expect(
+      showBridge(
+        'const api = { read: () => ipcRenderer.invoke("r"), write() {} };\ncontextBridge.exposeInMainWorld("api", api);',
+      ),
+    ).toEqual(["api.read → r", "api.write → null"]);
+    // mentions in comments and strings are not calls; a computed name is kept as such
+    expect(
+      showBridge(
+        '// contextBridge.exposeInMainWorld("fake", { x: 1 })\nconst s = \'o.exposeInMainWorld("alsofake", { y: 1 })\';\ncontextBridge.exposeInMainWorld(NAME, { z: 1 });\ncontextBridge.exposeInIsolatedWorld(wid, "iso", { q: 1 });',
+      ),
+    ).toEqual(["[NAME].z → null", "iso.q → null"]);
+  });
+
+  it("bounds the bridge reader on hostile input and reports what it cut", () => {
+    for (const hostile of [
+      `x.exposeInMainWorld("x", {${"a:(".repeat(200_000)}`,
+      'x.exposeInMainWorld("a",{('.repeat(40_000),
+      'x.exposeInMainWorld("a",{k:"'.repeat(20_000),
+    ]) {
+      const started = performance.now();
+      expect(bridgeMembers(hostile, "p.js").truncated).toBe(true);
+      expect(performance.now() - started).toBeLessThan(2000);
+    }
+    const many = `x.exposeInMainWorld("a", {${Array.from({ length: 700 }, (_, i) => `m${i}: 1`).join(",")}});`;
+    const scan = bridgeMembers(many, "p.js");
+    expect(scan.members).toHaveLength(500);
+    expect(scan.truncated).toBe(true);
+  });
+
+  it("does not present an unread bridge as a confirmed member count", () => {
+    const asar = buildAsar({
+      "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+      "main.js": 'new BrowserWindow({ webPreferences: { preload: "preload.js" } });',
+      "preload.js": 'contextBridge.exposeInMainWorld("api", makeApi());',
+    });
+    const info = analyzeJavaScriptTree(asarTree(asar, "app.asar"));
+    const finding = info.findings.find((f) => f.kind === "electron.context-bridge");
+    expect(finding?.title).toBe("window.api exposed to pages; members could not be read");
+    expect(finding?.confidence).toBe("inferred");
+    expect(info.limitations.map((l) => l.code)).toContain("context_bridge_members_unreadable");
+  });
+
+  it("says 'at least' and stays inferred when the bridge inventory was cut short", () => {
+    const asar = buildAsar({
+      "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+      "main.js": 'new BrowserWindow({ webPreferences: { preload: "preload.js" } });',
+      "preload.js":
+        'contextBridge.exposeInMainWorld("api", { get g() {}, set g(v) {}, b() {}, c: (',
+    });
+    const info = analyzeJavaScriptTree(asarTree(asar, "app.asar"));
+    const finding = info.findings.find((f) => f.kind === "electron.context-bridge");
+    expect(finding?.title).toBe("at least 2 members exposed to pages as window.api");
+    expect(finding?.confidence).toBe("inferred");
+    expect(info.limitations.map((l) => l.code)).toContain("context_bridge_truncated");
   });
 });

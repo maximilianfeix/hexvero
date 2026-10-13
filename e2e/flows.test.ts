@@ -67,6 +67,7 @@ describe("flow 1: Electron app", () => {
       "electron.node-integration",
       "electron.sandbox",
       "electron.ipc",
+      "electron.context-bridge",
       "electron.preload",
     ]);
     // every location names a file and line whose text really is the evidence
@@ -119,6 +120,19 @@ describe("flow 1: Electron app", () => {
       nodeIntegration: false,
       sandbox: true,
     });
+    const bridge = (await session.collection(target.id, "contextBridge")).items as Array<{
+      api: string;
+      member: string;
+      channel: string;
+    }>;
+    expect(bridge.map((b) => `${b.api}.${b.member} → ${b.channel}`)).toEqual([
+      "notesdesk.getSetting → settings:get",
+      "notesdesk.setSetting → settings:set",
+      "notesdesk.listNotes → notes:list",
+      "notesdesk.saveNote → notes:save",
+      "notesdesk.quit → app:quit",
+      "notesdesk.checkUpdate → update:check",
+    ]);
     // 1.5.0 has no risky flags, so no such finding is invented
     const kinds = (await session.analyze(target.id)).findings.map((f) => f.kind);
     expect(kinds).not.toContain("electron.node-integration");
@@ -194,7 +208,10 @@ describe.skipIf(!compiler)("flow 2: native binary compiled here", () => {
       // not reachable is a definite answer on a complete graph …
       const reverse = tracePath(graph, system, main.node!);
       expect(reverse.status).toBe("not_reached");
-      expect(reverse.limitations).toEqual([]);
+      // rizin's graph includes tail calls; radare2 says that it cannot see them
+      expect(reverse.limitations.map((l) => l.code)).toEqual(
+        engine.name === "radare2" ? ["callgraph_tail_calls_unknown"] : [],
+      );
       // … and an explicit "cannot tell" on a partial one
       const partial = tracePath({ ...graph, truncated: true }, system, main.node!);
       expect(partial.limitations.map((l) => l.code)).toContain("trace_graph_truncated");
@@ -313,6 +330,20 @@ describe.skipIf(!compiler)("flow 3: comparing two controlled builds", () => {
       removed: ["shell:open"],
       unchanged: 5,
     });
+    const bridge = compareItems(
+      await items(a.id, "contextBridge"),
+      await items(b.id, "contextBridge"),
+      {
+        collection: "contextBridge",
+      },
+    );
+    expect(bridge).toMatchObject({
+      key: "api+member",
+      added: ["notesdesk::checkUpdate"],
+      removed: ["notesdesk::openInShell"],
+      changed: [],
+      unchanged: 5,
+    });
     // settings are matched by key; a value that flips is a change, never a "relocation"
     const prefs = compareItems(
       await items(a.id, "webPreferences"),
@@ -423,7 +454,7 @@ describe("flow 4: a coding agent over MCP stdio", () => {
         analysis: { findings: unknown[] };
       };
       expect(file.unknowns).toHaveLength(1);
-      expect(file.analysis.findings).toHaveLength(4);
+      expect(file.analysis.findings).toHaveLength(5);
       expect((await call("hexvero_export", { targetId: id, path: out })).ok).toBe(false);
 
       // errors are structured, never a crash

@@ -240,7 +240,10 @@ describe("call graph", () => {
       { from: "entry0", to: "sym.imp.__gmon_start__" },
       { from: "entry0", to: "sym.imp.puts" },
     ]);
-    expect(g.limitations.map((l) => l.code)).toEqual(["callgraph_aliases_missing"]);
+    expect(g.limitations.map((l) => l.code).toSorted()).toEqual([
+      "callgraph_aliases_missing",
+      "callgraph_tail_calls_unknown",
+    ]);
     expect(g.truncated).toBe(false);
     // an alias never re-points another function's real name
     const clash = normalizeCallGraph("radare2", {
@@ -252,5 +255,35 @@ describe("call graph", () => {
       flags: [{ name: "foo", addr: 0x1000 }],
     });
     expect(clash.edges).toEqual([{ from: "fcn.1000", to: "foo" }]);
+  });
+
+  it("adds tail-call edges from rizin code references and says when radare2 cannot see them", () => {
+    const rz = normalizeCallGraph("rizin", {
+      functions: [
+        {
+          name: "entry0",
+          offset: 0x5a0,
+          callrefs: [
+            { to: 0x564, type: "CODE" },
+            { to: 0x5a8, type: "CODE" },
+          ],
+        },
+        { name: "sym._run_tool", offset: 0x564, callrefs: [{ to: 0x614, type: "CODE" }] },
+        { name: "sym.imp.system", offset: 0x614, callrefs: [{ to: 0x10008, type: "CODE" }] },
+      ],
+      graph: { nodes: [{ id: 0, title: "entry0", offset: 0x5a0, out_nodes: [] }] },
+      flags: [],
+    });
+    expect(rz.edges).toEqual([
+      { from: "entry0", to: "sym._run_tool" },
+      { from: "sym._run_tool", to: "sym.imp.system" },
+    ]);
+    expect(rz.limitations).toEqual([]);
+    const r2 = normalizeCallGraph("radare2", {
+      functions: [{ name: "main", addr: 0x5a0 }],
+      graph: [{ name: "main", imports: [] }],
+      flags: [],
+    });
+    expect(r2.limitations.map((l) => l.code)).toEqual(["callgraph_tail_calls_unknown"]);
   });
 });

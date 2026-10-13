@@ -1,0 +1,16 @@
+[
+  {
+    "tool": "analyze_javascript_application",
+    "args": { "input_path": "$EXAMPLES/notesdesk-1.5.0.asar", "detail": "summary" }
+  },
+  {
+    "tool": "inspect_analysis_view",
+    "args": {
+      "source": {
+        "kind": "retained-evidence",
+        "evidence_id": "$0.normalized_result.parent_evidence_id"
+      },
+      "view": { "kind": "page", "collection": "modules", "offset": 0, "limit": 32 }
+    }
+  }
+]

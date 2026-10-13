@@ -7,7 +7,7 @@
  * to npm. Usage: npm run release -- 0.2.2
  */
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const version = process.argv[2];
 if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version ?? "")) {
@@ -54,7 +54,7 @@ for (const [file, re, replacement] of constants)
 
 // The READMEs carry a note that says "this describes main, npm serves an older version". It is
 // only true between releases, so the release removes it.
-for (const file of ["README.md", "README.de.md"]) {
+for (const file of readdirSync(".").filter((f) => /^README(\.[\w-]+)?\.md$/.test(f))) {
   const text = readFileSync(file, "utf8");
   writeFileSync(
     file,

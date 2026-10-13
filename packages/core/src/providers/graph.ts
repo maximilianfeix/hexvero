@@ -216,6 +216,24 @@ export function normalizeCallGraph(
       }
       return node;
     };
+    // Tail calls: a function that ends in a jump to another function's entry calls it, but the
+    // engines' call graphs list only call instructions. rizin's function list carries every code
+    // reference, so those jumps become edges; radare2 6 lists none, which is stated below.
+    let sawCodeRefs = false;
+    const tailCalls: Array<[string, string]> = [];
+    for (const item of asArray(sections["functions"])) {
+      if (!isRecord(item) || typeof item["name"] !== "string" || !Array.isArray(item["callrefs"]))
+        continue;
+      sawCodeRefs = true;
+      const from = byName.get(item["name"]);
+      if (!from) continue;
+      for (const ref of item["callrefs"] as unknown[]) {
+        if (!isRecord(ref) || (ref["type"] !== "CODE" && ref["type"] !== "JMP")) continue;
+        const to = typeof ref["to"] === "number" ? ref["to"] : ref["addr"];
+        const target = typeof to === "number" && to !== 0 ? byAddress.get(hex(to)) : undefined;
+        if (target && target !== from) tailCalls.push([from.id, target.id]);
+      }
+    }
     let sawGraph = false;
     const graph = sections["graph"];
     if (Array.isArray(graph)) {
@@ -255,6 +273,12 @@ export function normalizeCallGraph(
         }
       }
     }
+    if (sawGraph) for (const [from, to] of tailCalls) addEdge(from, to);
+    if (sawGraph && sawFunctions && !sawCodeRefs && isRecord(raw))
+      limitations.push({
+        code: "callgraph_tail_calls_unknown",
+        message: `${provider} lists call instructions only: a function that ends in a jump to another function (a tail call, common in optimized builds) has no edge here, so a path may exist that is not shown.`,
+      });
     if (!sawGraph && !options.partial)
       limitations.push({
         code: "callgraph_missing",

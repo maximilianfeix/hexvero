@@ -24,7 +24,7 @@
 
 <!-- unreleased-note:start -->
 
-> **Versionshinweis.** Diese Seite beschreibt `main`. Über npm kommt die Version aus dem Badge; Neuerungen seitdem stehen unter _Unreleased_ im [Changelog](CHANGELOG.md).
+> **Versionshinweis.** Diese Seite beschreibt `main`. Über npm kommt die Version aus dem Badge; `recover`, `calls`, `webPreferences`, `contextBridge` und weitere Neuerungen seitdem stehen unter _Unreleased_ im [Changelog](CHANGELOG.md).
 
 <!-- unreleased-note:end -->
 

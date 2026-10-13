@@ -3,7 +3,13 @@ import { join, posix, relative, sep } from "node:path";
 import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
-import { scanJavaScript, type IpcUsage, type ModuleReference } from "./scan.js";
+import {
+  scanJavaScript,
+  tokenize,
+  type IpcUsage,
+  type ModuleReference,
+  type Token,
+} from "./scan.js";
 import { summarizeSourceMap } from "./sourcemap.js";
 
 /** Minimal read-only file tree so directories and ASAR archives share one analyzer. */
@@ -67,6 +73,175 @@ export interface WebPreference {
   line: number;
 }
 
+/** One member a preload script exposes to the page through contextBridge. */
+export interface BridgeMember {
+  /** The key the API is exposed under: `window.<api>`. */
+  api: string;
+  /** Member name, or null when the exposed value is not an object literal hexvero can read. */
+  member: string | null;
+  /** IPC channel the member forwards to, when it is a string literal in the member's body. */
+  channel: string | null;
+  world: "main" | "isolated";
+  file: string;
+  line: number;
+}
+
+/** What one source file exposes, and whether a cap or an unclosed literal cut the reading short. */
+export interface BridgeScan {
+  members: BridgeMember[];
+  truncated: boolean;
+}
+
+const MAX_BRIDGE_PER_FILE = 500;
+const MAX_BRIDGE = 2000;
+/** Tokens walked inside exposed objects per file; keeps repeated or unclosed calls linear. */
+const BRIDGE_WALK_BUDGET = 400_000;
+const BRIDGE_MODIFIERS = new Set(["async", "get", "set", "static"]);
+const CHANNEL_CALLS = new Set([
+  "invoke",
+  "send",
+  "sendSync",
+  "sendToHost",
+  "postMessage",
+  "on",
+  "once",
+  "addListener",
+]);
+const textOf = (t: Token | undefined): string | null =>
+  t && (t.type === "string" || (t.type === "template" && !t.value.includes("${"))) ? t.value : null;
+
+/**
+ * Reads `contextBridge.exposeInMainWorld("api", { a: …, b() {…} })` calls from one source file,
+ * on the token stream, so comments, strings, regex and template literals cannot be mistaken for
+ * code. An object passed by name is followed to its `const x = {…}` in the same file. What cannot
+ * be read as a member (spread, computed key, a value built elsewhere) is a row with member null.
+ */
+export function bridgeMembers(
+  source: string | { tokens: Token[]; truncated: boolean },
+  file: string,
+): BridgeScan {
+  const { tokens, truncated: cut } = typeof source === "string" ? tokenize(source) : source;
+  const members: BridgeMember[] = [];
+  let truncated = cut;
+  let budget = BRIDGE_WALK_BUDGET;
+  const is = (i: number, value: string): boolean =>
+    tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  let objects: Map<string, number> | null = null;
+  const objectOf = (name: string): number => {
+    if (!objects) {
+      objects = new Map();
+      for (let k = 0; k + 3 < tokens.length; k++) {
+        const t = tokens[k]!;
+        if (t.type !== "ident" || (t.value !== "const" && t.value !== "let" && t.value !== "var"))
+          continue;
+        const id = tokens[k + 1]!;
+        if (id.type === "ident" && is(k + 2, "=") && is(k + 3, "{") && !objects.has(id.value))
+          objects.set(id.value, k + 3);
+      }
+    }
+    return objects.get(name) ?? -1;
+  };
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (t.type !== "ident") continue;
+    if (t.value !== "exposeInMainWorld" && t.value !== "exposeInIsolatedWorld") continue;
+    if (!(is(i - 1, ".") || is(i - 1, "?.")) || !is(i + 1, "(")) continue;
+    const world = t.value === "exposeInMainWorld" ? "main" : "isolated";
+    const push = (member: string | null, channel: string | null, line: number): void => {
+      if (members.length >= MAX_BRIDGE_PER_FILE) truncated = true;
+      else members.push({ api, member, channel, world, file, line });
+    };
+    let at = i + 2;
+    if (world === "isolated") {
+      // isolated worlds take a world id first
+      let depth = 0;
+      for (; at < tokens.length && budget > 0; at++, budget--) {
+        const p = tokens[at]!;
+        if (p.type !== "punct") continue;
+        if (p.value === "(" || p.value === "[" || p.value === "{") depth++;
+        else if (p.value === ")" || p.value === "]" || p.value === "}") {
+          if (depth === 0) break;
+          depth--;
+        } else if (p.value === "," && depth === 0) break;
+      }
+      if (!is(at, ",")) continue;
+      at++;
+    }
+    const keyToken = tokens[at];
+    const simple = is(at + 1, ",");
+    const api =
+      (simple ? textOf(keyToken) : null) ??
+      (simple && keyToken?.type === "ident" ? `[${keyToken.value}]` : "[computed]");
+    let open = -1;
+    if (simple) {
+      const value = tokens[at + 2];
+      if (is(at + 2, "{")) open = at + 2;
+      else if (value?.type === "ident" && is(at + 3, ")")) open = objectOf(value.value);
+    }
+    if (open < 0) {
+      push(null, null, t.line);
+      continue;
+    }
+    let start = open + 1;
+    const flush = (end: number): void => {
+      let s = start;
+      start = end + 1;
+      if (s >= end) return;
+      const first = tokens[s]!;
+      if (is(s, "...")) return push(null, null, first.line);
+      while (
+        s + 1 < end &&
+        tokens[s]!.type === "ident" &&
+        BRIDGE_MODIFIERS.has(tokens[s]!.value) &&
+        !is(s + 1, ":") &&
+        !is(s + 1, "(")
+      )
+        s++;
+      if (is(s, "*") && s + 1 < end) s++;
+      const nameToken = tokens[s]!;
+      const name =
+        nameToken.type === "ident" || nameToken.type === "number"
+          ? nameToken.value
+          : textOf(nameToken);
+      if (name === null) return push(null, null, first.line);
+      const channels = new Set<string>();
+      for (let j = s + 1; j + 4 < end; j++) {
+        const callee = tokens[j + 2]!;
+        if (
+          tokens[j]!.type === "ident" &&
+          tokens[j]!.value === "ipcRenderer" &&
+          is(j + 1, ".") &&
+          callee.type === "ident" &&
+          CHANNEL_CALLS.has(callee.value) &&
+          is(j + 3, "(")
+        ) {
+          const channel = textOf(tokens[j + 4]);
+          if (channel !== null) channels.add(channel);
+        }
+      }
+      // Two different channels in one member: which one it forwards to is not decidable here.
+      push(name, channels.size === 1 ? [...channels][0]! : null, first.line);
+    };
+    let depth = 0;
+    let closed = false;
+    for (let k = open; k < tokens.length && budget > 0; k++, budget--) {
+      const p = tokens[k]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "{" || p.value === "(" || p.value === "[") depth++;
+      else if (p.value === "}" || p.value === ")" || p.value === "]") {
+        depth--;
+        if (depth === 0) {
+          flush(k);
+          closed = true;
+          break;
+        }
+      } else if (p.value === "," && depth === 1) flush(k);
+    }
+    if (!closed) truncated = true;
+  }
+  return { members, truncated };
+}
+
 export interface JsEdge {
   from: string;
   to: string;
@@ -98,6 +273,8 @@ export interface JsAppInfo {
   externals: Array<{ specifier: string; count: number; builtin: boolean }>;
   /** BrowserWindow settings as written in the sources, each with file and line. */
   webPreferences: WebPreference[];
+  /** What preload scripts expose to pages through contextBridge, member by member. */
+  contextBridge: BridgeMember[];
   ipcChannels: Array<{
     channel: string;
     senders: string[];
@@ -324,7 +501,9 @@ export function analyzeJavaScriptTree(
   const preloadScripts = new Set<string>();
   /** Every webPreferences-style setting read from source, with the place it was read. */
   const webPreferences: WebPreference[] = [];
+  const contextBridge: BridgeMember[] = [];
   let prefsCapped = false;
+  let bridgeCapped = false;
   const flags = {
     nodeIntegration: null as boolean | null,
     contextIsolation: null as boolean | null,
@@ -345,7 +524,15 @@ export function analyzeJavaScriptTree(
       continue;
     }
     bytes += file.size;
-    const scan = scanJavaScript(source);
+    const scan = scanJavaScript(source, {
+      onTokens: (tokens, truncated) => {
+        if (!source.includes("exposeIn")) return;
+        const bridge = bridgeMembers({ tokens, truncated }, file.path);
+        const room = MAX_BRIDGE - contextBridge.length;
+        contextBridge.push(...bridge.members.slice(0, room));
+        if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
+      },
+    });
     if (scan.truncated)
       limitations.push({
         code: "scan_truncated",
@@ -480,6 +667,17 @@ export function analyzeJavaScriptTree(
       code: "js_files_truncated",
       message: `Scanned ${maxJsFiles} of ${jsFiles.length} JavaScript files.`,
     });
+  if (bridgeCapped)
+    limitations.push({
+      code: "context_bridge_truncated",
+      message: `The contextBridge inventory is incomplete: a file exposes more than ${MAX_BRIDGE_PER_FILE} members, the app more than ${MAX_BRIDGE}, or an exposed object could not be read to its end.`,
+    });
+  const bridgeUnread = contextBridge.filter((b) => b.member === null).length;
+  if (bridgeUnread)
+    limitations.push({
+      code: "context_bridge_members_unreadable",
+      message: `${bridgeUnread} contextBridge ${bridgeUnread === 1 ? "entry is" : "entries are"} not a plain member of an object literal in the same file (a value built elsewhere, a spread or a computed key), so the exposed members are not all listed.`,
+    });
   if (prefsCapped)
     limitations.push({
       code: "web_preferences_truncated",
@@ -597,6 +795,33 @@ export function analyzeJavaScriptTree(
         location: first ? `${first.m.id}:${first.u.line}` : undefined,
       });
     }
+    if (contextBridge.length) {
+      const apis = [...new Set(contextBridge.map((b) => b.api))].map((a) =>
+        a.startsWith("[") ? `window${a}` : `window.${a}`,
+      );
+      // A getter and setter of one name are one member; rows keep both for their lines.
+      const seen = new Set<string>();
+      const read = contextBridge.filter((b) => {
+        if (b.member === null || seen.has(`${b.api}\u0000${b.member}`)) return false;
+        seen.add(`${b.api}\u0000${b.member}`);
+        return true;
+      });
+      const unread = contextBridge.filter((b) => b.member === null).length;
+      findings.push({
+        kind: "electron.context-bridge",
+        title: read.length
+          ? `${bridgeCapped ? "at least " : ""}${read.length} member${read.length === 1 ? "" : "s"} exposed to pages as ${list(apis, 4)}`
+          : `${list(apis, 4)} exposed to pages; members could not be read`,
+        detail: read.length
+          ? `${list(
+              read.map((b) => b.member!),
+              8,
+            )}${unread ? `; ${unread} more not readable` : ""} (collection contextBridge)`
+          : "The exposed value is not an object literal in the same file (collection contextBridge).",
+        confidence: read.length && !unread && !bridgeCapped ? "confirmed" : "inferred",
+        location: `${contextBridge[0]!.file}:${contextBridge[0]!.line}`,
+      });
+    }
     if (preloadScripts.size)
       findings.push({
         kind: "electron.preload",
@@ -647,6 +872,7 @@ export function analyzeJavaScriptTree(
       .toSorted((a, b) => b.count - a.count),
     ipcChannels,
     webPreferences,
+    contextBridge,
     sourceMaps,
     nativeAddons,
     totals: {

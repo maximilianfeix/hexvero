@@ -79,7 +79,18 @@ const POSITION_FIELDS: Record<string, readonly string[]> = {
  * Position fields for `collection` when both targets are native binaries; empty otherwise, so
  * an Electron setting or a manifest entry named `value` is never treated as an address.
  */
+/**
+ * Source-line collections: the line a fact was read from moves whenever code above it changes,
+ * so it is a position, not content. These names exist for JavaScript applications only.
+ */
+const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
+  contextBridge: ["line"],
+  webPreferences: ["line"],
+};
+
 export function positionalFields(collection: string, formats: readonly string[]): string[] {
+  const lines = SOURCE_LINE_FIELDS[collection];
+  if (lines) return [...lines];
   if (formats.length === 0 || !formats.every((f) => NATIVE_FORMATS.has(f))) return [];
   return [...(POSITION_FIELDS[collection] ?? [])];
 }
@@ -110,6 +121,7 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
     ["file", "key", "line"],
   ],
   cil: [["method", "offset"]],
+  contextBridge: [["api", "member"]],
 };
 
 /** Paths (dotted, up to three levels) at which two values differ. */
@@ -278,7 +290,10 @@ export function compareItems(
   }
   const keyOf = (item: unknown): [typed: string, shown: string] => {
     const value = field === null ? undefined : keyValue(item, field);
-    if (value === undefined || field === null) return [`j:${canonical(item)}`, canonical(item)];
+    // No key value: the item is its own identity, minus the fields that only say where it sits,
+    // so an entry that merely moved is still the same entry.
+    if (value === undefined || field === null)
+      return [`j:${withoutPositions(item)}`, canonical(item)];
     return [`k:${value}`, keyLabel(item, field)];
   };
   const group = (items: readonly unknown[]): Map<string, { shown: string; items: unknown[] }> => {

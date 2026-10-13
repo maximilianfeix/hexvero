@@ -387,7 +387,7 @@ async function contentDigest(path: string): Promise<string> {
 }
 
 /** Bump when the engine commands or the normalized graph shape change: old caches become unreachable. */
-const GRAPH_SCHEMA = 4;
+const GRAPH_SCHEMA = 5;
 
 /** Normalized graphs per provider, content digest, engine build and schema; concurrent requests share one engine run. */
 const graphCache = new Map<string, Promise<CallGraph>>();

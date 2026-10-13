@@ -1,0 +1,12 @@
+[
+  { "tool": "hexvero_open", "args": { "path": "$EXAMPLES/notesdesk-1.4.0.asar" } },
+  { "tool": "hexvero_open", "args": { "path": "$EXAMPLES/notesdesk-1.5.0.asar" } },
+  {
+    "tool": "hexvero_compare",
+    "args": { "targetA": "$0.id", "targetB": "$1.id", "collection": "ipcChannels" }
+  },
+  {
+    "tool": "hexvero_compare",
+    "args": { "targetA": "$0.id", "targetB": "$1.id", "collection": "webPreferences" }
+  }
+]

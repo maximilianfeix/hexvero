@@ -25,7 +25,7 @@ Supported formats: ELF, PE, Mach-O (fat), Go, .NET, WASM, EVM, SQLite, plist, AP
 5. Corroborate important claims using `hexvero_strings {targetId, text?, tag?, minLength?, utf16?, offset?, limit?}` or `hexvero_bytes {targetId, offset, length}` with `length <= 65536`. Use small byte ranges at reported offsets; distinguish file offsets from virtual addresses.
 6. For bundles and source maps, `hexvero_recover {targetId, outputDir}` writes modules or original sources as files you can read with file tools (collections `bundleModules`, `endpoints`, `routes`, `storage` describe the bundle). If the whole result is needed, call `hexvero_export {targetId, path}` and read the exported file selectively with file tools. Close targets opened for the investigation with `hexvero_close {targetId}` when finished.
 
-Collection names depend on format. Examples include symbols, imports, exports, sections, segments, libraries, goDependencies, types, methods, pinvokes, userStrings, selectors, instructions, tables, columns, requests, endpoints, permissions, components, classes, packages, modules, edges, externals, ipcChannels, ipc, webPreferences, sourceMaps, bundleModules, frameworks, entitlements, findings, and limitations.
+Collection names depend on format. Examples include symbols, imports, exports, sections, segments, libraries, goDependencies, types, methods, pinvokes, userStrings, selectors, instructions, tables, columns, requests, endpoints, permissions, components, classes, packages, modules, edges, externals, ipcChannels, ipc, webPreferences, contextBridge, sourceMaps, bundleModules, frameworks, entitlements, findings, and limitations.
 
 ## Question recipes
 
