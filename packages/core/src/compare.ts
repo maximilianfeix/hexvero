@@ -86,9 +86,15 @@ const POSITION_FIELDS: Record<string, readonly string[]> = {
 const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   contextBridge: ["line"],
   webPreferences: ["line"],
+  endpoints: ["line", "column"],
+  storage: ["line", "column"],
+  urls: ["line", "column"],
+  routes: ["line", "column"],
 };
 
 export function positionalFields(collection: string, formats: readonly string[]): string[] {
+  // `endpoints` also exists for HAR captures; their rows have no line or column, so the rule
+  // has nothing to act on there.
   const lines = SOURCE_LINE_FIELDS[collection];
   if (lines) return [...lines];
   if (formats.length === 0 || !formats.every((f) => NATIVE_FORMATS.has(f))) return [];
@@ -122,6 +128,17 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   ],
   cil: [["method", "offset"]],
   contextBridge: [["api", "member"]],
+  // The same URL or key in two files is two facts; without a file (a single bundle) it is one.
+  endpoints: [
+    ["file", "kind", "value"],
+    ["kind", "value"],
+  ],
+  storage: [
+    ["file", "kind", "value", "op"],
+    ["kind", "value", "op"],
+    ["kind", "value"],
+  ],
+  urls: [["file", "value"], ["value"]],
 };
 
 /** Paths (dotted, up to three levels) at which two values differ. */

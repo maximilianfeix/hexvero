@@ -176,10 +176,11 @@ describe("ASAR", () => {
       remoteModule: false,
     });
     expect(info.modules.map((m) => `${m.id}:${m.role}`)).toEqual([
+      // scan order: the entry file, then shallow paths before deep ones, then by path
       "main.js:main",
+      "lazy.mjs:unknown",
       "preload.js:preload",
       "lib/db.js:unknown",
-      "lazy.mjs:unknown",
     ]);
     expect(info.edges.filter((e) => e.resolved).map((e) => `${e.from}->${e.to}`)).toEqual([
       "main.js->lib/db.js",

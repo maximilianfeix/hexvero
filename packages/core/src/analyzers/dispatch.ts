@@ -13,8 +13,11 @@ import {
   asarTree,
   asarTreeFromFile,
   directoryTree,
+  type FileTree,
   type JsAppInfo,
+  type JsScanFacts,
 } from "../javascript/app.js";
+import { dropScan, loadScan, saveScan, scanKey } from "../javascript/scanState.js";
 import { analyzeBundle, type JsBundleInfo } from "../javascript/bundle.js";
 import { scanJavaScript, type ScanResult } from "../javascript/scan.js";
 import { summarizeSourceMap, type SourceMapSummary } from "../javascript/sourcemap.js";
@@ -47,10 +50,67 @@ export type AnyAnalysis = Analysis<AnalysisData>;
 
 const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 
+/** How far a JavaScript application scan should go; everything else ignores it. */
+export interface JsScanRequest {
+  /** Read the next batch of unread files. */
+  continue?: boolean;
+  /** Read every unread file, batch after batch. */
+  all?: boolean;
+  /** Read unread files under these path prefixes or `*` patterns. */
+  include?: readonly string[];
+  /** Discard the stored scan of this input and start again. */
+  fresh?: boolean;
+  /** Files per run or batch (default 5,000). */
+  maxJsFiles?: number;
+}
+
+export interface AnalyzeOptions {
+  js?: JsScanRequest;
+}
+
+/**
+ * Scans a JavaScript application, continuing a stored scan of the same input when there is one.
+ * State is stored only when it is needed to continue: after a partial run, or once a scan has
+ * been continued. A small application read in one run touches no disk.
+ */
+function scanApplication(
+  info: LoadedTarget["info"],
+  tree: FileTree,
+  request: JsScanRequest = {},
+): JsAppInfo {
+  const key = scanKey(info, tree);
+  if (key && request.fresh) dropScan(key);
+  const stored = key ? loadScan(key, tree) : null;
+  const advancing = !!(request.continue || request.all || request.include?.length);
+  let last: JsScanFacts | null = null;
+  const app = analyzeJavaScriptTree(tree, {
+    ...(stored ? { resume: stored } : {}),
+    // A stored scan is shown as it stands unless the caller asks to read more.
+    ...(stored && !advancing ? { maxJsFiles: 0 } : {}),
+    ...(request.maxJsFiles !== undefined && !(stored && !advancing)
+      ? { maxJsFiles: request.maxJsFiles }
+      : {}),
+    ...(request.all ? { all: true } : {}),
+    ...(request.include?.length ? { include: request.include } : {}),
+    onFacts: (facts) => {
+      // In `all` mode every finished batch is stored at once, so a timeout or a kill costs one
+      // batch at most and the next run continues from there.
+      if (key && request.all) saveScan(key, facts);
+      last = facts;
+    },
+  });
+  if (key && last && !request.all && (advancing || (!stored && !app.coverage.complete)))
+    saveScan(key, last);
+  return app;
+}
+
 /** Routes a loaded target to the matching analyzer; parser bounds errors become `malformed` results. */
-export async function analyzeTarget(target: LoadedTarget): Promise<AnyAnalysis> {
+export async function analyzeTarget(
+  target: LoadedTarget,
+  options: AnalyzeOptions = {},
+): Promise<AnyAnalysis> {
   try {
-    return await analyzeTargetUnsafe(target);
+    return await analyzeTargetUnsafe(target, options);
   } catch (error) {
     if (error instanceof RangeError || error instanceof TypeError) {
       throw new AnalysisError("malformed", `${target.info.format}: ${error.message}`, {
@@ -61,7 +121,10 @@ export async function analyzeTarget(target: LoadedTarget): Promise<AnyAnalysis> 
   }
 }
 
-async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
+async function analyzeTargetUnsafe(
+  target: LoadedTarget,
+  options: AnalyzeOptions,
+): Promise<AnyAnalysis> {
   const started = performance.now();
   const { info, bytes } = target;
   const findings: Finding[] = [];
@@ -169,12 +232,16 @@ async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
     }
     case "asar": {
       const app = strip(
-        analyzeJavaScriptTree(
+        scanApplication(
+          info,
           target.lazy ? asarTreeFromFile(info.path) : asarTree(bytes, info.path),
+          options.js,
         ),
       );
       return done(
-        `Electron ASAR: ${app.modules.length} JavaScript modules, ${app.ipcChannels.length} IPC channels`,
+        app.coverage.complete
+          ? `Electron ASAR: ${app.modules.length} JavaScript modules, ${app.ipcChannels.length} IPC channels`
+          : `Electron ASAR, partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned, ${app.ipcChannels.length} IPC channels so far`,
         { kind: "javascript-app", app },
       );
     }
@@ -190,11 +257,13 @@ async function analyzeTargetUnsafe(target: LoadedTarget): Promise<AnyAnalysis> {
           { kind: "bundle", bundle },
         );
       }
-      const app = strip(analyzeJavaScriptTree(directoryTree(info.path)));
+      const app = strip(scanApplication(info, directoryTree(info.path), options.js));
       return done(
-        `Directory: ${app.totals.files} files, ${app.modules.length} JavaScript modules${
-          app.electron ? " (Electron)" : ""
-        }`,
+        `Directory: ${app.totals.files} files, ${
+          app.coverage.complete
+            ? `${app.modules.length} JavaScript modules`
+            : `partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned`
+        }${app.electron ? " (Electron)" : ""}`,
         { kind: "javascript-app", app },
       );
     }

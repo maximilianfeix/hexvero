@@ -3,6 +3,7 @@ import { join, posix, relative, sep } from "node:path";
 import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
+import { findCandidates, type Candidate } from "./candidates.js";
 import {
   scanJavaScript,
   tokenize,
@@ -282,9 +283,122 @@ export interface JsAppInfo {
   }>;
   sourceMaps: Array<{ file: string; sources: number; packages: string[] }>;
   nativeAddons: string[];
+  /** Network calls read from the sources, each with file, line and column. */
+  endpoints: AppCandidate[];
+  /** Storage accesses (web storage, IndexedDB, cookies, electron-store) with their keys. */
+  storage: AppCandidate[];
+  /** URLs that occur as plain strings. Not endpoints: nothing shows they are requested. */
+  urls: AppCandidate[];
+  /** How much of the application's JavaScript this analysis has read. */
+  coverage: JsCoverage;
   totals: { files: number; javascript: number; bytes: number; skipped: number };
   findings: Finding[];
   limitations: Limitation[];
+}
+
+/** An endpoint, storage access or URL literal with the file it was read from. */
+export interface AppCandidate extends Candidate {
+  file: string;
+}
+
+export interface JsCoverage {
+  /** JavaScript files of the application (node_modules excluded). */
+  total: number;
+  /** Files read so far, over all runs that were continued. */
+  scanned: number;
+  /** Files not read yet. Zero means every list below covers the whole application. */
+  remaining: number;
+  /** Files that were passed over for exceeding the per-file size limit; they count as scanned. */
+  skipped: number;
+  complete: boolean;
+  /** True when this result continues an earlier, stored scan of the same input. */
+  resumed: boolean;
+  /** The fixed order files are taken in, so a continued scan never repeats or omits a file. */
+  order: "entry file, then path depth, then path";
+  /** The first files that are still unread, in scan order. */
+  nextFiles: string[];
+}
+
+/** Bump when the facts change shape or a detector changes what it reads. */
+export const JS_SCAN_SCHEMA = 1;
+
+/**
+ * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
+ * continued later; the analysis result is assembled from it.
+ */
+export interface JsScanFacts {
+  schema: number;
+  /** Paths already processed, in scan order. A file is processed exactly once. */
+  scanned: string[];
+  skippedFiles: string[];
+  skipped: number;
+  bytes: number;
+  modules: JsModule[];
+  edges: JsEdge[];
+  externals: Record<string, number>;
+  webPreferences: WebPreference[];
+  contextBridge: BridgeMember[];
+  endpoints: AppCandidate[];
+  storage: AppCandidate[];
+  urls: AppCandidate[];
+  preloadScripts: string[];
+  flags: {
+    nodeIntegration: boolean | null;
+    contextIsolation: boolean | null;
+    sandbox: boolean | null;
+    remoteModule: boolean;
+  };
+  electronSeen: boolean;
+  prefsCapped: boolean;
+  bridgeCapped: boolean;
+  candidatesCapped: boolean;
+  /** Limitations that belong to single files (e.g. a token budget that ran out). */
+  limitations: Limitation[];
+}
+
+export function emptyJsScanFacts(): JsScanFacts {
+  return {
+    schema: JS_SCAN_SCHEMA,
+    scanned: [],
+    skippedFiles: [],
+    skipped: 0,
+    bytes: 0,
+    modules: [],
+    edges: [],
+    externals: {},
+    webPreferences: [],
+    contextBridge: [],
+    endpoints: [],
+    storage: [],
+    urls: [],
+    preloadScripts: [],
+    flags: { nodeIntegration: null, contextIsolation: null, sandbox: null, remoteModule: false },
+    electronSeen: false,
+    prefsCapped: false,
+    bridgeCapped: false,
+    candidatesCapped: false,
+    limitations: [],
+  };
+}
+
+const MAX_CANDIDATES = 5000;
+const pathDepth = (path: string): number => path.split("/").length;
+
+/** `src/**`, `renderer/` or `*.min.js`: a path prefix, or a pattern with `*` wildcards. */
+function pathMatcher(patterns: readonly string[]): (path: string) => boolean {
+  const tests = patterns.map((p) => {
+    if (!p.includes("*"))
+      return (path: string): boolean =>
+        path === p || path.startsWith(p.endsWith("/") ? p : `${p}/`);
+    const re = new RegExp(
+      `^${p
+        .split("*")
+        .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*")}$`,
+    );
+    return (path: string): boolean => re.test(path);
+  });
+  return (path) => tests.some((t) => t(path));
 }
 
 const JS_EXT = /\.(m?js|cjs|jsx)$/i;
@@ -448,9 +562,19 @@ function resolveSpecifier(from: string, specifier: string, known: Set<string>): 
 export function analyzeJavaScriptTree(
   tree: FileTree,
   options: {
+    /** Files read in one run (default 5,000). With `all`, the size of one batch. */
     maxJsFiles?: number;
     maxFileBytes?: number;
+    /** Source bytes read in one run (default 256 MiB); what is over stays unread, not skipped. */
     maxTotalBytes?: number;
+    /** Facts of an earlier run on the same input; files in it are not read again. */
+    resume?: JsScanFacts;
+    /** Read only unread files whose path matches one of these prefixes or `*` patterns. */
+    include?: readonly string[];
+    /** Read every unread file, batch after batch, ignoring the per-run budgets. */
+    all?: boolean;
+    /** Receives the facts after every batch and at the end, to store them. */
+    onFacts?: (facts: JsScanFacts) => void;
   } = {},
 ): JsAppInfo {
   const maxJsFiles = options.maxJsFiles ?? 5000;
@@ -492,28 +616,59 @@ export function analyzeJavaScriptTree(
     (f) => JS_EXT.test(f.path) && !f.path.includes("node_modules/"),
   );
   const known = new Set(jsFiles.map((f) => f.path));
-  const modules: JsModule[] = [];
-  const edges: JsEdge[] = [];
-  const externals = new Map<string, number>();
-  let bytes = 0;
-  let skipped = 0;
-  let electronSeen = false;
-  const preloadScripts = new Set<string>();
+  const facts: JsScanFacts =
+    options.resume && options.resume.schema === JS_SCAN_SCHEMA
+      ? options.resume
+      : emptyJsScanFacts();
+  const resumed = facts.scanned.length > 0;
+  const { modules, edges, webPreferences, contextBridge, flags } = facts;
+  const externals = new Map<string, number>(Object.entries(facts.externals));
+  const preloadScripts = new Set<string>(facts.preloadScripts);
+  let bytes = facts.bytes;
+  let skipped = facts.skipped;
+  let electronSeen = facts.electronSeen;
   /** Every webPreferences-style setting read from source, with the place it was read. */
-  const webPreferences: WebPreference[] = [];
-  const contextBridge: BridgeMember[] = [];
-  let prefsCapped = false;
-  let bridgeCapped = false;
-  const flags = {
-    nodeIntegration: null as boolean | null,
-    contextIsolation: null as boolean | null,
-    sandbox: null as boolean | null,
-    remoteModule: false,
+  let prefsCapped = facts.prefsCapped;
+  let bridgeCapped = facts.bridgeCapped;
+  /** Writes the running counters back, so `facts` is a complete, storable state. */
+  const sync = (): JsScanFacts => {
+    facts.bytes = bytes;
+    facts.skipped = skipped;
+    facts.electronSeen = electronSeen;
+    facts.prefsCapped = prefsCapped;
+    facts.bridgeCapped = bridgeCapped;
+    facts.externals = Object.fromEntries(externals);
+    facts.preloadScripts = [...preloadScripts];
+    return facts;
   };
 
-  for (const file of jsFiles.slice(0, maxJsFiles)) {
-    if (file.size > maxFileBytes || bytes + file.size > maxTotalBytes) {
+  // A fixed order: the entry file, then shallow paths before deep ones, then by path. Entry
+  // points and preloads sit near the root, so the first batch sees them; and because the order
+  // depends on nothing but the file list, a continued scan takes up exactly where it stopped.
+  const mainPath = pkg?.main ? posix.normalize(pkg.main) : null;
+  const ordered = jsFiles.toSorted(
+    (a, b) =>
+      Number(b.path === mainPath) - Number(a.path === mainPath) ||
+      pathDepth(a.path) - pathDepth(b.path) ||
+      (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
+  );
+  const done = new Set(facts.scanned);
+  const wanted = options.include?.length ? pathMatcher(options.include) : null;
+  const todo = ordered.filter((f) => !done.has(f.path) && (!wanted || wanted(f.path)));
+  const runFiles = options.all ? Number.POSITIVE_INFINITY : maxJsFiles;
+  let runBytes = 0;
+  let taken = 0;
+
+  for (const file of todo) {
+    if (taken >= runFiles) break;
+    // Over the budget of this run: the file stays unread and a continued scan takes it.
+    if (!options.all && file.size <= maxFileBytes && runBytes + file.size > maxTotalBytes) break;
+    if (options.all && taken > 0 && taken % maxJsFiles === 0) options.onFacts?.(sync());
+    facts.scanned.push(file.path);
+    taken++;
+    if (file.size > maxFileBytes) {
       skipped++;
+      if (facts.skippedFiles.length < 200) facts.skippedFiles.push(file.path);
       continue;
     }
     let source: string;
@@ -521,11 +676,28 @@ export function analyzeJavaScriptTree(
       source = decode(tree.read(file.path, maxFileBytes));
     } catch {
       skipped++;
+      if (facts.skippedFiles.length < 200) facts.skippedFiles.push(file.path);
       continue;
     }
+    runBytes += file.size;
     bytes += file.size;
     const scan = scanJavaScript(source, {
       onTokens: (tokens, truncated) => {
+        const found = findCandidates(tokens, source);
+        if (found.truncated) facts.candidatesCapped = true;
+        for (const [from, to] of [
+          [found.endpoints, facts.endpoints],
+          [found.storage, facts.storage],
+          [found.urls, facts.urls],
+        ] as const) {
+          for (const row of from) {
+            if (to.length >= MAX_CANDIDATES) {
+              facts.candidatesCapped = true;
+              break;
+            }
+            to.push({ file: file.path, ...row });
+          }
+        }
         if (!source.includes("exposeIn")) return;
         const bridge = bridgeMembers({ tokens, truncated }, file.path);
         const room = MAX_BRIDGE - contextBridge.length;
@@ -534,7 +706,7 @@ export function analyzeJavaScriptTree(
       },
     });
     if (scan.truncated)
-      limitations.push({
+      facts.limitations.push({
         code: "scan_truncated",
         message: `${file.path}: token budget exhausted; references after the cut are missing.`,
       });
@@ -662,10 +834,29 @@ export function analyzeJavaScriptTree(
       }
     }
   }
-  if (jsFiles.length > maxJsFiles)
+  options.onFacts?.(sync());
+  limitations.push(...facts.limitations);
+  const scannedNow = new Set(facts.scanned);
+  const remainingFiles = ordered.filter((f) => !scannedNow.has(f.path));
+  const coverage: JsCoverage = {
+    total: ordered.length,
+    scanned: ordered.length - remainingFiles.length,
+    remaining: remainingFiles.length,
+    skipped,
+    complete: remainingFiles.length === 0,
+    resumed,
+    order: "entry file, then path depth, then path",
+    nextFiles: remainingFiles.slice(0, 5).map((f) => f.path),
+  };
+  if (!coverage.complete)
     limitations.push({
       code: "js_files_truncated",
-      message: `Scanned ${maxJsFiles} of ${jsFiles.length} JavaScript files.`,
+      message: `Scanned ${coverage.scanned} of ${coverage.total} JavaScript files; ${coverage.remaining} are unread, so every list and count here covers only the scanned part. Continue the analysis to read more.`,
+    });
+  if (facts.candidatesCapped)
+    limitations.push({
+      code: "candidates_truncated",
+      message: `More endpoints, storage accesses or URLs exist than the ${MAX_CANDIDATES} per list recorded.`,
     });
   if (bridgeCapped)
     limitations.push({
@@ -686,7 +877,7 @@ export function analyzeJavaScriptTree(
   if (skipped)
     limitations.push({
       code: "js_files_skipped",
-      message: `${skipped} files skipped for exceeding size budgets.`,
+      message: `${skipped} files were not read because they exceed the per-file size limit or could not be decoded (e.g. ${facts.skippedFiles.slice(0, 3).join(", ")}).`,
     });
 
   // IPC channel matching
@@ -837,6 +1028,27 @@ export function analyzeJavaScriptTree(
       title: `${sourceMaps.length} source maps shipped (original sources recoverable)`,
       confidence: "confirmed",
     });
+  for (const [rows, kind, noun, collection] of [
+    [facts.endpoints, "js.endpoints", "network endpoint", "endpoints"],
+    [facts.storage, "js.storage", "storage key", "storage"],
+  ] as const) {
+    if (!rows.length) continue;
+    const values = [...new Set(rows.filter((r) => r.value !== null).map((r) => r.value!))];
+    const unread = rows.filter((r) => r.value === null).length;
+    const first = rows[0]!;
+    findings.push({
+      kind,
+      title: values.length
+        ? `${values.length} ${noun}${values.length === 1 ? "" : "s"} read from the code`
+        : `${unread} ${noun} call${unread === 1 ? "" : "s"} with a value that could not be read`,
+      detail: `${values.length ? list(values, 6) : ""}${
+        values.length && unread ? `; ${unread} more with an unreadable value` : ""
+      } (collection ${collection})`.trim(),
+      // Confirmed only when every value stands as a literal at its call.
+      confidence: rows.every((r) => r.confidence === "literal") ? "confirmed" : "inferred",
+      location: `${first.file}:${first.line}`,
+    });
+  }
   if (nativeAddons.length)
     findings.push({
       kind: "js.native-addons",
@@ -873,6 +1085,10 @@ export function analyzeJavaScriptTree(
     ipcChannels,
     webPreferences,
     contextBridge,
+    endpoints: facts.endpoints,
+    storage: facts.storage,
+    urls: facts.urls,
+    coverage,
     sourceMaps,
     nativeAddons,
     totals: {

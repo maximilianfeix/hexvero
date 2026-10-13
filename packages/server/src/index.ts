@@ -234,8 +234,20 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         };
         res.once("close", onClose);
         let analysis;
+        // ?scan=continue reads the next batch of a large JavaScript app, ?scan=all the rest.
+        const scan = q.get("scan");
+        if (scan !== null && scan !== "continue" && scan !== "all")
+          return json(res, 400, {
+            error: { code: "invalid_input", message: "scan must be continue or all" },
+          });
         try {
-          analysis = await session.analyze(id, controller.signal);
+          analysis = scan
+            ? await session.continueAnalysis(
+                id,
+                scan === "all" ? { all: true } : { continue: true },
+                controller.signal,
+              )
+            : await session.analyze(id, controller.signal);
         } finally {
           res.removeListener("close", onClose);
         }
@@ -246,6 +258,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           durationMs: analysis.durationMs,
           findings: analysis.findings,
           limitations: analysis.limitations,
+          ...(analysis.data.kind === "javascript-app"
+            ? { coverage: analysis.data.app.coverage }
+            : {}),
           collections: await session.collections(id),
           data: full ? analysis.data : compact(analysis.data, { maxItems: 12 }),
         });

@@ -37,6 +37,9 @@ Usage: hexvero <command> [options]
 
 Commands
   analyze <path> [--json] [--out file.json]     Summary, findings, limitations and overview
+          [--continue | --all | --include p,q]  Large JavaScript apps are read in batches: read the
+          [--batch n] [--fresh]                 next one, all that remain, or only files under the
+                                                given paths; --fresh discards the stored scan
   collection <path> <name> [--text s] [--limit n] [--offset n] [--max-bytes n] [--json]
                                                 Page one list (symbols, imports, exports, ...)
   strings <path> [--min n] [--utf16] [--tag t] [--text s] [--limit n] [--json]
@@ -179,8 +182,25 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
   switch (args.command) {
     case "analyze": {
       const target = await session.open(need(0, "path"));
-      const analysis = await session.analyze(target.id);
+      const include = flagString(args.flags, "include")
+        ?.split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const batch = flagNumber(args.flags, "batch");
+      if (batch !== undefined && (!Number.isInteger(batch) || batch < 1))
+        throw new UsageError("--batch takes a whole number of files, 1 or more");
+      const request = {
+        ...(args.flags["continue"] ? { continue: true } : {}),
+        ...(args.flags["all"] ? { all: true } : {}),
+        ...(include?.length ? { include } : {}),
+        ...(args.flags["fresh"] ? { fresh: true } : {}),
+        ...(batch !== undefined ? { maxJsFiles: batch } : {}),
+      };
+      const analysis = Object.keys(request).length
+        ? await session.continueAnalysis(target.id, request)
+        : await session.analyze(target.id);
       const collections = await session.collections(target.id);
+      const coverage = analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null;
       const out = flagString(args.flags, "out");
       if (out) await session.export(target.id, out, { overwrite: true });
       if (json) {
@@ -191,6 +211,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             durationMs: analysis.durationMs,
             findings: analysis.findings,
             limitations: analysis.limitations,
+            ...(coverage ? { complete: coverage.complete, coverage } : {}),
             collections,
             overview: compact(analysis.data),
             exported: out ?? null,
@@ -208,6 +229,22 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         )}`,
       );
       io.out(`\n${heading(io, "Summary")}\n  ${analysis.summary}`);
+      if (coverage && (!coverage.complete || coverage.resumed)) {
+        const percent = coverage.total
+          ? Math.floor((coverage.scanned / coverage.total) * 100)
+          : 100;
+        io.out(
+          `\n${heading(io, "Coverage")}\n  ${
+            coverage.complete
+              ? `all ${coverage.total} JavaScript files scanned, over more than one run`
+              : `${paint(io, "yellow", "partial")}: ${coverage.scanned} of ${coverage.total} JavaScript files scanned (${percent}%), ${coverage.remaining} unread. Everything below covers the scanned part only.`
+          }${
+            coverage.complete
+              ? ""
+              : `\n  ${paint(io, "dim", `next: ${coverage.nextFiles.slice(0, 2).join(", ")}${coverage.remaining > 2 ? ", …" : ""}`)}\n  ${paint(io, "dim", "read more with --continue (next batch), --all, or --include <path>")}`
+          }`,
+        );
+      }
       io.out(`\n${heading(io, "Findings")}\n${formatFindings(io, analysis.findings).join("\n")}`);
       if (analysis.limitations.length)
         io.out(

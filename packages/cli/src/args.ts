@@ -39,6 +39,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
 }
 
 const BOOLEAN_FLAGS = new Set([
+  "continue",
+  "fresh",
   "json",
   "help",
   "version",

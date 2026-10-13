@@ -1,4 +1,5 @@
 import type { Limitation } from "../model.js";
+import { findCandidates, type Candidate } from "./candidates.js";
 import { tokenize, type Token } from "./scan.js";
 
 /**
@@ -32,19 +33,8 @@ export interface BundleModule {
   factory: "function" | "method";
 }
 
-export interface BundleCandidate {
-  value: string;
-  kind:
-    | "fetch"
-    | "http-client"
-    | "websocket"
-    | "url-literal"
-    | "route"
-    | "localStorage"
-    | "sessionStorage"
-    | "indexedDB"
-    | "cookie";
-  line: number;
+/** An endpoint, route, storage access or URL literal, with the bundle module it sits in. */
+export interface BundleCandidate extends Candidate {
   moduleId: string | null;
 }
 
@@ -58,6 +48,8 @@ export interface JsBundleInfo {
   endpoints: BundleCandidate[];
   routes: BundleCandidate[];
   storage: BundleCandidate[];
+  /** URLs that occur as plain strings. Not endpoints: nothing shows they are requested. */
+  urls: BundleCandidate[];
   limitations: Limitation[];
 }
 
@@ -436,88 +428,6 @@ function collectBody(tokens: Token[], m: RawModule): BundleModule {
   };
 }
 
-const literal = (t: Token | undefined): string | null =>
-  t && (t.type === "string" || (t.type === "template" && !t.value.includes("${"))) ? t.value : null;
-
-function findCandidates(
-  tokens: Token[],
-  moduleOf: (offset: number) => string | null,
-): Pick<JsBundleInfo, "endpoints" | "routes" | "storage"> {
-  const endpoints: BundleCandidate[] = [];
-  const routes: BundleCandidate[] = [];
-  const storage: BundleCandidate[] = [];
-  const seen = new Set<string>();
-  const push = (
-    list: BundleCandidate[],
-    kind: BundleCandidate["kind"],
-    value: string,
-    t: Token,
-  ): void => {
-    const key =
-      list === endpoints ? `endpoint:${value.replace(/^[A-Z]+ /, "")}` : `${kind}:${value}`;
-    if (seen.has(key) || list.length >= 2000) return;
-    seen.add(key);
-    list.push({ value, kind, line: t.line, moduleId: moduleOf(t.start) });
-  };
-  for (let k = 0; k < tokens.length; k++) {
-    const t = tokens[k]!;
-    if (t.type === "ident") {
-      if (t.value === "fetch" && is(tokens[k + 1], "punct", "(")) {
-        const url = literal(tokens[k + 2]);
-        if (url) push(endpoints, "fetch", url, t);
-      } else if (
-        ["get", "post", "put", "delete", "patch", "request", "head"].includes(t.value) &&
-        is(tokens[k - 1], "punct", ".") &&
-        is(tokens[k + 1], "punct", "(")
-      ) {
-        const url = literal(tokens[k + 2]);
-        if (url && /^(https?:)?\/|^\/[^/]/.test(url))
-          push(endpoints, "http-client", `${t.value.toUpperCase()} ${url}`, t);
-      } else if (
-        t.value === "WebSocket" &&
-        is(tokens[k - 1], "ident", "new") &&
-        is(tokens[k + 1], "punct", "(")
-      ) {
-        const url = literal(tokens[k + 2]);
-        if (url) push(endpoints, "websocket", url, t);
-      } else if (
-        (t.value === "localStorage" || t.value === "sessionStorage") &&
-        is(tokens[k + 1], "punct", ".") &&
-        is(tokens[k + 2], "ident") &&
-        is(tokens[k + 3], "punct", "(")
-      ) {
-        const key = literal(tokens[k + 4]);
-        if (key) push(storage, t.value, key, t);
-      } else if (
-        t.value === "indexedDB" &&
-        is(tokens[k + 1], "punct", ".") &&
-        is(tokens[k + 2], "ident", "open") &&
-        is(tokens[k + 3], "punct", "(")
-      ) {
-        const name = literal(tokens[k + 4]);
-        if (name) push(storage, "indexedDB", name, t);
-      } else if (
-        t.value === "cookie" &&
-        is(tokens[k - 1], "punct", ".") &&
-        is(tokens[k - 2], "ident", "document")
-      ) {
-        push(storage, "cookie", "document.cookie", t);
-      } else if (t.value === "path" && is(tokens[k + 1], "punct", ":")) {
-        const value = literal(tokens[k + 2]);
-        if (value && value.startsWith("/") && value.length < 120 && !/\s/.test(value))
-          push(routes, "route", value, t);
-      }
-    } else if (
-      t.type === "string" &&
-      /^https?:\/\/[^\s"'<>]{4,}|^\/(api|graphql|v\d+|rest|rpc)\b/.test(t.value) &&
-      t.value.length < 300
-    ) {
-      push(endpoints, "url-literal", t.value, t);
-    }
-  }
-  return { endpoints, routes, storage };
-}
-
 export function analyzeBundle(source: string, options: { maxTokens?: number } = {}): JsBundleInfo {
   const { tokens, truncated } = tokenize(source, options.maxTokens);
   const limitations: Limitation[] = [];
@@ -665,7 +575,20 @@ export function analyzeBundle(source: string, options: { maxTokens?: number } = 
   const modules = found.map((m) => collectBody(tokens, m)).toSorted((a, b) => a.start - b.start);
   const moduleOf = (offset: number): string | null =>
     modules.find((m) => offset >= m.start && offset < m.end)?.id ?? null;
-  const candidates = findCandidates(tokens, moduleOf);
+  const cands = findCandidates(tokens, source, (row, at) => {
+    (row as BundleCandidate).moduleId = moduleOf(at.start);
+  });
+  if (cands.truncated)
+    limitations.push({
+      code: "candidates_truncated",
+      message: "More endpoints, storage accesses or URLs exist than the 2,000 per list recorded.",
+    });
+  const candidates = {
+    endpoints: cands.endpoints as BundleCandidate[],
+    routes: cands.routes as BundleCandidate[],
+    storage: cands.storage as BundleCandidate[],
+    urls: cands.urls as BundleCandidate[],
+  };
 
   if (bundler && modules.length === 0 && bundler !== "vite" && bundler !== "rollup") {
     limitations.push({

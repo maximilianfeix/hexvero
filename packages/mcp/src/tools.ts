@@ -54,8 +54,23 @@ export const toolSchemas = {
   hexvero_analyze: {
     title: "Analyze target",
     description:
-      "Run the built-in analyzer for the target's format (ELF/PE/Mach-O, Go, .NET, WASM, EVM, SQLite, plist, APK, ZIP, Electron ASAR, JavaScript apps, source maps, HAR). Returns a summary, findings with confidence, limitations, a compact overview and the collections available for paging.",
-    input: { targetId },
+      "Run the built-in analyzer for the target's format (ELF/PE/Mach-O, Go, .NET, WASM, EVM, SQLite, plist, APK, ZIP, Electron ASAR, JavaScript apps, source maps, HAR). Returns a summary, findings with confidence, limitations, a compact overview and the collections available for paging. Large JavaScript apps are read in batches: when `complete` is false, `coverage` says how many files are unread and every list covers the scanned part only; call again with scan to read more.",
+    input: {
+      targetId,
+      scan: z
+        .enum(["continue", "all", "fresh"])
+        .optional()
+        .describe(
+          "JavaScript apps only: continue = read the next batch of unread files, all = read every unread file, fresh = discard the stored scan and start again",
+        ),
+      include: z
+        .array(z.string())
+        .max(32)
+        .optional()
+        .describe(
+          "JavaScript apps only: read the unread files under these paths (prefix or * pattern)",
+        ),
+    },
   },
   hexvero_collection: {
     title: "Page a collection",
@@ -258,11 +273,25 @@ export function createHandlers(
     hexvero_close: async (a) => ({ closed: session.close(str(a["targetId"])) }),
     hexvero_analyze: async (a, signal) => {
       const id = str(a["targetId"]);
-      const analysis = await session.analyze(id, signal);
+      const scan = typeof a["scan"] === "string" ? a["scan"] : undefined;
+      const include = Array.isArray(a["include"])
+        ? a["include"].filter((p): p is string => typeof p === "string" && p.length > 0)
+        : [];
+      const request = {
+        ...(scan === "continue" ? { continue: true } : {}),
+        ...(scan === "all" ? { all: true } : {}),
+        ...(scan === "fresh" ? { fresh: true } : {}),
+        ...(include.length ? { include } : {}),
+      };
+      const analysis = Object.keys(request).length
+        ? await session.continueAnalysis(id, request, signal)
+        : await session.analyze(id, signal);
+      const coverage = analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null;
       return {
         target: session.get(id),
         summary: analysis.summary,
         durationMs: analysis.durationMs,
+        ...(coverage ? { complete: coverage.complete, coverage } : {}),
         findings: analysis.findings,
         limitations: analysis.limitations,
         collections: await session.collections(id),

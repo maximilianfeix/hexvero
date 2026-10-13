@@ -31,6 +31,15 @@ export interface AnalysisResponse {
   findings: Finding[];
   limitations: Limitation[];
   collections: Record<string, number>;
+  /** Present for JavaScript applications: how much of the code has been read. */
+  coverage?: {
+    total: number;
+    scanned: number;
+    remaining: number;
+    complete: boolean;
+    resumed: boolean;
+    nextFiles: string[];
+  };
   data: Record<string, unknown> & { kind: string };
 }
 export interface Page<T> {
@@ -145,6 +154,12 @@ export const api = {
     return request<{ closed: boolean }>(`/targets/${id}`, { method: "DELETE" });
   },
   analysis: (id: string) => cached<AnalysisResponse>(`/targets/${id}/analysis`),
+  /** Reads more of a partially scanned JavaScript app; everything cached for the target is stale after it. */
+  scanMore: async (id: string, mode: "continue" | "all") => {
+    const result = await request<AnalysisResponse>(`/targets/${id}/analysis?scan=${mode}`);
+    evictCache(`/targets/${id}`);
+    return result;
+  },
   collection: <T = Record<string, unknown>>(
     id: string,
     name: string,

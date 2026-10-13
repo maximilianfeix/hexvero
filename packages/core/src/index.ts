@@ -51,7 +51,20 @@ export {
   type JsEdge,
   type FileTree,
 } from "./javascript/app.js";
-export { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
+export {
+  analyzeTarget,
+  type AnalyzeOptions,
+  type AnyAnalysis,
+  type AnalysisData,
+  type JsScanRequest,
+} from "./analyzers/dispatch.js";
+export {
+  findCandidates,
+  type Candidate,
+  type CandidateConfidence,
+  type Candidates,
+} from "./javascript/candidates.js";
+export type { AppCandidate, JsCoverage, JsScanFacts } from "./javascript/app.js";
 export {
   Session,
   collectionsOf,

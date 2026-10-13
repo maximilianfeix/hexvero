@@ -1,6 +1,12 @@
 import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
-import { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
+import {
+  analyzeTarget,
+  type AnalyzeOptions,
+  type AnyAnalysis,
+  type AnalysisData,
+  type JsScanRequest,
+} from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
 import { UnknownsLedger } from "./unknowns.js";
@@ -43,6 +49,8 @@ interface Entry {
   loaded: LoadedTarget;
   analysis?: AnyAnalysis;
   pending?: Pending;
+  /** Options for the next analysis run only (a continued scan). */
+  next?: AnalyzeOptions;
   strings?: { key: string; items: TaggedString[] };
   collections?: Record<string, unknown[]>;
 }
@@ -138,8 +146,10 @@ export class Session {
               : {}),
             maxOldGenerationSizeMb: this.options.maxWorkerHeapMb ?? 2048,
             signal: controller.signal,
+            ...(e.next ? { analyze: e.next } : {}),
           })
-        : analyzeTarget(e.loaded);
+        : analyzeTarget(e.loaded, e.next ?? {});
+      delete e.next;
       const pending: Pending = { controller, waiters: 0, promise: run };
       pending.promise = run.then(
         (analysis) => {
@@ -195,6 +205,26 @@ export class Session {
         },
       );
     });
+  }
+
+  /**
+   * Reads more of a JavaScript application than the first analysis did: the next batch, every
+   * unread file, or the files under given paths. The stored scan state decides what is unread,
+   * so nothing is read twice. If the run fails or is cancelled, the target falls back to the last
+   * stored state on the next `analyze`.
+   */
+  async continueAnalysis(
+    id: string,
+    request: JsScanRequest,
+    signal?: AbortSignal,
+  ): Promise<AnyAnalysis> {
+    const e = this.entry(id);
+    if (e.pending) await e.pending.promise.catch(() => undefined);
+    delete e.analysis;
+    delete e.collections;
+    e.record.analyzed = false;
+    e.next = { js: request } satisfies AnalyzeOptions;
+    return this.analyze(id, signal);
   }
 
   /** Names of the list-like collections available for this target after analysis. */
@@ -616,6 +646,9 @@ export function collectionsOf(
       if (d.app.webPreferences.length) out["webPreferences"] = d.app.webPreferences;
       if (d.app.contextBridge.length) out["contextBridge"] = d.app.contextBridge;
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
+      if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
+      if (d.app.storage.length) out["storage"] = d.app.storage;
+      if (d.app.urls.length) out["urls"] = d.app.urls;
       out["sourceMaps"] = d.app.sourceMaps;
       break;
     case "javascript":
@@ -626,6 +659,7 @@ export function collectionsOf(
       if (d.bundle.endpoints.length) out["endpoints"] = d.bundle.endpoints;
       if (d.bundle.routes.length) out["routes"] = d.bundle.routes;
       if (d.bundle.storage.length) out["storage"] = d.bundle.storage;
+      if (d.bundle.urls.length) out["urls"] = d.bundle.urls;
       if (d.bundle.vendors.length) out["vendors"] = d.bundle.vendors.map((name) => ({ name }));
       break;
     case "source-map":

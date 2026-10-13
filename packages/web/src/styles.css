@@ -961,3 +961,22 @@ code,
     display: none;
   }
 }
+
+/* A partial scan must not read as a finished one: the notice sits directly under the verdict. */
+.partial {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  max-width: 76ch;
+}
+.partial p {
+  margin: 0 0 8px;
+}
+.partial-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
