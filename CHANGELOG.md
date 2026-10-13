@@ -8,6 +8,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- `hexvero setup` knows 18 agent clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf,
+  Gemini CLI, Antigravity, VS Code, Trae, OpenCode, GitHub Copilot CLI, Qwen Code, Qoder, Devin, Pi,
+  Kiro, Amp, Zed), writes each client's own entry dialect including Codex TOML, honours their
+  environment overrides, configures only detected clients unless `--all`, and never rewrites a file
+  it cannot parse. MCP registry manifest `server.json`. README translations in eight languages.
 - Cross-references and call graphs through engines: provider operations `xrefs`, `callers`,
   `callees`, `callgraph` and `search` for radare2, rizin and Ghidra with one normalized shape; the
   whole-program graph is read once and walked locally with depth/node bounds (`hexvero calls`,

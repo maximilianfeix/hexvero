@@ -85,7 +85,7 @@ describe("hexvero CLI", () => {
     expect(sio.stdout.join("\n")).toContain("Dry run");
     const cio = capture();
     expect(await main(["setup", "--client", "codex"], cio)).toBe(0);
-    expect(cio.stdout[0]).toContain("[mcp_servers.hexvero]");
+    expect(cio.stdout[0]).toMatch(/codex\s+would (add hexvero|create)\s+.*config\.toml/);
   });
 });
 
