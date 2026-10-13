@@ -24,6 +24,18 @@ describe("analyzeInWorker", () => {
       analyzeInWorker(targetFromBytes(buildElf(), "lib.so"), { timeoutMs: 1 }),
     ).rejects.toMatchObject({ code: "too_large" });
   });
+  it("lets one waiter cancel without affecting the other", async () => {
+    const session = new Session({ worker: true });
+    const record = session.register(targetFromBytes(buildElf(), "lib2.so"));
+    const a = new AbortController();
+    const first = session.analyze(record.id, a.signal);
+    const second = session.analyze(record.id);
+    a.abort();
+    await expect(first).rejects.toThrow(/cancelled/);
+    expect((await second).data.kind).toBe("binary");
+    const third = await session.analyze(record.id);
+    expect(third).toBe(await second);
+  });
   it("is used by worker-enabled sessions and shares in-flight analyses", async () => {
     const session = new Session({ worker: true });
     const record = session.register(targetFromBytes(buildElf(), "lib.so"));
