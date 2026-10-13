@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -8,9 +9,11 @@ import {
   type ProviderName,
   type ProviderOperation,
 } from "@hexvero/core";
+import { GUIDED_PROMPTS } from "./prompts.js";
 import { createHandlers, toolSchemas, type ProviderBridge, type ToolName } from "./tools.js";
 
 export { toolSchemas, type ToolName, type ProviderBridge } from "./tools.js";
+export { GUIDED_PROMPTS, type GuidedPrompt } from "./prompts.js";
 
 export const SERVER_NAME = "hexvero";
 export const SERVER_VERSION = "0.2.1";
@@ -86,6 +89,33 @@ export function createHexveroServer(
           };
         }
       },
+    );
+  }
+  for (const prompt of GUIDED_PROMPTS) {
+    const argsShape: Record<string, z.ZodTypeAny> = {};
+    for (const [name, a] of Object.entries(prompt.arguments)) {
+      argsShape[name] = a.required
+        ? z.string().describe(a.description)
+        : z.string().optional().describe(a.description);
+    }
+    server.registerPrompt(
+      prompt.name,
+      { title: prompt.title, description: prompt.description, argsSchema: argsShape },
+      (args: Record<string, unknown>) => ({
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: prompt.render(
+                Object.fromEntries(
+                  Object.entries(args).filter(([, v]) => typeof v === "string"),
+                ) as Record<string, string>,
+              ),
+            },
+          },
+        ],
+      }),
     );
   }
   return server;

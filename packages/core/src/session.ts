@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
+import { UnknownsLedger } from "./unknowns.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
 import { AnalysisError, page, type Page, type TargetInfo } from "./model.js";
@@ -62,6 +63,8 @@ interface Entry {
  */
 export class Session {
   private readonly entries = new Map<string, Entry>();
+  /** Material open questions recorded during investigations; exported with analyses. */
+  readonly unknowns = new UnknownsLedger();
 
   constructor(
     private readonly options: {
@@ -308,6 +311,7 @@ export class Session {
         exportedAt: new Date().toISOString(),
         target: this.get(id),
         analysis,
+        unknowns: this.unknowns.list({ targetId: id, limit: 1000 }).items,
       },
       replacer,
       2,

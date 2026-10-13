@@ -14,6 +14,8 @@ All notable changes to hexvero are listed here. The format follows
   adopted protocols, superclass incl. external binds), protocols, categories; pointers decoded through
   dyld chained fixups (PTR_64, PTR_64_OFFSET, ARM64E) and dyld_info bind opcodes. Swift class names
   and mangled symbols are made readable (approximate, no `swift-demangle` needed).
+- Guided MCP prompts (investigate_feature, compare_versions, triage_binary, map_electron_app, explain_apk)
+  and an unknowns ledger tool (`hexvero_unknowns`) whose entries ship with exports.
 - `hexvero recover` and the `hexvero_recover` MCP tool write bundle modules or source-map originals to
   disk without an external engine (REA needs Wakaru on Linux x64 for this).
 
