@@ -6,6 +6,59 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A public corpus with written-down correct results (`corpus/`): three small Electron applications
+  in three builds each (as written, bundled, minified), later versions with listed edits, three C
+  programs with ordinary calls, tail calls, uncalled and pointer-reached functions, and damaged
+  inputs. `corpus/score.mjs` counts hits, misses and false reports per class of finding and never
+  adds classes up; `corpus/gate.mjs` fails CI when a result gets worse. Two of the sets were
+  written without access to hexvero and measured before use (see `corpus/README.md`).
+- Large JavaScript applications can be read to the end. A scan takes files in a fixed order (the
+  entry file, then shallow paths before deep ones) and stores what it has read; `analyze
+  --continue` reads the next batch, `--all` everything that is left, `--include <path>` only the
+  files under a path, `--fresh` starts over. Over MCP: `hexvero_analyze { scan, include }`. In the
+  UI a partial analysis is marked as such and offers both actions. Every result carries
+  `coverage` (files in total, scanned, unread) and `complete`; a partial scan is never presented
+  as a complete one. Stored state is tied to the content of the input, is replaced atomically, and
+  a small application that is read in one run stores nothing.
+- Electron archives and directories now have `endpoints`, `storage` and `urls` collections, from
+  the same detector the single-bundle analysis uses. Each row has file, line and column, an
+  `evidence` of `literal`, `template`, `inferred` or `unknown`, the HTTP method where the code
+  states one and, for storage, whether the key is read, written or deleted. A request whose
+  address cannot be read is listed with `value: null` instead of being dropped.
+- IPC, bridge and window-setting detection follows names: renamed imports and destructured
+  bindings (which is what every minifier produces), aliases, channel names from constants and from
+  other modules, helper functions that pass a channel on, handlers registered from a table, and
+  `event.reply`. Names are resolved with their scope, so a short minified name is not mistaken for
+  `ipcMain` inside a function that declares its own.
+- Window settings are attributed to a window (`window` field, counted per file) and read from the
+  options of `new BrowserWindow(…)`, including an object passed by name, spread in, or returned by
+  a helper; a key written for the window replaces the same key of its base object.
+
+### Changed
+
+- `endpoints` no longer contains URLs that merely occur as strings; those are in `urls`. An
+  endpoint row's value is the address alone, with the method in its own field (previously
+  `"POST /login"`). `XMLHttpRequest.open` counts only on an object created as one, and a verb
+  method of an unknown object only with an absolute URL.
+- Modules of a JavaScript application are listed in scan order instead of archive order.
+- Call graphs through radare2 include tail calls, derived from its jump references; the
+  `callgraph_tail_calls_unknown` limitation remains only when those references are missing or cut.
+- `compare` matches window settings by file, window and key, endpoints by file, kind and value,
+  and storage by file, kind, value and operation; line and column are positions for these lists.
+  A known identity is kept for short lists with a repeated item, and a composite key may have an
+  empty part.
+
+### Fixed
+
+- Settings were read from raw text, so `sandbox: false` in a comment or in an unrelated options
+  object near a window counted as a window setting.
+- A Mach-O, ELF or PE file that is cut short was analyzed without any limitation when its headers
+  were intact; it now carries `file_truncated`.
+- A file over the size budget of one run was counted as skipped for good; it now stays unread and
+  a continued scan takes it.
+
 ## [0.3.0] - 2026-10-13
 
 ### Added

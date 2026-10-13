@@ -10,7 +10,7 @@ configuration manually:
 ## Workflow
 
 1. `hexvero_open { path }` → `{ id, info: { format, size, sha256 } }`
-2. `hexvero_analyze { targetId }` → summary, findings (each with `confidence` and, where a parser records one, a `location` such as `main.js:14`), limitations, `collections: { name: count }`, compact overview
+2. `hexvero_analyze { targetId }` → summary, findings (each with `confidence` and, where a parser records one, a `location` such as `main.js:14`), limitations, `collections: { name: count }`, compact overview. For a JavaScript application the result also has `complete` and `coverage { total, scanned, remaining, nextFiles }`: when `complete` is false, every list covers the scanned part only. Call again with `scan: "continue"` (next batch), `scan: "all"` (the rest) or `include: ["src/main"]` (unread files under those paths) to read more; `scan: "fresh"` discards the stored scan
 3. `hexvero_collection { targetId, collection, offset?, limit?, text?, maxBytes? }` → one page with `next`
 4. `hexvero_strings`, `hexvero_bytes` for raw evidence
 5. `hexvero_compare { targetA, targetB, collection }` for two builds; `hexvero_unknowns { action: "record" | "list" | "resolve" | "remove" }` for questions the evidence cannot answer

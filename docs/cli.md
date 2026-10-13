@@ -4,7 +4,7 @@ All commands accept `--json` for machine-readable output and `--no-color`. Paths
 
 | Command                                                                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `analyze <path> [--out file.json]`                                                 | Detects the format, runs the analyzer, prints summary, findings, limitations and the collections that exist. `--out` also writes the complete JSON.                                                                                                                                                                                                                                                                                                                                                                   |
+| `analyze <path> [--out file.json]`                                                 | Detects the format, runs the analyzer, prints summary, findings, limitations and the collections that exist. `--out` also writes the complete JSON. For a large JavaScript app see [Large applications](#large-applications).                                                                                                                                                                                                                                                                                         |
 | `collection <path> <name> [--text s] [--limit n] [--offset n]`                     | Pages one list. Unknown names return the available ones.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `strings <path> [--min n] [--utf16] [--tag t] [--text s] [--limit n] [--offset n]` | Printable strings with offsets and tags.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `bytes <path> <offset> [length]`                                                   | Hex dump (max 64 KiB). Offset accepts `0x` hex.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -36,8 +36,50 @@ Exit codes: `0` success (including `--help`), `1` analysis error (`{"error":{"co
 | Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                                                 |
 | DEX                  | classes, packages, dexStrings                                                                                                                    |
 | ZIP                  | files                                                                                                                                            |
-| Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, contextBridge, sourceMaps                                                           |
-| JavaScript file      | references, ipc, exports                                                                                                                         |
+| Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, contextBridge, endpoints, storage, urls, sourceMaps                                 |
+| JavaScript file      | references, ipc, exports, bundleModules, endpoints, routes, storage, urls                                                                        |
 | Source map           | sources, packages                                                                                                                                |
 
 `findings` and `limitations` exist for every format.
+
+## Large applications
+
+A JavaScript application is read 5,000 files at a time (`--batch n` changes that). When files are
+left, the summary starts with `partial`, a Coverage section says how many are unread, and
+`--json` carries `complete: false` and a `coverage` object. Everything in the result then covers
+the scanned part only.
+
+```bash
+hexvero analyze app.asar              # the first batch, or the stored scan as it stands
+hexvero analyze app.asar --continue   # read the next batch
+hexvero analyze app.asar --all        # read everything that is left
+hexvero analyze app.asar --include src/main,dist/*.js   # only unread files under these paths
+hexvero analyze app.asar --fresh      # discard the stored scan and start again
+```
+
+Files are taken in a fixed order: the entry file from `package.json`, then shallow paths before
+deep ones, then by path. A continued scan therefore never reads a file twice and never leaves one
+out. What has been read is stored under `~/.cache/hexvero/scans` (or `HEXVERO_CACHE_DIR`), keyed by
+the content of the input, so `collection`, `compare` and `export` in later invocations see the
+same state, and a changed archive starts from nothing. An application that fits into one batch
+stores nothing. If a run is interrupted, the state of the last finished batch remains.
+
+## Endpoints and storage
+
+For Electron archives, directories and single bundles:
+
+```bash
+hexvero collection app.asar endpoints
+hexvero collection app.asar storage --text token
+```
+
+Each row says where it was read (`file`, `line`, `column`) and how (`evidence`):
+
+| `evidence` | Meaning                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------- |
+| `literal`  | the address or key is a string at the call                                                  |
+| `template` | part of it is known, the rest is an expression, shown as `${…}`                             |
+| `inferred` | reached through a constant or another name for `fetch`, or recognised by its shape only     |
+| `unknown`  | there is a call, but its argument cannot be read; `value` is null and `expression` names it |
+
+A URL that only occurs as a string is not an endpoint; those are listed in `urls`.

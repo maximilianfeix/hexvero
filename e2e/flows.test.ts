@@ -17,6 +17,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  callersOf,
   compareItems,
   detectProviders,
   loadCallGraph,
@@ -300,6 +301,84 @@ describe.skipIf(!compiler)("flow 2: native binary compiled here", () => {
     expect(changed.cached).toBe(false);
     expect(resolveNode(changed.graph, "read_config").node).toBeNull();
     expect(resolveNode(graph, "read_config").node).not.toBeNull();
+  });
+
+  it("answers the corpus's call-path questions through every installed engine, tail calls included", async () => {
+    // corpus/dev/native/calls.c at -O2: main jumps to dispatch, dispatch jumps to run_command,
+    // run_command calls system. Which calls are jumps was read from otool, not from an engine.
+    const binary = join(root, "corpus", "built", "dev", "calls.O2.macho-arm64");
+    for (const engine of engines) {
+      const { graph } = await loadCallGraph({ targetPath: binary, provider: engine.name }, engines);
+      const node = (name: string) => {
+        const hit = [name, `_${name}`, `sym._${name}`, `sym.imp.${name}`]
+          .map((spec) => resolveNode(graph, spec).node)
+          .find(Boolean);
+        expect(hit, `${engine.name}: ${name}`).toBeTruthy();
+        return hit!;
+      };
+      const found = tracePath(graph, node("main"), node("system"));
+      expect(found.status, engine.name).toBe("found");
+      expect(found.path, engine.name).toEqual([
+        node("main").id,
+        node("dispatch").id,
+        node("run_command").id,
+        node("system").id,
+      ]);
+      // puts is used only by a function nobody calls: no path, and stated without reservation
+      const none = tracePath(graph, node("main"), node("puts"));
+      expect(none.status, engine.name).toBe("not_reached");
+      expect(none.limitations, engine.name).toEqual([]);
+      expect(tracePath(graph, node("parse"), node("system")).status, engine.name).toBe(
+        "not_reached",
+      );
+      expect(callersOf(graph, node("run_command").id), engine.name).toEqual([node("dispatch").id]);
+      expect(callersOf(graph, node("unused_helper").id), engine.name).toEqual([]);
+    }
+    if (engines.length === 0)
+      console.log("SKIPPED (no engine installed): corpus call paths were not verified");
+    // Ghidra is one of the three supported engines; when it is not installed that is said here
+    // rather than passed over.
+    const ghidra = (await detectProviders()).find((p) => p.name === "ghidra");
+    if (!ghidra?.available)
+      console.log("NOT RUN (Ghidra is not installed): Ghidra was not verified against the corpus");
+  });
+
+  it("stops a real engine at the timeout and refuses what an engine cannot do", async () => {
+    if (engines.length === 0) {
+      console.log("SKIPPED (no engine installed): timeout with a real engine was not verified");
+      return;
+    }
+    const engine = engines[0]!;
+    const subject = join(work, "timeout-subject");
+    copyFileSync(join(root, "corpus", "built", "dev", "calls.O0.macho-arm64"), subject);
+    const started = performance.now();
+    await expect(
+      runProvider(
+        { targetPath: subject, provider: engine.name, operation: "functions", timeoutMs: 1 },
+        engines,
+      ),
+    ).rejects.toThrow(/exceeded 1 ms/);
+    expect(performance.now() - started).toBeLessThan(5000);
+    // the engine process is gone, not left running in the background
+    await new Promise((done) => setTimeout(done, 300));
+    const left = spawnSync("pgrep", ["-f", subject], { encoding: "utf8" }).stdout.trim();
+    expect(left, "an engine process outlived its timeout").toBe("");
+    // the same request works with a normal limit: the timeout left nothing broken behind
+    const functions = await runProvider(
+      { targetPath: subject, provider: engine.name, operation: "functions" },
+      engines,
+    );
+    expect(JSON.stringify(functions.result)).toContain("main");
+    await expect(
+      runProvider(
+        { targetPath: subject, provider: engine.name, operation: "teleport" as "functions" },
+        engines,
+      ),
+    ).rejects.toThrow(/does not support teleport/);
+    const absent = engines.map((e) => ({ ...e, available: false }));
+    await expect(
+      runProvider({ targetPath: subject, provider: engine.name, operation: "functions" }, absent),
+    ).rejects.toThrow(/not installed or not on PATH/);
   });
 });
 

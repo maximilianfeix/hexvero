@@ -56,7 +56,25 @@ export function resolveAliases(
    * costs the same however deeply the code is nested.
    */
   const live = new Map<string, Array<string | null>>();
+  // Only names that can mean something are tracked: the file's own names and every name that is
+  // bound to a target somewhere in the file. A declaration of any other name hides nothing that
+  // is looked up, so it is ignored. That keeps the bookkeeping to a handful of names per file.
+  const tracked = new Set<string>(own);
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident" || !targets.has(t.value)) continue;
+    const next = tokens[k + 1];
+    const bound = tokens[k + 2];
+    // `{ target: name }`, `target as name`
+    if ((is(next, "punct", ":") || is(next, "ident", "as")) && is(bound, "ident"))
+      tracked.add(bound!.value);
+    // `name = target`, `name = x.target`
+    if (is(tokens[k - 1], "punct", "=") && is(tokens[k - 2], "ident")) tracked.add(tokens[k - 2]!.value);
+    if (is(tokens[k - 1], "punct", ".") && is(tokens[k - 3], "punct", "=") && is(tokens[k - 4], "ident"))
+      tracked.add(tokens[k - 4]!.value);
+  }
   const declare = (scope: Scope, name: string, alias: string | null): void => {
+    if (!tracked.has(name)) return;
     const had = scope.aliases.has(name) || scope.names.has(name);
     if (alias) {
       scope.names.delete(name);
@@ -105,7 +123,7 @@ export function resolveAliases(
           d--;
           if (d === 0) break;
         }
-      } else if (t.type === "ident") names.add(t.value);
+      } else if (t.type === "ident" && tracked.has(t.value)) names.add(t.value);
     }
     return { names, end: k };
   };
@@ -146,7 +164,7 @@ export function resolveAliases(
       } else if (v === "=>") {
         const before = tokens[k - 1];
         let names = new Set<string>();
-        if (is(before, "ident")) names.add(before!.value);
+        if (is(before, "ident") && tracked.has(before!.value)) names.add(before!.value);
         else if (is(before, "punct", ")")) {
           let from = k - 1;
           for (let d = 0; from >= 0 && from > k - 400; from--) {
