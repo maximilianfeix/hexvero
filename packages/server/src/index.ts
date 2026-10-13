@@ -259,14 +259,20 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           findings: analysis.findings,
           limitations: analysis.limitations,
           ...(analysis.data.kind === "javascript-app"
-            ? { coverage: analysis.data.app.coverage }
+            ? {
+                complete: analysis.data.app.coverage.complete,
+                coverage: analysis.data.app.coverage,
+              }
             : {}),
           collections: await session.collections(id),
           data: full ? analysis.data : compact(analysis.data, { maxItems: 12 }),
         });
       }
-      if (sub === "collections" && parts[3])
-        return json(res, 200, await session.collection(id, parts[3], paging()));
+      if (sub === "collections" && parts[3]) {
+        const page = await session.collection(id, parts[3], paging());
+        const partial = await session.partial(id);
+        return json(res, 200, partial ? { ...page, partial } : page);
+      }
       if (sub === "strings") {
         const query: Parameters<Session["strings"]>[1] = paging();
         const minLength = num("minLength");

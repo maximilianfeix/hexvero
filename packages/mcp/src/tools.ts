@@ -63,6 +63,17 @@ export const toolSchemas = {
         .describe(
           "JavaScript apps only: continue = read the next batch of unread files, all = read every unread file, fresh = discard the stored scan and start again",
         ),
+      batch: z
+        .number()
+        .int()
+        .min(1)
+        .max(100000)
+        .optional()
+        .describe("JavaScript apps only: files per batch (default 5000)"),
+      fresh: z
+        .boolean()
+        .optional()
+        .describe("JavaScript apps only: discard the stored scan first; combines with scan"),
       include: z
         .array(z.string())
         .max(32)
@@ -280,7 +291,8 @@ export function createHandlers(
       const request = {
         ...(scan === "continue" ? { continue: true } : {}),
         ...(scan === "all" ? { all: true } : {}),
-        ...(scan === "fresh" ? { fresh: true } : {}),
+        ...(scan === "fresh" || a["fresh"] === true ? { fresh: true } : {}),
+        ...(typeof a["batch"] === "number" ? { maxJsFiles: a["batch"] } : {}),
         ...(include.length ? { include } : {}),
       };
       const analysis = Object.keys(request).length
@@ -298,8 +310,14 @@ export function createHandlers(
         overview: compact(analysis.data),
       };
     },
-    hexvero_collection: async (a) =>
-      session.collection(str(a["targetId"]), str(a["collection"]), paged(a)),
+    hexvero_collection: async (a) => {
+      const id = str(a["targetId"]);
+      const page = await session.collection(id, str(a["collection"]), paged(a));
+      // A page of a partly read application says so itself; the caller may never have seen
+      // the analysis result.
+      const partial = await session.partial(id);
+      return partial ? { ...page, partial } : page;
+    },
     hexvero_strings: async (a) => {
       const q: Parameters<Session["strings"]>[1] = paged(a);
       const minLength = num(a["minLength"]);
@@ -372,7 +390,15 @@ export function createHandlers(
         session.analyze(idB).then((x) => x.limitations.length),
       ]);
       const partial = left.truncated || right.truncated;
+      const partialScan = { a: await session.partial(idA), b: await session.partial(idB) };
       return {
+        ...(partialScan.a || partialScan.b
+          ? {
+              partialScan,
+              partialNote:
+                'At least one side was read only in part: an added or removed item may sit in a file that was not read on the other side. Run hexvero_analyze with scan: "all" on both targets first.',
+            }
+          : {}),
         collection: name,
         key: diff.key,
         ignored: diff.ignored,

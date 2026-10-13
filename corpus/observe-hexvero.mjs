@@ -212,7 +212,7 @@ function robust(path, seconds) {
       const t = await session.open(${JSON.stringify(path)});
       const a = await session.analyze(t.id);
       const partial = a.data.kind === "javascript-app" && !a.data.app.coverage.complete;
-      console.log(JSON.stringify({ outcome: a.limitations.length || partial ? "flagged" : "clean", format: t.info.format, limitations: a.limitations.map((l) => l.code), summary: a.summary }));
+      console.log(JSON.stringify({ complete: a.data.kind === "javascript-app" ? a.data.app.coverage.complete : null, outcome: a.limitations.length || partial ? "flagged" : "clean", format: t.info.format, limitations: a.limitations.map((l) => l.code), summary: a.summary }));
     } catch (e) {
       console.log(JSON.stringify(e instanceof core.AnalysisError ? { outcome: "error", code: e.code, message: e.message } : { outcome: "crash", message: String(e && e.stack || e) }));
     }`;

@@ -229,7 +229,11 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         )}`,
       );
       io.out(`\n${heading(io, "Summary")}\n  ${analysis.summary}`);
-      if (coverage && (!coverage.complete || coverage.resumed)) {
+      if (coverage && !coverage.complete && coverage.remaining === 0)
+        io.out(
+          `\n${heading(io, "Coverage")}\n  ${paint(io, "yellow", "incomplete")}: ${coverage.skipped} of ${coverage.total} JavaScript files could not be read (see Limitations). Everything below covers the rest only.`,
+        );
+      else if (coverage && (!coverage.complete || coverage.resumed)) {
         const percent = coverage.total
           ? Math.floor((coverage.scanned / coverage.total) * 100)
           : 100;
@@ -263,10 +267,15 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "list": {
       const target = await session.open(need(0, "path"));
       const page = await session.collection(target.id, need(1, "collection"), paging());
+      const partial = await session.partial(target.id);
       if (json) {
-        io.out(toJson(page));
+        io.out(toJson(partial ? { ...page, partial } : page));
         return 0;
       }
+      if (partial)
+        io.out(
+          `${paint(io, "yellow", "partial")}: this list covers ${partial.scanned - partial.skipped} of ${partial.total} JavaScript files; "hexvero analyze <path> --all" reads the rest`,
+        );
       io.out(
         `${heading(io, `${page.collection} ${rangeLabel(page)}`)}${
           page.truncated ? paint(io, "dim", " (more: --offset/--limit)") : ""
@@ -370,6 +379,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         session.analyze(a.id).then((x) => x.limitations.length),
         session.analyze(b.id).then((x) => x.limitations.length),
       ]);
+      const partial = { a: await session.partial(a.id), b: await session.partial(b.id) };
       const truncated = left.truncated || right.truncated;
       if (json) {
         io.out(
@@ -381,6 +391,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             totals: { a: left.total, b: right.total },
             truncated,
             limitations: { a: limitsA, b: limitsB },
+            ...(partial.a || partial.b ? { partialScan: partial } : {}),
             complete:
               !truncated &&
               !left.itemTruncated &&
@@ -453,6 +464,11 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             `  ! compared only the first ${left.items.length} of ${left.total} (a) and ${right.items.length} of ${right.total} (b) items; the result is partial`,
           ),
         );
+      for (const [side, p] of Object.entries(partial))
+        if (p)
+          io.out(
+            `  ${paint(io, "yellow", "partial")}: ${side} was read only in part (${p.scanned - p.skipped} of ${p.total} JavaScript files). An item reported as added or removed may simply sit in a file that was not read on one side; run "hexvero analyze <path> --all" on both first.`,
+          );
       if (!truncated && (limitsA || limitsB))
         io.out(
           paint(

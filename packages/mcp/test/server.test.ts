@@ -221,6 +221,22 @@ describe("hexvero MCP server", () => {
       expect((part.body as { summary: string }).summary).toMatch(/partial: 1 of 3/);
       const endpoints = await call("hexvero_collection", { targetId: id, collection: "endpoints" });
       expect((endpoints.body as { total: number }).total).toBe(1);
+      // the page itself says that it is not the whole application
+      expect(endpoints.body["partial"]).toEqual({ scanned: 1, total: 3, remaining: 2, skipped: 0 });
+      const diff = await call("hexvero_compare", {
+        targetA: id,
+        targetB: id,
+        collection: "endpoints",
+      });
+      expect(diff.body).toMatchObject({ complete: false, partialScan: { a: { scanned: 1 } } });
+      // batch size and a fresh start can be combined with a scan mode
+      const two = await call("hexvero_analyze", {
+        targetId: id,
+        scan: "continue",
+        fresh: true,
+        batch: 2,
+      });
+      expect(two.body).toMatchObject({ complete: false, coverage: { scanned: 2, resumed: false } });
       const rest = await call("hexvero_analyze", { targetId: id, scan: "all" });
       expect(rest.body).toMatchObject({ complete: true, coverage: { scanned: 3, resumed: true } });
       expect(

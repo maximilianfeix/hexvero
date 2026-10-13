@@ -56,7 +56,7 @@ IPC
   (`Push["MenuNewEntry"] = "menu:new-entry"`), from a constant re-exported under another name by
   an index module, and names that are written nowhere in full: prefix constant plus literal
   (`TIMER_PREFIX + "tick"`, `` `${TIMER_PREFIX}tick` ``) and a template inside a function that
-  returns functions (`` project("list") `` giving `projects:list`);
+  returns functions (`project("list")` giving `projects:list`);
 - `ipcRenderer.postMessage` and `webContents.postMessage` (a message on a named channel that
   carries a `MessagePort`), `ipcRenderer.addListener`, a destructured `({ sender })` that sends,
   `event.reply` with a constant, optional chaining on a call result

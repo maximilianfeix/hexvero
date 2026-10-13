@@ -26,6 +26,8 @@ interface Scope {
   depth: number;
   /** An arrow function with an expression body ends with its expression, not with a brace. */
   expression: boolean;
+  /** A function body (or the file): where a `var` declared in any block inside it belongs. */
+  fn: boolean;
 }
 
 /**
@@ -42,13 +44,16 @@ export function resolveAliases(
   own: ReadonlySet<string> = new Set(),
 ): Map<number, string> {
   const out = new Map<number, string>();
-  const stack: Scope[] = [{ names: new Set(), aliases: new Map(), depth: 0, expression: false }];
+  const stack: Scope[] = [
+    { names: new Set(), aliases: new Map(), depth: 0, expression: false, fn: true },
+  ];
   let depth = 0;
   // Deeper nesting than any real program has: beyond it no further scope is opened and its
   // names are declared in the enclosing one, which can only hide an alias, never invent one.
   const MAX_SCOPES = 5000;
+  let work = Math.max(2_000_000, tokens.length * 8);
   /** Parameter names waiting for the brace that opens their function body. */
-  let pending: { names: Set<string>; at: number } | null = null;
+  let pending: { names: Set<string>; at: number; fn: boolean } | null = null;
   const top = (): Scope => stack[stack.length - 1]!;
   /**
    * Per name, the live declarations from outermost to innermost: what the name means in each
@@ -108,14 +113,21 @@ export function resolveAliases(
   };
   /** The top-level declaration of one of the file's own names is the name itself, not a local. */
   const ownHere = (name: string): boolean => own.has(name) && stack.length === 1;
-  const open = (names: Set<string>, expression: boolean): void => {
-    const scope: Scope = { names: new Set(), aliases: new Map(), depth, expression };
+  const open = (names: Set<string>, expression: boolean, fn: boolean): void => {
+    const scope: Scope = { names: new Set(), aliases: new Map(), depth, expression, fn };
     if (stack.length >= MAX_SCOPES) {
       for (const name of names) if (!targets.has(name)) declare(top(), name, null);
       return;
     }
     stack.push(scope);
     for (const name of names) if (!targets.has(name)) declare(scope, name, null);
+  };
+  /** `var` belongs to the whole function: it is declared in every scope up to the function's. */
+  const declareVar = (name: string, alias: string | null): void => {
+    for (let i = stack.length - 1; i >= 0; i--) {
+      declare(stack[i]!, name, alias);
+      if (stack[i]!.fn) break;
+    }
   };
   const close = (): void => {
     const scope = stack.pop()!;
@@ -154,7 +166,11 @@ export function resolveAliases(
       const v = t.value;
       if (v === "{" || v === "(" || v === "[") {
         if (v === "{") {
-          open(pending && pending.at === k ? pending.names : new Set(), false);
+          open(
+            pending && pending.at === k ? pending.names : new Set(),
+            false,
+            !!pending && pending.at === k && pending.fn,
+          );
           pending = null;
         }
         depth++;
@@ -179,7 +195,15 @@ export function resolveAliases(
             }
           }
           if (from >= 0 && is(tokens[from], "punct", "("))
-            pending = { names: idents(from).names, at: k + 1 };
+            pending = {
+              names: idents(from).names,
+              at: k + 1,
+              // `if (…) {`, `for (…) {` open a block; `name(…) {` opens a method body
+              fn: !(
+                is(tokens[from - 1], "ident") &&
+                /^(if|for|while|switch|catch|with)$/.test(tokens[from - 1]!.value)
+              ),
+            };
         }
       } else if (v === "=>") {
         const before = tokens[k - 1];
@@ -198,8 +222,8 @@ export function resolveAliases(
           }
           if (from >= 0) names = idents(from).names;
         }
-        if (is(tokens[k + 1], "punct", "{")) pending = { names, at: k + 1 };
-        else open(names, true);
+        if (is(tokens[k + 1], "punct", "{")) pending = { names, at: k + 1, fn: true };
+        else open(names, true, true);
       } else if ((v === "," || v === ";") && top().expression && top().depth === depth) {
         while (stack.length > 1 && top().expression && top().depth === depth) close();
       }
@@ -220,15 +244,21 @@ export function resolveAliases(
       if (is(tokens[at], "punct", "(")) {
         const params = idents(at);
         if (is(tokens[params.end + 1], "punct", "{"))
-          pending = { names: params.names, at: params.end + 1 };
+          pending = { names: params.names, at: params.end + 1, fn: true };
       }
       continue;
     }
     if (t.value === "const" || t.value === "let" || t.value === "var") {
       // One declaration list: `a = 1, { b: c } = d, e`. Every identifier in a binding position
       // is declared; aliases are recognised by what stands on the right.
+      // `var` is hoisted to its function; `let` and `const` stay in their block.
+      const put = (name: string, alias: string | null): void =>
+        t.value === "var" ? declareVar(name, alias) : declare(top(), name, alias);
       let d = 0;
       for (let j = k + 1; j < tokens.length && j < k + 2000; j++) {
+        // Declarations that never end are each read to the limit. Past a total that no real
+        // file reaches, nothing is resolved at all: no alias is better than a wrong one.
+        if (work-- <= 0) return new Map();
         const u = tokens[j]!;
         if (u.type === "punct") {
           if (u.value === "{" || u.value === "(" || u.value === "[") d++;
@@ -254,7 +284,7 @@ export function resolveAliases(
                   ? tokens[j + 3]!.value
                   : null;
               const target = direct ?? member;
-              if (target) declare(top(), name!.value, target);
+              if (target) put(name!.value, target);
             }
             let e = 0;
             // bounded like the declaration itself, so repeated unclosed initializers stay linear
@@ -277,9 +307,9 @@ export function resolveAliases(
         }
         // `{ ipcMain: bus }`: the binding is `bus`, and it is another name for ipcMain.
         if (d > 0 && is(tokens[j + 1], "punct", ":")) {
-          const bound = tokens[j + 2];
-          if (targets.has(u.value) && is(bound, "ident")) {
-            declare(top(), bound!.value, u.value);
+          const local = tokens[j + 2];
+          if (targets.has(u.value) && is(local, "ident")) {
+            put(local!.value, u.value);
             j += 2;
           }
           continue;
@@ -287,7 +317,7 @@ export function resolveAliases(
         // A target's own name is never recorded as an ordinary local: `const { ipcRenderer } =
         // require("electron")` declares exactly the object that is looked for.
         if (!top().aliases.has(u.value) && !targets.has(u.value) && !ownHere(u.value))
-          declare(top(), u.value, null);
+          put(u.value, null);
       }
       continue;
     }
@@ -346,6 +376,9 @@ export class Constants {
    * `resolveAliases` with `names()` as the file's own names). While it is null, every use counts.
    */
   visible: Map<number, string> | null = null;
+  /** Names and `TABLE.KEY` entries that are assigned after their declaration. */
+  private readonly reassigned = new Set<string>();
+  private readonly exportsName = "exports";
 
   constructor(private readonly tokens: Token[]) {
     const wrappers = new Map<string, Map<string, string>>();
@@ -364,6 +397,21 @@ export class Constants {
         continue;
       }
       if (t.type !== "ident") continue;
+      // A value assigned again anywhere is no constant: `CH = "b"`, `TABLE.KEY = "z"`.
+      if (!is(tokens[k - 1], "punct", ".")) {
+        const before = tokens[k - 1];
+        const declares =
+          (is(before, "ident") && /^(const|let|var)$/.test(before!.value)) ||
+          is(before, "punct", ",");
+        if (is(tokens[k + 1], "punct", "=") && !declares) this.reassigned.add(t.value);
+        if (
+          is(tokens[k + 1], "punct", ".") &&
+          is(tokens[k + 2], "ident") &&
+          is(tokens[k + 3], "punct", "=") &&
+          this.exportsName !== t.value
+        )
+          this.reassigned.add(`${t.value}.${tokens[k + 2]!.value}`);
+      }
       if (wrapper ? depth > wrapper.depth + 2 : depth !== 0) continue;
       if (
         (t.value === "import" || /^(const|let|var)$/.test(t.value)) &&
@@ -524,7 +572,9 @@ export class Constants {
 
   /** A string constant of this file, as used at token k. */
   stringOf(name: string, k?: number): string | null {
-    return this.sees(k, name) ? (this.strings.get(name) ?? null) : null;
+    return this.sees(k, name) && !this.reassigned.has(name)
+      ? (this.strings.get(name) ?? null)
+      : null;
   }
 
   /** The property names of an object literal declared under this name. */
@@ -600,6 +650,8 @@ export class Constants {
       const end = tokens[k + 3];
       if (!is(end, "punct", ",") && !is(end, "punct", ")")) return null;
       const property = tokens[k + 2]!.value;
+      if (this.reassigned.has(t.value) || this.reassigned.has(`${t.value}.${property}`))
+        return null;
       const value = this.tables.get(t.value)?.get(property);
       if (value !== undefined) return { value, via: "constant" };
       const specifier = this.requires.get(t.value);
@@ -611,6 +663,7 @@ export class Constants {
         : null;
     }
     if (!is(next, "punct", ",") && !is(next, "punct", ")")) return null;
+    if (this.reassigned.has(t.value)) return null;
     const value = this.strings.get(t.value);
     if (value) return { value, via: "constant" };
     const ref = this.imported.get(t.value);

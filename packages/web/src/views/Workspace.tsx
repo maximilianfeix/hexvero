@@ -103,35 +103,47 @@ export function Workspace({
         {analysis.data && <h1 className="verdict">{analysis.data.summary}</h1>}
         {analysis.data?.coverage && !analysis.data.coverage.complete && (
           <div className="partial" role="status">
-            <p>
-              <strong>Partial analysis.</strong> {analysis.data.coverage.scanned.toLocaleString()}{" "}
-              of {analysis.data.coverage.total.toLocaleString()} JavaScript files have been read;{" "}
-              {analysis.data.coverage.remaining.toLocaleString()} are unread. Findings, tables and
-              the graph cover the scanned part only.
-            </p>
-            <div className="partial-actions">
-              <button
-                type="button"
-                className="btn"
-                disabled={scanning !== null}
-                onClick={() => scanMore("continue")}
-              >
-                {scanning === "continue" ? "Reading…" : "Read next batch"}
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={scanning !== null}
-                onClick={() => scanMore("all")}
-              >
-                {scanning === "all" ? "Reading…" : "Read all remaining files"}
-              </button>
-              {scanError && (
-                <span role="alert" style={{ color: "var(--alert)" }}>
-                  {scanError}
-                </span>
-              )}
-            </div>
+            {analysis.data.coverage.remaining > 0 ? (
+              <p>
+                <strong>Partial analysis.</strong> {analysis.data.coverage.scanned.toLocaleString()}{" "}
+                of {analysis.data.coverage.total.toLocaleString()} JavaScript files have been read;{" "}
+                {analysis.data.coverage.remaining.toLocaleString()} are unread. Findings, tables and
+                the graph cover the scanned part only.
+              </p>
+            ) : (
+              <p>
+                <strong>Incomplete analysis.</strong>{" "}
+                {analysis.data.coverage.skipped.toLocaleString()} of{" "}
+                {analysis.data.coverage.total.toLocaleString()} JavaScript files could not be read,
+                or the folder holds more files than were listed. Findings, tables and the graph
+                cover the rest only; the limitations below say why.
+              </p>
+            )}
+            {analysis.data.coverage.remaining > 0 && (
+              <div className="partial-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={scanning !== null}
+                  onClick={() => scanMore("continue")}
+                >
+                  {scanning === "continue" ? "Reading…" : "Read next batch"}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={scanning !== null}
+                  onClick={() => scanMore("all")}
+                >
+                  {scanning === "all" ? "Reading…" : "Read all remaining files"}
+                </button>
+                {scanError && (
+                  <span role="alert" style={{ color: "var(--alert)" }}>
+                    {scanError}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -8,7 +8,7 @@ Tool: name hexvero · version 0.3.0 · commit 1ca224b · node v25.2.1 · platfor
 | --- | --- | --- | --- | --- | --- | --- |
 | holdout | imports | 4 | 22 | 0 | 0 |  |
 | holdout | functions | 4 | 68 | 0 | 0 |  |
-| holdout | call paths | 4 | 71 | 1 | 0 |  |
+| holdout | call paths | 4 | 70 | 2 | 0 |  |
 | holdout | direct callers | 4 | 91 | 0 | 1 |  |
 | holdout | IPC channels | 3 | 41 | 31 | 0 |  |
 | holdout | IPC senders and receivers | 3 | 59 | 20 | 0 |  |
@@ -44,7 +44,7 @@ Tool: name hexvero · version 0.3.0 · commit 1ca224b · node v25.2.1 · platfor
 | holdout | holdout/exprcalc.O2.macho-arm64 (radare2) | direct callers | 23 | 0 | 0 |  |
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | imports | 5 | 0 | 0 |  |
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | functions | 17 | 0 | 0 |  |
-| holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | call paths | 17 | 1 | 0 | debug_level → atoi: path not found, stated without warning (no function atoi) |
+| holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | call paths | 16 | 2 | 0 | debug_level → atoi: path not found, stated without warning (no function atoi); main → atoi: not answered (no function atoi) |
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | direct callers | 23 | 0 | 0 | state_blank: indirect caller next_token reported |
 | holdout | holdout/time-tracker.plain.asar | IPC channels | 11 | 13 | 0 | missed timer:start; missed timer:stop; missed timer:tick; missed projects:list; missed projects:create; missed projects:rename; missed invoice:create; missed invoice:export; missed sync:progress; missed config:get-sync; missed menu:new-entry; missed update:ready; missed theme:changed |
 | holdout | holdout/time-tracker.plain.asar | IPC senders and receivers | 17 | 4 | 0 | widget:pin: receiver main.js missed; widget:close: receiver main.js missed; invoice:exported: sender main.js missed; timer:port: sender main.js missed |

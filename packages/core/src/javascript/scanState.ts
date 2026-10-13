@@ -48,7 +48,26 @@ export function loadScan(key: string, tree: FileTree): JsScanFacts | null {
     };
     const facts = stored.facts;
     if (stored.key !== key || !facts || facts.schema !== JS_SCAN_SCHEMA) return null;
-    if (!Array.isArray(facts.scanned) || !Array.isArray(facts.modules)) return null;
+    // Every list the assembly reads must be there, or a later step fails far from the cause.
+    for (const field of [
+      "scanned",
+      "skippedFiles",
+      "modules",
+      "edges",
+      "webPreferences",
+      "contextBridge",
+      "endpoints",
+      "storage",
+      "urls",
+      "preloadScripts",
+      "limitations",
+    ] as const)
+      if (!Array.isArray(facts[field])) return null;
+    // The scanned list and the results must describe the same files: a file whose results are
+    // stored but which counts as unread would be read again and appear twice.
+    if (facts.scanned.length !== facts.modules.length + facts.skipped) return null;
+    const read = new Set(facts.scanned);
+    if (!facts.modules.every((m) => read.has(m.id))) return null;
     // Belt and braces: every stored path must still be a file of this input.
     const known = new Set(tree.files.map((f) => f.path));
     if (!facts.scanned.every((path) => known.has(path))) return null;

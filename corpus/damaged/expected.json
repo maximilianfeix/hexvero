@@ -2,11 +2,15 @@
   "case": "damaged-inputs",
   "kind": "robustness",
   "license": "MIT, cut from this corpus's own built inputs by build.mjs",
-  "method": "Each input is a built corpus file cut or altered at a fixed place. What is expected is a property of any honest tool: it ends within the time limit, it does not crash, and it either refuses with a structured error or returns a result that says what is missing. A result that looks complete is wrong.",
+  "method": "Each input is a built corpus file cut or altered at a fixed place. What is expected is a property of any honest tool: it ends within the time limit, it does not crash, and it either refuses with a structured error or returns a result that says what is missing. A result that looks complete is wrong. Where a result with limitations is allowed, one of them must be about the damage itself (mustMention lists fragments of acceptable limitation codes); an unrelated limitation does not count.",
   "timeLimitSeconds": 30,
   "expect": {
     "robustness": [
-      { "input": "damaged/empty.asar", "allowed": ["error", "flagged"], "why": "zero bytes" },
+      {
+        "input": "damaged/empty.asar",
+        "allowed": ["error", "flagged"],
+        "why": "zero bytes"
+      },
       {
         "input": "damaged/header-cut.asar",
         "allowed": ["error"],
@@ -20,17 +24,20 @@
       {
         "input": "damaged/contents-cut.asar",
         "allowed": ["error", "flagged"],
-        "why": "the directory is intact but the contents of later files are missing; a result must say that files could not be read"
+        "why": "the directory is intact but the contents of later files are missing; a result must say that files could not be read",
+        "mustMention": ["js_files_skipped", "unreadable", "truncated"]
       },
       {
         "input": "damaged/load-commands-cut.macho-arm64",
         "allowed": ["error", "flagged"],
-        "why": "the file ends inside the load commands"
+        "why": "the file ends inside the load commands",
+        "mustMention": ["load_command", "truncated"]
       },
       {
         "input": "damaged/body-cut.macho-arm64",
         "allowed": ["error", "flagged"],
-        "why": "headers intact, sections and symbols missing"
+        "why": "headers intact, sections and symbols missing",
+        "mustMention": ["truncated"]
       }
     ]
   }

@@ -2,12 +2,12 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "1ca224b",
+  "commit": "9e18fe2+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
    "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
-   "rizin": "not installed"
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
   }
  },
  "observations": {
@@ -130,7 +130,7 @@
   "native:dev/calls.O0.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": null,
+    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
     "limitations": [],
     "imports": [
      "snprintf_chk",
@@ -314,7 +314,7 @@
   "native:dev/calls.O2.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": null,
+    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
     "limitations": [],
     "imports": [
      "stack_chk_fail",
@@ -1384,7 +1384,7 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
-      "evidence": "inferred"
+      "evidence": "literal"
      },
      {
       "value": "https://updates.chat.example/desktop/report",
@@ -1803,7 +1803,7 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
-      "evidence": "inferred"
+      "evidence": "literal"
      },
      {
       "value": "https://updates.chat.example/desktop/report",
@@ -2222,7 +2222,7 @@
       "value": "https://updates.chat.example/desktop/latest.json",
       "kind": "http-client",
       "method": "GET",
-      "evidence": "inferred"
+      "evidence": "literal"
      },
      {
       "value": "https://updates.chat.example/desktop/report",
@@ -2659,7 +2659,7 @@
   "native:validation/dispatch.O0.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": null,
+    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
     "limitations": [],
     "imports": [
      "atoi",
@@ -3089,7 +3089,7 @@
   "native:validation/dispatch.O2.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": null,
+    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
     "limitations": [],
     "imports": [
      "atoi",
@@ -3611,7 +3611,7 @@
   "native:holdout/exprcalc.O0.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": null,
+    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
     "limitations": [],
     "imports": [
      "stderrp",
@@ -4226,7 +4226,7 @@
   "native:holdout/exprcalc.O2.macho-arm64:rizin": {
    "native": {
     "status": "RUN",
-    "engine": null,
+    "engine": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)",
     "limitations": [],
     "imports": [
      "stderrp",
@@ -4752,7 +4752,7 @@
       "value": "https://hooks.punchclock.example/invoice-exported",
       "kind": "http-client",
       "method": null,
-      "evidence": "inferred"
+      "evidence": "literal"
      },
      {
       "value": "https://status.punchclock.example/api/v2/summary.json",
@@ -5847,17 +5847,19 @@
   },
   "robust:damaged/contents-cut.asar": {
    "robust": {
+    "complete": false,
     "outcome": "flagged",
     "format": "asar",
     "limitations": [
      "package_json_invalid",
      "js_files_skipped"
     ],
-    "summary": "Electron ASAR: 2 JavaScript modules, 6 IPC channels"
+    "summary": "Electron ASAR, incomplete: 2 of 4 JavaScript files could not be read, 6 IPC channels in the rest"
    }
   },
   "robust:damaged/load-commands-cut.macho-arm64": {
    "robust": {
+    "complete": null,
     "outcome": "flagged",
     "format": "macho",
     "limitations": [
@@ -5869,6 +5871,7 @@
   },
   "robust:damaged/body-cut.macho-arm64": {
    "robust": {
+    "complete": null,
     "outcome": "flagged",
     "format": "macho",
     "limitations": [

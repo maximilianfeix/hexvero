@@ -32,8 +32,8 @@
   {
    "set": "holdout",
    "class": "call paths",
-   "hit": 71,
-   "missed": 1,
+   "hit": 70,
+   "missed": 2,
    "false": 0,
    "hedged": 0,
    "inputs": 4
@@ -319,12 +319,13 @@
    "set": "holdout",
    "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
    "class": "call paths",
-   "hit": 17,
-   "missed": 1,
+   "hit": 16,
+   "missed": 2,
    "false": 0,
    "hedged": 0,
    "notes": [
-    "debug_level → atoi: path not found, stated without warning (no function atoi)"
+    "debug_level → atoi: path not found, stated without warning (no function atoi)",
+    "main → atoi: not answered (no function atoi)"
    ]
   },
   {

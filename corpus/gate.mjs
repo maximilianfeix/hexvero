@@ -20,19 +20,33 @@ try {
   const observations = join(temp, "observations.json");
   const scored = join(temp, "scored.json");
   const run = (script, args) =>
-    execFileSync(process.execPath, [join(corpusRoot, script), ...args], { stdio: ["ignore", "pipe", "inherit"] });
+    execFileSync(process.execPath, [join(corpusRoot, script), ...args], {
+      stdio: ["ignore", "pipe", "inherit"],
+    });
   run("observe-hexvero.mjs", ["--out", observations]);
   run("score.mjs", [observations, "--json", scored]);
   const key = (r) => `${r.set} | ${r.input} | ${r.class}`;
   const now = new Map(JSON.parse(readFileSync(scored, "utf8")).rows.map((r) => [key(r), r]));
-  const baseline = JSON.parse(readFileSync(join(corpusRoot, "results", "hexvero.json"), "utf8")).rows;
+  const baseline = JSON.parse(
+    readFileSync(join(corpusRoot, "results", "hexvero.json"), "utf8"),
+  ).rows;
   const worse = [];
   const skipped = [];
   let compared = 0;
   for (const before of baseline) {
     const after = now.get(key(before));
     const notRun = (r) => r.notes.some((n) => /^(NOT RUN|BLOCKED)/.test(n));
-    if (!after || notRun(after) || notRun(before)) {
+    // A row that has vanished is a failure, not something to skip: only an engine that is not
+    // installed here excuses a row, and then the row is there and says NOT RUN.
+    if (!after) {
+      const excused = [...now.values()].some(
+        (r) => r.set === before.set && r.input === before.input && notRun(r),
+      );
+      if (excused) skipped.push(key(before));
+      else worse.push(`${key(before)}: the row is gone from the new result`);
+      continue;
+    }
+    if (notRun(after) || notRun(before)) {
       skipped.push(key(before));
       continue;
     }
@@ -42,9 +56,14 @@ try {
         `${key(before)}: hit ${before.hit} -> ${after.hit}, missed ${before.missed} -> ${after.missed}, false ${before.false} -> ${after.false}${after.notes.length ? ` (${after.notes.join("; ")})` : ""}`,
       );
   }
-  if (skipped.length) console.log(`corpus gate: ${skipped.length} row(s) not compared here (engine not installed or not run):\n  ${[...new Set(skipped.map((s) => s.split(" | ")[1]))].join("\n  ")}`);
+  if (skipped.length)
+    console.log(
+      `corpus gate: ${skipped.length} row(s) not compared here (engine not installed or not run):\n  ${[...new Set(skipped.map((s) => s.split(" | ")[1]))].join("\n  ")}`,
+    );
   if (worse.length) {
-    console.error(`corpus gate: ${worse.length} of ${compared} row(s) are worse than the committed result:\n  ${worse.join("\n  ")}`);
+    console.error(
+      `corpus gate: ${worse.length} of ${compared} row(s) are worse than the committed result:\n  ${worse.join("\n  ")}`,
+    );
     process.exit(1);
   }
   console.log(`corpus gate: ${compared} row(s) compared, none worse than the committed result`);

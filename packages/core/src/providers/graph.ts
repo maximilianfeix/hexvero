@@ -237,7 +237,14 @@ export function normalizeCallGraph(
     // radare2 prints its code references as text (`from > CODE > to`). A jump from inside one
     // function to the entry of another is a tail call. The list counts only when it was printed
     // to its end marker; a cut list would silently lose edges.
-    if (Array.isArray(sections["jumps"]) && sections["jumpsEnd"] === true) {
+    // A list with lines of which none can be read is a format this code does not know, not an
+    // answer; an empty list is one.
+    const jumpLines = Array.isArray(sections["jumps"]) ? (sections["jumps"] as unknown[]) : null;
+    const JUMP = /(0x[0-9a-fA-F]+)\s*>\s*CODE\S*\s*>\s*(0x[0-9a-fA-F]+)/;
+    const readable =
+      jumpLines !== null &&
+      (jumpLines.length === 0 || jumpLines.some((l) => typeof l === "string" && JUMP.test(l)));
+    if (readable && sections["jumpsEnd"] === true) {
       sawCodeRefs = true;
       const spans: Array<{ start: number; end: number; node: GraphNode }> = [];
       for (const item of asArray(sections["functions"])) {

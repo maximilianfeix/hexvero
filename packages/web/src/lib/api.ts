@@ -36,6 +36,7 @@ export interface AnalysisResponse {
     total: number;
     scanned: number;
     remaining: number;
+    skipped: number;
     complete: boolean;
     resumed: boolean;
     nextFiles: string[];

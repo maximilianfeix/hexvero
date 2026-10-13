@@ -227,6 +227,20 @@ export class Session {
     return this.analyze(id, signal);
   }
 
+  /**
+   * For a JavaScript application whose analysis has not read every file: how much it has read.
+   * Null when the analysis is complete or the target is something else. Whatever is derived
+   * from such an analysis (a page, a comparison) covers the scanned part only and must say so.
+   */
+  async partial(
+    id: string,
+  ): Promise<{ scanned: number; total: number; remaining: number; skipped: number } | null> {
+    const analysis = await this.analyze(id);
+    if (analysis.data.kind !== "javascript-app" || analysis.data.app.coverage.complete) return null;
+    const { scanned, total, remaining, skipped } = analysis.data.app.coverage;
+    return { scanned, total, remaining, skipped };
+  }
+
   /** Names of the list-like collections available for this target after analysis. */
   private async collectionTable(id: string): Promise<Record<string, unknown[]>> {
     const analysis = await this.analyze(id);

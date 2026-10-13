@@ -72,15 +72,26 @@ function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string
   const forwards = (from: number, to: number, param: string): string | null => {
     for (let k = from; k + 4 < to; k++) {
       const api = apiAt(k);
-      if (api && is(k + 3, "punct", "(") && is(k + 4, "ident", param)) return api;
+      // The parameter must be the whole first argument: `send(ns + ":" + name)` and
+      // `send(m.channel)` build the channel from it, they do not pass it on.
+      if (
+        api &&
+        is(k + 3, "punct", "(") &&
+        is(k + 4, "ident", param) &&
+        (is(k + 5, "punct", ",") || is(k + 5, "punct", ")"))
+      )
+        return api;
     }
     return null;
   };
   /** End of the function body that starts at `k` (a brace block, or an expression). */
+  // All function bodies together may cost this many token visits; unclosed bodies would
+  // otherwise each be walked to their limit.
+  let budget = 400_000;
   const bodyEnd = (k: number): number => {
     let d = 0;
     const block = is(k, "punct", "{");
-    for (let j = k; j < tokens.length && j < k + 4000; j++) {
+    for (let j = k; j < tokens.length && j < k + 4000 && budget-- > 0; j++) {
       const p = tokens[j]!;
       if (p.type !== "punct") continue;
       if (p.value === "{" || p.value === "(" || p.value === "[") d++;
@@ -438,38 +449,52 @@ export function scanJavaScript(
    * `Object.entries(T)`, `Object.keys(T)` or `in T` shortly before token k.
    */
   const tableKeys = (k: number, name: string): string[] => {
-    for (let j = k - 1; j >= 0 && j > k - 60; j--) {
-      let table: string | null = null;
+    for (let j = k - 1; j >= 4 && j > k - 40; j--) {
+      // `[name, …] of Object.entries(T)`, `name of Object.keys(T)`: the key binding itself
       if (
         is(j, "ident", "Object") &&
         is(j + 1, "punct", ".") &&
-        (is(j + 2, "ident", "entries") || is(j + 2, "ident", "keys")) &&
         is(j + 3, "punct", "(") &&
         is(j + 4, "ident") &&
-        is(j + 5, "punct", ")")
+        is(j + 5, "punct", ")") &&
+        is(j - 1, "ident", "of")
+      ) {
+        const entries = is(j + 2, "ident", "entries");
+        const keys = is(j + 2, "ident", "keys");
+        const bound = entries
+          ? is(j - 2, "punct", "]")
+            ? firstOfPattern(j - 2) === name
+            : false
+          : keys && is(j - 2, "ident", name);
+        return bound ? constants.keysOf(at(j + 4)!.value, j + 4) : [];
+      }
+      // `name in T)`
+      if (
+        is(j, "ident", "in") &&
+        is(j - 1, "ident", name) &&
+        is(j + 1, "ident") &&
+        is(j + 2, "punct", ")")
       )
-        table = at(j + 4)!.value;
-      else if (is(j, "ident", "in") && is(j + 1, "ident") && is(j + 2, "punct", ")"))
-        table = at(j + 1)!.value;
-      if (table === null) continue;
-      // the variable must be bound right next to it: `[name, …] of Object.entries(T)`,
-      // `name in T`, `Object.keys(T).forEach((name) => …`
-      let bound = false;
-      for (let m = Math.max(0, j - 8); m < j + 14 && m < k; m++)
-        if (is(m, "ident", name)) bound = true;
-      return bound ? constants.keysOf(table, j + (is(j, "ident", "in") ? 1 : 4)) : [];
+        return constants.keysOf(at(j + 1)!.value, j + 1);
     }
     return [];
+  };
+  /** The first name of the array pattern that closes at `close`: `[id, fn]` gives `id`. */
+  const firstOfPattern = (close: number): string | null => {
+    for (let j = close - 1; j >= 0 && j > close - 12; j--)
+      if (is(j, "punct", "[")) return is(j + 1, "ident") ? at(j + 1)!.value : null;
+    return null;
   };
 
   /**
    * Inside an `ipcMain.on(channel, (event, …) => { … })` listener, `event.reply("x")` and
    * `event.sender.send("x")` send on a channel. `open` is the call's opening parenthesis.
    */
+  let replyBudget = 400_000;
   const replies = (open: number): void => {
     let d = 0;
     let end = open;
-    for (; end < tokens.length && end < open + 20_000; end++) {
+    for (; end < tokens.length && end < open + 20_000 && replyBudget-- > 0; end++) {
       const p = tokens[end]!;
       if (p.type !== "punct") continue;
       if (p.value === "(" || p.value === "{" || p.value === "[") d++;
@@ -496,7 +521,7 @@ export function scanJavaScript(
     if (is(j, "punct", "(")) j++;
     const event = at(j);
     if (!event || event.type !== "ident") return;
-    for (let m = j + 1; m + 4 < end; m++) {
+    for (let m = j + 1; m + 4 < end && replyBudget-- > 0; m++) {
       if (!is(m, "ident", event.value) || !is(m + 1, "punct", ".")) continue;
       const direct = is(m + 2, "ident", "reply") && is(m + 3, "punct", "(");
       const viaSender =
@@ -584,7 +609,10 @@ export function scanJavaScript(
         else if (owner !== t.value) usage.via = "alias";
         // `for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, fn)`:
         // one registration per key of the table.
-        const keys = named === null && is(k + 4, "ident") ? tableKeys(k, at(k + 4)!.value) : [];
+        const keys =
+          named === null && is(k + 4, "ident") && is(k + 5, "punct", ",")
+            ? tableKeys(k, at(k + 4)!.value)
+            : [];
         if (keys.length)
           for (const channel of keys) ipc.push({ api, channel, line: t.line, via: "table" });
         else ipc.push(usage);

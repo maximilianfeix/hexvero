@@ -192,9 +192,13 @@ function scoreElectron(c, input, o) {
       [...missed.map((m) => `missed ${key(m)}`), ...wrong.map((w) => `false ${key(w)}`)],
     );
     const withOps = found.filter((p) => p.ops);
-    const badOps = withOps.filter(
-      (p) => !p.ops.every((op) => (got.get(key(p)).ops ?? []).includes(op)),
-    );
+    // The operations must be the same set: reporting a write that does not happen is as wrong
+    // as missing one that does.
+    const sameOps = (p) => {
+      const got2 = new Set(got.get(key(p)).ops ?? []);
+      return got2.size === p.ops.length && p.ops.every((op) => got2.has(op));
+    };
+    const badOps = withOps.filter((p) => !sameOps(p));
     if (withOps.length)
       add(
         ...where,
@@ -294,6 +298,10 @@ function scoreNative(c, input, engine, o) {
             `${label}: path not found, stated without warning${g.unresolved ? ` (no function ${g.unresolved})` : ""}`,
           );
         }
+      } else if (g.unresolved) {
+        // "No path" from a tool that did not even find the function is not an answer.
+        count.missed++;
+        notes.push(`${label}: not answered (no function ${g.unresolved})`);
       } else if (g.found) {
         count.false++;
         notes.push(
@@ -359,9 +367,15 @@ for (const c of loadCases(sets)) {
       const o = observations[`robust:${r.input}`]?.robust;
       if (!o) add(c.set, r.input, "damaged input", {}, ["NOT RUN: no observation"]);
       else {
-        const ok = r.allowed.includes(o.outcome);
+        // "flagged" counts only when the limitation is about what is wrong with this input:
+        // any unrelated limitation would otherwise let a damaged file pass.
+        const named =
+          o.outcome !== "flagged" ||
+          !r.mustMention ||
+          (o.limitations ?? []).some((code) => r.mustMention.some((m) => code.includes(m)));
+        const ok = r.allowed.includes(o.outcome) && named;
         add(c.set, r.input, "damaged input", ok ? { hit: 1 } : { false: 1 }, [
-          `${o.outcome}${o.code ? ` ${o.code}` : ""}${o.limitations?.length ? ` (${o.limitations.join(", ")})` : ""}${ok ? "" : `; allowed: ${r.allowed.join(" or ")}`}`,
+          `${o.outcome}${o.code ? ` ${o.code}` : ""}${o.limitations?.length ? ` (${o.limitations.join(", ")})` : ""}${ok ? "" : `; allowed: ${r.allowed.join(" or ")}${r.mustMention ? `, naming ${r.mustMention.join(" or ")}` : ""}`}`,
         ]);
       }
     }

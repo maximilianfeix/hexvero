@@ -24,6 +24,8 @@ export interface FileTree {
   read(path: string, maxBytes?: number): Uint8Array;
   /** Symbolic links that pointed outside the root and were therefore not followed. */
   skippedLinks?: string[];
+  /** Set when the listing itself is incomplete, with the reason: later files are unknown. */
+  truncated?: string;
 }
 
 export interface JsModule {
@@ -137,28 +139,48 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
     return declared.get(name) ?? -1;
   };
   /** The object literal a function of this file returns: `function f() { return {…} }`, `f = () => ({…})`. */
+  /**
+   * The object literal a function of this file returns: `function f() { return {…} }`,
+   * `f = () => ({…})`. Function declarations are indexed once, however many are asked for.
+   */
+  let returned: Map<string, number> | null = null;
   const returnedBy = (name: string): number => {
-    for (let k = 0; k + 3 < tokens.length; k++) {
-      const t = tokens[k]!;
-      if (t.type !== "ident" || t.value !== name) continue;
-      const isDeclaration =
-        (tokens[k - 1]?.type === "ident" &&
-          tokens[k - 1]!.value === "function" &&
-          is(k + 1, "(")) ||
-        (is(k + 1, "=") && !is(k - 1, "."));
-      if (!isDeclaration) continue;
-      for (let j = k + 1; j + 1 < tokens.length && j < k + 300; j++) {
-        if (tokens[j]!.type === "ident" && tokens[j]!.value === "return" && is(j + 1, "{"))
-          return j + 1;
-        if (is(j, "=>") && is(j + 1, "(") && is(j + 2, "{")) return j + 2;
+    if (!returned) {
+      returned = new Map();
+      for (let k = 0; k + 3 < tokens.length; k++) {
+        const t = tokens[k]!;
+        if (t.type !== "ident" || returned.has(t.value)) continue;
+        const isDeclaration =
+          (tokens[k - 1]?.type === "ident" &&
+            tokens[k - 1]!.value === "function" &&
+            is(k + 1, "(")) ||
+          (is(k + 1, "=") &&
+            !is(k - 1, ".") &&
+            (is(k + 2, "(") || (tokens[k + 2]?.type === "ident" && is(k + 3, "=>"))));
+        if (!isDeclaration) continue;
+        for (let j = k + 1; j + 2 < tokens.length && j < k + 300; j++) {
+          if (tokens[j]!.type === "ident" && tokens[j]!.value === "return" && is(j + 1, "{")) {
+            returned.set(t.value, j + 1);
+            break;
+          }
+          if (is(j, "=>") && is(j + 1, "(") && is(j + 2, "{")) {
+            returned.set(t.value, j + 2);
+            break;
+          }
+        }
       }
-      return -1;
     }
-    return -1;
+    return returned.get(name) ?? -1;
   };
+  let work = 400_000;
   const add = (open: number, window: number | null, inherited = false, depth = 0): void => {
+    if (ranges.length >= 2000 || work <= 0) return;
     const end = close(open);
-    if (end === -1 || ranges.length >= 2000) return;
+    if (end === -1) {
+      work -= 20_000;
+      return;
+    }
+    work -= end - open;
     ranges.push({ start: tokens[open]!.start, end: tokens[end]!.end, window, inherited });
     if (depth >= 3) return;
     // Objects that are named, spread or returned by a helper inside belong to the same window.
@@ -609,17 +631,25 @@ const pathDepth = (path: string): number => path.split("/").length;
 
 /** `src/**`, `renderer/` or `*.min.js`: a path prefix, or a pattern with `*` wildcards. */
 function pathMatcher(patterns: readonly string[]): (path: string) => boolean {
-  const tests = patterns.map((p) => {
+  const tests = patterns.slice(0, 32).map((p) => {
     if (!p.includes("*"))
       return (path: string): boolean =>
         path === p || path.startsWith(p.endsWith("/") ? p : `${p}/`);
-    const re = new RegExp(
-      `^${p
-        .split("*")
-        .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-        .join(".*")}$`,
-    );
-    return (path: string): boolean => re.test(path);
+    const parts = p.slice(0, 512).split("*");
+    // The parts between the stars are found left to right, each at its first possible place:
+    // linear in the path, however many stars there are (a regular expression is not).
+    return (path: string): boolean => {
+      const first = parts[0]!;
+      const last = parts[parts.length - 1]!;
+      if (!path.startsWith(first)) return false;
+      let at = first.length;
+      for (let i = 1; i < parts.length - 1; i++) {
+        const found = path.indexOf(parts[i]!, at);
+        if (found === -1) return false;
+        at = found + parts[i]!.length;
+      }
+      return path.length - last.length >= at && path.endsWith(last);
+    };
   });
   return (path) => tests.some((t) => t(path));
 }
@@ -667,27 +697,42 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
   const realRoot = realpathSync(root);
   const inside = (real: string): boolean => real === realRoot || real.startsWith(realRoot + sep);
   const visitedDirs = new Set<string>([realRoot]);
+  // Dependencies are listed (native addons are found there) but do not use up the limit: an
+  // application's own files must not go unlisted because node_modules came first.
+  let own = 0;
+  let truncated: string | undefined;
+  const atLimit = (): boolean => own >= maxFiles || files.length >= maxFiles * 4;
   const walk = (dir: string, depth: number): void => {
-    if (depth > 32 || files.length >= maxFiles) return;
+    if (depth > 32) {
+      truncated ??= "The directory is nested deeper than 32 levels.";
+      return;
+    }
+    if (atLimit()) {
+      truncated ??= `The directory has more than ${maxFiles} files of its own, or more than ${maxFiles * 4} in all.`;
+      return;
+    }
     let entries: string[];
     try {
-      entries = readdirSync(dir);
+      // The application's own directories before its dependencies.
+      entries = readdirSync(dir).toSorted(
+        (a, b) => Number(a === "node_modules") - Number(b === "node_modules") || (a < b ? -1 : 1),
+      );
     } catch {
       return;
     }
     for (const name of entries) {
       if (SKIP_DIRS.has(name)) continue;
-      const full = join(dir, name);
+      const entry = join(dir, name);
       let st;
       try {
-        st = lstatSync(full);
+        st = lstatSync(entry);
         if (st.isSymbolicLink()) {
           // Follow a link only when its target stays inside the root (pnpm/workspace layouts);
           // anything pointing outside is recorded and never read.
-          const real = realpathSync(full);
+          const real = realpathSync(entry);
           if (!inside(real)) {
             if (skippedLinks.length < 200)
-              skippedLinks.push(relative(root, full).split(sep).join("/"));
+              skippedLinks.push(relative(root, entry).split(sep).join("/"));
             continue;
           }
           st = statSync(real);
@@ -699,13 +744,15 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
       } catch {
         continue;
       }
-      if (st.isDirectory()) walk(full, depth + 1);
+      if (st.isDirectory()) walk(entry, depth + 1);
       else if (st.isFile()) {
-        files.push({
-          path: relative(root, full).split(sep).join("/"),
-          size: st.size,
-        });
-        if (files.length >= maxFiles) return;
+        const path = relative(root, entry).split(sep).join("/");
+        files.push({ path, size: st.size });
+        if (!path.includes("node_modules/")) own++;
+        if (atLimit()) {
+          truncated ??= `The directory has more than ${maxFiles} files of its own.`;
+          return;
+        }
       }
     }
   };
@@ -715,6 +762,7 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
     root,
     files,
     ...(skippedLinks.length ? { skippedLinks } : {}),
+    ...(truncated ? { truncated } : {}),
     read: (path, maxBytes = 64 << 20) => {
       const full = join(root, ...path.split("/"));
       if (relative(root, full).startsWith(".."))
@@ -878,15 +926,24 @@ export function analyzeJavaScriptTree(
   const done = new Set(facts.scanned);
   const wanted = options.include?.length ? pathMatcher(options.include) : null;
   const todo = ordered.filter((f) => !done.has(f.path) && (!wanted || wanted(f.path)));
-  const runFiles = options.all ? Number.POSITIVE_INFINITY : maxJsFiles;
+  // 0 is meaningful (show a stored scan without reading); anything else is at least one file.
+  const batch = Number.isFinite(maxJsFiles) && maxJsFiles >= 1 ? Math.floor(maxJsFiles) : 5000;
+  const runFiles = options.all ? Number.POSITIVE_INFINITY : maxJsFiles === 0 ? 0 : batch;
   let runBytes = 0;
   let taken = 0;
 
   for (const file of todo) {
     if (taken >= runFiles) break;
     // Over the budget of this run: the file stays unread and a continued scan takes it.
-    if (!options.all && file.size <= maxFileBytes && runBytes + file.size > maxTotalBytes) break;
-    if (options.all && taken > 0 && taken % maxJsFiles === 0) options.onFacts?.(sync());
+    // The first file of a run is always taken, so a file larger than the budget cannot stall it.
+    if (
+      !options.all &&
+      taken > 0 &&
+      file.size <= maxFileBytes &&
+      runBytes + file.size > maxTotalBytes
+    )
+      break;
+    if (options.all && taken > 0 && taken % batch === 0) options.onFacts?.(sync());
     facts.scanned.push(file.path);
     taken++;
     if (file.size > maxFileBytes) {
@@ -939,7 +996,11 @@ export function analyzeJavaScriptTree(
                       /^[01]$/.test(n.value)
                     ? n.value === "0"
                     : null;
-              if (value !== null) settingsAt.push({ key: t.value, value, start: t.start });
+              // `sandbox: true && flag` is not the setting `true`: the value must end there.
+              const after = tokens[v.type === "ident" ? k + 3 : k + 4];
+              const ends =
+                !after || (after.type === "punct" && (after.value === "," || after.value === "}"));
+              if (value !== null && ends) settingsAt.push({ key: t.value, value, start: t.start });
             }
           }
         const found = findCandidates(tokens, source, undefined, context.aliases, context.constants);
@@ -964,7 +1025,7 @@ export function analyzeJavaScriptTree(
         if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
       },
     });
-    if (scan.truncated)
+    if (scan.truncated && facts.limitations.length < 200)
       facts.limitations.push({
         code: "scan_truncated",
         message: `${file.path}: token budget exhausted; references after the cut are missing.`,
@@ -1080,7 +1141,9 @@ export function analyzeJavaScriptTree(
         continue;
       webPreferences.push(pref);
       if (pref.key === "preload") preloadScripts.add(String(pref.value));
-      else {
+      // Where windows could be located, an object that belongs to none of them (a base that is
+      // spread and overridden, options only handed to a function) does not speak for the app.
+      else if (pref.window !== null || !ranges.some((r) => r.window !== null)) {
         // the least safe value seen in any window decides the app-wide flag
         const v = pref.value === true;
         flags[pref.key] =
@@ -1146,7 +1209,7 @@ export function analyzeJavaScriptTree(
     }
   }
   options.onFacts?.(sync());
-  limitations.push(...facts.limitations);
+  for (const limitation of facts.limitations) limitations.push(limitation);
   const scannedNow = new Set(facts.scanned);
   const remainingFiles = ordered.filter((f) => !scannedNow.has(f.path));
   const coverage: JsCoverage = {
@@ -1154,12 +1217,18 @@ export function analyzeJavaScriptTree(
     scanned: ordered.length - remainingFiles.length,
     remaining: remainingFiles.length,
     skipped,
-    complete: remainingFiles.length === 0,
+    // Complete means every file was read: none left for later, none passed over, none unlisted.
+    complete: remainingFiles.length === 0 && skipped === 0 && !tree.truncated,
     resumed,
     order: "entry file, then path depth, then path",
     nextFiles: remainingFiles.slice(0, 5).map((f) => f.path),
   };
-  if (!coverage.complete)
+  if (tree.truncated)
+    limitations.push({
+      code: "directory_truncated",
+      message: `${tree.truncated} Files beyond that are not listed, so they are neither analyzed nor counted.`,
+    });
+  if (coverage.remaining > 0)
     limitations.push({
       code: "js_files_truncated",
       message: `Scanned ${coverage.scanned} of ${coverage.total} JavaScript files; ${coverage.remaining} are unread, so every list and count here covers only the scanned part. Continue the analysis to read more.`,
@@ -1412,6 +1481,19 @@ export function analyzeJavaScriptTree(
       code: "unresolved_references",
       message: `${unresolved} relative or dynamic references could not be resolved to files.`,
     });
+
+  // Counts of a scan that has not read everything are counts of the scanned part, and are
+  // worded and rated as such.
+  if (!coverage.complete)
+    for (const finding of findings)
+      if (
+        /^(electron\.(ipc|context-bridge|preload)|js\.(endpoints|storage|minified))$/.test(
+          finding.kind,
+        )
+      ) {
+        finding.title = `${finding.title} in the scanned part (${coverage.scanned} of ${coverage.total} files)`;
+        finding.confidence = "inferred";
+      }
 
   return {
     package: pkg,

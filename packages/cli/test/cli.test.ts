@@ -129,10 +129,29 @@ describe("hexvero CLI", () => {
       const stored = JSON.parse(json.stdout.join(""));
       expect(stored.complete).toBe(false);
       expect(stored.coverage).toMatchObject({ scanned: 3, remaining: 4, resumed: true });
-      // other commands read the same state
+      // other commands read the same state, and say that it is partial
       const channels = capture();
       expect(await main(["collection", app, "ipcChannels", "--json"], channels)).toBe(0);
-      expect(JSON.parse(channels.stdout.join("")).total).toBe(3);
+      const page = JSON.parse(channels.stdout.join(""));
+      expect(page.total).toBe(3);
+      expect(page.partial).toEqual({ scanned: 3, total: 7, remaining: 4, skipped: 0 });
+      const listed = capture();
+      expect(await main(["collection", app, "ipcChannels"], listed)).toBe(0);
+      expect(listed.stdout.join("\n")).toContain(
+        "partial: this list covers 3 of 7 JavaScript files",
+      );
+      // a comparison that involves a partly read side warns that differences may be unread files
+      const compared = capture();
+      expect(await main(["compare", app, app, "ipcChannels"], compared)).toBe(0);
+      expect(compared.stdout.join("\n")).toContain(
+        "was read only in part (3 of 7 JavaScript files)",
+      );
+      const comparedJson = capture();
+      expect(await main(["compare", app, app, "ipcChannels", "--json"], comparedJson)).toBe(0);
+      expect(JSON.parse(comparedJson.stdout.join(""))).toMatchObject({
+        complete: false,
+        partialScan: { a: { scanned: 3, total: 7 } },
+      });
       // files under one path only
       const picked = capture();
       expect(await main(["analyze", app, "--include", "src/part5.js", "--json"], picked)).toBe(0);

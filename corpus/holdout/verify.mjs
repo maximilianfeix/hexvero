@@ -26,7 +26,9 @@ import { build } from "esbuild";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const built = join(here, "..", "built", "holdout");
-const expected = JSON.parse(readFileSync(join(here, "time-tracker", "expected.json"), "utf8")).expect;
+const expected = JSON.parse(
+  readFileSync(join(here, "time-tracker", "expected.json"), "utf8"),
+).expect;
 const compare = JSON.parse(readFileSync(join(here, "time-tracker-v2", "expected.json"), "utf8"))
   .expect.compare;
 const temp = mkdtempSync(join(tmpdir(), "holdout-verify-"));
@@ -156,7 +158,10 @@ function checkAgainstExpected(label, seen) {
 
   // Windows: three, each created with the expected values. The invoice window's sandbox is
   // the one value that is not expected, because it follows NODE_ENV.
-  say(same(seen.windows.keys(), ["main", "widget", "invoice"]), `windows: ${[...seen.windows.keys()]}`);
+  say(
+    same(seen.windows.keys(), ["main", "widget", "invoice"]),
+    `windows: ${[...seen.windows.keys()]}`,
+  );
   const fixed = [...seen.windows].flatMap(([name, prefs]) =>
     Object.entries(prefs)
       .filter(([key]) => !(name === "invoice" && key === "sandbox"))
@@ -199,8 +204,7 @@ function checkAgainstExpected(label, seen) {
     else if (request[1].startsWith("https://runtime.example/")) unknown += 1;
     else say(false, `unexpected request ${request}`);
   }
-  for (const entry of list)
-    say(used.has(entry), `never requested: ${entry.value ?? entry.prefix}`);
+  for (const entry of list) say(used.has(entry), `never requested: ${entry.value ?? entry.prefix}`);
   say(unknown === expected.endpoints.unreadable, `${unknown} requests to run-time addresses`);
   for (const { value } of expected.endpoints.absent)
     say(!seen.requests.some(([, url]) => url === value), `absent address ${value} was requested`);
@@ -324,7 +328,9 @@ try {
   for (const text of kept)
     for (const variant of ["bundled", "minified"])
       check(
-        walk(dirs[`time-tracker.${variant}`]).some((file) => readFileSync(file, "utf8").includes(text)),
+        walk(dirs[`time-tracker.${variant}`]).some((file) =>
+          readFileSync(file, "utf8").includes(text),
+        ),
         `${text} is missing from ${variant}`,
       );
 
@@ -338,7 +344,10 @@ try {
     if (name.endsWith(".js")) {
       const lines = after.split("\n");
       const head = lines.slice(0, changes.prependCommentLines);
-      check(head.every((line) => line.startsWith("// moved down, line ")), `${name}: head`);
+      check(
+        head.every((line) => line.startsWith("// moved down, line ")),
+        `${name}: head`,
+      );
       after = lines.slice(changes.prependCommentLines).join("\n");
     }
     check((before !== after) === edited.has(name), `${name}: changed=${before !== after}`);
@@ -363,36 +372,52 @@ try {
     JSON.stringify(["receivers", "senders"].map((kind) => [...seen.channels.get(name)[kind]]));
   const namesA = new Set([...a.channels.keys()].filter(stable));
   const namesB = new Set([...b.channels.keys()].filter(stable));
-  expectDiff("ipcChannels", {
-    ...diff(namesA, namesB),
-    changed: [...namesA].filter((name) => namesB.has(name) && roles(a, name) !== roles(b, name)),
-  }, compare.ipcChannels);
+  expectDiff(
+    "ipcChannels",
+    {
+      ...diff(namesA, namesB),
+      changed: [...namesA].filter((name) => namesB.has(name) && roles(a, name) !== roles(b, name)),
+    },
+    compare.ipcChannels,
+  );
   const membersA = new Set(a.bridge.keys());
   const membersB = new Set(b.bridge.keys());
-  expectDiff("contextBridge", {
-    ...diff(membersA, membersB),
-    changed: [...membersA].filter(
-      (member) => membersB.has(member) && !same(a.bridge.get(member), b.bridge.get(member)),
-    ),
-  }, compare.contextBridge);
+  expectDiff(
+    "contextBridge",
+    {
+      ...diff(membersA, membersB),
+      changed: [...membersA].filter(
+        (member) => membersB.has(member) && !same(a.bridge.get(member), b.bridge.get(member)),
+      ),
+    },
+    compare.contextBridge,
+  );
   const settings = (seen) =>
-    new Map([...seen.windows].flatMap(([name, prefs]) =>
-      Object.entries(prefs).map(([key, value]) => [`${name} ${key}`, value]),
-    ));
+    new Map(
+      [...seen.windows].flatMap(([name, prefs]) =>
+        Object.entries(prefs).map(([key, value]) => [`${name} ${key}`, value]),
+      ),
+    );
   const settingsA = settings(a);
   const settingsB = settings(b);
-  expectDiff("webPreferences", {
-    ...diff(new Set(settingsA.keys()), new Set(settingsB.keys())),
-    changed: [...settingsA.keys()]
-      .filter((key) => settingsB.has(key) && settingsA.get(key) !== settingsB.get(key))
-      .map((key) => `${key.split(" ")[1]}: ${settingsA.get(key)} -> ${settingsB.get(key)}`),
-  }, compare.webPreferences);
+  expectDiff(
+    "webPreferences",
+    {
+      ...diff(new Set(settingsA.keys()), new Set(settingsB.keys())),
+      changed: [...settingsA.keys()]
+        .filter((key) => settingsB.has(key) && settingsA.get(key) !== settingsB.get(key))
+        .map((key) => `${key.split(" ")[1]}: ${settingsA.get(key)} -> ${settingsB.get(key)}`),
+    },
+    compare.webPreferences,
+  );
   // Addresses: an observed address stands for the expected entry it belongs to. What v2
   // requests and v1's list does not know must be one of the added strings, and the other way.
   const list = expected.endpoints.present;
   const listB = [
     ...list,
-    ...compare.endpoints.added.map((text) => (text.endsWith("/clients") ? { value: text } : { prefix: text })),
+    ...compare.endpoints.added.map((text) =>
+      text.endsWith("/clients") ? { value: text } : { prefix: text },
+    ),
   ];
   const keyOf = (entries) => (request) => {
     const entry = matchEndpoint(entries, request);
@@ -400,17 +425,23 @@ try {
   };
   const addressesA = new Set(a.requests.map(keyOf(list)));
   const addressesB = new Set(b.requests.map(keyOf(listB)));
-  check(!b.requests.some((r) => !matchEndpoint(listB, r) && !r[1].startsWith("https://runtime.")),
-    `v2 requests an address in no list: ${b.requests.map(([, url]) => url)}`);
+  check(
+    !b.requests.some((r) => !matchEndpoint(listB, r) && !r[1].startsWith("https://runtime.")),
+    `v2 requests an address in no list: ${b.requests.map(([, url]) => url)}`,
+  );
   expectDiff("endpoints", diff(addressesA, addressesB), compare.endpoints);
   const keys = (seen) =>
     new Set([...seen.storage].map((entry) => entry.split("|").slice(0, 2).join(" ")));
   const ops = (seen, key) =>
     [...seen.storage].filter((entry) => entry.split("|").slice(0, 2).join(" ") === key).toSorted();
-  expectDiff("storage", {
-    ...diff(keys(a), keys(b)),
-    changed: [...keys(a)].filter((key) => keys(b).has(key) && !same(ops(a, key), ops(b, key))),
-  }, compare.storage);
+  expectDiff(
+    "storage",
+    {
+      ...diff(keys(a), keys(b)),
+      changed: [...keys(a)].filter((key) => keys(b).has(key) && !same(ops(a, key), ops(b, key))),
+    },
+    compare.storage,
+  );
 
   if (problems.length) {
     console.error(`holdout: ${problems.length} problem(s):\n${problems.join("\n")}`);

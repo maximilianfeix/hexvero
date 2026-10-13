@@ -2,12 +2,12 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "1ca224b",
+  "commit": "9e18fe2+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
    "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
-   "rizin": "not installed"
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
   }
  },
  "totals": [
@@ -392,8 +392,8 @@
   {
    "set": "holdout",
    "class": "call paths",
-   "hit": 71,
-   "missed": 1,
+   "hit": 70,
+   "missed": 2,
    "false": 0,
    "hedged": 0,
    "inputs": 4
@@ -1638,12 +1638,13 @@
    "set": "holdout",
    "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
    "class": "call paths",
-   "hit": 17,
-   "missed": 1,
+   "hit": 16,
+   "missed": 2,
    "false": 0,
    "hedged": 0,
    "notes": [
-    "debug_level → atoi: path not found, stated without warning (no function atoi)"
+    "debug_level → atoi: path not found, stated without warning (no function atoi)",
+    "main → atoi: not answered (no function atoi)"
    ]
   },
   {

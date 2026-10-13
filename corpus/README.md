@@ -9,12 +9,12 @@ product, so all of it can be redistributed.
 
 ## What is in it
 
-| Set | Purpose | Cases |
-| --- | --- | --- |
-| `dev/` | written alongside hexvero and used to tune it | an Electron app in three builds, a later version of it, a C program in two builds and a later version |
-| `validation/` | written by someone with no access to hexvero's detectors or output; measured once untouched (round 1), then used for tuning | an Electron app in three builds, a later version, a C program in two builds |
-| `holdout/` | written the same way after the tuning on the other two sets; measured untouched | see `holdout/README.md` |
-| `damaged/` | corpus inputs cut or altered at fixed places | six files |
+| Set           | Purpose                                                                                                                     | Cases                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `dev/`        | written alongside hexvero and used to tune it                                                                               | an Electron app in three builds, a later version of it, a C program in two builds and a later version |
+| `validation/` | written by someone with no access to hexvero's detectors or output; measured once untouched (round 1), then used for tuning | an Electron app in three builds, a later version, a C program in two builds                           |
+| `holdout/`    | written the same way after the tuning on the other two sets; measured untouched                                             | see `holdout/README.md`                                                                               |
+| `damaged/`    | corpus inputs cut or altered at fixed places                                                                                | six files                                                                                             |
 
 Each Electron case is built three ways from the same sources: packed as written (`plain`), bundled
 by esbuild (`bundled`), and bundled and minified (`minified`). The facts are the same in all three;
@@ -65,11 +65,11 @@ reported with its indirect caller.
 SHA-256 of each file. `node corpus/build.mjs --check` rebuilds the JavaScript inputs and fails if
 one differs from the committed file.
 
-| Part | Tool | Version |
-| --- | --- | --- |
-| Bundling and minifying | esbuild | 0.28.2, exact, from `package.json` |
-| Packing | @electron/asar | 4.3.1, exact, from `package.json` |
-| Native programs | Apple clang | 17.0.0 (clang-1700.3.19.1), arm64, macOS 26.5 |
+| Part                   | Tool           | Version                                       |
+| ---------------------- | -------------- | --------------------------------------------- |
+| Bundling and minifying | esbuild        | 0.28.2, exact, from `package.json`            |
+| Packing                | @electron/asar | 4.3.1, exact, from `package.json`             |
+| Native programs        | Apple clang    | 17.0.0 (clang-1700.3.19.1), arm64, macOS 26.5 |
 
 File times are set to a fixed date before packing, so an archive depends on its content alone.
 Native binaries are built only with `--native` and only when the binary does not exist: two builds

@@ -99,7 +99,19 @@ export interface Candidates {
 const MAX_PER_LIST = 2000;
 const HTTP_VERBS = new Set(["get", "post", "put", "delete", "patch", "head", "options", "request"]);
 /** Objects whose verb methods are HTTP requests by definition of the library. */
-const HTTP_CLIENTS = new Set(["axios", "got", "ky", "superagent", "needle", "$http"]);
+const HTTP_CLIENTS = new Set([
+  "axios",
+  "got",
+  "ky",
+  "superagent",
+  "needle",
+  "$http",
+  "http",
+  "https",
+]);
+const CLIENT_MODULES = /^(node:)?(https?|axios|got|ky|superagent|needle)$/;
+/** Verbs that a map, a set or a header list also has; on an unknown object they prove nothing. */
+const LOOKUP_VERBS = new Set(["get", "delete", "head", "options"]);
 const GLOBALS = new Set(["window", "globalThis", "self", "net"]);
 const STORAGE_OPS: Record<string, Candidate["op"]> = {
   getItem: "read",
@@ -314,6 +326,24 @@ export function findCandidates(
     }
   }
 
+  // Names an HTTP client module is bound to (`const h = require("node:https")`, also through a
+  // bundler's interop call): their verb methods are requests whatever the name is.
+  const clients = new Set<string>();
+  if (/require\(|import /.test(source))
+    for (let k = 0; k + 4 < tokens.length; k++) {
+      if (!is(tokens[k], "ident") || !is(tokens[k + 1], "punct", "=")) continue;
+      const req = is(tokens[k + 2], "ident", "require")
+        ? k + 2
+        : is(tokens[k + 2], "ident") &&
+            is(tokens[k + 3], "punct", "(") &&
+            is(tokens[k + 4], "ident", "require")
+          ? k + 4
+          : -1;
+      if (req === -1 || !is(tokens[req + 1], "punct", "(")) continue;
+      const spec = tokens[req + 2];
+      if (spec?.type === "string" && CLIENT_MODULES.test(spec.value)) clients.add(tokens[k]!.value);
+    }
+
   // Variables that hold an XMLHttpRequest: only their open() is a request.
   const xhrs = new Set<string>();
   if (source.includes("XMLHttpRequest"))
@@ -406,7 +436,8 @@ export function findCandidates(
         );
     } else if (HTTP_VERBS.has(t.value) && member && called) {
       const owner = tokens[k - 2];
-      const client = is(owner, "ident") && HTTP_CLIENTS.has(owner!.value);
+      const client =
+        is(owner, "ident") && (HTTP_CLIENTS.has(owner!.value) || clients.has(owner!.value));
       // `net.request({ url: "https://…", method: "POST" })`: the address is an option.
       const url = is(tokens[k + 2], "punct", "{") ? option(k + 1, "url") : null;
       if (url !== null) {
@@ -417,9 +448,12 @@ export function findCandidates(
       const r = readArg(k + 2);
       if (!r || r.value === null) continue;
       // An unknown object with a verb method is only taken for a request when the URL is
-      // absolute: `router.get("/users", handler)` and `map.get("/x")` are not requests.
+      // absolute and the verb is not one a collection has too: `router.get("/users", handler)`,
+      // `map.get("https://…")` and `headers.delete(…)` are not requests.
       if (
-        client ? /^(https?:)?\//i.test(r.value) || ABSOLUTE.test(r.value) : ABSOLUTE.test(r.value)
+        client
+          ? /^(https?:)?\//i.test(r.value) || ABSOLUTE.test(r.value)
+          : ABSOLUTE.test(r.value) && !LOOKUP_VERBS.has(t.value)
       )
         push(
           out.endpoints,

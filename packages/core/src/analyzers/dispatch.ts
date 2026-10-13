@@ -241,7 +241,9 @@ async function analyzeTargetUnsafe(
       return done(
         app.coverage.complete
           ? `Electron ASAR: ${app.modules.length} JavaScript modules, ${app.ipcChannels.length} IPC channels`
-          : `Electron ASAR, partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned, ${app.ipcChannels.length} IPC channels so far`,
+          : app.coverage.remaining > 0
+            ? `Electron ASAR, partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned, ${app.ipcChannels.length} IPC channels so far`
+            : `Electron ASAR, incomplete: ${app.coverage.skipped} of ${app.coverage.total} JavaScript files could not be read, ${app.ipcChannels.length} IPC channels in the rest`,
         { kind: "javascript-app", app },
       );
     }
@@ -262,7 +264,9 @@ async function analyzeTargetUnsafe(
         `Directory: ${app.totals.files} files, ${
           app.coverage.complete
             ? `${app.modules.length} JavaScript modules`
-            : `partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned`
+            : app.coverage.remaining > 0
+              ? `partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned`
+              : `incomplete: ${app.modules.length} JavaScript modules read, some files unread or unlisted`
         }${app.electron ? " (Electron)" : ""}`,
         { kind: "javascript-app", app },
       );
