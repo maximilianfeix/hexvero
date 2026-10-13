@@ -338,6 +338,8 @@ interface WindowRanges {
   ranges: WindowRange[];
   /** Names of objects that were followed to their declaration as window options. */
   traced: Set<string>;
+  /** Windows whose options come, in part, from such a named object. */
+  viaName: Set<number>;
   /**
    * Windows whose options take a value that could not be followed (a parameter, a call, a
    * conditional, a spread of something unknown), with the place up to which keys written for
@@ -348,6 +350,11 @@ interface WindowRanges {
 
 function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRanges {
   const traced = new Set<string>();
+  const viaName = new Set<number>();
+  const follow = (name: string, window: number | null): void => {
+    traced.add(name);
+    if (window !== null) viaName.add(window);
+  };
   const opaque = new Map<number, number>();
   const hide = (window: number | null, upTo: number): void => {
     if (window !== null) opaque.set(window, Math.max(opaque.get(window) ?? -1, upTo));
@@ -462,7 +469,7 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
         const base = !simple ? -1 : is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
         // Inside a base, everything is applied where that base is applied.
         if (base !== -1) {
-          if (!is(k + 2, "(")) traced.add(next!.value);
+          if (!is(k + 2, "(")) follow(next!.value, window);
           add(base, window, true, depth + 1, at ?? t.start);
         } else hide(window, at ?? t.start);
       } else if (
@@ -475,7 +482,7 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
         if (is(k + 3, ",") || is(k + 3, "}")) {
           const named = objectOf(name);
           if (named !== -1) {
-            traced.add(name);
+            follow(name, window);
             add(named, window, inherited, depth + 1, at);
           } else hide(window, EVERYWHERE);
         } else if (is(k + 3, "(")) {
@@ -525,7 +532,7 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       if (first?.type === "ident" && is(c + 3, ")")) {
         const at = objectOf(first.value);
         if (at !== -1) {
-          traced.add(first.value);
+          follow(first.value, window);
           add(at, window);
         } else hide(window, EVERYWHERE); // a parameter, an import: `new BrowserWindow(options)`
       } else if (!is(c + 2, "{") && !is(c + 2, ")")) {
@@ -539,7 +546,7 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
       if (!ranges.some((r) => start >= r.start && start < r.end)) add(k + 2, null);
     }
   }
-  return { ranges, traced, opaque };
+  return { ranges, traced, viaName, opaque };
 }
 
 /** One member a preload script exposes to the page through contextBridge. */
@@ -1718,8 +1725,11 @@ export function analyzeJavaScriptTree(
     for (const r of ranges) {
       if (r.window === null || r.inherited || facts.windows.length >= MAX_PREFS) continue;
       if (facts.windows.some((w) => w.file === file.path && w.window === r.window)) continue;
-      const hiddenUpTo = (located as WindowRanges | null)?.opaque.get(r.window);
-      const computedKeys = new Set<string>(mutated);
+      const where = located as WindowRanges | null;
+      const hiddenUpTo = where?.opaque.get(r.window);
+      // A change to a followed object concerns the windows that take options from such an
+      // object; a window whose options are all written in place cannot be changed that way.
+      const computedKeys = new Set<string>(where?.viaName.has(r.window) ? mutated : []);
       if (hiddenUpTo !== undefined)
         // What could not be followed may write any key; a key the code writes for the window
         // after that place stands, every other one is not known.

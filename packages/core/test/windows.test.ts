@@ -528,4 +528,19 @@ describe("window settings as written, computed, or absent", () => {
     ]);
     expect(info.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual(["false true"]);
   });
+
+  it("does not let a change to a followed object touch a window whose options are written in place", () => {
+    const info = analyze(
+      [
+        "const prefs = { sandbox: true };",
+        "prefs.sandbox = false;",
+        "const named = new BrowserWindow({ webPreferences: prefs });",
+        "const inline = new BrowserWindow({ webPreferences: { sandbox: true, nodeIntegration: false } });",
+      ].join("\n"),
+    );
+    expect(info.windows.map((w) => `${w.windowName} ${w.sandbox} ${w.nodeIntegration}`)).toEqual([
+      "named computed not written",
+      "inline true false",
+    ]);
+  });
 });
