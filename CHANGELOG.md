@@ -6,6 +6,18 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- Modules a bundler wrapped into one file are followed: esbuild's `__commonJS` wrappers with
+  `exports.NAME = …` or `module.exports = { … }`, its `__toESM` interop, and the same helpers once
+  minified (recognised by what their code does, not by name). Top-level object patterns
+  (`var { A, B: b } = require_x()`, several per statement), classes written as
+  `var Name = class { … }`, and keys of another module's object (`links.upload`) are read too.
+  Corpus, development sets: holdout2 endpoints 22 → 46 of 57 with false reports 10 → 0, IPC
+  channels 110 → 118 of 126; holdout endpoints 30 → 32 of 42 (false 1 → 0), storage keys 46 → 48
+  of 51. The real applications checked (Claude, Discord, Electron Fiddle, Electron API Demos)
+  report the same IPC channels, bridge members, window settings, endpoints and storage as 0.4.1.
+
 ## [0.4.1] - 2026-10-14
 
 ### Accuracy

@@ -299,7 +299,7 @@ On `corpus/holdout2`, two Electron applications in three builds each, written by
 | Storage keys             | 47 of 57 (1 false)                 | 15 of 57           |
 | Changes between versions | 6 of 10                            | 2 of 10 (4 false)  |
 
-The current code reads 110 of 126 channels, 46 of 63 settings with none false, 129 of 135 bridge members and 22 of 57 endpoints (10 false) there, but that is after working on the set's misses, so it is not a blind result.
+The current code reads 118 of 126 channels, 46 of 63 settings with none false, 129 of 135 bridge members and 46 of 57 endpoints with none false there, but that is after working on the set's misses, so it is not a blind result.
 
 - **The MCP catalog** is 14 KB for hexvero's 15 tools and 3.09 MB for REA's 207 (2.48 MB with its compact profile).
 - **An agent experiment** (Claude Code, five graded questions about the same set, file reading allowed): both tools let the agent answer every item correctly; with hexvero it took 82 s and about 120 k tokens per question, with REA 190 s and 177 k ([method and limits](docs/audits/agent-task-evaluation.md)).
