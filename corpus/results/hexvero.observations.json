@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.5.0",
-  "commit": "93723b8+uncommitted",
+  "version": "0.6.0",
+  "commit": "7c66e1e+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -4572,6 +4572,15 @@
       ]
      },
      {
+      "channel": "config:get-sync",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "debug:dump-state",
       "senders": [],
       "receivers": [
@@ -4619,6 +4628,15 @@
       ],
       "receivers": [
        "main.js"
+      ]
+     },
+     {
+      "channel": "menu:new-entry",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
       ]
      },
      {
@@ -4693,6 +4711,20 @@
       "receivers": [
        "main.js"
       ]
+     },
+     {
+      "channel": "timer:tick",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "update:ready",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
      },
      {
       "channel": "widget:close",
@@ -4773,7 +4805,7 @@
      {
       "api": "tracker",
       "member": "onTick",
-      "channel": null
+      "channel": "timer:tick"
      },
      {
       "api": "tracker",
@@ -4823,7 +4855,7 @@
      {
       "api": "tracker",
       "member": "setting",
-      "channel": null
+      "channel": "config:get-sync"
      },
      {
       "api": "tracker",
@@ -4833,12 +4865,12 @@
      {
       "api": "tracker",
       "member": "onNewEntry",
-      "channel": null
+      "channel": "menu:new-entry"
      },
      {
       "api": "tracker",
       "member": "onUpdateReady",
-      "channel": null
+      "channel": "update:ready"
      },
      {
       "api": "tracker",
@@ -6129,7 +6161,7 @@
       "widget:close"
      ],
      "relocated": 0,
-     "unchanged": 17
+     "unchanged": 21
     },
     "contextBridge": {
      "key": "api+member",

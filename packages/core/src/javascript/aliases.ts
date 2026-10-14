@@ -398,7 +398,8 @@ export function resolveAliases(
 /** A string value reached by name, or where to look for it in another module. */
 export type Resolved =
   | { value: string; via: "literal" | "constant" }
-  | { ref: { specifier: string; property: string } }
+  /** Another module's constant; `before` and `after`: text a template puts around it. */
+  | { ref: { specifier: string; property: string; before?: string; after?: string } }
   | null;
 
 /** String constants and tables of string constants declared in one file. */
@@ -684,6 +685,9 @@ export class Constants {
         const keys = this.keys(at);
         if (keys.length) this.tableKeys.set(t.value, keys);
         if (exportedHere) this.export(t.value);
+      } else if (exportedHere && is(value, "ident") && !is(tokens[k + 3], "punct", "(")) {
+        // `export const ConfigSync = Channel.ConfigGetSync`: settled with the export lists
+        this.exportNames.push({ key: t.value, at: k + 2 });
       } else if (
         is(value, "ident", "require") &&
         is(tokens[k + 3], "punct", "(") &&
@@ -764,6 +768,19 @@ export class Constants {
   /** Settles export entries that name something: a constant here, or a name of another module. */
   private settleExports(): void {
     const tokens = this.tokens;
+    // `export var Push;` followed by the enum's definition, as tsc compiles an exported enum
+    for (let k = 0; k + 3 < tokens.length; k++) {
+      if (
+        !is(tokens[k], "ident", "export") ||
+        !is(tokens[k + 1], "ident") ||
+        !/^(var|let)$/.test(tokens[k + 1]!.value) ||
+        !is(tokens[k + 2], "ident") ||
+        !is(tokens[k + 3], "punct", ";")
+      )
+        continue;
+      const name = tokens[k + 2]!.value;
+      for (const [key, v] of this.enums.get(name) ?? []) this.exported[`${name}.${key}`] = v;
+    }
     for (const { key, at } of this.exportNames) {
       if (key in this.exported) continue;
       const name = tokens[at]!.value;
@@ -948,8 +965,40 @@ export class Constants {
   }
 
   /** The string the argument at token k stands for: a literal, a constant, or a table entry. */
-  resolve(k: number): Resolved {
+  /**
+   * `resolve` for an argument, also when it is a template around one name: `${PREFIX}tick` with
+   * PREFIX a constant here (the whole channel) or of another module (a reference with the text
+   * around it).
+   */
+  resolveArg(k: number): Resolved {
     const tokens = this.tokens;
+    const head = tokens[k];
+    if (head?.type !== "template" || !head.value.endsWith("${…}")) return this.resolve(k);
+    const before = head.value.slice(0, -"${…}".length);
+    let end = k + 2;
+    while (is(tokens[end], "punct", ".") && is(tokens[end + 1], "ident")) end += 2;
+    const tail = tokens[end];
+    if (
+      before.includes("${…}") ||
+      tail?.type !== "template" ||
+      tail.value.includes("${…}") ||
+      !(is(tokens[end + 1], "punct", ",") || is(tokens[end + 1], "punct", ")"))
+    )
+      return null;
+    const inner = this.resolve(k + 1, end);
+    if (inner === null) return null;
+    return "value" in inner
+      ? { value: `${before}${inner.value}${tail.value}`, via: "constant" }
+      : { ref: { ...inner.ref, before, after: tail.value } };
+  }
+
+  resolve(k: number, endAt?: number): Resolved {
+    const tokens = this.tokens;
+    /** The token after the name: `,` or `)` of an argument list, or the given end. */
+    const closes = (j: number): boolean =>
+      endAt !== undefined
+        ? j === endAt
+        : is(tokens[j], "punct", ",") || is(tokens[j], "punct", ")");
     const t = tokens[k];
     const literal = text(t);
     if (literal !== null) return { value: literal, via: "literal" };
@@ -962,8 +1011,7 @@ export class Constants {
       let last = k + 2;
       while (is(tokens[last + 1], "punct", ".") && is(tokens[last + 2], "ident") && last < k + 8)
         last += 2;
-      const end = tokens[last + 1];
-      if (!is(end, "punct", ",") && !is(end, "punct", ")")) return null;
+      if (!closes(last + 1)) return null;
       const parts: string[] = [];
       for (let j = k + 2; j <= last; j += 2) parts.push(tokens[j]!.value);
       const property = parts.join(".");
@@ -979,7 +1027,7 @@ export class Constants {
         ? { ref: { specifier: table.specifier, property: `${table.property}.${property}` } }
         : null;
     }
-    if (!is(next, "punct", ",") && !is(next, "punct", ")")) return null;
+    if (!closes(k + 1)) return null;
     if (this.reassigned.has(t.value)) return null;
     const value = this.strings.get(t.value);
     if (value) return { value, via: "constant" };

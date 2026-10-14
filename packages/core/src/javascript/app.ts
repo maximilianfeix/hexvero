@@ -691,7 +691,7 @@ export interface BridgeMember {
   file: string;
   line: number;
   /** A channel named by a constant of another module, until that module has been read. */
-  channelRef?: { specifier: string; property: string };
+  channelRef?: { specifier: string; property: string; before?: string; after?: string };
 }
 
 /** What one source file exposes, and whether a cap or an unclosed literal cut the reading short. */
@@ -853,6 +853,10 @@ export function bridgeMembers(
       if (name === null) return push(null, null, first.line);
       const channels = new Set<string>();
       const refs: Array<NonNullable<BridgeMember["channelRef"]>> = [];
+      // `on(CH, f)` and `off(CH, f)` in one member name one channel
+      const addRef = (ref: NonNullable<BridgeMember["channelRef"]>): void => {
+        if (!refs.some((r) => JSON.stringify(r) === JSON.stringify(ref))) refs.push(ref);
+      };
       for (let j = s + 1; j + 2 < end; j++) {
         const callee = tokens[j + 2]!;
         if (
@@ -863,9 +867,9 @@ export function bridgeMembers(
           CHANNEL_CALLS.has(callee.value) &&
           is(j + 3, "(")
         ) {
-          const channelName = context.constants.resolve(j + 4);
+          const channelName = context.constants.resolveArg(j + 4);
           if (channelName && "value" in channelName) channels.add(channelName.value);
-          else if (channelName && "ref" in channelName) refs.push(channelName.ref);
+          else if (channelName && "ref" in channelName) addRef(channelName.ref);
         } else if (
           tokens[j]!.type === "ident" &&
           is(j + 1, "(") &&
@@ -873,9 +877,9 @@ export function bridgeMembers(
           context.wrappers.get(tokens[j]!.value)?.startsWith("ipcRenderer.")
         ) {
           // a helper of the file that forwards its first argument as the channel
-          const channelName = context.constants.resolve(j + 2);
+          const channelName = context.constants.resolveArg(j + 2);
           if (channelName && "value" in channelName) channels.add(channelName.value);
-          else if (channelName && "ref" in channelName) refs.push(channelName.ref);
+          else if (channelName && "ref" in channelName) addRef(channelName.ref);
         }
       }
       // Two different channels in one member: which one it forwards to is not decidable here.
@@ -2372,17 +2376,17 @@ export function analyzeJavaScriptTree(
   for (const m of modules)
     for (const u of m.ipc) {
       if (u.channel !== null || !u.channelRef) continue;
-      const channel = lookUp(m.id, u.channelRef);
-      if (channel === null) continue;
-      u.channel = channel;
+      const found = lookUp(m.id, u.channelRef);
+      if (found === null) continue;
+      u.channel = `${u.channelRef.before ?? ""}${found}${u.channelRef.after ?? ""}`;
       u.via = "constant";
       delete u.channelRef;
     }
   for (const b of contextBridge) {
     if (b.channel !== null || !b.channelRef) continue;
-    const channel = lookUp(b.file, b.channelRef);
-    if (channel === null) continue;
-    b.channel = channel;
+    const found = lookUp(b.file, b.channelRef);
+    if (found === null) continue;
+    b.channel = `${b.channelRef.before ?? ""}${found}${b.channelRef.after ?? ""}`;
     delete b.channelRef;
   }
 

@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.5.0",
-  "commit": "93723b8+uncommitted",
+  "version": "0.6.0",
+  "commit": "7c66e1e+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -410,8 +410,8 @@
   {
    "set": "holdout",
    "class": "IPC channels",
-   "hit": 60,
-   "missed": 12,
+   "hit": 64,
+   "missed": 8,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -419,8 +419,8 @@
   {
    "set": "holdout",
    "class": "IPC senders and receivers",
-   "hit": 91,
-   "missed": 26,
+   "hit": 97,
+   "missed": 28,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -446,8 +446,8 @@
   {
    "set": "holdout",
    "class": "bridge member channel",
-   "hit": 28,
-   "missed": 32,
+   "hit": 32,
+   "missed": 28,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -1803,14 +1803,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "IPC channels",
-   "hit": 19,
-   "missed": 5,
+   "hit": 23,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed timer:tick",
-    "missed config:get-sync",
-    "missed menu:new-entry",
-    "missed update:ready",
     "missed theme:changed"
    ]
   },
@@ -1818,15 +1814,17 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "IPC senders and receivers",
-   "hit": 32,
-   "missed": 5,
+   "hit": 38,
+   "missed": 7,
    "false": 0,
    "notes": [
+    "timer:tick: sender main.js missed",
     "projects:list: sender preload.js missed",
     "projects:create: sender preload.js missed",
     "projects:rename: sender preload.js missed",
     "invoice:exported: sender main.js missed",
-    "sync:progress: sender main.js missed"
+    "sync:progress: sender main.js missed",
+    "update:ready: receiver preload.js missed"
    ]
   },
   {
@@ -1861,18 +1859,14 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "bridge member channel",
-   "hit": 12,
-   "missed": 8,
+   "hit": 16,
+   "missed": 4,
    "false": 0,
    "notes": [
-    "tracker.onTick: expected timer:tick, got null",
     "tracker.listProjects: expected projects:list, got null",
     "tracker.createProject: expected projects:create, got null",
     "tracker.renameProject: expected projects:rename, got null",
-    "tracker.createInvoice: expected invoice:create, got null",
-    "tracker.setting: expected config:get-sync, got null",
-    "tracker.onNewEntry: expected menu:new-entry, got null",
-    "tracker.onUpdateReady: expected update:ready, got null"
+    "tracker.createInvoice: expected invoice:create, got null"
    ]
   },
   {
