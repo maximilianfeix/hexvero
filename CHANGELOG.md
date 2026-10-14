@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-14
+
 ### Accuracy
 
 - Defaults in destructured parameters (`function prefs({ sandbox = true, nodeIntegration = false } = {})`)

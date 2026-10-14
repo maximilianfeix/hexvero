@@ -1,6 +1,6 @@
 {
   "name": "@hexvero/server",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Loopback HTTP API and static host for the hexvero web UI.",
   "keywords": [
     "hexvero",
@@ -36,7 +36,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@hexvero/core": "0.6.1"
+    "@hexvero/core": "0.6.2"
   },
   "engines": {
     "node": ">=22.12.0"
