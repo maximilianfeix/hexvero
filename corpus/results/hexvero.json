@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.4.1",
-  "commit": "c3b9270+uncommitted",
+  "version": "0.4.2",
+  "commit": "e2ed495+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -455,8 +455,8 @@
   {
    "set": "holdout",
    "class": "endpoints",
-   "hit": 32,
-   "missed": 10,
+   "hit": 35,
+   "missed": 7,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -475,7 +475,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 3,
    "missed": 0,
-   "false": 9,
+   "false": 6,
    "hedged": 0,
    "inputs": 3
   },
@@ -590,8 +590,8 @@
   {
    "set": "holdout2",
    "class": "endpoints",
-   "hit": 46,
-   "missed": 11,
+   "hit": 53,
+   "missed": 4,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -599,7 +599,7 @@
   {
    "set": "holdout2",
    "class": "endpoint method",
-   "hit": 6,
+   "hit": 9,
    "missed": 9,
    "false": 0,
    "hedged": 0,
@@ -610,7 +610,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 6,
    "missed": 0,
-   "false": 8,
+   "false": 3,
    "hedged": 0,
    "inputs": 6
   },
@@ -662,8 +662,8 @@
   {
    "set": "holdout2",
    "class": "changes in endpoints",
-   "hit": 2,
-   "missed": 2,
+   "hit": 4,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 1
@@ -2019,12 +2019,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "endpoints",
-   "hit": 11,
-   "missed": 3,
+   "hit": 13,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed https://api.punchclock.example/v3/clients",
-    "missed https://api.punchclock.example/v3/timesheets/current…",
     "missed https://api.punchclock.example/v3/entries"
    ]
   },
@@ -2045,7 +2043,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 3,
+   "false": 1,
    "notes": []
   },
   {
@@ -2161,11 +2159,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "endpoints",
-   "hit": 11,
-   "missed": 3,
+   "hit": 12,
+   "missed": 2,
    "false": 0,
    "notes": [
-    "missed https://api.punchclock.example/v3/clients",
     "missed https://api.punchclock.example/v3/timesheets/current…",
     "missed https://api.punchclock.example/v3/entries"
    ]
@@ -2187,7 +2184,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 3,
+   "false": 2,
    "notes": []
   },
   {
@@ -2330,12 +2327,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "endpoints",
-   "hit": 6,
-   "missed": 3,
+   "hit": 8,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed https://api.inkwell.example/v1/changelog",
-    "missed https://api.inkwell.example/v1/feedback",
     "missed https://embed.inkwell.example/oembed…"
    ]
   },
@@ -2343,7 +2338,7 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "endpoint method",
-   "hit": 2,
+   "hit": 3,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2354,7 +2349,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 2,
+   "false": 1,
    "notes": []
   },
   {
@@ -2438,20 +2433,16 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "endpoints",
-   "hit": 6,
-   "missed": 3,
+   "hit": 9,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed https://api.inkwell.example/v1/changelog",
-    "missed https://api.inkwell.example/v1/feedback",
-    "missed https://embed.inkwell.example/oembed…"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "endpoint method",
-   "hit": 2,
+   "hit": 3,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2462,7 +2453,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 2,
+   "false": 0,
    "notes": []
   },
   {
@@ -2551,12 +2542,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "endpoints",
-   "hit": 6,
-   "missed": 3,
+   "hit": 8,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed https://api.inkwell.example/v1/changelog",
-    "missed https://api.inkwell.example/v1/feedback",
     "missed https://embed.inkwell.example/oembed…"
    ]
   },
@@ -2564,7 +2553,7 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "endpoint method",
-   "hit": 2,
+   "hit": 3,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2575,7 +2564,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 3,
+   "false": 1,
    "notes": []
   },
   {
@@ -2634,13 +2623,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
    "class": "changes in endpoints",
-   "hit": 2,
-   "missed": 2,
+   "hit": 4,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed +https://api.inkwell.example/v2/changelog",
-    "missed -https://api.inkwell.example/v1/changelog"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",

@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.4.1",
-  "commit": "c3b9270+uncommitted",
+  "version": "0.4.2",
+  "commit": "e2ed495+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -5431,6 +5431,18 @@
       "evidence": "template"
      },
      {
+      "value": "https://api.punchclock.example/v3/clients",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/timesheets/current",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
       "value": "https://api.punchclock.example/v3/entries/${…}",
       "kind": "fetch",
       "method": "DELETE",
@@ -5455,7 +5467,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 4,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "electron-store",
@@ -5925,6 +5937,12 @@
       "evidence": "template"
      },
      {
+      "value": "https://api.punchclock.example/v3/clients",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
       "value": "https://api.punchclock.example/v3/entries/${…}",
       "kind": "fetch",
       "method": "DELETE",
@@ -5949,7 +5967,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 4,
+    "endpointsUnreadable": 3,
     "storage": [
      {
       "kind": "electron-store",
@@ -6516,6 +6534,18 @@
       "evidence": "literal"
      },
      {
+      "value": "https://api.inkwell.example/v1/changelog",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/feedback",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
       "value": "https://sync.inkwell.example/v2/vaults/${…}/files/${…}",
       "kind": "fetch",
       "method": "PUT",
@@ -6528,7 +6558,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 3,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "sessionStorage",
@@ -6965,10 +6995,28 @@
       "evidence": "literal"
      },
      {
+      "value": "https://api.inkwell.example/v1/changelog",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/feedback",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
       "value": "https://sync.inkwell.example/v2/vaults/${…}/files/${…}",
       "kind": "fetch",
       "method": "PUT",
       "evidence": "template"
+     },
+     {
+      "value": "https://embed.inkwell.example/oembed",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
      },
      {
       "value": "wss://collab.inkwell.example/rooms/${…}",
@@ -6977,7 +7025,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 3,
+    "endpointsUnreadable": 1,
     "storage": [
      {
       "kind": "sessionStorage",
@@ -7382,6 +7430,18 @@
       "evidence": "literal"
      },
      {
+      "value": "https://api.inkwell.example/v1/changelog",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/feedback",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
       "value": "https://sync.inkwell.example/v2/vaults/${…}/files/${…}",
       "kind": "fetch",
       "method": "PUT",
@@ -7394,7 +7454,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 4,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "sessionStorage",
@@ -7468,9 +7528,11 @@
     "endpoints": {
      "key": "file+kind+value",
      "added": [
+      "https://api.inkwell.example/v2/changelog",
       "https://sync.inkwell.example/v3/vaults/${…}/files/${…}"
      ],
      "removed": [
+      "https://api.inkwell.example/v1/changelog",
       "https://sync.inkwell.example/v2/vaults/${…}/files/${…}"
      ],
      "changed": [],

@@ -20,8 +20,8 @@ is not claimed.
 - Endpoints in 0.4.1, on sets that are now used for development: holdout 30 of 42 with 1 false
   (0.4.0: 24, 5 false), holdout2 22 of 57 with 10 false (0.4.0: 15, 10 false); REA 6.5.0 on
   holdout2: 6 of 57 with 39 false (`CHANGELOG.md`, `docs/competitive/rea-scorecard.md`).
-  On main after 0.4.1: holdout 32 of 42 and holdout2 46 of 57, none false; IPC channels on
-  holdout2 118 of 126. Development results, not blind; say so.
+  0.4.2: holdout 32 of 42 and holdout2 46 of 57, none false; IPC channels on holdout2 118 of 126. On main after it: holdout 35 of 42, holdout2 53 of 57, none false. Development results,
+  not blind; say so.
 - Not to be claimed: speed against hexvero 0.3.0 or 0.4.0 (0.4.1 is about 10% slower than 0.4.0
   on the Claude archive sequentially), completeness, dynamic analysis.
 

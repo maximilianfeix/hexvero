@@ -38,8 +38,8 @@ music-player.plain, `47479ec6ed75f18e` .bundled, `404d37bcc0849885` .minified.
 
 hexvero 0.4.1 (`4faa524`, also a development result): endpoints 22 of 57 with 10 false; the
 other classes are as in the right column. After it, with modules bundled by esbuild followed (also
-development): IPC channels 118 of 126, endpoints 46 of 57 with none false; the other classes are
-unchanged (`corpus/results/hexvero.md`).
+development): IPC channels 118 of 126, endpoints 46 of 57 with none false (0.4.2), then 53 of 57
+with helper objects and `new URL`; the other classes are unchanged (`corpus/results/hexvero.md`).
 
 Only the middle column is a blind measurement of hexvero (`corpus/results/round3`). The work after
 it used holdout2's misses, so the right column is a development result. Denominators of the
