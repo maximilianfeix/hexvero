@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.6.0",
-  "commit": "3fa5cfe+uncommitted",
+  "version": "0.6.1",
+  "commit": "016983b+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -4766,6 +4766,11 @@
       "file": "main.js"
      },
      {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
       "key": "contextIsolation",
       "value": true,
       "file": "main.js"
@@ -5309,6 +5314,11 @@
       "file": "main.js"
      },
      {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
       "key": "contextIsolation",
       "value": true,
       "file": "main.js"
@@ -5817,6 +5827,11 @@
       "file": "main.js"
      },
      {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
       "key": "contextIsolation",
       "value": true,
       "file": "main.js"
@@ -6192,11 +6207,11 @@
     "webPreferences": {
      "key": "file+windowName+key",
      "added": [],
-     "removed": [
-      "main.js::win::sandbox"
+     "removed": [],
+     "changed": [
+      "sandbox: false -> true"
      ],
-     "changed": [],
-     "relocated": 6,
+     "relocated": 7,
      "unchanged": 0
     },
     "endpoints": {

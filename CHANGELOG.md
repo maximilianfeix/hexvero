@@ -6,6 +6,14 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- Defaults in destructured parameters (`function prefs({ sandbox = true, nodeIntegration = false } = {})`)
+  apply when a caller leaves the key out. Holdout (development set): window settings 21 → 24 of
+  33, changes in webPreferences 0 → 1 of 2 with the one false report gone; real applications
+  unchanged. Where a window's options are spread from several places, the window reader can still
+  miss such a default.
+
 ### Release process
 
 - The publish step waits up to ten minutes for the registry to serve a new version (it waited

@@ -71,7 +71,8 @@ type Env = Map<string, Val>;
 
 type Param =
   | { kind: "name"; name: string; fallback?: [number, number] }
-  | { kind: "object"; props: Map<string, string> } // property -> local name
+  /** property -> local name; `defaults`: `{ sandbox = true }`, the default's tokens per local */
+  | { kind: "object"; props: Map<string, string>; defaults?: Map<string, [number, number]> }
   | { kind: "array"; names: Array<string | null> };
 
 interface FnDef {
@@ -1003,7 +1004,11 @@ export class ExpressionResolver {
         if (a) env.set(p.name, a);
       } else if (p.kind === "object") {
         for (const [prop, local] of p.props) {
-          const v = a ? this.member(a, prop) : null;
+          let v = a ? this.member(a, prop) : null;
+          // a key the argument does not have (or no argument): the pattern's default
+          const fallback = p.defaults?.get(local);
+          if (fallback && (!passed || v?.kind === "undef"))
+            v = this.evalRange(fallback[0], fallback[1], new Map(env), 1);
           if (v) env.set(local, v);
         }
       } else if (a?.kind === "arr") {
@@ -1261,16 +1266,29 @@ export class ExpressionResolver {
         );
       else if (t.type === "punct" && t.value === "{") {
         const props = new Map<string, string>();
+        const defaults = new Map<string, [number, number]>();
         const m = this.match[k]!;
         for (let j = k + 1; j < m; j++) {
           if (!this.is(j, "ident")) continue;
+          let local: string | null = null;
           if (this.punct(j + 1, ":") && this.is(j + 2, "ident")) {
-            props.set(this.tokens[j]!.value, this.tokens[j + 2]!.value);
+            local = this.tokens[j + 2]!.value;
+            props.set(this.tokens[j]!.value, local);
             j += 2;
-          } else if (this.punct(j - 1, "{") || this.punct(j - 1, ","))
-            props.set(this.tokens[j]!.value, this.tokens[j]!.value);
+          } else if (this.punct(j - 1, "{") || this.punct(j - 1, ",")) {
+            local = this.tokens[j]!.value;
+            props.set(local, local);
+          }
+          // `name = <default>` up to the next `,` or the closing brace
+          if (local !== null && this.punct(j + 1, "=") && !this.punct(j + 2, "=")) {
+            const until = Math.min(this.exprEnd(j + 2), m);
+            defaults.set(local, [j + 2, until]);
+            j = until - 1;
+          }
         }
-        params.push({ kind: "object", props });
+        params.push(
+          defaults.size ? { kind: "object", props, defaults } : { kind: "object", props },
+        );
       } else if (t.type === "punct" && t.value === "[") {
         const names: Array<string | null> = [];
         const m = this.match[k]!;
