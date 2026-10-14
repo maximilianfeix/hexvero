@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.4.0",
-  "commit": "3301abc+uncommitted",
+  "version": "0.4.1",
+  "commit": "c3b9270+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -4916,13 +4916,19 @@
       "evidence": "literal"
      },
      {
-      "value": "${…}/team/${…}",
+      "value": "https://files.punchclock.example/invoices",
+      "kind": "xhr",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "wss://live.punchclock.example/team/${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 5,
+    "endpointsUnreadable": 4,
     "storage": [
      {
       "kind": "electron-store",
@@ -4992,6 +4998,22 @@
       "ops": [
        "write",
        "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.session",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.theme",
+      "ops": [
+       "read",
+       "write"
       ]
      },
      {
@@ -6110,7 +6132,7 @@
       "indexedDB punchclock-v3"
      ],
      "changed": [],
-     "relocated": 26,
+     "relocated": 27,
      "unchanged": 0
     }
    }
@@ -6677,7 +6699,9 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "preview:render",
@@ -6745,7 +6769,9 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "vault:reveal",
@@ -6759,7 +6785,9 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      }
     ],
     "webPreferences": [
@@ -6913,7 +6941,13 @@
     ],
     "endpoints": [
      {
-      "value": "${…}/${…}/${…}/plugin.zip",
+      "value": "https://plugins.inkwell.example/registry.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://cdn.inkwell.example/plugins/${…}/${…}/plugin.zip",
       "kind": "fetch",
       "method": null,
       "evidence": "template"
@@ -6931,19 +6965,19 @@
       "evidence": "literal"
      },
      {
-      "value": "${…}/vaults/${…}/files/${…}",
+      "value": "https://sync.inkwell.example/v2/vaults/${…}/files/${…}",
       "kind": "fetch",
       "method": "PUT",
       "evidence": "template"
      },
      {
-      "value": "${…}/rooms/${…}",
+      "value": "wss://collab.inkwell.example/rooms/${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 4,
+    "endpointsUnreadable": 3,
     "storage": [
      {
       "kind": "sessionStorage",
@@ -7324,7 +7358,13 @@
     ],
     "endpoints": [
      {
-      "value": "${…}/${…}/${…}/plugin.zip",
+      "value": "https://plugins.inkwell.example/registry.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://cdn.inkwell.example/plugins/${…}/${…}/plugin.zip",
       "kind": "fetch",
       "method": null,
       "evidence": "template"
@@ -7342,19 +7382,19 @@
       "evidence": "literal"
      },
      {
-      "value": "${…}/vaults/${…}/files/${…}",
+      "value": "https://sync.inkwell.example/v2/vaults/${…}/files/${…}",
       "kind": "fetch",
       "method": "PUT",
       "evidence": "template"
      },
      {
-      "value": "${…}/rooms/${…}",
+      "value": "wss://collab.inkwell.example/rooms/${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 5,
+    "endpointsUnreadable": 4,
     "storage": [
      {
       "kind": "sessionStorage",
@@ -8017,6 +8057,13 @@
       ]
      },
      {
+      "channel": "mini:get-artwork",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "mini:toggle",
       "senders": [
        "preload.js"
@@ -8035,6 +8082,24 @@
       ]
      },
      {
+      "channel": "player:state",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "player:state-changed",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "playlists:export",
       "senders": [
        "preload.js"
@@ -8042,6 +8107,43 @@
       "receivers": [
        "main.js"
       ]
+     },
+     {
+      "channel": "playlists:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "playlists:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
      },
      {
       "channel": "window:minimize",
@@ -8213,13 +8315,49 @@
     ],
     "endpoints": [
      {
-      "value": "${…}/live/friends",
-      "kind": "event-source",
+      "value": "https://lyrics.cadence.example/v1/search?${…}",
+      "kind": "fetch",
       "method": null,
       "evidence": "template"
      },
      {
-      "value": "${…}?session=${…}",
+      "value": "https://updates.cadence.example/stable/latest.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.cadence.example/v2/me/recommendations",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.cadence.example/v2/artists/${…}/top-tracks",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.cadence.example/v2/scrobbles",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.cadence.example/v2/me/likes/${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.cadence.example/v2/live/friends",
+      "kind": "event-source",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "wss://together.cadence.example/socket?session=${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"
@@ -8231,7 +8369,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 2,
+    "endpointsUnreadable": 1,
     "storage": [
      {
       "kind": "electron-store",
@@ -8587,13 +8725,37 @@
     ],
     "endpoints": [
      {
-      "value": "${…}/live/friends",
-      "kind": "event-source",
+      "value": "https://api.cadence.example/v2/me/recommendations",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.cadence.example/v2/artists/${…}/top-tracks",
+      "kind": "fetch",
       "method": null,
       "evidence": "template"
      },
      {
-      "value": "${…}?session=${…}",
+      "value": "https://api.cadence.example/v2/scrobbles",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.cadence.example/v2/me/likes/${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.cadence.example/v2/live/friends",
+      "kind": "event-source",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "wss://together.cadence.example/socket?session=${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"

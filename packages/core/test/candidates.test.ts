@@ -137,6 +137,62 @@ describe("endpoints", () => {
     });
   });
 
+  it("reads constants of modules a bundler wrapped into the file", () => {
+    const helpers = [
+      "var __commonJS = (cb, mod) => function __require() { return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports; };",
+      'var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));',
+    ];
+    const readable = find(
+      [
+        ...helpers,
+        'var require_endpoints = __commonJS({ "src/endpoints.js"(exports) { exports.API = exports.FEED = void 0; exports.API = "https://api.example/v2"; exports.FEED = "https://feed.example/latest.json"; } });',
+        'var require_config = __commonJS({ "src/config.js"(exports, module) { module.exports = { CDN: "https://cdn.example/plugins" }; } });',
+        "var import_endpoints = __toESM(require_endpoints());",
+        "var { CDN } = require_config();",
+        "var ApiClient = class {",
+        "  constructor(base) { this.base = base; }",
+        "  get(path) { return fetch(`${this.base}${path}`); }",
+        "};",
+        "var api = new ApiClient(import_endpoints.API);",
+        'api.get("/me");',
+        "fetch(import_endpoints.FEED);",
+        "fetch(`${CDN}/${id}/plugin.zip`);",
+      ].join("\n"),
+    );
+    expect(show(readable.endpoints)).toEqual([
+      "fetch https://api.example/v2/me [inferred]",
+      "fetch https://feed.example/latest.json [inferred]",
+      "fetch https://cdn.example/plugins/${…}/plugin.zip [template]",
+    ]);
+    // the same once minified: helpers recognised by what they do, several patterns per statement
+    const minified = find(
+      [
+        "var y=(t,e)=>()=>{try{return e||t((e={exports:{}}).exports,e),e.exports}catch(n){throw e=0,n}};",
+        'var S=(t,e,n)=>(n=t!=null?_(U(t)):{},$(e||!t||!t.__esModule?L(n,"default",{value:t,enumerable:!0}):n,t));',
+        'var E=y(c=>{c.API=void 0;c.API="https://api.example/v2"});',
+        'var W=y((c,m)=>{m.exports={CDN:"https://cdn.example/plugins"}});',
+        "var r=S(E()),{CDN:ce}=W();",
+        "fetch(`${r.API}/rooms`);fetch(`${ce}/x.zip`);",
+      ].join("\n"),
+    );
+    expect(show(minified.endpoints)).toEqual([
+      "fetch https://api.example/v2/rooms [inferred]",
+      "fetch https://cdn.example/plugins/x.zip [inferred]",
+    ]);
+  });
+
+  it("refers to a key of another module's object until that module is read", () => {
+    const [row] = find('import { links } from "./endpoints.js";\nfetch(links.upload);').endpoints;
+    expect(
+      resolvePending(row!, (s, p) =>
+        s === "./endpoints.js" && p === "links.upload" ? "https://files.example/up" : null,
+      ),
+    ).toMatchObject({
+      value: "https://files.example/up",
+      evidence: "inferred",
+    });
+  });
+
   it("does not take a string a caller passes for an address unless it reads as one", () => {
     const found = find(
       [

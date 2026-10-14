@@ -33,7 +33,13 @@ export interface ValueSource {
 
 /** What an expression is known to be; null anywhere means "not known". */
 export type Val =
-  | { kind: "str"; values: string[]; src?: ValueSource }
+  /** `ref`: the value is a reference marker for another module's name, which members extend. */
+  | {
+      kind: "str";
+      values: string[];
+      src?: ValueSource;
+      ref?: { specifier: string; property: string };
+    }
   | { kind: "bool"; value: boolean; src: ValueSource }
   /** `undefined`: a parameter nobody passed, a key a closed object does not have. */
   | { kind: "undef" }
@@ -49,7 +55,12 @@ export type Val =
   /** Another module's exports (`require("./x")`, CommonJS `exports` of this one). */
   | { kind: "ns"; resolver: ExpressionResolver }
   /** `require("./x")` when the other module cannot be read here: members become references. */
-  | { kind: "nsref"; specifier: string };
+  | { kind: "nsref"; specifier: string }
+  /**
+   * A module a bundler wrapped into this file (esbuild's `__commonJS`): its members are what its
+   * body assigns to `exports.NAME`.
+   */
+  | { kind: "cjs"; exports: string; module: string | null; body: [number, number] };
 
 /** Finds the resolver of another module of the application, for imports. */
 export interface ModuleHost {
@@ -102,6 +113,7 @@ interface Structure {
   defsByParams: Map<number, FnDef> | null;
   declCache: Map<string, { range: [number, number] | null } | null>;
   topDecls: Map<string, [number, number] | null> | null;
+  topPatterns: Map<string, { key: string; from: [number, number] } | null>;
   classes: Array<{ name: string; start: number; end: number }> | null;
   /** Positions of every identifier by name. */
   names: Map<string, number[]> | null;
@@ -176,6 +188,7 @@ export class ExpressionResolver {
         defsByParams: null,
         declCache: new Map(),
         topDecls: null,
+        topPatterns: new Map(),
         classes: null,
         names: null,
         depths: null,
@@ -627,6 +640,31 @@ export class ExpressionResolver {
       );
       return this.chain({ kind: "arr", elems, line: t.line }, close + 1, end, env, depth);
     }
+    // a bundler's interop helper passes a module on: `__toESM(require_x())`, minified `S(E())`
+    if (
+      this.punct(start + 1, "(") &&
+      (t.value === "__toESM" ||
+        (this.is(start + 2, "ident") &&
+          this.punct(start + 3, "(") &&
+          this.punct(start + 4, ")") &&
+          this.punct(start + 5, ")"))) &&
+      this.helper(t.value) === "interop"
+    ) {
+      const close = this.match[start + 1]!;
+      if (close === -1 || close >= end) return null;
+      const arg = this.evalRange(
+        start + 2,
+        Math.min(this.exprEnd(start + 2), close),
+        env,
+        depth + 1,
+      );
+      return this.chain(arg, close + 1, end, env, depth);
+    }
+    // `require_x()`: a module the bundler wrapped into this file
+    if (this.punct(start + 1, "(") && this.punct(start + 2, ")")) {
+      const mod = this.wrappedModule(t.value);
+      if (mod) return this.chain(mod, start + 3, end, env, depth);
+    }
     // Object.freeze(x), Object.seal(x)
     if (
       t.value === "Object" &&
@@ -801,7 +839,116 @@ export class ExpressionResolver {
     if (value.kind === "ns") return value.resolver.exportValue(property, MAX_DEPTH - 2);
     if (value.kind === "nsref" && this.reference)
       return { kind: "str", values: [this.reference(value.specifier, property)] };
+    if (value.kind === "cjs") return this.wrappedExport(value, property);
+    // `links.upload` where links is another module's object: a reference to that key
+    if (value.kind === "str" && value.ref && this.reference) {
+      const ref = { specifier: value.ref.specifier, property: `${value.ref.property}.${property}` };
+      return { kind: "str", values: [this.reference(ref.specifier, ref.property)], ref };
+    }
     return null;
+  }
+
+  /**
+   * A module a bundler wrapped into this file: `var require_x = __commonJS({ "path"(exports) { … } })`
+   * as esbuild writes it, or `var E = y(c => { … })` once minified. Null when name is not one.
+   */
+  private wrappedModule(name: string): Val | null {
+    const decl = this.topDeclarations().get(name);
+    if (!decl) return null;
+    const k = decl[0];
+    if (
+      !this.is(k, "ident") ||
+      !this.punct(k + 1, "(") ||
+      this.helper(this.tokens[k]!.value) !== "wrapper"
+    )
+      return null;
+    let param = -1;
+    let open = -1;
+    if (this.punct(k + 2, "{")) {
+      // `{ "path"(exports, module) { … } }`
+      const key = this.tokens[k + 3];
+      if (!key || (key.type !== "string" && key.type !== "ident") || !this.punct(k + 4, "("))
+        return null;
+      param = k + 5;
+      open = this.match[k + 4]! + 1;
+    } else if (this.is(k + 2, "ident") && this.punct(k + 3, "=>")) {
+      param = k + 2;
+      open = k + 4;
+    } else if (this.punct(k + 2, "(") && this.punct(this.match[k + 2]! + 1, "=>")) {
+      param = k + 3;
+      open = this.match[k + 2]! + 2;
+    }
+    if (param === -1 || !this.is(param, "ident") || !this.punct(open, "{")) return null;
+    const close = this.match[open]!;
+    if (close === -1) return null;
+    const module =
+      this.punct(param + 1, ",") && this.is(param + 2, "ident")
+        ? this.tokens[param + 2]!.value
+        : null;
+    return { kind: "cjs", exports: this.tokens[param]!.value, module, body: [open, close] };
+  }
+
+  /** Bundler helpers, recognised by what their code does so that minified names count too. */
+  private readonly helperKinds = new Map<string, "wrapper" | "interop" | null>();
+  private helper(name: string): "wrapper" | "interop" | null {
+    const known = this.helperKinds.get(name);
+    if (known !== undefined) return known;
+    let kind: "wrapper" | "interop" | null = null;
+    if (name === "__commonJS") kind = "wrapper";
+    else if (name === "__toESM" || name === "__toCommonJS") kind = "interop";
+    else {
+      const decl = this.topDeclarations().get(name);
+      if (decl && decl[1] - decl[0] < 200) {
+        let exportsBox = false;
+        let esModule = false;
+        let defaultKey = false;
+        for (let j = decl[0]; j < decl[1]; j++) {
+          // `(e = { exports: {} }).exports`: the module object a CommonJS wrapper creates
+          if (
+            this.is(j, "ident", "exports") &&
+            this.punct(j + 1, ":") &&
+            this.punct(j + 2, "{") &&
+            this.punct(j + 3, "}")
+          )
+            exportsBox = true;
+          if (this.is(j, "ident", "__esModule") && this.punct(j - 1, ".")) esModule = true;
+          if (this.is(j, "string", "default")) defaultKey = true;
+        }
+        kind = exportsBox ? "wrapper" : esModule && defaultKey ? "interop" : null;
+      }
+    }
+    this.helperKinds.set(name, kind);
+    return kind;
+  }
+
+  /** `exports.NAME = <expr>` assigned once in the wrapped module's body (`= void 0` aside). */
+  private wrappedExport(mod: Extract<Val, { kind: "cjs" }>, property: string): Val | null {
+    let found: [number, number] | null = null;
+    for (const j of this.occurrences(mod.exports, mod.body[0], mod.body[1])) {
+      if (this.punct(j - 1, ".") || !this.punct(j + 1, ".") || !this.is(j + 2, "ident", property))
+        continue;
+      if (!this.punct(j + 3, "=") || this.punct(j + 4, "=")) continue;
+      const at = j + 4;
+      // the declaration esbuild writes first: `exports.A = exports.B = void 0`
+      if (this.is(at, "ident", "void")) continue;
+      if (this.is(at, "ident", mod.exports) && this.punct(at + 1, ".") && this.punct(at + 3, "="))
+        continue;
+      if (found) return null;
+      found = [at, this.exprEnd(at)];
+    }
+    if (found) return this.evalRange(found[0], found[1], new Map(), MAX_DEPTH - 2);
+    // `module.exports = { … }`, assigned once
+    if (!mod.module) return null;
+    let whole: [number, number] | null = null;
+    for (const j of this.occurrences(mod.module, mod.body[0], mod.body[1])) {
+      if (this.punct(j - 1, ".") || !this.punct(j + 1, ".") || !this.is(j + 2, "ident", "exports"))
+        continue;
+      if (!this.punct(j + 3, "=") || this.punct(j + 4, "=")) continue;
+      if (whole) return null;
+      whole = [j + 4, this.exprEnd(j + 4)];
+    }
+    const value = whole ? this.evalRange(whole[0], whole[1], new Map(), MAX_DEPTH - 2) : null;
+    return value ? this.member(value, property) : null;
   }
 
   private call(callee: Val, open: number, close: number, env: Env, depth: number): Val | null {
@@ -881,6 +1028,12 @@ export class ExpressionResolver {
     if (this.enclosingParam(k, name) || this.declaredLocally(k, name)) return null;
     const decl = this.topDeclarations().get(name);
     if (decl) return this.evalRange(decl[0], decl[1], new Map(), depth + 1);
+    // `var { NAME } = <expr>` or `var { KEY: NAME } = <expr>` at the top of the file
+    const part = this.topPattern(name);
+    if (part) {
+      const whole = this.evalRange(part.from[0], part.from[1], new Map(), depth + 1);
+      return whole ? this.member(whole, part.key) : null;
+    }
     // CommonJS: `exports.X` and `module.exports.X` of this module
     if (name === "exports" && !this.topDeclarations().has(name))
       return { kind: "ns", resolver: this };
@@ -894,7 +1047,11 @@ export class ExpressionResolver {
     if (!this.host && this.reference) {
       const imported = this.constants.importOf(name, k);
       if (imported)
-        return { kind: "str", values: [this.reference(imported.specifier, imported.property)] };
+        return {
+          kind: "str",
+          values: [this.reference(imported.specifier, imported.property)],
+          ref: imported,
+        };
       const required = this.constants.requireOf(name, k);
       if (required) return { kind: "nsref", specifier: required };
     }
@@ -1021,6 +1178,51 @@ export class ExpressionResolver {
     return decls;
   }
 
+  /**
+   * NAME bound by an object pattern at depth 0, `var { KEY: NAME } = <expr>` or `var { NAME } = …`,
+   * declared once and not assigned again: the key it reads and the expression it reads it from.
+   */
+  private topPattern(name: string): { key: string; from: [number, number] } | null {
+    const cached = this.s.topPatterns.get(name);
+    if (cached !== undefined) return cached;
+    let found: { key: string; from: [number, number] } | null = null;
+    let bound = 0;
+    const all = this.positions(name);
+    // a name used this often (a minifier's one-letter local) is not worth the scan
+    if (all.length > 4000) bound = 2;
+    else
+      for (const j of all) {
+        if (this.punct(j - 1, ".")) continue;
+        // a later assignment: the pattern no longer says what the name holds
+        if (this.punct(j + 1, "=") && !this.punct(j + 2, "=")) {
+          bound += 2;
+          continue;
+        }
+        if (!this.punct(j + 1, ",") && !this.punct(j + 1, "}")) continue;
+        const renamed = this.punct(j - 1, ":") && this.is(j - 2, "ident");
+        if (!renamed && !this.punct(j - 1, "{") && !this.punct(j - 1, ",")) continue;
+        // the brace the name is in, and what comes before it: `var {`, or `, {` of a declarator list
+        let open = j - 1;
+        while (open > 0 && open > j - 400 && !(this.punct(open, "{") && this.match[open]! > j))
+          open--;
+        if (!this.punct(open, "{")) continue;
+        const close = this.match[open]!;
+        if (!this.punct(close + 1, "=") || this.punct(close + 2, "=")) continue;
+        if (!(this.is(open - 1, "ident") && /^(const|let|var)$/.test(this.tokens[open - 1]!.value)))
+          if (!this.punct(open - 1, ",")) continue;
+        // outside every function, and not nested in another pattern or brackets
+        if (this.enclosing(open) || this.depthAt(open) !== 0) continue;
+        bound++;
+        found = {
+          key: renamed ? this.tokens[j - 2]!.value : name,
+          from: [close + 2, this.exprEnd(close + 2)],
+        };
+      }
+    const result = bound === 1 && !this.topDeclarations().has(name) ? found : null;
+    this.s.topPatterns.set(name, result);
+    return result;
+  }
+
   // ---------- functions ----------
 
   private parseParams(open: number, close: number): Param[] {
@@ -1068,12 +1270,19 @@ export class ExpressionResolver {
     if (this.s.classes) return this.s.classes;
     const out: Array<{ name: string; start: number; end: number }> = [];
     for (let k = 0; k + 2 < this.tokens.length; k++) {
-      if (!this.is(k, "ident", "class") || !this.is(k + 1, "ident")) continue;
-      let open = k + 2;
+      if (!this.is(k, "ident", "class")) continue;
+      // `class Name {`, or `var Name = class {` as bundlers write it (the variable names it)
+      const name =
+        this.is(k + 1, "ident") && !this.is(k + 1, "ident", "extends")
+          ? this.tokens[k + 1]!.value
+          : this.punct(k - 1, "=") && this.is(k - 2, "ident") && !this.punct(k - 3, ".")
+            ? this.tokens[k - 2]!.value
+            : null;
+      if (name === null) continue;
+      let open = k + 1;
       while (open < this.tokens.length && open < k + 20 && !this.punct(open, "{")) open++;
       const close = this.match[open] ?? -1;
-      if (this.punct(open, "{") && close !== -1)
-        out.push({ name: this.tokens[k + 1]!.value, start: open, end: close });
+      if (this.punct(open, "{") && close !== -1) out.push({ name, start: open, end: close });
     }
     this.s.classes = out;
     return out;

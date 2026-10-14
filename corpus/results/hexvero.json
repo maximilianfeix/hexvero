@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.4.0",
-  "commit": "3301abc+uncommitted",
+  "version": "0.4.1",
+  "commit": "c3b9270+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -455,16 +455,16 @@
   {
    "set": "holdout",
    "class": "endpoints",
-   "hit": 30,
-   "missed": 12,
-   "false": 1,
+   "hit": 32,
+   "missed": 10,
+   "false": 0,
    "hedged": 0,
    "inputs": 3
   },
   {
    "set": "holdout",
    "class": "endpoint method",
-   "hit": 8,
+   "hit": 9,
    "missed": 3,
    "false": 0,
    "hedged": 0,
@@ -475,15 +475,15 @@
    "class": "requests with an unknown URL shown",
    "hit": 3,
    "missed": 0,
-   "false": 10,
+   "false": 9,
    "hedged": 0,
    "inputs": 3
   },
   {
    "set": "holdout",
    "class": "storage keys",
-   "hit": 46,
-   "missed": 5,
+   "hit": 48,
+   "missed": 3,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -491,7 +491,7 @@
   {
    "set": "holdout",
    "class": "storage read/write/delete",
-   "hit": 34,
+   "hit": 36,
    "missed": 6,
    "false": 0,
    "hedged": 0,
@@ -545,8 +545,8 @@
   {
    "set": "holdout2",
    "class": "IPC channels",
-   "hit": 110,
-   "missed": 16,
+   "hit": 118,
+   "missed": 8,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -554,8 +554,8 @@
   {
    "set": "holdout2",
    "class": "IPC senders and receivers",
-   "hit": 203,
-   "missed": 17,
+   "hit": 217,
+   "missed": 19,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -590,27 +590,27 @@
   {
    "set": "holdout2",
    "class": "endpoints",
-   "hit": 22,
-   "missed": 35,
-   "false": 10,
+   "hit": 46,
+   "missed": 11,
+   "false": 0,
    "hedged": 0,
    "inputs": 6
   },
   {
    "set": "holdout2",
    "class": "endpoint method",
-   "hit": 4,
-   "missed": 3,
+   "hit": 6,
+   "missed": 9,
    "false": 0,
    "hedged": 0,
-   "inputs": 4
+   "inputs": 6
   },
   {
    "set": "holdout2",
    "class": "requests with an unknown URL shown",
    "hit": 6,
    "missed": 0,
-   "false": 11,
+   "false": 8,
    "hedged": 0,
    "inputs": 6
   },
@@ -1879,24 +1879,21 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "endpoints",
-   "hit": 8,
-   "missed": 6,
-   "false": 1,
+   "hit": 10,
+   "missed": 4,
+   "false": 0,
    "notes": [
     "missed https://api.punchclock.example/v3/clients",
     "missed https://api.punchclock.example/v3/timesheets/current…",
     "missed https://api.punchclock.example/v3/entries",
-    "missed https://files.punchclock.example/invoices",
-    "missed wss://live.punchclock.example/team/…",
-    "missed https://updates.punchclock.example/feed/stable.json",
-    "false ${…}/team/${…}"
+    "missed https://updates.punchclock.example/feed/stable.json"
    ]
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "endpoint method",
-   "hit": 2,
+   "hit": 3,
    "missed": 1,
    "false": 0,
    "notes": [
@@ -1909,19 +1906,17 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 4,
+   "false": 3,
    "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "storage keys",
-   "hit": 14,
-   "missed": 3,
+   "hit": 16,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed localStorage punch.theme",
-    "missed localStorage punch.session",
     "missed localStorage sidebarWidth"
    ]
   },
@@ -1929,7 +1924,7 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "storage read/write/delete",
-   "hit": 10,
+   "hit": 12,
    "missed": 2,
    "false": 0,
    "notes": [
@@ -2397,14 +2392,11 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "IPC senders and receivers",
-   "hit": 39,
-   "missed": 5,
+   "hit": 42,
+   "missed": 2,
    "false": 0,
    "notes": [
     "settings:changed: sender main.js missed",
-    "plugins:list: receiver main.js missed",
-    "vault:list: receiver main.js missed",
-    "vault:search: receiver main.js missed",
     "vault:reveal: receiver main.js missed"
    ]
   },
@@ -2446,27 +2438,20 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "endpoints",
-   "hit": 2,
-   "missed": 7,
-   "false": 3,
+   "hit": 6,
+   "missed": 3,
+   "false": 0,
    "notes": [
-    "missed https://plugins.inkwell.example/registry.json",
-    "missed https://cdn.inkwell.example/plugins/…",
     "missed https://api.inkwell.example/v1/changelog",
     "missed https://api.inkwell.example/v1/feedback",
-    "missed https://sync.inkwell.example/v2/vaults/…",
-    "missed https://embed.inkwell.example/oembed…",
-    "missed wss://collab.inkwell.example/rooms/…",
-    "false ${…}/${…}/${…}/plugin.zip",
-    "false ${…}/vaults/${…}/files/${…}",
-    "false ${…}/rooms/${…}"
+    "missed https://embed.inkwell.example/oembed…"
    ]
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "endpoint method",
-   "hit": 1,
+   "hit": 2,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2477,7 +2462,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 3,
+   "false": 2,
    "notes": []
   },
   {
@@ -2566,27 +2551,20 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "endpoints",
-   "hit": 2,
-   "missed": 7,
-   "false": 3,
+   "hit": 6,
+   "missed": 3,
+   "false": 0,
    "notes": [
-    "missed https://plugins.inkwell.example/registry.json",
-    "missed https://cdn.inkwell.example/plugins/…",
     "missed https://api.inkwell.example/v1/changelog",
     "missed https://api.inkwell.example/v1/feedback",
-    "missed https://sync.inkwell.example/v2/vaults/…",
-    "missed https://embed.inkwell.example/oembed…",
-    "missed wss://collab.inkwell.example/rooms/…",
-    "false ${…}/${…}/${…}/plugin.zip",
-    "false ${…}/vaults/${…}/files/${…}",
-    "false ${…}/rooms/${…}"
+    "missed https://embed.inkwell.example/oembed…"
    ]
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "endpoint method",
-   "hit": 1,
+   "hit": 2,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2597,7 +2575,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 4,
+   "false": 3,
    "notes": []
   },
   {
@@ -2777,28 +2755,25 @@
    "set": "holdout2",
    "input": "holdout2/music-player.bundled.asar",
    "class": "IPC channels",
-   "hit": 12,
-   "missed": 8,
+   "hit": 20,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed playlists:list",
-    "missed playlists:save",
-    "missed settings:get",
-    "missed settings:set",
-    "missed settings:changed",
-    "missed player:state-changed",
-    "missed player:state",
-    "missed mini:get-artwork"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/music-player.bundled.asar",
    "class": "IPC senders and receivers",
-   "hit": 24,
-   "missed": 0,
+   "hit": 35,
+   "missed": 5,
    "false": 0,
-   "notes": []
+   "notes": [
+    "playlists:list: receiver main.js missed",
+    "playlists:save: receiver main.js missed",
+    "settings:get: receiver main.js missed",
+    "settings:set: receiver main.js missed",
+    "mini:get-artwork: receiver main.js missed"
+   ]
   },
   {
    "set": "holdout2",
@@ -2846,21 +2821,22 @@
    "set": "holdout2",
    "input": "holdout2/music-player.bundled.asar",
    "class": "endpoints",
-   "hit": 1,
-   "missed": 9,
-   "false": 2,
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 3,
+   "false": 0,
    "notes": [
-    "missed https://api.cadence.example/v2/me/recommendations",
-    "missed https://api.cadence.example/v2/artists/…",
-    "missed https://api.cadence.example/v2/scrobbles",
-    "missed https://api.cadence.example/v2/me/likes/…",
-    "missed https://api.cadence.example/v2/me/likes/…",
-    "missed https://api.cadence.example/v2/live/friends",
-    "missed wss://together.cadence.example/socket?session=…",
-    "missed https://lyrics.cadence.example/v1/search?…",
-    "missed https://updates.cadence.example/stable/latest.json",
-    "false ${…}/live/friends",
-    "false ${…}?session=${…}"
+    "https://api.cadence.example/v2/scrobbles: expected POST",
+    "https://api.cadence.example/v2/me/likes/…: expected POST",
+    "https://api.cadence.example/v2/me/likes/…: expected DELETE"
    ]
   },
   {
@@ -2869,7 +2845,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 1,
+   "false": 0,
    "notes": []
   },
   {
@@ -2963,21 +2939,25 @@
    "set": "holdout2",
    "input": "holdout2/music-player.minified.asar",
    "class": "endpoints",
-   "hit": 1,
-   "missed": 9,
-   "false": 2,
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
    "notes": [
-    "missed https://api.cadence.example/v2/me/recommendations",
-    "missed https://api.cadence.example/v2/artists/…",
-    "missed https://api.cadence.example/v2/scrobbles",
-    "missed https://api.cadence.example/v2/me/likes/…",
-    "missed https://api.cadence.example/v2/me/likes/…",
-    "missed https://api.cadence.example/v2/live/friends",
-    "missed wss://together.cadence.example/socket?session=…",
     "missed https://lyrics.cadence.example/v1/search?…",
-    "missed https://updates.cadence.example/stable/latest.json",
-    "false ${…}/live/friends",
-    "false ${…}?session=${…}"
+    "missed https://updates.cadence.example/stable/latest.json"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "https://api.cadence.example/v2/scrobbles: expected POST",
+    "https://api.cadence.example/v2/me/likes/…: expected POST",
+    "https://api.cadence.example/v2/me/likes/…: expected DELETE"
    ]
   },
   {
