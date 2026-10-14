@@ -6,6 +6,28 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- IPC channels the fast scan cannot read are passed to a bounded resolver: concatenation and
+  templates, one-expression functions (also curried), helper functions and class methods whose
+  channel is bound at every readable call site, routers that build names from a constructor
+  argument, arrays, Maps and objects registered in loops or `forEach`, `Object.entries/keys/values`,
+  IPC objects kept in class fields. Rows say `via: "resolved"` and how (`resolution`). Nothing is
+  guessed: an unreadable part leaves the call unresolved, and a partly readable helper keeps it in
+  the limitation.
+- Constants are followed through re-exports (`module.exports = { A: x.B }`, `export { A as B }
+  from`, `export *`), nested groups (`channels.settings.get`) and `exports.X = { … }`.
+- Window options are read through `Object.assign` (in argument order), factory parameters, and
+  defaults or option factories in other modules (`definedIn` says where a value is written).
+- contextBridge objects assembled from spreads of objects of the same file are read member by
+  member.
+- Fixed: `"win:" + id` was reported as the channel `win:`; a webPreferences object that no window
+  takes (a manifest check) was reported as a window's setting; helper calls with an unreadable
+  channel were dropped without a limitation; past a fixed budget, a helper's body reached into the
+  following code.
+- A new blind set, `corpus/holdout2`, written by an independent agent, with its blind measurement
+  in `corpus/results/round3`, and REA 6.5.0 measured on it (`docs/competitive/rea-scorecard.md`).
+
 ### Security
 
 - `hexvero_export` and `hexvero_recover` over MCP write only inside allowed roots (working

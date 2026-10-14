@@ -2,6 +2,36 @@
 
 State of the work, written so that a fresh session can continue. Last updated 2026-10-14.
 
+## Round 5: branch `oss/round-5` (2026-10-14, on `oss/round-4`, not pushed)
+
+The push of the branch was refused by the session's permission system; nothing is on GitHub yet.
+
+- Accuracy: `packages/core/src/javascript/resolve.ts` (bounded expression resolver: IPC channels,
+  window options across modules, `this` from constructors, local consts, Object.entries…),
+  re-export chains and nested constant groups in `aliases.ts`, window option evaluation at merge
+  time in `app.ts` (`optionSettings`, `moduleResolver`, `definedIn`), unattached webPreferences
+  objects, bridge spreads. Regression cases: `packages/core/test/resolve.test.ts` (54).
+- Blind set `corpus/holdout2` (independent agent) and its one blind measurement in
+  `corpus/results/round3`: the first resolver version changed nothing there. Everything after that
+  used holdout2's misses; it is a development set now. The next blind set must be written fresh.
+- REA 6.5.0 measured on the corpus, the blind set, the MCP catalog, the Claude app and over
+  scripted MCP questions: `docs/competitive/rea-scorecard.md`, raw data in
+  `corpus/compare/results/rea-6.5.0/`.
+- Agent experiment: `scripts/agent-eval.mjs` (claude -p, one MCP server, same prompt and model),
+  results and limits in `docs/audits/agent-task-evaluation.md`.
+- Domain unchanged (`docs/audits/domain-check.md`); release gates in `docs/release-checklist.md`.
+
+Next, in order:
+
+1. Push `oss/round-5`, open the PR, get CI green on Linux, Windows and macOS (first run of the new
+   tests on Windows: watch `resolve.test.ts`, `cache.test.ts`, the timing test in
+   `performance.test.ts`).
+2. Write `corpus/holdout3` with the same access rules and measure it once before any change.
+   Weakest classes: endpoints (app-written request helpers), storage in app-written settings files.
+3. Speed: still 1.1 to 1.8 times 0.3.0. The remaining cost is about a dozen passes over token
+   objects; a compact token representation (typed arrays) is the next step, verified with the
+   byte-identical reference exports (`golden.sh` approach described in round 4).
+
 ## Round 4, second part (2026-10-14, same branch, local only)
 
 - `integration/round-3-fixes` merged (`7ae83d9`); conflicts in README and the MCP compare

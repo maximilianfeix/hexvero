@@ -26,5 +26,7 @@ The first `hexvero_analyze` reads up to 5,000 JavaScript files (entry file first
 
 - A security finding such as `nodeIntegration: true` is a setting written in the code, attributed to a window. It is not proof that a page can reach Node; say what would have to be true (a page with injected script, no `contextIsolation`).
 - A channel name built at run time cannot be named statically; hexvero leaves it out rather than guessing.
+- `via: "resolved"` on an `ipc` row: the channel was read from an expression (concatenation, a template, a helper's call sites, a loop over a list); `resolution.method` says how and `resolution.lines` where the value was bound. Cite those lines, not only the call. If the same call also appears without a channel, some call sites could not be read.
+- A `webPreferences` row with `definedIn` takes its value from another file (a defaults object, an options factory); cite `definedIn` as where it is written and `file:line` as the window it applies to. `webpreferences_unattached` in the limitations names objects that look like settings but that no window takes; they are not a window's settings.
 - An alias it cannot resolve is left out too. Absence in a list is therefore weaker evidence than presence; check `limitations` and, if needed, search with `hexvero_strings {text}` or read recovered files.
 - For a bundle, `hexvero_recover {targetId, outputDir}` writes the modules as files you can read; `hexvero_sourcemap {targetId, line, column}` maps a generated position to the original source when a map is present.

@@ -1,0 +1,1908 @@
+{
+ "tool": {
+  "name": "REA",
+  "version": "6.5.0",
+  "package": "rea-agents",
+  "cli": "6.5.0",
+  "node": "v25.2.1",
+  "platform": "darwin arm64",
+  "mapping": "default",
+  "deep providers": "none installed (Ghidra, Hopper, IDA)"
+ },
+ "notRun": [
+  {
+   "key": "holdout2/markdown-editor.plain.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "holdout2/markdown-editor.bundled.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "holdout2/markdown-editor.minified.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "holdout2/music-player.plain.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "holdout2/music-player.bundled.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  },
+  {
+   "key": "holdout2/music-player.minified.asar",
+   "class": "bridge member channel",
+   "reason": "REA 6.4.0 lists the member names of an exposed API (context-bridge-api.members) and has no field that says which IPC channel a member uses"
+  }
+ ],
+ "observations": {
+  "holdout2/markdown-editor.plain.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "app:close-confirmed",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "editor:scroll-to",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "file:opened",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "preview:scroll",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "plugin:invoke",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "vault:reveal",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "file:save-as",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:set-title",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:action",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:confirm-close",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "plugins:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     }
+    ],
+    "unresolvedChannelOperations": 13,
+    "webPreferences": [
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 80,
+      "status": "object-literal",
+      "unread": [
+       "[spread@2279] (dynamic: WEB_DEFAULTS)",
+       "[spread@2296] (dynamic: options.webPreferences)"
+      ]
+     },
+     {
+      "line": 159,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)"
+      ]
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "plugins",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "inkwell",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "preview",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "plugins.unsafe",
+      "method": "GET",
+      "mechanism": "call:settings.get"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/account",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "recent.files",
+      "method": "GET",
+      "mechanism": "call:settings.get"
+     },
+     {
+      "value": "sidebarWidth",
+      "method": "GET",
+      "mechanism": "call:prefs.get"
+     },
+     {
+      "value": "theme",
+      "method": "GET",
+      "mechanism": "call:prefs.get"
+     },
+     {
+      "value": "vault.path",
+      "method": "GET",
+      "mechanism": "call:settings.get"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/session",
+      "method": null,
+      "mechanism": "call:fetch"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 8,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "inkwell.draft",
+      "ops": [
+       "write",
+       "delete",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "inkwell.settingsTab",
+      "ops": [
+       "write",
+       "read"
+      ]
+     }
+    ],
+    "storageKeysUnread": 7,
+    "notes": []
+   }
+  },
+  "holdout2/markdown-editor.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "file:opened",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "app:confirm-close",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "app:close-confirmed",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:scroll",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "plugins:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "editor:scroll-to",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "plugin:invoke",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save-as",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:set-title",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:action",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "vault:reveal",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 13,
+    "webPreferences": [
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 296,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)"
+      ]
+     },
+     {
+      "line": 225,
+      "status": "object-literal",
+      "unread": [
+       "[spread@7036] (dynamic: WEB_DEFAULTS)",
+       "[spread@7053] (dynamic: options.webPreferences)"
+      ]
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "inkwell",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "preview",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "plugins",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.inkwell.example/v1/account",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "plugins.unsafe",
+      "method": "GET",
+      "mechanism": "call:settings.get"
+     },
+     {
+      "value": "vault.path",
+      "method": "GET",
+      "mechanism": "call:settings.get"
+     },
+     {
+      "value": "theme",
+      "method": "GET",
+      "mechanism": "call:prefs.get"
+     },
+     {
+      "value": "sidebarWidth",
+      "method": "GET",
+      "mechanism": "call:prefs.get"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/session",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "recent.files",
+      "method": "GET",
+      "mechanism": "call:settings.get"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 8,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "inkwell.settingsTab",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "inkwell.draft",
+      "ops": [
+       "delete",
+       "write",
+       "read"
+      ]
+     }
+    ],
+    "storageKeysUnread": 7,
+    "notes": []
+   }
+  },
+  "holdout2/markdown-editor.minified.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "app:set-title",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save-as",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:confirm-close",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:scroll",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "plugins:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "app:close-confirmed",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "vault:reveal",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "editor:scroll-to",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:action",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "plugin:invoke",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:opened",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 13,
+    "webPreferences": [],
+    "windowsUnread": [
+     {
+      "line": 4,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)",
+       "sandbox (dynamic)"
+      ]
+     },
+     {
+      "line": 4,
+      "status": "object-literal",
+      "unread": [
+       "[spread@3392] (dynamic: re)",
+       "[spread@3398] (dynamic: t.webPreferences)"
+      ]
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "preview",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "plugins",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "inkwell",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.inkwell.example/v1/account",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "theme",
+      "method": "GET",
+      "mechanism": "call:h.get"
+     },
+     {
+      "value": "vault.path",
+      "method": "GET",
+      "mechanism": "call:p.get"
+     },
+     {
+      "value": "plugins.unsafe",
+      "method": "GET",
+      "mechanism": "call:p.get"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/session",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "sidebarWidth",
+      "method": "GET",
+      "mechanism": "call:h.get"
+     },
+     {
+      "value": "recent.files",
+      "method": "GET",
+      "mechanism": "call:p.get"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 0,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "inkwell.draft",
+      "ops": [
+       "delete",
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "inkwell.settingsTab",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ],
+    "storageKeysUnread": 7,
+    "notes": []
+   }
+  },
+  "compare:holdout2/markdown-editor.plain.asar|holdout2/markdown-editor-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "added": [],
+     "removed": [
+      "app:set-title"
+     ],
+     "changed": [
+      "editor:scroll-to",
+      "file:opened",
+      "menu:action",
+      "preview:render"
+     ],
+     "relocated": 12,
+     "sameNameOnBothSides": 14
+    },
+    "contextBridge": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "sameNameOnBothSides": 0
+    },
+    "endpoints": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 7,
+     "sameNameOnBothSides": 0
+    },
+    "storage": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 2,
+     "sameNameOnBothSides": 0
+    },
+    "webPreferences": {
+     "added": [],
+     "removed": [],
+     "changed": [
+      "sandbox: true -> false"
+     ],
+     "relocated": 0,
+     "windowsLeftOnly": 2,
+     "windowsRightOnly": 2,
+     "windowsUnread": 4
+    },
+    "literal": {
+     "summary": {
+      "unchanged": 0,
+      "added": 0,
+      "removed": 0,
+      "changed": 54,
+      "unknown": 192
+     },
+     "coverage": "partial",
+     "matching": {
+      "exact_node_identity": 3,
+      "exact_content_digest": 2,
+      "exact_module_source_digest": 0,
+      "source_map_identity": 0,
+      "structural_fingerprint": 0,
+      "semantic_key": 56,
+      "ambiguous": 0,
+      "unmatched": 185
+     }
+    }
+   }
+  },
+  "holdout2/music-player.plain.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "window:toggle-maximize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "playlists:export",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "mini:command",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "lyrics:fetch",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:command",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "window:minimize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "media:key",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:scan-progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:add-folder",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:get-version",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:get-tracks",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "mini:toggle",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 14,
+    "webPreferences": [
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 40,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)"
+      ]
+     },
+     {
+      "line": 109,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 75,
+      "status": "dynamic",
+      "unread": []
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "mini",
+      "member": "getArtwork",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "onState",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "send",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "addFolder",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "exportPlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getTracks",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "listPlaylists",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onMediaKey",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onScanProgress",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "savePlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "/scrobbles",
+      "method": "POST",
+      "mechanism": "call:api.post"
+     },
+     {
+      "value": "window.bounds",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "preferences",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "library.folders",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "/me/recommendations",
+      "method": "GET",
+      "mechanism": "call:api.get"
+     },
+     {
+      "value": "legacy.libraryCache",
+      "method": "DELETE",
+      "mechanism": "call:store.delete"
+     },
+     {
+      "value": "playlists",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "recommendations",
+      "method": "GET",
+      "mechanism": "call:memo.get"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 6,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "sessionStorage",
+      "value": "mini.expanded",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "cadence.eqPreset",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "cadence.lastError",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     }
+    ],
+    "storageKeysUnread": 3,
+    "notes": []
+   }
+  },
+  "holdout2/music-player.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "library:get-tracks",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:get-version",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "window:minimize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "media:key",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:scan-progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "lyrics:fetch",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:add-folder",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "window:toggle-maximize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:command",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "mini:command",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "mini:toggle",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "playlists:export",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 14,
+    "webPreferences": [
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "windowsUnread": [
+     {
+      "line": 203,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 170,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 136,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)"
+      ]
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "mini",
+      "member": "getArtwork",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "onState",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "send",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "addFolder",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "exportPlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getTracks",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "listPlaylists",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onMediaKey",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onScanProgress",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "savePlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "recommendations",
+      "method": "GET",
+      "mechanism": "call:memo.get"
+     },
+     {
+      "value": "library.folders",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "/scrobbles",
+      "method": "POST",
+      "mechanism": "call:api.post"
+     },
+     {
+      "value": "preferences",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "window.bounds",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "/me/recommendations",
+      "method": "GET",
+      "mechanism": "call:api.get"
+     },
+     {
+      "value": "legacy.libraryCache",
+      "method": "DELETE",
+      "mechanism": "call:store.delete"
+     },
+     {
+      "value": "playlists",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 6,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "cadence.eqPreset",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "cadence.lastError",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "mini.expanded",
+      "ops": [
+       "write",
+       "read"
+      ]
+     }
+    ],
+    "storageKeysUnread": 3,
+    "notes": []
+   }
+  },
+  "holdout2/music-player.minified.asar": {
+   "electron": {
+    "complete": false,
+    "coverage": "partial",
+    "limitations": 9,
+    "ipcChannels": [
+     {
+      "channel": "playlists:export",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "lyrics:fetch",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:command",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:scan-progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "media:key",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "mini:command",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:add-folder",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:get-version",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "window:toggle-maximize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:get-tracks",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "window:minimize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "mini:toggle",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "unresolvedChannelOperations": 14,
+    "webPreferences": [],
+    "windowsUnread": [
+     {
+      "line": 1,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 1,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 1,
+      "status": "object-literal",
+      "unread": [
+       "contextIsolation (dynamic)",
+       "nodeIntegration (dynamic)",
+       "preload (dynamic)",
+       "sandbox (dynamic)"
+      ]
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "cadence",
+      "member": "addFolder",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "exportPlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getTracks",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "listPlaylists",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onMediaKey",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onScanProgress",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "savePlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "getArtwork",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "onState",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "send",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "library.folders",
+      "method": "GET",
+      "mechanism": "call:l.get"
+     },
+     {
+      "value": "/scrobbles",
+      "method": "POST",
+      "mechanism": "call:m.post"
+     },
+     {
+      "value": "legacy.libraryCache",
+      "method": "DELETE",
+      "mechanism": "call:l.delete"
+     },
+     {
+      "value": "recommendations",
+      "method": "GET",
+      "mechanism": "call:v.get"
+     },
+     {
+      "value": "playlists",
+      "method": "GET",
+      "mechanism": "call:l.get"
+     },
+     {
+      "value": "/me/recommendations",
+      "method": "GET",
+      "mechanism": "call:m.get"
+     },
+     {
+      "value": "preferences",
+      "method": "GET",
+      "mechanism": "call:l.get"
+     },
+     {
+      "value": "window.bounds",
+      "method": "GET",
+      "mechanism": "call:l.get"
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadable": 0,
+    "endpointsUnreadableKnown": true,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "cadence.eqPreset",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "mini.expanded",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "cadence.lastError",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     }
+    ],
+    "storageKeysUnread": 3,
+    "notes": []
+   }
+  }
+ },
+ "raw": {
+  "analyze:holdout2/markdown-editor.plain.asar": {
+   "exit": 0,
+   "wallMs": 4182,
+   "stdoutBytes": 6717746,
+   "bytes": 6717746,
+   "sha256": "124cd1e84e4fea65e67969d1cc07d0913becd4564c143295720c0bcb97335dc9"
+  },
+  "analyze:holdout2/markdown-editor.bundled.asar": {
+   "exit": 0,
+   "wallMs": 6105,
+   "stdoutBytes": 7314801,
+   "bytes": 7314801,
+   "sha256": "2a09cc7117cc411ca844fa0f4a9c864f8b86d5777750afdd73df3f5891ea8b98"
+  },
+  "analyze:holdout2/markdown-editor.minified.asar": {
+   "exit": 0,
+   "wallMs": 6446,
+   "stdoutBytes": 7130142,
+   "bytes": 7130142,
+   "sha256": "e0ef71de39cc956d5f1bdc1e0779493edb0f6f5edc84b83dbe5481e52739e04f"
+  },
+  "analyze:holdout2/markdown-editor-v2.plain.asar": {
+   "exit": 0,
+   "wallMs": 6732,
+   "stdoutBytes": 6686978,
+   "bytes": 6686978,
+   "sha256": "bf549ce48aa31ac0245545038704d2426a33b225daf97f833c221e54f8bee5a1"
+  },
+  "compare:holdout2/markdown-editor.plain.asar|holdout2/markdown-editor-v2.plain.asar": {
+   "exit": 0,
+   "wallMs": 2729,
+   "stdoutBytes": 1438995,
+   "inputBytes": 13404740,
+   "sha256": "a2b0409995f6f242f1b3f52f10bd9ccb3af3e2eb398481374430a7950f563712"
+  },
+  "analyze:holdout2/music-player.plain.asar": {
+   "exit": 0,
+   "wallMs": 8277,
+   "stdoutBytes": 6098840,
+   "bytes": 6098840,
+   "sha256": "34ffee0b435e75a67028916cd0b4afc98f82ffbe4d9d04580d7d5f7c9f676178"
+  },
+  "analyze:holdout2/music-player.bundled.asar": {
+   "exit": 0,
+   "wallMs": 4845,
+   "stdoutBytes": 7558275,
+   "bytes": 7558275,
+   "sha256": "4836544b7603bc7f91b2225f253ac08127cdb8758a02c07a0fef3eb0cd3e6b96"
+  },
+  "analyze:holdout2/music-player.minified.asar": {
+   "exit": 0,
+   "wallMs": 6261,
+   "stdoutBytes": 7346115,
+   "bytes": 7346115,
+   "sha256": "0e5d42df9d2248db2e21c0ae17521a01e2134e4d4ce76941d91ae10915e41d85"
+  }
+ }
+}

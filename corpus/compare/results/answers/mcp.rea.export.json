@@ -3,12 +3,12 @@
   "name": "rea.export via mcp"
  },
  "observations": {
-  "dev/notes-app.plain.asar": {
+  "holdout2/markdown-editor.plain.asar": {
    "electron": {
     "complete": false,
     "ipcChannels": [
      {
-      "channel": "doc:open",
+      "channel": "app:close-confirmed",
       "senders": [
        "preload.js"
       ],
@@ -17,47 +17,137 @@
       ]
      },
      {
-      "channel": "doc:rename",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "app:ping",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "doc:changed",
+      "channel": "editor:scroll-to",
       "senders": [],
       "receivers": [
        "preload.js"
       ]
+     },
+     {
+      "channel": "file:opened",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "preview:scroll",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "plugin:invoke",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "vault:reveal",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "file:save-as",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:set-title",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:action",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:confirm-close",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "plugins:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
      }
     ],
     "webPreferences": [
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
      {
       "key": "sandbox",
       "value": true,
@@ -66,179 +156,249 @@
     ],
     "contextBridge": [
      {
-      "api": "notes",
-      "member": "onChanged",
+      "api": "plugins",
+      "member": null,
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "open",
+      "api": "inkwell",
+      "member": null,
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "ping",
-      "channel": null
-     },
-     {
-      "api": "notes",
-      "member": "rename",
-      "channel": null
-     },
-     {
-      "api": "notes",
-      "member": "save",
-      "channel": null
-     },
-     {
-      "api": "notes",
-      "member": "version",
+      "api": "preview",
+      "member": null,
       "channel": null
      }
     ],
     "endpoints": [
      {
-      "value": "https://upload.notes.example/blob",
-      "method": null,
-      "mechanism": "call:xhr.open"
-     },
-     {
-      "value": "wss://live.notes.example/socket",
-      "method": null,
-      "mechanism": "call:WebSocket"
-     },
-     {
-      "value": "/local/route",
+      "value": "plugins.unsafe",
       "method": "GET",
-      "mechanism": "call:router.get"
+      "mechanism": "call:settings.get"
      },
      {
-      "value": "https://alias.notes.example/ping",
-      "method": null,
-      "mechanism": "call:request"
-     },
-     {
-      "value": "window.bounds",
-      "method": "GET",
-      "mechanism": "call:store.get"
-     },
-     {
-      "value": "https://api.notes.example/v1/items",
+      "value": "https://api.inkwell.example/v1/account",
       "method": null,
       "mechanism": "call:fetch"
      },
      {
-      "value": "items",
-      "method": null,
-      "mechanism": "call:cache.fetch"
+      "value": "recent.files",
+      "method": "GET",
+      "mechanism": "call:settings.get"
      },
      {
-      "value": "/v1/login",
-      "method": "POST",
-      "mechanism": "call:axios.post"
+      "value": "sidebarWidth",
+      "method": "GET",
+      "mechanism": "call:prefs.get"
+     },
+     {
+      "value": "theme",
+      "method": "GET",
+      "mechanism": "call:prefs.get"
+     },
+     {
+      "value": "vault.path",
+      "method": "GET",
+      "mechanism": "call:settings.get"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/session",
+      "method": null,
+      "mechanism": "call:fetch"
      }
     ],
-    "endpointsUnreadable": 2,
+    "endpointsUnreadable": 8,
     "storage": [
      {
       "kind": "localStorage",
-      "value": "token",
+      "value": "inkwell.draft",
       "ops": [
-       "delete"
+       "write",
+       "delete",
+       "read"
       ]
      },
      {
       "kind": "localStorage",
-      "value": "theme",
+      "value": "inkwell.settingsTab",
       "ops": [
        "write",
        "read"
       ]
-     },
-     {
-      "kind": "sessionStorage",
-      "value": "draft",
-      "ops": [
-       "read"
-      ]
-     },
-     {
-      "kind": "indexedDB",
-      "value": "notes-db",
-      "ops": []
      }
     ],
     "coverage": "partial",
     "limitations": 9,
-    "unresolvedChannelOperations": 5,
+    "unresolvedChannelOperations": 13,
     "windowsUnread": [
      {
-      "line": 31,
-      "status": "dynamic",
-      "unread": []
+      "line": 80,
+      "status": "object-literal",
+      "unread": [
+       "[spread@2279] (dynamic: WEB_DEFAULTS)",
+       "[spread@2296] (dynamic: options.webPreferences)"
+      ]
+     },
+     {
+      "line": 159,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)"
+      ]
      }
     ],
     "routes": [],
     "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 0,
+    "storageKeysUnread": 7,
     "notes": []
    }
   },
-  "dev/notes-app.bundled.asar": {
+  "holdout2/markdown-editor.bundled.asar": {
    "electron": {
     "complete": false,
     "ipcChannels": [
      {
-      "channel": "doc:open",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "app:ping",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "doc:rename",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "doc:changed",
+      "channel": "file:opened",
       "senders": [],
       "receivers": [
        "preload.js"
       ]
+     },
+     {
+      "channel": "app:confirm-close",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "app:close-confirmed",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:scroll",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "plugins:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "editor:scroll-to",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "plugin:invoke",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save-as",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:set-title",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:action",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "vault:reveal",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
      }
     ],
     "webPreferences": [
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
      {
       "key": "sandbox",
       "value": true,
@@ -247,130 +407,110 @@
     ],
     "contextBridge": [
      {
-      "api": "notes",
-      "member": "onChanged",
+      "api": "inkwell",
+      "member": null,
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "open",
+      "api": "preview",
+      "member": null,
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "ping",
-      "channel": null
-     },
-     {
-      "api": "notes",
-      "member": "rename",
-      "channel": null
-     },
-     {
-      "api": "notes",
-      "member": "save",
-      "channel": null
-     },
-     {
-      "api": "notes",
-      "member": "version",
+      "api": "plugins",
+      "member": null,
       "channel": null
      }
     ],
     "endpoints": [
      {
-      "value": "https://api.notes.example/v1/items",
+      "value": "https://api.inkwell.example/v1/account",
       "method": null,
       "mechanism": "call:fetch"
      },
      {
-      "value": "wss://live.notes.example/socket",
-      "method": null,
-      "mechanism": "call:WebSocket"
-     },
-     {
-      "value": "https://upload.notes.example/blob",
-      "method": null,
-      "mechanism": "call:xhr.open"
-     },
-     {
-      "value": "/local/route",
+      "value": "plugins.unsafe",
       "method": "GET",
-      "mechanism": "call:router.get"
+      "mechanism": "call:settings.get"
      },
      {
-      "value": "/v1/login",
-      "method": "POST",
-      "mechanism": "call:axios.post"
-     },
-     {
-      "value": "items",
-      "method": null,
-      "mechanism": "call:cache.fetch"
-     },
-     {
-      "value": "window.bounds",
+      "value": "vault.path",
       "method": "GET",
-      "mechanism": "call:store.get"
+      "mechanism": "call:settings.get"
      },
      {
-      "value": "https://alias.notes.example/ping",
+      "value": "theme",
+      "method": "GET",
+      "mechanism": "call:prefs.get"
+     },
+     {
+      "value": "sidebarWidth",
+      "method": "GET",
+      "mechanism": "call:prefs.get"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/session",
       "method": null,
-      "mechanism": "call:request"
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "recent.files",
+      "method": "GET",
+      "mechanism": "call:settings.get"
      }
     ],
-    "endpointsUnreadable": 2,
+    "endpointsUnreadable": 8,
     "storage": [
      {
-      "kind": "sessionStorage",
-      "value": "draft",
-      "ops": [
-       "read"
-      ]
-     },
-     {
       "kind": "localStorage",
-      "value": "theme",
+      "value": "inkwell.settingsTab",
       "ops": [
        "read",
        "write"
       ]
      },
      {
-      "kind": "indexedDB",
-      "value": "notes-db",
-      "ops": []
-     },
-     {
       "kind": "localStorage",
-      "value": "token",
+      "value": "inkwell.draft",
       "ops": [
-       "delete"
+       "delete",
+       "write",
+       "read"
       ]
      }
     ],
     "coverage": "partial",
     "limitations": 9,
-    "unresolvedChannelOperations": 5,
+    "unresolvedChannelOperations": 13,
     "windowsUnread": [
      {
-      "line": 45,
-      "status": "dynamic",
-      "unread": []
+      "line": 296,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)"
+      ]
+     },
+     {
+      "line": 225,
+      "status": "object-literal",
+      "unread": [
+       "[spread@7036] (dynamic: WEB_DEFAULTS)",
+       "[spread@7053] (dynamic: options.webPreferences)"
+      ]
      }
     ],
     "routes": [],
     "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 0,
+    "storageKeysUnread": 7,
     "notes": []
    }
   },
-  "dev/notes-app.minified.asar": {
+  "holdout2/markdown-editor.minified.asar": {
    "electron": {
     "complete": false,
     "ipcChannels": [
      {
-      "channel": "doc:rename",
+      "channel": "app:set-title",
       "senders": [
        "preload.js"
       ],
@@ -379,7 +519,7 @@
       ]
      },
      {
-      "channel": "app:ping",
+      "channel": "settings:open",
       "senders": [
        "preload.js"
       ],
@@ -388,14 +528,328 @@
       ]
      },
      {
-      "channel": "doc:changed",
+      "channel": "file:save-as",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:confirm-close",
       "senders": [],
       "receivers": [
        "preload.js"
       ]
      },
      {
-      "channel": "doc:open",
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:scroll",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "plugins:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "app:close-confirmed",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "vault:reveal",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "editor:scroll-to",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:action",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "plugin:invoke",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "file:opened",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     }
+    ],
+    "webPreferences": [],
+    "contextBridge": [
+     {
+      "api": "preview",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "plugins",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "inkwell",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.inkwell.example/v1/account",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "theme",
+      "method": "GET",
+      "mechanism": "call:h.get"
+     },
+     {
+      "value": "vault.path",
+      "method": "GET",
+      "mechanism": "call:p.get"
+     },
+     {
+      "value": "plugins.unsafe",
+      "method": "GET",
+      "mechanism": "call:p.get"
+     },
+     {
+      "value": "https://api.inkwell.example/v1/session",
+      "method": null,
+      "mechanism": "call:fetch"
+     },
+     {
+      "value": "sidebarWidth",
+      "method": "GET",
+      "mechanism": "call:h.get"
+     },
+     {
+      "value": "recent.files",
+      "method": "GET",
+      "mechanism": "call:p.get"
+     }
+    ],
+    "endpointsUnreadable": 0,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "inkwell.draft",
+      "ops": [
+       "delete",
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "inkwell.settingsTab",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ],
+    "coverage": "partial",
+    "limitations": 9,
+    "unresolvedChannelOperations": 13,
+    "windowsUnread": [
+     {
+      "line": 4,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)",
+       "sandbox (dynamic)"
+      ]
+     },
+     {
+      "line": 4,
+      "status": "object-literal",
+      "unread": [
+       "[spread@3392] (dynamic: re)",
+       "[spread@3398] (dynamic: t.webPreferences)"
+      ]
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadableKnown": true,
+    "storageKeysUnread": 7,
+    "notes": []
+   }
+  },
+  "holdout2/music-player.plain.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [
+     {
+      "channel": "window:toggle-maximize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "playlists:export",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "mini:command",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "lyrics:fetch",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:command",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "window:minimize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "media:key",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:scan-progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:add-folder",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:get-version",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:get-tracks",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "mini:toggle",
       "senders": [
        "preload.js"
       ],
@@ -406,90 +860,830 @@
     ],
     "webPreferences": [
      {
-      "key": "preload",
-      "value": "preload.js",
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
       "file": "main.js"
      }
     ],
     "contextBridge": [
      {
-      "api": "notes",
-      "member": "onChanged",
+      "api": "mini",
+      "member": "getArtwork",
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "open",
+      "api": "mini",
+      "member": "onState",
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "ping",
+      "api": "mini",
+      "member": "send",
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "rename",
+      "api": "cadence",
+      "member": "addFolder",
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "save",
+      "api": "cadence",
+      "member": "exportPlaylist",
       "channel": null
      },
      {
-      "api": "notes",
-      "member": "version",
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getTracks",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "listPlaylists",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onMediaKey",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onScanProgress",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "savePlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
       "channel": null
      }
     ],
     "endpoints": [
      {
-      "value": "wss://live.notes.example/socket",
-      "method": null,
-      "mechanism": "call:WebSocket"
-     },
-     {
-      "value": "items",
-      "method": null,
-      "mechanism": "call:e.fetch"
-     },
-     {
-      "value": "https://alias.notes.example/ping",
-      "method": null,
-      "mechanism": "call:fetch"
+      "value": "/scrobbles",
+      "method": "POST",
+      "mechanism": "call:api.post"
      },
      {
       "value": "window.bounds",
       "method": "GET",
-      "mechanism": "call:c.get"
+      "mechanism": "call:store.get"
      },
      {
-      "value": "https://api.notes.example/v1/items",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "/v1/login",
-      "method": "POST",
-      "mechanism": "call:t.post"
-     },
-     {
-      "value": "https://upload.notes.example/blob",
-      "method": null,
-      "mechanism": "call:e.open"
-     },
-     {
-      "value": "/local/route",
+      "value": "preferences",
       "method": "GET",
-      "mechanism": "call:t.get"
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "library.folders",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "/me/recommendations",
+      "method": "GET",
+      "mechanism": "call:api.get"
+     },
+     {
+      "value": "legacy.libraryCache",
+      "method": "DELETE",
+      "mechanism": "call:store.delete"
+     },
+     {
+      "value": "playlists",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "recommendations",
+      "method": "GET",
+      "mechanism": "call:memo.get"
+     }
+    ],
+    "endpointsUnreadable": 6,
+    "storage": [
+     {
+      "kind": "sessionStorage",
+      "value": "mini.expanded",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "cadence.eqPreset",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "cadence.lastError",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     }
+    ],
+    "coverage": "partial",
+    "limitations": 9,
+    "unresolvedChannelOperations": 14,
+    "windowsUnread": [
+     {
+      "line": 40,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)"
+      ]
+     },
+     {
+      "line": 109,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 75,
+      "status": "dynamic",
+      "unread": []
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadableKnown": true,
+    "storageKeysUnread": 3,
+    "notes": []
+   }
+  },
+  "holdout2/music-player.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [
+     {
+      "channel": "library:get-tracks",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:get-version",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "window:minimize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "media:key",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:scan-progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "lyrics:fetch",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:add-folder",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "window:toggle-maximize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:command",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "mini:command",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "mini:toggle",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "playlists:export",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "mini",
+      "member": "getArtwork",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "onState",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "send",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "addFolder",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "exportPlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getTracks",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "listPlaylists",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onMediaKey",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onScanProgress",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "savePlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "recommendations",
+      "method": "GET",
+      "mechanism": "call:memo.get"
+     },
+     {
+      "value": "library.folders",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "/scrobbles",
+      "method": "POST",
+      "mechanism": "call:api.post"
+     },
+     {
+      "value": "preferences",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "window.bounds",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     },
+     {
+      "value": "/me/recommendations",
+      "method": "GET",
+      "mechanism": "call:api.get"
+     },
+     {
+      "value": "legacy.libraryCache",
+      "method": "DELETE",
+      "mechanism": "call:store.delete"
+     },
+     {
+      "value": "playlists",
+      "method": "GET",
+      "mechanism": "call:store.get"
+     }
+    ],
+    "endpointsUnreadable": 6,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "cadence.eqPreset",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "cadence.lastError",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "mini.expanded",
+      "ops": [
+       "write",
+       "read"
+      ]
+     }
+    ],
+    "coverage": "partial",
+    "limitations": 9,
+    "unresolvedChannelOperations": 14,
+    "windowsUnread": [
+     {
+      "line": 203,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 170,
+      "status": "dynamic",
+      "unread": []
+     },
+     {
+      "line": 136,
+      "status": "object-literal",
+      "unread": [
+       "preload (dynamic)"
+      ]
+     }
+    ],
+    "routes": [],
+    "endpointsUnreadableKnown": true,
+    "storageKeysUnread": 3,
+    "notes": []
+   }
+  },
+  "holdout2/music-player.minified.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [
+     {
+      "channel": "playlists:export",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "lyrics:fetch",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:command",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:scan-progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "media:key",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "mini:command",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:add-folder",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:get-version",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "window:toggle-maximize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:get-tracks",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "window:minimize",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "mini:toggle",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [],
+    "contextBridge": [
+     {
+      "api": "cadence",
+      "member": "addFolder",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "exportPlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getTracks",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "listPlaylists",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onMediaKey",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onScanProgress",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "savePlaylist",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "getArtwork",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "onState",
+      "channel": null
+     },
+     {
+      "api": "mini",
+      "member": "send",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "library.folders",
+      "method": "GET",
+      "mechanism": "call:l.get"
+     },
+     {
+      "value": "/scrobbles",
+      "method": "POST",
+      "mechanism": "call:m.post"
+     },
+     {
+      "value": "legacy.libraryCache",
+      "method": "DELETE",
+      "mechanism": "call:l.delete"
+     },
+     {
+      "value": "recommendations",
+      "method": "GET",
+      "mechanism": "call:v.get"
+     },
+     {
+      "value": "playlists",
+      "method": "GET",
+      "mechanism": "call:l.get"
+     },
+     {
+      "value": "/me/recommendations",
+      "method": "GET",
+      "mechanism": "call:m.get"
+     },
+     {
+      "value": "preferences",
+      "method": "GET",
+      "mechanism": "call:l.get"
+     },
+     {
+      "value": "window.bounds",
+      "method": "GET",
+      "mechanism": "call:l.get"
      }
     ],
     "endpointsUnreadable": 0,
     "storage": [
      {
       "kind": "localStorage",
-      "value": "theme",
+      "value": "cadence.eqPreset",
       "ops": [
        "write",
        "read"
@@ -497,28 +1691,30 @@
      },
      {
       "kind": "sessionStorage",
-      "value": "draft",
+      "value": "mini.expanded",
       "ops": [
+       "write",
        "read"
       ]
      },
      {
-      "kind": "indexedDB",
-      "value": "notes-db",
-      "ops": []
-     },
-     {
       "kind": "localStorage",
-      "value": "token",
+      "value": "cadence.lastError",
       "ops": [
+       "write",
        "delete"
       ]
      }
     ],
     "coverage": "partial",
     "limitations": 9,
-    "unresolvedChannelOperations": 5,
+    "unresolvedChannelOperations": 14,
     "windowsUnread": [
+     {
+      "line": 1,
+      "status": "dynamic",
+      "unread": []
+     },
      {
       "line": 1,
       "status": "dynamic",
@@ -530,1572 +1726,14 @@
       "unread": [
        "contextIsolation (dynamic)",
        "nodeIntegration (dynamic)",
+       "preload (dynamic)",
        "sandbox (dynamic)"
       ]
      }
     ],
     "routes": [],
     "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 0,
-    "notes": []
-   }
-  },
-  "validation/chat-app.plain.asar": {
-   "electron": {
-    "complete": false,
-    "ipcChannels": [
-     {
-      "channel": "settings:open",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "app:renderer-ready",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "presence:typing",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "presence:update",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "rooms:leave",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "settings:save",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "chat:incoming",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "rooms:join",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "auth:sign-out",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "settings:reset",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "auth:bootstrap",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "app:locale",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     }
-    ],
-    "webPreferences": [
-     {
-      "key": "sandbox",
-      "value": false,
-      "file": "main.js"
-     }
-    ],
-    "contextBridge": [
-     {
-      "api": "chat",
-      "member": "formatTime",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "history",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "join",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "leave",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "listRooms",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "onIncoming",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "openSettings",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "platform",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "sendMessage",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "typing",
-      "channel": null
-     },
-     {
-      "api": null,
-      "member": null,
-      "channel": null
-     }
-    ],
-    "endpoints": [
-     {
-      "value": "https://ghost.chat.example/cache-key",
-      "method": null,
-      "mechanism": "call:avatarCache.fetch"
-     },
-     {
-      "value": "ghost.map-key",
-      "method": "DELETE",
-      "mechanism": "call:seen.delete"
-     },
-     {
-      "value": "ghost.map-key",
-      "method": "GET",
-      "mechanism": "call:seen.get"
-     },
-     {
-      "value": "https://api.chat.example/v2/messages",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "https://ghost.chat.example/cache-open",
-      "method": null,
-      "mechanism": "call:avatarCache.open"
-     },
-     {
-      "value": "ui.zoom",
-      "method": "GET",
-      "mechanism": "call:prefs.get"
-     },
-     {
-      "value": "https://updates.chat.example/desktop/latest.json",
-      "method": "GET",
-      "mechanism": "call:https.get"
-     },
-     {
-      "value": "https://api.chat.example/v2/session",
-      "method": null,
-      "mechanism": "call:xhr.open"
-     },
-     {
-      "value": "https://api.chat.example/v2/rooms",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "auth.refreshToken",
-      "method": "DELETE",
-      "mechanism": "call:prefs.delete"
-     },
-     {
-      "value": "window.bounds",
-      "method": "GET",
-      "mechanism": "call:prefs.get"
-     }
-    ],
-    "endpointsUnreadable": 4,
-    "storage": [
-     {
-      "kind": "localStorage",
-      "value": "ui.zoom-draft",
-      "ops": [
-       "read",
-       "write"
-      ]
-     },
-     {
-      "kind": "localStorage",
-      "value": "ui.density",
-      "ops": [
-       "read"
-      ]
-     },
-     {
-      "kind": "sessionStorage",
-      "value": "composer.unsent",
-      "ops": [
-       "write",
-       "delete",
-       "read"
-      ]
-     },
-     {
-      "kind": "localStorage",
-      "value": "chat.lastRoom",
-      "ops": [
-       "write",
-       "read"
-      ]
-     },
-     {
-      "kind": "indexedDB",
-      "value": "chat-cache",
-      "ops": []
-     }
-    ],
-    "coverage": "partial",
-    "limitations": 9,
-    "unresolvedChannelOperations": 10,
-    "windowsUnread": [
-     {
-      "line": 37,
-      "status": "dynamic",
-      "unread": []
-     },
-     {
-      "line": 56,
-      "status": "object-literal",
-      "unread": [
-       "[spread@2185] (dynamic: LEGACY_PREFERENCES)"
-      ]
-     }
-    ],
-    "routes": [
-     {
-      "value": "rooms:list",
-      "kind": "route",
-      "mechanism": "call:route"
-     }
-    ],
-    "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 0,
-    "notes": []
-   }
-  },
-  "validation/chat-app.bundled.asar": {
-   "electron": {
-    "complete": false,
-    "ipcChannels": [
-     {
-      "channel": "app:renderer-ready",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "settings:reset",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "chat:incoming",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "app:locale",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "auth:sign-out",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "settings:save",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "presence:typing",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "presence:update",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "rooms:join",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "auth:bootstrap",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "settings:open",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "rooms:leave",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     }
-    ],
-    "webPreferences": [
-     {
-      "key": "sandbox",
-      "value": false,
-      "file": "main.js"
-     }
-    ],
-    "contextBridge": [
-     {
-      "api": "chat",
-      "member": "formatTime",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "history",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "join",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "leave",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "listRooms",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "onIncoming",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "openSettings",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "platform",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "sendMessage",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "typing",
-      "channel": null
-     },
-     {
-      "api": null,
-      "member": null,
-      "channel": null
-     }
-    ],
-    "endpoints": [
-     {
-      "value": "https://api.chat.example/v2/messages",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "https://updates.chat.example/desktop/latest.json",
-      "method": "GET",
-      "mechanism": "call:https.get"
-     },
-     {
-      "value": "https://api.chat.example/v2/rooms",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "ghost.map-key",
-      "method": "DELETE",
-      "mechanism": "call:seen.delete"
-     },
-     {
-      "value": "ghost.map-key",
-      "method": "GET",
-      "mechanism": "call:seen.get"
-     },
-     {
-      "value": "window.bounds",
-      "method": "GET",
-      "mechanism": "call:prefs.get"
-     },
-     {
-      "value": "auth.refreshToken",
-      "method": "DELETE",
-      "mechanism": "call:prefs.delete"
-     },
-     {
-      "value": "https://ghost.chat.example/cache-open",
-      "method": null,
-      "mechanism": "call:avatarCache.open"
-     },
-     {
-      "value": "https://api.chat.example/v2/session",
-      "method": null,
-      "mechanism": "call:xhr.open"
-     },
-     {
-      "value": "ui.zoom",
-      "method": "GET",
-      "mechanism": "call:prefs.get"
-     },
-     {
-      "value": "https://ghost.chat.example/cache-key",
-      "method": null,
-      "mechanism": "call:avatarCache.fetch"
-     }
-    ],
-    "endpointsUnreadable": 4,
-    "storage": [
-     {
-      "kind": "indexedDB",
-      "value": "chat-cache",
-      "ops": []
-     },
-     {
-      "kind": "localStorage",
-      "value": "ui.density",
-      "ops": [
-       "read"
-      ]
-     },
-     {
-      "kind": "sessionStorage",
-      "value": "composer.unsent",
-      "ops": [
-       "read",
-       "write",
-       "delete"
-      ]
-     },
-     {
-      "kind": "localStorage",
-      "value": "ui.zoom-draft",
-      "ops": [
-       "read",
-       "write"
-      ]
-     },
-     {
-      "kind": "localStorage",
-      "value": "chat.lastRoom",
-      "ops": [
-       "write",
-       "read"
-      ]
-     }
-    ],
-    "coverage": "partial",
-    "limitations": 9,
-    "unresolvedChannelOperations": 10,
-    "windowsUnread": [
-     {
-      "line": 58,
-      "status": "object-literal",
-      "unread": [
-       "[spread@2147] (dynamic: LEGACY_PREFERENCES)"
-      ]
-     },
-     {
-      "line": 42,
-      "status": "dynamic",
-      "unread": []
-     }
-    ],
-    "routes": [
-     {
-      "value": "rooms:list",
-      "kind": "route",
-      "mechanism": "call:route"
-     }
-    ],
-    "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 0,
-    "notes": []
-   }
-  },
-  "validation/chat-app.minified.asar": {
-   "electron": {
-    "complete": false,
-    "ipcChannels": [
-     {
-      "channel": "presence:update",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "settings:open",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "auth:bootstrap",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "app:locale",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "settings:reset",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "chat:incoming",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "app:renderer-ready",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "auth:sign-out",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "rooms:join",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "rooms:leave",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "settings:save",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "presence:typing",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     }
-    ],
-    "webPreferences": [],
-    "contextBridge": [
-     {
-      "api": "chat",
-      "member": "formatTime",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "history",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "join",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "leave",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "listRooms",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "onIncoming",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "openSettings",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "platform",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "sendMessage",
-      "channel": null
-     },
-     {
-      "api": "chat",
-      "member": "typing",
-      "channel": null
-     },
-     {
-      "api": null,
-      "member": null,
-      "channel": null
-     }
-    ],
-    "endpoints": [
-     {
-      "value": "auth.refreshToken",
-      "method": "DELETE",
-      "mechanism": "call:r.delete"
-     },
-     {
-      "value": "window.bounds",
-      "method": "GET",
-      "mechanism": "call:r.get"
-     },
-     {
-      "value": "ghost.map-key",
-      "method": "GET",
-      "mechanism": "call:o.get"
-     },
-     {
-      "value": "ghost.map-key",
-      "method": "DELETE",
-      "mechanism": "call:o.delete"
-     },
-     {
-      "value": "https://ghost.chat.example/cache-open",
-      "method": null,
-      "mechanism": "call:i.open"
-     },
-     {
-      "value": "https://api.chat.example/v2/session",
-      "method": null,
-      "mechanism": "call:e.open"
-     },
-     {
-      "value": "https://ghost.chat.example/cache-key",
-      "method": null,
-      "mechanism": "call:i.fetch"
-     },
-     {
-      "value": "https://updates.chat.example/desktop/latest.json",
-      "method": "GET",
-      "mechanism": "call:v.get"
-     },
-     {
-      "value": "https://api.chat.example/v2/messages",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "https://api.chat.example/v2/rooms",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "ui.zoom",
-      "method": "GET",
-      "mechanism": "call:r.get"
-     }
-    ],
-    "endpointsUnreadable": 0,
-    "storage": [
-     {
-      "kind": "localStorage",
-      "value": "ui.zoom-draft",
-      "ops": [
-       "write",
-       "read"
-      ]
-     },
-     {
-      "kind": "localStorage",
-      "value": "chat.lastRoom",
-      "ops": [
-       "read",
-       "write"
-      ]
-     },
-     {
-      "kind": "sessionStorage",
-      "value": "composer.unsent",
-      "ops": [
-       "delete",
-       "read",
-       "write"
-      ]
-     },
-     {
-      "kind": "localStorage",
-      "value": "ui.density",
-      "ops": [
-       "read"
-      ]
-     },
-     {
-      "kind": "indexedDB",
-      "value": "chat-cache",
-      "ops": []
-     }
-    ],
-    "coverage": "partial",
-    "limitations": 9,
-    "unresolvedChannelOperations": 10,
-    "windowsUnread": [
-     {
-      "line": 1,
-      "status": "dynamic",
-      "unread": []
-     },
-     {
-      "line": 1,
-      "status": "object-literal",
-      "unread": [
-       "[spread@1108] (dynamic: A)",
-       "sandbox (dynamic)",
-       "webSecurity (dynamic: !1)"
-      ]
-     }
-    ],
-    "routes": [],
-    "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 0,
-    "notes": []
-   }
-  },
-  "holdout/time-tracker.plain.asar": {
-   "electron": {
-    "complete": false,
-    "ipcChannels": [
-     {
-      "channel": "debug:dump-state",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "timer:port",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "widget:pin",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "invoice:exported",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "app:first-paint",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "widget:close",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "sync:cancel",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "license:activate",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "sync:start",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "dock:badge",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "widget:port",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     }
-    ],
-    "webPreferences": [],
-    "contextBridge": [
-     {
-      "api": "tracker",
-      "member": null,
-      "channel": null
-     },
-     {
-      "api": null,
-      "member": null,
-      "channel": null
-     }
-    ],
-    "endpoints": [
-     {
-      "value": "note",
-      "method": "GET",
-      "mechanism": "call:form.get"
-     },
-     {
-      "value": "ui.locale",
-      "method": "GET",
-      "mechanism": "call:settings.get"
-     },
-     {
-      "value": "/entries/changed",
-      "method": "POST",
-      "mechanism": "call:localBus.post"
-     },
-     {
-      "value": "https://api.punchclock.example/v3/me/preferences",
-      "method": null,
-      "mechanism": "call:window.fetch"
-     },
-     {
-      "value": "https://hooks.punchclock.example/invoice-exported",
-      "method": null,
-      "mechanism": "call:https.request"
-     },
-     {
-      "value": "window.main",
-      "method": "GET",
-      "mechanism": "call:settings.get"
-     },
-     {
-      "value": "https://api.punchclock.example/v3/me",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "hours",
-      "method": "GET",
-      "mechanism": "call:form.get"
-     },
-     {
-      "value": "ghost.form-field",
-      "method": "DELETE",
-      "mechanism": "call:form.delete"
-     },
-     {
-      "value": "ghost.form-field",
-      "method": "GET",
-      "mechanism": "call:form.get"
-     },
-     {
-      "value": "ui.currency",
-      "method": "GET",
-      "mechanism": "call:settings.get"
-     },
-     {
-      "value": "license.key",
-      "method": "GET",
-      "mechanism": "call:get"
-     },
-     {
-      "value": "sync.interval",
-      "method": "GET",
-      "mechanism": "call:settings.get"
-     },
-     {
-      "value": "window.widget",
-      "method": "DELETE",
-      "mechanism": "call:settings.delete"
-     }
-    ],
-    "endpointsUnreadable": 9,
-    "storage": [
-     {
-      "kind": "sessionStorage",
-      "value": "widget.position",
-      "ops": [
-       "write"
-      ]
-     },
-     {
-      "kind": "sessionStorage",
-      "value": "widget.collapsed",
-      "ops": [
-       "write",
-       "read"
-      ]
-     },
-     {
-      "kind": "localStorage",
-      "value": "punch.activeProject",
-      "ops": [
-       "read",
-       "write"
-      ]
-     },
-     {
-      "kind": "indexedDB",
-      "value": "punchclock-attachments",
-      "ops": []
-     }
-    ],
-    "coverage": "partial",
-    "limitations": 9,
-    "unresolvedChannelOperations": 28,
-    "windowsUnread": [
-     {
-      "line": 94,
-      "status": "dynamic",
-      "unread": []
-     },
-     {
-      "line": 119,
-      "status": "dynamic",
-      "unread": []
-     },
-     {
-      "line": 71,
-      "status": "dynamic",
-      "unread": []
-     }
-    ],
-    "routes": [],
-    "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 5,
-    "notes": []
-   }
-  },
-  "holdout/time-tracker.bundled.asar": {
-   "electron": {
-    "complete": false,
-    "ipcChannels": [
-     {
-      "channel": "dock:badge",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "widget:pin",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "timer:port",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "sync:cancel",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "debug:dump-state",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "sync:start",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "widget:port",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "widget:close",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "invoice:exported",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "license:activate",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "app:first-paint",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     }
-    ],
-    "webPreferences": [],
-    "contextBridge": [
-     {
-      "api": "tracker",
-      "member": null,
-      "channel": null
-     },
-     {
-      "api": null,
-      "member": null,
-      "channel": null
-     }
-    ],
-    "endpoints": [
-     {
-      "value": "/entries/changed",
-      "method": "POST",
-      "mechanism": "call:localBus.post"
-     },
-     {
-      "value": "note",
-      "method": "GET",
-      "mechanism": "call:form.get"
-     },
-     {
-      "value": "ui.currency",
-      "method": "GET",
-      "mechanism": "call:settings.get"
-     },
-     {
-      "value": "window.widget",
-      "method": "DELETE",
-      "mechanism": "call:settings.delete"
-     },
-     {
-      "value": "hours",
-      "method": "GET",
-      "mechanism": "call:form.get"
-     },
-     {
-      "value": "https://api.punchclock.example/v3/me/preferences",
-      "method": null,
-      "mechanism": "call:window.fetch"
-     },
-     {
-      "value": "sync.interval",
-      "method": "GET",
-      "mechanism": "call:settings.get"
-     },
-     {
-      "value": "ghost.form-field",
-      "method": "DELETE",
-      "mechanism": "call:form.delete"
-     },
-     {
-      "value": "ghost.form-field",
-      "method": "GET",
-      "mechanism": "call:form.get"
-     },
-     {
-      "value": "ui.locale",
-      "method": "GET",
-      "mechanism": "call:settings.get"
-     },
-     {
-      "value": "https://api.punchclock.example/v3/me",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "license.key",
-      "method": "GET",
-      "mechanism": "call:get"
-     },
-     {
-      "value": "https://hooks.punchclock.example/invoice-exported",
-      "method": null,
-      "mechanism": "call:import_node_https.default.request"
-     },
-     {
-      "value": "window.main",
-      "method": "GET",
-      "mechanism": "call:settings.get"
-     }
-    ],
-    "endpointsUnreadable": 9,
-    "storage": [
-     {
-      "kind": "sessionStorage",
-      "value": "widget.collapsed",
-      "ops": [
-       "read",
-       "write"
-      ]
-     },
-     {
-      "kind": "indexedDB",
-      "value": "punchclock-attachments",
-      "ops": []
-     },
-     {
-      "kind": "localStorage",
-      "value": "punch.activeProject",
-      "ops": [
-       "write",
-       "read"
-      ]
-     },
-     {
-      "kind": "sessionStorage",
-      "value": "widget.position",
-      "ops": [
-       "write"
-      ]
-     }
-    ],
-    "coverage": "partial",
-    "limitations": 9,
-    "unresolvedChannelOperations": 28,
-    "windowsUnread": [
-     {
-      "line": 135,
-      "status": "dynamic",
-      "unread": []
-     },
-     {
-      "line": 153,
-      "status": "dynamic",
-      "unread": []
-     },
-     {
-      "line": 176,
-      "status": "dynamic",
-      "unread": []
-     }
-    ],
-    "routes": [],
-    "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 5,
-    "notes": []
-   }
-  },
-  "holdout/time-tracker.minified.asar": {
-   "electron": {
-    "complete": false,
-    "ipcChannels": [
-     {
-      "channel": "widget:port",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "app:first-paint",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "license:activate",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "invoice:exported",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "sync:cancel",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "debug:dump-state",
-      "senders": [],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "sync:start",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "widget:close",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     },
-     {
-      "channel": "timer:port",
-      "senders": [],
-      "receivers": [
-       "preload.js"
-      ]
-     },
-     {
-      "channel": "dock:badge",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": [
-       "main.js"
-      ]
-     },
-     {
-      "channel": "widget:pin",
-      "senders": [
-       "preload.js"
-      ],
-      "receivers": []
-     }
-    ],
-    "webPreferences": [],
-    "contextBridge": [
-     {
-      "api": null,
-      "member": null,
-      "channel": null
-     },
-     {
-      "api": "tracker",
-      "member": null,
-      "channel": null
-     }
-    ],
-    "endpoints": [
-     {
-      "value": "https://api.punchclock.example/v3/me",
-      "method": null,
-      "mechanism": "call:fetch"
-     },
-     {
-      "value": "ui.currency",
-      "method": "GET",
-      "mechanism": "call:r.get"
-     },
-     {
-      "value": "sync.interval",
-      "method": "GET",
-      "mechanism": "call:r.get"
-     },
-     {
-      "value": "license.key",
-      "method": "GET",
-      "mechanism": "call:get"
-     },
-     {
-      "value": "hours",
-      "method": "GET",
-      "mechanism": "call:t.get"
-     },
-     {
-      "value": "window.widget",
-      "method": "DELETE",
-      "mechanism": "call:r.delete"
-     },
-     {
-      "value": "window.main",
-      "method": "GET",
-      "mechanism": "call:r.get"
-     },
-     {
-      "value": "ghost.form-field",
-      "method": "GET",
-      "mechanism": "call:t.get"
-     },
-     {
-      "value": "ghost.form-field",
-      "method": "DELETE",
-      "mechanism": "call:t.delete"
-     },
-     {
-      "value": "https://hooks.punchclock.example/invoice-exported",
-      "method": null,
-      "mechanism": "call:P.default.request"
-     },
-     {
-      "value": "/entries/changed",
-      "method": "POST",
-      "mechanism": "call:S.post"
-     },
-     {
-      "value": "note",
-      "method": "GET",
-      "mechanism": "call:t.get"
-     },
-     {
-      "value": "https://api.punchclock.example/v3/me/preferences",
-      "method": null,
-      "mechanism": "call:window.fetch"
-     },
-     {
-      "value": "ui.locale",
-      "method": "GET",
-      "mechanism": "call:r.get"
-     }
-    ],
-    "endpointsUnreadable": 1,
-    "storage": [
-     {
-      "kind": "localStorage",
-      "value": "punch.activeProject",
-      "ops": [
-       "read",
-       "write"
-      ]
-     },
-     {
-      "kind": "indexedDB",
-      "value": "punchclock-attachments",
-      "ops": []
-     },
-     {
-      "kind": "sessionStorage",
-      "value": "widget.position",
-      "ops": [
-       "write"
-      ]
-     },
-     {
-      "kind": "sessionStorage",
-      "value": "widget.collapsed",
-      "ops": [
-       "read",
-       "write"
-      ]
-     }
-    ],
-    "coverage": "partial",
-    "limitations": 9,
-    "unresolvedChannelOperations": 28,
-    "windowsUnread": [
-     {
-      "line": 1,
-      "status": "dynamic",
-      "unread": []
-     },
-     {
-      "line": 1,
-      "status": "dynamic",
-      "unread": []
-     },
-     {
-      "line": 1,
-      "status": "dynamic",
-      "unread": []
-     }
-    ],
-    "routes": [],
-    "endpointsUnreadableKnown": true,
-    "storageKeysUnread": 5,
+    "storageKeysUnread": 3,
     "notes": []
    }
   }

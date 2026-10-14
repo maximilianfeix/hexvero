@@ -1,4 +1,4 @@
-# Domain, DNS, HTTPS and GitHub Pages (checked 2026-10-14)
+# Domain, DNS, HTTPS and GitHub Pages (checked 2026-10-14, rechecked the same evening: unchanged)
 
 Real checks against the live services: `dig`, `openssl s_client`, `curl` and the GitHub API
 (`GET /repos/maximilianfeix/hexvero/pages`). Nothing was changed.

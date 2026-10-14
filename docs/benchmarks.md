@@ -51,6 +51,18 @@ sessions; compare within a row):
 | ChatGPT `app.asar`, first batch (3 runs)                | 10.84 s, 804 MiB | 23.57 s, 564 MiB | 14.35 s, 708 MiB | 13.38 s, 971 MiB     |
 | Discord `app.asar`, under the thread threshold (5 runs) | 0.48 s, 213 MiB  | 0.80 s, 246 MiB  | 0.78 s, 206 MiB  | 0.76 s, 205 MiB      |
 
+After the accuracy work of the same evening (bounded resolver, window options across modules),
+three alternating runs each, same machine, load average about 9:
+
+| Input                                    | 0.3.0           | now, one thread  | now, default threads |
+| ---------------------------------------- | --------------- | ---------------- | -------------------- |
+| Claude `app.asar`                        | 2.68 s, 756 MiB | 7.07 s, 654 MiB  | 4.80 s, 941 MiB      |
+| ChatGPT `app.asar`, first batch (2 runs) | 9.19 s, 900 MiB | 14.82 s, 813 MiB | 10.51 s, 1,133 MiB   |
+
+The resolver runs only for calls the fast scan leaves open, and window options are evaluated only
+for windows whose options could not be followed; neither changed the times measurably. The results
+with and without threads were again byte-identical on all reference inputs.
+
 On the quiet machine earlier the same day, the Claude archive took 5.8 s with one thread and
 4.1 s with threads. Analysis is still 1.2 to 1.7 times slower than 0.3.0 with threads and 1.3 to
 2.4 times with one; threads cost about 200 MiB more memory and about twice the CPU time. The rest

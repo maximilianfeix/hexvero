@@ -271,11 +271,11 @@ Call graphs include tail calls through both radare2 (from its jump references) a
 ## Limits
 
 - hexvero is static. It reads files and never observes a running program: a finding is what the code contains, not what it does at run time.
-- On code it was not tuned on, it still misses a lot: in the corpus's blind hold-out app about four in ten IPC channels and six in ten window settings. Absence from a list is weaker evidence than presence. What it saw but could not read is named in the limitations with file and line (`ipc_receiver_unresolved`, `ipc_channel_unresolved`, `webpreferences_computed`, `window_options_unresolved`).
-- IPC is followed through other names for `ipcMain`/`ipcRenderer`, `window.` globals, names defined at the top of another file in the same directory, constants, tables and compiled TypeScript string enums. Not followed: an application's own wrapper methods around IPC, channels passed as parameters or iterated from arrays, and names defined in files that were not read.
-- Window settings: ten `webPreferences` keys, where they are written, spread in or returned by a helper. Electron fuses, CSP, navigation and permission handlers are not checked, and nothing is rated by severity. The derived `windows` columns do not know the Electron version actually shipped or run-time changes.
+- On code it was not tuned on, it still misses things. On the newest blind set (two applications written without access to hexvero, measured once before any change for it) the build before this round found 90 of 126 IPC channels and 42 of 63 window settings, with 6 wrong settings ([corpus/results/round3](corpus/results/round3/README.md)). Absence from a list is weaker evidence than presence. What it saw but could not read is named in the limitations with file and line (`ipc_receiver_unresolved`, `ipc_channel_unresolved`, `webpreferences_computed`, `window_options_unresolved`).
+- IPC channels are read from literals and constants, and, where those do not reach, by a bounded resolver: concatenation and templates, helper functions and class methods whose channel is bound at every readable call site, routers that build names from a constructor argument, arrays, `Map`s and objects registered in loops or `forEach`, re-exports through index modules. A value it cannot write down exactly is left out, never guessed. Not followed: names defined in files that were not read, and values computed at run time.
+- Window settings: ten `webPreferences` keys, where they are written, spread in, returned by a helper, merged with `Object.assign`, or taken from defaults and option factories in other modules (then `definedIn` names where). Electron fuses, CSP, navigation and permission handlers are not checked, and nothing is rated by severity. The derived `windows` columns do not know the Electron version actually shipped or run-time changes.
 - A JavaScript app is read 5,000 files at a time; until `--all` has run, every list covers the scanned part and says so.
-- Following names costs time: a large Electron app takes 1.2 to 1.7 times as long as with 0.3.0 (worker threads for 4 MiB of source or more, about 200 MiB more memory) and up to 2.4 times with one thread ([measurements](docs/benchmarks.md)).
+- Following names costs time: a large Electron app takes 1.1 to 1.8 times as long as with 0.3.0 and about 25 to 30 % more memory (worker threads for 4 MiB of source or more), and up to 2.6 times as long with one thread ([measurements](docs/benchmarks.md)).
 - A channel name or URL computed at run time cannot be named statically; it is left out or shown as `${…}`.
 - Call graphs depend on the engine's analysis; a function reached only through a pointer has no direct caller. Ghidra is verified on fixtures only.
 - Very large single items are returned compacted with a marker; very large files above the per-file budget are listed as unread.
@@ -288,32 +288,28 @@ Call graphs include tail calls through both radare2 (from its jump references) a
 
 ## Compared with REA
 
-[REA](https://github.com/morluto/rea) is the larger and older project in this space. hexvero is an independent implementation (no REA code) for the first look. The comparison below was run on 2026-10-13 on hexvero's [corpus](corpus/README.md), a set of small applications and programs whose correct results are written down, with hexvero at commit `a6d9b82` and REA 6.4.0 (`rea-agents` from npm), both on Node 24.21 on the same machine. Method, every mapping decision, the harness and the raw data of 1,460 runs are in [corpus/compare](corpus/compare/README.md).
+[REA](https://github.com/morluto/rea) is the larger and older project in this space, with dynamic analysis, device and firmware work and decompiler integrations that hexvero does not attempt. hexvero is an independent implementation (no REA code) for the first, static look. Measured on 2026-10-14 with REA 6.5.0 (`rea-agents` from npm); every row, command and checksum is in the [scorecard](docs/competitive/rea-scorecard.md).
 
-Only the hold-out set is level ground: it was written without access to either tool and measured before hexvero was changed again. hexvero was tuned on the other two sets, so its near-perfect results there say little. Each cell is hit / missed / false, over the three builds of one Electron application (as written, bundled, minified):
+On `corpus/holdout2`, two Electron applications in three builds each, written by an independent agent without access to either tool, hit of expected (false):
 
-| Hold-out set                        | hexvero     | REA 6.4.0                            |
-| ----------------------------------- | ----------- | ------------------------------------ |
-| IPC channels                        | 41 / 31 / 0 | 33 / 39 / 0                          |
-| Window settings                     | 12 / 21 / 0 | 0 / 33 / 0                           |
-| contextBridge members               | 60 / 9 / 0  | 0 / 69 / 0                           |
-| Network endpoints                   | 24 / 18 / 5 | 9 / 33 / 30                          |
-| Storage keys                        | 42 / 9 / 0  | 12 / 39 / 0                          |
-| Changes between two builds, 5 lists | 7 / 11 / 2  | 0 / 18 / 1                           |
-| Native call paths, two binaries     | 36 / 0 / 0  | not run: needs Ghidra, Hopper or IDA |
-| Damaged inputs handled honestly     | 6 of 6      | 6 of 6                               |
+| Blind set `holdout2`     | hexvero, blind (before this round) | REA 6.5.0          |
+| ------------------------ | ---------------------------------- | ------------------ |
+| IPC channels             | 90 of 126                          | 87 of 126          |
+| Window settings          | 42 of 63 (6 false)                 | 8 of 63            |
+| contextBridge members    | 78 of 135                          | 66 of 135          |
+| Bridge member → channel  | 65 of 78                           | 6 of 66            |
+| Network endpoints        | 15 of 57 (10 false)                | 6 of 57 (39 false) |
+| Storage keys             | 47 of 57 (1 false)                 | 15 of 57           |
+| Changes between versions | 6 of 10                            | 2 of 10 (4 false)  |
 
-What this shows, and what it does not:
+The current code reads 110 of 126 channels, 46 of 63 settings with none false and 129 of 135 bridge members there, but that is after working on the set's misses, so it is not a blind result.
 
-- **hexvero reads more of a small Electron application and reports far less that is wrong**, on code neither tool had seen. It still misses a lot there: 31 of 72 channels and 21 of 33 window settings. The misses are idioms it does not follow yet, listed in [PROGRESS.md](PROGRESS.md).
-- **REA's 30 false endpoints are mostly one decision**: it lists `store.get("key")` and similar calls as network endpoints. Read the other way, as storage, its row becomes 9 / 33 / 3 for endpoints and 30 / 21 / 9 for storage keys. Both readings are in the summary.
-- **Native call paths need no extra install beyond radare2 or rizin** in hexvero; REA 6.4.0 has no provider for either. Through radare2 hexvero answered all 70 path questions of the corpus correctly, including paths that run through tail calls and paths that do not exist; through rizin 68, the two misses being a jump to an import that rizin does not list as a function.
-- **The fixed cost of an MCP session** is the one cost that does not depend on the input: `tools/list` was 13.4 KB for hexvero's 15 tools at the measured commit (13.7 KB now) and 1.95 MB for REA's 170 (1.77 MB with its compact profile).
-- **Per question an agent receives less from hexvero, and gets names**: 15 to 21 KB over MCP for the channels, settings or endpoints of one application. REA's summary is 24 KB but holds counts without names; its complete answer is 1 to 6.5 MB, which for the three hold-out builds exceeded REA's own response budget, so the export file is the way that works.
-- **Timings are not compared.** All runs were taken on a busy machine (load 6 to 77 on 8 cores). The raw times are published; no conclusion is drawn from them.
-- **This is a small corpus**: three Electron applications of a few hundred lines and three C programs for one platform. It says nothing about large real applications, where REA parses everything and hexvero reads in batches; nothing about dynamic analysis, devices, firmware or the engines REA drives, which hexvero does not attempt; and nothing about how well an agent solves a task with either tool. No agent experiment was run.
+- **The MCP catalog** is 14 KB for hexvero's 15 tools and 3.09 MB for REA's 207 (2.48 MB with its compact profile).
+- **An agent experiment** (Claude Code, five graded questions about the same set, file reading allowed): both tools let the agent answer every item correctly; with hexvero it took 82 s and about 120 k tokens per question, with REA 190 s and 177 k ([method and limits](docs/audits/agent-task-evaluation.md)).
+- **On the Claude desktop app** (47 MiB), hexvero took about 5 s and returned 52 KB naming 233 IPC channels; REA took 179 s and returned 123.5 MB, with 9 literal channels and 1,512 channel operations it did not resolve. That app has no written-down answer, so this is an observation, not an accuracy figure.
+- **REA does things hexvero does not**: signed, hash-addressed evidence; ASAR integrity checks; sender-validation observations in IPC handlers; a full AST parse of every file.
 
-Use REA when you need Hopper, IDA, JEB, Android devices over adb, browser capture, saved network captures, firmware, or evidence ids with source ranges for every fact. Use hexvero for the first look, for agents with small context windows, for call paths through radare2 or rizin, and for a UI.
+Use REA when you need Hopper, IDA, JEB, Android devices over adb, browser capture, firmware, or evidence records with provenance for every fact. Use hexvero for a fast first look, for agents with small context windows, for call paths through radare2 or rizin, and for a UI.
 
 <a id="how-it-works"></a>
 
