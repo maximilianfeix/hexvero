@@ -150,6 +150,34 @@ describe("setup", () => {
     expect(JSON.parse(written).mcpServers.hexvero).toEqual(entryFor("stdio"));
   });
 
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "reports a file it cannot write and goes on with the other clients",
+    async () => {
+      const locked = mkdtempSync(join(tmpdir(), "hexvero-locked-"));
+      const lockedCtx: SetupContext = { home: locked, platform: "linux", env: { HOME: locked } };
+      mkdirSync(join(locked, ".cursor"), { recursive: true });
+      mkdirSync(join(locked, ".kiro", "settings"), { recursive: true });
+      writeFileSync(join(locked, ".cursor", "mcp.json"), "{}\n");
+      const { chmodSync } = await import("node:fs");
+      chmodSync(join(locked, ".cursor"), 0o500);
+      try {
+        const io = capture();
+        await setup(io, { all: true, apply: true, json: true }, lockedCtx);
+        const results = JSON.parse(io.stdout.join("")).results as Array<{
+          client: string;
+          action: string;
+        }>;
+        expect(results.find((r) => r.client === "cursor")?.action).toMatch(
+          /skipped: cannot write the file \(EACCES\)/,
+        );
+        expect(results.find((r) => r.client === "kiro")?.action).toBe("created");
+      } finally {
+        chmodSync(join(locked, ".cursor"), 0o700);
+        rmSync(locked, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("uses platform specific paths for Zed and VS Code on Windows", () => {
     const win: SetupContext = {
       home: "C:\\Users\\me",

@@ -108,7 +108,7 @@ export function cacheEntries(root = cacheRoot()): CacheEntry[] {
       }
     }
   }
-  return out.sort((a, b) => a.modified - b.modified);
+  return out.toSorted((a, b) => a.modified - b.modified);
 }
 
 export interface PruneResult {

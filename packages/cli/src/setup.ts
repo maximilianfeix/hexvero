@@ -304,6 +304,16 @@ export function patchToml(existing: string): { content: string; skipped: string 
 }
 
 /** Writes `content` atomically next to `file` (temp file + rename) following a symlinked target. */
+/** A write failure as one line: the code and what it means for this file. */
+function writeError(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "EACCES" || code === "EPERM"
+    ? `cannot write the file (${code}); left untouched`
+    : code === "EROFS"
+      ? "the file is on a read-only file system; left untouched"
+      : `could not write the file (${error instanceof Error ? error.message : String(error)}); left untouched`;
+}
+
 function replaceFile(file: string, content: string): void {
   const target = existsSync(file) ? realpathSync(file) : file;
   const mode = existsSync(target) ? statSync(target).mode & 0o777 : 0o600;
@@ -406,8 +416,15 @@ function remove(
       results.push({ client: client.id, file, detected, action: "would remove hexvero" });
       continue;
     }
-    const saved = backup(file);
-    replaceFile(file, content);
+    let saved: string;
+    try {
+      saved = backup(file);
+      replaceFile(file, content);
+    } catch (error) {
+      // One unwritable file (permissions, a read-only mount) must not stop the other clients.
+      results.push({ client: client.id, file, detected, action: `skipped: ${writeError(error)}` });
+      continue;
+    }
     results.push({
       client: client.id,
       file,
@@ -567,9 +584,15 @@ export async function setup(
         }
       }
     }
-    mkdirSync(dirname(file), { recursive: true });
-    const saved = exists ? backup(file) : null;
-    replaceFile(file, content);
+    let saved: string | null;
+    try {
+      mkdirSync(dirname(file), { recursive: true });
+      saved = exists ? backup(file) : null;
+      replaceFile(file, content);
+    } catch (error) {
+      results.push({ client: client.id, file, detected, action: `skipped: ${writeError(error)}` });
+      continue;
+    }
     results.push({
       client: client.id,
       file,

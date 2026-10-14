@@ -23,6 +23,24 @@ All notable changes to hexvero are listed here. The format follows
 - `setup` leaves a differing hexvero entry alone instead of replacing it, and inserts into plain
   JSON as text, so key order and indentation stay as they were.
 - The UI server sends a Content-Security-Policy that allows only its own origin.
+- The UI's export download is fetched with the `Authorization` header; the server no longer
+  accepts the session token in a query string.
+- The cache is bounded: entries older than 30 days and the oldest beyond 1 GiB are removed
+  (`HEXVERO_CACHE_MAX_MB`, `HEXVERO_CACHE_MAX_AGE_DAYS`), and directories an older version created
+  `0755` are tightened to `0700`. `hexvero cache [--prune] [--clear [--apply]]`.
+- Cancelling a call graph stops the engine once no other caller waits for the same run.
+- `setup` reports a client file it cannot write and goes on with the others.
+- MCP results carry `_meta["io.github.maximilianfeix.hexvero/untrustedContent"]: true`.
+- GitHub Actions are pinned to commit SHAs.
+
+### Performance
+
+- JavaScript applications are analyzed faster with identical results: a faster tokenizer, fewer
+  passes in name resolution, and up to three worker threads for applications with 4 MiB of source
+  or more (`HEXVERO_JS_THREADS`). See docs/benchmarks.md for measurements.
+- A helper function's body now ends at its closing brace however many functions precede it;
+  before, past a fixed budget a body was taken as the next 4,000 tokens, which was slow and could
+  report a channel passed to the helper that it never forwards.
 
 ### Added
 

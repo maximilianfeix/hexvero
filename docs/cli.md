@@ -64,6 +64,27 @@ the content of the input, so `collection`, `compare` and `export` in later invoc
 same state, and a changed archive starts from nothing. An application that fits into one batch
 stores nothing. If a run is interrupted, the state of the last finished batch remains.
 
+Applications with 4 MiB of source or more are tokenized in up to three worker threads, largest
+file first; the results are merged in the fixed order above, so the analysis is the same as with
+one thread. `HEXVERO_JS_THREADS=0` turns the threads off, any other number sets their count.
+
+## The cache
+
+`~/.cache/hexvero` (or `HEXVERO_CACHE_DIR`) holds stored scans (`scans/`), engine call graphs
+(`graphs/`) and Ghidra projects (`ghidra/`). Directories are created `0700` and files `0600`;
+directories an older version created more open are tightened when they are next used. Entries
+older than 30 days are removed, and the oldest beyond 1 GiB in total, at most once an hour and
+never one written in the last hour. `HEXVERO_CACHE_MAX_MB` and `HEXVERO_CACHE_MAX_AGE_DAYS` change
+the limits. Only files and directories hexvero names itself are ever removed, and links are not
+followed.
+
+```bash
+hexvero cache                   # where it is, what it holds, the limits
+hexvero cache --prune           # apply the limits now
+hexvero cache --clear           # what --clear --apply would remove
+hexvero cache --clear --apply   # remove everything hexvero stored
+```
+
 ## Endpoints and storage
 
 For Electron archives, directories and single bundles:

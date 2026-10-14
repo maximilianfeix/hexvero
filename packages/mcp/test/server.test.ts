@@ -25,6 +25,8 @@ describe("hexvero MCP server", () => {
     args: Record<string, unknown> = {},
   ): Promise<{ ok: boolean; body: Record<string, unknown> }> => {
     const result = await client.callTool({ name, arguments: args });
+    if (!result.isError)
+      expect(result["_meta"]?.["io.github.maximilianfeix.hexvero/untrustedContent"]).toBe(true);
     const content = (result.content as Array<{ type: string; text: string }>)[0]!;
     return {
       ok: !result.isError,

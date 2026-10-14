@@ -406,6 +406,11 @@ const GRAPH_SCHEMA = 6;
 
 /** Normalized graphs per provider, content digest, engine build and schema; concurrent requests share one engine run. */
 const graphCache = new Map<string, Promise<CallGraph>>();
+/**
+ * The callers still waiting for a shared run, and how to stop it. When the last of them cancels,
+ * the engine is stopped too instead of running on to its timeout for nobody.
+ */
+const graphWaiters = new Map<string, { count: number; stop: AbortController }>();
 
 /** Rejects with `cancelled` when the caller aborts while others keep waiting for the shared run. */
 function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
@@ -456,6 +461,8 @@ export async function loadCallGraph(
   let pending = graphCache.get(key);
   if (!pending) {
     cached = false;
+    const stop = new AbortController();
+    graphWaiters.set(key, { count: 0, stop });
     pending = (async (): Promise<CallGraph> => {
       try {
         const fromDisk = JSON.parse(await readFile(diskPath, "utf8")) as CallGraph;
@@ -466,9 +473,10 @@ export async function loadCallGraph(
       } catch {
         /* not cached yet */
       }
-      // The run is shared by every concurrent caller, so it must not die with one caller's signal.
+      // The run is shared by every concurrent caller, so it must not die with one caller's
+      // signal; it stops when every caller has cancelled.
       const run = await runProvider(
-        { ...request, operation: "callgraph", signal: undefined },
+        { ...request, operation: "callgraph", signal: stop.signal },
         providers,
       );
       const graph = run.result as CallGraph | null;
@@ -493,8 +501,27 @@ export async function loadCallGraph(
     })();
     graphCache.set(key, pending);
     pending.catch(() => graphCache.delete(key));
+    pending.then(
+      () => graphWaiters.delete(key),
+      () => graphWaiters.delete(key),
+    );
   }
-  const graph = await abortable(pending, request.signal);
+  const waiters = graphWaiters.get(key);
+  if (waiters) waiters.count++;
+  let graph: CallGraph;
+  try {
+    graph = await abortable(pending, request.signal);
+  } catch (error) {
+    if (waiters && error instanceof AnalysisError && error.code === "cancelled") {
+      waiters.count--;
+      if (waiters.count === 0) {
+        graphCache.delete(key);
+        graphWaiters.delete(key);
+        waiters.stop.abort();
+      }
+    }
+    throw error;
+  }
   return { graph, cached, durationMs: Math.round(performance.now() - started) };
 }
 
