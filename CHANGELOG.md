@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-14
+
 ### Added
 
 - `hexvero recover` splits scope-hoisted bundles (esbuild `format: "esm"` or `"iife"`) at the
