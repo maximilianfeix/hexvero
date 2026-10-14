@@ -545,8 +545,26 @@ export async function setup(
           });
           continue;
         }
-        node["hexvero"] = entryFor(client.dialect);
-        content = `${JSON.stringify(config, null, 2)}\n`;
+        if (node["hexvero"] !== undefined) {
+          // A hand-edited or pinned entry is the user's decision; never replace it silently.
+          results.push({
+            client: client.id,
+            file,
+            detected,
+            action:
+              "skipped: a different hexvero entry exists; left untouched (edit it by hand or run --remove first)",
+          });
+          continue;
+        }
+        // Insert as text so key order, indentation and every other entry stay byte-identical.
+        const edit = exists
+          ? insertJsonc(text, client.key, "hexvero", entryFor(client.dialect))
+          : null;
+        if (edit?.ok) content = edit.content;
+        else {
+          node["hexvero"] = entryFor(client.dialect);
+          content = `${JSON.stringify(config, null, 2)}\n`;
+        }
       }
     }
     mkdirSync(dirname(file), { recursive: true });

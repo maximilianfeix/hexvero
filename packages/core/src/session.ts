@@ -1,3 +1,4 @@
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import {
@@ -358,9 +359,22 @@ export class Session {
   async export(
     id: string,
     destination: string,
-    options: { overwrite?: boolean | undefined } = {},
+    options: {
+      overwrite?: boolean | undefined;
+      /** Replace an existing file only when it is an earlier hexvero export (MCP sets this). */
+      onlyReplaceExports?: boolean | undefined;
+    } = {},
   ): Promise<{ path: string; bytes: number }> {
     const path = resolvePath(destination);
+    if (options.overwrite && options.onlyReplaceExports && existsSync(path)) {
+      const head = lstatSync(path).isFile() ? readFileSync(path, "utf8").slice(0, 64) : "";
+      if (!/^\{\s*"hexvero":\s*1\b/.test(head))
+        throw new AnalysisError(
+          "invalid_input",
+          `${path} exists and is not an earlier hexvero export; it is not replaced`,
+          { path },
+        );
+    }
     const analysis = await this.analyze(id);
     const text = JSON.stringify(
       {

@@ -54,6 +54,20 @@ Measured in the same run with a real MCP client over stdio (`@modelcontextprotoc
 Bytes are not tokens. As a rough guide, English-like JSON runs at three to four bytes per token
 with common tokenizers; measure with your model's tokenizer if you need token counts.
 
+The table above was measured before `hexvero_analyze` switched to a short overview by default
+(`detail: "full"` gives the earlier result). Token counts for fixed investigations on the corpus,
+with the `o200k_base` tokenizer (`node scripts/context-cost.mjs`, 2026-10-14):
+
+| Scenario                                            | Before | After |
+| --------------------------------------------------- | ------ | ----- |
+| Session start (`tools/list`, prompts, instructions) | 3,763  | 3,796 |
+| Native first look: open, analyze, imports           | 1,197  | 885   |
+| Electron investigation: open, analyze, four lists   | 5,215  | 2,986 |
+| Version comparison: two analyses, three compares    | 9,298  | 3,232 |
+
+`o200k_base` is OpenAI's published tokenizer; Claude's tokenizer is not public, so these counts
+are a stand-in that moves in the same direction, not the exact number a Claude model sees.
+
 The page size is not an accident of this input: `maxBytes` is a hard bound on the serialized page
 (default 262,144 bytes), enforced on the real UTF-8 size and covered by tests that try multibyte
 text, escape-heavy strings, long keys, thousands of fields and deep nesting

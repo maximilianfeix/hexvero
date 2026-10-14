@@ -272,6 +272,8 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
       );
   }
 
+  findings.push(...nativeFindings(data));
+
   return {
     target: info,
     summary,
@@ -280,4 +282,124 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
     limitations,
     durationMs: Math.round(performance.now() - started),
   };
+}
+
+const bare = (name: string): string => name.replace(/^_+/, "").replace(/@.*$/, "");
+
+/** Import names of a native binary, without the platform's leading underscore. */
+function importNames(data: BinaryData): string[] {
+  if (data.kind === "elf")
+    return data.elf.symbols
+      .filter((s) => s.section === "UND" && s.table === "dynsym")
+      .map((s) => bare(s.name));
+  if (data.kind === "pe") return data.pe.imports.flatMap((i) => i.functions.map(bare));
+  if (data.kind === "macho")
+    return data.macho.symbols.filter((s) => s.type === "undefined").map((s) => bare(s.name));
+  return [];
+}
+
+/** Imports that change what a reviewer looks at first; the name decides, nothing else. */
+const IMPORT_GROUPS: Array<{ kind: string; what: string; names: RegExp }> = [
+  {
+    kind: "native.imports.process",
+    what: "start other programs or a shell",
+    names:
+      /^(system|popen|_?wsystem|exec[lv]p?e?|posix_spawnp?|fork|vfork|CreateProcess[AW]?|CreateProcessAsUser[AW]?|ShellExecute(Ex)?[AW]?|WinExec)$/,
+  },
+  {
+    kind: "native.imports.dynamic-code",
+    what: "load code at run time",
+    names: /^(dlopen|dlsym|NSAddImage|LoadLibrary(Ex)?[AW]?|LdrLoadDll|GetProcAddress)$/,
+  },
+  {
+    kind: "native.imports.memory-protection",
+    what: "change memory protection (for example to make data executable)",
+    names: /^(mprotect|VirtualProtect(Ex)?|VirtualAlloc(Ex)?|vm_protect|mach_vm_protect)$/,
+  },
+  {
+    kind: "native.imports.network",
+    what: "open network connections",
+    names:
+      /^(socket|connect|getaddrinfo|gethostbyname|WSAStartup|WSAConnect|InternetOpen[AW]?|InternetConnect[AW]?|WinHttpOpen|curl_easy_init|SSL_connect|CFStreamCreatePairWithSocketToHost|nw_connection_create)$/,
+  },
+];
+
+const flag = (label: string, value: boolean | string | undefined): string | null =>
+  value === undefined
+    ? null
+    : `${label} ${value === true ? "yes" : value === false ? "no" : value}`;
+
+/**
+ * What a first look at a native binary should say: how it is hardened, and which imported
+ * functions deserve attention. An import says the code can call the function; whether it does,
+ * and with what input, is not established by reading the file.
+ */
+function nativeFindings(data: BinaryData): Finding[] {
+  // A universal binary: each architecture is its own program. Equal findings are said once.
+  if (data.kind === "macho-fat") {
+    const seen = new Map<string, Finding>();
+    for (const slice of data.slices)
+      for (const f of nativeFindings({ kind: "macho", macho: slice.macho } as BinaryData)) {
+        const key = f.title;
+        const prior = seen.get(key);
+        if (!prior) seen.set(key, { ...f, title: `${slice.cpu}: ${f.title}` });
+        else prior.title = prior.title.replace(/^([\w-]+(?:, [\w-]+)*): /, `$1, ${slice.cpu}: `);
+      }
+    return [...seen.values()];
+  }
+  const out: Finding[] = [];
+  const names = new Set(importNames(data));
+  for (const group of IMPORT_GROUPS) {
+    const hits = [...names].filter((n) => group.names.test(n)).toSorted();
+    if (!hits.length) continue;
+    out.push({
+      kind: group.kind,
+      title: `Imports functions that ${group.what}: ${hits.slice(0, 5).join(", ")}${hits.length > 5 ? ", …" : ""}`,
+      detail:
+        "Read from the import table. Whether and with what input they are called is not established by static reading; a call graph (hexvero calls) shows who calls them. (collection imports)",
+      confidence: "confirmed",
+    });
+  }
+  let parts: Array<string | null> = [];
+  if (data.kind === "elf") {
+    const m = data.elf.mitigations;
+    parts = [
+      flag("PIE", m.pie),
+      flag("NX", m.nx),
+      flag("RELRO", m.relro),
+      flag("stack canary", m.canary),
+      flag("FORTIFY", m.fortify),
+      flag("stripped", m.stripped),
+    ];
+  } else if (data.kind === "pe") {
+    const m = data.pe.mitigations;
+    parts = [
+      flag("ASLR", m.aslr),
+      flag("high-entropy VA", m.highEntropyVa),
+      flag("DEP/NX", m.nx),
+      flag("CFG", m.cfg),
+      flag("SafeSEH", m.seh),
+      flag("/GS", m.gs),
+      flag("Authenticode", m.authenticode),
+    ];
+  } else if (data.kind === "macho") {
+    const m = data.macho.mitigations;
+    parts = [
+      flag("PIE", m.pie),
+      flag("stack canary", m.canary),
+      flag("ARC", m.arc),
+      flag("code signature", data.macho.codeSigned),
+      flag("stripped", m.stripped),
+    ];
+  }
+  const shown = parts.filter((p): p is string => p !== null);
+  if (shown.length)
+    out.push({
+      kind: "native.hardening",
+      title: `Hardening: ${shown.join(", ")}`,
+      detail:
+        "From headers and imported symbols. A missing symbol alone does not prove a missing protection (for example a binary without stack buffers needs no canary).",
+      confidence: "confirmed",
+    });
+  return out;
 }

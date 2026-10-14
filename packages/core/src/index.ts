@@ -92,7 +92,7 @@ export {
   type CompareResult,
   type FieldChange,
 } from "./compare.js";
-export { compact, type CompactOptions } from "./compact.js";
+export { brief, compact, type CompactOptions } from "./compact.js";
 export { detectProviders, PROVIDER_OPERATIONS, type ProviderStatus } from "./providers/index.js";
 export {
   callersOf,

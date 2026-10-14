@@ -80,11 +80,13 @@ export function loadScan(key: string, tree: FileTree): JsScanFacts | null {
 
 export function saveScan(key: string, facts: JsScanFacts): void {
   const dir = root();
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const final = join(dir, `${key}.json`);
   const temp = `${final}.${process.pid}.${Date.now()}.tmp`;
   try {
-    writeFileSync(temp, JSON.stringify({ key, savedAt: new Date().toISOString(), facts }));
+    writeFileSync(temp, JSON.stringify({ key, savedAt: new Date().toISOString(), facts }), {
+      mode: 0o600,
+    });
     renameSync(temp, final);
   } catch (error) {
     rmSync(temp, { force: true });

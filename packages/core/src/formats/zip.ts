@@ -28,7 +28,12 @@ const ZIP64_LOCATOR = 0x07064b50;
 const ZIP64_EOCD = 0x06064b50;
 
 /** Central-directory reader; tolerates prepended data (self-extractors) and ZIP64 sizes. */
-export function openZip(bytes: Uint8Array): ZipArchive {
+/** Total bytes one opened archive may inflate. Entries that share compressed data (an overlap
+ * bomb) would otherwise expand the same bytes again for every entry. */
+const INFLATE_BUDGET = 1024 * 1024 * 1024;
+
+export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } = {}): ZipArchive {
+  let budget = options.inflateBudget ?? INFLATE_BUDGET;
   const eocd = findEocd(bytes);
   if (eocd === -1)
     throw new AnalysisError("malformed", "ZIP end-of-central-directory record not found");
@@ -123,6 +128,12 @@ export function openZip(bytes: Uint8Array): ZipArchive {
     if (data.length < entry.compressedSize)
       throw new AnalysisError("malformed", `${entry.name}: compressed data truncated`);
     if (entry.method === "stored") return data;
+    if (entry.size > budget)
+      throw new AnalysisError(
+        "too_large",
+        `${entry.name}: the archive has used its inflate budget (${options.inflateBudget ?? INFLATE_BUDGET} bytes); entries may share compressed data`,
+      );
+    budget -= entry.size;
     const out = inflateRawSync(data, {
       maxOutputLength: Math.max(entry.size, 1),
     });

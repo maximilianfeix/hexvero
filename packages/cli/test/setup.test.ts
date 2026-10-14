@@ -130,6 +130,26 @@ describe("setup", () => {
     }
   });
 
+  it("never replaces a differing hexvero entry and keeps plain JSON formatting", async () => {
+    mkdirSync(join(home, ".cursor"), { recursive: true });
+    const file = join(home, ".cursor", "mcp.json");
+    const pinned =
+      '{\n    "mcpServers": {\n        "hexvero": { "command": "/opt/hexvero/bin/hexvero", "args": ["mcp"] }\n    }\n}\n';
+    writeFileSync(file, pinned);
+    const io = capture();
+    await setup(io, { client: "cursor", apply: true, json: true }, ctx);
+    expect(JSON.parse(io.stdout.join("")).results[0].action).toContain("different hexvero entry");
+    expect(readFileSync(file, "utf8")).toBe(pinned);
+    const other =
+      '{\n    "zeta": 1,\n    "mcpServers": {\n        "other": { "command": "x" }\n    },\n    "alpha": [1, 2]\n}\n';
+    writeFileSync(file, other);
+    await setup(capture(), { client: "cursor", apply: true, json: true }, ctx);
+    const written = readFileSync(file, "utf8");
+    expect(written.startsWith('{\n    "zeta": 1,\n    "mcpServers": {')).toBe(true);
+    expect(written).toContain('"alpha": [1, 2]');
+    expect(JSON.parse(written).mcpServers.hexvero).toEqual(entryFor("stdio"));
+  });
+
   it("uses platform specific paths for Zed and VS Code on Windows", () => {
     const win: SetupContext = {
       home: "C:\\Users\\me",

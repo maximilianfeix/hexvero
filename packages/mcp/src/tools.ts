@@ -1,4 +1,6 @@
+import { checkWritePath } from "./writePolicy.js";
 import {
+  brief,
   suggestNextSteps,
   AnalysisError,
   compact,
@@ -63,6 +65,12 @@ export const toolSchemas = {
         .optional()
         .describe(
           "JavaScript apps only: continue = read the next batch of unread files, all = read every unread file, fresh = discard the stored scan and start again",
+        ),
+      detail: z
+        .enum(["brief", "full"])
+        .optional()
+        .describe(
+          "overview size: brief (default) lists only counts, full adds samples of every list",
         ),
       batch: z
         .number()
@@ -325,7 +333,9 @@ export function createHandlers(
         next: suggestNextSteps(analysis, await session.collections(id)).map(
           ({ question, tool, args }) => ({ question, tool, args: { targetId: id, ...args } }),
         ),
-        overview: compact(analysis.data),
+        // The facts without the lists (collections page through those); detail: "full" returns
+        // samples of every list as before.
+        overview: a["detail"] === "full" ? compact(analysis.data) : brief(analysis.data),
       };
     },
     hexvero_collection: async (a) => {
@@ -347,9 +357,15 @@ export function createHandlers(
     hexvero_bytes: async (a) =>
       session.bytes(str(a["targetId"]), Number(a["offset"]), Number(a["length"])),
     hexvero_export: async (a) =>
-      session.export(str(a["targetId"]), str(a["path"]), { overwrite: a["overwrite"] === true }),
+      session.export(str(a["targetId"]), checkWritePath(str(a["path"]), "export"), {
+        overwrite: a["overwrite"] === true,
+        onlyReplaceExports: true,
+      }),
     hexvero_recover: async (a) => {
-      const result = await session.recover(str(a["targetId"]), str(a["outputDir"]));
+      const result = await session.recover(
+        str(a["targetId"]),
+        checkWritePath(str(a["outputDir"]), "recover"),
+      );
       return {
         ...result,
         written: { count: result.written.length, sample: result.written.slice(0, 50) },

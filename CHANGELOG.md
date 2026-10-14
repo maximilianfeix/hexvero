@@ -6,7 +6,43 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- `hexvero_export` and `hexvero_recover` over MCP write only inside allowed roots (working
+  directory and temp directory, or `HEXVERO_WRITE_ROOTS`), never into hidden paths, and an export
+  must end in `.json` and may replace only an earlier export. Before, an agent misled by text in
+  an analyzed file could write anywhere the server could, for example a shell startup file.
+- `hexvero ui` analyzes in a worker like the MCP server, so a hostile file cannot stall the server.
+- Device files, FIFOs and sockets are refused instead of read (`/dev/zero` never ends).
+- A ZIP or APK may inflate at most 1 GiB in total, so entries that share compressed data cannot
+  multiply memory use; a forged ASAR header length no longer allocates more than the file holds.
+- SQLite databases open immutable, or from a private copy when a `-wal` file is pending, so no
+  `-wal`/`-shm` files appear next to the analyzed file.
+- New cache and scan-state directories are created `0700`, their files `0600` (existing
+  directories keep their mode).
+- `setup` leaves a differing hexvero entry alone instead of replacing it, and inserts into plain
+  JSON as text, so key order and indentation stay as they were.
+- The UI server sends a Content-Security-Policy that allows only its own origin.
+
 ### Added
+
+- `hexvero setup --remove [--apply]` takes the hexvero entry out of agent client files again,
+  with a backup of each file; files with comments are left alone with a note. When no client is
+  found, `setup` says so in three lines instead of listing every client as not detected.
+- `analyze` suggests up to four next commands for the kind of target (`next` in JSON and in the
+  MCP result), pointing only at lists that exist.
+- Native binaries get first-look findings: the hardening facts in one line, and imports that start
+  processes, load code, change memory protection or open network connections. They are worded as
+  imports, not as observed behaviour.
+- `hexvero_compare` pages its lists with `offset` and `limit`; `hexvero_analyze` takes
+  `detail: "full"` for the earlier, larger overview.
+- A Claude Code plugin and marketplace manifest (`/plugin install hexvero --marketplace
+  maximilianfeix/hexvero`), `mcpName` for the official MCP registry, and `glama.json`.
+- The skill is a short core with one reference file per workflow, with tests that it names only
+  tools and commands that exist. Tests plant prompt-injection text in a target and check that it
+  reaches the agent only as quoted data.
+- `scripts/context-cost.mjs` measures bytes and `o200k_base` tokens of fixed agent investigations;
+  `scripts/demo-agent.mjs` writes `docs/demo/agent-session.md` from a real MCP session.
 
 - A public corpus with written-down correct results (`corpus/`): three small Electron applications
   in three builds each (as written, bundled, minified), later versions with listed edits, three C
@@ -44,6 +80,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Changed
 
+- `hexvero_analyze` over MCP returns a brief overview (facts and list sizes) instead of samples of
+  every list: about 40 to 65 percent fewer tokens for a typical Electron investigation or version
+  comparison. The CLI's `--json` output is unchanged.
+
 - Analyzing a JavaScript application takes about twice as long as in 0.3.0 (measured: 6.3 s
   against 2.7 s on a 47 MiB archive, same memory). The time goes into following names.
 - A large JavaScript application now leaves scan state under `~/.cache/hexvero/scans` (or
@@ -63,6 +103,11 @@ All notable changes to hexvero are listed here. The format follows
   empty part.
 
 ### Fixed
+
+- A read-only or unwritable cache directory made the analysis of a large JavaScript app fail; it
+  now completes and reports `scan_state_not_saved`.
+- A missing engine's error now says how to install one.
+- Claude Code was not detected by `setup` when only `~/.claude.json` existed.
 
 - The CLI cut large output at a buffer boundary when it was piped (`--json | …`); it now exits
   only after standard output has been written.

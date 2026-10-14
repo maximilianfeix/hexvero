@@ -187,3 +187,19 @@ describe("Mach-O cut short", () => {
     expect(cut.limitations.find((l) => l.code === "file_truncated")?.message).toMatch(/__LINKEDIT/);
   });
 });
+
+describe("native first-look findings", () => {
+  it("names notable imports and the hardening, without claiming they are used", () => {
+    const bytes = new Uint8Array(
+      readFileSync(new URL("../../../corpus/built/dev/calls.O2.macho-arm64", import.meta.url)),
+    );
+    const analysis = analyzeBinary(targetFromBytes(bytes, "calls"));
+    const process = analysis.findings.find((f) => f.kind === "native.imports.process");
+    expect(process?.title).toBe("Imports functions that start other programs or a shell: system");
+    expect(process?.detail).toMatch(/not established/);
+    const hardening = analysis.findings.find((f) => f.kind === "native.hardening");
+    expect(hardening?.title).toMatch(/^Hardening: PIE yes, stack canary yes/);
+    // an ordinary library function is not called out
+    expect(analysis.findings.map((f) => f.title).join(" ")).not.toMatch(/printf/);
+  });
+});

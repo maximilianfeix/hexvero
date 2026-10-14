@@ -482,8 +482,8 @@ export async function loadCallGraph(
         );
       if (!graph.truncated && run.limitations.length === 0) {
         try {
-          await mkdir(dirname(diskPath), { recursive: true });
-          await writeFile(diskPath, JSON.stringify(graph));
+          await mkdir(dirname(diskPath), { recursive: true, mode: 0o700 });
+          await writeFile(diskPath, JSON.stringify(graph), { mode: 0o600 });
         } catch {
           /* cache is best effort */
         }
@@ -574,7 +574,7 @@ export async function runProvider(
       projectDir,
       `${scriptOperation}-${key.replace(/[^\w.$@-]/g, "_")}.json`,
     );
-    await mkdir(projectDir, { recursive: true });
+    await mkdir(projectDir, { recursive: true, mode: 0o700 });
     await rm(outputPath, { force: true });
     const exists = await readFile(join(projectDir, "hexvero.gpr")).then(
       () => true,

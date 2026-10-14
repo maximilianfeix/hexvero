@@ -83,3 +83,31 @@ Each row says where it was read (`file`, `line`, `column`) and how (`evidence`):
 | `unknown`  | there is a call, but its argument cannot be read; `value` is null and `expression` names it |
 
 A URL that only occurs as a string is not an endpoint; those are listed in `urls`.
+
+## Next steps
+
+`analyze` ends with up to four commands that answer the obvious next questions for this kind of
+target (`next` in `--json`). They only point at lists that exist in this analysis.
+
+## Setting up and removing agent clients
+
+```bash
+hexvero setup                     # dry run: which client files would change
+hexvero setup --apply             # add the hexvero MCP server to every detected client
+hexvero setup --client cursor --apply
+hexvero setup --remove            # dry run of taking it out again
+hexvero setup --remove --apply    # remove exactly the "hexvero" entry, backing up each file first
+```
+
+`setup` never removes or rewrites anything else. A file with comments (JSONC) is edited as text
+when an entry is added; for removal it is left alone with a note to remove the entry by hand, since
+rewriting would lose the comments. When no client configuration is found, `setup` says so and shows
+how to name one.
+
+## When something is missing
+
+- No engine installed: `calls` and `provider` fail with `provider_unavailable` and say how to
+  install one; everything else works without an engine. `hexvero doctor` lists what is installed.
+- A read-only cache directory: analysis still works; a large JavaScript app reports
+  `scan_state_not_saved` because its scan cannot be continued later. Set `HEXVERO_CACHE_DIR` to a
+  writable directory to fix that.

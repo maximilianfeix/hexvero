@@ -1,4 +1,4 @@
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { ByteReader, utf8String } from "../binary/reader.js";
 import { AnalysisError } from "../model.js";
 
@@ -56,9 +56,11 @@ export function openAsar(bytes: Uint8Array): AsarArchive {
 /** Same archive view, but reading from disk on demand so multi-gigabyte ASARs never load fully. */
 export function openAsarFile(path: string): AsarArchive {
   const fd = openSync(path, "r");
+  const fileSize = fstatSync(fd).size;
+  // Never allocate more than the file can supply: a forged header length must not cost memory.
   const readAt = (off: number, len: number): Uint8Array => {
-    const out = new Uint8Array(len);
-    const n = readSync(fd, out, 0, len, off);
+    const out = new Uint8Array(Math.max(0, Math.min(len, fileSize - off)));
+    const n = readSync(fd, out, 0, out.length, off);
     return out.subarray(0, n);
   };
   let header: ReturnType<typeof parseHeader>;

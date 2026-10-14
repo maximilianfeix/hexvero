@@ -182,6 +182,11 @@ describe("hexvero MCP server", () => {
     expect(refused.ok).toBe(false);
     expect((refused.body["error"] as { message: string }).message).toContain("overwrite");
     expect((await call("hexvero_export", { targetId, path: out, overwrite: true })).ok).toBe(true);
+    const hidden = await call("hexvero_export", { targetId, path: join(dir, ".profile.json") });
+    expect(hidden.ok).toBe(false);
+    expect((hidden.body["error"] as { message: string }).message).toContain("hidden");
+    const script = await call("hexvero_export", { targetId, path: join(dir, "run.sh") });
+    expect((script.body["error"] as { message: string }).message).toContain(".json");
     expect(exported.ok).toBe(true);
     expect(exported.body["bytes"]).toBeGreaterThan(100);
     const providers = await call("hexvero_providers");

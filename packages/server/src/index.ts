@@ -343,6 +343,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? host}`);
     res.setHeader("x-content-type-options", "nosniff");
     res.setHeader("referrer-policy", "no-referrer");
+    res.setHeader(
+      "content-security-policy",
+      "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+    );
     if (url.pathname.startsWith("/api/")) {
       api(req, res, url).catch((error) => fail(res, error));
       return;

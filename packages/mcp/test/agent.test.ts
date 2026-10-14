@@ -99,6 +99,12 @@ describe("an investigation as the skill describes it", () => {
     expect(next.length).toBeGreaterThan(0);
     const registered = new Set((await client.listTools()).tools.map((t) => t.name));
     for (const step of next) expect(registered.has(step.tool)).toBe(true);
+    // the first answer stays small: counts of the lists, not samples of them
+    expect(Buffer.byteLength(analysis.text)).toBeLessThan(8000);
+    const overview = analysis.body["overview"] as { app: { ipcChannels: unknown } };
+    expect(overview.app.ipcChannels).toEqual({ $count: 6 });
+    const full = await call("hexvero_analyze", { targetId: id, detail: "full" });
+    expect(Buffer.byteLength(full.text)).toBeGreaterThan(Buffer.byteLength(analysis.text));
     // the first suggestion is a call that works as given
     const followed = await call(next[0]!.tool, next[0]!.args);
     expect(followed.ok).toBe(true);

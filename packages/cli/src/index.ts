@@ -659,8 +659,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             `! binding to ${host} exposes the token-protected API to that network; only loopback is recommended`,
           ),
         );
+      // The UI keeps serving while a file is analyzed: analyses run in a worker with a time and
+      // heap limit, as in the MCP server, so one hostile file cannot stall the server.
       return startUi(
-        session,
+        new Session({ worker: true }),
         {
           port: flagNumber(args.flags, "port") ?? 7331,
           open: Boolean(args.flags["open"]),

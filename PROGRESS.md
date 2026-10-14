@@ -1,7 +1,31 @@
 # Progress
 
-State of the work on branch `quality/round-3`, written so that a fresh session can continue.
-Last updated 2026-10-13.
+State of the work, written so that a fresh session can continue. Last updated 2026-10-14.
+
+## Round 4: branch `oss/round-4` (on `quality/round-3`, local only)
+
+Not pushed, merged, tagged or published; each needs the maintainer's approval.
+
+- Agent experience: short default `hexvero_analyze` overview (`brief()` in
+  `packages/core/src/compact.ts`, `detail: "full"` for the old one), `next` suggestions
+  (`packages/core/src/next.ts`), paged `hexvero_compare`, the skill split into a core and
+  references, `scripts/context-cost.mjs` (token counts in `docs/benchmarks.md`).
+- Setup: `setup --remove`, a plain message when no client is found, differing entries left alone,
+  plain JSON edited as text.
+- Native first look: hardening and import findings (`nativeFindings` in `analyzers/binary.ts`).
+- Security fixes from `docs/audits/security-review.md`: MCP write roots
+  (`packages/mcp/src/writePolicy.ts`, `HEXVERO_WRITE_ROOTS`), UI in a worker, device files
+  refused, ZIP inflate budget, ASAR header cap, SQLite without sidecars, private cache modes, CSP.
+  Open: the P3 items listed there.
+- Distribution files: `.claude-plugin/`, `.mcp.json`, `glama.json`, `mcpName`. Nothing submitted
+  to any registry.
+- Docs: README rebuilt, audits in `docs/audits/`, launch plan and 90-day roadmap in `docs/growth/`
+  (drafts only; nothing posted), demos in `docs/demo/`.
+- Not done: agent task-success experiment (NOT RUN), Ghidra (NOT RUN, not installed), Linux and
+  Windows runs (BLOCKED locally; CI runs them after a push), the integration branch
+  `integration/round-3-fixes` in `~/hexvero-integration` is still unreviewed and unmerged.
+
+## Round 3: branch `quality/round-3`
 
 ## Where things stand
 

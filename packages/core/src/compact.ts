@@ -36,3 +36,27 @@ export function compact(value: unknown, options: CompactOptions = {}, depth = 0)
     out[k] = compact(v, options, depth + 1);
   return out;
 }
+
+/**
+ * The facts of an analysis without its lists: scalars and small objects stay, a list of
+ * records becomes its length (the matching collection pages through it), a short list of plain
+ * values stays. This is what an agent reads first; it costs a fraction of `compact`.
+ */
+export function brief(value: unknown, depth = 0): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "string") return value.length > 200 ? `${value.slice(0, 200)}…` : value;
+  if (typeof value !== "object") return value;
+  if (value instanceof Uint8Array) return `<${value.length} bytes>`;
+  if (Array.isArray(value)) {
+    const plain = value.every((v) => v === null || typeof v !== "object");
+    return plain && value.length <= 5
+      ? value.map((v) => brief(v, depth + 1))
+      : { $count: value.length };
+  }
+  if (depth >= 4) return "{…}";
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>))
+    out[k] = brief(v, depth + 1);
+  return out;
+}

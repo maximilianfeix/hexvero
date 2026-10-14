@@ -1,6 +1,6 @@
 ---
 name: hexvero
-description: Inspect local binaries, Electron and JavaScript apps, APKs, archives and HAR captures without running them, using the hexvero MCP server or CLI. Use when the user asks what a program or app bundle contains, what it calls or exposes (IPC, preload bridge, endpoints, storage, imports), how it is configured or hardened, or what changed between two builds.
+description: Inspects local binaries, Electron and JavaScript apps, APKs, archives and HAR captures without running them, using the hexvero MCP server or CLI. Use when the user asks what a program or app bundle contains, what it calls or exposes (IPC, preload bridge, endpoints, storage, imports), how it is configured or hardened, or what changed between two builds.
 ---
 
 # Investigate software with hexvero

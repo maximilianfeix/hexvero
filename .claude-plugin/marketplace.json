@@ -1,0 +1,14 @@
+{
+  "name": "hexvero",
+  "owner": { "name": "Maximilian Feix", "url": "https://github.com/maximilianfeix" },
+  "metadata": {
+    "description": "hexvero: a local, static first look at software for coding agents."
+  },
+  "plugins": [
+    {
+      "name": "hexvero",
+      "source": "./",
+      "description": "MCP server and investigation skill for static analysis of binaries, Electron apps, APKs and archives. Nothing is executed."
+    }
+  ]
+}

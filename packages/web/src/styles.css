@@ -980,3 +980,9 @@ code,
   gap: 8px;
   align-items: center;
 }
+
+/* A finding's title stands on its own line; confidence and kind follow beneath it, so a wrapped
+   title is never read as ending in "confirmed" or a kind name. */
+.finding .title {
+  display: block;
+}
