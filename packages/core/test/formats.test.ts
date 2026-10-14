@@ -202,4 +202,26 @@ describe("native first-look findings", () => {
     // an ordinary library function is not called out
     expect(analysis.findings.map((f) => f.title).join(" ")).not.toMatch(/printf/);
   });
+
+  it("says where each native finding was read", () => {
+    const macho = analyzeBinary(
+      targetFromBytes(
+        new Uint8Array(
+          readFileSync(new URL("../../../corpus/built/dev/calls.O2.macho-arm64", import.meta.url)),
+        ),
+        "calls",
+      ),
+    );
+    expect(macho.findings.find((f) => f.kind === "native.imports.process")?.location).toBe(
+      "symbol table: _system (undefined)",
+    );
+    const elf = analyzeBinary(targetFromBytes(buildElf(), "a.so"));
+    expect(elf.findings.find((f) => f.kind === "native.hardening")?.location).toMatch(
+      /^ELF header, program headers/,
+    );
+    const pe = analyzeBinary(targetFromBytes(buildPe(), "a.dll"));
+    expect(pe.findings.find((f) => f.kind === "native.hardening")?.location).toMatch(
+      /^optional header DllCharacteristics/,
+    );
+  });
 });
