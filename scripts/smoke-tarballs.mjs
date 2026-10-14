@@ -195,8 +195,8 @@ for (let f = 0; f < 8; f++) {
 }
 const analyzed = {};
 for (const threads of ["0", "2"]) {
-  const out = join(project, `big-${threads}.json`);
-  execFileSync(process.execPath, [bin, "export", bigApp, out], {
+  const bigOut = join(project, `big-${threads}.json`);
+  execFileSync(process.execPath, [bin, "export", bigApp, bigOut], {
     cwd: project,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -205,9 +205,9 @@ for (const threads of ["0", "2"]) {
       HEXVERO_CACHE_DIR: join(project, `cache-${threads}`),
     },
   });
-  const { analysis } = JSON.parse(readFileSync(out, "utf8"));
-  analysis.durationMs = 0;
-  analyzed[threads] = JSON.stringify(analysis);
+  const big = JSON.parse(readFileSync(bigOut, "utf8")).analysis;
+  big.durationMs = 0;
+  analyzed[threads] = JSON.stringify(big);
 }
 // The generated sources must stay over the threshold, or this step proves nothing.
 const bigBytes = readdirSync(bigApp)
