@@ -8,6 +8,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Fixed
 
+- Native findings say where they were read (#80): notable imports name the first matching import
+  as the table shows it (`.dynsym: system`, `import table: KERNEL32.dll!CreateProcessW`,
+  `symbol table: _system (undefined)`), and the hardening line names the headers it comes from.
+
 - Web UI collection tables page with the server's `next` offset, so a page the byte budget cut
   short no longer skips rows, and a row the server shortened to fit is marked with the full
   item's size (#81).

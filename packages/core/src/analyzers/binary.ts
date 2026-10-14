@@ -287,16 +287,29 @@ export function analyzeBinary(target: LoadedTarget): Analysis<BinaryData> {
 const bare = (name: string): string => name.replace(/^_+/, "").replace(/@.*$/, "");
 
 /** Import names of a native binary, without the platform's leading underscore. */
-function importNames(data: BinaryData): string[] {
+/** Each imported function with where it was read, as a finding's location names it. */
+function importSites(data: BinaryData): Array<{ name: string; where: string }> {
   if (data.kind === "elf")
     return data.elf.symbols
       .filter((s) => s.section === "UND" && s.table === "dynsym")
-      .map((s) => bare(s.name));
-  if (data.kind === "pe") return data.pe.imports.flatMap((i) => i.functions.map(bare));
+      .map((s) => ({ name: bare(s.name), where: `.dynsym: ${s.name}` }));
+  if (data.kind === "pe")
+    return data.pe.imports.flatMap((i) =>
+      i.functions.map((f) => ({ name: bare(f), where: `import table: ${i.dll}!${f}` })),
+    );
   if (data.kind === "macho")
-    return data.macho.symbols.filter((s) => s.type === "undefined").map((s) => bare(s.name));
+    return data.macho.symbols
+      .filter((s) => s.type === "undefined")
+      .map((s) => ({ name: bare(s.name), where: `symbol table: ${s.name} (undefined)` }));
   return [];
 }
+
+/** Where the hardening facts of each format are read from. */
+const HARDENING_SOURCES: Record<string, string> = {
+  elf: "ELF header, program headers (PT_GNU_STACK, PT_GNU_RELRO), .dynamic, .dynsym",
+  pe: "optional header DllCharacteristics, load config directory, certificate table",
+  macho: "Mach-O header flags, load commands (LC_CODE_SIGNATURE), symbol table",
+};
 
 /** Imports that change what a reviewer looks at first; the name decides, nothing else. */
 const IMPORT_GROUPS: Array<{ kind: string; what: string; names: RegExp }> = [
@@ -348,11 +361,14 @@ function nativeFindings(data: BinaryData): Finding[] {
     return [...seen.values()];
   }
   const out: Finding[] = [];
-  const names = new Set(importNames(data));
+  const sites = importSites(data);
+  const names = new Set(sites.map((x) => x.name));
   for (const group of IMPORT_GROUPS) {
     const hits = [...names].filter((n) => group.names.test(n)).toSorted();
     if (!hits.length) continue;
+    const first = sites.find((x) => x.name === hits[0]);
     out.push({
+      ...(first ? { location: first.where } : {}),
       kind: group.kind,
       title: `Imports functions that ${group.what}: ${hits.slice(0, 5).join(", ")}${hits.length > 5 ? ", …" : ""}`,
       detail:
@@ -395,6 +411,7 @@ function nativeFindings(data: BinaryData): Finding[] {
   const shown = parts.filter((p): p is string => p !== null);
   if (shown.length)
     out.push({
+      location: HARDENING_SOURCES[data.kind],
       kind: "native.hardening",
       title: `Hardening: ${shown.join(", ")}`,
       detail:
