@@ -37,8 +37,9 @@ const call = async (name: string, args: Record<string, unknown> = {}) => {
 
 describe("the packaged skill", () => {
   it("follows the skill format: a short name, a description that says when to use it", () => {
+    // line endings as checked out (CRLF on some Windows setups) do not change the format
     const head = /^---\nname: (.+)\ndescription: (.+)\n---\n/.exec(
-      readFileSync(join(skillDir, "SKILL.md"), "utf8"),
+      readFileSync(join(skillDir, "SKILL.md"), "utf8").replace(/\r\n/g, "\n"),
     );
     expect(head).not.toBeNull();
     expect(head![1]).toMatch(/^[a-z0-9-]{1,64}$/);

@@ -3,7 +3,7 @@
   "name": "io.github.maximilianfeix/hexvero",
   "title": "hexvero",
   "description": "Local, execution-free analysis of binaries, app bundles and archives for CLI and agents.",
-  "websiteUrl": "https://hexvero.dev",
+  "websiteUrl": "https://maximilianfeix.github.io/hexvero/",
   "repository": {
     "url": "https://github.com/maximilianfeix/hexvero",
     "source": "github"

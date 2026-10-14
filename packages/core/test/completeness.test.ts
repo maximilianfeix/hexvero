@@ -147,35 +147,42 @@ describe("a scan that did not read everything says so", () => {
 });
 
 describe("an unwritable cache directory", () => {
-  it("keeps the analysis and says that its state could not be stored", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hexvero-ro-"));
-    const cache = join(dir, "cache");
-    mkdirSync(cache);
-    chmodSync(cache, 0o555);
-    const previous = process.env["HEXVERO_CACHE_DIR"];
-    process.env["HEXVERO_CACHE_DIR"] = cache;
-    try {
-      const path = join(dir, "app.asar");
-      writeFileSync(
-        path,
-        buildAsar({
-          "package.json": JSON.stringify({ name: "x", main: "main.js" }),
-          "main.js": 'require("electron").ipcMain.handle("a", f);',
-          "b.js": "1;",
-        }),
-      );
-      const session = new Session();
-      const target = await session.open(path);
-      const analysis = await session.continueAnalysis(target.id, { continue: true, maxJsFiles: 1 });
-      expect(analysis.summary).toMatch(/partial: 1 of 2/);
-      expect(analysis.limitations.map((l) => l.code)).toContain("scan_state_not_saved");
-    } finally {
-      chmodSync(cache, 0o755);
-      if (previous === undefined) delete process.env["HEXVERO_CACHE_DIR"];
-      else process.env["HEXVERO_CACHE_DIR"] = previous;
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  // chmod cannot make a directory read-only on Windows
+  it.skipIf(process.platform === "win32")(
+    "keeps the analysis and says that its state could not be stored",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hexvero-ro-"));
+      const cache = join(dir, "cache");
+      mkdirSync(cache);
+      chmodSync(cache, 0o555);
+      const previous = process.env["HEXVERO_CACHE_DIR"];
+      process.env["HEXVERO_CACHE_DIR"] = cache;
+      try {
+        const path = join(dir, "app.asar");
+        writeFileSync(
+          path,
+          buildAsar({
+            "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+            "main.js": 'require("electron").ipcMain.handle("a", f);',
+            "b.js": "1;",
+          }),
+        );
+        const session = new Session();
+        const target = await session.open(path);
+        const analysis = await session.continueAnalysis(target.id, {
+          continue: true,
+          maxJsFiles: 1,
+        });
+        expect(analysis.summary).toMatch(/partial: 1 of 2/);
+        expect(analysis.limitations.map((l) => l.code)).toContain("scan_state_not_saved");
+      } finally {
+        chmodSync(cache, 0o755);
+        if (previous === undefined) delete process.env["HEXVERO_CACHE_DIR"];
+        else process.env["HEXVERO_CACHE_DIR"] = previous;
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("a guess is not reported as a fact", () => {
