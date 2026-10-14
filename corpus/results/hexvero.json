@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.6.0",
-  "commit": "3fa5cfe+uncommitted",
+  "version": "0.6.1",
+  "commit": "016983b+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -428,8 +428,8 @@
   {
    "set": "holdout",
    "class": "window settings",
-   "hit": 21,
-   "missed": 12,
+   "hit": 24,
+   "missed": 9,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -518,9 +518,9 @@
   {
    "set": "holdout",
    "class": "changes in webPreferences",
-   "hit": 0,
-   "missed": 2,
-   "false": 1,
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
    "hedged": 0,
    "inputs": 1
   },
@@ -1831,12 +1831,11 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "window settings",
-   "hit": 7,
-   "missed": 4,
+   "hit": 8,
+   "missed": 3,
    "false": 0,
    "notes": [
     "missed main.js sandbox=true",
-    "missed main.js nodeIntegration=false",
     "missed main.js contextIsolation=true",
     "missed main.js nodeIntegration=false"
    ]
@@ -1954,12 +1953,11 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "window settings",
-   "hit": 7,
-   "missed": 4,
+   "hit": 8,
+   "missed": 3,
    "false": 0,
    "notes": [
     "missed main.js sandbox=true",
-    "missed main.js nodeIntegration=false",
     "missed main.js contextIsolation=true",
     "missed main.js nodeIntegration=false"
    ]
@@ -2083,12 +2081,11 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "window settings",
-   "hit": 7,
-   "missed": 4,
+   "hit": 8,
+   "missed": 3,
    "false": 0,
    "notes": [
     "missed main.js sandbox=true",
-    "missed main.js nodeIntegration=false",
     "missed main.js contextIsolation=true",
     "missed main.js nodeIntegration=false"
    ]
@@ -2205,13 +2202,11 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
    "class": "changes in webPreferences",
-   "hit": 0,
-   "missed": 2,
-   "false": 1,
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
    "notes": [
-    "missed ~sandbox: false -> true",
-    "missed ~contextIsolation: true -> false",
-    "false -main.js::win::sandbox"
+    "missed ~contextIsolation: true -> false"
    ]
   },
   {

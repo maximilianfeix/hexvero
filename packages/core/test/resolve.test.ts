@@ -8,6 +8,13 @@ import { buildAsar } from "./fixtures/asar.js";
  */
 type Case = { kind?: "window"; files: Record<string, string>; want: string[]; forbid?: string[] };
 const CASES: Record<string, Case> = {
+  "ipc:pattern-default": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nfunction route({ channel = 'p:default', fn } = {}) { ipcMain.handle(channel, fn); }\nroute({ fn: () => 1 });\nroute({ channel: 'p:given', fn: () => 2 });",
+    },
+    want: ["p:default", "p:given"],
+  },
   "ipc:class-field": {
     files: {
       "main.js":
