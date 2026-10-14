@@ -181,6 +181,32 @@ describe("endpoints", () => {
     ]);
   });
 
+  it("reads addresses passed to the methods of a helper object, and built with new URL", () => {
+    const found = find(
+      [
+        'const EMBED_BASE = "https://embed.example";',
+        "const http = {",
+        "  async getJson(url) { const r = await fetch(url, { headers: {} }); return r.json(); },",
+        '  postJson: (url, body) => fetch(url, { method: "POST", body }),',
+        "};",
+        'function changelog() { return http.getJson("https://api.example/v1/changelog"); }',
+        'function feedback(text) { return http.postJson("https://api.example/v1/feedback", { text }); }',
+        // a bare call of the same name is another function, not the helper's method
+        'function getJson(x) { return x; }\ngetJson("not an address");',
+        "async function embedFor(link) {",
+        '  const url = new URL("/oembed", EMBED_BASE);',
+        '  url.searchParams.set("url", link);',
+        "  return fetch(url);",
+        "}",
+      ].join("\n"),
+    );
+    expect(show(found.endpoints)).toEqual([
+      "fetch https://api.example/v1/changelog [inferred]",
+      "fetch POST https://api.example/v1/feedback [inferred]",
+      "fetch https://embed.example/oembed [inferred]",
+    ]);
+  });
+
   it("refers to a key of another module's object until that module is read", () => {
     const [row] = find('import { links } from "./endpoints.js";\nfetch(links.upload);').endpoints;
     expect(

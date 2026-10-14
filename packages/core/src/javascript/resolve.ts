@@ -86,6 +86,8 @@ interface FnDef {
   block: boolean;
   /** For a callback: the token of the method it is passed to (`forEach`), and its receiver. */
   calledBy: { method: string; receiverEnd: number } | null;
+  /** A method or function-valued key of an object literal: called as `obj.name(…)`, never bare. */
+  member?: true;
 }
 
 const MAX_VALUES = 64;
@@ -134,6 +136,7 @@ export class ExpressionResolver {
   private lines = new Set<number>();
   private partial = false;
   private readonly siteCache = new Map<FnDef, number[]>();
+  private readonly literalOwners = new Map<FnDef, string | null>();
   private readonly bindingCache = new Map<
     FnDef,
     { envs: Env[] | null; partial: boolean; lines: number[] }
@@ -608,6 +611,25 @@ export class ExpressionResolver {
       (t.value === "void" && end === start + 2 && this.tokens[start + 1]?.value === "0")
     )
       return { kind: "undef" };
+    // `new URL(path, base)`: the address the URL constructor builds, when both are known
+    if (t.value === "new" && this.is(start + 1, "ident", "URL") && this.punct(start + 2, "(")) {
+      const close = this.match[start + 2]!;
+      if (close === -1 || close >= end) return null;
+      const [path, base] = this.list(start + 2, close, env, depth);
+      if (path?.kind !== "str" || (base && base.kind !== "str")) return null;
+      const out: string[] = [];
+      for (const p of path.values)
+        for (const b of base?.kind === "str" ? base.values : [undefined]) {
+          if (p.includes("${…}") || b?.includes("${…}") || (p + (b ?? "")).includes("\u0001"))
+            return null;
+          try {
+            out.push(new URL(p, b).href);
+          } catch {
+            return null;
+          }
+        }
+      return this.chain({ kind: "str", values: out }, close + 1, end, env, depth);
+    }
     if (t.value === "new" && this.is(start + 1, "ident", "Map") && this.punct(start + 2, "(")) {
       const close = this.match[start + 2]!;
       if (close !== end - 1) return null;
@@ -1082,7 +1104,7 @@ export class ExpressionResolver {
     if (!this.s.defsByName) {
       const byName = new Map<string, FnDef>();
       for (const d of this.functions())
-        if (d.name !== null && d.owner === null && d.block && !byName.has(d.name))
+        if (d.name !== null && d.owner === null && d.block && !d.member && !byName.has(d.name))
           byName.set(d.name, d);
       this.s.defsByName = byName;
     }
@@ -1288,6 +1310,14 @@ export class ExpressionResolver {
     return out;
   }
 
+  /** `{ key: <function at k>` or `, key: <function at k>`: the key, for functions as object values. */
+  private memberKey(k: number): string | null {
+    let at = k;
+    if (this.is(at - 1, "ident", "async")) at--;
+    if (!this.punct(at - 1, ":") || !this.is(at - 2, "ident")) return null;
+    return this.punct(at - 3, "{") || this.punct(at - 3, ",") ? this.tokens[at - 2]!.value : null;
+  }
+
   /** Every function of the file with its parameters and body. */
   private functions(): FnDef[] {
     if (this.s.defs) return this.s.defs;
@@ -1312,8 +1342,12 @@ export class ExpressionResolver {
         const assigned =
           name === null && this.punct(k - 1, "=") && this.is(k - 2, "ident")
             ? tokens[k - 2]!.value
-            : null;
+            : name === null
+              ? this.memberKey(k)
+              : null;
+        const keyed = name === null && assigned !== null && !this.punct(k - 1, "=");
         defs.push({
+          ...(keyed ? { member: true as const } : {}),
           name: name ?? assigned,
           owner: null,
           params: this.parseParams(p, close),
@@ -1340,8 +1374,10 @@ export class ExpressionResolver {
         const assigned =
           this.punct(start - 1, "=") && this.is(start - 2, "ident")
             ? tokens[start - 2]!.value
-            : null;
+            : this.memberKey(start);
+        const keyed = assigned !== null && !this.punct(start - 1, "=");
         defs.push({
+          ...(keyed ? { member: true as const } : {}),
           name: assigned,
           owner: null,
           params: arrowParams ? this.parseParams(k, close) : [{ kind: "name", name: t.value }],
@@ -1357,8 +1393,28 @@ export class ExpressionResolver {
         const close = this.match[k + 1]!;
         if (close === -1 || !this.punct(close + 1, "{")) continue;
         const owner = classAt(k);
-        if (owner === null) continue;
         const prev = tokens[k - 1];
+        // outside a class: a shorthand method of an object literal, `{ getJson(url) { … }, … }`
+        if (owner === null) {
+          const member =
+            prev?.type === "punct"
+              ? prev.value === "{" || prev.value === ","
+              : prev?.type === "ident" &&
+                /^(async|get|set)$/.test(prev.value) &&
+                (this.punct(k - 2, "{") || this.punct(k - 2, ","));
+          if (!member || /^(if|for|while|switch|catch|function|with)$/.test(t.value)) continue;
+          defs.push({
+            member: true,
+            name: t.value,
+            owner: null,
+            params: this.parseParams(k + 1, close),
+            paramsAt: k + 1,
+            body: [close + 1, (this.match[close + 1] ?? close + 1) + 1],
+            block: true,
+            calledBy: null,
+          });
+          continue;
+        }
         const starts =
           !prev ||
           (prev.type === "punct" &&
@@ -1823,6 +1879,44 @@ export class ExpressionResolver {
    * Calls of the function: `name(` for a plain function; for a method, `this.name(` inside its
    * class and `x.name(` where x is a `new Class(…)` of the file, also in a chain of such calls.
    */
+  /**
+   * The name of the object literal def is a method of, for `const NAME = { … }` outside every
+   * function and declared once; null otherwise.
+   */
+  private literalOwner(def: FnDef): string | null {
+    const cached = this.literalOwners.get(def);
+    if (cached !== undefined) return cached;
+    let owner: string | null = null;
+    // walk back from the parameters to the brace the member is in, over earlier members
+    let j = def.paramsAt - 1;
+    for (let steps = 0; j >= 0 && steps < 200; steps++, j--) {
+      const t = this.tokens[j]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "}" || t.value === ")" || t.value === "]") {
+        j = this.opener[j]!;
+        if (j === -1) break;
+        continue;
+      }
+      if (t.value === "(" || t.value === "[" || t.value === ";") break;
+      if (t.value === "{") {
+        const name = this.tokens[j - 2];
+        if (
+          this.punct(j - 1, "=") &&
+          name?.type === "ident" &&
+          !this.punct(j - 3, ".") &&
+          this.is(j - 3, "ident") &&
+          /^(const|let|var)$/.test(this.tokens[j - 3]!.value) &&
+          !this.enclosing(j) &&
+          this.topDeclarations().get(name.value)
+        )
+          owner = name.value;
+        break;
+      }
+    }
+    this.literalOwners.set(def, owner);
+    return owner;
+  }
+
   private callSites(def: FnDef): number[] {
     const cached = this.siteCache.get(def);
     if (cached) return cached;
@@ -1841,7 +1935,14 @@ export class ExpressionResolver {
         continue;
       const before = this.punct(k - 1, ".");
       if (!def.owner) {
-        if (before || this.is(k - 1, "ident", "function")) continue;
+        // a method of an object literal: `http.getJson(…)` for `const http = { getJson(url) {…} }`
+        if (before) {
+          const literal = def.member ? this.literalOwner(def) : null;
+          if (literal && this.is(k - 2, "ident", literal) && !this.punct(k - 3, "."))
+            out.push(k + 1);
+          continue;
+        }
+        if (def.member || this.is(k - 1, "ident", "function")) continue;
         out.push(k + 1);
         continue;
       }

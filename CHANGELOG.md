@@ -6,6 +6,15 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- Methods of object literals are functions to the resolver: `const http = { getJson(url) {…},
+  postJson: (url, body) => … }` called as `http.getJson("…")` gives the address at each call
+  site (only through that object, never through a bare call of the same name). `new URL(path,
+  base)` is evaluated when both parts are known. Corpus, development sets: holdout2 endpoints
+  46 → 53 of 57, holdout 32 → 35 of 42, still without false reports; the real applications
+  checked report the same results as 0.4.2.
+
 ## [0.4.2] - 2026-10-14
 
 ### Accuracy
