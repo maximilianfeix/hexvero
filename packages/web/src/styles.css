@@ -107,6 +107,18 @@ a {
   text-underline-offset: 3px;
 }
 
+/* An action that reads as a link (the export download is fetched, not navigated to). */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--amber-ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
 code,
 .mono {
   font-family: var(--mono);

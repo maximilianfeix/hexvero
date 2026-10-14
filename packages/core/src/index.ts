@@ -174,3 +174,11 @@ export {
   type CilInstruction,
   type CilResolver,
 } from "./formats/cil.js";
+export {
+  cacheRoot,
+  cacheEntries,
+  cacheLimits,
+  pruneCache,
+  type CacheEntry,
+  type PruneResult,
+} from "./cache.js";

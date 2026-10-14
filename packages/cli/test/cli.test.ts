@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -23,6 +23,32 @@ describe("hexvero CLI", () => {
   const so = join(dir, "lib.so");
   writeFileSync(so, buildElf());
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("shows the cache and clears it only with --apply", async () => {
+    const root = join(dir, "cache");
+    mkdirSync(join(root, "scans"), { recursive: true });
+    const entry = join(root, "scans", `${"a".repeat(40)}.json`);
+    writeFileSync(entry, "{}");
+    const saved = process.env["HEXVERO_CACHE_DIR"];
+    process.env["HEXVERO_CACHE_DIR"] = root;
+    try {
+      const shown = capture();
+      expect(await main(["cache", "--json"], shown)).toBe(0);
+      expect(JSON.parse(shown.stdout.join(""))).toMatchObject({
+        root,
+        areas: { scans: { count: 1 } },
+      });
+      const dry = capture();
+      expect(await main(["cache", "--clear"], dry)).toBe(0);
+      expect(dry.stdout.join("\n")).toContain("Would remove 1 entries");
+      expect(existsSync(entry)).toBe(true);
+      expect(await main(["cache", "--clear", "--apply"], capture())).toBe(0);
+      expect(existsSync(entry)).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env["HEXVERO_CACHE_DIR"];
+      else process.env["HEXVERO_CACHE_DIR"] = saved;
+    }
+  });
 
   it("prints help and version", async () => {
     const io = capture();

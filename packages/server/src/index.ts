@@ -13,7 +13,7 @@ export interface ServerOptions {
   /** Directory with the built web UI; omitted means API only. */
   staticDir?: string;
   session?: Session;
-  /** Pre-shared token; generated when omitted. Sent as `Authorization: Bearer` or `?token=`. */
+  /** Pre-shared token; generated when omitted. Sent as `Authorization: Bearer`. */
   token?: string;
   maxUploadBytes?: number;
 }
@@ -121,15 +121,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     const b = Buffer.from(token);
     return a.length === b.length && timingSafeEqual(a, b);
   };
-  const authorized = (req: IncomingMessage, url: URL): boolean => {
+  const authorized = (req: IncomingMessage): boolean => {
     const header = req.headers.authorization;
-    if (header?.startsWith("Bearer ") && sameToken(header.slice(7))) return true;
-    // The query form exists for the UI's download link only; every other route needs the header.
-    return (
-      req.method === "GET" &&
-      /^\/api\/targets\/[^/]+\/export$/.test(url.pathname) &&
-      sameToken(url.searchParams.get("token"))
-    );
+    // Only the header: a token in a URL ends up in history, logs and Referer headers.
+    return !!header?.startsWith("Bearer ") && sameToken(header.slice(7));
   };
 
   const api = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
@@ -159,7 +154,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       });
       return;
     }
-    if (!authorized(req, url)) {
+    if (!authorized(req)) {
       json(res, 401, {
         error: {
           code: "unauthorized",

@@ -8,14 +8,13 @@
  * crashes leaves the previous complete state behind, never half of a new one.
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { cacheRoot, ensurePrivateDir, pruneCacheSoon } from "../cache.js";
 import type { TargetInfo } from "../model.js";
 import { JS_SCAN_SCHEMA, type FileTree, type JsScanFacts } from "./app.js";
 
-const root = (): string =>
-  join(process.env["HEXVERO_CACHE_DIR"] ?? join(homedir(), ".cache", "hexvero"), "scans");
+const root = (): string => join(cacheRoot(), "scans");
 
 /** Identity of the input for scan purposes; null when it cannot be established. */
 export function scanKey(info: TargetInfo, tree: FileTree): string | null {
@@ -80,7 +79,7 @@ export function loadScan(key: string, tree: FileTree): JsScanFacts | null {
 
 export function saveScan(key: string, facts: JsScanFacts): void {
   const dir = root();
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  ensurePrivateDir(dir);
   const final = join(dir, `${key}.json`);
   const temp = `${final}.${process.pid}.${Date.now()}.tmp`;
   try {
@@ -92,6 +91,7 @@ export function saveScan(key: string, facts: JsScanFacts): void {
     rmSync(temp, { force: true });
     throw error;
   }
+  pruneCacheSoon();
 }
 
 export function dropScan(key: string): void {

@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cacheRoot, ensurePrivateDir, pruneCacheSoon } from "../cache.js";
 import { AnalysisError, type Limitation } from "../model.js";
 import { type CallGraph, callersOf, calleesOf, normalizeCallGraph, resolveNode } from "./graph.js";
 import { detectProviders, type ProviderStatus } from "./index.js";
@@ -482,8 +482,9 @@ export async function loadCallGraph(
         );
       if (!graph.truncated && run.limitations.length === 0) {
         try {
-          await mkdir(dirname(diskPath), { recursive: true, mode: 0o700 });
+          ensurePrivateDir(dirname(diskPath));
           await writeFile(diskPath, JSON.stringify(graph), { mode: 0o600 });
+          pruneCacheSoon();
         } catch {
           /* cache is best effort */
         }
@@ -497,9 +498,7 @@ export async function loadCallGraph(
   return { graph, cached, durationMs: Math.round(performance.now() - started) };
 }
 
-export function cacheRoot(): string {
-  return process.env["HEXVERO_CACHE_DIR"] ?? join(homedir(), ".cache", "hexvero");
-}
+export { cacheRoot } from "../cache.js";
 
 /** Location of the packaged Ghidra export script. */
 export function ghidraScriptDir(): string {
@@ -574,7 +573,8 @@ export async function runProvider(
       projectDir,
       `${scriptOperation}-${key.replace(/[^\w.$@-]/g, "_")}.json`,
     );
-    await mkdir(projectDir, { recursive: true, mode: 0o700 });
+    ensurePrivateDir(projectDir);
+    pruneCacheSoon();
     await rm(outputPath, { force: true });
     const exists = await readFile(join(projectDir, "hexvero.gpr")).then(
       () => true,

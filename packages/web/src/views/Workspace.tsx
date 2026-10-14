@@ -24,6 +24,7 @@ export function Workspace({
   const [attempt, setAttempt] = useState(0);
   const [scanning, setScanning] = useState<"continue" | "all" | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const scanMore = (mode: "continue" | "all"): void => {
     setScanning(mode);
     setScanError(null);
@@ -83,9 +84,25 @@ export function Workspace({
             <span title={target.info.sha256}>sha256 {target.info.sha256.slice(0, 16)}…</span>
           )}
           {analysis.data && <span>{analysis.data.durationMs} ms</span>}
-          <a href={api.exportUrl(target.id)} download>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setExportError(null);
+              api
+                .exportJson(target.id)
+                .catch((error: unknown) =>
+                  setExportError(error instanceof Error ? error.message : String(error)),
+                );
+            }}
+          >
             Export JSON
-          </a>
+          </button>
+          {exportError && (
+            <span role="alert" style={{ color: "var(--alert)" }}>
+              Export failed: {exportError}
+            </span>
+          )}
         </div>
         {analysis.loading && (
           <p className="verdict" style={{ color: "var(--ink-2)" }}>

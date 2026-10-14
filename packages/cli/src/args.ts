@@ -51,6 +51,8 @@ const BOOLEAN_FLAGS = new Set([
   "no-color",
   "apply",
   "all",
+  "prune",
+  "clear",
 ]);
 const SHORT: Record<string, string> = {
   "-h": "help",

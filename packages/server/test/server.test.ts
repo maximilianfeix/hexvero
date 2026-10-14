@@ -55,7 +55,7 @@ describe("hexvero HTTP API", () => {
       },
     });
     expect(rebound.status).toBe(403);
-    // the query-string token only unlocks the export download
+    // a token in the query string unlocks nothing, the export download included
     expect((await fetch(`${running.url}/api/health?token=${running.token}`)).status).toBe(401);
     const badJson = await api("/targets", {
       method: "POST",
@@ -95,17 +95,21 @@ describe("hexvero HTTP API", () => {
     expect((strings.body["items"] as Array<{ value: string }>)[0]?.value).toContain("ld-linux");
     const bytes = await api(`/targets/${targetId}/bytes?offset=0&length=4`);
     expect(bytes.body["hex"]).toBe("7f454c46");
-    const exported = await fetch(
-      `${running.url}/api/targets/${targetId}/export?token=${running.token}`,
-    );
+    const exported = await fetch(`${running.url}/api/targets/${targetId}/export`, {
+      headers: { authorization: `Bearer ${running.token}` },
+    });
     expect(exported.headers.get("content-disposition")).toContain("attachment");
     expect(((await exported.json()) as { hexvero: number }).hexvero).toBe(1);
     const missing = await api(`/targets/t_nope/analysis`);
     expect(missing.status).toBe(404);
     expect((await api(`/targets/${targetId}/bytes?offset=abc`)).status).toBe(400);
-    const download = await fetch(
+    const byQuery = await fetch(
       `${running.url}/api/targets/${targetId}/export?token=${running.token}`,
     );
+    expect(byQuery.status).toBe(401);
+    const download = await fetch(`${running.url}/api/targets/${targetId}/export`, {
+      headers: { authorization: `Bearer ${running.token}` },
+    });
     expect(download.status).toBe(200);
     expect(download.headers.get("content-disposition")).toContain(".hexvero.json");
   });

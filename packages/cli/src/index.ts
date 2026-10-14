@@ -60,6 +60,8 @@ Commands
   mcp                                           Serve the Model Context Protocol over stdio
   ui [--port n] [--host h] [--open]             Start the local web UI (loopback by default)
   doctor                                        Check the runtime and optional engines
+  cache [--prune] [--clear [--apply]]           Show the cache (stored scans, call graphs, Ghidra
+                                                projects); prune it to its limits or clear it
   setup [--client name] [--apply] [--all]       Register the MCP server with detected agent clients
   setup --remove [--client name] [--apply]      Take the hexvero entry out again (backups first)
   setup --skill [--client name] [--apply]       Install the investigation skill for agents
@@ -684,6 +686,15 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         },
         io,
       );
+    }
+    case "cache": {
+      const { cache } = await import("./cache.js");
+      return cache(io, {
+        prune: Boolean(args.flags["prune"]),
+        clear: Boolean(args.flags["clear"]),
+        apply: Boolean(args.flags["apply"]),
+        json,
+      });
     }
     case "doctor": {
       const { doctor } = await import("./doctor.js");
