@@ -58,6 +58,7 @@ export {
   type AnalysisData,
   type JsScanRequest,
 } from "./analyzers/dispatch.js";
+export { suggestNextSteps, type NextStep } from "./next.js";
 export {
   findCandidates,
   type Candidate,

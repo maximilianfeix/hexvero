@@ -2,7 +2,7 @@
  * Cases from the independent review of the continued-scan work: places where something
  * incomplete could look complete, or a guess could look like a fact.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -18,6 +18,7 @@ import { loadScan, saveScan } from "../src/javascript/scanState.js";
 import { scanJavaScript, tokenize } from "../src/javascript/scan.js";
 import { normalizeCallGraph } from "../src/providers/graph.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { Session } from "../src/session.js";
 
 const ipc = (source: string): string[] =>
   scanJavaScript(source)
@@ -141,6 +142,38 @@ describe("a scan that did not read everything says so", () => {
       if (previous === undefined) delete process.env["HEXVERO_CACHE_DIR"];
       else process.env["HEXVERO_CACHE_DIR"] = previous;
       rmSync(cache, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("an unwritable cache directory", () => {
+  it("keeps the analysis and says that its state could not be stored", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hexvero-ro-"));
+    const cache = join(dir, "cache");
+    mkdirSync(cache);
+    chmodSync(cache, 0o555);
+    const previous = process.env["HEXVERO_CACHE_DIR"];
+    process.env["HEXVERO_CACHE_DIR"] = cache;
+    try {
+      const path = join(dir, "app.asar");
+      writeFileSync(
+        path,
+        buildAsar({
+          "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+          "main.js": 'require("electron").ipcMain.handle("a", f);',
+          "b.js": "1;",
+        }),
+      );
+      const session = new Session();
+      const target = await session.open(path);
+      const analysis = await session.continueAnalysis(target.id, { continue: true, maxJsFiles: 1 });
+      expect(analysis.summary).toMatch(/partial: 1 of 2/);
+      expect(analysis.limitations.map((l) => l.code)).toContain("scan_state_not_saved");
+    } finally {
+      chmodSync(cache, 0o755);
+      if (previous === undefined) delete process.env["HEXVERO_CACHE_DIR"];
+      else process.env["HEXVERO_CACHE_DIR"] = previous;
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

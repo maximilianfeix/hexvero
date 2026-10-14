@@ -58,6 +58,11 @@ export interface ProviderResult {
 }
 
 const MAX_OUTPUT = 8 * 1024 * 1024;
+const INSTALL_HINT: Record<ProviderName, string> = {
+  radare2: "brew install radare2, apt install radare2, or https://github.com/radareorg/radare2",
+  rizin: "brew install rizin, or https://rizin.re",
+  ghidra: "https://ghidra-sre.org, then put analyzeHeadless on PATH or set GHIDRA_INSTALL_DIR",
+};
 
 interface Exec {
   stdout: string;
@@ -517,7 +522,7 @@ export async function runProvider(
   if (!status?.available || !status.path) {
     throw new AnalysisError(
       "provider_unavailable",
-      `${request.provider} is not installed or not on PATH`,
+      `${request.provider} is not installed or not on PATH. Install it (${INSTALL_HINT[request.provider]}) or use another engine; "hexvero doctor" lists what is installed. Built-in analysis (analyze, collection, strings, compare) needs no engine.`,
       { provider: request.provider },
     );
   }

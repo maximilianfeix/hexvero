@@ -1,4 +1,5 @@
 import {
+  suggestNextSteps,
   AnalysisError,
   compact,
   compareItems,
@@ -158,6 +159,19 @@ export const toolSchemas = {
         .array(z.string())
         .optional()
         .describe("Fields to exclude from change detection, in addition to the position rule"),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Skip this many added, removed and changed items (for the next page)"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Items per list in this answer (default 50 added/removed, 25 changed)"),
       strict: z
         .boolean()
         .optional()
@@ -307,6 +321,10 @@ export function createHandlers(
         findings: analysis.findings,
         limitations: analysis.limitations,
         collections: await session.collections(id),
+        // Calls that answer the obvious next questions about this kind of target.
+        next: suggestNextSteps(analysis, await session.collections(id)).map(
+          ({ question, tool, args }) => ({ question, tool, args: { targetId: id, ...args } }),
+        ),
         overview: compact(analysis.data),
       };
     },
@@ -364,6 +382,17 @@ export function createHandlers(
       return session.unknowns.list(filter);
     },
     hexvero_compare: async (a) => {
+      const from = num(a["offset"]) ?? 0;
+      const per = num(a["limit"]);
+      const window = <T>(items: T[], fallback: number) => {
+        const size = per ?? fallback;
+        const sample = items.slice(from, from + size);
+        return {
+          count: items.length,
+          sample,
+          ...(from + sample.length < items.length ? { next: from + sample.length } : {}),
+        };
+      };
       const name = str(a["collection"]);
       const idA = str(a["targetA"]);
       const idB = str(a["targetB"]);
@@ -423,9 +452,10 @@ export function createHandlers(
           limitsB === 0 &&
           diff.ignored.length === 0,
         unchanged: diff.unchanged,
-        added: { count: diff.added.length, sample: diff.added.slice(0, 50) },
-        removed: { count: diff.removed.length, sample: diff.removed.slice(0, 50) },
-        changed: { count: diff.changed.length, sample: diff.changed.slice(0, 25).map(fieldsOf) },
+        // Lists are paged like collections: `next` is the offset of the following page.
+        added: window(diff.added, 50),
+        removed: window(diff.removed, 50),
+        changed: window(diff.changed.map(fieldsOf), 25),
         relocated: {
           count: diff.relocated,
           sample: diff.relocatedSample.slice(0, 5).map(fieldsOf),

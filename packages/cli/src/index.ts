@@ -8,6 +8,7 @@ import {
   MAX_PAGE_BYTES,
   neighborhood,
   positionalFields,
+  suggestNextSteps,
   PROVIDER_OPERATIONS,
   resolveNode,
   runProvider,
@@ -60,6 +61,7 @@ Commands
   ui [--port n] [--host h] [--open]             Start the local web UI (loopback by default)
   doctor                                        Check the runtime and optional engines
   setup [--client name] [--apply] [--all]       Register the MCP server with detected agent clients
+  setup --remove [--client name] [--apply]      Take the hexvero entry out again (backups first)
   setup --skill [--client name] [--apply]       Install the investigation skill for agents
 
 Options
@@ -201,6 +203,12 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         : await session.analyze(target.id);
       const collections = await session.collections(target.id);
       const coverage = analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null;
+      const shown = displayPath(target.info.path);
+      const quoted = /^[\w./@:+-]+$/.test(shown) ? shown : JSON.stringify(shown);
+      const next = suggestNextSteps(analysis, collections).map((step) => ({
+        ...step,
+        cli: step.cli.replace("<path>", quoted),
+      }));
       const out = flagString(args.flags, "out");
       if (out) await session.export(target.id, out, { overwrite: true });
       if (json) {
@@ -213,6 +221,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             limitations: analysis.limitations,
             ...(coverage ? { complete: coverage.complete, coverage } : {}),
             collections,
+            next: next.map(({ question, cli }) => ({ question, command: cli })),
             overview: compact(analysis.data),
             exported: out ?? null,
           }),
@@ -260,6 +269,12 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       io.out(
         `\n${heading(io, "Collections")}\n  ${lists.join(", ") || "(none)"}\n  ${paint(io, "dim", `hexvero collection <path> <name> to page through one`)}`,
       );
+      if (next.length)
+        io.out(
+          `\n${heading(io, "Next")}\n${next
+            .map((step) => `  ${step.question}\n    ${paint(io, "cyan", step.cli)}`)
+            .join("\n")}`,
+        );
       if (out) io.out(`\n${paint(io, "green", "✓")} exported to ${out}`);
       return 0;
     }
@@ -672,6 +687,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         client: flagString(args.flags, "client"),
         apply: Boolean(args.flags["apply"]),
         all: Boolean(args.flags["all"]),
+        remove: Boolean(args.flags["remove"]),
         json,
       });
     }

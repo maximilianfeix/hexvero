@@ -83,6 +83,17 @@ function scanApplication(
   const stored = key ? loadScan(key, tree) : null;
   const advancing = !!(request.continue || request.all || request.include?.length);
   let last: JsScanFacts | null = null;
+  // The state is a convenience for continuing later. Where it cannot be written (a read-only
+  // cache directory, a full disk) the analysis itself stands, and says what was not kept.
+  let notSaved: string | null = null;
+  const save = (facts: JsScanFacts): void => {
+    if (!key) return;
+    try {
+      saveScan(key, facts);
+    } catch (error) {
+      notSaved ??= error instanceof Error ? error.message : String(error);
+    }
+  };
   const app = analyzeJavaScriptTree(tree, {
     ...(stored ? { resume: stored } : {}),
     // A stored scan is shown as it stands unless the caller asks to read more.
@@ -95,12 +106,16 @@ function scanApplication(
     onFacts: (facts) => {
       // In `all` mode every finished batch is stored at once, so a timeout or a kill costs one
       // batch at most and the next run continues from there.
-      if (key && request.all) saveScan(key, facts);
+      if (request.all) save(facts);
       last = facts;
     },
   });
-  if (key && last && !request.all && (advancing || (!stored && !app.coverage.complete)))
-    saveScan(key, last);
+  if (key && last && !request.all && (advancing || (!stored && !app.coverage.complete))) save(last);
+  if (notSaved)
+    app.limitations.push({
+      code: "scan_state_not_saved",
+      message: `The scan state could not be stored (${notSaved}). This result is complete as reported, but a later run cannot continue from it; set HEXVERO_CACHE_DIR to a writable directory.`,
+    });
   return app;
 }
 
