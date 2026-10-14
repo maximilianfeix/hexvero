@@ -431,3 +431,50 @@ describe("channels named by a compiled TypeScript enum", () => {
     ).toEqual(["main/main.js ipcMain.on doc:save 5 constant"]);
   });
 });
+
+describe("channel names from an IPC module with re-exports", () => {
+  it("follows enums, aliases of imported tables and templates around imported names", () => {
+    const info = analyze({
+      "main/main.js": 'const { ipcMain } = require("electron");\nipcMain.on("boot", () => {});',
+      "main/ipc/channels.js": [
+        'export const TIMER_PREFIX = "timer:";',
+        'export const Channel = Object.freeze({ ConfigGetSync: "config:get-sync" });',
+      ].join("\n"),
+      // tsc's output for an exported string enum
+      "main/ipc/events.js": [
+        "export var Push;",
+        '(function (Push) { Push["MenuNewEntry"] = "menu:new-entry"; })(Push || (Push = {}));',
+      ].join("\n"),
+      "main/ipc/index.js": [
+        'import { Channel } from "./channels.js";',
+        'export * from "./channels.js";',
+        'export { Push } from "./events.js";',
+        "export const ConfigSync = Channel.ConfigGetSync;",
+      ].join("\n"),
+      "main/preload.js": [
+        'const { contextBridge, ipcRenderer } = require("electron");',
+        'const { ConfigSync, Push, TIMER_PREFIX } = require("./ipc");',
+        'contextBridge.exposeInMainWorld("api", {',
+        "  setting: (name) => ipcRenderer.sendSync(ConfigSync, name),",
+        "  onNewEntry: (f) => ipcRenderer.on(Push.MenuNewEntry, () => f()),",
+        "  onTick(f) {",
+        "    ipcRenderer.on(`${TIMER_PREFIX}tick`, f);",
+        "    return () => ipcRenderer.off(`${TIMER_PREFIX}tick`, f);",
+        "  },",
+        "});",
+      ].join("\n"),
+    });
+    const preload = rows(info).filter((r) => r.startsWith("main/preload.js"));
+    expect(preload).toEqual([
+      "main/preload.js contextBridge.exposeInMainWorld api 3",
+      "main/preload.js ipcRenderer.sendSync config:get-sync 4 constant",
+      "main/preload.js ipcRenderer.on menu:new-entry 5 constant",
+      "main/preload.js ipcRenderer.on timer:tick 7 constant",
+    ]);
+    expect(info.contextBridge.map((b) => `${b.member} ${b.channel}`)).toEqual([
+      "setting config:get-sync",
+      "onNewEntry menu:new-entry",
+      "onTick timer:tick",
+    ]);
+  });
+});

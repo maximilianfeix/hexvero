@@ -6,6 +6,16 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- IPC channel names from a shared IPC module are followed through more of its forms: string
+  enums exported as tsc writes them (`export var Push;` and its definition), exports that alias a
+  key of an imported table (`export const ConfigSync = Channel.ConfigGetSync`), and templates
+  around one constant (`` `${TIMER_PREFIX}tick` ``), also when that constant is another module's.
+  A bridge member that subscribes and unsubscribes on the same channel counts it once. Corpus,
+  holdout (a development set): IPC channels 60 → 64 of 72, bridge member channels 28 → 32 of
+  60, no false reports; the real applications checked report the same results.
+
 ## [0.6.0] - 2026-10-14
 
 ### Added

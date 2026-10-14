@@ -36,7 +36,7 @@ export interface IpcUsage {
    */
   resolution?: { method: ResolveMethod; lines: number[] };
   /** A channel named by a constant of another module, to be looked up there. */
-  channelRef?: { specifier: string; property: string };
+  channelRef?: { specifier: string; property: string; before?: string; after?: string };
 }
 
 export interface ScanResult {
@@ -608,6 +608,7 @@ export function scanJavaScript(
    * more: `"win:" + id` is not the channel `win:`.
    */
   const channelAt = (k: number): ReturnType<Constants["resolve"]> => {
+    if (at(k)?.type === "template") return constants.resolveArg(k);
     const named = constants.resolve(k);
     if (named === null) return null;
     let end = k + 1;
