@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildAsar } from "../../core/test/fixtures/asar.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
-import type { Io } from "../src/format.js";
+import { table, type Io } from "../src/format.js";
 import { main } from "../src/index.js";
 
 function capture(): Io & { stdout: string[]; stderr: string[] } {
@@ -48,6 +48,20 @@ describe("hexvero CLI", () => {
       if (saved === undefined) delete process.env["HEXVERO_CACHE_DIR"];
       else process.env["HEXVERO_CACHE_DIR"] = saved;
     }
+  });
+
+  it("shows lists of plain values as a column and leaves nested objects to --json", () => {
+    const lines = table([
+      {
+        channel: "notes:save",
+        senders: ["preload.js"],
+        receivers: ["main.js", "worker.js"],
+        meta: { a: 1 },
+      },
+    ]);
+    expect(lines[0]).toMatch(/channel\s+senders\s+receivers$/);
+    expect(lines[2]).toContain("main.js, worker.js");
+    expect(lines.join("\n")).not.toContain("meta");
   });
 
   it("prints help and version", async () => {

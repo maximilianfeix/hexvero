@@ -48,14 +48,24 @@ export function formatLimitations(io: Io, limitations: Limitation[]): string[] {
 }
 
 /** Renders a list of flat objects as an aligned table, truncating long cells. */
+/** A list of plain values (`senders: ["main.js"]`): a table column, shown comma-separated. */
+const plainList = (v: unknown): v is Array<string | number | boolean> =>
+  Array.isArray(v) && v.every((x) => x === null || typeof x !== "object");
+
 export function table(rows: Array<Record<string, unknown>>, maxWidth = 60): string[] {
   if (!rows.length) return ["  (empty)"];
   const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((c) =>
-    rows.some((r) => r[c] !== undefined && typeof r[c] !== "object"),
+    rows.some((r) => r[c] !== undefined && (typeof r[c] !== "object" || plainList(r[c]))),
   );
   const cell = (v: unknown): string => {
     const text =
-      v === undefined || v === null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+      v === undefined || v === null
+        ? ""
+        : plainList(v)
+          ? v.join(", ")
+          : typeof v === "object"
+            ? JSON.stringify(v)
+            : String(v);
     return text.length > maxWidth ? `${text.slice(0, maxWidth - 1)}…` : text;
   };
   const widths = columns.map((c) => Math.max(c.length, ...rows.map((r) => cell(r[c]).length)));

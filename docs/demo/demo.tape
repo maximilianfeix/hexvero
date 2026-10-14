@@ -19,14 +19,20 @@ Show
 Type "hexvero analyze notesdesk-1.4.0.asar"
 Sleep 400ms
 Enter
-Sleep 5s
+Sleep 6s
+Screenshot docs/demo/analyze.png
 
-Type "hexvero collection notesdesk-1.4.0.asar ipc --text shell:open"
+Type "clear; hexvero collection notesdesk-1.4.0.asar ipcChannels"
+Sleep 400ms
+Enter
+Sleep 3500ms
+
+Type "hexvero collection notesdesk-1.4.0.asar contextBridge"
 Sleep 400ms
 Enter
 Sleep 4s
 
-Type "hexvero compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar webPreferences"
+Type "clear; hexvero compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar contextBridge"
 Sleep 400ms
 Enter
-Sleep 5s
+Sleep 4500ms
