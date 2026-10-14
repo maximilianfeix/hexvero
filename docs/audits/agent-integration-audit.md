@@ -91,7 +91,7 @@ known to act on it yet.
   `developer-experience-audit.md`.
 - Claude Code plugin: `.claude-plugin/plugin.json` and `marketplace.json` at the repository root
   with the skill in `skills/` and the server in `.mcp.json`. `claude plugin validate --strict`
-  passes. Install: `/plugin install hexvero --marketplace maximilianfeix/hexvero`.
+  passes. Install: `/plugin marketplace add maximilianfeix/hexvero`, then `/plugin install hexvero@hexvero`.
 - Official MCP registry: `server.json` existed; the npm package lacked the `mcpName` field the
   registry uses to verify ownership. Added; it takes effect with the next npm release.
 - `glama.json` names the maintainer for Glama's directory.
