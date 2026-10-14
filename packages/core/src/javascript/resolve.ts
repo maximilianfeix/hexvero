@@ -1281,9 +1281,9 @@ export class ExpressionResolver {
           }
           // `name = <default>` up to the next `,` or the closing brace
           if (local !== null && this.punct(j + 1, "=") && !this.punct(j + 2, "=")) {
-            const end = Math.min(this.exprEnd(j + 2), m);
-            defaults.set(local, [j + 2, end]);
-            j = end - 1;
+            const until = Math.min(this.exprEnd(j + 2), m);
+            defaults.set(local, [j + 2, until]);
+            j = until - 1;
           }
         }
         params.push(
