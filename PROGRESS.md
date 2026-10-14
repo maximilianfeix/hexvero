@@ -2,6 +2,22 @@
 
 State of the work, written so that a fresh session can continue. Last updated 2026-10-14.
 
+## Round 4, second part (2026-10-14, same branch, local only)
+
+- `integration/round-3-fixes` merged (`7ae83d9`); conflicts in README and the MCP compare
+  handler (paging kept, `unknown` paged too).
+- JavaScript speed: tokenizer, name resolution, `collectAmbient`, `findWrappers` (body ends by
+  matched brackets; fixes a false channel past the old budget), pure `readFileTokens()` and a
+  worker pool (`javascript/tokenPool.ts`, `HEXVERO_JS_THREADS`). Verified byte-identical on 33
+  inputs plus the ChatGPT archive; numbers in `docs/benchmarks.md`. Still 1.2-1.7x 0.3.0.
+- Export without a URL token; `packages/core/src/cache.ts` and `hexvero cache`; shared engine
+  runs stop when all callers cancel; setup survives an unwritable file; MCP `_meta` marker;
+  Actions pinned to SHAs.
+- Domain: `docs/audits/domain-check.md` (hexvero.dev serves a wrong certificate; owner must fix
+  DNS and the Pages custom domain).
+- Reference outputs for performance work: `golden.sh` approach (full `export`, timing fields
+  stripped, compared with `diff -r`); keep doing that for any scanner speed change.
+
 ## Round 4: branch `oss/round-4` (on `quality/round-3`, local only)
 
 Not pushed, merged, tagged or published; each needs the maintainer's approval.
