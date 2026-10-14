@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-14
+
 ### Accuracy
 
 - Endpoints and storage keys the fast scan cannot read go through the expression resolver: an
