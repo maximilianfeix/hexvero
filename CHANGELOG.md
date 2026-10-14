@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-14
+
 ### Accuracy
 
 - Modules a bundler wrapped into one file are followed: esbuild's `__commonJS` wrappers with

@@ -18,7 +18,7 @@ export { toolSchemas, type ToolName, type ProviderBridge } from "./tools.js";
 export { GUIDED_PROMPTS, type GuidedPrompt } from "./prompts.js";
 
 export const SERVER_NAME = "hexvero";
-export const SERVER_VERSION = "0.4.1";
+export const SERVER_VERSION = "0.4.2";
 
 const defaultProviders: ProviderBridge = {
   detect: async () => ({ providers: await detectProviders() }),
