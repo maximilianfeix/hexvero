@@ -30,7 +30,7 @@ import {
   type Io,
 } from "./format.js";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 
 const HELP = `hexvero ${VERSION} — the first look at a binary or app bundle, locally.
 

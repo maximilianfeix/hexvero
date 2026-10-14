@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-14
+
 ### Accuracy
 
 - IPC channels the fast scan cannot read are passed to a bounded resolver: concatenation and

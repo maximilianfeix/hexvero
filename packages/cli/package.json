@@ -1,6 +1,6 @@
 {
   "name": "hexvero",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The first look at a binary or app bundle: static, execution-free analysis with evidence. CLI, MCP server and web UI.",
   "keywords": [
     "apk",
@@ -51,9 +51,9 @@
     "prepack": "node -e \"require('node:fs').cpSync('../../skills','./skills',{recursive:true})\""
   },
   "dependencies": {
-    "@hexvero/core": "0.3.0",
-    "@hexvero/mcp": "0.3.0",
-    "@hexvero/server": "0.3.0"
+    "@hexvero/core": "0.4.0",
+    "@hexvero/mcp": "0.4.0",
+    "@hexvero/server": "0.4.0"
   },
   "engines": {
     "node": ">=22.12.0"

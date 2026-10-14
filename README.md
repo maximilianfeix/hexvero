@@ -25,12 +25,6 @@ hexvero reads executables, Electron apps, APKs, archives, databases and network 
 
 ![hexvero analyzing an Electron app in the terminal: findings with file and line, the IPC call sites of one channel, and the settings that changed between two builds](docs/demo/demo.gif)
 
-<!-- unreleased-note:start -->
-
-> **Version note.** This README describes `main`. npm serves 0.3.0, which stops a JavaScript app scan at 5,000 files and has no `endpoints` or `storage` lists for Electron archives. Continued scans (`analyze --continue`, `--all`, `--include`), those lists, IPC through renamed bindings, constants and helper functions, per-window settings, tail calls through radare2 and the corpus are listed under _Unreleased_ in the [changelog](CHANGELOG.md) and ship with the next release. The comparison with REA below was measured on `main`. To run `main` today: `git clone`, `npm install`, `npm run build`, `node packages/cli/bin/hexvero.js`.
-
-<!-- unreleased-note:end -->
-
 <a id="try-it"></a>
 
 ## Try it
