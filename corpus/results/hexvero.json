@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.4.2",
-  "commit": "e2ed495+uncommitted",
+  "version": "0.5.0",
+  "commit": "93723b8+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -455,8 +455,8 @@
   {
    "set": "holdout",
    "class": "endpoints",
-   "hit": 35,
-   "missed": 7,
+   "hit": 36,
+   "missed": 6,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -475,15 +475,15 @@
    "class": "requests with an unknown URL shown",
    "hit": 3,
    "missed": 0,
-   "false": 6,
+   "false": 5,
    "hedged": 0,
    "inputs": 3
   },
   {
    "set": "holdout",
    "class": "storage keys",
-   "hit": 48,
-   "missed": 3,
+   "hit": 51,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -491,7 +491,7 @@
   {
    "set": "holdout",
    "class": "storage read/write/delete",
-   "hit": 36,
+   "hit": 39,
    "missed": 6,
    "false": 0,
    "hedged": 0,
@@ -554,8 +554,8 @@
   {
    "set": "holdout2",
    "class": "IPC senders and receivers",
-   "hit": 217,
-   "missed": 19,
+   "hit": 219,
+   "missed": 17,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -590,8 +590,8 @@
   {
    "set": "holdout2",
    "class": "endpoints",
-   "hit": 53,
-   "missed": 4,
+   "hit": 54,
+   "missed": 3,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -610,23 +610,23 @@
    "class": "requests with an unknown URL shown",
    "hit": 6,
    "missed": 0,
-   "false": 3,
+   "false": 2,
    "hedged": 0,
    "inputs": 6
   },
   {
    "set": "holdout2",
    "class": "storage keys",
-   "hit": 47,
-   "missed": 10,
-   "false": 1,
+   "hit": 53,
+   "missed": 4,
+   "false": 0,
    "hedged": 0,
    "inputs": 6
   },
   {
    "set": "holdout2",
    "class": "storage read/write/delete",
-   "hit": 43,
+   "hit": 48,
    "missed": 0,
    "false": 0,
    "hedged": 0,
@@ -1913,18 +1913,16 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "storage keys",
-   "hit": 16,
-   "missed": 1,
+   "hit": 17,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed localStorage sidebarWidth"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "storage read/write/delete",
-   "hit": 12,
+   "hit": 13,
    "missed": 2,
    "false": 0,
    "notes": [
@@ -2050,18 +2048,16 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "storage keys",
-   "hit": 16,
-   "missed": 1,
+   "hit": 17,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed localStorage sidebarWidth"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "storage read/write/delete",
-   "hit": 12,
+   "hit": 13,
    "missed": 2,
    "false": 0,
    "notes": [
@@ -2115,8 +2111,7 @@
     "missed main.js sandbox=true",
     "missed main.js nodeIntegration=false",
     "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "not scored: 1 row(s) with a computed value"
+    "missed main.js nodeIntegration=false"
    ]
   },
   {
@@ -2159,11 +2154,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "endpoints",
-   "hit": 12,
-   "missed": 2,
+   "hit": 13,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed https://api.punchclock.example/v3/timesheets/current…",
     "missed https://api.punchclock.example/v3/entries"
    ]
   },
@@ -2184,25 +2178,23 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 2,
+   "false": 1,
    "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "storage keys",
-   "hit": 16,
-   "missed": 1,
+   "hit": 17,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed localStorage sidebarWidth"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "storage read/write/delete",
-   "hit": 12,
+   "hit": 13,
    "missed": 2,
    "false": 0,
    "notes": [
@@ -2356,20 +2348,16 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "storage keys",
-   "hit": 6,
-   "missed": 2,
-   "false": 1,
-   "notes": [
-    "missed localStorage inkwell.theme",
-    "missed localStorage inkwell.sidebarWidth",
-    "false localStorage inkwell.${…}"
-   ]
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "storage read/write/delete",
-   "hit": 5,
+   "hit": 7,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2460,21 +2448,16 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "storage keys",
-   "hit": 4,
-   "missed": 4,
+   "hit": 8,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed localStorage inkwell.theme",
-    "missed localStorage inkwell.sidebarWidth",
-    "missed localStorage inkwell.recent",
-    "missed indexedDB inkwell-search"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "storage read/write/delete",
-   "hit": 4,
+   "hit": 7,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2492,13 +2475,11 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 39,
-   "missed": 5,
+   "hit": 41,
+   "missed": 3,
    "false": 0,
    "notes": [
     "settings:changed: sender main.js missed",
-    "plugins:list: receiver main.js missed",
-    "vault:list: receiver main.js missed",
     "vault:search: receiver main.js missed",
     "vault:reveal: receiver main.js missed"
    ]
@@ -2542,12 +2523,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "endpoints",
-   "hit": 8,
-   "missed": 1,
+   "hit": 9,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed https://embed.inkwell.example/oembed…"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
@@ -2564,7 +2543,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 1,
+   "false": 0,
    "notes": []
   },
   {

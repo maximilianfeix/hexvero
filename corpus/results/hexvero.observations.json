@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.4.2",
-  "commit": "e2ed495+uncommitted",
+  "version": "0.5.0",
+  "commit": "93723b8+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -5018,6 +5018,14 @@
      },
      {
       "kind": "localStorage",
+      "value": "sidebarWidth",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
       "value": "punch.activeProject",
       "ops": [
        "read",
@@ -5557,6 +5565,14 @@
      },
      {
       "kind": "localStorage",
+      "value": "sidebarWidth",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
       "value": "punch.activeProject",
       "ops": [
        "read",
@@ -5597,8 +5613,7 @@
     "limitations": [
      "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
-     "window_options_unresolved",
-     "webpreferences_computed"
+     "window_options_unresolved"
     ],
     "ipcChannels": [
      {
@@ -5761,13 +5776,8 @@
       "file": "main.js"
      },
      {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
       "key": "sandbox",
-      "value": null,
+      "value": false,
       "file": "main.js"
      },
      {
@@ -5776,13 +5786,13 @@
       "file": "main.js"
      },
      {
-      "key": "contextIsolation",
-      "value": true,
+      "key": "nodeIntegration",
+      "value": false,
       "file": "main.js"
      },
      {
-      "key": "sandbox",
-      "value": false,
+      "key": "contextIsolation",
+      "value": true,
       "file": "main.js"
      }
     ],
@@ -5943,6 +5953,12 @@
       "evidence": "inferred"
      },
      {
+      "value": "https://api.punchclock.example/v3/timesheets/current",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
       "value": "https://api.punchclock.example/v3/entries/${…}",
       "kind": "fetch",
       "method": "DELETE",
@@ -5967,7 +5983,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 3,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "electron-store",
@@ -6050,6 +6066,14 @@
      {
       "kind": "localStorage",
       "value": "punch.theme",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "sidebarWidth",
       "ops": [
        "read",
        "write"
@@ -6150,7 +6174,7 @@
       "indexedDB punchclock-v3"
      ],
      "changed": [],
-     "relocated": 27,
+     "relocated": 29,
      "unchanged": 0
     }
    }
@@ -6578,7 +6602,15 @@
      },
      {
       "kind": "localStorage",
-      "value": "inkwell.${…}",
+      "value": "inkwell.theme",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "inkwell.sidebarWidth",
       "ops": [
        "read",
        "write"
@@ -7045,6 +7077,22 @@
      },
      {
       "kind": "localStorage",
+      "value": "inkwell.theme",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "inkwell.sidebarWidth",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
       "value": "inkwell.draft",
       "ops": [
        "write",
@@ -7053,11 +7101,24 @@
       ]
      },
      {
+      "kind": "localStorage",
+      "value": "inkwell.recent",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
       "kind": "indexedDB",
       "value": "inkwell-search-v1",
       "ops": [
        "delete"
       ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "inkwell-search",
+      "ops": []
      }
     ]
    }
@@ -7175,7 +7236,9 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "preview:render",
@@ -7243,7 +7306,9 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "vault:reveal",
@@ -7448,13 +7513,19 @@
       "evidence": "template"
      },
      {
+      "value": "https://embed.inkwell.example/oembed",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
       "value": "wss://collab.inkwell.example/rooms/${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 2,
+    "endpointsUnreadable": 1,
     "storage": [
      {
       "kind": "sessionStorage",
@@ -7546,7 +7617,7 @@
       "indexedDB inkwell-search-v1"
      ],
      "changed": [],
-     "relocated": 12,
+     "relocated": 14,
      "unchanged": 0
     }
    }
