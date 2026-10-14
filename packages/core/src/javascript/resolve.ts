@@ -1388,6 +1388,26 @@ export class ExpressionResolver {
         });
         continue;
       }
+      // a method with a string key, as bundlers write module wrappers: `{ "src/a.js"(exports) { … } }`
+      if (
+        t.type === "string" &&
+        this.punct(k + 1, "(") &&
+        (this.punct(k - 1, "{") || this.punct(k - 1, ","))
+      ) {
+        const close = this.match[k + 1]!;
+        if (close !== -1 && this.punct(close + 1, "{"))
+          defs.push({
+            member: true,
+            name: null,
+            owner: null,
+            params: this.parseParams(k + 1, close),
+            paramsAt: k + 1,
+            body: [close + 1, (this.match[close + 1] ?? close + 1) + 1],
+            block: true,
+            calledBy: null,
+          });
+        continue;
+      }
       // a method in a class body: NAME ( … ) {
       if (t.type === "ident" && this.punct(k + 1, "(") && !this.punct(k - 1, ".")) {
         const close = this.match[k + 1]!;
@@ -1516,9 +1536,21 @@ export class ExpressionResolver {
     return null;
   }
 
+  /** `x += …`, `x++`, `--x` and the like at the name at j. */
+  private changes(j: number): boolean {
+    const after = this.tokens[j + 1];
+    const before = this.tokens[j - 1];
+    return (
+      (after?.type === "punct" &&
+        (after.value === "++" || after.value === "--" || /^[^=!<>]+=$/.test(after.value))) ||
+      (before?.type === "punct" && (before.value === "++" || before.value === "--"))
+    );
+  }
+
   /**
    * How `name` is declared directly in the body of d: null when it is not, otherwise the
-   * initializer of its single `const` (null range for anything else).
+   * initializer of its single `const`, `let` or `var` that is never assigned again (null range
+   * for anything else).
    */
   private declarationIn(d: FnDef, name: string): { range: [number, number] | null } | null {
     const key = `${d.paramsAt}:${name}`;
@@ -1531,8 +1563,10 @@ export class ExpressionResolver {
       const before = this.tokens[j - 1];
       if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) {
         declared++;
-        if (before.value === "const" && this.punct(j + 1, "=")) at = j;
-      } else if (this.punct(j + 1, "=") && !this.punct(j + 2, "=")) declared += 2;
+        // `let` and `var` too: a later assignment counts twice below, so the name is not followed
+        if (/^(const|let|var)$/.test(before.value) && this.punct(j + 1, "=")) at = j;
+      } else if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
+        declared += 2;
     }
     const result = !declared
       ? null
@@ -1907,7 +1941,7 @@ export class ExpressionResolver {
           this.is(j - 3, "ident") &&
           /^(const|let|var)$/.test(this.tokens[j - 3]!.value) &&
           !this.enclosing(j) &&
-          this.topDeclarations().get(name.value)
+          this.declaredOnce(name.value)
         )
           owner = name.value;
         break;
@@ -1915,6 +1949,22 @@ export class ExpressionResolver {
     }
     this.literalOwners.set(def, owner);
     return owner;
+  }
+
+  /**
+   * NAME is declared once with const, let or var and never assigned again (its members may change:
+   * `prefs.set(…)` on a helper object is a call, not a write).
+   */
+  private declaredOnce(name: string): boolean {
+    let declared = 0;
+    for (const j of this.positions(name)) {
+      if (this.punct(j - 1, ".")) continue;
+      const before = this.tokens[j - 1];
+      if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value))
+        declared++;
+      else if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j)) return false;
+    }
+    return declared === 1;
   }
 
   private callSites(def: FnDef): number[] {

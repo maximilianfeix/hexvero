@@ -17,6 +17,16 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- Storage keys a helper object builds from its callers (`prefs.get("theme")` with
+  `localStorage.getItem(PREFIX + name)`) are read: calling a method of a helper object no longer
+  counts as changing it. Keys written as properties (`localStorage.sidebarWidth = …`) are reported
+  with read, write or delete. Locals declared with `let` or `var` and never assigned again
+  (`+=`, `++` count as assignments) are followed like `const`, and module wrappers with a
+  string key (`{ "src/a.js"(exports) { … } }`) are functions of the resolver. Corpus,
+  development sets: holdout2 storage keys 47 → 53 of 57 with false reports 1 → 0, holdout
+  48 → 51 of 51; endpoints holdout2 53 → 54, holdout 35 → 36. The real applications checked
+  report the same results.
+
 - Methods of object literals are functions to the resolver: `const http = { getJson(url) {…},
   postJson: (url, body) => … }` called as `http.getJson("…")` gives the address at each call
   site (only through that object, never through a bare call of the same name). `new URL(path,

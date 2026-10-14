@@ -126,6 +126,19 @@ const STORAGE_OPS: Record<string, Candidate["op"]> = {
   setItem: "write",
   removeItem: "delete",
 };
+/** Members of the Storage interface itself; any other property of localStorage is a key. */
+const STORAGE_MEMBERS = new Set([
+  "length",
+  "key",
+  "clear",
+  "getItem",
+  "setItem",
+  "removeItem",
+  "hasOwnProperty",
+  "constructor",
+  "toString",
+  "valueOf",
+]);
 const STORE_OPS: Record<string, Candidate["op"]> = {
   get: "read",
   has: "read",
@@ -556,6 +569,17 @@ export function findCandidates(
         if (!op) continue;
         const r = readArg(k + 4);
         if (r) push(out.storage, kind, r, t, { op });
+      } else if (
+        is(tokens[k + 1], "punct", ".") &&
+        is(next, "ident") &&
+        !is(tokens[k + 3], "punct", "(") &&
+        !STORAGE_MEMBERS.has(next!.value)
+      ) {
+        // `localStorage.sidebarWidth`: the key written as a property
+        const assigned = is(tokens[k + 3], "punct", "=");
+        push(out.storage, kind, { value: next!.value, evidence: "literal" }, t, {
+          op: is(tokens[k - 1], "ident", "delete") ? "delete" : assigned ? "write" : "read",
+        });
       } else if (is(tokens[k + 1], "punct", "[") && is(tokens[k + 3], "punct", "]")) {
         const r = readArg(k + 2);
         if (r)

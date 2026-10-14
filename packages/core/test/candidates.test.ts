@@ -272,6 +272,49 @@ describe("storage", () => {
   });
 });
 
+describe("storage through helpers", () => {
+  it("reads keys a helper object builds from its callers, and keys written as properties", () => {
+    const found = find(
+      [
+        'const PREF_PREFIX = "inkwell.";',
+        "const prefs = {",
+        "  get(name, fallback) { const raw = localStorage.getItem(PREF_PREFIX + name); return raw ?? fallback; },",
+        "  set(name, value) { localStorage.setItem(PREF_PREFIX + name, JSON.stringify(value)); },",
+        "};",
+        // `prefs.set(…)` is a call on the helper, not a change of what `prefs` is
+        'prefs.set("theme", theme);',
+        'restore(prefs.get("theme", "light"));',
+        "if (localStorage.sidebarWidth) width(localStorage.sidebarWidth);",
+        "localStorage.sidebarWidth = String(w);",
+        "localStorage.clear();",
+      ].join("\n"),
+    );
+    expect(show(found.storage)).toEqual([
+      "localStorage read inkwell.theme [inferred]",
+      "localStorage write inkwell.theme [inferred]",
+      "localStorage read sidebarWidth [literal]",
+      "localStorage write sidebarWidth [literal]",
+    ]);
+  });
+
+  it("reads a key a bundled module defines with var and exports as an object", () => {
+    const found = find(
+      [
+        "var __commonJS = (cb, mod) => function __require() { return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports; };",
+        'var require_defaults = __commonJS({ "src/defaults.js"(exports2, module2) { var RECENT_KEY = "inkwell.recent"; var count = 0; count++; module2.exports = { RECENT_KEY, count }; } });',
+        "var { RECENT_KEY, count } = require_defaults();",
+        "localStorage.getItem(RECENT_KEY);",
+        // a local that changes (`count++`) is not followed
+        "localStorage.getItem(`n${count}`);",
+      ].join("\n"),
+    );
+    expect(show(found.storage)).toEqual([
+      "localStorage read inkwell.recent [inferred]",
+      "localStorage read n${…} [template]",
+    ]);
+  });
+});
+
 describe("names and scope", () => {
   const targets = new Set(["ipcMain", "ipcRenderer", "fetch"]);
   const uses = (source: string, own: string[] = []): string[] => {
