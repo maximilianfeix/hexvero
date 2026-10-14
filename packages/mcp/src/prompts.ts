@@ -65,7 +65,7 @@ ${honesty}`,
 ${argumentsBlock(a)}
 
 1. hexvero_open { path: ${q(a["pathA"])} } and hexvero_open { path: ${q(a["pathB"])} }; hexvero_analyze each and compare summaries, findings and limitations side by side.
-2. hexvero_compare { targetA, targetB, collection } for ${a["focus"] ? `the focus collection ${q(a["focus"])} first, then ` : ""}the collections both targets share (libraries, imports, exports, symbols, permissions, components, endpoints, modules, ipcChannels, goDependencies, classes). Use key for the identity field when "name" is not it.
+2. hexvero_compare { targetA, targetB } for the counts per shared collection, then hexvero_compare { targetA, targetB, collection } for ${a["focus"] ? `the focus collection ${q(a["focus"])} first, then ` : ""}the collections both targets share (libraries, imports, exports, symbols, permissions, components, endpoints, modules, ipcChannels, goDependencies, classes). Use key for the identity field when "name" is not it.
 3. For changed items, page both sides with text filters to show the exact entries; distinguish real changes from parser coverage differences reported in limitations.
 4. Summarise by impact: new capabilities, removed protections, dependency changes, new endpoints.
 

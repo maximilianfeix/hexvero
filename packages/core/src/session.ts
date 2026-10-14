@@ -10,7 +10,7 @@ import {
 } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
-import type { SideCoverage } from "./compare.js";
+import { compareItems, positionalFields, type SideCoverage } from "./compare.js";
 import { UnknownsLedger } from "./unknowns.js";
 import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
 
@@ -25,6 +25,36 @@ export interface TargetRecord {
   info: TargetInfo;
   openedAt: string;
   analyzed: boolean;
+}
+
+const hasItems = (counts: Record<string, number>, name: string): boolean => (counts[name] ?? 0) > 0;
+
+/** One collection both targets have, as `Session.compareAll` counts it. */
+export interface CollectionComparison {
+  collection: string;
+  /** Field the items were matched by; null when matched by their full content. */
+  key: string | null;
+  added: number;
+  removed: number;
+  changed: number;
+  /** Matched items whose only differences are addresses or lines. */
+  relocated: number;
+  /** Found on one side in a file the other side did not read. */
+  unknown: number;
+  unchanged: number;
+  totals: { a: number; b: number };
+  /** Only the first items (or shortened items) of a side were compared. */
+  partial: boolean;
+}
+
+export interface CompareAllResult {
+  /** Collections with items on at least one side, in the order the first target lists them. */
+  collections: CollectionComparison[];
+  /** Collections only one target has (with items). */
+  onlyA: string[];
+  onlyB: string[];
+  /** A JavaScript application read only in part: items in unread files are unknown, not gone. */
+  partialScan: { a: boolean; b: boolean };
 }
 
 export interface StringsQuery extends CollectionQuery {
@@ -275,6 +305,50 @@ export class Session {
     for (const [name, items] of Object.entries(await this.collectionTable(id)))
       out[name] = items.length;
     return out;
+  }
+
+  /**
+   * Counts of added, removed, changed, relocated and unchanged items for every collection the two
+   * targets share: the overview before diffing one collection. Each side is compared up to 2,000
+   * items per collection; a collection cut there says so with `partial`.
+   */
+  async compareAll(idA: string, idB: string): Promise<CompareAllResult> {
+    const [countsA, countsB] = await Promise.all([this.collections(idA), this.collections(idB)]);
+    const formats = [this.get(idA).info.format, this.get(idB).info.format];
+    const coverage = { a: await this.coverage(idA), b: await this.coverage(idB) };
+    const collections: CollectionComparison[] = [];
+    for (const name of Object.keys(countsA)) {
+      if (!(name in countsB) || (countsA[name] === 0 && countsB[name] === 0)) continue;
+      const [left, right] = await Promise.all([
+        this.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
+        this.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),
+      ]);
+      const diff = compareItems(left.items, right.items, {
+        collection: name,
+        positional: positionalFields(name, formats),
+        coverage,
+      });
+      collections.push({
+        collection: name,
+        key: diff.key,
+        added: diff.added.length,
+        removed: diff.removed.length,
+        changed: diff.changed.length,
+        relocated: diff.relocated,
+        unknown: diff.unknown.length,
+        unchanged: diff.unchanged,
+        totals: { a: left.total, b: right.total },
+        partial: Boolean(
+          left.truncated || right.truncated || left.itemTruncated || right.itemTruncated,
+        ),
+      });
+    }
+    return {
+      collections,
+      onlyA: Object.keys(countsA).filter((n) => hasItems(countsA, n) && !(n in countsB)),
+      onlyB: Object.keys(countsB).filter((n) => hasItems(countsB, n) && !(n in countsA)),
+      partialScan: { a: (await this.partial(idA)) !== null, b: (await this.partial(idB)) !== null },
+    };
   }
 
   async collection(id: string, name: string, query: CollectionQuery = {}): Promise<CollectionPage> {

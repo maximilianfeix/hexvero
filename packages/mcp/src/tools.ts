@@ -157,11 +157,11 @@ export const toolSchemas = {
   hexvero_compare: {
     title: "Compare collections",
     description:
-      "Diff one collection between two targets: added, removed, changed (with the fields that differ) and unchanged items, matched by key (auto-detected: name, channel, id, path, url, type+name … or pass key, a+b for composites). States when the comparison is partial.",
+      "Diff one collection between two targets: added, removed, changed (with the fields that differ) and unchanged items, matched by key (auto-detected: name, channel, id, path, url, type+name … or pass key, a+b for composites). States when the comparison is partial. Without collection: counts per shared collection, to pick one.",
     input: {
       targetA: targetId,
       targetB: targetId,
-      collection: z.string(),
+      collection: z.string().optional(),
       key: z.string().optional().describe("Item field used as identity (default: name, then JSON)"),
       ignore: z
         .array(z.string())
@@ -409,9 +409,16 @@ export function createHandlers(
           ...(from + sample.length < items.length ? { next: from + sample.length } : {}),
         };
       };
-      const name = str(a["collection"]);
       const idA = str(a["targetA"]);
       const idB = str(a["targetB"]);
+      if (typeof a["collection"] !== "string") {
+        const all = await session.compareAll(idA, idB);
+        return {
+          ...all,
+          next: "hexvero_compare with collection set to one that differs, for its items",
+        };
+      }
+      const name = str(a["collection"]);
       const [left, right] = await Promise.all([
         session.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
         session.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),

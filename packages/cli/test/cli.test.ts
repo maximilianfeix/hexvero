@@ -253,6 +253,24 @@ describe("hexvero CLI", () => {
     const io = capture();
     expect(await main(["compare", so, other, "findings", "--key", "kind", "--json"], io)).toBe(0);
     expect(JSON.parse(io.stdout.join("")).unchanged).toBe(1);
+    // without a collection: counts for every collection both targets share
+    const overview = capture();
+    expect(await main(["compare", so, other, "--json"], overview)).toBe(0);
+    const all = JSON.parse(overview.stdout.join(""));
+    const findings = all.collections.find(
+      (c: { collection: string }) => c.collection === "findings",
+    );
+    expect(findings.added + findings.removed + findings.changed).toBeGreaterThan(0);
+    expect(
+      all.collections.find((c: { collection: string }) => c.collection === "sections"),
+    ).toMatchObject({
+      added: 0,
+      removed: 0,
+    });
+    const text = capture();
+    expect(await main(["compare", so, other], text)).toBe(0);
+    expect(text.stdout.join("\n")).toMatch(/shared collection\(s\), \d+ with differences/);
+    expect(text.stdout.join("\n")).toContain("details: hexvero compare <a> <b> ");
     const dio = capture();
     expect(await main(["doctor", "--json"], dio)).toBe(0);
     expect(JSON.parse(dio.stdout.join("")).node.ok).toBe(true);

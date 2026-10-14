@@ -177,6 +177,12 @@ describe("hexvero MCP server", () => {
     });
     expect(diff.ok).toBe(true);
     expect(diff.body["unchanged"]).toBe(1);
+    // without a collection: one count row per shared collection
+    const overview = await call("hexvero_compare", { targetA: targetId, targetB: b.body["id"] });
+    expect(overview.ok).toBe(true);
+    const rows = overview.body["collections"] as Array<{ collection: string; added: number }>;
+    expect(rows.map((r) => r.collection)).toContain("findings");
+    expect(overview.body["partialScan"]).toEqual({ a: false, b: false });
     const out = join(dir, "export.json");
     const exported = await call("hexvero_export", { targetId, path: out });
     // a second export refuses to clobber the file unless asked to
