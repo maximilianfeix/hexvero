@@ -6,6 +6,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Release process
+
+- The publish step waits up to ten minutes for the registry to serve a new version (it waited
+  two, and npm's delay failed three of the last six releases until re-run), and a publish npm
+  refuses because the same version is still being processed counts as done once the registry
+  shows the identical tarball.
+
 ## [0.6.1] - 2026-10-14
 
 ### Accuracy
