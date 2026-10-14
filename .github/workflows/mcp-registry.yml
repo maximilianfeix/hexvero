@@ -2,9 +2,12 @@ name: MCP registry
 
 # Publishes server.json to the official MCP registry after a release. GitHub OIDC proves that this
 # repository owns the io.github.maximilianfeix namespace, so no token or secret is involved.
+# The Release workflow makes the GitHub release public with its own token, and events caused by
+# that token start no other workflow; so this one follows the Release workflow itself.
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -12,12 +15,16 @@ permissions:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # the released commit, not whatever main is by now
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Install mcp-publisher 1.8.1 (checksum verified)
         run: |
           curl -sSL -o mcp-publisher.tar.gz https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
