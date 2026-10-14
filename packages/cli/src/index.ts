@@ -691,7 +691,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         io.out(
           result.skipped.length
             ? `${paint(io, "yellow", "!")} ${result.skipped.length} sources listed in the map carry no embedded content (sourcesContent); nothing but the manifest was written to ${result.outputDir}.`
-            : `${paint(io, "yellow", "!")} no module boundaries recognised; nothing but the manifest was written to ${result.outputDir}. Supported: webpack 4/5, Rspack, browserify, esbuild bundles and source maps with embedded sources.`,
+            : `${paint(io, "yellow", "!")} no module boundaries recognised; nothing but the manifest was written to ${result.outputDir}. Supported: webpack 4/5, Rspack, browserify, esbuild bundles (also scope-hoisted ones with path comments) and source maps with embedded sources; Rollup/Vite chunks keep no boundaries (the manifest lists the chunks they import).`,
         );
         return 0;
       }

@@ -123,8 +123,13 @@ export function recoverBundle(
     const header = `// hexvero: module ${m.id}${m.name ? ` (${m.name})` : ""} from bytes ${m.start}-${m.end}\n// requires: ${m.requires.join(", ") || "-"}\n// exports: ${m.exports.join(", ") || "-"}\n`;
     const body = source.slice(m.start, m.end);
     const factory = m.factory === "method" ? `function ${body}` : body;
+    const text =
+      m.factory === "hoisted"
+        ? // a section of a scope-hoisted bundle: as written, with names shared with the others
+          `${header}// scope-hoisted: names may be defined in another section of the bundle\n${body}`
+        : `${header}module.exports = ${factory};\n`;
     try {
-      const bytes = writeInside(root, relative, `${header}module.exports = ${factory};\n`);
+      const bytes = writeInside(root, relative, text);
       written.push({ path: relative, bytes, origin: "bundle-module", moduleId: m.id });
       fileOf.push(relative);
     } catch (error) {
@@ -140,6 +145,7 @@ export function recoverBundle(
     bundler: info.bundler,
     chunkIds: info.chunkIds,
     entryIds: info.entryIds,
+    ...(info.chunks ? { chunks: info.chunks } : {}),
     modules: info.modules.map((m, index) => ({
       id: m.id,
       name: m.name,

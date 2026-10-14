@@ -174,3 +174,62 @@ var _api = __webpack_require__("./src/api.js");
     expect(bundle.limitations.map((l) => l.code)).not.toContain("bundle_modules_not_found");
   });
 });
+
+describe("bundles without a module map", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hexvero-hoisted-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("splits a scope-hoisted bundle at the path comments its bundler wrote", () => {
+    const hoisted = [
+      "// src/config.js",
+      'var API = "https://api.example/v1";',
+      "",
+      "// src/net/client.ts",
+      "async function load() { return fetch(`${API}/notes`); }",
+      // a path-like comment inside a template is text, not a boundary
+      "var help = `",
+      "// src/not-a-module.js",
+      "`;",
+      "",
+      "// src/renderer.js",
+      'import("./chunk-settings.js");',
+      "load();",
+      "export { load };",
+    ].join("\n");
+    const b = analyzeBundle(hoisted);
+    expect(b.modules.map((m) => [m.id, m.factory])).toEqual([
+      ["src/config.js", "hoisted"],
+      ["src/net/client.ts", "hoisted"],
+      ["src/renderer.js", "hoisted"],
+    ]);
+    expect(b.modules[2]!.requires).toEqual(["./chunk-settings.js"]);
+    const out = recoverBundle(hoisted, join(dir, "hoisted"), b);
+    expect(out.written.map((w) => w.path)).toEqual([
+      "src/config.js",
+      "src/net/client.ts",
+      "src/renderer.js",
+    ]);
+    const client = readFileSync(join(out.outputDir, "src/net/client.ts"), "utf8");
+    expect(client).toContain("scope-hoisted");
+    expect(client).toContain("async function load()");
+    expect(client).not.toContain("module.exports");
+  });
+
+  it("names the chunks a Rollup or Vite chunk imports instead of guessing modules", () => {
+    const chunk = [
+      'import { r as ref } from "./vendor-B3x9.js";',
+      'const About = () => import("./About-Dk2.js");',
+      "export { About, ref };",
+    ].join("\n");
+    const b = analyzeBundle(chunk);
+    expect(b.modules).toEqual([]);
+    expect(b.chunks).toEqual(["./About-Dk2.js", "./vendor-B3x9.js"]);
+    expect(b.limitations.find((l) => l.code === "bundle_chunk_only")?.message).toMatch(
+      /imports 2 other chunk file\(s\)/,
+    );
+    const out = recoverBundle(chunk, join(dir, "chunk"), b);
+    expect(out.written).toEqual([]);
+    const manifest = JSON.parse(readFileSync(join(out.outputDir, out.manifest), "utf8"));
+    expect(manifest.chunks).toEqual(["./About-Dk2.js", "./vendor-B3x9.js"]);
+  });
+});
