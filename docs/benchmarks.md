@@ -30,11 +30,32 @@ load 8 to 11 on 8 cores), so the times are upper bounds rather than best cases.
 The first batch of the largest archive is 5,000 of its 14,816 JavaScript files; `--all` reads all
 of them in three batches and leaves a 17.8 MB scan state under the cache directory.
 
-**Slower than 0.3.0, and why.** Run alternately on the same Claude archive (12.2 million tokens in
-391 files), 0.3.0 took 2.6 to 2.9 s and this build 6.0 to 6.5 s, with the same peak memory. The
-difference is the name resolution added in this version: following renamed bindings, constants and
-helper functions with their scopes costs about as much as tokenizing. It is what takes the same
-analysis of the ChatGPT archive from 3 IPC channels to 23. Making it cheaper is open work.
+**Slower than 0.3.0, and why.** Following names through aliases, constants, helper functions
+and other files costs passes over the token stream that 0.3.0 did not make; it is what takes the
+ChatGPT archive from 3 IPC channels to 23. After merging the cross-file IPC and window work, the
+Claude archive took 7.4 s against 2.6 to 2.9 s for 0.3.0 on a quiet machine. Profiling then showed
+the tokenizer allocating two substrings per punctuation character, repeated full passes in name
+resolution, and a helper-body search that turned superlinear past a fixed budget. Those are fixed,
+and applications with 4 MiB of source or more are tokenized in up to three worker threads. Every
+change was checked to give byte-identical full exports on 33 inputs (the three archives below,
+Discord's core module, Electron API Demos, Electron Fiddle 0.38 and 0.39, the examples and the
+corpus) and on the ChatGPT archive.
+
+Medians of alternating runs on 2026-10-14, empty cache each run, macOS on Apple silicon, with
+background system load (load average 8 to 30, so absolute times vary by up to a third between
+sessions; compare within a row):
+
+| Input                                                   | 0.3.0            | before this work | now, one thread  | now, default threads |
+| ------------------------------------------------------- | ---------------- | ---------------- | ---------------- | -------------------- |
+| Claude `app.asar` (5 runs)                              | 2.98 s, 628 MiB  | 8.04 s, 585 MiB  | 7.08 s, 599 MiB  | 4.93 s, 801 MiB      |
+| ChatGPT `app.asar`, first batch (3 runs)                | 10.84 s, 804 MiB | 23.57 s, 564 MiB | 14.35 s, 708 MiB | 13.38 s, 971 MiB     |
+| Discord `app.asar`, under the thread threshold (5 runs) | 0.48 s, 213 MiB  | 0.80 s, 246 MiB  | 0.78 s, 206 MiB  | 0.76 s, 205 MiB      |
+
+On the quiet machine earlier the same day, the Claude archive took 5.8 s with one thread and
+4.1 s with threads. Analysis is still 1.2 to 1.7 times slower than 0.3.0 with threads and 1.3 to
+2.4 times with one; threads cost about 200 MiB more memory and about twice the CPU time. The rest
+of the cost is a dozen passes over millions of token objects, bounded by memory access; a compact
+token representation would be the next step. `HEXVERO_JS_THREADS=0` turns threads off.
 
 The three application archives are whatever versions were installed on the test machine; they are
 not redistributed. Add your own files as arguments to `scripts/bench.mjs`.

@@ -239,8 +239,8 @@ What an agent receives, measured over a real MCP session on the [corpus](corpus/
 | ------------------------------------------------------------------ | ------ | ------ |
 | Session start: `tools/list`, `prompts/list`, instructions          | 16,316 | 3,796  |
 | Native binary: open, analyze, imports                              | 2,918  | 885    |
-| Electron app: open, analyze, channels, bridge, settings, endpoints | 10,841 | 2,986  |
-| Two builds: open and analyze both, compare three lists             | 11,780 | 3,232  |
+| Electron app: open, analyze, channels, bridge, settings, endpoints | 12,137 | 3,332  |
+| Two builds: open and analyze both, compare three lists             | 13,515 | 3,673  |
 | Call path through radare2                                          | 922    | 271    |
 
 `hexvero_analyze` returns counts of the lists and suggested next calls; the lists themselves are paged with a hard byte budget, and `detail: "full"` or `hexvero_export` give everything. Every tool states whether it writes (`readOnlyHint`). Five guided prompts (`investigate_feature`, `compare_versions`, `triage_binary`, `map_electron_app`, `explain_apk`) render step-by-step plans with the rule that every claim cites a collection item or byte offset. Strings, symbol names and decompiled code are data from the target, never instructions.
@@ -275,6 +275,7 @@ Call graphs include tail calls through both radare2 (from its jump references) a
 - IPC is followed through other names for `ipcMain`/`ipcRenderer`, `window.` globals, names defined at the top of another file in the same directory, constants, tables and compiled TypeScript string enums. Not followed: an application's own wrapper methods around IPC, channels passed as parameters or iterated from arrays, and names defined in files that were not read.
 - Window settings: ten `webPreferences` keys, where they are written, spread in or returned by a helper. Electron fuses, CSP, navigation and permission handlers are not checked, and nothing is rated by severity. The derived `windows` columns do not know the Electron version actually shipped or run-time changes.
 - A JavaScript app is read 5,000 files at a time; until `--all` has run, every list covers the scanned part and says so.
+- Following names costs time: a large Electron app takes 1.2 to 1.7 times as long as with 0.3.0 (worker threads for 4 MiB of source or more, about 200 MiB more memory) and up to 2.4 times with one thread ([measurements](docs/benchmarks.md)).
 - A channel name or URL computed at run time cannot be named statically; it is left out or shown as `${…}`.
 - Call graphs depend on the engine's analysis; a function reached only through a pointer has no direct caller. Ghidra is verified on fixtures only.
 - Very large single items are returned compacted with a marker; very large files above the per-file budget are listed as unread.
