@@ -12,7 +12,16 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -160,6 +169,53 @@ if (JSON.parse(readFileSync(exported, "utf8")).hexvero !== 1)
   fail("export did not write an analysis");
 JSON.parse(cli("collection", sample, "findings", "--json"));
 JSON.parse(cli("compare", sample, sample, "findings", "--json"));
+
+step("CLI: a large generated app, with and without worker threads");
+// Over the 4 MiB threshold, so the token worker of the installed package really runs.
+const workerFile = join(
+  project,
+  "node_modules",
+  "@hexvero",
+  "core",
+  "dist",
+  "javascript",
+  "tokenWorker.js",
+);
+if (!existsSync(workerFile)) fail("the installed @hexvero/core lacks its token worker");
+const bigApp = join(project, "big-app");
+mkdirSync(bigApp, { recursive: true });
+writeFileSync(join(bigApp, "package.json"), JSON.stringify({ name: "big", main: "main.js" }));
+for (let f = 0; f < 8; f++) {
+  const lines = [`const { ipcMain: m } = require("electron");`];
+  for (let i = 0; i < 6000; i++)
+    lines.push(
+      `function f${f}_${i}(e,t){m.handle("ch:${f}:${i % 50}",(a,b)=>b);return fetch("https://api.example.com/${i % 9}").then(e=>t(e))}`,
+    );
+  writeFileSync(join(bigApp, f === 0 ? "main.js" : `part${f}.js`), lines.join("\n"));
+}
+const analyzed = {};
+for (const threads of ["0", "2"]) {
+  const out = join(project, `big-${threads}.json`);
+  execFileSync(process.execPath, [bin, "export", bigApp, out], {
+    cwd: project,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      HEXVERO_JS_THREADS: threads,
+      HEXVERO_CACHE_DIR: join(project, `cache-${threads}`),
+    },
+  });
+  const { analysis } = JSON.parse(readFileSync(out, "utf8"));
+  analysis.durationMs = 0;
+  analyzed[threads] = JSON.stringify(analysis);
+}
+// The generated sources must stay over the threshold, or this step proves nothing.
+const bigBytes = readdirSync(bigApp)
+  .filter((n) => n.endsWith(".js"))
+  .reduce((sum, n) => sum + statSync(join(bigApp, n)).size, 0);
+if (bigBytes < 4 * 1024 * 1024) fail(`the generated app has only ${bigBytes} bytes of source`);
+if (analyzed["0"] !== analyzed["2"]) fail("the analysis differs with worker threads");
+if (!analyzed["2"].includes("ch:7:49")) fail("the large app's IPC channels are missing");
 
 step("MCP over stdio: initialize, tools/list, open, analyze, collection, export");
 // Resolve the SDK the way the installed package does, through its export map.
