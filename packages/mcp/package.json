@@ -1,6 +1,6 @@
 {
   "name": "@hexvero/mcp",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Compact Model Context Protocol server for hexvero analyzers.",
   "keywords": [
     "hexvero",
@@ -38,7 +38,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@hexvero/core": "0.5.0",
+    "@hexvero/core": "0.5.1",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "zod": "^4.0.0"
   },

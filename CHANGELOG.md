@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-14
+
 ### Accuracy
 
 - Storage keys a helper object builds from its callers (`prefs.get("theme")` with
