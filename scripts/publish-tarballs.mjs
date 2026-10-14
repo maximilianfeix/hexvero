@@ -37,6 +37,29 @@ const published = (name) => {
   }
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Polls the registry until it serves this tarball. Right after a publish npm can take minutes to
+ * show a new version (three releases failed a two-minute wait), so this waits up to ten.
+ */
+async function appears(t) {
+  let seen = null;
+  const deadline = Date.now() + 10 * 60_000;
+  for (
+    let wait = 5000;
+    seen !== t.integrity && Date.now() < deadline;
+    wait = Math.min(wait * 1.5, 30_000)
+  ) {
+    try {
+      seen = published(t.name);
+    } catch (error) {
+      // a transient registry or network error right after publishing: keep polling
+      console.log(`publish: registry not readable yet (${String(error.message).slice(0, 120)})`);
+    }
+    if (seen !== t.integrity) await sleep(wait);
+  }
+  return seen;
+}
+
 const failures = [];
 let skipped = 0;
 // A prerelease (1.2.3-rc.1) must not become the default install.
@@ -76,6 +99,12 @@ for (const t of tarballs) {
       { stdio: "inherit" },
     );
   } catch {
+    // npm refuses a version it is still processing from an earlier attempt ("previously staged");
+    // if that attempt carried this very tarball, it is published once the registry shows it.
+    if (!dryRun && (await appears(t)) === t.integrity) {
+      console.log(`publish: ${t.name}@${version} was already being published with this content`);
+      continue;
+    }
     failures.push(`npm publish failed for ${t.name}@${version}`);
     break;
   }
@@ -83,16 +112,7 @@ for (const t of tarballs) {
 
 if (!dryRun && failures.length === 0) {
   for (const t of tarballs) {
-    let seen = null;
-    for (let attempt = 0; attempt < 24 && seen !== t.integrity; attempt++) {
-      if (attempt) await sleep(5000);
-      try {
-        seen = published(t.name);
-      } catch (error) {
-        // a transient registry or network error right after publishing: keep polling
-        console.log(`publish: registry not readable yet (${String(error.message).slice(0, 120)})`);
-      }
-    }
+    const seen = await appears(t);
     if (seen !== t.integrity)
       failures.push(
         `${t.name}@${version} on the registry does not match the released tarball (${seen})`,
