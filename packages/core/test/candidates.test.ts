@@ -458,3 +458,30 @@ describe("IPC through indirection", () => {
     ]);
   });
 });
+
+describe("IPC through esbuild's ES-module interop", () => {
+  it("reads names a bundled ES module sets once and hands out through its namespace", () => {
+    const source = [
+      "var TIMER_PREFIX, Channel;",
+      'var init_channels = __esm({ "src/ipc/channels.js"() { TIMER_PREFIX = "timer:"; Channel = Object.freeze({ TimerStart: "timer:start", ConfigGetSync: "config:get-sync" }); } });',
+      "var Push;",
+      'var init_events = __esm({ "src/ipc/events.js"() { (function(Push3) { Push3["MenuNewEntry"] = "menu:new-entry"; })(Push || (Push = {})); } });',
+      "var ipc_exports = {};",
+      "__export(ipc_exports, { Channel: () => Channel, ConfigSync: () => ConfigSync, Push: () => Push, TIMER_PREFIX: () => TIMER_PREFIX });",
+      "var ConfigSync;",
+      'var init_ipc = __esm({ "src/ipc/index.js"() { init_channels(); init_events(); ConfigSync = Channel.ConfigGetSync; } });',
+      "var { Channel: Channel2, ConfigSync: ConfigSync2, Push: Push2, TIMER_PREFIX: TIMER_PREFIX2 } = (init_ipc(), __toCommonJS(ipc_exports));",
+      'const { ipcRenderer } = require("electron");',
+      "ipcRenderer.invoke(Channel2.TimerStart);",
+      "ipcRenderer.sendSync(ConfigSync2);",
+      "ipcRenderer.on(Push2.MenuNewEntry, f);",
+      "ipcRenderer.on(`${TIMER_PREFIX2}tick`, f);",
+    ].join("\n");
+    expect(ipc(source)).toEqual([
+      "ipcRenderer.invoke timer:start (constant)",
+      "ipcRenderer.sendSync config:get-sync (constant)",
+      "ipcRenderer.on menu:new-entry (constant)",
+      "ipcRenderer.on timer:tick (constant)",
+    ]);
+  });
+});

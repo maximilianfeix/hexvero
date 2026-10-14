@@ -539,13 +539,13 @@ export class Constants {
       const rebound =
         (is(next, "punct", "=") && !is(tokens[k + 2], "punct", "=") && !announced) ||
         (!property &&
+          // `() => Name,` returns the name; it binds nothing
+          !is(tokens[k - 1], "punct", "=>") &&
           !is(next, "punct", ".") &&
           !is(next, "punct", ";") &&
           !(next && next.line !== t.line) &&
-          (is(next, "punct", ",") ||
-            is(next, "punct", ")") ||
-            is(next, "punct", "}") ||
-            is(next, "punct", ":")));
+          // `Name:` is an object key or a ternary branch, never a new binding of Name
+          (is(next, "punct", ",") || is(next, "punct", ")") || is(next, "punct", "}")));
       if (rebound) this.enums.set(t.value, null);
     }
   }
@@ -717,7 +717,157 @@ export class Constants {
         }
       }
     }
+    this.esmInterop();
     this.settleExports();
+  }
+
+  /**
+   * esbuild's ES-module interop in a CommonJS bundle:
+   *
+   *   var TIMER_PREFIX, Channel;                        // declared without a value at the top,
+   *   var init_channels = __esm({ "…"() { TIMER_PREFIX = "timer:"; Channel = {…}; } });  // set once
+   *   __export(ipc_exports, { Channel: () => Channel }); // the module's namespace
+   *   var { Channel: Channel2 } = (init_ipc(), __toCommonJS(ipc_exports));  // another module's import
+   *
+   * A name declared bare and assigned exactly once becomes a constant, and a name destructured
+   * from a namespace object means the name the namespace hands out.
+   */
+  private esmInterop(): void {
+    const tokens = this.tokens;
+    // `var A, B;` at depth 0
+    const bare = new Set<string>();
+    let depth = 0;
+    for (let k = 0; k < tokens.length; k++) {
+      const t = tokens[k]!;
+      if (t.type === "punct") {
+        if (t.value === "{" || t.value === "(" || t.value === "[") depth++;
+        else if (t.value === "}" || t.value === ")" || t.value === "]") depth--;
+        continue;
+      }
+      if (depth !== 0 || t.type !== "ident" || t.value !== "var") continue;
+      let j = k + 1;
+      const names: string[] = [];
+      while (
+        is(tokens[j], "ident") &&
+        (is(tokens[j + 1], "punct", ",") || is(tokens[j + 1], "punct", ";"))
+      ) {
+        names.push(tokens[j]!.value);
+        if (is(tokens[j + 1], "punct", ";")) break;
+        j += 2;
+      }
+      if (is(tokens[j + 1], "punct", ";")) for (const n of names) bare.add(n);
+    }
+    if (!bare.size) return;
+    // their assignments: exactly one each, never declared again
+    const assignments = new Map<string, number[]>();
+    for (let k = 1; k + 1 < tokens.length; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "ident" || !bare.has(t.value) || is(tokens[k - 1], "punct", ".")) continue;
+      if (!is(tokens[k + 1], "punct", "=") || is(tokens[k + 2], "punct", "=")) continue;
+      const before = tokens[k - 1];
+      if (is(before, "ident") && /^(const|let|var)$/.test(before!.value)) continue;
+      const list = assignments.get(t.value) ?? [];
+      list.push(k + 2);
+      assignments.set(t.value, list);
+    }
+    const single = [...assignments].filter(([, at]) => at.length === 1);
+    const settle = (name: string, at: number): boolean => {
+      // declared with a value somewhere as well: ambiguous, left alone
+      if (this.strings.has(name) || this.tables.has(name)) return true;
+      const value = tokens[at];
+      const frozen =
+        is(value, "ident", "Object") &&
+        is(tokens[at + 1], "punct", ".") &&
+        is(tokens[at + 2], "ident", "freeze") &&
+        is(tokens[at + 3], "punct", "(") &&
+        is(tokens[at + 4], "punct", "{")
+          ? at + 4
+          : -1;
+      const literal = text(value);
+      if (literal !== null && !is(tokens[at + 1], "punct", "+")) this.strings.set(name, literal);
+      else if (is(value, "punct", "{") || frozen !== -1) {
+        const table = this.object(frozen !== -1 ? frozen : at);
+        if (!table.size) return false;
+        this.tables.set(name, table);
+      } else if (
+        is(value, "ident") &&
+        is(tokens[at + 1], "punct", ".") &&
+        is(tokens[at + 2], "ident") &&
+        this.tables.get(value!.value)?.has(tokens[at + 2]!.value)
+      )
+        // `ConfigSync = Channel.ConfigGetSync`, once Channel is known
+        this.strings.set(name, this.tables.get(value!.value)!.get(tokens[at + 2]!.value)!);
+      else return false;
+      this.reassigned.delete(name);
+      return true;
+    };
+    // values first, then names that read another one's key
+    const left = single.filter(([name, [at]]) => !settle(name, at!));
+    for (const [name, [at]] of left) settle(name, at!);
+    // `__export(ns, { KEY: () => LOCAL, … })`: what a namespace object hands out
+    const namespaces = new Map<string, Map<string, string>>();
+    for (let k = 0; k + 4 < tokens.length; k++) {
+      if (
+        !is(tokens[k], "ident") ||
+        !is(tokens[k + 1], "punct", "(") ||
+        !is(tokens[k + 2], "ident") ||
+        !is(tokens[k + 3], "punct", ",") ||
+        !is(tokens[k + 4], "punct", "{")
+      )
+        continue;
+      const entries = new Map<string, string>();
+      let j = k + 5;
+      while (
+        is(tokens[j], "ident") &&
+        is(tokens[j + 1], "punct", ":") &&
+        is(tokens[j + 2], "punct", "(") &&
+        is(tokens[j + 3], "punct", ")") &&
+        is(tokens[j + 4], "punct", "=>") &&
+        is(tokens[j + 5], "ident")
+      ) {
+        entries.set(tokens[j]!.value, tokens[j + 5]!.value);
+        j += 6;
+        if (is(tokens[j], "punct", ",")) j++;
+      }
+      if (entries.size && is(tokens[j], "punct", "}"))
+        namespaces.set(tokens[k + 2]!.value, entries);
+    }
+    if (!namespaces.size) return;
+    // `var { KEY: LOCAL2 } = (init_x(), __toCommonJS(ns))` or `= __toCommonJS(ns)`
+    for (let k = 0; k + 2 < tokens.length; k++) {
+      if (!is(tokens[k], "ident") || !/^(const|let|var)$/.test(tokens[k]!.value)) continue;
+      if (!is(tokens[k + 1], "punct", "{")) continue;
+      let close = k + 2;
+      while (close < tokens.length && close < k + 400 && !is(tokens[close], "punct", "}")) close++;
+      if (!is(tokens[close + 1], "punct", "=")) continue;
+      // the namespace: the last identifier inside `__toCommonJS( … )` of the initializer
+      let ns: string | null = null;
+      for (let j = close + 2; j < close + 16 && j + 2 < tokens.length; j++)
+        if (
+          is(tokens[j], "punct", "(") &&
+          is(tokens[j + 1], "ident") &&
+          is(tokens[j + 2], "punct", ")") &&
+          namespaces.has(tokens[j + 1]!.value)
+        )
+          ns = tokens[j + 1]!.value;
+      const entries = ns ? namespaces.get(ns)! : null;
+      if (!entries) continue;
+      for (let j = k + 2; j < close; j++) {
+        if (!is(tokens[j], "ident")) continue;
+        const renamed = is(tokens[j + 1], "punct", ":") && is(tokens[j + 2], "ident");
+        const local = renamed ? tokens[j + 2]!.value : tokens[j]!.value;
+        const source = entries.get(tokens[j]!.value);
+        if (source !== undefined && source !== local) {
+          const value = this.reassigned.has(source) ? undefined : this.strings.get(source);
+          if (value) this.strings.set(local, value);
+          const table = this.tables.get(source);
+          if (table) this.tables.set(local, table);
+          const members = this.enums.get(source);
+          if (members) this.enums.set(local, members);
+        }
+        if (renamed) j += 2;
+      }
+    }
   }
 
   /** `KEY: X.Y`, `KEY: NAME` and shorthand `NAME` entries of the exported object at `open`. */

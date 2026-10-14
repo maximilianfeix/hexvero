@@ -8,6 +8,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- esbuild's ES-module interop in CommonJS bundles is read: names declared bare at the top and
+  set once inside an `__esm` wrapper are constants, and names destructured from
+  `__toCommonJS(namespace)` mean what `__export(namespace, { … })` hands out (strings, tables,
+  enums). An object key or an arrow's returned name (`{ Push: () => Push }`) no longer makes an
+  enum ambiguous. Holdout (development set): bridge member channels 32 → 40 of 60, IPC senders
+  and receivers 97 → 104, no false reports; real applications unchanged.
+
 - IPC channel names from a shared IPC module are followed through more of its forms: string
   enums exported as tsc writes them (`export var Push;` and its definition), exports that alias a
   key of an imported table (`export const ConfigSync = Channel.ConfigGetSync`), and templates
