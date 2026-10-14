@@ -73,6 +73,8 @@ export {
   type CollectionQuery,
   type CollectionPage,
   type StringsQuery,
+  type CollectionComparison,
+  type CompareAllResult,
 } from "./session.js";
 export {
   DEFAULT_PAGE_BYTES,

@@ -45,8 +45,9 @@ Commands
                                                 Page one list (symbols, imports, exports, ...)
   strings <path> [--min n] [--utf16] [--tag t] [--text s] [--limit n] [--json]
   bytes <path> <offset> [length]                Hex dump of a byte window
-  compare <a> <b> <collection> [--key f[+g]] [--ignore f,g] [--strict]
-                                                Added, removed and changed items between two builds
+  compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
+                                                Added, removed and changed items between two builds;
+                                                without a collection, counts for every shared one
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -358,6 +359,53 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "compare": {
       const a = await session.open(need(0, "a"));
       const b = await session.open(need(1, "b"));
+      // without a collection (or with --all): one line per collection both targets share
+      if (args.positionals[2] === undefined || args.flags["all"]) {
+        const all = await session.compareAll(a.id, b.id);
+        if (json) {
+          io.out(toJson(all));
+          return 0;
+        }
+        const differing = all.collections.filter(
+          (c) => c.added || c.removed || c.changed || c.unknown,
+        );
+        io.out(
+          heading(
+            io,
+            `${all.collections.length} shared collection(s), ${differing.length} with differences`,
+          ),
+        );
+        for (const row of table(
+          all.collections.map((c) => ({
+            collection: c.collection,
+            added: c.added,
+            removed: c.removed,
+            changed: c.changed,
+            relocated: c.relocated || undefined,
+            unknown: c.unknown || undefined,
+            unchanged: c.unchanged,
+            partial: c.partial ? "yes" : undefined,
+          })),
+        ))
+          io.out(row);
+        if (all.onlyA.length) io.out(paint(io, "dim", `  only in a: ${all.onlyA.join(", ")}`));
+        if (all.onlyB.length) io.out(paint(io, "dim", `  only in b: ${all.onlyB.join(", ")}`));
+        if (all.collections.some((c) => c.partial))
+          io.out(
+            paint(io, "yellow", "  ! partial: only the first 2,000 items of a side were compared"),
+          );
+        if (all.partialScan.a || all.partialScan.b)
+          io.out(
+            paint(
+              io,
+              "yellow",
+              "  ! a JavaScript app was read only in part; run analyze --all on both first",
+            ),
+          );
+        if (differing[0])
+          io.out(paint(io, "dim", `  details: hexvero compare <a> <b> ${differing[0].collection}`));
+        return 0;
+      }
       const name = need(2, "collection");
       const keyFlag = flagString(args.flags, "key");
       const ignoreFlag = flagString(args.flags, "ignore");

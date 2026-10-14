@@ -87,9 +87,21 @@ main
     └ sym.imp.system
 ```
 
-**2. Compare two versions.** What changed between two builds, list by list, with the item as evidence. Code that only moved is not reported as changed.
+**2. Compare two versions.** What changed between two builds, list by list, with the item as evidence. Code that only moved is not reported as changed. Without a list name, `compare` counts the differences in every list both builds have, so you know where to look:
 
 ```text
+$ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar
+12 shared collection(s), 10 with differences
+  collection      added  removed  changed  unchanged
+  --------------  -----  -------  -------  ---------
+  findings        4      6        0        1
+  modules         0      0        3        1
+  …
+  webPreferences  0      0        2        2
+  windows         0      0        1        0
+  contextBridge   1      1        0        5
+  …
+
 $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar webPreferences
 webPreferences: 0 added, 0 removed, 2 changed, 2 unchanged · matched by file+windowName+key
   ~ main.js::win::nodeIntegration  value: true → false
@@ -168,8 +180,9 @@ hexvero analyze <path> [--json] [--out file.json]     summary, findings, limitat
 hexvero collection <path> <name> [--text s] [--limit n] [--offset n] [--max-bytes n]
 hexvero strings <path> [--min n] [--utf16] [--tag url|path|email|ip|format|secret-ish|base64-ish]
 hexvero bytes <path> <offset> [length]                hex dump (64 KiB per call)
-hexvero compare <a> <b> <collection> [--key f[+g]] [--ignore f,g] [--strict]
-                                                      added, removed, changed and relocated items between two builds
+hexvero compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
+                                                      added, removed, changed and relocated items between two builds;
+                                                      without a collection: counts for every shared one
 hexvero export <path> <out.json>                      the complete analysis
 hexvero recover <bundle.js|map> <outdir>              split one JS bundle into module files, or write a source map's originals
 hexvero provider <path> radare2|rizin|ghidra <op> [--address a] [--text s]
