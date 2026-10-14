@@ -6,15 +6,6 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-10-14
-
-### Added
-
-- `hexvero compare <a> <b>` without a collection (or with `--all`), and `hexvero_compare`
-  without `collection`: one row per collection both targets share with the counts of added,
-  removed, changed, relocated, unknown and unchanged items, which comparisons were partial, and
-  the collections only one side has (#83).
-
 ### Accuracy
 
 - Storage keys a helper object builds from its callers (`prefs.get("theme")` with
@@ -26,6 +17,17 @@ All notable changes to hexvero are listed here. The format follows
   development sets: holdout2 storage keys 47 → 53 of 57 with false reports 1 → 0, holdout
   48 → 51 of 51; endpoints holdout2 53 → 54, holdout 35 → 36. The real applications checked
   report the same results.
+
+## [0.5.0] - 2026-10-14
+
+### Added
+
+- `hexvero compare <a> <b>` without a collection (or with `--all`), and `hexvero_compare`
+  without `collection`: one row per collection both targets share with the counts of added,
+  removed, changed, relocated, unknown and unchanged items, which comparisons were partial, and
+  the collections only one side has (#83).
+
+### Accuracy
 
 - Methods of object literals are functions to the resolver: `const http = { getJson(url) {…},
   postJson: (url, body) => … }` called as `http.getJson("…")` gives the address at each call

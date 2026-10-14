@@ -26,6 +26,15 @@ if (sh("git branch --show-current") !== "main") {
   process.exit(1);
 }
 sh("git pull --ff-only origin main");
+// Release notes first: an empty Unreleased section must not leave version bumps behind.
+{
+  const notes = readFileSync("CHANGELOG.md", "utf8").split("## [Unreleased]")[1];
+  if (notes === undefined) throw new Error("CHANGELOG.md has no Unreleased section");
+  if (!notes.split(/\n## \[/)[0].trim()) {
+    console.error("CHANGELOG.md: the Unreleased section is empty; write the notes first");
+    process.exit(1);
+  }
+}
 // Gates on the untouched tree first: a failing check must not leave version bumps behind.
 gate("npm run check");
 
