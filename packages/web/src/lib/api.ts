@@ -50,6 +50,11 @@ export interface Page<T> {
   truncated: boolean;
   collection: string;
   bytes: number;
+  /** Offset of the following page; null on the last one. Pages hold fewer rows than asked for when the byte budget runs out. */
+  next?: number | null;
+  /** The first row was too large for the page and is shortened; `itemBytes` is its full size. */
+  itemTruncated?: boolean;
+  itemBytes?: number;
 }
 export interface StringItem {
   offset: number;
