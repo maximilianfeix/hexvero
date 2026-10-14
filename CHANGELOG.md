@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-14
+
 ### Added
 
 - `hexvero compare <a> <b>` without a collection (or with `--all`), and `hexvero_compare`
