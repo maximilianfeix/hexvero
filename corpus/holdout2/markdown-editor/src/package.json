@@ -1,0 +1,12 @@
+{
+  "name": "inkwell",
+  "productName": "Inkwell",
+  "version": "1.6.0",
+  "description": "Corpus application: a markdown editor with a live preview pane, a vault of notes and plug-ins.",
+  "license": "MIT",
+  "main": "main.js",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "esbuild": "^0.28.0"
+  }
+}

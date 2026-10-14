@@ -1,0 +1,569 @@
+{
+  "case": "music-player",
+  "kind": "electron",
+  "license": "MIT, written for this corpus",
+  "inputs": [
+    "holdout2/music-player.plain.asar",
+    "holdout2/music-player.bundled.asar",
+    "holdout2/music-player.minified.asar"
+  ],
+  "method": "Every expectation was written from the sources in src/ by reading them; no analysis tool was run on the sources or on the built inputs, and no tool's detectors or output were looked at. The three inputs are the same program: packed as written, bundled by esbuild, and bundled and minified. main.js, preload.js and the helper modules shared/ipc.js, shared/endpoints.js, shared/time.js and main/window-options.js are written as tsc emits TypeScript compiled to CommonJS: `const electron_1 = require(\"electron\")` and every Electron call reads electron_1.ipcMain.handle(...), electron_1.contextBridge.exposeInMainWorld(...); constants are `exports.NAME = \"...\"` and are read as ipc_1.NAME or ipc_1.Channels.Name; default imports go through __importDefault, so electron-store is constructed as `new electron_store_1.default(...)` and node:path is used as node_path_1.default.join; imported functions are called as `(0, window_options_1.windowOptions)(...)`. renderer.js and renderer-mini.js are ES modules (as a Vite build of a renderer would be). Bundling keeps the file names main.js, preload.js, renderer.js and renderer-mini.js and folds the helper modules (and lib/keys.js) into the entry files that use them. Roles and settings are attributed to the four entry files; that is right for the plain input as well, because the helper modules hold constants, option values and formatting functions only: every IPC call, every new BrowserWindow, every exposeInMainWorld, every request and every storage access is written in an entry file. A window setting is attributed to the file that creates the window (main.js), also where its value is written in main/window-options.js. The bundled and minified main.js and preload.js were also run in Node against stand-ins for Electron and electron-store (outside the repository, not kept); the channels registered and invoked, the exposed members and the channels they touch, and the web preferences of the three windows were exactly the ones listed here. Requests and storage of the renderers and the main-to-renderer sends inside handlers were checked by reading. An expectation states what the program does, also where that is hard to see; what only looks like a finding is listed under absent. webPreferences lists the keys preload, contextIsolation, nodeIntegration and sandbox only, one entry per window and key that the code writes (directly or through the defaults of windowOptions()); keys the code does not write are not listed with Electron's defaults. Requests: the renderer talks to the Cadence API through the class ApiClient written in renderer.js; its one fetch is `fetch(`${this.baseUrl}${path}`, ...)`, the single instance is `new ApiClient(API_ROOT)` and every call of get/post/delete passes a literal path or a template that starts with a literal. Each request made through it is listed with the address it really goes to; the fetch inside request() is not counted as unreadable, and API_ROOT alone (https://api.cadence.example/v2) is the known leading part of that fetch but is never requested as such, so it is listed neither as present nor as absent. `audio.src = track.path` in the AudioEngine sets a local file (or an object URL) as the source of the audio element; it is not a request call and is not counted. shell.openExternal(address) hands an address to the operating system; the application requests nothing, so such addresses are absent and the call is not a request call.",
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "library:get-tracks",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js registerLibraryIpc: electron_1.ipcMain.handle with the literal; preload.js: electron_1.ipcRenderer.invoke in libraryApi.getTracks"
+        },
+        {
+          "channel": "library:add-folder",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron_1.ipcMain.handle in main.js; ipcRenderer.invoke in libraryApi.addFolder"
+        },
+        {
+          "channel": "library:scan-progress",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: event.sender.send(\"library:scan-progress\", ...) twice in the library:add-folder handler (event.sender is the webContents that invoked); preload.js: ipcRenderer.on in libraryApi.onScanProgress (and removeListener for the same name)"
+        },
+        {
+          "channel": "playlists:export",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron_1.ipcMain.handle in registerLibraryIpc; ipcRenderer.invoke in libraryApi.exportPlaylist"
+        },
+        {
+          "channel": "playlists:list",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: a computed key [ipc_1.Channels.PlaylistsList] of the object `handlers`; in the whenReady callback `for (const channel of Object.keys(handlers)) electron_1.ipcMain.handle(channel, handlers[channel])`. The constant is in shared/ipc.js (exports.Channels = { ..., PlaylistsList: \"playlists:list\" }). preload.js: ipcRenderer.invoke(ipc_1.Channels.PlaylistsList)"
+        },
+        {
+          "channel": "playlists:save",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: computed key [ipc_1.Channels.PlaylistsSave] of `handlers`, registered by the same loop; preload.js: ipcRenderer.invoke(ipc_1.Channels.PlaylistsSave, ...)"
+        },
+        {
+          "channel": "settings:get",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: computed key [ipc_1.Channels.SettingsGet] of `handlers`; preload.js: ipcRenderer.invoke(ipc_1.Channels.SettingsGet) in settingsApi.getSettings"
+        },
+        {
+          "channel": "settings:set",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: computed key [ipc_1.Channels.SettingsSet] of `handlers`; preload.js: ipcRenderer.invoke(ipc_1.Channels.SettingsSet, patch)"
+        },
+        {
+          "channel": "settings:changed",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: in the SettingsSet handler, `for (const win of electron_1.BrowserWindow.getAllWindows()) win.webContents.send(ipc_1.Channels.SettingsChanged, next)`; preload.js: ipcRenderer.on(ipc_1.Channels.SettingsChanged, ...)"
+        },
+        {
+          "channel": "player:state-changed",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js registerPlayerIpc: electron_1.ipcMain.on(ipc_1.PLAYER_STATE_CHANGED, ...); preload.js: ipcRenderer.send(ipc_1.PLAYER_STATE_CHANGED, state) in playerApi.reportState. The constant is exports.PLAYER_STATE_CHANGED in shared/ipc.js"
+        },
+        {
+          "channel": "player:state",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: miniWindow?.webContents.send(ipc_1.PLAYER_STATE, state) in the player:state-changed listener, and win.webContents.send(ipc_1.PLAYER_STATE, lastState) when the mini player is ready to show; preload.js: ipcRenderer.on(ipc_1.PLAYER_STATE, ...) in the member onState of the second API"
+        },
+        {
+          "channel": "player:command",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: mainWindow?.webContents.send(\"player:command\", ...) in the click of the menu item Play / Pause and in the mini:command listener; preload.js: ipcRenderer.on in playerApi.onCommand"
+        },
+        {
+          "channel": "mini:command",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron_1.ipcMain.on in main.js; preload.js: ipcRenderer.send in the member `send` of the API exposed as \"mini\""
+        },
+        {
+          "channel": "mini:toggle",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron_1.ipcMain.on in main.js; ipcRenderer.send in playerApi.toggleMiniPlayer"
+        },
+        {
+          "channel": "mini:get-artwork",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js toggleMiniPlayer: win.webContents.ipc.handle(ipc_1.MINI_ARTWORK, ...), a handler on the IPC of one webContents (the mini player's) rather than on ipcMain; preload.js: ipcRenderer.invoke(ipc_1.MINI_ARTWORK, trackId) in the member getArtwork of \"mini\". The constant is exports.MINI_ARTWORK in shared/ipc.js"
+        },
+        {
+          "channel": "media:key",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js registerMediaKeys: mainWindow?.webContents.send(\"media:key\", action) in the callback of globalShortcut.register, inside a loop over three accelerators; preload.js: ipcRenderer.on in playerApi.onMediaKey"
+        },
+        {
+          "channel": "lyrics:fetch",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron_1.ipcMain.handle in registerPlayerIpc; ipcRenderer.invoke in playerApi.fetchLyrics"
+        },
+        {
+          "channel": "window:minimize",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron_1.ipcMain.on in registerWindowIpc; ipcRenderer.send in windowApi.minimize"
+        },
+        {
+          "channel": "window:toggle-maximize",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron_1.ipcMain.on in registerWindowIpc; ipcRenderer.send in windowApi.toggleMaximize"
+        },
+        {
+          "channel": "app:get-version",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron_1.ipcMain.handle in registerWindowIpc; ipcRenderer.invoke in windowApi.getVersion"
+        }
+      ],
+      "absent": [
+        {
+          "channel": "playlists:smart",
+          "why": "PlaylistsSmart in exports.Channels of shared/ipc.js is a constant that no IPC call uses"
+        },
+        {
+          "channel": "library:remove-folder",
+          "why": "main.js: the ipcMain.handle call is inside a comment (plain input only; bundling drops the comment)"
+        },
+        {
+          "channel": "dev:reload",
+          "why": "preload.js: inside a commented-out exposeInMainWorld call (plain input only)"
+        },
+        {
+          "channel": "player:seek",
+          "why": "main.js: text of a log message in the player:state-changed listener"
+        },
+        {
+          "channel": "track:ended",
+          "why": "renderer.js: on() and emit() of the AudioEngine, an event emitter of the page (class Emitter); its events never leave the page"
+        },
+        {
+          "channel": "time:update",
+          "why": "renderer.js: another event of the same in-page emitter (so is \"state\")"
+        },
+        {
+          "channel": "play-pause",
+          "why": "a value sent ON media:key and player:command (and the argument of mini.send), not a channel; so are next, previous and expand"
+        },
+        {
+          "channel": "nexttrack",
+          "why": "renderer.js: navigator.mediaSession.setActionHandler, a media session action (so is previoustrack)"
+        },
+        {
+          "channel": "MediaPlayPause",
+          "why": "main.js: an accelerator given to globalShortcut.register (so are MediaNextTrack and MediaPreviousTrack)"
+        },
+        {
+          "channel": "second-instance",
+          "why": "main.js: app.on, an application event (so are window-all-closed, activate and will-quit)"
+        },
+        {
+          "channel": "ready-to-show",
+          "why": "main.js: win.once, a window event (so are close and closed)"
+        },
+        { "channel": "click", "why": "main.js: tray.on(\"click\", ...), an event of the Tray" },
+        {
+          "channel": "message",
+          "why": "renderer.js: addEventListener on the EventSource and on the WebSocket"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "main window (createMainWindow): a webPreferences literal in new electron_1.BrowserWindow({...}); PRELOAD is node_path_1.default.join(__dirname, \"preload.js\")"
+        },
+        { "key": "contextIsolation", "value": true, "file": "main.js", "why": "main window, in the literal" },
+        { "key": "nodeIntegration", "value": false, "file": "main.js", "why": "main window, in the literal" },
+        { "key": "sandbox", "value": false, "file": "main.js", "why": "main window, in the literal" },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "mini player (toggleMiniPlayer): new BrowserWindow((0, window_options_1.windowOptions)({ ..., webPreferences: { preload: PRELOAD, sandbox: false } })). windowOptions() in main/window-options.js returns webPreferences: { ...exports.BASE_WEB_PREFERENCES, ...overrides.webPreferences }"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "mini player; from BASE_WEB_PREFERENCES in main/window-options.js, not overridden"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "mini player; from BASE_WEB_PREFERENCES, not overridden"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "why": "mini player; BASE_WEB_PREFERENCES says sandbox: true, but the window's own webPreferences are spread after it and say sandbox: false"
+        },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "about window (showAbout, opened from the menu item About Cadence): windowOptions({ ..., webPreferences: { preload: PRELOAD } })"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "about window; from BASE_WEB_PREFERENCES"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "about window; from BASE_WEB_PREFERENCES"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "why": "about window; the default sandbox: true of BASE_WEB_PREFERENCES applies, because the window's own webPreferences do not name sandbox"
+        }
+      ],
+      "absent": [
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window is created with sandbox: true, the about window. The mini player starts from the same default but replaces it with sandbox: false"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main.js",
+          "why": "no window has it: all three are created with contextIsolation: true"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main.js",
+          "why": "no window has it: all three are created with nodeIntegration: false"
+        },
+        {
+          "key": "preload",
+          "value": "metadata",
+          "file": "renderer.js",
+          "why": "renderer.js: `this.audio.preload = \"metadata\"` sets the preload attribute of an audio element, not a window setting"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "cadence",
+          "member": "getTracks",
+          "channel": "library:get-tracks",
+          "why": "the API object `api` is built by spreading four objects (libraryApi, playerApi, settingsApi, windowApi) and adding two members; it is exposed with electron_1.contextBridge.exposeInMainWorld(\"cadence\", api). getTracks comes from libraryApi"
+        },
+        { "api": "cadence", "member": "addFolder", "channel": "library:add-folder", "why": "from libraryApi" },
+        {
+          "api": "cadence",
+          "member": "onScanProgress",
+          "channel": "library:scan-progress",
+          "why": "from libraryApi; subscribes with ipcRenderer.on and returns a function that unsubscribes"
+        },
+        {
+          "api": "cadence",
+          "member": "listPlaylists",
+          "channel": "playlists:list",
+          "why": "from libraryApi; through the constant ipc_1.Channels.PlaylistsList"
+        },
+        {
+          "api": "cadence",
+          "member": "savePlaylist",
+          "channel": "playlists:save",
+          "why": "from libraryApi; through ipc_1.Channels.PlaylistsSave"
+        },
+        { "api": "cadence", "member": "exportPlaylist", "channel": "playlists:export", "why": "from libraryApi" },
+        {
+          "api": "cadence",
+          "member": "reportState",
+          "channel": "player:state-changed",
+          "why": "from playerApi; ipcRenderer.send through ipc_1.PLAYER_STATE_CHANGED"
+        },
+        { "api": "cadence", "member": "onMediaKey", "channel": "media:key", "why": "from playerApi" },
+        { "api": "cadence", "member": "onCommand", "channel": "player:command", "why": "from playerApi" },
+        { "api": "cadence", "member": "fetchLyrics", "channel": "lyrics:fetch", "why": "from playerApi" },
+        { "api": "cadence", "member": "toggleMiniPlayer", "channel": "mini:toggle", "why": "from playerApi" },
+        {
+          "api": "cadence",
+          "member": "getSettings",
+          "channel": "settings:get",
+          "why": "from settingsApi; through ipc_1.Channels.SettingsGet"
+        },
+        {
+          "api": "cadence",
+          "member": "updateSettings",
+          "channel": "settings:set",
+          "why": "from settingsApi; through ipc_1.Channels.SettingsSet"
+        },
+        {
+          "api": "cadence",
+          "member": "onSettingsChanged",
+          "channel": "settings:changed",
+          "why": "from settingsApi; through ipc_1.Channels.SettingsChanged"
+        },
+        { "api": "cadence", "member": "minimize", "channel": "window:minimize", "why": "from windowApi" },
+        { "api": "cadence", "member": "toggleMaximize", "channel": "window:toggle-maximize", "why": "from windowApi" },
+        { "api": "cadence", "member": "getVersion", "channel": "app:get-version", "why": "from windowApi" },
+        {
+          "api": "cadence",
+          "member": "platform",
+          "channel": null,
+          "why": "written in the object `api` itself: process.platform, a string"
+        },
+        {
+          "api": "cadence",
+          "member": "formatTime",
+          "channel": null,
+          "why": "written in `api` as formatTime: time_1.formatTime, the formatting function of shared/time.js; it talks to no channel"
+        },
+        {
+          "api": "mini",
+          "member": "onState",
+          "channel": "player:state",
+          "why": "the second API, exposed with an object literal: exposeInMainWorld(\"mini\", {...}); ipcRenderer.on(ipc_1.PLAYER_STATE, ...)"
+        },
+        {
+          "api": "mini",
+          "member": "getArtwork",
+          "channel": "mini:get-artwork",
+          "why": "ipcRenderer.invoke(ipc_1.MINI_ARTWORK, trackId)"
+        },
+        {
+          "api": "mini",
+          "member": "send",
+          "channel": "mini:command",
+          "why": "a member named send that calls ipcRenderer.send(\"mini:command\", command)"
+        }
+      ],
+      "absent": [
+        {
+          "api": "devtools",
+          "member": "reload",
+          "why": "preload.js: the exposeInMainWorld call is inside a comment (plain input only)"
+        },
+        {
+          "api": "libraryApi",
+          "member": "getTracks",
+          "why": "libraryApi (like playerApi, settingsApi and windowApi) is the name of a variable whose members are spread into `api`; the exposed name is \"cadence\""
+        },
+        {
+          "api": "api",
+          "member": "getTracks",
+          "why": "`api` is the name of the variable; the exposed name is the literal \"cadence\""
+        },
+        {
+          "api": "cadence",
+          "member": "send",
+          "why": "send is a member of the API \"mini\" only"
+        },
+        {
+          "api": "cadence",
+          "member": "libraryApi",
+          "why": "libraryApi is spread into `api`: its members become members of cadence, the object itself is not one"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://api.cadence.example/v2/me/recommendations",
+          "why": "renderer.js loadRecommendations: api.get(\"/me/recommendations\"); ApiClient.get calls request(path), which calls fetch(`${this.baseUrl}${path}`, ...) with this.baseUrl = API_ROOT (\"https://api.cadence.example/v2\", shared/endpoints.js) from the one `new ApiClient(API_ROOT)`. get() states no method"
+        },
+        {
+          "prefix": "https://api.cadence.example/v2/artists/",
+          "why": "renderer.js topTracks: api.get(`/artists/${encodeURIComponent(artistId)}/top-tracks`), a run-time artist id after the fixed part"
+        },
+        {
+          "value": "https://api.cadence.example/v2/scrobbles",
+          "method": "POST",
+          "why": "renderer.js scrobble: api.post(\"/scrobbles\", ...); ApiClient.post passes { method: \"POST\", ... } to request(), which spreads it into the options of fetch"
+        },
+        {
+          "prefix": "https://api.cadence.example/v2/me/likes/",
+          "method": "POST",
+          "why": "renderer.js setLiked(trackId, true): api.post(`/me/likes/${trackId}`, {})"
+        },
+        {
+          "prefix": "https://api.cadence.example/v2/me/likes/",
+          "method": "DELETE",
+          "why": "renderer.js setLiked(trackId, false): api.delete(`/me/likes/${trackId}`); ApiClient.delete passes { method: \"DELETE\" }"
+        },
+        {
+          "value": "https://api.cadence.example/v2/live/friends",
+          "why": "renderer.js watchFriends: new EventSource(`${API_ROOT}/live/friends`, { withCredentials: true })"
+        },
+        {
+          "prefix": "wss://together.cadence.example/socket?session=",
+          "why": "renderer.js joinListenAlong: new WebSocket(`${LISTEN_ALONG_URL}?session=${encodeURIComponent(sessionId)}`); LISTEN_ALONG_URL is in shared/endpoints.js"
+        },
+        {
+          "prefix": "https://covers.cadence.example/",
+          "why": "renderer.js coverFor: fetch(`https://covers.cadence.example/${albumId}/600.jpg`) when the cover is not cached in IndexedDB"
+        },
+        {
+          "prefix": "https://lyrics.cadence.example/v1/search?",
+          "why": "main.js, lyrics:fetch handler: fetch(endpoints_1.LYRICS_API + \"/search?\" + query.toString()) with Node's global fetch; the query is built at run time from URLSearchParams({ artist, title })"
+        },
+        {
+          "value": "https://updates.cadence.example/stable/latest.json",
+          "why": "main.js checkForUpdates: fetch(endpoints_1.UPDATE_FEED, { headers }) (no method stated)"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "renderer.js downloadEpisode calls fetch(episode.enclosureUrl); the address comes from a podcast feed at run time and nothing about it is known. A tool should show the call and say the URL is unknown. The fetch inside ApiClient.request is not counted: every request through it has a known address (see method)",
+      "absent": [
+        {
+          "value": "https://staging.api.cadence.example/v2",
+          "why": "STAGING_API_ROOT in shared/endpoints.js is a constant that nothing uses"
+        },
+        {
+          "value": "https://cadence.example/support",
+          "why": "SUPPORT_URL is only given to shell.openExternal from the Help menu: the system browser opens it, the application requests nothing"
+        },
+        {
+          "value": "https://cadence.example/changelog",
+          "why": "main.js checkForUpdates: part of the text of a log message"
+        },
+        {
+          "value": "https://api.cadence.example/v1/legacy-feed",
+          "why": "renderer.js shareLink: inside a comment (plain input only)"
+        },
+        {
+          "value": "https://cadence.example/track/123",
+          "why": "renderer.js shareLink: text inside the tooltip string"
+        },
+        {
+          "value": "https://cadence.example/track/",
+          "why": "renderer.js shareLink: new URL(`/track/...`, \"https://cadence.example\").href is written to the clipboard; nothing requests it"
+        },
+        {
+          "value": "index.html",
+          "why": "main.js: loadFile(\"index.html\") loads a file of the package, not an address"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "electron-store",
+          "value": "window.bounds",
+          "ops": ["read", "write"],
+          "why": "main.js: store is `new electron_store_1.default({ name: \"cadence-config\", ... })`, electron-store through tsc's __importDefault; store.get(\"window.bounds\", ...) in createMainWindow, store.set in the close listener"
+        },
+        {
+          "kind": "electron-store",
+          "value": "library.folders",
+          "ops": ["read", "write"],
+          "why": "main.js library:add-folder handler: store.get, then store.set with the folder appended. The key also has a default in the options of the store, which is no access"
+        },
+        {
+          "kind": "electron-store",
+          "value": "preferences",
+          "ops": ["read", "write"],
+          "why": "main.js: store.get in the SettingsGet and SettingsSet handlers, store.set in SettingsSet"
+        },
+        {
+          "kind": "electron-store",
+          "value": "playlists",
+          "ops": ["read", "write"],
+          "why": "main.js: store.get in the PlaylistsList, PlaylistsSave and playlists:export handlers, store.set in PlaylistsSave"
+        },
+        {
+          "kind": "electron-store",
+          "value": "player.lastTrack",
+          "ops": ["write"],
+          "why": "main.js: store.set in the player:state-changed listener"
+        },
+        {
+          "kind": "electron-store",
+          "value": "legacy.libraryCache",
+          "ops": ["delete"],
+          "why": "main.js: store.delete at start, in the whenReady callback"
+        },
+        {
+          "kind": "localStorage",
+          "value": "cadence.queue",
+          "ops": ["read", "write"],
+          "why": "renderer.js: getItem(QUEUE_KEY) in loadQueue, setItem(QUEUE_KEY, ...) in saveQueue; the constant is in lib/keys.js"
+        },
+        {
+          "kind": "localStorage",
+          "value": "cadence.eqPreset",
+          "ops": ["read", "write"],
+          "why": "renderer.js: getItem in restorePreset, setItem in applyPreset"
+        },
+        {
+          "kind": "localStorage",
+          "value": "cadence.lastError",
+          "ops": ["write", "delete"],
+          "why": "renderer.js: setItem in reportError, removeItem in dismissError"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "mini.expanded",
+          "ops": ["read", "write"],
+          "why": "renderer-mini.js: getItem in isExpanded, setItem in setExpanded"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "cadence-artwork",
+          "why": "renderer.js openArtworkDb: indexedDB.open(ARTWORK_DB, ARTWORK_DB_VERSION); both constants are in lib/keys.js"
+        }
+      ],
+      "absent": [
+        {
+          "value": "cadence-config",
+          "why": "main.js: the file name of the electron-store, not a key in it"
+        },
+        {
+          "value": "volume",
+          "why": "a field of the object stored under the key preferences (and of its default), not a key of the store; the renderer sends it through updateSettings"
+        },
+        {
+          "value": "recommendations",
+          "why": "renderer.js recommendationsOnce: has/set/get of the Map `memo`"
+        },
+        {
+          "value": "covers",
+          "why": "renderer.js: the object store inside the database cadence-artwork, not a database (byAlbum is an index of it)"
+        },
+        {
+          "value": "artist",
+          "why": "main.js: a field of the URLSearchParams of the lyrics request, a query parameter (so is title)"
+        }
+      ]
+    }
+  }
+}

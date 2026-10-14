@@ -29,7 +29,7 @@ const arg = (name) => {
   return i === -1 ? undefined : process.argv[i + 1];
 };
 const { tool, observations } = JSON.parse(readFileSync(file, "utf8"));
-const sets = arg("set") ? [arg("set")] : ["dev", "validation", "holdout", "damaged"];
+const sets = arg("set") ? [arg("set")] : ["dev", "validation", "holdout", "holdout2", "damaged"];
 
 const rows = [];
 const add = (set, input, klass, counts, notes = []) =>

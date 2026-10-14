@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Hosts the pages may talk to or embed. Allowing a host requests nothing from it. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: https:; frame-src https://embed.inkwell.example; connect-src https: wss:"
+    />
+    <title>Inkwell</title>
+  </head>
+  <body>
+    <aside id="sidebar">
+      <input id="search" type="search" placeholder="Search the vault" />
+      <ul id="results"></ul>
+      <select id="theme">
+        <option>light</option>
+        <option>dark</option>
+      </select>
+      <button id="settings">Settings</button>
+    </aside>
+    <main id="workspace">
+      <nav>
+        <button id="bold">B</button>
+        <button id="italic">I</button>
+        <input id="embed-url" />
+        <button id="embed">Embed</button>
+        <button id="check-links">Check links</button>
+        <span id="links"></span>
+        <span id="word-count"></span>
+      </nav>
+      <textarea id="editor" spellcheck="true"></textarea>
+      <form id="feedback"><input name="text" /><button>Send feedback</button></form>
+      <p id="whats-new" hidden>See what is new</p>
+    </main>
+    <article id="preview"></article>
+    <section id="settings-page">
+      <div id="tabs">
+        <button data-open="editor">Editor</button>
+        <button data-open="account">Account</button>
+      </div>
+      <div data-tab="editor">
+        <input id="font-size" type="number" min="10" max="28" />
+        <label><input id="unsafe-plugins" type="checkbox" /> Allow plug-ins that use Node</label>
+      </div>
+      <div data-tab="account" hidden>
+        <span id="account"></span>
+        <button id="sign-out">Sign out</button>
+      </div>
+    </section>
+    <script type="module" src="renderer.js"></script>
+    <script type="module" src="renderer-preview.js"></script>
+    <script type="module" src="renderer-settings.js"></script>
+  </body>
+</html>

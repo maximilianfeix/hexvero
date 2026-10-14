@@ -342,9 +342,16 @@ describe("window settings as written, computed, or absent", () => {
       "function base (extra) { return { sandbox: false, contextIsolation: false, ...extra } }\nconst w = new BrowserWindow({ webPreferences: base({ sandbox: true }) });",
     );
     // The argument's `sandbox: true` is laid over the helper's value. The helper also spreads
-    // its parameter, which is not followed, after `contextIsolation: false`: that key may be
-    // replaced by it, so it is not known.
+    // its parameter after `contextIsolation: false`; its only call passes `{ sandbox: true }`,
+    // which does not touch that key, so it stays false.
     expect(info.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual([
+      "true false",
+    ]);
+    // with a caller whose argument cannot be read, the key is not known
+    const opaque = analyze(
+      "function base (extra) { return { sandbox: false, contextIsolation: false, ...extra } }\nconst w = new BrowserWindow({ webPreferences: base({ sandbox: true }) });\nbase(userOptions);",
+    );
+    expect(opaque.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual([
       "true computed",
     ]);
     const plain = analyze(
@@ -367,9 +374,9 @@ describe("window settings as written, computed, or absent", () => {
       analyze(main, "^38.0.0").windows.map(
         (w) => `${w.nodeIntegration} ${w.contextIsolation} ${w.sandbox} ${w.pageRequire}`,
       );
-    // options passed in as a parameter
+    // options passed in as a parameter that one caller fills in from something unreadable
     const info = analyze(
-      "function make (o) { return new BrowserWindow(o); }\nmake({ webPreferences: { nodeIntegration: true, contextIsolation: false } });",
+      "function make (o) { return new BrowserWindow(o); }\nmake({ webPreferences: { nodeIntegration: true, contextIsolation: false } });\nmake(loadOptions());",
       "^38.0.0",
     );
     expect(info.windows.map((w) => `${w.nodeIntegration} ${w.pageRequire}`)).toEqual([

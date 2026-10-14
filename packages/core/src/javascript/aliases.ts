@@ -415,6 +415,16 @@ export class Constants {
    */
   readonly exported: Record<string, string> = {};
   /**
+   * Names this file passes on from another module without a literal of its own:
+   * `module.exports = { SAVE: ch.SAVE }`, `exports.OPEN = names.OPEN`,
+   * `export { OPEN_DOC as OPEN } from "./channels"`. Looked up there by the application scan.
+   */
+  readonly reexported: Record<string, { specifier: string; property: string }> = {};
+  /** `export * from "./x"`: every name of x is a name of this file. */
+  readonly starExports: string[] = [];
+  /** Export entries whose value is a name, settled once the whole file is read. */
+  private readonly exportNames: Array<{ key: string; at: number }> = [];
+  /**
    * Token indexes at which a name means its top-level declaration (the result of
    * `resolveAliases` with `names()` as the file's own names). While it is null, every use counts.
    */
@@ -593,6 +603,12 @@ export class Constants {
           this.reassigned.add(`${t.value}.${tokens[k + 2]!.value}`);
       }
       if (wrapper ? depth > wrapper.depth + 2 : depth !== 0) continue;
+      if (t.value === "export" && !wrapper) {
+        if (is(tokens[k + 1], "punct", "*") && is(tokens[k + 2], "ident", "from")) {
+          const specifier = text(tokens[k + 3]);
+          if (specifier !== null) this.starExports.push(specifier);
+        } else if (is(tokens[k + 1], "punct", "{")) this.esmExportList(k + 1);
+      }
       if (
         (t.value === "import" || /^(const|let|var)$/.test(t.value)) &&
         is(tokens[k + 1], "punct", "{")
@@ -623,6 +639,7 @@ export class Constants {
           for (const [key, v] of table) this.exported[key] = v;
           // `module.exports = { CHANNELS, API_ROOT }`: this file's own constants, by name
           for (const key of this.keys(at, true)) this.export(key);
+          this.collectExportNames(at);
         }
         continue;
       }
@@ -634,6 +651,8 @@ export class Constants {
       ) {
         const v = text(tokens[k + 4]);
         if (v !== null && !wrapper) this.exported[tokens[k + 2]!.value] = v;
+        else if (!wrapper && is(tokens[k + 4], "ident"))
+          this.exportNames.push({ key: tokens[k + 2]!.value, at: k + 4 });
         continue;
       }
       if (!eq || is(tokens[k - 1], "punct", ".")) continue;
@@ -688,6 +707,91 @@ export class Constants {
           }
           wrapper = { name: t.value, until: end, depth };
         }
+      }
+    }
+    this.settleExports();
+  }
+
+  /** `KEY: X.Y`, `KEY: NAME` and shorthand `NAME` entries of the exported object at `open`. */
+  private collectExportNames(open: number): void {
+    const tokens = this.tokens;
+    let d = 0;
+    for (let k = open; k < tokens.length && k < open + 4000; k++) {
+      const t = tokens[k]!;
+      if (t.type === "punct") {
+        if (t.value === "{" || t.value === "(" || t.value === "[") d++;
+        else if (t.value === "}" || t.value === ")" || t.value === "]") {
+          d--;
+          if (d === 0) break;
+        }
+        continue;
+      }
+      if (d !== 1 || !(is(tokens[k - 1], "punct", "{") || is(tokens[k - 1], "punct", ",")))
+        continue;
+      const key = t.type === "ident" ? t.value : text(t);
+      if (key === null) continue;
+      if (is(tokens[k + 1], "punct", ":") && is(tokens[k + 2], "ident"))
+        this.exportNames.push({ key, at: k + 2 });
+      else if (
+        t.type === "ident" &&
+        (is(tokens[k + 1], "punct", ",") || is(tokens[k + 1], "punct", "}"))
+      )
+        this.exportNames.push({ key, at: k });
+    }
+  }
+
+  /** `export { A, B as C } [from "x"]` at `open`. */
+  private esmExportList(open: number): void {
+    const tokens = this.tokens;
+    let close = open + 1;
+    while (close < tokens.length && close < open + 400 && !is(tokens[close], "punct", "}")) close++;
+    const specifier = is(tokens[close + 1], "ident", "from") ? text(tokens[close + 2]) : null;
+    for (let k = open + 1; k < close; k++) {
+      const name = tokens[k]!;
+      if (name.type !== "ident") continue;
+      const renamed = is(tokens[k + 1], "ident", "as") && is(tokens[k + 2], "ident");
+      const key = renamed ? tokens[k + 2]!.value : name.value;
+      if (specifier !== null) this.reexported[key] = { specifier, property: name.value };
+      else this.exportNames.push({ key, at: k });
+      if (renamed) k += 2;
+    }
+  }
+
+  /** Settles export entries that name something: a constant here, or a name of another module. */
+  private settleExports(): void {
+    const tokens = this.tokens;
+    for (const { key, at } of this.exportNames) {
+      if (key in this.exported) continue;
+      const name = tokens[at]!.value;
+      const member =
+        is(tokens[at + 1], "punct", ".") && is(tokens[at + 2], "ident")
+          ? tokens[at + 2]!.value
+          : null;
+      const end = tokens[at + (member === null ? 1 : 3)];
+      if (
+        end &&
+        !is(end, "punct", ",") &&
+        !is(end, "punct", "}") &&
+        !is(end, "punct", ";") &&
+        end.line === tokens[at]!.line
+      )
+        continue;
+      if (member === null) {
+        const value = this.reassigned.has(name) ? null : this.strings.get(name);
+        if (value) this.exported[key] = value;
+        else if (this.imported.has(name)) this.reexported[key] = this.imported.get(name)!;
+        continue;
+      }
+      const local = this.tables.get(name)?.get(member);
+      if (local !== undefined) this.exported[key] = local;
+      else if (this.requires.has(name))
+        this.reexported[key] = { specifier: this.requires.get(name)!, property: member };
+      else if (this.imported.has(name)) {
+        const table = this.imported.get(name)!;
+        this.reexported[key] = {
+          specifier: table.specifier,
+          property: `${table.property}.${member}`,
+        };
       }
     }
   }
@@ -755,6 +859,17 @@ export class Constants {
     return this.sees(k, name) && !this.reassigned.has(name)
       ? (this.strings.get(name) ?? null)
       : null;
+  }
+
+  /** The string value of `NAME.PROPERTY` in a table of this file, as used at token k. */
+  memberOf(name: string, property: string, k?: number): string | null {
+    if (
+      !this.sees(k, name) ||
+      this.reassigned.has(name) ||
+      this.reassigned.has(`${name}.${property}`)
+    )
+      return null;
+    return this.tables.get(name)?.get(property) ?? null;
   }
 
   /** The property names of an object literal declared under this name. */

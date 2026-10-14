@@ -1,0 +1,62 @@
+{
+  "from": "../markdown-editor/src",
+  "why": "v2 is v1 with the listed edits, and with 20 comment lines put in front of every JavaScript file (the helper modules in ipc/, config/ and lib/ included). Eight edits change what the program does: the vault router gets a rename handler and the preload's member map a member for it (edits 1 and 2), the app:set-title listener and its bridge member are deleted (3 and 4), the settings window loses its sandbox (6), the changelog moves to v2 of the API (7), the sync base address moves from v2 to v3 (8) and the clean-up of the old search database is deleted (9). Three edits change nothing a tool should report: edit 5 replaces the page's only call of the deleted member by an assignment to document.title, edit 10 swaps two neighbouring members of the exposed API, and edit 11 rewrites a comment. The comment lines move every other fact to a new line without changing it.",
+  "prependCommentLines": 20,
+  "edits": [
+    {
+      "file": "main.js",
+      "find": "    .handle(\"search\", (query) => searchNotes(query))\n",
+      "replace": "    .handle(\"search\", (query) => searchNotes(query))\n    .handle(\"rename\", async (notePath, name) => {\n      const target = path.join(path.dirname(notePath), `${name}.md`);\n      await fs.rename(notePath, target);\n      return target;\n    })\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "  searchNotes: \"vault:search\",\n",
+      "replace": "  searchNotes: \"vault:search\",\n  renameNote: \"vault:rename\",\n"
+    },
+    {
+      "file": "main.js",
+      "find": "  ipcMain.on(\"app:set-title\", (event, title) => {\n    BrowserWindow.fromWebContents(event.sender)?.setTitle(`${title} - Inkwell`);\n  });\n\n",
+      "replace": ""
+    },
+    {
+      "file": "preload.js",
+      "find": "  setTitle: (title) => ipcRenderer.send(\"app:set-title\", title),\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "  inkwell.setTitle(current.title);\n",
+      "replace": "  document.title = `${current.title} - Inkwell`;\n"
+    },
+    {
+      "file": "main.js",
+      "find": "      preload: PRELOAD,\n      sandbox: true,\n    },\n  });\n  settingsWindow.on(",
+      "replace": "      preload: PRELOAD,\n      sandbox: false,\n    },\n  });\n  settingsWindow.on("
+    },
+    {
+      "file": "renderer.js",
+      "find": "  return http.getJson(\"https://api.inkwell.example/v1/changelog\");",
+      "replace": "  return http.getJson(\"https://api.inkwell.example/v2/changelog\");"
+    },
+    {
+      "file": "config/endpoints.js",
+      "find": "  SYNC_BASE: \"https://sync.inkwell.example/v2\",",
+      "replace": "  SYNC_BASE: \"https://sync.inkwell.example/v3\","
+    },
+    {
+      "file": "renderer.js",
+      "find": "  // 1.2 kept the index in a database of another shape.\n  indexedDB.deleteDatabase(\"inkwell-search-v1\");\n",
+      "replace": ""
+    },
+    {
+      "file": "preload.js",
+      "find": "  getSettings: () => ipcRenderer.invoke(channels.settings.get),\n  setSetting: (key, value) => ipcRenderer.invoke(channels.settings.set, key, value),\n",
+      "replace": "  setSetting: (key, value) => ipcRenderer.invoke(channels.settings.set, key, value),\n  getSettings: () => ipcRenderer.invoke(channels.settings.get),\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "// The vault's request/response calls: member name -> channel.",
+      "replace": "// Request/response calls of the vault, keyed by the name of the member."
+    }
+  ]
+}

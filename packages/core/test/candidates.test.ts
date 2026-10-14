@@ -247,11 +247,12 @@ describe("IPC through indirection", () => {
           'const api = { list: call("rooms:list") };',
           'emit("telemetry:hit", {});',
           'broadcast("presence:update", {});',
-          // not helpers: the channel is not the first parameter, or nothing is forwarded
+          // not helpers: nothing is forwarded
           "function log(message) { console.log(message); }",
           'log("ghost:log");',
+          // the channel as the second parameter: read through the call site (resolve.ts)
           "function later(fn, channel) { ipcMain.on(channel, fn); }",
-          'later(g, "ghost:second-parameter");',
+          'later(g, "second:parameter");',
           // a parameter of the same name hides the helper
           'function other(route) { route("ghost:shadowed"); }',
         ].join("\n"),
@@ -261,6 +262,7 @@ describe("IPC through indirection", () => {
       "ipcRenderer.invoke rooms:list (wrapper)",
       "ipcRenderer.send telemetry:hit (wrapper)",
       "webContents.send presence:update (wrapper)",
+      "ipcMain.on second:parameter (resolved)",
     ]);
   });
 

@@ -6,6 +6,7 @@ import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
 import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
+import { ExpressionResolver } from "./resolve.js";
 import {
   ALIAS_TARGETS,
   scanJavaScript,
@@ -43,6 +44,9 @@ export interface JsModule {
   role: "main" | "preload" | "renderer" | "unknown";
   /** String constants the file exports, kept so other files' channel names can be resolved. */
   constants?: Record<string, string>;
+  /** Names the file passes on from other modules, and `export *` sources (see aliases.ts). */
+  reexports?: Record<string, { specifier: string; property: string }>;
+  starExports?: string[];
   /**
    * IPC names the file defines for other files, and its calls on names it does not bind that are
    * still waiting for a definition (see `ambient.ts`).
@@ -349,7 +353,12 @@ interface WindowRanges {
   opaque: Map<number, number>;
 }
 
-function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRanges {
+function windowRanges(
+  tokens: Token[],
+  aliases: Map<number, string>,
+  /** Built on first use: reads a factory's parameter from the arguments at its call sites. */
+  resolver: () => ExpressionResolver,
+): WindowRanges {
   const traced = new Set<string>();
   const viaName = new Set<number>();
   const follow = (name: string, window: number | null): void => {
@@ -377,19 +386,111 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
     return -1;
   };
   let declared: Map<string, number> | null = null;
+  /** `name = Object.assign(…)`: the index of the call's `(`. */
+  let assigned: Map<string, number> | null = null;
   const objectOf = (name: string): number => {
-    if (!declared) {
+    if (!declared || !assigned) {
       declared = new Map();
-      for (let k = 0; k + 2 < tokens.length; k++)
-        if (
-          tokens[k]!.type === "ident" &&
-          is(k + 1, "=") &&
-          is(k + 2, "{") &&
-          !declared.has(tokens[k]!.value)
+      assigned = new Map();
+      for (let k = 0; k + 2 < tokens.length; k++) {
+        if (tokens[k]!.type !== "ident" || !is(k + 1, "=")) continue;
+        const key = tokens[k]!.value;
+        if (is(k + 2, "{") && !declared.has(key)) declared.set(key, k + 2);
+        else if (
+          tokens[k + 2]?.type === "ident" &&
+          tokens[k + 2]!.value === "Object" &&
+          is(k + 3, ".") &&
+          tokens[k + 4]?.value === "assign" &&
+          is(k + 5, "(") &&
+          !declared.has(key) &&
+          !assigned.has(key)
         )
-          declared.set(tokens[k]!.value, k + 2);
+          assigned.set(key, k + 5);
+      }
     }
     return declared.get(name) ?? -1;
+  };
+  /**
+   * `Object.assign(target, a, b, …)` read as `{ ...a, ...b }`: each argument is a base applied at
+   * its own place in the call, so a later one wins over an earlier one, as in JavaScript.
+   * Returns false when an argument cannot be read.
+   */
+  const assignedTo = (name: string, window: number | null, depth: number): boolean => {
+    const plan = assignPlan(name, depth);
+    if (!plan) return false;
+    for (const step of plan) {
+      if (step.follow) follow(step.follow, window);
+      add(step.open, window, true, depth + 1, step.at);
+    }
+    follow(name, window);
+    return true;
+  };
+  /** What `name = Object.assign(…)` applies, in order; null when an argument cannot be read. */
+  const assignPlan = (
+    name: string,
+    depth: number,
+  ): Array<{ open: number; at: number; follow: string | null }> | null => {
+    objectOf(name);
+    const open = assigned?.get(name);
+    if (open === undefined || depth > 3) return null;
+    const end = close(open);
+    if (end === -1) return null;
+    const plan: Array<{ open: number; at: number; follow: string | null }> = [];
+    let from = open + 1;
+    while (from < end) {
+      let to = from;
+      for (let d = 0; to < end; to++) {
+        const p = tokens[to]!;
+        if (p.type !== "punct") continue;
+        if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+        else if (p.value === "}" || p.value === ")" || p.value === "]") d--;
+        else if (p.value === "," && d === 0) break;
+      }
+      const first = tokens[from]!;
+      // Just before the argument, inside the call: every argument is then applied in the same
+      // enclosing object or block, one after the other.
+      const at = first.start - 1;
+      if (is(from, "{") && close(from) === to - 1) plan.push({ open: from, at, follow: null });
+      else if (first.type === "ident" && to === from + 1) {
+        const base = objectOf(first.value);
+        if (base !== -1) plan.push({ open: base, at, follow: first.value });
+        else {
+          const inner = assignPlan(first.value, depth + 1);
+          if (!inner) return null;
+          plan.push(...inner.map((step) => ({ ...step, at })));
+        }
+      } else return null;
+      from = to + 1;
+    }
+    return plan;
+  };
+  /**
+   * `...extra` or `new BrowserWindow(options)` where the name is a parameter of the function
+   * around it: the object literals its callers pass. False when any caller passes something else.
+   */
+  const passedTo = (
+    k: number,
+    window: number | null,
+    depth: number,
+    at: number | null,
+  ): boolean => {
+    const sites = resolver().argumentsFor(k);
+    if (!sites?.length) return false;
+    const objects: number[] = [];
+    for (const site of sites) {
+      if (!is(site, "{")) return false;
+      const end = close(site);
+      if (end === -1 || !(is(end + 1, ",") || is(end + 1, ")"))) return false;
+      objects.push(site);
+    }
+    for (const site of objects) {
+      // `webPreferences: helper({ … })` lays the argument over what the helper returns already;
+      // it is the same object, and is not placed a second time.
+      const start = tokens[site]!.start;
+      if (ranges.some((r) => r.window === window && start >= r.start && start < r.end)) continue;
+      add(site, window, true, depth + 1, at ?? start);
+    }
+    return true;
   };
   /** The object literal a function of this file returns: `function f() { return {…} }`, `f = () => ({…})`. */
   /**
@@ -472,7 +573,11 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
         if (base !== -1) {
           if (!is(k + 2, "(")) follow(next!.value, window);
           add(base, window, true, depth + 1, at ?? t.start);
-        } else hide(window, at ?? t.start);
+        } else if (
+          !(simple && !is(k + 2, "(") && assignedTo(next!.value, window, depth)) &&
+          !(simple && !is(k + 2, "(") && passedTo(k + 1, window, depth, at ?? t.start))
+        )
+          hide(window, at ?? t.start);
       } else if (
         t.type === "ident" &&
         t.value === "webPreferences" &&
@@ -485,7 +590,8 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
           if (named !== -1) {
             follow(name, window);
             add(named, window, inherited, depth + 1, at);
-          } else hide(window, EVERYWHERE);
+          } else if (!assignedTo(name, window, depth) && !passedTo(k + 2, window, depth, at))
+            hide(window, EVERYWHERE);
         } else if (is(k + 3, "(")) {
           // `webPreferences: helper({ … })`: what the helper returns is the base, its argument
           // (inside this range already) is laid over it.
@@ -535,7 +641,8 @@ function windowRanges(tokens: Token[], aliases: Map<number, string>): WindowRang
         if (at !== -1) {
           follow(first.value, window);
           add(at, window);
-        } else hide(window, EVERYWHERE); // a parameter, an import: `new BrowserWindow(options)`
+        } else if (!assignedTo(first.value, window, 0) && !passedTo(c + 2, window, 0, null))
+          hide(window, EVERYWHERE); // an import, or a parameter not every caller fills in
       } else if (!is(c + 2, "{") && !is(c + 2, ")")) {
         // `new BrowserWindow(dev ? {…} : {…})`, `new BrowserWindow(makeOptions())`
         hide(window, EVERYWHERE);
@@ -1327,7 +1434,12 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
       )
         ambient = collectAmbient(tokens, context.aliases);
       if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source)) {
-        located = windowRanges(tokens, context.aliases);
+        let resolver: ExpressionResolver | null = null;
+        located = windowRanges(
+          tokens,
+          context.aliases,
+          () => (resolver ??= new ExpressionResolver(tokens, context.constants)),
+        );
         ranges = located.ranges;
         // `prefs.sandbox = false`, `prefs["sandbox"] = false`, `Object.assign(prefs, …)` on an
         // object that was followed as window options: what the declaration says no longer
@@ -1931,6 +2043,8 @@ export function analyzeJavaScriptTree(
       sourceMappingUrl: scan.sourceMappingUrl,
       role,
       ...(scan.constants ? { constants: scan.constants } : {}),
+      ...(scan.reexports ? { reexports: scan.reexports } : {}),
+      ...(scan.starExports ? { starExports: scan.starExports } : {}),
       ...(open && (open.facts.defines || open.facts.calls || open.facts.replies)
         ? { ambient: open.facts }
         : {}),
@@ -2028,9 +2142,36 @@ export function analyzeJavaScriptTree(
   // Channel names that are constants of another module: looked up now that modules are known.
   // A reference stays in place while its module is unread, so a continued scan resolves it later.
   const moduleById = new Map(modules.map((m) => [m.id, m]));
-  const lookUp = (from: string, ref: { specifier: string; property: string }): string | null => {
+  // A name may be passed on through index modules (`export { A as B } from`, `module.exports =
+  // { B: x.A }`, `export *`): followed a few modules deep, never in a circle.
+  const lookUp = (
+    from: string,
+    ref: { specifier: string; property: string },
+    depth = 0,
+  ): string | null => {
+    if (depth > 5) return null;
     const target = resolveSpecifier(from, ref.specifier, known);
-    return (target ? moduleById.get(target)?.constants?.[ref.property] : undefined) ?? null;
+    const m = target ? moduleById.get(target) : undefined;
+    if (!m) return null;
+    const own = m.constants?.[ref.property];
+    if (own !== undefined) return own;
+    // `TABLE.KEY` where TABLE itself is passed on
+    const dot = ref.property.indexOf(".");
+    const head = dot === -1 ? ref.property : ref.property.slice(0, dot);
+    const passed = m.reexports?.[ref.property] ?? m.reexports?.[head];
+    if (passed) {
+      const property =
+        passed === m.reexports?.[ref.property]
+          ? passed.property
+          : `${passed.property}${ref.property.slice(dot)}`;
+      const found = lookUp(m.id, { specifier: passed.specifier, property }, depth + 1);
+      if (found !== null) return found;
+    }
+    for (const specifier of m.starExports ?? []) {
+      const found = lookUp(m.id, { specifier, property: ref.property }, depth + 1);
+      if (found !== null) return found;
+    }
+    return null;
   };
   for (const m of modules)
     for (const u of m.ipc) {

@@ -180,11 +180,18 @@ describe("an unwritable cache directory", () => {
 
 describe("a guess is not reported as a fact", () => {
   it("takes a helper for a channel forwarder only when it passes the parameter on unchanged", () => {
+    // Not a forwarder, but every call site of it can be read: the channel is what the code builds.
     expect(
       ipc(
         'function emit(ns, name) { ipcRenderer.send(ns + ":" + name); }\nemit("settings", "changed");',
       ),
-    ).toEqual([]);
+    ).toEqual(["ipcRenderer.send settings:changed"]);
+    // one call site that cannot be read: only what can be read is reported
+    expect(
+      ipc(
+        'function emit(ns, name) { ipcRenderer.send(ns + ":" + name); }\nemit("a", "b"); emit(x, "c");',
+      ),
+    ).toEqual(["ipcRenderer.send a:b"]);
     expect(
       ipc('function emit(m) { ipcRenderer.send(m.channel, m.data); }\nemit("hello");'),
     ).toEqual([]);

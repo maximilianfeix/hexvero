@@ -13,6 +13,8 @@
     "corpus/results/**",
     "corpus/holdout/*/src/**",
     "corpus/holdout/verify/**",
+    "corpus/holdout2/*/src/**",
+    "corpus/holdout2/verify/**",
     "corpus/compare/**"
   ]
 }

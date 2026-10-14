@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Hosts the pages may talk to. Allowing a host requests nothing from it. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' blob: data: https://covers.cadence.example; media-src 'self' blob: file:; connect-src https: wss:"
+    />
+    <title>Cadence</title>
+  </head>
+  <body>
+    <header>
+      <button id="minimize">_</button>
+      <button id="maximize">[]</button>
+      <button id="mini">Mini player</button>
+    </header>
+    <main id="player">
+      <img id="cover" alt="" />
+      <p id="now-playing">Nothing playing</p>
+      <output id="position">0:00</output>
+      <button id="like" aria-pressed="false">Like</button>
+      <button id="share">Share</button>
+      <button id="lyrics">Lyrics</button>
+      <pre id="lyrics-text"></pre>
+      <input id="volume" type="range" min="0" max="1" step="0.01" />
+      <select id="eq">
+        <option>flat</option>
+        <option>bass</option>
+        <option>vocal</option>
+      </select>
+      <section id="library">
+        <span id="library-total"></span>
+        <progress id="scan" max="1"></progress>
+        <button id="add-folder">Add folder</button>
+      </section>
+      <section id="playlists">
+        <button id="save-playlist">Save queue</button>
+        <button id="export">Export</button>
+      </section>
+      <section id="recommended"></section>
+      <section id="artist"><ol id="artist-tracks"></ol></section>
+      <section id="episodes"></section>
+      <p id="friends"></p>
+      <p id="error"></p>
+    </main>
+    <section id="about-box">
+      <h1>Cadence</h1>
+      <p id="about-version"></p>
+    </section>
+    <section id="mini-player">
+      <img id="mini-cover" alt="" hidden />
+      <span id="mini-title"></span>
+      <output id="mini-time"></output>
+      <button id="mini-toggle">Play</button>
+      <button id="mini-next">Next</button>
+    </section>
+    <script type="module" src="renderer.js"></script>
+    <script type="module" src="renderer-mini.js"></script>
+  </body>
+</html>

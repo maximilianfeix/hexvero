@@ -7,6 +7,7 @@
  */
 
 import { Constants, resolveAliases } from "./aliases.js";
+import { ExpressionResolver, type ResolveMethod } from "./resolve.js";
 
 export interface ModuleReference {
   specifier: string;
@@ -28,7 +29,12 @@ export interface IpcUsage {
    * file that is built together with this one). `webContents`: on one page's own channel object
    * (`webContents.ipc.on`).
    */
-  via?: "alias" | "constant" | "wrapper" | "table" | "global" | "webContents";
+  via?: "alias" | "constant" | "wrapper" | "table" | "global" | "webContents" | "resolved";
+  /**
+   * For `via: "resolved"`: how the channel was read from an expression the fast scan could not
+   * (see resolve.ts), and the lines of the call sites or lists it was bound at.
+   */
+  resolution?: { method: ResolveMethod; lines: number[] };
   /** A channel named by a constant of another module, to be looked up there. */
   channelRef?: { specifier: string; property: string };
 }
@@ -44,6 +50,10 @@ export interface ScanResult {
   truncated: boolean;
   /** String constants this file exports; other files' channel names may refer to them. */
   constants?: Record<string, string>;
+  /** Names this file passes on from another module (`module.exports = { A: x.A }`, `export { A } from`). */
+  reexports?: Record<string, { specifier: string; property: string }>;
+  /** `export * from "…"` specifiers. */
+  starExports?: string[];
 }
 
 /** What a second reader of the same token stream needs to follow names. */
@@ -230,6 +240,8 @@ const IPC_APIS = new Set([
   "webContents.send",
   "contextBridge.exposeInMainWorld",
 ]);
+/** Objects a class field may hold that the scan reads IPC calls on. */
+const FIELD_TARGETS: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]);
 const IPC_METHODS = new Set([...IPC_APIS].map((api) => api.split(".")[1]!));
 const PUNCT3 = new Set(["===", "!==", "...", ">>>", "**=", "<<=", ">>=", "&&=", "||=", "??="]);
 const PUNCT2 = new Set([
@@ -581,7 +593,7 @@ export function scanJavaScript(
         is(m + 4, "ident", "send") &&
         is(m + 5, "punct", "(");
       if (!direct && !viaSender) continue;
-      const named = constants.resolve(m + (direct ? 4 : 6));
+      const named = channelAt(m + (direct ? 4 : 6));
       if (named && "value" in named)
         ipc.push({
           api: direct ? "event.reply" : "event.sender.send",
@@ -591,6 +603,20 @@ export function scanJavaScript(
     }
   };
 
+  /**
+   * The channel an argument names, only when the argument is that literal or name and nothing
+   * more: `"win:" + id` is not the channel `win:`.
+   */
+  const channelAt = (k: number): ReturnType<Constants["resolve"]> => {
+    const named = constants.resolve(k);
+    if (named === null) return null;
+    let end = k + 1;
+    while (is(end, "punct", ".") && is(end + 1, "ident")) end += 2;
+    return is(end, "punct", ",") || is(end, "punct", ")") ? named : null;
+  };
+  /** IPC calls whose channel argument is neither a literal nor a constant: resolved below. */
+  const open: Array<{ usage: IpcUsage; at: number }> = [];
+  let resolver: ExpressionResolver | null = null;
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
@@ -651,10 +677,23 @@ export function scanJavaScript(
       IPC_METHODS.has(at(k + 2)!.value) &&
       is(k + 3, "punct", "(")
     ) {
-      const owner = aliases.get(k) ?? t.value;
+      let owner = aliases.get(k) ?? t.value;
+      // `this.ipc.handle(…)` with the IPC object kept in a field of the class
+      if (
+        !IPC_APIS.has(`${owner}.${at(k + 2)!.value}`) &&
+        is(k - 1, "punct", ".") &&
+        is(k - 2, "ident", "this") &&
+        /ipc|webContents/.test(source)
+      )
+        owner =
+          (resolver ??= new ExpressionResolver(tokens, constants)).fieldOwner(
+            k,
+            aliases,
+            FIELD_TARGETS,
+          ) ?? owner;
       const api = `${owner}.${at(k + 2)!.value}`;
       if (IPC_APIS.has(api)) {
-        const named = constants.resolve(k + 4);
+        const named = channelAt(k + 4);
         const usage: IpcUsage = {
           api,
           channel: named && "value" in named ? named.value : null,
@@ -671,7 +710,10 @@ export function scanJavaScript(
             : [];
         if (keys.length)
           for (const channel of keys) ipc.push({ api, channel, line: t.line, via: "table" });
-        else ipc.push(usage);
+        else {
+          ipc.push(usage);
+          if (named === null) open.push({ usage, at: k + 4 });
+        }
         if (api === "ipcMain.on" || api === "ipcMain.once") replies(k + 3);
       }
     }
@@ -680,7 +722,7 @@ export function scanJavaScript(
       const helper = aliases.get(k);
       const api = helper === t.value ? wrappers.get(helper) : undefined;
       if (api) {
-        const named = constants.resolve(k + 2);
+        const named = channelAt(k + 2);
         const usage: IpcUsage = {
           api,
           channel: named && "value" in named ? named.value : null,
@@ -688,11 +730,38 @@ export function scanJavaScript(
           via: "wrapper",
         };
         if (named && "ref" in named) usage.channelRef = named.ref;
-        if (usage.channel !== null || usage.channelRef) ipc.push(usage);
+        // A call whose channel cannot be read is kept without one, so the limitation names it.
+        ipc.push(usage);
       }
     }
   }
 
+  // The slow path, only for the calls the fast scan left open: a bounded expression resolver.
+  if (open.length) {
+    resolver ??= new ExpressionResolver(tokens, constants);
+    for (const { usage, at: argument } of open.slice(0, 200)) {
+      // Inside a channel-forwarding helper the calls of the helper carry the channels (`wrapper`
+      // rows); the call inside it stays without a channel, as it may be called from elsewhere.
+      const helper = resolver.enclosingName(argument);
+      if (helper !== null && wrappers.has(helper)) continue;
+      const found = resolver.resolveArgument(argument);
+      if (!found) continue;
+      const index = ipc.indexOf(usage);
+      if (index === -1) continue;
+      ipc.splice(
+        index,
+        // a partial result keeps the call without a channel as well, for the limitation
+        found.partial ? 0 : 1,
+        ...found.values.map((channel) => ({
+          api: usage.api,
+          channel,
+          line: usage.line,
+          via: "resolved" as const,
+          resolution: { method: found.method, lines: found.lines },
+        })),
+      );
+    }
+  }
   const sourceMappingUrl =
     /\/\/[#@]\s*sourceMappingURL=(\S+)\s*$/.exec(source.slice(-2000))?.[1] ?? null;
   const lines = source.split("\n").length;
@@ -706,5 +775,7 @@ export function scanJavaScript(
     minified: source.length > 2000 && source.length / lines > 500,
     truncated,
     ...(Object.keys(constants.exported).length ? { constants: constants.exported } : {}),
+    ...(Object.keys(constants.reexported).length ? { reexports: constants.reexported } : {}),
+    ...(constants.starExports.length ? { starExports: constants.starExports } : {}),
   };
 }
