@@ -2,7 +2,7 @@
   "name": "hexvero-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "hexvero.dev — the first look at a binary or app bundle: static analysis with evidence, locally.",
+  "description": "hexvero — the first look at a binary or app bundle: static analysis with evidence, locally.",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -21,11 +21,16 @@
     "review": "node scripts/review-report.mjs",
     "check:shape": "node scripts/check-shape.mjs",
     "e2e": "npm run build && node scripts/build-examples.mjs && vitest run -c vitest.e2e.config.ts",
+    "corpus": "npm run build && node corpus/build.mjs --check && node corpus/gate.mjs",
+    "corpus:accept": "npm run build && node corpus/observe-hexvero.mjs && node corpus/score.mjs corpus/results/hexvero.observations.json --markdown corpus/results/hexvero.md --json corpus/results/hexvero.json",
     "release": "node scripts/release.mjs",
     "release:check": "npm run check && npm run build && node scripts/release-verify.mjs && node scripts/smoke-tarballs.mjs"
   },
   "devDependencies": {
+    "@electron/asar": "4.3.1",
     "@types/node": "^26.6.5",
+    "esbuild": "0.28.2",
+    "gpt-tokenizer": "4.0.0",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.0.0",
     "typescript": "^7.0.2",

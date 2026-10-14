@@ -11,24 +11,63 @@ evidence for orders of magnitude, not promises.
 npm run build && node scripts/bench.mjs
 ```
 
-Measured 2026-10-13 on an Apple M2 with 8 GiB RAM, macOS 26.5, Node 25.2.1, hexvero `main` (the 0.3.0
-release candidate). Each input is analyzed three times, each time in a fresh process
-(`hexvero analyze <input> --json`); peak memory is the maximum resident set size reported by
-`/usr/bin/time -l`. The CLI keeps no analysis cache between processes, so the first run and the
-median differ only by the operating system's file cache.
+Measured 2026-10-13 on an Apple M2 with 8 GiB RAM, macOS 26.5, Node 25.2.1, hexvero at commit
+`479a916` plus the scan fast paths of the following commit. Each input is analyzed three times,
+each time in a fresh process (`hexvero analyze <input> --json --fresh`); peak memory is the maximum
+resident set size reported by `/usr/bin/time -l`. The machine was not idle during this run (1-minute
+load 8 to 11 on 8 cores), so the times are upper bounds rather than best cases.
 
 | Input                           | Size      | First run | Median of 3 | Peak RSS | `analyze --json` output |
 | ------------------------------- | --------- | --------- | ----------- | -------- | ----------------------- |
-| `examples/notesdesk-1.4.0.asar` | 6.1 KiB   | 0.16 s    | 0.16 s      | 78 MiB   | 9.7 KiB                 |
-| `/bin/ls` (fat Mach-O)          | 151 KiB   | 0.16 s    | 0.16 s      | 76 MiB   | 4.3 KiB                 |
-| The Node launcher binary        | 66.8 KiB  | 0.19 s    | 0.17 s      | 76 MiB   | 4.6 KiB                 |
-| Discord `app.asar`              | 3.4 MiB   | 0.36 s    | 0.36 s      | 221 MiB  | 12.9 KiB                |
-| Claude `app.asar`               | 42.4 MiB  | 2.32 s    | 2.32 s      | 533 MiB  | 28.7 KiB                |
-| ChatGPT `app.asar`              | 541.5 MiB | 10.22 s   | 9.98 s      | 835 MiB  | 25.9 KiB                |
+| `examples/notesdesk-1.4.0.asar` | 6.1 KiB   | 0.21 s    | 0.19 s      | 85 MiB   | 12.1 KiB                |
+| `/bin/ls` (fat Mach-O)          | 151 KiB   | 0.17 s    | 0.17 s      | 77 MiB   | 4.3 KiB                 |
+| The Node launcher binary        | 66.8 KiB  | 0.16 s    | 0.16 s      | 76 MiB   | 4.6 KiB                 |
+| Discord `app.asar`              | 3.4 MiB   | 0.66 s    | 0.66 s      | 231 MiB  | 18.4 KiB                |
+| Claude `app.asar`               | 46.8 MiB  | 6.60 s    | 6.60 s      | 595 MiB  | 37.0 KiB                |
+| ChatGPT `app.asar`, first batch | 541.5 MiB | 17.44 s   | 16.57 s     | 715 MiB  | 39.7 KiB                |
+| ChatGPT `app.asar`, `--all`     | 541.5 MiB | 35.2 s    | one run     | 719 MiB  | 14,816 of 14,816 files  |
 
-Run to run on this 8 GiB machine, the largest input took 10 to 13 s and peaked between 730 and
-900 MiB, depending on what else was in memory; the comparison further down ran on Node 24.21 and
-an earlier build and peaked at 652 MiB.
+The first batch of the largest archive is 5,000 of its 14,816 JavaScript files; `--all` reads all
+of them in three batches and leaves a 17.8 MB scan state under the cache directory.
+
+**Slower than 0.3.0, and why.** Following names through aliases, constants, helper functions
+and other files costs passes over the token stream that 0.3.0 did not make; it is what takes the
+ChatGPT archive from 3 IPC channels to 23. After merging the cross-file IPC and window work, the
+Claude archive took 7.4 s against 2.6 to 2.9 s for 0.3.0 on a quiet machine. Profiling then showed
+the tokenizer allocating two substrings per punctuation character, repeated full passes in name
+resolution, and a helper-body search that turned superlinear past a fixed budget. Those are fixed,
+and applications with 4 MiB of source or more are tokenized in up to three worker threads. Every
+change was checked to give byte-identical full exports on 33 inputs (the three archives below,
+Discord's core module, Electron API Demos, Electron Fiddle 0.38 and 0.39, the examples and the
+corpus) and on the ChatGPT archive.
+
+Medians of alternating runs on 2026-10-14, empty cache each run, macOS on Apple silicon, with
+background system load (load average 8 to 30, so absolute times vary by up to a third between
+sessions; compare within a row):
+
+| Input                                                   | 0.3.0            | before this work | now, one thread  | now, default threads |
+| ------------------------------------------------------- | ---------------- | ---------------- | ---------------- | -------------------- |
+| Claude `app.asar` (5 runs)                              | 2.98 s, 628 MiB  | 8.04 s, 585 MiB  | 7.08 s, 599 MiB  | 4.93 s, 801 MiB      |
+| ChatGPT `app.asar`, first batch (3 runs)                | 10.84 s, 804 MiB | 23.57 s, 564 MiB | 14.35 s, 708 MiB | 13.38 s, 971 MiB     |
+| Discord `app.asar`, under the thread threshold (5 runs) | 0.48 s, 213 MiB  | 0.80 s, 246 MiB  | 0.78 s, 206 MiB  | 0.76 s, 205 MiB      |
+
+After the accuracy work of the same evening (bounded resolver, window options across modules),
+three alternating runs each, same machine, load average about 9:
+
+| Input                                    | 0.3.0           | now, one thread  | now, default threads |
+| ---------------------------------------- | --------------- | ---------------- | -------------------- |
+| Claude `app.asar`                        | 2.68 s, 756 MiB | 7.07 s, 654 MiB  | 4.80 s, 941 MiB      |
+| ChatGPT `app.asar`, first batch (2 runs) | 9.19 s, 900 MiB | 14.82 s, 813 MiB | 10.51 s, 1,133 MiB   |
+
+The resolver runs only for calls the fast scan leaves open, and window options are evaluated only
+for windows whose options could not be followed; neither changed the times measurably. The results
+with and without threads were again byte-identical on all reference inputs.
+
+On the quiet machine earlier the same day, the Claude archive took 5.8 s with one thread and
+4.1 s with threads. Analysis is still 1.2 to 1.7 times slower than 0.3.0 with threads and 1.3 to
+2.4 times with one; threads cost about 200 MiB more memory and about twice the CPU time. The rest
+of the cost is a dozen passes over millions of token objects, bounded by memory access; a compact
+token representation would be the next step. `HEXVERO_JS_THREADS=0` turns threads off.
 
 The three application archives are whatever versions were installed on the test machine; they are
 not redistributed. Add your own files as arguments to `scripts/bench.mjs`.
@@ -39,14 +78,28 @@ Measured in the same run with a real MCP client over stdio (`@modelcontextprotoc
 
 | Measurement                                                 | Value                                         |
 | ----------------------------------------------------------- | --------------------------------------------- |
-| `tools/list` result                                         | 15 tools, 12,847 bytes                        |
+| `tools/list` result                                         | 15 tools, 13,668 bytes                        |
 | `prompts/list` result                                       | 5 prompts, 1,650 bytes                        |
-| `hexvero_open` + `hexvero_analyze` on the 541.5 MiB archive | 9.6 s, 15,029-byte result                     |
+| `hexvero_open` + `hexvero_analyze` on the 541.5 MiB archive | 17 s for a first batch, 23,671-byte result    |
 | The same `hexvero_analyze` again in the session             | 0.01 s                                        |
 | One default page of `modules` on that archive               | 21,751 bytes, 100 of 5,000 items, `next: 100` |
 
 Bytes are not tokens. As a rough guide, English-like JSON runs at three to four bytes per token
 with common tokenizers; measure with your model's tokenizer if you need token counts.
+
+The table above was measured before `hexvero_analyze` switched to a short overview by default
+(`detail: "full"` gives the earlier result). Token counts for fixed investigations on the corpus,
+with the `o200k_base` tokenizer (`node scripts/context-cost.mjs`, 2026-10-14):
+
+| Scenario                                            | Before | After |
+| --------------------------------------------------- | ------ | ----- |
+| Session start (`tools/list`, prompts, instructions) | 3,763  | 3,796 |
+| Native first look: open, analyze, imports           | 1,197  | 885   |
+| Electron investigation: open, analyze, four lists   | 5,215  | 2,986 |
+| Version comparison: two analyses, three compares    | 9,298  | 3,232 |
+
+`o200k_base` is OpenAI's published tokenizer; Claude's tokenizer is not public, so these counts
+are a stand-in that moves in the same direction, not the exact number a Claude model sees.
 
 The page size is not an accident of this input: `maxBytes` is a hard bound on the serialized page
 (default 262,144 bytes), enforced on the real UTF-8 size and covered by tests that try multibyte
@@ -55,60 +108,40 @@ text, escape-heavy strings, long keys, thousands of fields and deep nesting
 
 ### Limits these numbers show
 
-- Memory grows with the JavaScript that is scanned, not with the archive size alone: about 0.8 GiB for a
-  541 MiB archive, of which 5,000 JavaScript files were scanned and the rest reported as a
-  limitation (`js_files_truncated`).
+- Memory grows with the JavaScript that is scanned in one batch, not with the archive size or the
+  number of batches: about 0.7 GiB for a 541 MiB archive, whether 5,000 files are read or all
+  14,816.
 - Analysis time for large Electron apps is dominated by tokenizing JavaScript in one worker thread.
 - Engine-backed operations (call graphs, cross-references) are not in this table; their time is the
   engine's analysis time. On the example program, radare2 6.2 and rizin 0.9 answer in about 0.1 s.
 
 ## Compared with REA 6.4.0
 
-Measured 2026-10-13 on the same machine with Node 24.21.0 for both tools: REA `rea-agents` 6.4.0
-from npm (git tag `rea-agents-6.4.0`), and a frozen copy of hexvero's working tree on `main` (after
-`a87f93b`, with uncommitted work that has since been merged). Where hexvero changed afterwards, the
-table says so. The machine was under load during these runs (load average 6 to 12, swap in use), so
-sizes, counts and exit codes are reliable and wall times are indicative; sub-second differences
-mean nothing. "Cold" means the tool's own cache was deleted, not the operating system's file cache.
-Inputs are the files in `examples/`, a C program compiled with `cc -O1`
-([source](rea-compare/demo.c)), and application archives installed on the test machine. Setup,
-commands and scripts: [docs/rea-compare](rea-compare/README.md).
+The comparison is now run on the [corpus](../corpus/README.md), where the correct answers are
+written down, with both tools pinned (hexvero `a6d9b82`, REA `rea-agents` 6.4.0, Node 24.21.0 for
+both). It lives in [corpus/compare](../corpus/compare/README.md): the harness, every decision about
+how REA's output is mapped onto the corpus's classes, the raw data of 1,460 runs, and
+[summary.md](../corpus/compare/summary.md) with correctness per class and set first and cost per
+question second.
 
-| Measurement                            | REA 6.4.0                                                                                                                                                                                                 | hexvero                                                                                                                            |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `tools/list` result over stdio         | 170 tools, 1,954,693 bytes                                                                                                                                                                                | 15 tools, 12,847 bytes                                                                                                             |
-| … with REA's compact schema profile    | 1,772,772 bytes                                                                                                                                                                                           | n/a                                                                                                                                |
-| … without output schemas               | 458,073 bytes                                                                                                                                                                                             | 12,847 bytes (it has none)                                                                                                         |
-| … in `o200k_base` tokens               | 509,696                                                                                                                                                                                                   | 3,043                                                                                                                              |
-| Electron example, one analysis call    | 2.8 s warm, 429 MiB (5 processes), 1,317,187 bytes                                                                                                                                                        | 0.13 s warm, 84 MiB, 7,940 bytes (9,411 bytes on the current build)                                                                |
-| … correctness against the known answer | 6 of 6 IPC channels, all window settings, all 6 bridge members; of the endpoints one false, one missed                                                                                                    | 6 of 6 IPC channels, all window settings; bridge members missing (listed since); endpoints and storage not reported for an archive |
-| Diff of the two example builds         | 3 calls, 10.1 s, 450,066 bytes, 78 items, from 2.6 MB of input JSON; channel changes, bridge change, new endpoint and storage key reported; the settings flip appears as one window removed and one added | 2 calls, 0.33 s, 1,240 bytes; channel and settings changes exact; bridge swap missed (exact since, with a third call)              |
-| Native program without an engine       | imports, library, signature detail in 2 calls, 2.4 to 3.0 s each, with the commands and tool hashes behind each fact                                                                                      | imports, library, decoded PIE and canary in 2 calls, 0.12 s each                                                                   |
-| Native call graph                      | needs Ghidra, Hopper or IDA (none installed: not run)                                                                                                                                                     | radare2 or rizin, 0.2 to 0.3 s                                                                                                     |
-| 568 MB Electron archive                | 821 s in a single run, 1.0 GiB (1,029 MiB), 554,367,786 bytes; 15,211 JavaScript files parsed, coverage marked partial                                                                                    | 13.7 s cold (13 to 19 s over three runs), 652 MiB, 25,254 bytes; 5,000 of 14,816 JavaScript files scanned, stated as a limitation  |
-| Bundle source recovery on macOS        | `capability_unavailable` (needs a Wakaru binary, Linux x64 only)                                                                                                                                          | 4 module files (split, not rewritten)                                                                                              |
+Three things from it belong on this page:
 
-Notes that belong with these numbers:
+- Correctness on the hold-out set, the only set neither tool had seen, is in the README table.
+  hexvero was tuned on the other two sets; its results there are not a fair comparison.
+- Sizes do not depend on the machine. `tools/list`: 13,428 bytes for hexvero's 15 tools, 1,954,693
+  for REA's 170 (1,772,772 with its compact profile). Per question about one small Electron
+  application over MCP: 15 to 21 KB from hexvero; from REA a 24 KB summary with counts but no
+  names, or 1 to 6.5 MB complete, which REA refused to send for the three largest inputs because it
+  exceeds its own response budget (its export file works).
+- Times were taken while the machine was busy (1-minute load 6 to 77 on 8 cores, swapping) after
+  waiting 20 minutes for it to calm down. They are published as measured and marked as such, and
+  no speed comparison is made from them.
 
-- REA refuses the Claude and ChatGPT archives by default with `artifact_integrity_mismatch`, a
-  documented integrity check; the row above uses the policy its error message names
-  (`--integrity-policy record-and-continue`).
-- REA's catalog is 76% output schemas; a client that ignores them still loads 458 KB.
-- REA reported things that hexvero does not report for an Electron archive (it does for a
-  standalone bundle): fetch endpoints and storage keys. It also keeps per-fact evidence ids with
-  source ranges, and on larger apps sender-validation observations.
-- This comparison found hexvero defects that are addressed on `main`: URLs inside longer strings
-  were not tagged, bridge members were not listed, and a tail call hid a call path without any
-  limitation. rizin graphs now include tail calls. Through radare2 the path is still not found, but
-  the result carries a limitation instead of a definite "not reached".
-- Still open in hexvero: `analyze` raises no finding for an imported `system`, and JavaScript
-  scanning stops at 5,000 files.
-- On one real app (Discord) REA reported no IPC operations where the archive text contains them and
-  hexvero reported 29 call sites; REA's own limitations say that only proven aliases of the Electron
-  module are followed and that missing findings do not establish absence. On Claude the two agree
-  closely; on ChatGPT they disagree in the other direction on windows and channels. Neither is
-  ground truth.
-- Not measured: REA with an engine, dynamic analysis, Wakaru recovery, Windows or Linux hosts.
+The earlier comparison on installed desktop applications (2026-10-13, hexvero before 0.3.0) had
+three flaws this one avoids: hexvero was an uncommitted working copy, the applications cannot be
+redistributed, and on the largest one hexvero had read 5,000 files against REA's 15,211. Its
+scripts remain in [docs/rea-compare](rea-compare/README.md) as a record; its numbers are no longer
+quoted.
 
 ## End-to-end checks
 

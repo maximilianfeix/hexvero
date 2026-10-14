@@ -1,0 +1,42 @@
+{
+  "case": "chat-app-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "a": "validation/chat-app.plain.asar",
+  "b": "validation/chat-app-v2.plain.asar",
+  "method": "v2 is built from v1 by the edits in changes.json plus 40 comment lines in front of every JavaScript file. The expected differences are the nine edits that change the program and nothing else: every fact the edits do not touch sits on another line in v2 and must not be reported as changed, added or removed. The tenth edit rewrites a channel name inside a comment and is no difference. The lists were written from changes.json and checked by extracting both archives and diffing them with diff -r; no analysis tool was run.",
+  "expect": {
+    "compare": {
+      "ipcChannels": {
+        "added": ["rooms:directory"],
+        "removed": ["rooms:list", "telemetry:hit"],
+        "changed": [],
+        "why": "rooms:list is renamed on both sides (the route() call in main.js, the call() in preload.js); the telemetry:hit send in preload.js is deleted. ghost:commented-out -> ghost:commented-away happens inside a comment: neither is a channel in either version"
+      },
+      "contextBridge": {
+        "added": ["chat.listDirectory"],
+        "removed": ["chat.listRooms"],
+        "changed": [],
+        "why": "the member is renamed together with its channel; the telemetry:hit send was never a member of an exposed API"
+      },
+      "webPreferences": {
+        "added": [],
+        "removed": [],
+        "changed": ["contextIsolation: false -> true", "sandbox: false -> true"],
+        "why": "only the settings dialog changes: contextIsolation through the constant LEGACY_PREFERENCES it spreads, sandbox in its webPreferences literal. Its nodeIntegration: true and the main window's four settings only move. After the change both windows have contextIsolation: true and sandbox: true"
+      },
+      "endpoints": {
+        "added": ["https://api.chat.example/v3/rooms", "https://metrics.chat.example/v2/batch"],
+        "removed": ["https://api.chat.example/v2/rooms", "https://metrics.chat.example/collect"],
+        "changed": [],
+        "why": "the literal of the fetch in loadRooms and the address of the sendBeacon in reportUsage are replaced. The two prefix entries (https://api.chat.example/v2/rooms/ and .../v2/users/) come from API_ROOT, which is untouched"
+      },
+      "storage": {
+        "added": ["localStorage ui.scale", "electron-store auth.sessionKey"],
+        "removed": ["localStorage ui.density", "electron-store auth.refreshToken"],
+        "changed": [],
+        "why": "the key read in density() (renderer.js) and the key deleted in the auth:sign-out handler (main.js) are replaced"
+      }
+    }
+  }
+}

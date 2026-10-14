@@ -6,6 +6,9 @@
  * as `dynamic` so that callers never mistake a guess for a fact.
  */
 
+import { Constants, resolveAliases } from "./aliases.js";
+import { ExpressionResolver, type ResolveMethod } from "./resolve.js";
+
 export interface ModuleReference {
   specifier: string;
   kind: "import" | "require" | "dynamic-import" | "export-from";
@@ -17,6 +20,23 @@ export interface IpcUsage {
   api: string;
   channel: string | null;
   line: number;
+  /**
+   * How the row was read when not from a literal call on the object's own name: through another
+   * name for ipcMain/ipcRenderer (`alias`), with a channel name taken from a constant, through
+   * a helper function of the file that passes its first argument on as the channel (`wrapper`),
+   * or as one of the keys of an object whose entries are registered in a loop (`table`).
+   * `global`: through a name another file defines (a `window.` global, or a name at the top of a
+   * file that is built together with this one). `webContents`: on one page's own channel object
+   * (`webContents.ipc.on`).
+   */
+  via?: "alias" | "constant" | "wrapper" | "table" | "global" | "webContents" | "resolved";
+  /**
+   * For `via: "resolved"`: how the channel was read from an expression the fast scan could not
+   * (see resolve.ts), and the lines of the call sites or lists it was bound at.
+   */
+  resolution?: { method: ResolveMethod; lines: number[] };
+  /** A channel named by a constant of another module, to be looked up there. */
+  channelRef?: { specifier: string; property: string };
 }
 
 export interface ScanResult {
@@ -28,7 +48,158 @@ export interface ScanResult {
   lines: number;
   minified: boolean;
   truncated: boolean;
+  /** String constants this file exports; other files' channel names may refer to them. */
+  constants?: Record<string, string>;
+  /** Names this file passes on from another module (`module.exports = { A: x.A }`, `export { A } from`). */
+  reexports?: Record<string, { specifier: string; property: string }>;
+  /** `export * from "…"` specifiers. */
+  starExports?: string[];
 }
+
+/** What a second reader of the same token stream needs to follow names. */
+export interface ScanContext {
+  aliases: Map<number, string>;
+  constants: Constants;
+  /** Helper functions of the file that pass their first argument on as an IPC channel. */
+  wrappers: Map<string, string>;
+}
+
+/**
+ * Top-level functions whose first parameter ends up as the channel of an IPC call inside them:
+ * `function route(channel, fn) { ipcMain.handle(channel, …) }`,
+ * `const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args)`,
+ * `const emit = ipcRenderer.send.bind(ipcRenderer)`. Maps the function's name to the IPC API.
+ */
+function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string, string> {
+  const wrappers = new Map<string, string>();
+  const is = (k: number, type: Token["type"], value?: string): boolean => {
+    const t = tokens[k];
+    return !!t && t.type === type && (value === undefined || t.value === value);
+  };
+  const apiAt = (k: number): string | null => {
+    if (!is(k, "ident") || !is(k + 1, "punct", ".") || !is(k + 2, "ident")) return null;
+    // the method name decides first: almost no token pair gets as far as building a string
+    if (!IPC_METHODS.has(tokens[k + 2]!.value)) return null;
+    const api = `${aliases.get(k) ?? tokens[k]!.value}.${tokens[k + 2]!.value}`;
+    return IPC_APIS.has(api) && !api.startsWith("contextBridge.") ? api : null;
+  };
+  /** The IPC API called with `param` as its first argument between two token positions. */
+  const forwards = (from: number, to: number, param: string): string | null => {
+    for (let k = from; k + 4 < to; k++) {
+      const api = apiAt(k);
+      // The parameter must be the whole first argument: `send(ns + ":" + name)` and
+      // `send(m.channel)` build the channel from it, they do not pass it on.
+      if (
+        api &&
+        is(k + 3, "punct", "(") &&
+        is(k + 4, "ident", param) &&
+        (is(k + 5, "punct", ",") || is(k + 5, "punct", ")"))
+      )
+        return api;
+    }
+    return null;
+  };
+  // The closing bracket of every opening one, counting all three kinds alike, matched once.
+  // A body's end is then found by jumping over bracket groups instead of walking every token.
+  const match = new Int32Array(tokens.length).fill(-1);
+  const opened: number[] = [];
+  for (let j = 0; j < tokens.length; j++) {
+    const p = tokens[j]!;
+    if (p.type !== "punct") continue;
+    if (p.value === "{" || p.value === "(" || p.value === "[") opened.push(j);
+    else if (p.value === "}" || p.value === ")" || p.value === "]") {
+      const at = opened.pop();
+      if (at !== undefined) match[at] = j;
+    }
+  }
+  /** End of the function body that starts at `k` (a brace block, or an expression). */
+  const bodyEnd = (k: number): number => {
+    const limit = Math.min(tokens.length, k + 4000);
+    if (is(k, "punct", "{")) return match[k]! !== -1 && match[k]! < limit ? match[k]! : limit;
+    // An expression ends at a `;` or `,` outside brackets, or where its enclosing bracket closes.
+    for (let j = k; j < limit; j++) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "{" || p.value === "(" || p.value === "[") {
+        if (match[j] === -1) return limit;
+        j = match[j]!;
+      } else if (p.value === "}" || p.value === ")" || p.value === "]") return j;
+      else if (p.value === ";" || p.value === ",") return j;
+    }
+    return limit;
+  };
+  let depth = 0;
+  for (let k = 0; k + 4 < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type === "punct") {
+      if (t.value === "{") depth++;
+      else if (t.value === "}") depth--;
+      continue;
+    }
+    if (depth !== 0 || t.type !== "ident") continue;
+    let name: string | null = null;
+    let params = -1;
+    if (t.value === "function" && is(k + 1, "ident") && is(k + 2, "punct", "(")) {
+      name = tokens[k + 1]!.value;
+      params = k + 2;
+    } else if (is(k + 1, "punct", "=") && !is(k - 1, "punct", ".")) {
+      let v = k + 2;
+      // `emit = ipcRenderer.send.bind(ipcRenderer)`
+      const bound = apiAt(v);
+      if (bound && is(v + 3, "punct", ".") && is(v + 4, "ident", "bind")) {
+        wrappers.set(t.value, bound);
+        continue;
+      }
+      if (is(v, "ident", "async")) v++;
+      if (is(v, "ident", "function")) {
+        v++;
+        if (is(v, "ident")) v++;
+      }
+      if (is(v, "punct", "(")) {
+        name = t.value;
+        params = v;
+      } else if (is(v, "ident") && is(v + 1, "punct", "=>")) {
+        const api = forwards(v + 2, bodyEnd(v + 2), tokens[v]!.value);
+        if (api) wrappers.set(t.value, api);
+        continue;
+      }
+    }
+    if (name === null || !is(params + 1, "ident")) continue;
+    const param = tokens[params + 1]!.value;
+    // skip the parameter list
+    let close = params;
+    for (let d = 0; close < tokens.length && close < params + 200; close++) {
+      const p = tokens[close]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(") d++;
+      else if (p.value === ")") {
+        d--;
+        if (d === 0) break;
+      }
+    }
+    const start = is(close + 1, "punct", "=>") ? close + 2 : close + 1;
+    const api = forwards(start, bodyEnd(start), param);
+    if (api) wrappers.set(name, api);
+  }
+  return wrappers;
+}
+
+/** A file that contains none of these cannot have a finding that depends on following a name. */
+const NAMES_SOMETHING =
+  /ipcMain|ipcRenderer|contextBridge|fetch|BrowserWindow|BrowserView|WebContentsView|localStorage|sessionStorage|webContents|exposeIn/;
+
+/** Names whose other names are followed (see aliases.ts). */
+export const ALIAS_TARGETS: ReadonlySet<string> = new Set([
+  "ipcMain",
+  "ipcRenderer",
+  "contextBridge",
+  "fetch",
+  "BrowserWindow",
+  "BrowserView",
+  "WebContentsView",
+  "localStorage",
+  "sessionStorage",
+]);
 
 export interface Token {
   type: "ident" | "string" | "punct" | "template" | "regex" | "number";
@@ -69,6 +240,9 @@ const IPC_APIS = new Set([
   "webContents.send",
   "contextBridge.exposeInMainWorld",
 ]);
+/** Objects a class field may hold that the scan reads IPC calls on. */
+const FIELD_TARGETS: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]);
+const IPC_METHODS = new Set([...IPC_APIS].map((api) => api.split(".")[1]!));
 const PUNCT3 = new Set(["===", "!==", "...", ">>>", "**=", "<<=", ">>=", "&&=", "||=", "??="]);
 const PUNCT2 = new Set([
   "=>",
@@ -90,8 +264,24 @@ const PUNCT2 = new Set([
   "<<",
   ">>",
 ]);
-const isIdentStart = (c: string): boolean => /[A-Za-z_$À-￿]/.test(c);
-const isIdentPart = (c: string): boolean => /[\w$À-￿]/.test(c);
+/** Characters that can follow the first one of a multi-character punctuator. */
+const PUNCT_SECOND = new Set([...PUNCT2, ...PUNCT3].map((p) => p[1]!));
+// ASCII by char code; everything from U+00C0 up counts as a letter, as before.
+const isIdentStart = (c: string): boolean => {
+  const x = c.charCodeAt(0);
+  return (x >= 97 && x <= 122) || (x >= 65 && x <= 90) || x === 95 || x === 36 || x >= 0xc0;
+};
+const isIdentPart = (c: string): boolean => {
+  const x = c.charCodeAt(0);
+  return (
+    (x >= 97 && x <= 122) ||
+    (x >= 65 && x <= 90) ||
+    (x >= 48 && x <= 57) ||
+    x === 95 ||
+    x === 36 ||
+    x >= 0xc0
+  );
+};
 
 export function tokenize(
   source: string,
@@ -138,15 +328,17 @@ export function tokenize(
       const startLine = line;
       let j = i + 1;
       let value = "";
+      let run = j;
       while (j < n && source[j] !== c && source[j] !== "\n") {
         if (source[j] === "\\") {
-          value += source[j + 1] ?? "";
+          value += source.slice(run, j) + (source[j + 1] ?? "");
           j += 2;
+          run = j;
           continue;
         }
-        value += source[j];
         j++;
       }
+      value += source.slice(run, Math.min(j, n));
       tokens.push({ type: "string", value, line: startLine, start: i, end: j + 1 });
       i = j + 1;
       continue;
@@ -225,9 +417,14 @@ export function tokenize(
     }
     if (c === "{") braceDepth++;
     if (c === "}") braceDepth--;
-    const three = source.slice(i, i + 3);
-    const two = source.slice(i, i + 2);
-    const punct = PUNCT3.has(three) ? three : PUNCT2.has(two) ? two : c;
+    // Most punctuation is one character; only look for a longer one when the next character
+    // could continue it (saves two substrings per character on minified code).
+    let punct = c;
+    if (PUNCT_SECOND.has(source[i + 1] ?? "")) {
+      const three = source.slice(i, i + 3);
+      const two = source.slice(i, i + 2);
+      punct = PUNCT3.has(three) ? three : PUNCT2.has(two) ? two : c;
+    }
     tokens.push({ type: "punct", value: punct, line, start: i, end: i + punct.length });
     i += punct.length;
   }
@@ -252,11 +449,29 @@ export function scanJavaScript(
   options: {
     maxTokens?: number;
     /** Receives the token stream once, for a second reader that should not tokenize again. */
-    onTokens?: (tokens: Token[], truncated: boolean) => void;
+    onTokens?: (tokens: Token[], truncated: boolean, context: ScanContext) => void;
   } = {},
 ): ScanResult {
   const { tokens, truncated } = tokenize(source, options.maxTokens);
-  options.onTokens?.(tokens, truncated);
+  // Names are resolved with their scope: first the file's constants, then, when the file has
+  // channel-forwarding helpers, those as well (they are found with the first result).
+  const constants = new Constants(tokens);
+  // Most files of a large application name none of the objects whose other names are followed
+  // (icons, locale tables, vendored libraries). For those the resolution is skipped: nothing
+  // would use it, and it is the most expensive step of a scan.
+  let aliases = new Map<number, string>();
+  let wrappers = new Map<string, string>();
+  if (NAMES_SOMETHING.test(source)) {
+    const own = new Set(constants.names());
+    aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
+    if (/ipc|webContents/.test(source)) wrappers = findWrappers(tokens, aliases);
+    if (wrappers.size) {
+      for (const name of wrappers.keys()) own.add(name);
+      aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
+    }
+    constants.visible = aliases;
+  }
+  options.onTokens?.(tokens, truncated, { aliases, constants, wrappers });
   const references: ModuleReference[] = [];
   const ipc: IpcUsage[] = [];
   const exports = new Set<string>();
@@ -292,6 +507,116 @@ export function scanJavaScript(
     }
   };
 
+  /**
+   * The keys of the object a loop variable runs over, when `name` is bound by
+   * `Object.entries(T)`, `Object.keys(T)` or `in T` shortly before token k.
+   */
+  const tableKeys = (k: number, name: string): string[] => {
+    for (let j = k - 1; j >= 4 && j > k - 40; j--) {
+      // `[name, …] of Object.entries(T)`, `name of Object.keys(T)`: the key binding itself
+      if (
+        is(j, "ident", "Object") &&
+        is(j + 1, "punct", ".") &&
+        is(j + 3, "punct", "(") &&
+        is(j + 4, "ident") &&
+        is(j + 5, "punct", ")") &&
+        is(j - 1, "ident", "of")
+      ) {
+        const entries = is(j + 2, "ident", "entries");
+        const keys = is(j + 2, "ident", "keys");
+        const bound = entries
+          ? is(j - 2, "punct", "]")
+            ? firstOfPattern(j - 2) === name
+            : false
+          : keys && is(j - 2, "ident", name);
+        return bound ? constants.keysOf(at(j + 4)!.value, j + 4) : [];
+      }
+      // `name in T)`
+      if (
+        is(j, "ident", "in") &&
+        is(j - 1, "ident", name) &&
+        is(j + 1, "ident") &&
+        is(j + 2, "punct", ")")
+      )
+        return constants.keysOf(at(j + 1)!.value, j + 1);
+    }
+    return [];
+  };
+  /** The first name of the array pattern that closes at `close`: `[id, fn]` gives `id`. */
+  const firstOfPattern = (close: number): string | null => {
+    for (let j = close - 1; j >= 0 && j > close - 12; j--)
+      if (is(j, "punct", "[")) return is(j + 1, "ident") ? at(j + 1)!.value : null;
+    return null;
+  };
+
+  /**
+   * Inside an `ipcMain.on(channel, (event, …) => { … })` listener, `event.reply("x")` and
+   * `event.sender.send("x")` send on a channel. `open` is the call's opening parenthesis.
+   */
+  let replyBudget = 400_000;
+  const replies = (open: number): void => {
+    let d = 0;
+    let end = open;
+    for (; end < tokens.length && end < open + 20_000 && replyBudget-- > 0; end++) {
+      const p = tokens[end]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "{" || p.value === "[") d++;
+      else if (p.value === ")" || p.value === "}" || p.value === "]") {
+        d--;
+        if (d === 0) break;
+      }
+    }
+    // The listener's first parameter: after the first top-level comma of the call.
+    let j = open + 1;
+    for (let e = 0; j < end; j++) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "{" || p.value === "[") e++;
+      else if (p.value === ")" || p.value === "}" || p.value === "]") e--;
+      else if (p.value === "," && e === 0) break;
+    }
+    j++;
+    if (is(j, "ident", "async")) j++;
+    if (is(j, "ident", "function")) {
+      j++;
+      if (is(j, "ident")) j++;
+    }
+    if (is(j, "punct", "(")) j++;
+    const event = at(j);
+    if (!event || event.type !== "ident") return;
+    for (let m = j + 1; m + 4 < end && replyBudget-- > 0; m++) {
+      if (!is(m, "ident", event.value) || !is(m + 1, "punct", ".")) continue;
+      const direct = is(m + 2, "ident", "reply") && is(m + 3, "punct", "(");
+      const viaSender =
+        is(m + 2, "ident", "sender") &&
+        is(m + 3, "punct", ".") &&
+        is(m + 4, "ident", "send") &&
+        is(m + 5, "punct", "(");
+      if (!direct && !viaSender) continue;
+      const named = channelAt(m + (direct ? 4 : 6));
+      if (named && "value" in named)
+        ipc.push({
+          api: direct ? "event.reply" : "event.sender.send",
+          channel: named.value,
+          line: at(m)!.line,
+        });
+    }
+  };
+
+  /**
+   * The channel an argument names, only when the argument is that literal or name and nothing
+   * more: `"win:" + id` is not the channel `win:`.
+   */
+  const channelAt = (k: number): ReturnType<Constants["resolve"]> => {
+    const named = constants.resolve(k);
+    if (named === null) return null;
+    let end = k + 1;
+    while (is(end, "punct", ".") && is(end + 1, "ident")) end += 2;
+    return is(end, "punct", ",") || is(end, "punct", ")") ? named : null;
+  };
+  /** IPC calls whose channel argument is neither a literal nor a constant: resolved below. */
+  const open: Array<{ usage: IpcUsage; at: number }> = [];
+  let resolver: ExpressionResolver | null = null;
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
@@ -346,12 +671,97 @@ export function scanJavaScript(
       default:
         break;
     }
-    if (is(k + 1, "punct", ".") && is(k + 2, "ident") && is(k + 3, "punct", "(")) {
-      const api = `${t.value}.${at(k + 2)!.value}`;
-      if (IPC_APIS.has(api)) ipc.push({ api, channel: literal(at(k + 4)), line: t.line });
+    if (
+      is(k + 1, "punct", ".") &&
+      is(k + 2, "ident") &&
+      IPC_METHODS.has(at(k + 2)!.value) &&
+      is(k + 3, "punct", "(")
+    ) {
+      let owner = aliases.get(k) ?? t.value;
+      // `this.ipc.handle(…)` with the IPC object kept in a field of the class
+      if (
+        !IPC_APIS.has(`${owner}.${at(k + 2)!.value}`) &&
+        is(k - 1, "punct", ".") &&
+        is(k - 2, "ident", "this") &&
+        /ipc|webContents/.test(source)
+      )
+        owner =
+          (resolver ??= new ExpressionResolver(tokens, constants)).fieldOwner(
+            k,
+            aliases,
+            FIELD_TARGETS,
+          ) ?? owner;
+      const api = `${owner}.${at(k + 2)!.value}`;
+      if (IPC_APIS.has(api)) {
+        const named = channelAt(k + 4);
+        const usage: IpcUsage = {
+          api,
+          channel: named && "value" in named ? named.value : null,
+          line: t.line,
+        };
+        if (named && "ref" in named) usage.channelRef = named.ref;
+        if (named && "value" in named && named.via === "constant") usage.via = "constant";
+        else if (owner !== t.value) usage.via = "alias";
+        // `for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, fn)`:
+        // one registration per key of the table.
+        const keys =
+          named === null && is(k + 4, "ident") && is(k + 5, "punct", ",")
+            ? tableKeys(k, at(k + 4)!.value)
+            : [];
+        if (keys.length)
+          for (const channel of keys) ipc.push({ api, channel, line: t.line, via: "table" });
+        else {
+          ipc.push(usage);
+          if (named === null) open.push({ usage, at: k + 4 });
+        }
+        if (api === "ipcMain.on" || api === "ipcMain.once") replies(k + 3);
+      }
+    }
+    // A call of one of the file's own channel-forwarding helpers: `route("rooms:list", fn)`.
+    if (is(k + 1, "punct", "(") && !is(k - 1, "ident", "function")) {
+      const helper = aliases.get(k);
+      const api = helper === t.value ? wrappers.get(helper) : undefined;
+      if (api) {
+        const named = channelAt(k + 2);
+        const usage: IpcUsage = {
+          api,
+          channel: named && "value" in named ? named.value : null,
+          line: t.line,
+          via: "wrapper",
+        };
+        if (named && "ref" in named) usage.channelRef = named.ref;
+        // A call whose channel cannot be read is kept without one, so the limitation names it.
+        ipc.push(usage);
+      }
     }
   }
 
+  // The slow path, only for the calls the fast scan left open: a bounded expression resolver.
+  if (open.length) {
+    resolver ??= new ExpressionResolver(tokens, constants);
+    for (const { usage, at: argument } of open.slice(0, 200)) {
+      // Inside a channel-forwarding helper the calls of the helper carry the channels (`wrapper`
+      // rows); the call inside it stays without a channel, as it may be called from elsewhere.
+      const helper = resolver.enclosingName(argument);
+      if (helper !== null && wrappers.has(helper)) continue;
+      const found = resolver.resolveArgument(argument);
+      if (!found) continue;
+      const index = ipc.indexOf(usage);
+      if (index === -1) continue;
+      ipc.splice(
+        index,
+        // a partial result keeps the call without a channel as well, for the limitation
+        found.partial ? 0 : 1,
+        ...found.values.map((channel) => ({
+          api: usage.api,
+          channel,
+          line: usage.line,
+          via: "resolved" as const,
+          resolution: { method: found.method, lines: found.lines },
+        })),
+      );
+    }
+  }
   const sourceMappingUrl =
     /\/\/[#@]\s*sourceMappingURL=(\S+)\s*$/.exec(source.slice(-2000))?.[1] ?? null;
   const lines = source.split("\n").length;
@@ -364,5 +774,8 @@ export function scanJavaScript(
     lines,
     minified: source.length > 2000 && source.length / lines > 500,
     truncated,
+    ...(Object.keys(constants.exported).length ? { constants: constants.exported } : {}),
+    ...(Object.keys(constants.reexported).length ? { reexports: constants.reexported } : {}),
+    ...(constants.starExports.length ? { starExports: constants.starExports } : {}),
   };
 }

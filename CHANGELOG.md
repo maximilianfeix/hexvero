@@ -6,6 +6,215 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- IPC channels the fast scan cannot read are passed to a bounded resolver: concatenation and
+  templates, one-expression functions (also curried), helper functions and class methods whose
+  channel is bound at every readable call site, routers that build names from a constructor
+  argument, arrays, Maps and objects registered in loops or `forEach`, `Object.entries/keys/values`,
+  IPC objects kept in class fields. Rows say `via: "resolved"` and how (`resolution`). Nothing is
+  guessed: an unreadable part leaves the call unresolved, and a partly readable helper keeps it in
+  the limitation.
+- Constants are followed through re-exports (`module.exports = { A: x.B }`, `export { A as B }
+  from`, `export *`), nested groups (`channels.settings.get`) and `exports.X = { … }`.
+- Window options are read through `Object.assign` (in argument order), factory parameters, and
+  defaults or option factories in other modules (`definedIn` says where a value is written).
+- contextBridge objects assembled from spreads of objects of the same file are read member by
+  member.
+- Fixed: `"win:" + id` was reported as the channel `win:`; a webPreferences object that no window
+  takes (a manifest check) was reported as a window's setting; helper calls with an unreadable
+  channel were dropped without a limitation; past a fixed budget, a helper's body reached into the
+  following code.
+- A new blind set, `corpus/holdout2`, written by an independent agent, with its blind measurement
+  in `corpus/results/round3`, and REA 6.5.0 measured on it (`docs/competitive/rea-scorecard.md`).
+
+### Security
+
+- `hexvero_export` and `hexvero_recover` over MCP write only inside allowed roots (working
+  directory and temp directory, or `HEXVERO_WRITE_ROOTS`), never into hidden paths, and an export
+  must end in `.json` and may replace only an earlier export. Before, an agent misled by text in
+  an analyzed file could write anywhere the server could, for example a shell startup file.
+- `hexvero ui` analyzes in a worker like the MCP server, so a hostile file cannot stall the server.
+- Device files, FIFOs and sockets are refused instead of read (`/dev/zero` never ends).
+- A ZIP or APK may inflate at most 1 GiB in total, so entries that share compressed data cannot
+  multiply memory use; a forged ASAR header length no longer allocates more than the file holds.
+- SQLite databases open immutable, or from a private copy when a `-wal` file is pending, so no
+  `-wal`/`-shm` files appear next to the analyzed file.
+- New cache and scan-state directories are created `0700`, their files `0600` (existing
+  directories keep their mode).
+- `setup` leaves a differing hexvero entry alone instead of replacing it, and inserts into plain
+  JSON as text, so key order and indentation stay as they were.
+- The UI server sends a Content-Security-Policy that allows only its own origin.
+- The UI's export download is fetched with the `Authorization` header; the server no longer
+  accepts the session token in a query string.
+- The cache is bounded: entries older than 30 days and the oldest beyond 1 GiB are removed
+  (`HEXVERO_CACHE_MAX_MB`, `HEXVERO_CACHE_MAX_AGE_DAYS`), and directories an older version created
+  `0755` are tightened to `0700`. `hexvero cache [--prune] [--clear [--apply]]`.
+- Cancelling a call graph stops the engine once no other caller waits for the same run.
+- `setup` reports a client file it cannot write and goes on with the others.
+- MCP results carry `_meta["io.github.maximilianfeix.hexvero/untrustedContent"]: true`.
+- GitHub Actions are pinned to commit SHAs.
+
+### Performance
+
+- JavaScript applications are analyzed faster with identical results: a faster tokenizer, fewer
+  passes in name resolution, and up to three worker threads for applications with 4 MiB of source
+  or more (`HEXVERO_JS_THREADS`). See docs/benchmarks.md for measurements.
+- A helper function's body now ends at its closing brace however many functions precede it;
+  before, past a fixed budget a body was taken as the next 4,000 tokens, which was slow and could
+  report a channel passed to the helper that it never forwards.
+
+### Added
+
+- `hexvero setup --remove [--apply]` takes the hexvero entry out of agent client files again,
+  with a backup of each file; files with comments are left alone with a note. When no client is
+  found, `setup` says so in three lines instead of listing every client as not detected.
+- `analyze` suggests up to four next commands for the kind of target (`next` in JSON and in the
+  MCP result), pointing only at lists that exist.
+- Native binaries get first-look findings: the hardening facts in one line, and imports that start
+  processes, load code, change memory protection or open network connections. They are worded as
+  imports, not as observed behaviour.
+- `hexvero_compare` pages its lists with `offset` and `limit`; `hexvero_analyze` takes
+  `detail: "full"` for the earlier, larger overview.
+- A Claude Code plugin and marketplace manifest (`/plugin install hexvero --marketplace
+  maximilianfeix/hexvero`), `mcpName` for the official MCP registry, and `glama.json`.
+- The skill is a short core with one reference file per workflow, with tests that it names only
+  tools and commands that exist. Tests plant prompt-injection text in a target and check that it
+  reaches the agent only as quoted data.
+- `scripts/context-cost.mjs` measures bytes and `o200k_base` tokens of fixed agent investigations;
+  `scripts/demo-agent.mjs` writes `docs/demo/agent-session.md` from a real MCP session.
+
+- A public corpus with written-down correct results (`corpus/`): three small Electron applications
+  in three builds each (as written, bundled, minified), later versions with listed edits, three C
+  programs with ordinary calls, tail calls, uncalled and pointer-reached functions, and damaged
+  inputs. `corpus/score.mjs` counts hits, misses and false reports per class of finding and never
+  adds classes up; `corpus/gate.mjs` fails CI when a result gets worse. Two of the sets were
+  written without access to hexvero and measured before use (see `corpus/README.md`).
+- Large JavaScript applications can be read to the end. A scan takes files in a fixed order (the
+  entry file, then shallow paths before deep ones) and stores what it has read; `analyze
+  --continue` reads the next batch, `--all` everything that is left, `--include <path>` only the
+  files under a path, `--fresh` starts over. Over MCP: `hexvero_analyze { scan, include }`. In the
+  UI a partial analysis is marked as such and offers both actions. Every result carries
+  `coverage` (files in total, scanned, unread) and `complete`; a partial scan is never presented
+  as a complete one. Stored state is tied to the content of the input, is replaced atomically, and
+  a small application that is read in one run stores nothing.
+- Electron archives and directories now have `endpoints`, `storage` and `urls` collections, from
+  the same detector the single-bundle analysis uses. Each row has file, line and column, an
+  `evidence` of `literal`, `template`, `inferred` or `unknown`, the HTTP method where the code
+  states one and, for storage, whether the key is read, written or deleted. A request whose
+  address cannot be read is listed with `value: null` instead of being dropped.
+- IPC, bridge and window-setting detection follows names: renamed imports and destructured
+  bindings (which is what every minifier produces), aliases, channel names from constants and from
+  other modules, helper functions that pass a channel on, handlers registered from a table, and
+  `event.reply`. Names are resolved with their scope, so a short minified name is not mistaken for
+  `ipcMain` inside a function that declares its own.
+- Window settings are attributed to a window (`window` field, counted per file) and read from the
+  options of `new BrowserWindow(…)`, including an object passed by name, spread in, or returned by
+  a helper; a key written for the window replaces the same key of its base object.
+- IPC through names another file defines: a page global (`window.ipc = electron.ipcRenderer`,
+  used as bare `ipc` in the page's other scripts) and a name bound at the top of a main-process
+  file whose siblings in the same directory are built into one script. Evidence is required:
+  the same directory and no file importing the using file; a `window.` global does not reach
+  main-process files; a non-IPC global of the same name makes the name ambiguous. Also read:
+  `x = require("electron").ipcRenderer`, a call written above the binding it uses,
+  `webContents.ipc.on(…)`, `webContents.postMessage(…)` and `event.sender.send(…)` in listeners
+  registered under another name. Rows read this way carry `via: "global"`.
+- Channel names from compiled TypeScript string enums (`IpcEvents.RUN`, `module.IpcEvents.RUN`,
+  also minified). A minifier's one-letter local is not taken as the enum's name, and a name the
+  file binds to anything else resolves nothing.
+- Limitations that name what could be seen but not read, with file and line:
+  `ipc_receiver_unresolved` (a call that looks like IPC on a name that could not be traced),
+  `ipc_channel_unresolved` (a channel that is a parameter or computed), `webpreferences_computed`
+  and `window_options_unresolved`. The IPC finding is `confirmed` only when the first two are
+  absent.
+- Collection `windows`: one row per window constructor call, also one that writes no setting,
+  with `nodeIntegration`, `contextIsolation` and `sandbox` each as `true`, `false`, `computed`,
+  `conflicting` or `not written`, and the derived `nodeIntegrationInEffect`,
+  `contextIsolationInEffect`, `sandboxInEffect` and `pageRequire` with the rule each rests on
+  (`basis`). A default taken from the Electron version in `package.json` is `default on` /
+  `default off` and `… by default`, never `on` / `off`. Rules and sources:
+  `docs/electron-findings.md`.
+- Six more window settings are read as written (`webSecurity`, `allowRunningInsecureContent`,
+  `webviewTag`, `nodeIntegrationInSubFrames`, `nodeIntegrationInWorker`, `enableRemoteModule`),
+  with findings for `webSecurity: false`, `allowRunningInsecureContent: true` and
+  `webviewTag: true`, and `electron.node-integration-default` when nothing is written and the
+  named Electron version predates 5.
+- `compare` reports `unknown` for an item found on one side whose file the other side did not
+  read, could not read, or read only up to the token budget (`?` lines on the command line,
+  `unknown` in JSON and over MCP), and `matchedByPosition` for settings of windows without a
+  name.
+
+- Results that are derived from a partly read application say so themselves: a collection page
+  carries `partial`, a comparison `partialScan` and a warning, and counts in findings read "in
+  the scanned part" with confidence `inferred`. An archive with files that could not be read, or a
+  folder whose listing was cut, is `complete: false` and described as incomplete.
+- `hexvero_analyze` accepts `batch` and `fresh` next to `scan` and `include`.
+
+### Changed
+
+- `hexvero_analyze` over MCP returns a brief overview (facts and list sizes) instead of samples of
+  every list: about 40 to 65 percent fewer tokens for a typical Electron investigation or version
+  comparison. The CLI's `--json` output is unchanged.
+
+- Analyzing a JavaScript application takes about twice as long as in 0.3.0 (measured: 6.3 s
+  against 2.7 s on a 47 MiB archive, same memory). The time goes into following names.
+- A large JavaScript application now leaves scan state under `~/.cache/hexvero/scans` (or
+  `HEXVERO_CACHE_DIR`); a later `analyze` shows that state until `--fresh` is given.
+- Rows of `endpoints` and `storage` may have `value: null` (a call whose argument could not be
+  read) and carry `evidence`, `count`, `column` and, for IPC rows, `via`.
+- `endpoints` no longer contains URLs that merely occur as strings; those are in `urls`. An
+  endpoint row's value is the address alone, with the method in its own field (previously
+  `"POST /login"`). `XMLHttpRequest.open` counts only on an object created as one, and a verb
+  method of an unknown object only with an absolute URL.
+- Modules of a JavaScript application are listed in scan order instead of archive order.
+- Call graphs through radare2 include tail calls, derived from its jump references; the
+  `callgraph_tail_calls_unknown` limitation remains only when those references are missing or cut.
+- `compare` matches window settings by file, window and key, endpoints by file, kind and value,
+  and storage by file, kind, value and operation; line and column are positions for these lists.
+  A known identity is kept for short lists with a repeated item, and a composite key may have an
+  empty part.
+- Window settings are matched in `compare` by the variable the window is assigned to
+  (`windowName`, with `#n` for a window that is not assigned), so a window added before another
+  no longer pairs two different windows; the window number is a position.
+- A window setting whose value is not a literal is a row with `value: null` and the expression
+  in `computed`, instead of being dropped. It decides no app-wide flag.
+- `app.enableSandbox()` is read from code, not text, and counts as certain only as an
+  unconditional statement at the top of a file.
+- Stored scans of earlier detectors are not reused (`JS_SCAN_SCHEMA` 5).
+
+### Fixed
+
+- A read-only or unwritable cache directory made the analysis of a large JavaScript app fail; it
+  now completes and reports `scan_state_not_saved`.
+- A missing engine's error now says how to install one.
+- Claude Code was not detected by `setup` when only `~/.claude.json` existed.
+
+- The CLI cut large output at a buffer boundary when it was piped (`--json | …`); it now exits
+  only after standard output has been written.
+- A folder with more than 50,000 files was listed only in part without a word, and dependencies
+  under `node_modules` could use up that limit before the application's own files were reached.
+- Settings were read from raw text, so `sandbox: false` in a comment or in an unrelated options
+  object near a window counted as a window setting.
+- A Mach-O, ELF or PE file that is cut short was analyzed without any limitation when its headers
+  were intact; it now carries `file_truncated`.
+- A file over the size budget of one run was counted as skipped for good; it now stays unread and
+  a continued scan takes it.
+- The `nodeIntegration: true` finding said "XSS becomes RCE" whatever `contextIsolation` was. Its
+  text now follows `pageRequire` of the same window; no finding derives that conclusion from one
+  setting.
+- For one window and key the later write wins, as in JavaScript, also across a spread
+  (`{ sandbox: true, ...base }` takes the base's value); the directly written key used to win
+  always, which could show the safe value where the unsafe one is in effect. Two different values
+  in separate objects of one window are `conflicting`, not one of the two.
+- A helper that returns its options as `return ({ … })` was not followed.
+- Settings of an options object declared above its `new BrowserWindow(options)` were rows without
+  a window, and the window read as not written.
+- `{ ...base, webPreferences: {…} }`: the later `webPreferences` now replaces the whole object the
+  base brought, and the other way round.
+- Settings of a window whose options could not be followed (a parameter, a call, a condition, a
+  spread of something unknown), or whose options object is assigned to later, read as
+  `computed`; they used to read as not written.
+
 ## [0.3.0] - 2026-10-13
 
 ### Added

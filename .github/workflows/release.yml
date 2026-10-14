@@ -30,10 +30,10 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: npm
@@ -61,7 +61,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then node scripts/publish-tarballs.mjs release --dry-run; else node scripts/publish-tarballs.mjs release --dry-run --allow-existing; fi
       - name: Release notes
         run: node scripts/release-notes.mjs "v${{ steps.version.outputs.version }}" > release/NOTES.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ steps.version.outputs.version }}
           path: release/
@@ -79,17 +79,17 @@ jobs:
     env:
       VERSION: ${{ needs.verify.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Use a pinned npm that supports trusted publishing
         # Pinned on purpose: this job holds publish credentials, so it must not run whatever npm is latest.
         run: npm install -g npm@11.6.2 && npm --version
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-${{ needs.verify.outputs.version }}
           path: release
@@ -131,13 +131,13 @@ jobs:
     runs-on: ubuntu-latest
     # No credentials here: this job installs and runs third-party dependencies.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-${{ needs.verify.outputs.version }}
           path: release

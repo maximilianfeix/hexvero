@@ -8,6 +8,7 @@ import {
   MAX_PAGE_BYTES,
   neighborhood,
   positionalFields,
+  suggestNextSteps,
   PROVIDER_OPERATIONS,
   resolveNode,
   runProvider,
@@ -37,6 +38,9 @@ Usage: hexvero <command> [options]
 
 Commands
   analyze <path> [--json] [--out file.json]     Summary, findings, limitations and overview
+          [--continue | --all | --include p,q]  Large JavaScript apps are read in batches: read the
+          [--batch n] [--fresh]                 next one, all that remain, or only files under the
+                                                given paths; --fresh discards the stored scan
   collection <path> <name> [--text s] [--limit n] [--offset n] [--max-bytes n] [--json]
                                                 Page one list (symbols, imports, exports, ...)
   strings <path> [--min n] [--utf16] [--tag t] [--text s] [--limit n] [--json]
@@ -56,7 +60,10 @@ Commands
   mcp                                           Serve the Model Context Protocol over stdio
   ui [--port n] [--host h] [--open]             Start the local web UI (loopback by default)
   doctor                                        Check the runtime and optional engines
+  cache [--prune] [--clear [--apply]]           Show the cache (stored scans, call graphs, Ghidra
+                                                projects); prune it to its limits or clear it
   setup [--client name] [--apply] [--all]       Register the MCP server with detected agent clients
+  setup --remove [--client name] [--apply]      Take the hexvero entry out again (backups first)
   setup --skill [--client name] [--apply]       Install the investigation skill for agents
 
 Options
@@ -179,8 +186,31 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
   switch (args.command) {
     case "analyze": {
       const target = await session.open(need(0, "path"));
-      const analysis = await session.analyze(target.id);
+      const include = flagString(args.flags, "include")
+        ?.split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const batch = flagNumber(args.flags, "batch");
+      if (batch !== undefined && (!Number.isInteger(batch) || batch < 1))
+        throw new UsageError("--batch takes a whole number of files, 1 or more");
+      const request = {
+        ...(args.flags["continue"] ? { continue: true } : {}),
+        ...(args.flags["all"] ? { all: true } : {}),
+        ...(include?.length ? { include } : {}),
+        ...(args.flags["fresh"] ? { fresh: true } : {}),
+        ...(batch !== undefined ? { maxJsFiles: batch } : {}),
+      };
+      const analysis = Object.keys(request).length
+        ? await session.continueAnalysis(target.id, request)
+        : await session.analyze(target.id);
       const collections = await session.collections(target.id);
+      const coverage = analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null;
+      const shown = displayPath(target.info.path);
+      const quoted = /^[\w./@:+-]+$/.test(shown) ? shown : JSON.stringify(shown);
+      const next = suggestNextSteps(analysis, collections).map((step) => ({
+        ...step,
+        cli: step.cli.replace("<path>", quoted),
+      }));
       const out = flagString(args.flags, "out");
       if (out) await session.export(target.id, out, { overwrite: true });
       if (json) {
@@ -191,7 +221,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             durationMs: analysis.durationMs,
             findings: analysis.findings,
             limitations: analysis.limitations,
+            ...(coverage ? { complete: coverage.complete, coverage } : {}),
             collections,
+            next: next.map(({ question, cli }) => ({ question, command: cli })),
             overview: compact(analysis.data),
             exported: out ?? null,
           }),
@@ -208,6 +240,26 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         )}`,
       );
       io.out(`\n${heading(io, "Summary")}\n  ${analysis.summary}`);
+      if (coverage && !coverage.complete && coverage.remaining === 0)
+        io.out(
+          `\n${heading(io, "Coverage")}\n  ${paint(io, "yellow", "incomplete")}: ${coverage.skipped} of ${coverage.total} JavaScript files could not be read (see Limitations). Everything below covers the rest only.`,
+        );
+      else if (coverage && (!coverage.complete || coverage.resumed)) {
+        const percent = coverage.total
+          ? Math.floor((coverage.scanned / coverage.total) * 100)
+          : 100;
+        io.out(
+          `\n${heading(io, "Coverage")}\n  ${
+            coverage.complete
+              ? `all ${coverage.total} JavaScript files scanned, over more than one run`
+              : `${paint(io, "yellow", "partial")}: ${coverage.scanned} of ${coverage.total} JavaScript files scanned (${percent}%), ${coverage.remaining} unread. Everything below covers the scanned part only.`
+          }${
+            coverage.complete
+              ? ""
+              : `\n  ${paint(io, "dim", `next: ${coverage.nextFiles.slice(0, 2).join(", ")}${coverage.remaining > 2 ? ", …" : ""}`)}\n  ${paint(io, "dim", "read more with --continue (next batch), --all, or --include <path>")}`
+          }`,
+        );
+      }
       io.out(`\n${heading(io, "Findings")}\n${formatFindings(io, analysis.findings).join("\n")}`);
       if (analysis.limitations.length)
         io.out(
@@ -219,6 +271,12 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       io.out(
         `\n${heading(io, "Collections")}\n  ${lists.join(", ") || "(none)"}\n  ${paint(io, "dim", `hexvero collection <path> <name> to page through one`)}`,
       );
+      if (next.length)
+        io.out(
+          `\n${heading(io, "Next")}\n${next
+            .map((step) => `  ${step.question}\n    ${paint(io, "cyan", step.cli)}`)
+            .join("\n")}`,
+        );
       if (out) io.out(`\n${paint(io, "green", "✓")} exported to ${out}`);
       return 0;
     }
@@ -226,10 +284,15 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "list": {
       const target = await session.open(need(0, "path"));
       const page = await session.collection(target.id, need(1, "collection"), paging());
+      const partial = await session.partial(target.id);
       if (json) {
-        io.out(toJson(page));
+        io.out(toJson(partial ? { ...page, partial } : page));
         return 0;
       }
+      if (partial)
+        io.out(
+          `${paint(io, "yellow", "partial")}: this list covers ${partial.scanned - partial.skipped} of ${partial.total} JavaScript files; "hexvero analyze <path> --all" reads the rest`,
+        );
       io.out(
         `${heading(io, `${page.collection} ${rangeLabel(page)}`)}${
           page.truncated ? paint(io, "dim", " (more: --offset/--limit)") : ""
@@ -316,6 +379,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
                 .map((f) => f.trim())
                 .filter(Boolean),
         positional: strict ? [] : positionalFields(name, [a.info.format, b.info.format]),
+        coverage: { a: await session.coverage(a.id), b: await session.coverage(b.id) },
       });
       if (diff.keyMissing)
         throw new UsageError(
@@ -333,6 +397,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         session.analyze(a.id).then((x) => x.limitations.length),
         session.analyze(b.id).then((x) => x.limitations.length),
       ]);
+      const partial = { a: await session.partial(a.id), b: await session.partial(b.id) };
       const truncated = left.truncated || right.truncated;
       if (json) {
         io.out(
@@ -344,6 +409,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             totals: { a: left.total, b: right.total },
             truncated,
             limitations: { a: limitsA, b: limitsB },
+            ...(partial.a || partial.b ? { partialScan: partial } : {}),
             complete:
               !truncated &&
               !left.itemTruncated &&
@@ -360,7 +426,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           io,
           `${name}: ${diff.added.length} added, ${diff.removed.length} removed, ${diff.changed.length} changed, ${diff.unchanged} unchanged${
             diff.relocated ? `, ${diff.relocated} relocated` : ""
-          }${paint(io, "dim", diff.key ? ` · matched by ${diff.key}` : " · matched by full content")}`,
+          }${diff.unknown.length ? `, ${diff.unknown.length} unknown` : ""}${paint(io, "dim", diff.key ? ` · matched by ${diff.key}` : " · matched by full content")}`,
         ),
       );
       const MAX_LINES = 200;
@@ -372,6 +438,11 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         line(`  ${paint(io, "green", "+")} ${k || paint(io, "dim", "(empty)")}`);
       for (const k of diff.removed)
         line(`  ${paint(io, "red", "-")} ${k || paint(io, "dim", "(empty)")}`);
+      // Found on one side, in a file the other side did not read: neither added nor removed.
+      for (const u of diff.unknown)
+        line(
+          `  ${paint(io, "yellow", "?")} ${u.key || paint(io, "dim", "(empty)")}${paint(io, "dim", `  only in ${u.side}; ${u.file}: ${u.reason}`)}`,
+        );
       for (const c of diff.changed) {
         const detail = c.fields
           .slice(0, 4)
@@ -400,6 +471,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       }
       if (diff.ignored.length)
         io.out(paint(io, "dim", `  ignored on request: ${diff.ignored.join(", ")}`));
+      if (diff.matchedByPosition)
+        io.out(
+          paint(
+            io,
+            "dim",
+            `  ${diff.matchedByPosition} item(s) belong to windows without a name (#n) and were matched by the window's position in its file; a window added before them would pair different windows`,
+          ),
+        );
       if (diff.duplicateKeys)
         io.out(
           paint(
@@ -416,6 +495,11 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             `  ! compared only the first ${left.items.length} of ${left.total} (a) and ${right.items.length} of ${right.total} (b) items; the result is partial`,
           ),
         );
+      for (const [side, p] of Object.entries(partial))
+        if (p)
+          io.out(
+            `  ${paint(io, "yellow", "partial")}: ${side} was read only in part (${p.scanned - p.skipped} of ${p.total} JavaScript files). An item reported as added or removed may simply sit in a file that was not read on one side; run "hexvero analyze <path> --all" on both first.`,
+          );
       if (!truncated && (limitsA || limitsB))
         io.out(
           paint(
@@ -591,8 +675,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             `! binding to ${host} exposes the token-protected API to that network; only loopback is recommended`,
           ),
         );
+      // The UI keeps serving while a file is analyzed: analyses run in a worker with a time and
+      // heap limit, as in the MCP server, so one hostile file cannot stall the server.
       return startUi(
-        session,
+        new Session({ worker: true }),
         {
           port: flagNumber(args.flags, "port") ?? 7331,
           open: Boolean(args.flags["open"]),
@@ -600,6 +686,15 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         },
         io,
       );
+    }
+    case "cache": {
+      const { cache } = await import("./cache.js");
+      return cache(io, {
+        prune: Boolean(args.flags["prune"]),
+        clear: Boolean(args.flags["clear"]),
+        apply: Boolean(args.flags["apply"]),
+        json,
+      });
     }
     case "doctor": {
       const { doctor } = await import("./doctor.js");
@@ -619,6 +714,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         client: flagString(args.flags, "client"),
         apply: Boolean(args.flags["apply"]),
         all: Boolean(args.flags["all"]),
+        remove: Boolean(args.flags["remove"]),
         json,
       });
     }

@@ -8,6 +8,50 @@ node packages/cli/bin/hexvero.js analyze /bin/ls
 npm run ui             # start the UI from source
 ```
 
+More checks, when your change touches them:
+
+```bash
+npm run e2e            # real flows: Electron, native through radare2/rizin (if installed), compare, MCP over stdio
+npm run corpus         # the corpus inputs rebuild to the same bytes, and no corpus result got worse
+node scripts/smoke-tarballs.mjs   # install the packed packages into an empty project and use them
+```
+
+## Where things are
+
+| Path                                                              | What it is                                                                                                                                                                     |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/core/src/formats/`                                      | one parser per file format; no dependencies                                                                                                                                    |
+| `packages/core/src/javascript/`                                   | the JavaScript scanner: tokenizer, name resolution (`aliases.ts`), endpoints and storage (`candidates.ts`), Electron app analysis (`app.ts`), continued scans (`scanState.ts`) |
+| `packages/core/src/providers/`                                    | radare2, rizin and Ghidra as child processes; call graphs                                                                                                                      |
+| `packages/core/src/session.ts`                                    | targets, analysis cache, collections and paging, shared by CLI, MCP and HTTP                                                                                                   |
+| `packages/mcp`, `packages/cli`, `packages/server`, `packages/web` | thin adapters and the React UI                                                                                                                                                 |
+| `corpus/`                                                         | inputs with written-down correct results and the scorer ([README](corpus/README.md))                                                                                           |
+| `skills/hexvero/`                                                 | the agent skill; a test checks that it names only tools and commands that exist                                                                                                |
+
+## Fixing a missed or wrong finding
+
+The corpus makes these reviews objective:
+
+1. Reproduce it with a small input. If it is an Electron or native idiom the corpus lacks, add it
+   to a `corpus/dev` case (sources plus an expectation with a `why`) and run `node
+   corpus/build.mjs`.
+2. Run `node corpus/observe-hexvero.mjs && node corpus/score.mjs corpus/results/hexvero.observations.json --set dev`
+   and see the row fail.
+3. Fix the detector and add a unit test.
+4. `npm run corpus` must pass; `npm run corpus:accept` records the new result.
+5. Do not look at `corpus/holdout` or tune on it: it measures how hexvero does on code it was not
+   fitted to.
+
+## Platforms
+
+|         | Unit tests | End-to-end with engines |
+| ------- | ---------- | ----------------------- |
+| macOS   | CI         | CI (radare2)            |
+| Linux   | CI         | CI (radare2)            |
+| Windows | CI         | not tested              |
+
+Node.js 22.12 is the minimum; SQLite needs 22.13 or 24.
+
 ## Rules
 
 Automated by `npm run check` (`scripts/check-shape.mjs`): no `any`, `AnalysisError` instead of bare
@@ -22,6 +66,11 @@ MCP tools. The rest is checked by reviewers.
 - Every list returned to a caller is paged. Never return an unbounded array from CLI, MCP or HTTP.
 - The MCP catalog stays at or under 16 tools; prefer a parameter over a new tool.
 - `console.log` only in the CLI package; MCP speaks on stdout.
+
+## Roadmap
+
+`docs/growth/90-day-roadmap.md` lists what is planned next and why; the gap analysis in
+`docs/audits/competitive-gap-analysis.md` explains the priorities.
 
 ## Pull requests
 

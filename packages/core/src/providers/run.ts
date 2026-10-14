@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cacheRoot, ensurePrivateDir, pruneCacheSoon } from "../cache.js";
 import { AnalysisError, type Limitation } from "../model.js";
 import { type CallGraph, callersOf, calleesOf, normalizeCallGraph, resolveNode } from "./graph.js";
 import { detectProviders, type ProviderStatus } from "./index.js";
@@ -58,6 +58,11 @@ export interface ProviderResult {
 }
 
 const MAX_OUTPUT = 8 * 1024 * 1024;
+const INSTALL_HINT: Record<ProviderName, string> = {
+  radare2: "brew install radare2, apt install radare2, or https://github.com/radareorg/radare2",
+  rizin: "brew install rizin, or https://rizin.re",
+  ghidra: "https://ghidra-sre.org, then put analyzeHeadless on PATH or set GHIDRA_INSTALL_DIR",
+};
 
 interface Exec {
   stdout: string;
@@ -195,7 +200,9 @@ function parseJsonDocs(text: string): unknown[] {
 const MARK = (section: string): string => `==hexvero:${section}==`;
 // The flag list is read last and from the symbols flagspace only: that is where `main` lives,
 // and it is a fraction of the full list, so a large binary does not hit the output cap on it.
-const RADARE_GRAPH = `aaa; ?e ${MARK("functions")}; aflj; ?e ${MARK("graph")}; agCj; ?e ${MARK("flags")}; fs symbols; fj`;
+// The jump references come last: on a large binary they are the longest part, so an output cut
+// by the size limit loses them and nothing else (the graph then says tail calls are unknown).
+const RADARE_GRAPH = `aaa; ?e ${MARK("functions")}; aflj; ?e ${MARK("graph")}; agCj; ?e ${MARK("flags")}; fs symbols; fj; ?e ${MARK("jumps")}; ax~CODE:; ?e ${MARK("jumpsEnd")}`;
 const RIZIN_GRAPH = `aaa; echo ${MARK("functions")}; aflj; echo ${MARK("graph")}; agC json; echo ${MARK("flags")}; fs symbols; flj`;
 
 /**
@@ -212,6 +219,14 @@ export function graphSections(stdout: string): Record<string, unknown> | null {
     if (marker) {
       current = marker[1]!;
       seen = true;
+      // Two sections are plain text: the jump references, and the marker that proves they
+      // were printed to the end.
+      if (current === "jumps") sections[current] = [];
+      if (current === "jumpsEnd") sections[current] = true;
+      continue;
+    }
+    if (current === "jumps") {
+      if (text) (sections[current] as string[]).push(text);
       continue;
     }
     if (current === null || sections[current] !== undefined) continue;
@@ -387,10 +402,15 @@ async function contentDigest(path: string): Promise<string> {
 }
 
 /** Bump when the engine commands or the normalized graph shape change: old caches become unreachable. */
-const GRAPH_SCHEMA = 5;
+const GRAPH_SCHEMA = 6;
 
 /** Normalized graphs per provider, content digest, engine build and schema; concurrent requests share one engine run. */
 const graphCache = new Map<string, Promise<CallGraph>>();
+/**
+ * The callers still waiting for a shared run, and how to stop it. When the last of them cancels,
+ * the engine is stopped too instead of running on to its timeout for nobody.
+ */
+const graphWaiters = new Map<string, { count: number; stop: AbortController }>();
 
 /** Rejects with `cancelled` when the caller aborts while others keep waiting for the shared run. */
 function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
@@ -441,6 +461,8 @@ export async function loadCallGraph(
   let pending = graphCache.get(key);
   if (!pending) {
     cached = false;
+    const stop = new AbortController();
+    graphWaiters.set(key, { count: 0, stop });
     pending = (async (): Promise<CallGraph> => {
       try {
         const fromDisk = JSON.parse(await readFile(diskPath, "utf8")) as CallGraph;
@@ -451,9 +473,10 @@ export async function loadCallGraph(
       } catch {
         /* not cached yet */
       }
-      // The run is shared by every concurrent caller, so it must not die with one caller's signal.
+      // The run is shared by every concurrent caller, so it must not die with one caller's
+      // signal; it stops when every caller has cancelled.
       const run = await runProvider(
-        { ...request, operation: "callgraph", signal: undefined },
+        { ...request, operation: "callgraph", signal: stop.signal },
         providers,
       );
       const graph = run.result as CallGraph | null;
@@ -467,8 +490,9 @@ export async function loadCallGraph(
         );
       if (!graph.truncated && run.limitations.length === 0) {
         try {
-          await mkdir(dirname(diskPath), { recursive: true });
-          await writeFile(diskPath, JSON.stringify(graph));
+          ensurePrivateDir(dirname(diskPath));
+          await writeFile(diskPath, JSON.stringify(graph), { mode: 0o600 });
+          pruneCacheSoon();
         } catch {
           /* cache is best effort */
         }
@@ -477,14 +501,31 @@ export async function loadCallGraph(
     })();
     graphCache.set(key, pending);
     pending.catch(() => graphCache.delete(key));
+    pending.then(
+      () => graphWaiters.delete(key),
+      () => graphWaiters.delete(key),
+    );
   }
-  const graph = await abortable(pending, request.signal);
+  const waiters = graphWaiters.get(key);
+  if (waiters) waiters.count++;
+  let graph: CallGraph;
+  try {
+    graph = await abortable(pending, request.signal);
+  } catch (error) {
+    if (waiters && error instanceof AnalysisError && error.code === "cancelled") {
+      waiters.count--;
+      if (waiters.count === 0) {
+        graphCache.delete(key);
+        graphWaiters.delete(key);
+        waiters.stop.abort();
+      }
+    }
+    throw error;
+  }
   return { graph, cached, durationMs: Math.round(performance.now() - started) };
 }
 
-export function cacheRoot(): string {
-  return process.env["HEXVERO_CACHE_DIR"] ?? join(homedir(), ".cache", "hexvero");
-}
+export { cacheRoot } from "../cache.js";
 
 /** Location of the packaged Ghidra export script. */
 export function ghidraScriptDir(): string {
@@ -507,7 +548,7 @@ export async function runProvider(
   if (!status?.available || !status.path) {
     throw new AnalysisError(
       "provider_unavailable",
-      `${request.provider} is not installed or not on PATH`,
+      `${request.provider} is not installed or not on PATH. Install it (${INSTALL_HINT[request.provider]}) or use another engine; "hexvero doctor" lists what is installed. Built-in analysis (analyze, collection, strings, compare) needs no engine.`,
       { provider: request.provider },
     );
   }
@@ -559,7 +600,8 @@ export async function runProvider(
       projectDir,
       `${scriptOperation}-${key.replace(/[^\w.$@-]/g, "_")}.json`,
     );
-    await mkdir(projectDir, { recursive: true });
+    ensurePrivateDir(projectDir);
+    pruneCacheSoon();
     await rm(outputPath, { force: true });
     const exists = await readFile(join(projectDir, "hexvero.gpr")).then(
       () => true,

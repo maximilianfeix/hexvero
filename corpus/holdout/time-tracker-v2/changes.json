@@ -1,0 +1,57 @@
+{
+  "from": "../time-tracker/src",
+  "why": "v2 is v1 with the listed edits, and with 30 comment lines put in front of every JavaScript file (the helper modules in config/, ipc/ and lib/ included). Eight edits change what the program does: a channel and its bridge member are renamed (edits 1 and 2), a bridge member and with it the only sender of a channel is deleted (3), the widget loses its sandbox override (4), the shared window defaults turn context isolation off (5), the API base address moves from v3 to v4 (6), a settings key is added (7) and a database clean-up is deleted (8). Two edits change nothing a tool should report: edit 9 swaps two neighbouring members of the exposed API, edit 10 rewrites a channel name inside a comment. The comment lines move every other fact to a new line without changing it.",
+  "prependCommentLines": 30,
+  "edits": [
+    {
+      "file": "main.js",
+      "find": "    channel: \"projects:rename\",",
+      "replace": "    channel: \"projects:retitle\","
+    },
+    {
+      "file": "preload.js",
+      "find": "  renameProject: project(\"rename\"),",
+      "replace": "  retitleProject: project(\"retitle\"),"
+    },
+    {
+      "file": "preload.js",
+      "find": "    close: () => ipcRenderer.send(\"widget:close\"),\n",
+      "replace": ""
+    },
+    {
+      "file": "main.js",
+      "find": "    webPreferences: widgetPreferences({ preload: PRELOAD, sandbox: false }),",
+      "replace": "    webPreferences: widgetPreferences({ preload: PRELOAD }),"
+    },
+    {
+      "file": "config/windows.js",
+      "find": "  contextIsolation: true,",
+      "replace": "  contextIsolation: false,"
+    },
+    {
+      "file": "config/endpoints.js",
+      "find": "export const API_BASE = \"https://api.punchclock.example/v3/\";",
+      "replace": "export const API_BASE = \"https://api.punchclock.example/v4/\";"
+    },
+    {
+      "file": "main.js",
+      "find": "    settings.set({ \"ui.locale\": app.getLocale(), \"ui.currency\": \"EUR\" });",
+      "replace": "    settings.set({ \"ui.locale\": app.getLocale(), \"ui.currency\": \"EUR\", \"ui.weekStart\": 1 });"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  // Version 3 kept its entries in another database.\n  indexedDB.deleteDatabase(\"punchclock-v3\");\n",
+      "replace": ""
+    },
+    {
+      "file": "preload.js",
+      "find": "  startSync: () => ipcRenderer.send(\"sync:start\"),\n  cancelSync: () => ipcRenderer.invoke(\"sync:cancel\"),\n",
+      "replace": "  cancelSync: () => ipcRenderer.invoke(\"sync:cancel\"),\n  startSync: () => ipcRenderer.send(\"sync:start\"),\n"
+    },
+    {
+      "file": "main.js",
+      "find": "  // ipcMain.handle(\"ghost:disabled-handler\", () => null);",
+      "replace": "  // ipcMain.handle(\"ghost:retired-handler\", () => null);"
+    }
+  ]
+}

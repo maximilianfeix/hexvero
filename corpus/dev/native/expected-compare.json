@@ -1,0 +1,23 @@
+{
+  "case": "native-calls-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "a": "dev/calls.O2.macho-arm64",
+  "b": "dev/calls-v2.O2.macho-arm64",
+  "method": "calls-v2 adds the function audit and its call to getenv (calls-v2.c.patch.json). Everything else is the same code at other addresses.",
+  "expect": {
+    "compare": {
+      "imports": {
+        "added": ["_getenv"],
+        "removed": [],
+        "changed": []
+      },
+      "symbols": {
+        "added": ["_audit", "_getenv"],
+        "removed": [],
+        "changed": [],
+        "why": "the new function and, as an undefined symbol, the new import (nm lists `U _getenv`); the other functions only move, and a moved symbol is not a changed one"
+      }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { detectFormat } from "../src/formats/detect.js";
 import { parseElf } from "../src/formats/elf.js";
@@ -171,5 +172,34 @@ describe("strings", () => {
     expect(strings.find((s) => s.encoding === "utf16le")?.value).toBe("password=");
     expect(classifyString("https://example.com")).toEqual(["url"]);
     expect(classifyString("api_key=%s")).toEqual(["format", "secret-ish"]);
+  });
+});
+
+describe("Mach-O cut short", () => {
+  it("says so when segments or the symbol table lie beyond the end of the file", () => {
+    // corpus/built/damaged/body-cut.macho-arm64: headers intact, two thirds of the file missing
+    const whole = readFileSync(
+      new URL("../../../corpus/built/dev/calls.O2.macho-arm64", import.meta.url),
+    );
+    expect(parseMacho(whole).limitations.map((l) => l.code)).not.toContain("file_truncated");
+    const cut = parseMacho(whole.subarray(0, Math.floor(whole.length / 3)));
+    expect(cut.limitations.map((l) => l.code)).toContain("file_truncated");
+    expect(cut.limitations.find((l) => l.code === "file_truncated")?.message).toMatch(/__LINKEDIT/);
+  });
+});
+
+describe("native first-look findings", () => {
+  it("names notable imports and the hardening, without claiming they are used", () => {
+    const bytes = new Uint8Array(
+      readFileSync(new URL("../../../corpus/built/dev/calls.O2.macho-arm64", import.meta.url)),
+    );
+    const analysis = analyzeBinary(targetFromBytes(bytes, "calls"));
+    const process = analysis.findings.find((f) => f.kind === "native.imports.process");
+    expect(process?.title).toBe("Imports functions that start other programs or a shell: system");
+    expect(process?.detail).toMatch(/not established/);
+    const hardening = analysis.findings.find((f) => f.kind === "native.hardening");
+    expect(hardening?.title).toMatch(/^Hardening: PIE yes, stack canary yes/);
+    // an ordinary library function is not called out
+    expect(analysis.findings.map((f) => f.title).join(" ")).not.toMatch(/printf/);
   });
 });

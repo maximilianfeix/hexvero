@@ -95,8 +95,13 @@ export const CLIENTS: Client[] = [
   {
     id: "claude-code",
     name: "Claude Code",
+    // ~/.claude (the data directory), or ~/.claude.json alone, means Claude Code is in use.
     marker: (ctx) =>
-      ctx.env["CLAUDE_CONFIG_DIR"] ? claudeCodeDir(ctx) : join(ctx.home, ".claude"),
+      ctx.env["CLAUDE_CONFIG_DIR"]
+        ? claudeCodeDir(ctx)
+        : existsSync(join(ctx.home, ".claude.json"))
+          ? join(ctx.home, ".claude.json")
+          : join(ctx.home, ".claude"),
     file: (ctx) => join(claudeCodeDir(ctx), ".claude.json"),
     key: ["mcpServers"],
     dialect: "default",
@@ -299,6 +304,16 @@ export function patchToml(existing: string): { content: string; skipped: string 
 }
 
 /** Writes `content` atomically next to `file` (temp file + rename) following a symlinked target. */
+/** A write failure as one line: the code and what it means for this file. */
+function writeError(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "EACCES" || code === "EPERM"
+    ? `cannot write the file (${code}); left untouched`
+    : code === "EROFS"
+      ? "the file is on a read-only file system; left untouched"
+      : `could not write the file (${error instanceof Error ? error.message : String(error)}); left untouched`;
+}
+
 function replaceFile(file: string, content: string): void {
   const target = existsSync(file) ? realpathSync(file) : file;
   const mode = existsSync(target) ? statSync(target).mode & 0o777 : 0o600;
@@ -327,6 +342,97 @@ export interface SetupOptions {
   json: boolean;
   /** Also configure clients whose directory does not exist (default: detected clients only). */
   all?: boolean | undefined;
+  /** Take the hexvero entry out again instead of adding it. */
+  remove?: boolean | undefined;
+}
+
+/** `[mcp_servers.hexvero]` and its sub-tables such as `[mcp_servers.hexvero.env]`. */
+const ours = (line: string): boolean =>
+  /^\s*\[\s*mcp_servers\s*\.\s*["']?hexvero["']?\s*(\.[^\]]*)?\]\s*$/.test(line);
+
+/**
+ * The file without hexvero's `[mcp_servers.hexvero]` table (and its sub-tables), or null when the
+ * file has none. Everything else stays byte for byte.
+ */
+export function unpatchToml(existing: string): string | null {
+  const lines = existing.split("\n");
+  if (!lines.some(ours)) return null;
+  const kept: string[] = [];
+  let inside = false;
+  for (const line of lines) {
+    if (/^\s*\[/.test(line)) inside = ours(line);
+    if (!inside) kept.push(line);
+  }
+  return `${kept
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\s+$/, "")}\n`;
+}
+
+/** Removes hexvero's entry from each client's file, with a backup; leaves everything else alone. */
+function remove(
+  options: SetupOptions,
+  clients: readonly Client[],
+  ctx: SetupContext,
+): Array<{ client: string; file: string; detected: boolean; action: string }> {
+  const results: Array<{ client: string; file: string; detected: boolean; action: string }> = [];
+  for (const client of clients) {
+    const file = client.file(ctx);
+    const detected = existsSync(client.marker(ctx));
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, "utf8");
+    let content: string | null = null;
+    if (client.dialect === "toml") content = unpatchToml(text);
+    else {
+      let config: Record<string, unknown> | null = null;
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed))
+          config = parsed as Record<string, unknown>;
+      } catch {
+        config = null;
+      }
+      if (config === null) {
+        // Comments or trailing commas: rewriting the file would lose them, so it is not touched.
+        if (/["']hexvero["']\s*:/.test(text))
+          results.push({
+            client: client.id,
+            file,
+            detected,
+            action: 'skipped: the file has comments; remove the "hexvero" entry by hand',
+          });
+        continue;
+      }
+      let node: unknown = config;
+      for (const k of client.key)
+        node = node && typeof node === "object" ? (node as Record<string, unknown>)[k] : undefined;
+      if (node && typeof node === "object" && "hexvero" in node) {
+        delete (node as Record<string, unknown>)["hexvero"];
+        content = `${JSON.stringify(config, null, 2)}\n`;
+      }
+    }
+    if (content === null) continue;
+    if (!options.apply) {
+      results.push({ client: client.id, file, detected, action: "would remove hexvero" });
+      continue;
+    }
+    let saved: string;
+    try {
+      saved = backup(file);
+      replaceFile(file, content);
+    } catch (error) {
+      // One unwritable file (permissions, a read-only mount) must not stop the other clients.
+      results.push({ client: client.id, file, detected, action: `skipped: ${writeError(error)}` });
+      continue;
+    }
+    results.push({
+      client: client.id,
+      file,
+      detected,
+      action: `removed hexvero (backup: ${saved})`,
+    });
+  }
+  return results;
 }
 
 export async function setup(
@@ -339,6 +445,27 @@ export async function setup(
     throw new UsageError(
       `unknown client "${options.client}"; known: ${CLIENTS.map((c) => c.id).join(", ")}`,
     );
+  if (options.remove) {
+    const removed = remove(options, clients, ctx);
+    if (options.json) io.out(toJson({ apply: options.apply, remove: true, results: removed }));
+    else {
+      for (const r of removed)
+        io.out(
+          `${r.action.startsWith("skipped") ? paint(io, "yellow", "!") : paint(io, options.apply ? "green" : "cyan", options.apply ? "✓" : "·")} ${r.client.padEnd(14)} ${r.action}  ${paint(io, "dim", r.file)}`,
+        );
+      if (!removed.length)
+        io.out("No client configuration has a hexvero entry; nothing to remove.");
+      else if (!options.apply)
+        io.out(
+          paint(
+            io,
+            "dim",
+            "\nDry run. Re-run with --remove --apply to write; each file is backed up first.",
+          ),
+        );
+    }
+    return 0;
+  }
   const results: Array<{ client: string; file: string; detected: boolean; action: string }> = [];
   if (!options.client && !options.all) {
     const detected = clients.filter((c) => existsSync(c.marker(ctx)));
@@ -435,13 +562,37 @@ export async function setup(
           });
           continue;
         }
-        node["hexvero"] = entryFor(client.dialect);
-        content = `${JSON.stringify(config, null, 2)}\n`;
+        if (node["hexvero"] !== undefined) {
+          // A hand-edited or pinned entry is the user's decision; never replace it silently.
+          results.push({
+            client: client.id,
+            file,
+            detected,
+            action:
+              "skipped: a different hexvero entry exists; left untouched (edit it by hand or run --remove first)",
+          });
+          continue;
+        }
+        // Insert as text so key order, indentation and every other entry stay byte-identical.
+        const edit = exists
+          ? insertJsonc(text, client.key, "hexvero", entryFor(client.dialect))
+          : null;
+        if (edit?.ok) content = edit.content;
+        else {
+          node["hexvero"] = entryFor(client.dialect);
+          content = `${JSON.stringify(config, null, 2)}\n`;
+        }
       }
     }
-    mkdirSync(dirname(file), { recursive: true });
-    const saved = exists ? backup(file) : null;
-    replaceFile(file, content);
+    let saved: string | null;
+    try {
+      mkdirSync(dirname(file), { recursive: true });
+      saved = exists ? backup(file) : null;
+      replaceFile(file, content);
+    } catch (error) {
+      results.push({ client: client.id, file, detected, action: `skipped: ${writeError(error)}` });
+      continue;
+    }
     results.push({
       client: client.id,
       file,
@@ -453,7 +604,11 @@ export async function setup(
     (a, b) => Number(b.detected) - Number(a.detected) || a.client.localeCompare(b.client),
   );
   if (options.json) io.out(toJson({ apply: options.apply, results }));
-  else {
+  else if (results.every((r) => !r.detected) && !options.client && !options.all) {
+    io.out(
+      `No MCP client configuration was found under ${ctx.home}.\nName the client to configure, for example:\n  hexvero setup --client claude-code --apply\nKnown clients: ${CLIENTS.map((c) => c.id).join(", ")}. "--all --apply" writes every one of them.`,
+    );
+  } else {
     for (const r of results) {
       const mark = r.action.startsWith("not detected")
         ? paint(io, "dim", "–")

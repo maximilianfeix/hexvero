@@ -66,7 +66,7 @@ describe("app bundles", () => {
     expect(b.permissions).toEqual([
       { key: "NSCameraUsageDescription", reason: "camera: Video calls" },
     ]);
-    expect(b.findings.map((f) => f.kind)).toEqual([
+    expect(b.findings.map((f) => f.kind).filter((k) => k !== "native.hardening")).toEqual([
       "bundle.ats-off",
       "bundle.permissions",
       "bundle.url-schemes",

@@ -1,0 +1,867 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.3.0",
+  "commit": "a6d9b82",
+  "node": "v24.21.0",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  },
+  "observer": "corpus/observe-hexvero.mjs of that commit, unmodified"
+ },
+ "totals": [
+  {
+   "set": "holdout",
+   "class": "imports",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "functions",
+   "hit": 68,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "call paths",
+   "hit": 70,
+   "missed": 2,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "direct callers",
+   "hit": 91,
+   "missed": 0,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "IPC channels",
+   "hit": 41,
+   "missed": 31,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "IPC senders and receivers",
+   "hit": 57,
+   "missed": 22,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "window settings",
+   "hit": 12,
+   "missed": 21,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "bridge members",
+   "hit": 60,
+   "missed": 9,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "bridge member channel",
+   "hit": 24,
+   "missed": 36,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "endpoints",
+   "hit": 24,
+   "missed": 18,
+   "false": 5,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "endpoint method",
+   "hit": 6,
+   "missed": 3,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "requests with an unknown URL shown",
+   "hit": 3,
+   "missed": 0,
+   "false": 12,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "storage keys",
+   "hit": 42,
+   "missed": 9,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "storage read/write/delete",
+   "hit": 30,
+   "missed": 6,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "changes in ipcChannels",
+   "hit": 0,
+   "missed": 3,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 4,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout",
+   "class": "changes in storage",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  }
+ ],
+ "rows": [
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 23,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 22,
+   "missed": 0,
+   "false": 1,
+   "notes": [
+    "count_binary: caller next_token false"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 23,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 16,
+   "missed": 2,
+   "false": 0,
+   "hedged": 0,
+   "notes": [
+    "debug_level → atoi: path not found, stated without warning (no function atoi)",
+    "main → atoi: not answered (no function atoi)"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 23,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "state_blank: indirect caller next_token reported"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "IPC channels",
+   "hit": 11,
+   "missed": 13,
+   "false": 0,
+   "notes": [
+    "missed timer:start",
+    "missed timer:stop",
+    "missed timer:tick",
+    "missed projects:list",
+    "missed projects:create",
+    "missed projects:rename",
+    "missed invoice:create",
+    "missed invoice:export",
+    "missed sync:progress",
+    "missed config:get-sync",
+    "missed menu:new-entry",
+    "missed update:ready",
+    "missed theme:changed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 15,
+   "missed": 6,
+   "false": 0,
+   "notes": [
+    "widget:pin: receiver main.js missed",
+    "widget:close: receiver main.js missed",
+    "invoice:exported: sender main.js missed",
+    "sync:cancel: receiver main.js missed",
+    "license:activate: receiver main.js missed",
+    "timer:port: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "window settings",
+   "hit": 3,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed widget.pin",
+    "missed widget.close",
+    "missed widget.connect",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "bridge member channel",
+   "hit": 8,
+   "missed": 12,
+   "false": 0,
+   "notes": [
+    "tracker.startTimer: expected timer:start, got null",
+    "tracker.stopTimer: expected timer:stop, got null",
+    "tracker.onTick: expected timer:tick, got null",
+    "tracker.listProjects: expected projects:list, got null",
+    "tracker.createProject: expected projects:create, got null",
+    "tracker.renameProject: expected projects:rename, got null",
+    "tracker.createInvoice: expected invoice:create, got null",
+    "tracker.exportInvoice: expected invoice:export, got null",
+    "tracker.onSyncProgress: expected sync:progress, got null",
+    "tracker.setting: expected config:get-sync, got null",
+    "tracker.onNewEntry: expected menu:new-entry, got null",
+    "tracker.onUpdateReady: expected update:ready, got null"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "endpoints",
+   "hit": 8,
+   "missed": 6,
+   "false": 1,
+   "notes": [
+    "missed https://api.punchclock.example/v3/clients",
+    "missed https://api.punchclock.example/v3/timesheets/current…",
+    "missed https://api.punchclock.example/v3/entries",
+    "missed https://files.punchclock.example/invoices",
+    "missed wss://live.punchclock.example/team/…",
+    "missed https://updates.punchclock.example/feed/stable.json",
+    "false ${…}/team/${…}"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://hooks.punchclock.example/invoice-exported: expected POST"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 4,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "storage keys",
+   "hit": 14,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed localStorage punch.theme",
+    "missed localStorage punch.session",
+    "missed localStorage sidebarWidth"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "electron-store ui.locale: expected read+write, got read",
+    "electron-store ui.currency: expected read+write, got read"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "IPC channels",
+   "hit": 15,
+   "missed": 9,
+   "false": 0,
+   "notes": [
+    "missed timer:tick",
+    "missed projects:list",
+    "missed projects:create",
+    "missed projects:rename",
+    "missed invoice:create",
+    "missed config:get-sync",
+    "missed menu:new-entry",
+    "missed update:ready",
+    "missed theme:changed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "timer:start: sender preload.js missed",
+    "timer:stop: sender preload.js missed",
+    "widget:pin: receiver main.js missed",
+    "widget:close: receiver main.js missed",
+    "invoice:export: sender preload.js missed",
+    "invoice:exported: sender main.js missed",
+    "sync:progress: receiver preload.js missed",
+    "timer:port: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "window settings",
+   "hit": 3,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed widget.pin",
+    "missed widget.close",
+    "missed widget.connect",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 8,
+   "missed": 12,
+   "false": 0,
+   "notes": [
+    "tracker.startTimer: expected timer:start, got null",
+    "tracker.stopTimer: expected timer:stop, got null",
+    "tracker.onTick: expected timer:tick, got null",
+    "tracker.listProjects: expected projects:list, got null",
+    "tracker.createProject: expected projects:create, got null",
+    "tracker.renameProject: expected projects:rename, got null",
+    "tracker.createInvoice: expected invoice:create, got null",
+    "tracker.exportInvoice: expected invoice:export, got null",
+    "tracker.onSyncProgress: expected sync:progress, got null",
+    "tracker.setting: expected config:get-sync, got null",
+    "tracker.onNewEntry: expected menu:new-entry, got null",
+    "tracker.onUpdateReady: expected update:ready, got null"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "endpoints",
+   "hit": 8,
+   "missed": 6,
+   "false": 2,
+   "notes": [
+    "missed https://api.punchclock.example/v3/clients",
+    "missed https://api.punchclock.example/v3/timesheets/current…",
+    "missed https://api.punchclock.example/v3/entries",
+    "missed https://files.punchclock.example/invoices",
+    "missed wss://live.punchclock.example/team/…",
+    "missed https://updates.punchclock.example/feed/stable.json",
+    "false ${…}/feed/stable.json",
+    "false ${…}/team/${…}"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://hooks.punchclock.example/invoice-exported: expected POST"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 4,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "storage keys",
+   "hit": 14,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed localStorage punch.theme",
+    "missed localStorage punch.session",
+    "missed localStorage sidebarWidth"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "electron-store ui.locale: expected read+write, got read",
+    "electron-store ui.currency: expected read+write, got read"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "IPC channels",
+   "hit": 15,
+   "missed": 9,
+   "false": 0,
+   "notes": [
+    "missed timer:tick",
+    "missed projects:list",
+    "missed projects:create",
+    "missed projects:rename",
+    "missed invoice:create",
+    "missed config:get-sync",
+    "missed menu:new-entry",
+    "missed update:ready",
+    "missed theme:changed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "timer:start: sender preload.js missed",
+    "timer:stop: sender preload.js missed",
+    "widget:pin: receiver main.js missed",
+    "widget:close: receiver main.js missed",
+    "invoice:export: sender preload.js missed",
+    "invoice:exported: sender main.js missed",
+    "sync:progress: receiver preload.js missed",
+    "timer:port: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "window settings",
+   "hit": 6,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed main.js sandbox=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed widget.pin",
+    "missed widget.close",
+    "missed widget.connect",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "bridge member channel",
+   "hit": 8,
+   "missed": 12,
+   "false": 0,
+   "notes": [
+    "tracker.startTimer: expected timer:start, got null",
+    "tracker.stopTimer: expected timer:stop, got null",
+    "tracker.onTick: expected timer:tick, got null",
+    "tracker.listProjects: expected projects:list, got null",
+    "tracker.createProject: expected projects:create, got null",
+    "tracker.renameProject: expected projects:rename, got null",
+    "tracker.createInvoice: expected invoice:create, got null",
+    "tracker.exportInvoice: expected invoice:export, got null",
+    "tracker.onSyncProgress: expected sync:progress, got null",
+    "tracker.setting: expected config:get-sync, got null",
+    "tracker.onNewEntry: expected menu:new-entry, got null",
+    "tracker.onUpdateReady: expected update:ready, got null"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "endpoints",
+   "hit": 8,
+   "missed": 6,
+   "false": 2,
+   "notes": [
+    "missed https://api.punchclock.example/v3/clients",
+    "missed https://api.punchclock.example/v3/timesheets/current…",
+    "missed https://api.punchclock.example/v3/entries",
+    "missed https://files.punchclock.example/invoices",
+    "missed wss://live.punchclock.example/team/…",
+    "missed https://updates.punchclock.example/feed/stable.json",
+    "false ${…}/feed/stable.json",
+    "false ${…}/team/${…}"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://hooks.punchclock.example/invoice-exported: expected POST"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 4,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "storage keys",
+   "hit": 14,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed localStorage punch.theme",
+    "missed localStorage punch.session",
+    "missed localStorage sidebarWidth"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "electron-store ui.locale: expected read+write, got read",
+    "electron-store ui.currency: expected read+write, got read"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 0,
+   "missed": 3,
+   "false": 1,
+   "notes": [
+    "missed +projects:retitle",
+    "missed -projects:rename",
+    "missed ~widget:close",
+    "false -widget:close"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed -widget.close"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 1,
+   "notes": [
+    "missed ~sandbox: false -> true",
+    "missed ~contextIsolation: true -> false",
+    "false -main.js::2::sandbox"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed +https://api.punchclock.example/v4/clients",
+    "missed +https://api.punchclock.example/v4/timesheets/current",
+    "missed -https://api.punchclock.example/v3/clients",
+    "missed -https://api.punchclock.example/v3/timesheets/current"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed +electron-store ui.weekStart"
+   ]
+  }
+ ]
+}

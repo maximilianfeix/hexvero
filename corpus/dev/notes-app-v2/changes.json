@@ -1,0 +1,37 @@
+{
+  "from": "../notes-app/src",
+  "why": "v2 is v1 with the listed edits, and with 25 comment lines put in front of every JavaScript file. The edits are the content changes; the comment lines move every other fact to a new line without changing it.",
+  "prependCommentLines": 25,
+  "edits": [
+    {
+      "file": "main.js",
+      "find": "  bus.handle(\"doc:rename\", async (_event, id, name) => ({ id, name }));",
+      "replace": "  bus.handle(\"doc:duplicate\", async (_event, id) => ({ id }));"
+    },
+    {
+      "file": "preload.js",
+      "find": "  rename: (id, name) => ipc.invoke(\"doc:rename\", id, name),",
+      "replace": "  duplicate: (id) => ipc.invoke(\"doc:duplicate\", id),"
+    },
+    {
+      "file": "main.js",
+      "find": "  const prefs = { nodeIntegration: true, contextIsolation: false, sandbox: false };",
+      "replace": "  const prefs = { nodeIntegration: false, contextIsolation: false, sandbox: true };"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  const res = await fetch(\"https://api.notes.example/v1/items\");",
+      "replace": "  await fetch(\"https://api.notes.example/v2/search\");\n  const res = await fetch(\"https://api.notes.example/v1/items\");"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  return new WebSocket(\"wss://live.notes.example/socket\");",
+      "replace": "  return new WebSocket(\"wss://live.notes.example/v2/socket\");"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  localStorage.removeItem(\"token\");",
+      "replace": "  localStorage.setItem(\"lastSync\", String(Date.now()));"
+    }
+  ]
+}

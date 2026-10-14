@@ -1,0 +1,12 @@
+{
+  "name": "corpus-notes-app",
+  "version": "2.0.0",
+  "license": "MIT",
+  "main": "main.js",
+  "dependencies": {
+    "electron-store": "^10.0.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

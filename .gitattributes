@@ -1,0 +1,2 @@
+# Same bytes on every platform: corpus sources are hashed, and tests read files as written.
+* text=auto eol=lf

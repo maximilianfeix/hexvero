@@ -33,8 +33,14 @@ export async function loadTarget(
         bytes: new Uint8Array(),
       };
     }
+    // Devices, pipes and sockets report no meaningful size and can be read without end.
+    if (!s.isFile())
+      throw new AnalysisError("invalid_input", `${absolute} is not a regular file or directory`, {
+        path: absolute,
+      });
     size = s.size;
-  } catch {
+  } catch (error) {
+    if (error instanceof AnalysisError) throw error;
     throw new AnalysisError("not_found", `No file at ${absolute}`, {
       path: absolute,
     });

@@ -1,0 +1,184 @@
+{
+  "case": "notes-app",
+  "kind": "electron",
+  "license": "MIT, written for this corpus",
+  "inputs": [
+    "dev/notes-app.plain.asar",
+    "dev/notes-app.bundled.asar",
+    "dev/notes-app.minified.asar"
+  ],
+  "method": "Every expectation was written from the sources in src/ before any tool was run on the built inputs. The three inputs are the same program: packed as written, bundled by esbuild, and bundled and minified. Bundling keeps the file names main.js, preload.js and renderer.js and folds channels.js into the files that use it.",
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "doc:open",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.handle and ipcMain.on in main.js (the same name twice); ipcRenderer.invoke in preload.js"
+        },
+        {
+          "channel": "app:ping",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "electron.ipcMain.on in main.js: ipcMain reached through the module object"
+        },
+        {
+          "channel": "doc:rename",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js registers it through `bus`, a renamed destructured ipcMain; preload.js sends through `ipc`, an alias of ipcRenderer"
+        },
+        {
+          "channel": "doc:save",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "both sides use the constant CH.SAVE from channels.js, whose value is doc:save"
+        },
+        {
+          "channel": "doc:changed",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "win.webContents.send in main.js; ipcRenderer.on in preload.js"
+        },
+        {
+          "channel": "app:pong",
+          "receivers": [],
+          "senders": ["main.js"],
+          "why": "event.reply(\"app:pong\") in the app:ping listener sends on this channel; nothing listens for it"
+        }
+      ],
+      "absent": [
+        { "channel": "ghost:comment", "why": "the call is inside a comment" },
+        { "channel": "ghost:string", "why": "the call is text inside a string" },
+        { "channel": "ghost:fake", "why": "handle() of an unrelated object named fake" },
+        { "channel": "doc:export", "why": "a constant that no IPC call uses" },
+        {
+          "channel": "user:",
+          "why": "the name is built at run time from the process id; no fixed name exists"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "main window; path.join(__dirname, \"preload.js\")"
+        },
+        { "key": "contextIsolation", "value": true, "file": "main.js", "why": "main window" },
+        { "key": "nodeIntegration", "value": false, "file": "main.js", "why": "main window" },
+        { "key": "sandbox", "value": true, "file": "main.js", "why": "main window" },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main.js",
+          "why": "print window; the object is built in `prefs` and passed by name"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main.js",
+          "why": "print window, via `prefs`"
+        },
+        { "key": "sandbox", "value": false, "file": "main.js", "why": "print window, via `prefs`" }
+      ],
+      "absent": [
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "count": 2,
+          "why": "paymentOptions also says sandbox: false but is not a BrowserWindow; exactly one sandbox:false setting exists"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        { "api": "notes", "member": "open", "channel": "doc:open" },
+        {
+          "api": "notes",
+          "member": "save",
+          "channel": "doc:save",
+          "why": "through the constant CH.SAVE"
+        },
+        {
+          "api": "notes",
+          "member": "rename",
+          "channel": "doc:rename",
+          "why": "through the alias `ipc`"
+        },
+        { "api": "notes", "member": "ping", "channel": "app:ping" },
+        { "api": "notes", "member": "onChanged", "channel": "doc:changed" },
+        { "api": "notes", "member": "version", "channel": null, "why": "a string, not a function" }
+      ],
+      "absent": []
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        { "value": "https://api.notes.example/v1/items", "why": "fetch with a literal" },
+        {
+          "prefix": "https://api.notes.example/v1/users/",
+          "why": "fetch with a template: the constant BASE, a fixed path, then a run-time id"
+        },
+        { "value": "/v1/login", "method": "POST", "why": "axios.post" },
+        { "value": "wss://live.notes.example/socket", "why": "new WebSocket" },
+        {
+          "value": "https://upload.notes.example/blob",
+          "method": "PUT",
+          "why": "XMLHttpRequest.open"
+        },
+        {
+          "value": "https://alias.notes.example/ping",
+          "why": "a real request made through `request`, another name for fetch"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "loadAny calls fetch(url) with a parameter; a tool should show the call and say the URL is unknown",
+      "absent": [
+        { "value": "https://ghost.example/comment", "why": "inside a comment" },
+        { "value": "https://ghost.example/string", "why": "text inside a string" },
+        {
+          "value": "use fetch('https://ghost.example/string') to load",
+          "why": "the whole string is no URL either"
+        },
+        { "value": "/local/route", "why": "router.get registers a server-side route" },
+        { "value": "items", "why": "cache.fetch is a cache lookup" },
+        {
+          "value": "https://ghost.example/not-fetch",
+          "why": "called through `notFetch`, which is not fetch"
+        },
+        {
+          "value": "https://docs.notes.example/help",
+          "why": "a URL constant that is returned, never requested"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        { "kind": "localStorage", "value": "theme", "ops": ["read", "write"] },
+        { "kind": "sessionStorage", "value": "draft", "ops": ["read"] },
+        { "kind": "localStorage", "value": "token", "ops": ["delete"] },
+        { "kind": "indexedDB", "value": "notes-db" },
+        { "kind": "cookie", "value": "document.cookie", "ops": ["write"] },
+        {
+          "kind": "electron-store",
+          "value": "window.lastOpened",
+          "ops": ["write"],
+          "why": "store is created with new Store() from electron-store in main.js"
+        },
+        { "kind": "electron-store", "value": "window.bounds", "ops": ["read"] }
+      ],
+      "absent": [
+        { "value": "ghost-comment", "why": "inside a comment" },
+        { "value": "ghost-custom", "why": "getItem of an unrelated object" }
+      ]
+    }
+  }
+}

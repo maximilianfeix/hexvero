@@ -41,6 +41,58 @@ const elfSymbols = (shift: number, extra: string[] = []): object[] => [
   ...extra.map((name) => ({ name, value: "0x9000", type: "FUNC" })),
 ];
 
+/** One `webPreferences` row of a bundled main process. */
+const pref = (windowName: string, window: number, key: string, value: boolean, line: number) => ({
+  key,
+  value,
+  file: "main.build.js",
+  line,
+  window,
+  windowName,
+});
+
+const ipcRow = (file: string, channel: string): Record<string, unknown> => ({
+  module: file,
+  api: "ipcMain.on",
+  channel,
+  line: 1,
+});
+
+const wholeSide = (...files: string[]) => ({
+  complete: true,
+  read: new Set(files),
+  unreadable: new Set<string>(),
+});
+
+const filePref = (file: string, windowName: string, value: boolean) => ({
+  key: "sandbox",
+  value,
+  file,
+  line: 3,
+  window: 1,
+  windowName,
+});
+
+const namedWindowPref = (windowName: string, window: number) => ({
+  key: "sandbox",
+  value: true,
+  file: "main.js",
+  line: window,
+  window,
+  windowName,
+});
+
+/** A `windows` row with an explanation and, optionally, keys that could not be read. */
+const windowRow = (computed: string[] | undefined, basis: string) => ({
+  file: "main.js",
+  window: 1,
+  windowName: "win",
+  line: 3,
+  sandbox: true,
+  basis,
+  ...(computed ? { computed } : {}),
+});
+
 describe("compareItems", () => {
   const a = [
     { name: "main", size: 40, address: "0x1000" },
@@ -191,9 +243,39 @@ describe("compareItems", () => {
     expect(positionalFields("symbols", [])).toEqual([]);
   });
 
+  it("matches window settings by the window's name when a window is added before it", () => {
+    const before = [
+      pref("mainWindow", 1, "nodeIntegration", true, 10),
+      pref("promptWindow", 2, "nodeIntegration", true, 40),
+      pref("promptWindow", 2, "sandbox", false, 41),
+    ];
+    const after = [
+      pref("mainWindow", 1, "nodeIntegration", true, 12),
+      pref("translateWindow", 2, "nodeIntegration", false, 30),
+      pref("promptWindow", 3, "nodeIntegration", false, 60),
+      pref("promptWindow", 3, "sandbox", true, 61),
+    ];
+    const diff = compareItems(before, after, {
+      collection: "webPreferences",
+      positional: positionalFields("webPreferences", ["javascript-app", "javascript-app"]),
+    });
+    expect(diff.key).toBe("file+windowName+key");
+    expect(diff.added).toEqual(["main.build.js::translateWindow::nodeIntegration"]);
+    expect(diff.removed).toEqual([]);
+    expect(diff.changed.map((c) => c.key)).toEqual([
+      "main.build.js::promptWindow::nodeIntegration",
+      "main.build.js::promptWindow::sandbox",
+    ]);
+    // the moved line and the shifted window number are positions, not changes
+    expect(diff.relocated).toBe(1);
+  });
+
   it("treats the source line of an Electron fact as a position, not as content", () => {
     expect(positionalFields("contextBridge", ["asar", "asar"])).toEqual(["line"]);
-    expect(positionalFields("webPreferences", ["asar", "javascript-app"])).toEqual(["line"]);
+    expect(positionalFields("webPreferences", ["asar", "javascript-app"])).toEqual([
+      "line",
+      "window",
+    ]);
     const added = {
       api: "api",
       member: "new",
@@ -214,7 +296,8 @@ describe("compareItems", () => {
     // strict mode keeps the line as content
     expect(
       compareItems(bridgeRows(0), bridgeRows(7), { collection: "contextBridge" }).changed,
-    ).toHaveLength(12);
+      // the 12 members and the entry without a readable member, which is matched by its api
+    ).toHaveLength(13);
   });
 
   it("reports nested changes by path", () => {
@@ -329,5 +412,156 @@ describe("compareItems", () => {
     });
     expect(typed.changed).toEqual([]);
     expect(typed.added).toHaveLength(1);
+  });
+});
+
+describe("items on one side only", () => {
+  const old = [ipcRow("main.js", "open"), ipcRow("main.js", "quit"), ipcRow("extra.js", "debug")];
+  const next = [ipcRow("main.js", "open"), ipcRow("main.js", "update")];
+  const options = { collection: "ipc", key: "channel" };
+
+  it("calls an item removed when it exists on the left and the right read everything", () => {
+    const diff = compareItems(old, next, {
+      ...options,
+      coverage: { a: wholeSide("main.js", "extra.js"), b: wholeSide("main.js") },
+    });
+    expect(diff.removed.toSorted()).toEqual(["debug", "quit"]);
+    expect(diff.added).toEqual(["update"]);
+    expect(diff.unknown).toEqual([]);
+  });
+
+  it("swaps added and removed, and nothing else, when the direction is reversed", () => {
+    const forward = compareItems(old, next, options);
+    const backward = compareItems(next, old, options);
+    expect(backward.added.toSorted()).toEqual(forward.removed.toSorted());
+    expect(backward.removed.toSorted()).toEqual(forward.added.toSorted());
+    expect(backward.unchanged).toBe(forward.unchanged);
+    expect(backward.changed.length).toBe(forward.changed.length);
+  });
+
+  it("calls an item unknown when the other side did not read its file", () => {
+    // the right side stopped before extra.js; main.js was read on both
+    const partial = { complete: false, read: new Set(["main.js"]), unreadable: new Set<string>() };
+    const diff = compareItems(old, next, {
+      ...options,
+      coverage: { a: wholeSide("main.js", "extra.js"), b: partial },
+    });
+    expect(diff.removed).toEqual(["quit"]);
+    expect(diff.added).toEqual(["update"]);
+    expect(diff.unknown).toEqual([
+      { key: "debug", side: "a", file: "extra.js", reason: "file not read on the other side" },
+    ]);
+    // and in the other direction it is not "added" either
+    const reversed = compareItems(next, old, {
+      ...options,
+      coverage: { a: partial, b: wholeSide("main.js", "extra.js") },
+    });
+    expect(reversed.added).toEqual(["quit"]);
+    expect(reversed.removed).toEqual(["update"]);
+    expect(reversed.unknown).toEqual([
+      { key: "debug", side: "b", file: "extra.js", reason: "file not read on the other side" },
+    ]);
+  });
+
+  it("calls an item unknown when its file exists on the other side but could not be read", () => {
+    const diff = compareItems(old, next, {
+      ...options,
+      coverage: {
+        a: wholeSide("main.js", "extra.js"),
+        b: { complete: false, read: new Set(["main.js"]), unreadable: new Set(["extra.js"]) },
+      },
+    });
+    expect(diff.unknown).toEqual([
+      {
+        key: "debug",
+        side: "a",
+        file: "extra.js",
+        reason: "file could not be read on the other side",
+      },
+    ]);
+  });
+
+  it("does not pair same-named settings of different files or different windows", () => {
+    const diff = compareItems(
+      [filePref("main.js", "win", false), filePref("other.js", "win", true)],
+      [filePref("main.js", "win", true), filePref("main.js", "prompt", false)],
+      { collection: "webPreferences", positional: ["line", "window"] },
+    );
+    expect(diff.key).toBe("file+windowName+key");
+    expect(diff.changed.map((c) => c.key)).toEqual(["main.js::win::sandbox"]);
+    expect(diff.added).toEqual(["main.js::prompt::sandbox"]);
+    expect(diff.removed).toEqual(["other.js::win::sandbox"]);
+  });
+
+  it("says how many settings were matched by a window's position because it has no name", () => {
+    const diff = compareItems(
+      [namedWindowPref("win", 1), namedWindowPref("#2", 2)],
+      [namedWindowPref("win", 1), namedWindowPref("#2", 2)],
+      {
+        collection: "webPreferences",
+        positional: ["line", "window"],
+      },
+    );
+    expect(diff.matchedByPosition).toBe(2);
+    expect(
+      compareItems([namedWindowPref("win", 1)], [namedWindowPref("win", 1)], {
+        collection: "webPreferences",
+      }).matchedByPosition,
+    ).toBe(0);
+  });
+
+  it("places a summary row by every file it names, and one that names none by the side's coverage", () => {
+    const partial = {
+      complete: false,
+      read: new Set(["main.js"]),
+      unreadable: new Set(["big.js"]),
+    };
+    const diff = compareItems(
+      [
+        { channel: "open", senders: [], receivers: ["main.js"] },
+        { channel: "tail", senders: [], receivers: ["big.js"] },
+        { channel: "gone", senders: [], receivers: ["main.js"] },
+      ],
+      [{ channel: "open", senders: [], receivers: ["main.js"] }],
+      { collection: "ipcChannels", coverage: { a: wholeSide("main.js", "big.js"), b: partial } },
+    );
+    expect(diff.removed).toEqual(["gone"]);
+    expect(diff.unknown).toEqual([
+      {
+        key: "tail",
+        side: "a",
+        file: "big.js",
+        reason: "file could not be read on the other side",
+      },
+    ]);
+    // no file named: with the other side read in part, nothing is known about the item there
+    const bare = compareItems([{ name: "only-left" }], [], {
+      key: "name",
+      coverage: { a: wholeSide(), b: partial },
+    });
+    expect(bare.removed).toEqual([]);
+    expect(bare.unknown.map((u) => u.reason)).toEqual(["the other side was read only in part"]);
+    // and with both sides read whole it is simply removed
+    expect(
+      compareItems([{ name: "only-left" }], [], {
+        key: "name",
+        coverage: { a: wholeSide(), b: wholeSide() },
+      }).removed,
+    ).toEqual(["only-left"]);
+  });
+
+  it("shows a window whose settings stop being readable as changed, and ignores only the explanation", () => {
+    const windowOptions = { collection: "windows", positional: ["line", "window"] };
+    // only the wording of the explanation differs: no change
+    expect(
+      compareItems([windowRow(undefined, "a")], [windowRow(undefined, "b")], windowOptions).changed,
+    ).toEqual([]);
+    // a key outside the three columns became unreadable: a change
+    const diff = compareItems(
+      [windowRow(undefined, "a")],
+      [windowRow(["webSecurity"], "a")],
+      windowOptions,
+    );
+    expect(diff.changed.map((c) => c.fields.map((f) => f.field))).toEqual([["computed"]]);
   });
 });

@@ -1,0 +1,1167 @@
+{
+ "tool": {
+  "name": "REA",
+  "version": "6.5.0",
+  "package": "rea-agents",
+  "cli": "6.5.0",
+  "node": "v25.2.1",
+  "platform": "darwin arm64",
+  "mapping": "default",
+  "deep providers": "none installed (Ghidra, Hopper, IDA)"
+ },
+ "totals": [
+  {
+   "set": "holdout2",
+   "class": "IPC channels",
+   "hit": 87,
+   "missed": 39,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "IPC senders and receivers",
+   "hit": 144,
+   "missed": 30,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 55,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "bridge members",
+   "hit": 66,
+   "missed": 69,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 60,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 51,
+   "false": 39,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 3,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout2",
+   "class": "requests with an unknown URL shown",
+   "hit": 4,
+   "missed": 2,
+   "false": 24,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "storage keys",
+   "hit": 15,
+   "missed": 42,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "storage read/write/delete",
+   "hit": 15,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in ipcChannels",
+   "hit": 1,
+   "missed": 1,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in contextBridge",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in endpoints",
+   "hit": 0,
+   "missed": 4,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  }
+ ],
+ "rows": [
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed settings:get",
+    "missed settings:set",
+    "missed settings:changed",
+    "missed vault:list",
+    "missed vault:search"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 27,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "file:opened: sender main.js missed",
+    "preview:render: sender main.js missed",
+    "editor:scroll-to: sender main.js missed",
+    "menu:action: sender main.js missed",
+    "app:confirm-close: sender main.js missed",
+    "plugins:list: receiver main.js missed",
+    "vault:reveal: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "window settings",
+   "hit": 1,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js preload=preload.js",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "bridge members",
+   "hit": 0,
+   "missed": 23,
+   "false": 0,
+   "notes": [
+    "missed inkwell.listNotes",
+    "missed inkwell.searchNotes",
+    "missed inkwell.revealNote",
+    "missed inkwell.openFile",
+    "missed inkwell.saveFile",
+    "missed inkwell.saveFileAs",
+    "missed inkwell.onFileOpened",
+    "missed inkwell.setTitle",
+    "missed inkwell.setDirty",
+    "missed inkwell.updatePreview",
+    "missed inkwell.onScrollTo",
+    "missed inkwell.onMenuAction",
+    "missed inkwell.onConfirmClose",
+    "missed inkwell.confirmClose",
+    "missed inkwell.openSettings",
+    "missed inkwell.getSettings",
+    "missed inkwell.setSetting",
+    "missed inkwell.onSettingsChanged",
+    "missed preview.onRender",
+    "missed preview.reportScroll",
+    "missed plugins.list",
+    "missed plugins.invoke",
+    "missed plugins.onEvent",
+    "3 entries reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "bridge member channel",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "endpoints",
+   "hit": 2,
+   "missed": 7,
+   "false": 5,
+   "notes": [
+    "missed https://plugins.inkwell.example/registry.json",
+    "missed https://cdn.inkwell.example/plugins/…",
+    "missed https://api.inkwell.example/v1/changelog",
+    "missed https://api.inkwell.example/v1/feedback",
+    "missed https://sync.inkwell.example/v2/vaults/…",
+    "missed https://embed.inkwell.example/oembed…",
+    "missed wss://collab.inkwell.example/rooms/…",
+    "false plugins.unsafe",
+    "false recent.files",
+    "false sidebarWidth",
+    "false theme",
+    "false vault.path"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://api.inkwell.example/v1/session: expected DELETE"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 7,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "storage keys",
+   "hit": 2,
+   "missed": 6,
+   "false": 0,
+   "notes": [
+    "missed localStorage inkwell.theme",
+    "missed localStorage inkwell.sidebarWidth",
+    "missed localStorage inkwell.recent",
+    "missed sessionStorage preview.scrollRatio",
+    "missed indexedDB inkwell-search",
+    "missed indexedDB inkwell-search-v1"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed settings:get",
+    "missed settings:set",
+    "missed settings:changed",
+    "missed vault:list",
+    "missed vault:search"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 27,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "file:opened: sender main.js missed",
+    "preview:render: sender main.js missed",
+    "editor:scroll-to: sender main.js missed",
+    "menu:action: sender main.js missed",
+    "app:confirm-close: sender main.js missed",
+    "plugins:list: receiver main.js missed",
+    "vault:reveal: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "window settings",
+   "hit": 1,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js preload=preload.js",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "bridge members",
+   "hit": 0,
+   "missed": 23,
+   "false": 0,
+   "notes": [
+    "missed inkwell.listNotes",
+    "missed inkwell.searchNotes",
+    "missed inkwell.revealNote",
+    "missed inkwell.openFile",
+    "missed inkwell.saveFile",
+    "missed inkwell.saveFileAs",
+    "missed inkwell.onFileOpened",
+    "missed inkwell.setTitle",
+    "missed inkwell.setDirty",
+    "missed inkwell.updatePreview",
+    "missed inkwell.onScrollTo",
+    "missed inkwell.onMenuAction",
+    "missed inkwell.onConfirmClose",
+    "missed inkwell.confirmClose",
+    "missed inkwell.openSettings",
+    "missed inkwell.getSettings",
+    "missed inkwell.setSetting",
+    "missed inkwell.onSettingsChanged",
+    "missed preview.onRender",
+    "missed preview.reportScroll",
+    "missed plugins.list",
+    "missed plugins.invoke",
+    "missed plugins.onEvent",
+    "3 entries reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "endpoints",
+   "hit": 2,
+   "missed": 7,
+   "false": 5,
+   "notes": [
+    "missed https://plugins.inkwell.example/registry.json",
+    "missed https://cdn.inkwell.example/plugins/…",
+    "missed https://api.inkwell.example/v1/changelog",
+    "missed https://api.inkwell.example/v1/feedback",
+    "missed https://sync.inkwell.example/v2/vaults/…",
+    "missed https://embed.inkwell.example/oembed…",
+    "missed wss://collab.inkwell.example/rooms/…",
+    "false plugins.unsafe",
+    "false vault.path",
+    "false theme",
+    "false sidebarWidth",
+    "false recent.files"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://api.inkwell.example/v1/session: expected DELETE"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 7,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "storage keys",
+   "hit": 2,
+   "missed": 6,
+   "false": 0,
+   "notes": [
+    "missed localStorage inkwell.theme",
+    "missed localStorage inkwell.sidebarWidth",
+    "missed localStorage inkwell.recent",
+    "missed sessionStorage preview.scrollRatio",
+    "missed indexedDB inkwell-search",
+    "missed indexedDB inkwell-search-v1"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed settings:get",
+    "missed settings:set",
+    "missed settings:changed",
+    "missed vault:list",
+    "missed vault:search"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 27,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "file:opened: sender main.js missed",
+    "preview:render: sender main.js missed",
+    "editor:scroll-to: sender main.js missed",
+    "menu:action: sender main.js missed",
+    "app:confirm-close: sender main.js missed",
+    "plugins:list: receiver main.js missed",
+    "vault:reveal: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "window settings",
+   "hit": 0,
+   "missed": 9,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js preload=preload.js",
+    "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "bridge members",
+   "hit": 0,
+   "missed": 23,
+   "false": 0,
+   "notes": [
+    "missed inkwell.listNotes",
+    "missed inkwell.searchNotes",
+    "missed inkwell.revealNote",
+    "missed inkwell.openFile",
+    "missed inkwell.saveFile",
+    "missed inkwell.saveFileAs",
+    "missed inkwell.onFileOpened",
+    "missed inkwell.setTitle",
+    "missed inkwell.setDirty",
+    "missed inkwell.updatePreview",
+    "missed inkwell.onScrollTo",
+    "missed inkwell.onMenuAction",
+    "missed inkwell.onConfirmClose",
+    "missed inkwell.confirmClose",
+    "missed inkwell.openSettings",
+    "missed inkwell.getSettings",
+    "missed inkwell.setSetting",
+    "missed inkwell.onSettingsChanged",
+    "missed preview.onRender",
+    "missed preview.reportScroll",
+    "missed plugins.list",
+    "missed plugins.invoke",
+    "missed plugins.onEvent",
+    "3 entries reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "bridge member channel",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "endpoints",
+   "hit": 2,
+   "missed": 7,
+   "false": 5,
+   "notes": [
+    "missed https://plugins.inkwell.example/registry.json",
+    "missed https://cdn.inkwell.example/plugins/…",
+    "missed https://api.inkwell.example/v1/changelog",
+    "missed https://api.inkwell.example/v1/feedback",
+    "missed https://sync.inkwell.example/v2/vaults/…",
+    "missed https://embed.inkwell.example/oembed…",
+    "missed wss://collab.inkwell.example/rooms/…",
+    "false theme",
+    "false vault.path",
+    "false plugins.unsafe",
+    "false sidebarWidth",
+    "false recent.files"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://api.inkwell.example/v1/session: expected DELETE"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "storage keys",
+   "hit": 2,
+   "missed": 6,
+   "false": 0,
+   "notes": [
+    "missed localStorage inkwell.theme",
+    "missed localStorage inkwell.sidebarWidth",
+    "missed localStorage inkwell.recent",
+    "missed sessionStorage preview.scrollRatio",
+    "missed indexedDB inkwell-search",
+    "missed indexedDB inkwell-search-v1"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 1,
+   "missed": 1,
+   "false": 4,
+   "notes": [
+    "missed +vault:rename",
+    "false ~editor:scroll-to",
+    "false ~file:opened",
+    "false ~menu:action",
+    "false ~preview:render"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed +inkwell.renameNote",
+    "missed -inkwell.setTitle"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 0,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed +https://api.inkwell.example/v2/changelog",
+    "missed +https://sync.inkwell.example/v3/vaults/",
+    "missed -https://api.inkwell.example/v1/changelog",
+    "missed -https://sync.inkwell.example/v2/vaults/"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed -indexedDB inkwell-search-v1"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "IPC channels",
+   "hit": 12,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed playlists:list",
+    "missed playlists:save",
+    "missed settings:get",
+    "missed settings:set",
+    "missed settings:changed",
+    "missed player:state-changed",
+    "missed player:state",
+    "missed mini:get-artwork"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "library:scan-progress: sender main.js missed",
+    "player:command: sender main.js missed",
+    "media:key: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "window settings",
+   "hit": 3,
+   "missed": 9,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=false",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "bridge members",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "bridge member channel",
+   "hit": 2,
+   "missed": 20,
+   "false": 0,
+   "notes": [
+    "cadence.getTracks: expected library:get-tracks, got null",
+    "cadence.addFolder: expected library:add-folder, got null",
+    "cadence.onScanProgress: expected library:scan-progress, got null",
+    "cadence.listPlaylists: expected playlists:list, got null",
+    "cadence.savePlaylist: expected playlists:save, got null",
+    "cadence.exportPlaylist: expected playlists:export, got null",
+    "cadence.reportState: expected player:state-changed, got null",
+    "cadence.onMediaKey: expected media:key, got null",
+    "cadence.onCommand: expected player:command, got null",
+    "cadence.fetchLyrics: expected lyrics:fetch, got null",
+    "cadence.toggleMiniPlayer: expected mini:toggle, got null",
+    "cadence.getSettings: expected settings:get, got null",
+    "cadence.updateSettings: expected settings:set, got null",
+    "cadence.onSettingsChanged: expected settings:changed, got null",
+    "cadence.minimize: expected window:minimize, got null",
+    "cadence.toggleMaximize: expected window:toggle-maximize, got null",
+    "cadence.getVersion: expected app:get-version, got null",
+    "mini.onState: expected player:state, got null",
+    "mini.getArtwork: expected mini:get-artwork, got null",
+    "mini.send: expected mini:command, got null"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "endpoints",
+   "hit": 0,
+   "missed": 10,
+   "false": 8,
+   "notes": [
+    "missed https://api.cadence.example/v2/me/recommendations",
+    "missed https://api.cadence.example/v2/artists/…",
+    "missed https://api.cadence.example/v2/scrobbles",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/live/friends",
+    "missed wss://together.cadence.example/socket?session=…",
+    "missed https://covers.cadence.example/…",
+    "missed https://lyrics.cadence.example/v1/search?…",
+    "missed https://updates.cadence.example/stable/latest.json",
+    "false /scrobbles",
+    "false window.bounds",
+    "false preferences",
+    "false library.folders",
+    "false /me/recommendations",
+    "false legacy.libraryCache",
+    "false playlists",
+    "false recommendations"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 5,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "storage keys",
+   "hit": 3,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed electron-store window.bounds",
+    "missed electron-store library.folders",
+    "missed electron-store preferences",
+    "missed electron-store playlists",
+    "missed electron-store player.lastTrack",
+    "missed electron-store legacy.libraryCache",
+    "missed localStorage cadence.queue",
+    "missed indexedDB cadence-artwork"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "IPC channels",
+   "hit": 12,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed playlists:list",
+    "missed playlists:save",
+    "missed settings:get",
+    "missed settings:set",
+    "missed settings:changed",
+    "missed player:state-changed",
+    "missed player:state",
+    "missed mini:get-artwork"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "library:scan-progress: sender main.js missed",
+    "player:command: sender main.js missed",
+    "media:key: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "window settings",
+   "hit": 3,
+   "missed": 9,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=false",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "bridge members",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 2,
+   "missed": 20,
+   "false": 0,
+   "notes": [
+    "cadence.getTracks: expected library:get-tracks, got null",
+    "cadence.addFolder: expected library:add-folder, got null",
+    "cadence.onScanProgress: expected library:scan-progress, got null",
+    "cadence.listPlaylists: expected playlists:list, got null",
+    "cadence.savePlaylist: expected playlists:save, got null",
+    "cadence.exportPlaylist: expected playlists:export, got null",
+    "cadence.reportState: expected player:state-changed, got null",
+    "cadence.onMediaKey: expected media:key, got null",
+    "cadence.onCommand: expected player:command, got null",
+    "cadence.fetchLyrics: expected lyrics:fetch, got null",
+    "cadence.toggleMiniPlayer: expected mini:toggle, got null",
+    "cadence.getSettings: expected settings:get, got null",
+    "cadence.updateSettings: expected settings:set, got null",
+    "cadence.onSettingsChanged: expected settings:changed, got null",
+    "cadence.minimize: expected window:minimize, got null",
+    "cadence.toggleMaximize: expected window:toggle-maximize, got null",
+    "cadence.getVersion: expected app:get-version, got null",
+    "mini.onState: expected player:state, got null",
+    "mini.getArtwork: expected mini:get-artwork, got null",
+    "mini.send: expected mini:command, got null"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "endpoints",
+   "hit": 0,
+   "missed": 10,
+   "false": 8,
+   "notes": [
+    "missed https://api.cadence.example/v2/me/recommendations",
+    "missed https://api.cadence.example/v2/artists/…",
+    "missed https://api.cadence.example/v2/scrobbles",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/live/friends",
+    "missed wss://together.cadence.example/socket?session=…",
+    "missed https://covers.cadence.example/…",
+    "missed https://lyrics.cadence.example/v1/search?…",
+    "missed https://updates.cadence.example/stable/latest.json",
+    "false recommendations",
+    "false library.folders",
+    "false /scrobbles",
+    "false preferences",
+    "false window.bounds",
+    "false /me/recommendations",
+    "false legacy.libraryCache",
+    "false playlists"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 5,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "storage keys",
+   "hit": 3,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed electron-store window.bounds",
+    "missed electron-store library.folders",
+    "missed electron-store preferences",
+    "missed electron-store playlists",
+    "missed electron-store player.lastTrack",
+    "missed electron-store legacy.libraryCache",
+    "missed localStorage cadence.queue",
+    "missed indexedDB cadence-artwork"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "IPC channels",
+   "hit": 12,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed playlists:list",
+    "missed playlists:save",
+    "missed settings:get",
+    "missed settings:set",
+    "missed settings:changed",
+    "missed player:state-changed",
+    "missed player:state",
+    "missed mini:get-artwork"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "library:scan-progress: sender main.js missed",
+    "player:command: sender main.js missed",
+    "media:key: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "window settings",
+   "hit": 0,
+   "missed": 12,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=false",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=false",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "bridge members",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "bridge member channel",
+   "hit": 2,
+   "missed": 20,
+   "false": 0,
+   "notes": [
+    "cadence.getTracks: expected library:get-tracks, got null",
+    "cadence.addFolder: expected library:add-folder, got null",
+    "cadence.onScanProgress: expected library:scan-progress, got null",
+    "cadence.listPlaylists: expected playlists:list, got null",
+    "cadence.savePlaylist: expected playlists:save, got null",
+    "cadence.exportPlaylist: expected playlists:export, got null",
+    "cadence.reportState: expected player:state-changed, got null",
+    "cadence.onMediaKey: expected media:key, got null",
+    "cadence.onCommand: expected player:command, got null",
+    "cadence.fetchLyrics: expected lyrics:fetch, got null",
+    "cadence.toggleMiniPlayer: expected mini:toggle, got null",
+    "cadence.getSettings: expected settings:get, got null",
+    "cadence.updateSettings: expected settings:set, got null",
+    "cadence.onSettingsChanged: expected settings:changed, got null",
+    "cadence.minimize: expected window:minimize, got null",
+    "cadence.toggleMaximize: expected window:toggle-maximize, got null",
+    "cadence.getVersion: expected app:get-version, got null",
+    "mini.onState: expected player:state, got null",
+    "mini.getArtwork: expected mini:get-artwork, got null",
+    "mini.send: expected mini:command, got null"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "endpoints",
+   "hit": 0,
+   "missed": 10,
+   "false": 8,
+   "notes": [
+    "missed https://api.cadence.example/v2/me/recommendations",
+    "missed https://api.cadence.example/v2/artists/…",
+    "missed https://api.cadence.example/v2/scrobbles",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/live/friends",
+    "missed wss://together.cadence.example/socket?session=…",
+    "missed https://covers.cadence.example/…",
+    "missed https://lyrics.cadence.example/v1/search?…",
+    "missed https://updates.cadence.example/stable/latest.json",
+    "false library.folders",
+    "false /scrobbles",
+    "false legacy.libraryCache",
+    "false recommendations",
+    "false playlists",
+    "false /me/recommendations",
+    "false preferences",
+    "false window.bounds"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "storage keys",
+   "hit": 3,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed electron-store window.bounds",
+    "missed electron-store library.folders",
+    "missed electron-store preferences",
+    "missed electron-store playlists",
+    "missed electron-store player.lastTrack",
+    "missed electron-store legacy.libraryCache",
+    "missed localStorage cadence.queue",
+    "missed indexedDB cadence-artwork"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "tool reported the analysis as partial"
+   ]
+  }
+ ]
+}

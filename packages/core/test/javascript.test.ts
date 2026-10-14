@@ -50,6 +50,18 @@ const showBridgeLines = (text: string): string[] =>
     (b) => `${b.world}:${b.api}.${b.member} → ${b.channel} @${b.line}`,
   );
 
+/** The nodeIntegration finding for a window with these settings, next to an unisolated one. */
+const detail = (prefs: string): string | undefined =>
+  analyzeJavaScriptTree(
+    asarTree(
+      buildAsar({
+        "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+        "main.js": `const { BrowserWindow } = require("electron");\nconst a = new BrowserWindow({ webPreferences: { ${prefs} } });\nconst b = new BrowserWindow({ webPreferences: { contextIsolation: false } });`,
+      }),
+      "app.asar",
+    ),
+  ).findings.find((f) => f.kind === "electron.node-integration")?.detail;
+
 describe("tokenize/scanJavaScript", () => {
   it("skips comments, strings, regexes and templates while finding references", () => {
     const scan = scanJavaScript(mainJs);
@@ -176,10 +188,11 @@ describe("ASAR", () => {
       remoteModule: false,
     });
     expect(info.modules.map((m) => `${m.id}:${m.role}`)).toEqual([
+      // scan order: the entry file, then shallow paths before deep ones, then by path
       "main.js:main",
+      "lazy.mjs:unknown",
       "preload.js:preload",
       "lib/db.js:unknown",
-      "lazy.mjs:unknown",
     ]);
     expect(info.edges.filter((e) => e.resolved).map((e) => `${e.from}->${e.to}`)).toEqual([
       "main.js->lib/db.js",
@@ -204,7 +217,12 @@ describe("ASAR", () => {
       "electron.context-bridge",
       "electron.preload",
     ]);
-    expect(info.limitations.map((l) => l.code)).toEqual(["unresolved_references"]);
+    // `ipcMain.on(channelName, …)`: the call is listed, its channel is not readable
+    expect(info.limitations.map((l) => l.code)).toEqual([
+      "ipc_channel_unresolved",
+      "unresolved_references",
+    ]);
+    expect(info.limitations[0]!.message).toContain("ipcMain.on at main.js:10");
   });
 });
 
@@ -282,9 +300,23 @@ describe("directory analysis", () => {
     });
     const info = analyzeJavaScriptTree(asarTree(asar, "app.asar"));
     expect(info.webPreferences).toEqual([
-      { key: "preload", value: "preload.js", file: "main.js", line: 3 },
-      { key: "contextIsolation", value: false, file: "main.js", line: 4 },
-      { key: "sandbox", value: false, file: "main.js", line: 5 },
+      {
+        key: "preload",
+        value: "preload.js",
+        file: "main.js",
+        line: 3,
+        window: 1,
+        windowName: "#1",
+      },
+      {
+        key: "contextIsolation",
+        value: false,
+        file: "main.js",
+        line: 4,
+        window: 1,
+        windowName: "#1",
+      },
+      { key: "sandbox", value: false, file: "main.js", line: 5, window: 1, windowName: "#1" },
     ]);
     expect(info.electron?.preloadScripts).toEqual(["preload.js"]);
     expect(info.findings.map((f) => `${f.kind} @ ${f.location}`)).toEqual([
@@ -323,16 +355,97 @@ describe("directory analysis", () => {
     expect(info.webPreferences.every((w) => w.file === "main.js")).toBe(true);
   });
 
+  it("names a window after the variable it is assigned to", () => {
+    const info = analyzeJavaScriptTree(
+      asarTree(
+        buildAsar({
+          "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+          "main.js": [
+            'const { BrowserWindow } = require("electron");',
+            "const mainWindow = new BrowserWindow({ webPreferences: { sandbox: true } });",
+            "this.promptWindow = new BrowserWindow({ webPreferences: { sandbox: false } });",
+            "new BrowserWindow({ webPreferences: { sandbox: true } });",
+            "let w = new BrowserWindow({ webPreferences: { sandbox: true } });",
+            "w = new BrowserWindow({ webPreferences: { sandbox: false } });",
+          ].join("\n"),
+        }),
+        "app.asar",
+      ),
+    );
+    expect(info.webPreferences.map((p) => `${p.window} ${p.windowName} ${p.value}`)).toEqual([
+      "1 mainWindow true",
+      "2 promptWindow false",
+      "3 #3 true",
+      "4 w true",
+      "5 w#2 false",
+    ]);
+  });
+
+  it("reads the options a helper returns in parentheses", () => {
+    const info = analyzeJavaScriptTree(
+      asarTree(
+        buildAsar({
+          "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+          "main.js": [
+            'const { WebContentsView } = require("electron");',
+            "function viewPreferences () {",
+            "  return (",
+            "    {",
+            "      contextIsolation: true,",
+            "      sandbox: true,",
+            "    }",
+            "  )",
+            "}",
+            "const view = new WebContentsView({ webPreferences: viewPreferences() });",
+          ].join("\n"),
+        }),
+        "app.asar",
+      ),
+    );
+    expect(info.webPreferences.map((p) => `${p.key}=${p.value} ${p.windowName}:${p.line}`)).toEqual(
+      ["contextIsolation=true view:5", "sandbox=true view:6"],
+    );
+  });
+
+  it("words the nodeIntegration finding by the contextIsolation of the same window", () => {
+    expect(detail("nodeIntegration: true, contextIsolation: false")).toMatch(
+      /^contextIsolation is off for the same window/,
+    );
+    // another window's `contextIsolation: false` does not decide the wording
+    expect(detail("nodeIntegration: true, contextIsolation: true")).toMatch(
+      /^contextIsolation is on for the same window, so page scripts do not get require\(\)/,
+    );
+    // not written, and the fixture names no Electron version: nothing is assumed
+    expect(detail("nodeIntegration: true")).toMatch(
+      /^Whether page scripts get require\(\) depends/,
+    );
+    expect(detail("nodeIntegration: false")).toBeUndefined();
+  });
+
   it("scans hostile repetitive input in linear time and caps what it records", () => {
     const hostile = buildAsar({
       "package.json": JSON.stringify({ name: "x", main: "main.js" }),
-      "main.js": `new BrowserWindow({});\n${"preload:a(".repeat(60_000)}\n${"x\nwebPreferences: { sandbox: true }\n".repeat(20_000)}`,
+      // no window in the file, so every object counts (with a window, they would be unattached)
+      "main.js": `${"preload:a(".repeat(60_000)}\n${"x\nwebPreferences: { sandbox: true }\n".repeat(20_000)}`,
     });
     const started = performance.now();
     const info = analyzeJavaScriptTree(asarTree(hostile, "app.asar"));
     expect(performance.now() - started).toBeLessThan(5000);
     expect(info.webPreferences.length).toBeLessThanOrEqual(200);
     expect(info.limitations.map((l) => l.code)).toContain("web_preferences_truncated");
+    // with a window in the file, objects no window takes are named, briefly, not listed
+    const attached = analyzeJavaScriptTree(
+      asarTree(
+        buildAsar({
+          "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+          "main.js": `new BrowserWindow({});\n${"x\nwebPreferences: { sandbox: true }\n".repeat(20_000)}`,
+        }),
+        "app.asar",
+      ),
+    );
+    expect(attached.webPreferences).toEqual([]);
+    const note = attached.limitations.find((l) => l.code === "webpreferences_unattached");
+    expect(note?.message.length).toBeLessThan(300);
   });
 
   it("lists what contextBridge exposes, member by member, with the channel each forwards to", () => {

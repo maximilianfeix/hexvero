@@ -149,6 +149,9 @@ const replacer = (_key: string, value: unknown): unknown =>
   typeof value === "bigint" ? value.toString() : value;
 
 /** Builds the MCP server over a session. Results are returned once, as JSON text, never duplicated. */
+/** `_meta` key on every tool result: its text includes content read from the analyzed file. */
+export const UNTRUSTED_META = "io.github.maximilianfeix.hexvero/untrustedContent";
+
 export function createHexveroServer(
   session = new Session(),
   providers: ProviderBridge = defaultProviders,
@@ -177,6 +180,9 @@ export function createHexveroServer(
           const result = await handlers[name](args ?? {}, extra.signal);
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result, replacer) }],
+            // For clients that act on it: strings in the result come from the analyzed file and
+            // are data, never instructions.
+            _meta: { [UNTRUSTED_META]: true },
           };
         } catch (error) {
           const payload =

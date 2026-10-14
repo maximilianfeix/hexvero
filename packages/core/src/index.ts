@@ -51,7 +51,21 @@ export {
   type JsEdge,
   type FileTree,
 } from "./javascript/app.js";
-export { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
+export {
+  analyzeTarget,
+  type AnalyzeOptions,
+  type AnyAnalysis,
+  type AnalysisData,
+  type JsScanRequest,
+} from "./analyzers/dispatch.js";
+export { suggestNextSteps, type NextStep } from "./next.js";
+export {
+  findCandidates,
+  type Candidate,
+  type CandidateEvidence,
+  type Candidates,
+} from "./javascript/candidates.js";
+export type { AppCandidate, JsCoverage, JsScanFacts } from "./javascript/app.js";
 export {
   Session,
   collectionsOf,
@@ -77,8 +91,10 @@ export {
   type CompareOptions,
   type CompareResult,
   type FieldChange,
+  type SideCoverage,
+  type UnknownItem,
 } from "./compare.js";
-export { compact, type CompactOptions } from "./compact.js";
+export { brief, compact, type CompactOptions } from "./compact.js";
 export { detectProviders, PROVIDER_OPERATIONS, type ProviderStatus } from "./providers/index.js";
 export {
   callersOf,
@@ -158,3 +174,11 @@ export {
   type CilInstruction,
   type CilResolver,
 } from "./formats/cil.js";
+export {
+  cacheRoot,
+  cacheEntries,
+  cacheLimits,
+  pruneCache,
+  type CacheEntry,
+  type PruneResult,
+} from "./cache.js";

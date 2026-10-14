@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hexvero": {
+      "command": "npx",
+      "args": ["-y", "hexvero", "mcp"]
+    }
+  }
+}

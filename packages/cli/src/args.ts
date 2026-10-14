@@ -39,6 +39,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
 }
 
 const BOOLEAN_FLAGS = new Set([
+  "continue",
+  "remove",
+  "fresh",
   "json",
   "help",
   "version",
@@ -48,6 +51,8 @@ const BOOLEAN_FLAGS = new Set([
   "no-color",
   "apply",
   "all",
+  "prune",
+  "clear",
 ]);
 const SHORT: Record<string, string> = {
   "-h": "help",

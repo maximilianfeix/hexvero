@@ -36,6 +36,33 @@ export interface CompareOptions {
   ignore?: readonly string[] | undefined;
   /** Position fields: differences count as relocation only when both values look like addresses. */
   positional?: readonly string[] | undefined;
+  /**
+   * What each side read, for collections whose items name the file they come from (`file` or
+   * `module`). An item found on one side only is `added` or `removed` only if the other side
+   * read that file; otherwise nothing is known about it there and it is `unknown`.
+   */
+  coverage?: { a?: SideCoverage | null; b?: SideCoverage | null } | undefined;
+}
+
+/** Which files an analysis read. */
+export interface SideCoverage {
+  /** Every file was read; a file not in `read` then does not exist on this side. */
+  complete: boolean;
+  read: ReadonlySet<string>;
+  /** Files that exist but were passed over (too large, not decodable) or read only in part. */
+  unreadable: ReadonlySet<string>;
+}
+
+/** An item present on one side whose file the other side did not read. */
+export interface UnknownItem {
+  key: string;
+  /** The side the item was found on. */
+  side: "a" | "b";
+  file: string;
+  reason:
+    | "file not read on the other side"
+    | "file could not be read on the other side"
+    | "the other side was read only in part";
 }
 
 export interface CompareResult {
@@ -52,12 +79,22 @@ export interface CompareResult {
   /** Item identities (keys) only present on the right side; duplicates listed once per extra item. */
   added: string[];
   removed: string[];
+  /**
+   * Items found on one side only, in a file the other side did not read: neither added nor
+   * removed. Empty unless the caller passed `coverage`.
+   */
+  unknown: UnknownItem[];
   changed: ChangedItem[];
   /** Matched items that differ only in ignored fields. */
   relocated: number;
   unchanged: number;
   /** Identities shared by more than one item on a side; those items are matched by content. */
   duplicateKeys: number;
+  /**
+   * Items of windows that have no name of their own (`#2`: the second window of the file). They
+   * are matched by that position, so a window added before them pairs different windows.
+   */
+  matchedByPosition: number;
   compared: { a: number; b: number };
 }
 
@@ -85,10 +122,25 @@ const POSITION_FIELDS: Record<string, readonly string[]> = {
  */
 const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   contextBridge: ["line"],
-  webPreferences: ["line"],
+  webPreferences: ["line", "window"],
+  windows: ["line", "window"],
+  endpoints: ["line", "column"],
+  storage: ["line", "column"],
+  urls: ["line", "column"],
+  routes: ["line", "column"],
+};
+
+/**
+ * Fields that only restate, in words, what other fields of the same item already say. A change
+ * in them is never a change of its own, and they are not listed as ignored on request.
+ */
+const DERIVED_FIELDS: Record<string, readonly string[]> = {
+  windows: ["basis"],
 };
 
 export function positionalFields(collection: string, formats: readonly string[]): string[] {
+  // `endpoints` also exists for HAR captures; their rows have no line or column, so the rule
+  // has nothing to act on there.
   const lines = SOURCE_LINE_FIELDS[collection];
   if (lines) return [...lines];
   if (formats.length === 0 || !formats.every((f) => NATIVE_FORMATS.has(f))) return [];
@@ -116,12 +168,29 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   ],
   columns: [["table", "name"]],
   ipc: [["module", "api", "channel", "line"]],
+  // A file may configure several windows. The variable a window is assigned to tells their
+  // settings apart and stays the same when code moves or a window is added before it; the
+  // window number is the fallback for an analysis without names.
   webPreferences: [
+    ["file", "windowName", "key"],
+    ["file", "window", "key"],
     ["file", "key"],
     ["file", "key", "line"],
   ],
+  windows: [["file", "windowName"]],
   cil: [["method", "offset"]],
   contextBridge: [["api", "member"]],
+  // The same URL or key in two files is two facts; without a file (a single bundle) it is one.
+  endpoints: [
+    ["file", "kind", "value"],
+    ["kind", "value"],
+  ],
+  storage: [
+    ["file", "kind", "value", "op"],
+    ["kind", "value", "op"],
+    ["kind", "value"],
+  ],
+  urls: [["file", "value"], ["value"]],
 };
 
 /** Paths (dotted, up to three levels) at which two values differ. */
@@ -186,13 +255,22 @@ function sortKeys(value: unknown): unknown {
  */
 function keyValue(item: unknown, key: string): string | undefined {
   if (!isRecord(item)) return undefined;
-  const parts: Array<string | number> = [];
-  for (const part of key.split("+")) {
+  const names = key.split("+");
+  const parts: Array<string | number | null> = [];
+  let known = 0;
+  for (const part of names) {
     const v = item[part];
-    if (typeof v !== "string" && typeof v !== "number") return undefined;
-    parts.push(v);
+    if (typeof v === "string" || typeof v === "number") {
+      parts.push(v);
+      known++;
+    } else if ((v === null || v === undefined) && names.length > 1) {
+      // In a composite key one part may be "none" (a bridge entry without a readable member, a
+      // request whose URL is unknown, a storage access without an operation): the item is still
+      // identified by the parts it has.
+      parts.push(null);
+    } else return undefined;
   }
-  return JSON.stringify(parts);
+  return known ? JSON.stringify(parts) : undefined;
 }
 
 /** The same key as people read it: `Type::name`. */
@@ -209,12 +287,20 @@ function keyLabel(item: unknown, key: string): string {
  * a few names in both symbol tables; `.ctor` repeats across types) and is handled by multiset
  * matching; a field that mostly repeats (one `init` per class) is no identity.
  */
-function qualifies(sides: Array<Array<Record<string, unknown>>>, key: string): boolean {
+function qualifies(
+  sides: Array<Array<Record<string, unknown>>>,
+  key: string,
+  /** The key is the collection's known identity, not a guess from the field names. */
+  curated = false,
+): boolean {
   for (const side of sides) {
     if (side.length === 0) continue;
     const values = side.map((o) => keyValue(o, key)).filter((v) => v !== undefined);
     if (values.length < side.length * 0.9) return false;
-    if (new Set(values).size < values.length * 0.9) return false;
+    // In a short list one repeated item is already more than a tenth. A known identity keeps its
+    // role there as long as most items are distinct; repeats are matched as multisets.
+    const distinct = curated && values.length <= 20 ? 0.5 : 0.9;
+    if (new Set(values).size < values.length * distinct) return false;
   }
   return true;
 }
@@ -233,7 +319,10 @@ export function detectKey(
   if (sides.every((s) => s.length === 0)) return null;
   for (const fields of (collection && COMPOSITE_KEYS[collection]) || []) {
     const key = fields.join("+");
-    if (qualifies(sides, key)) return key;
+    // A part that no item has (an older analysis without the field) rules the key out.
+    const everywhere = [...sides[0]!, ...sides[1]!];
+    if (fields.some((part) => !everywhere.some((item) => (item[part] ?? null) !== null))) continue;
+    if (qualifies(sides, key, true)) return key;
   }
   for (const field of KEY_CANDIDATES) if (qualifies(sides, field)) return field;
   return null;
@@ -271,19 +360,43 @@ function pair(
   return [matched, restA, restB];
 }
 
+/**
+ * The files an item comes from: its `file` or `module`, or every file a summary row names
+ * (`senders` and `receivers` of an IPC channel, `modules`, `files`). Empty when the item names
+ * none.
+ */
+function filesOf(item: unknown): string[] {
+  if (!isRecord(item)) return [];
+  const single = item["file"] ?? item["module"];
+  if (typeof single === "string") return [single];
+  const out: string[] = [];
+  for (const field of ["senders", "receivers", "modules", "files"]) {
+    const list = item[field];
+    if (Array.isArray(list)) for (const f of list) if (typeof f === "string") out.push(f);
+  }
+  return out;
+}
+
 export function compareItems(
   left: readonly unknown[],
   right: readonly unknown[],
   options: CompareOptions = {},
 ): CompareResult {
   const ignored = [...(options.ignore ?? [])];
+  const derived = (options.collection && DERIVED_FIELDS[options.collection]) || [];
   const positional = [...(options.positional ?? [])].filter((f) => !ignored.includes(f));
   let field: string | null =
     options.key === undefined ? detectKey(left, right, options.collection) : options.key;
   let keyMissing = false;
   if (field !== null) {
     const key = field;
-    if (![...left, ...right].some((item) => keyValue(item, key) !== undefined)) {
+    // A key is missing when no item has a value for it, or, for a composite key, when one of
+    // its parts exists on no item at all (a part may be empty on single items, never on all).
+    const everywhere = [...left, ...right];
+    const absentPart = key
+      .split("+")
+      .some((part) => !everywhere.some((item) => isRecord(item) && (item[part] ?? null) !== null));
+    if (absentPart || !everywhere.some((item) => keyValue(item, key) !== undefined)) {
       keyMissing = true;
       field = null;
     }
@@ -310,7 +423,8 @@ export function compareItems(
   const content = (item: unknown): string => {
     if (!isRecord(item)) return canonical(item);
     const copy: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(item)) if (!ignored.includes(k)) copy[k] = v;
+    for (const [k, v] of Object.entries(item))
+      if (!ignored.includes(k) && !derived.includes(k)) copy[k] = v;
     return canonical(copy);
   };
   /** Content with address-like position fields removed, for matching items that only moved. */
@@ -318,13 +432,54 @@ export function compareItems(
     if (!isRecord(item)) return canonical(item);
     const copy: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(item))
-      if (!ignored.includes(k) && !(positional.includes(k) && addressLike(v))) copy[k] = v;
+      if (
+        !ignored.includes(k) &&
+        !derived.includes(k) &&
+        !(positional.includes(k) && addressLike(v))
+      )
+        copy[k] = v;
     return canonical(copy);
   };
   const l = group(left);
   const r = group(right);
   const added: string[] = [];
   const removed: string[] = [];
+  const unknown: UnknownItem[] = [];
+  /** Records an item found on `side` only: removed/added when the other side read its file. */
+  const oneSided = (item: unknown, shown: string, side: "a" | "b"): void => {
+    const other = side === "a" ? options.coverage?.b : options.coverage?.a;
+    if (other) {
+      const files = filesOf(item);
+      const unreadable = files.find((f) => other.unreadable.has(f));
+      if (unreadable !== undefined) {
+        unknown.push({
+          key: shown,
+          side,
+          file: unreadable,
+          reason: "file could not be read on the other side",
+        });
+        return;
+      }
+      if (!other.complete) {
+        const unread = files.find((f) => !other.read.has(f));
+        // An item that names no file at all cannot be placed: with the other side read only in
+        // part, nothing is known about it there.
+        if (unread !== undefined || files.length === 0) {
+          unknown.push({
+            key: shown,
+            side,
+            file: unread ?? "",
+            reason:
+              unread === undefined
+                ? "the other side was read only in part"
+                : "file not read on the other side",
+          });
+          return;
+        }
+      }
+    }
+    (side === "a" ? removed : added).push(shown);
+  };
   const changed: ChangedItem[] = [];
   const relocatedSample: ChangedItem[] = [];
   let unchanged = 0;
@@ -333,7 +488,7 @@ export function compareItems(
   for (const [typed, { shown, items }] of l) {
     const other = r.get(typed);
     if (!other) {
-      for (let i = 0; i < items.length; i++) removed.push(shown);
+      for (const item of items) oneSided(item, shown, "a");
       continue;
     }
     if (items.length > 1 || other.items.length > 1) {
@@ -347,8 +502,8 @@ export function compareItems(
       // Which duplicate moved where cannot be told apart, so the sample names the identity only.
       if (moved > 0 && relocatedSample.length < 20)
         relocatedSample.push({ key: shown, fields: [], before: restA, after: restB });
-      for (let i = 0; i < goneA.length; i++) removed.push(shown);
-      for (let i = 0; i < goneB.length; i++) added.push(shown);
+      for (const item of goneA) oneSided(item, shown, "a");
+      for (const item of goneB) oneSided(item, shown, "b");
       continue;
     }
     const before = items[0];
@@ -361,7 +516,8 @@ export function compareItems(
     const moved: FieldChange[] = [];
     if (isRecord(before) && isRecord(after)) {
       for (const f of [...new Set([...Object.keys(before), ...Object.keys(after)])].toSorted()) {
-        if (ignored.includes(f) || canonical(before[f]) === canonical(after[f])) continue;
+        if (ignored.includes(f) || derived.includes(f)) continue;
+        if (canonical(before[f]) === canonical(after[f])) continue;
         if (positional.includes(f) && addressLike(before[f]) && addressLike(after[f]))
           moved.push({ field: f, before: before[f], after: after[f] });
         else diffPaths(before[f], after[f], f, 1, fields);
@@ -376,7 +532,7 @@ export function compareItems(
     changed.push({ key: shown, fields, before, after });
   }
   for (const [typed, { shown, items }] of r)
-    if (!l.has(typed)) for (let i = 0; i < items.length; i++) added.push(shown);
+    if (!l.has(typed)) for (const item of items) oneSided(item, shown, "b");
   return {
     key: field,
     keyMissing,
@@ -384,11 +540,17 @@ export function compareItems(
     positional,
     added,
     removed,
+    unknown,
     changed,
     relocated,
     relocatedSample,
     unchanged,
     duplicateKeys,
+    matchedByPosition: field?.split("+").includes("windowName")
+      ? [...left, ...right].filter(
+          (item) => isRecord(item) && /^#\d+$/.test(String(item["windowName"] ?? "")),
+        ).length
+      : 0,
     compared: { a: left.length, b: right.length },
   };
 }

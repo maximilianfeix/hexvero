@@ -1,0 +1,322 @@
+{
+ "tool": {
+  "name": "rea.summary via cli"
+ },
+ "observations": {
+  "dev/notes-app.plain.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 1,
+     "context_bridge_apis": 1,
+     "exposed_api_members": 6,
+     "ipc": {
+      "operations": 11,
+      "literal_channels": 4,
+      "dynamic_channel_operations": 3,
+      "renderer_transmissions": 4,
+      "renderer_listeners": 1,
+      "main_handlers": 6,
+      "paired_renderer_transmissions": 3,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 0
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "dev/notes-app.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 1,
+     "context_bridge_apis": 1,
+     "exposed_api_members": 6,
+     "ipc": {
+      "operations": 11,
+      "literal_channels": 4,
+      "dynamic_channel_operations": 3,
+      "renderer_transmissions": 4,
+      "renderer_listeners": 1,
+      "main_handlers": 6,
+      "paired_renderer_transmissions": 3,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 0
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "dev/notes-app.minified.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 1,
+     "context_bridge_apis": 1,
+     "exposed_api_members": 6,
+     "ipc": {
+      "operations": 11,
+      "literal_channels": 4,
+      "dynamic_channel_operations": 3,
+      "renderer_transmissions": 4,
+      "renderer_listeners": 1,
+      "main_handlers": 6,
+      "paired_renderer_transmissions": 3,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 0
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "validation/chat-app.plain.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 3,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 10,
+     "ipc": {
+      "operations": 22,
+      "literal_channels": 12,
+      "dynamic_channel_operations": 6,
+      "renderer_transmissions": 8,
+      "renderer_listeners": 2,
+      "main_handlers": 12,
+      "paired_renderer_transmissions": 4,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "validation/chat-app.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 3,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 10,
+     "ipc": {
+      "operations": 22,
+      "literal_channels": 12,
+      "dynamic_channel_operations": 6,
+      "renderer_transmissions": 8,
+      "renderer_listeners": 2,
+      "main_handlers": 12,
+      "paired_renderer_transmissions": 4,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "validation/chat-app.minified.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 3,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 10,
+     "ipc": {
+      "operations": 22,
+      "literal_channels": 12,
+      "dynamic_channel_operations": 6,
+      "renderer_transmissions": 8,
+      "renderer_listeners": 2,
+      "main_handlers": 12,
+      "paired_renderer_transmissions": 4,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "holdout/time-tracker.plain.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 3,
+     "explicit_web_preferences": 0,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 0,
+     "ipc": {
+      "operations": 34,
+      "literal_channels": 11,
+      "dynamic_channel_operations": 17,
+      "renderer_transmissions": 14,
+      "renderer_listeners": 5,
+      "main_handlers": 15,
+      "paired_renderer_transmissions": 6,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "holdout/time-tracker.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 3,
+     "explicit_web_preferences": 0,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 0,
+     "ipc": {
+      "operations": 34,
+      "literal_channels": 11,
+      "dynamic_channel_operations": 17,
+      "renderer_transmissions": 14,
+      "renderer_listeners": 5,
+      "main_handlers": 15,
+      "paired_renderer_transmissions": 6,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "holdout/time-tracker.minified.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 3,
+     "explicit_web_preferences": 0,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 0,
+     "ipc": {
+      "operations": 34,
+      "literal_channels": 11,
+      "dynamic_channel_operations": 17,
+      "renderer_transmissions": 14,
+      "renderer_listeners": 5,
+      "main_handlers": 15,
+      "paired_renderer_transmissions": 6,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  }
+ }
+}

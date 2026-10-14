@@ -4,13 +4,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AnalysisError } from "../model.js";
 import type { LoadedTarget } from "../target.js";
-import type { AnyAnalysis } from "./dispatch.js";
+import type { AnalyzeOptions, AnyAnalysis } from "./dispatch.js";
 
 export interface WorkerOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   /** V8 old-space limit for the worker in MiB; the worker dies cleanly instead of taking the server down. */
   maxOldGenerationSizeMb?: number;
+  /** Passed to the analyzer in the worker (e.g. how far to continue a JavaScript scan). */
+  analyze?: AnalyzeOptions;
 }
 
 export const DEFAULT_ANALYSIS_TIMEOUT_MS = Number(
@@ -55,7 +57,12 @@ export function analyzeInWorker(
   // An owned copy: Buffer.slice shares pooled storage, which cannot be transferred and would detach the session's bytes.
   const copy = new Uint8Array(target.bytes);
   const worker = new Worker(entry, {
-    workerData: { info: target.info, bytes: copy, lazy: target.lazy ?? false },
+    workerData: {
+      info: target.info,
+      bytes: copy,
+      lazy: target.lazy ?? false,
+      options: options.analyze ?? {},
+    },
     transferList: [copy.buffer],
     resourceLimits: options.maxOldGenerationSizeMb
       ? { maxOldGenerationSizeMb: options.maxOldGenerationSizeMb }

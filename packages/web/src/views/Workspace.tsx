@@ -22,6 +22,23 @@ export function Workspace({
   query: URLSearchParams;
 }): ReactElement {
   const [attempt, setAttempt] = useState(0);
+  const [scanning, setScanning] = useState<"continue" | "all" | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const scanMore = (mode: "continue" | "all"): void => {
+    setScanning(mode);
+    setScanError(null);
+    api
+      .scanMore(target.id, mode)
+      .then(
+        () => setAttempt((n) => n + 1),
+        (error: unknown) =>
+          setScanError(
+            `${error instanceof Error ? error.message : String(error)} What was read before is kept.`,
+          ),
+      )
+      .finally(() => setScanning(null));
+  };
   const analysis = useAsync(`analysis:${target.id}:${attempt}`, () => api.analysis(target.id));
   const standalone = new Set(["strings", "hex"]);
   const onTabKey = (event: KeyboardEvent<HTMLElement>): void => {
@@ -67,9 +84,25 @@ export function Workspace({
             <span title={target.info.sha256}>sha256 {target.info.sha256.slice(0, 16)}…</span>
           )}
           {analysis.data && <span>{analysis.data.durationMs} ms</span>}
-          <a href={api.exportUrl(target.id)} download>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setExportError(null);
+              api
+                .exportJson(target.id)
+                .catch((error: unknown) =>
+                  setExportError(error instanceof Error ? error.message : String(error)),
+                );
+            }}
+          >
             Export JSON
-          </a>
+          </button>
+          {exportError && (
+            <span role="alert" style={{ color: "var(--alert)" }}>
+              Export failed: {exportError}
+            </span>
+          )}
         </div>
         {analysis.loading && (
           <p className="verdict" style={{ color: "var(--ink-2)" }}>
@@ -85,6 +118,51 @@ export function Workspace({
           </p>
         )}
         {analysis.data && <h1 className="verdict">{analysis.data.summary}</h1>}
+        {analysis.data?.coverage && !analysis.data.coverage.complete && (
+          <div className="partial" role="status">
+            {analysis.data.coverage.remaining > 0 ? (
+              <p>
+                <strong>Partial analysis.</strong> {analysis.data.coverage.scanned.toLocaleString()}{" "}
+                of {analysis.data.coverage.total.toLocaleString()} JavaScript files have been read;{" "}
+                {analysis.data.coverage.remaining.toLocaleString()} are unread. Findings, tables and
+                the graph cover the scanned part only.
+              </p>
+            ) : (
+              <p>
+                <strong>Incomplete analysis.</strong>{" "}
+                {analysis.data.coverage.skipped.toLocaleString()} of{" "}
+                {analysis.data.coverage.total.toLocaleString()} JavaScript files could not be read,
+                or the folder holds more files than were listed. Findings, tables and the graph
+                cover the rest only; the limitations below say why.
+              </p>
+            )}
+            {analysis.data.coverage.remaining > 0 && (
+              <div className="partial-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={scanning !== null}
+                  onClick={() => scanMore("continue")}
+                >
+                  {scanning === "continue" ? "Reading…" : "Read next batch"}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={scanning !== null}
+                  onClick={() => scanMore("all")}
+                >
+                  {scanning === "all" ? "Reading…" : "Read all remaining files"}
+                </button>
+                {scanError && (
+                  <span role="alert" style={{ color: "var(--alert)" }}>
+                    {scanError}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <nav className="tabs" aria-label="Views" onKeyDown={onTabKey}>
         {tabs.map((name) => (

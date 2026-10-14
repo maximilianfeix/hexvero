@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { Session } from "../src/session.js";
 import { targetFromBytes } from "../src/target.js";
+import { openAsarFile } from "../src/formats/asar.js";
 import { buildElf } from "./fixtures/elf.js";
 import { buildAsar } from "./fixtures/asar.js";
 
@@ -24,7 +25,7 @@ describe("Session", () => {
     expect(await session.analyze(record.id)).toBe(analysis);
     expect(session.get(record.id).analyzed).toBe(true);
     expect(await session.collections(record.id)).toMatchObject({
-      findings: 1,
+      findings: 2, // the import facts and the hardening line
       symbols: 2,
       libraries: 2,
       imports: 1,
@@ -156,5 +157,24 @@ describe("Session", () => {
     const analysis = await session.analyze(record.id);
     expect(analysis.data.kind).toBe("unknown");
     expect(analysis.limitations[0]?.code).toBe("unknown_format");
+  });
+
+  it("refuses device files and FIFOs instead of reading them", async () => {
+    if (process.platform === "win32") return;
+    await expect(session.open("/dev/zero")).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("does not allocate a forged ASAR header length", () => {
+    const header = new Uint8Array(16);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 4, true);
+    view.setUint32(4, 200 * 1024 * 1024, true);
+    view.setUint32(8, 200 * 1024 * 1024 - 4, true);
+    view.setUint32(12, 200 * 1024 * 1024 - 8, true);
+    const path = join(dir, "forged.asar");
+    writeFileSync(path, header);
+    const before = process.memoryUsage().arrayBuffers;
+    expect(() => openAsarFile(path)).toThrow(/truncated/);
+    expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(64 * 1024 * 1024);
   });
 });

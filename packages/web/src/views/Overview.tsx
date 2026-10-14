@@ -48,28 +48,31 @@ export function Overview({
           </p>
         ) : (
           <ul className="findings">
-            {analysis.findings.map((f, i) => (
-              <li
-                key={i}
-                className={`finding ${f.confidence}`}
-                title={
-                  f.confidence === "confirmed" ? "Confirmed by parsing" : "Inferred from patterns"
-                }
-              >
-                <span className="dot" />
-                <div>
-                  <span className="title">{f.title}</span>
-                  <span className="confidence">{f.confidence}</span>
-                  <span className="kind">{f.kind}</span>
-                  {f.detail && <div className="detail">{f.detail}</div>}
-                  {f.location && (
-                    <div className="detail">
-                      <code className="location">{f.location}</code>
-                    </div>
-                  )}
-                </div>
-              </li>
-            ))}
+            {analysis.findings
+              // The hardening line repeats the Hardening block above; show it where there is none.
+              .filter((f) => !(marks.length > 0 && f.kind === "native.hardening"))
+              .map((f, i) => (
+                <li
+                  key={i}
+                  className={`finding ${f.confidence}`}
+                  title={
+                    f.confidence === "confirmed" ? "Confirmed by parsing" : "Inferred from patterns"
+                  }
+                >
+                  <span className="dot" />
+                  <div>
+                    <span className="title">{f.title}</span>
+                    <span className="confidence">{f.confidence}</span>
+                    <span className="kind">{f.kind}</span>
+                    {f.detail && <div className="detail">{f.detail}</div>}
+                    {f.location && (
+                      <div className="detail">
+                        <code className="location">{f.location}</code>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
           </ul>
         )}
       </div>

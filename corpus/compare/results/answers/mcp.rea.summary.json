@@ -1,0 +1,287 @@
+{
+ "tool": {
+  "name": "rea.summary via mcp"
+ },
+ "observations": {
+  "holdout2/markdown-editor.plain.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 3,
+     "exposed_api_members": 0,
+     "ipc": {
+      "operations": 35,
+      "literal_channels": 17,
+      "dynamic_channel_operations": 8,
+      "renderer_transmissions": 15,
+      "renderer_listeners": 6,
+      "main_handlers": 14,
+      "paired_renderer_transmissions": 10,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "holdout2/markdown-editor.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 3,
+     "exposed_api_members": 0,
+     "ipc": {
+      "operations": 35,
+      "literal_channels": 17,
+      "dynamic_channel_operations": 8,
+      "renderer_transmissions": 15,
+      "renderer_listeners": 6,
+      "main_handlers": 14,
+      "paired_renderer_transmissions": 10,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "holdout2/markdown-editor.minified.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 2,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 3,
+     "exposed_api_members": 0,
+     "ipc": {
+      "operations": 35,
+      "literal_channels": 17,
+      "dynamic_channel_operations": 8,
+      "renderer_transmissions": 15,
+      "renderer_listeners": 6,
+      "main_handlers": 14,
+      "paired_renderer_transmissions": 10,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 2
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "holdout2/music-player.plain.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 3,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 22,
+     "ipc": {
+      "operations": 34,
+      "literal_channels": 12,
+      "dynamic_channel_operations": 10,
+      "renderer_transmissions": 15,
+      "renderer_listeners": 8,
+      "main_handlers": 11,
+      "paired_renderer_transmissions": 9,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 0
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "holdout2/music-player.bundled.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 3,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 22,
+     "ipc": {
+      "operations": 34,
+      "literal_channels": 12,
+      "dynamic_channel_operations": 10,
+      "renderer_transmissions": 15,
+      "renderer_listeners": 8,
+      "main_handlers": 11,
+      "paired_renderer_transmissions": 9,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 0
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "holdout2/music-player.minified.asar": {
+   "electron": {
+    "complete": false,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": [],
+    "answerKind": "counts only",
+    "counts": {
+     "browser_windows": 3,
+     "explicit_web_preferences": 4,
+     "preload_entrypoints": 0,
+     "context_bridge_apis": 2,
+     "exposed_api_members": 22,
+     "ipc": {
+      "operations": 34,
+      "literal_channels": 12,
+      "dynamic_channel_operations": 10,
+      "renderer_transmissions": 15,
+      "renderer_listeners": 8,
+      "main_handlers": 11,
+      "paired_renderer_transmissions": 9,
+      "ambiguous_renderer_transmissions": 0,
+      "unpaired_literal_renderer_transmissions": 0
+     },
+     "sender_validation_observations": 0,
+     "utility_processes": 0,
+     "resolved_utility_entrypoints": 0,
+     "native_addon_bindings": 0,
+     "resolved_native_addon_bindings": 0
+    }
+   }
+  },
+  "compare:holdout2/markdown-editor.plain.asar|holdout2/markdown-editor-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "added": [],
+     "removed": [
+      "app:set-title"
+     ],
+     "changed": [
+      "editor:scroll-to",
+      "file:opened",
+      "menu:action",
+      "preview:render"
+     ],
+     "relocated": 12,
+     "sameNameOnBothSides": 14
+    },
+    "contextBridge": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "sameNameOnBothSides": 0
+    },
+    "endpoints": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 7,
+     "sameNameOnBothSides": 0
+    },
+    "storage": {
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 2,
+     "sameNameOnBothSides": 0
+    },
+    "webPreferences": {
+     "added": [],
+     "removed": [],
+     "changed": [
+      "sandbox: true -> false"
+     ],
+     "relocated": 0,
+     "windowsLeftOnly": 2,
+     "windowsRightOnly": 2,
+     "windowsUnread": 4
+    },
+    "literal": {
+     "summary": {
+      "unchanged": 0,
+      "added": 0,
+      "removed": 0,
+      "changed": 54,
+      "unknown": 192
+     },
+     "coverage": "partial",
+     "matching": {
+      "exact_node_identity": 3,
+      "exact_content_digest": 2,
+      "exact_module_source_digest": 0,
+      "source_map_identity": 0,
+      "structural_fingerprint": 0,
+      "semantic_key": 56,
+      "ambiguous": 0,
+      "unmatched": 185
+     }
+    }
+   }
+  }
+ }
+}

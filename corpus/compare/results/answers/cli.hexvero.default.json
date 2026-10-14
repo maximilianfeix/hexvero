@@ -1,0 +1,4850 @@
+{
+ "tool": {
+  "name": "hexvero.default via cli"
+ },
+ "observations": {
+  "dev/notes-app.plain.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:ping",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:pong",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "doc:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "doc:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:rename",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "notes",
+      "member": "open",
+      "channel": "doc:open"
+     },
+     {
+      "api": "notes",
+      "member": "save",
+      "channel": "doc:save"
+     },
+     {
+      "api": "notes",
+      "member": "rename",
+      "channel": "doc:rename"
+     },
+     {
+      "api": "notes",
+      "member": "ping",
+      "channel": "app:ping"
+     },
+     {
+      "api": "notes",
+      "member": "onChanged",
+      "channel": "doc:changed"
+     },
+     {
+      "api": "notes",
+      "member": "version",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.notes.example/v1/items",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.notes.example/v1/users/${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "/v1/login",
+      "kind": "http-client",
+      "method": "POST"
+     },
+     {
+      "value": "wss://live.notes.example/socket",
+      "kind": "websocket",
+      "method": null
+     },
+     {
+      "value": "https://upload.notes.example/blob",
+      "kind": "xhr",
+      "method": "PUT"
+     },
+     {
+      "value": "https://alias.notes.example/ping",
+      "kind": "fetch",
+      "method": null
+     }
+    ],
+    "endpointsUnreadable": 1,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.lastOpened",
+      "ops": [
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "draft",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "token",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "notes-db",
+      "ops": []
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "dev/notes-app.bundled.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:ping",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:pong",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "doc:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "doc:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:rename",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "notes",
+      "member": "open",
+      "channel": "doc:open"
+     },
+     {
+      "api": "notes",
+      "member": "save",
+      "channel": "doc:save"
+     },
+     {
+      "api": "notes",
+      "member": "rename",
+      "channel": "doc:rename"
+     },
+     {
+      "api": "notes",
+      "member": "ping",
+      "channel": "app:ping"
+     },
+     {
+      "api": "notes",
+      "member": "onChanged",
+      "channel": "doc:changed"
+     },
+     {
+      "api": "notes",
+      "member": "version",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.notes.example/v1/items",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.notes.example/v1/users/${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "/v1/login",
+      "kind": "http-client",
+      "method": "POST"
+     },
+     {
+      "value": "wss://live.notes.example/socket",
+      "kind": "websocket",
+      "method": null
+     },
+     {
+      "value": "https://upload.notes.example/blob",
+      "kind": "xhr",
+      "method": "PUT"
+     },
+     {
+      "value": "https://alias.notes.example/ping",
+      "kind": "fetch",
+      "method": null
+     }
+    ],
+    "endpointsUnreadable": 1,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.lastOpened",
+      "ops": [
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "draft",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "token",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "notes-db",
+      "ops": []
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "dev/notes-app.minified.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:ping",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:pong",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "doc:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "doc:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:rename",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "doc:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "notes",
+      "member": "open",
+      "channel": "doc:open"
+     },
+     {
+      "api": "notes",
+      "member": "save",
+      "channel": "doc:save"
+     },
+     {
+      "api": "notes",
+      "member": "rename",
+      "channel": "doc:rename"
+     },
+     {
+      "api": "notes",
+      "member": "ping",
+      "channel": "app:ping"
+     },
+     {
+      "api": "notes",
+      "member": "onChanged",
+      "channel": "doc:changed"
+     },
+     {
+      "api": "notes",
+      "member": "version",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.notes.example/v1/items",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.notes.example/v1/users/${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "wss://live.notes.example/socket",
+      "kind": "websocket",
+      "method": null
+     },
+     {
+      "value": "https://upload.notes.example/blob",
+      "kind": "xhr",
+      "method": "PUT"
+     },
+     {
+      "value": "https://alias.notes.example/ping",
+      "kind": "fetch",
+      "method": null
+     }
+    ],
+    "endpointsUnreadable": 1,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.lastOpened",
+      "ops": [
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "draft",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "token",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "notes-db",
+      "ops": []
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "validation/chat-app.plain.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:locale",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:renderer-ready",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:bootstrap",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:sign-out",
+      "senders": [
+       "preload.js",
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:history",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:incoming",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "chat:send-message",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:typing",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:update",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js",
+       "renderer-settings.js"
+      ]
+     },
+     {
+      "channel": "rooms:join",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:leave",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:reset",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:save",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:saved",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "renderer-settings.js"
+      ]
+     },
+     {
+      "channel": "telemetry:hit",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "chat",
+      "member": "sendMessage",
+      "channel": "chat:send-message"
+     },
+     {
+      "api": "chat",
+      "member": "listRooms",
+      "channel": "rooms:list"
+     },
+     {
+      "api": "chat",
+      "member": "history",
+      "channel": "chat:history"
+     },
+     {
+      "api": "chat",
+      "member": "join",
+      "channel": "rooms:join"
+     },
+     {
+      "api": "chat",
+      "member": "leave",
+      "channel": "rooms:leave"
+     },
+     {
+      "api": "chat",
+      "member": "typing",
+      "channel": "presence:typing"
+     },
+     {
+      "api": "chat",
+      "member": "onIncoming",
+      "channel": "chat:incoming"
+     },
+     {
+      "api": "chat",
+      "member": "openSettings",
+      "channel": "settings:open"
+     },
+     {
+      "api": "chat",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "session",
+      "member": "bootstrap",
+      "channel": "auth:bootstrap"
+     },
+     {
+      "api": "session",
+      "member": "signOut",
+      "channel": "auth:sign-out"
+     },
+     {
+      "api": "session",
+      "member": "onPresence",
+      "channel": "presence:update"
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://updates.chat.example/desktop/latest.json",
+      "kind": "http-client",
+      "method": "GET"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/report",
+      "kind": "http-client",
+      "method": "POST"
+     },
+     {
+      "value": "https://api.chat.example/v2/session",
+      "kind": "xhr",
+      "method": "DELETE"
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms/${…}/messages?limit=50",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/users/${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/messages",
+      "kind": "fetch",
+      "method": "POST"
+     },
+     {
+      "value": "https://status.chat.example/health.json",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "wss://gateway.chat.example/socket",
+      "kind": "websocket",
+      "method": null
+     },
+     {
+      "value": "https://events.chat.example/presence/stream",
+      "kind": "event-source",
+      "method": null
+     },
+     {
+      "value": "https://metrics.chat.example/collect",
+      "kind": "beacon",
+      "method": "POST"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "auth.refreshToken",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.zoom",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.zoom-draft",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "auth.token",
+      "ops": [
+       "read",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "chat.lastRoom",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.density",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "composer.unsent",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache-v1",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache",
+      "ops": []
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "validation/chat-app.bundled.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:locale",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:renderer-ready",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:bootstrap",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:sign-out",
+      "senders": [
+       "preload.js",
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:history",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:incoming",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "chat:send-message",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:typing",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:update",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js",
+       "renderer-settings.js"
+      ]
+     },
+     {
+      "channel": "rooms:join",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:leave",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:reset",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:save",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:saved",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "renderer-settings.js"
+      ]
+     },
+     {
+      "channel": "telemetry:hit",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "chat",
+      "member": "sendMessage",
+      "channel": "chat:send-message"
+     },
+     {
+      "api": "chat",
+      "member": "listRooms",
+      "channel": "rooms:list"
+     },
+     {
+      "api": "chat",
+      "member": "history",
+      "channel": "chat:history"
+     },
+     {
+      "api": "chat",
+      "member": "join",
+      "channel": "rooms:join"
+     },
+     {
+      "api": "chat",
+      "member": "leave",
+      "channel": "rooms:leave"
+     },
+     {
+      "api": "chat",
+      "member": "typing",
+      "channel": "presence:typing"
+     },
+     {
+      "api": "chat",
+      "member": "onIncoming",
+      "channel": "chat:incoming"
+     },
+     {
+      "api": "chat",
+      "member": "openSettings",
+      "channel": "settings:open"
+     },
+     {
+      "api": "chat",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "session",
+      "member": "bootstrap",
+      "channel": "auth:bootstrap"
+     },
+     {
+      "api": "session",
+      "member": "signOut",
+      "channel": "auth:sign-out"
+     },
+     {
+      "api": "session",
+      "member": "onPresence",
+      "channel": "presence:update"
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://updates.chat.example/desktop/latest.json",
+      "kind": "http-client",
+      "method": "GET"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/report",
+      "kind": "http-client",
+      "method": "POST"
+     },
+     {
+      "value": "https://api.chat.example/v2/session",
+      "kind": "xhr",
+      "method": "DELETE"
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms/${…}/messages?limit=50",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/users/${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/messages",
+      "kind": "fetch",
+      "method": "POST"
+     },
+     {
+      "value": "https://status.chat.example/health.json",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "wss://gateway.chat.example/socket",
+      "kind": "websocket",
+      "method": null
+     },
+     {
+      "value": "https://events.chat.example/presence/stream",
+      "kind": "event-source",
+      "method": null
+     },
+     {
+      "value": "https://metrics.chat.example/collect",
+      "kind": "beacon",
+      "method": "POST"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "auth.refreshToken",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.zoom",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.zoom-draft",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "auth.token",
+      "ops": [
+       "read",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "chat.lastRoom",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.density",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "composer.unsent",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache-v1",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache",
+      "ops": []
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "validation/chat-app.minified.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:locale",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:renderer-ready",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:bootstrap",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "auth:sign-out",
+      "senders": [
+       "preload.js",
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:history",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "chat:incoming",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "chat:send-message",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:typing",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "presence:update",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js",
+       "renderer-settings.js"
+      ]
+     },
+     {
+      "channel": "rooms:join",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:leave",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "rooms:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:reset",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:save",
+      "senders": [
+       "renderer-settings.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:saved",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "renderer-settings.js"
+      ]
+     },
+     {
+      "channel": "telemetry:hit",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "chat",
+      "member": "sendMessage",
+      "channel": "chat:send-message"
+     },
+     {
+      "api": "chat",
+      "member": "listRooms",
+      "channel": "rooms:list"
+     },
+     {
+      "api": "chat",
+      "member": "history",
+      "channel": "chat:history"
+     },
+     {
+      "api": "chat",
+      "member": "join",
+      "channel": "rooms:join"
+     },
+     {
+      "api": "chat",
+      "member": "leave",
+      "channel": "rooms:leave"
+     },
+     {
+      "api": "chat",
+      "member": "typing",
+      "channel": "presence:typing"
+     },
+     {
+      "api": "chat",
+      "member": "onIncoming",
+      "channel": "chat:incoming"
+     },
+     {
+      "api": "chat",
+      "member": "openSettings",
+      "channel": "settings:open"
+     },
+     {
+      "api": "chat",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "chat",
+      "member": "formatTime",
+      "channel": null
+     },
+     {
+      "api": "session",
+      "member": "bootstrap",
+      "channel": "auth:bootstrap"
+     },
+     {
+      "api": "session",
+      "member": "signOut",
+      "channel": "auth:sign-out"
+     },
+     {
+      "api": "session",
+      "member": "onPresence",
+      "channel": "presence:update"
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://updates.chat.example/desktop/latest.json",
+      "kind": "http-client",
+      "method": "GET"
+     },
+     {
+      "value": "https://updates.chat.example/desktop/report",
+      "kind": "http-client",
+      "method": "POST"
+     },
+     {
+      "value": "https://api.chat.example/v2/session",
+      "kind": "xhr",
+      "method": "DELETE"
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/rooms/${…}/messages?limit=50",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/users/${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.chat.example/v2/messages",
+      "kind": "fetch",
+      "method": "POST"
+     },
+     {
+      "value": "https://status.chat.example/health.json",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "wss://gateway.chat.example/socket",
+      "kind": "websocket",
+      "method": null
+     },
+     {
+      "value": "https://events.chat.example/presence/stream",
+      "kind": "event-source",
+      "method": null
+     },
+     {
+      "value": "https://metrics.chat.example/collect",
+      "kind": "beacon",
+      "method": "POST"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "window.bounds",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "auth.refreshToken",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.zoom",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.zoom-draft",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "auth.token",
+      "ops": [
+       "read",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "chat.lastRoom",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "ui.density",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "composer.unsent",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache-v1",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "chat-cache",
+      "ops": []
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout/time-tracker.plain.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "tracker",
+      "member": "startTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "stopTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onTick",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "listProjects",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "renameProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "exportInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onceExported",
+      "channel": "invoice:exported"
+     },
+     {
+      "api": "tracker",
+      "member": "startSync",
+      "channel": "sync:start"
+     },
+     {
+      "api": "tracker",
+      "member": "cancelSync",
+      "channel": "sync:cancel"
+     },
+     {
+      "api": "tracker",
+      "member": "onSyncProgress",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setting",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "activate",
+      "channel": "license:activate"
+     },
+     {
+      "api": "tracker",
+      "member": "onNewEntry",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onUpdateReady",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "formatDuration",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "copy",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "runtime",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setBadge",
+      "channel": "dock:badge"
+     },
+     {
+      "api": "[computed]",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "kind": "http-client",
+      "method": null
+     },
+     {
+      "value": "https://status.punchclock.example/api/v2/summary.json",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://telemetry.punchclock.example/v1/events",
+      "kind": "beacon",
+      "method": "POST"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.punchclock.example/v3/projects/${…}/entries?week=${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://rates.punchclock.example/latest?base=${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.punchclock.example/v3/entries/${…}",
+      "kind": "fetch",
+      "method": "DELETE"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "kind": "fetch",
+      "method": "PATCH"
+     },
+     {
+      "value": "${…}/team/${…}",
+      "kind": "websocket",
+      "method": null
+     }
+    ],
+    "endpointsUnreadable": 5,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.lastRun",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-v3",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-entries",
+      "ops": []
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     }
+    ]
+   }
+  },
+  "holdout/time-tracker.bundled.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:export",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:progress",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "timer:start",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:stop",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "tracker",
+      "member": "startTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "stopTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onTick",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "listProjects",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "renameProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "exportInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onceExported",
+      "channel": "invoice:exported"
+     },
+     {
+      "api": "tracker",
+      "member": "startSync",
+      "channel": "sync:start"
+     },
+     {
+      "api": "tracker",
+      "member": "cancelSync",
+      "channel": "sync:cancel"
+     },
+     {
+      "api": "tracker",
+      "member": "onSyncProgress",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setting",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "activate",
+      "channel": "license:activate"
+     },
+     {
+      "api": "tracker",
+      "member": "onNewEntry",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onUpdateReady",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "formatDuration",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "copy",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "runtime",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setBadge",
+      "channel": "dock:badge"
+     },
+     {
+      "api": "[computed]",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "kind": "http-client",
+      "method": null
+     },
+     {
+      "value": "${…}/feed/stable.json",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://status.punchclock.example/api/v2/summary.json",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://telemetry.punchclock.example/v1/events",
+      "kind": "beacon",
+      "method": "POST"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.punchclock.example/v3/projects/${…}/entries?week=${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://rates.punchclock.example/latest?base=${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.punchclock.example/v3/entries/${…}",
+      "kind": "fetch",
+      "method": "DELETE"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "kind": "fetch",
+      "method": "PATCH"
+     },
+     {
+      "value": "${…}/team/${…}",
+      "kind": "websocket",
+      "method": null
+     }
+    ],
+    "endpointsUnreadable": 5,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.lastRun",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-v3",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-entries",
+      "ops": []
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     }
+    ]
+   }
+  },
+  "holdout/time-tracker.minified.asar": {
+   "electron": {
+    "complete": true,
+    "ipcChannels": [
+     {
+      "channel": "app:first-paint",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "debug:dump-state",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "dock:badge",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:export",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "invoice:exported",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "license:activate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "sync:progress",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "sync:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:port",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "timer:start",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "timer:stop",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "widget:close",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:pin",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "widget:port",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "tracker",
+      "member": "startTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "stopTimer",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onTick",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "listProjects",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "renameProject",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "createInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "exportInvoice",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onceExported",
+      "channel": "invoice:exported"
+     },
+     {
+      "api": "tracker",
+      "member": "startSync",
+      "channel": "sync:start"
+     },
+     {
+      "api": "tracker",
+      "member": "cancelSync",
+      "channel": "sync:cancel"
+     },
+     {
+      "api": "tracker",
+      "member": "onSyncProgress",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setting",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "activate",
+      "channel": "license:activate"
+     },
+     {
+      "api": "tracker",
+      "member": "onNewEntry",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "onUpdateReady",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "formatDuration",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "copy",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "runtime",
+      "channel": null
+     },
+     {
+      "api": "tracker",
+      "member": "setBadge",
+      "channel": "dock:badge"
+     },
+     {
+      "api": "[computed]",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://hooks.punchclock.example/invoice-exported",
+      "kind": "http-client",
+      "method": null
+     },
+     {
+      "value": "${…}/feed/stable.json",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://status.punchclock.example/api/v2/summary.json",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://telemetry.punchclock.example/v1/events",
+      "kind": "beacon",
+      "method": "POST"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.punchclock.example/v3/projects/${…}/entries?week=${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://rates.punchclock.example/latest?base=${…}",
+      "kind": "fetch",
+      "method": null
+     },
+     {
+      "value": "https://api.punchclock.example/v3/entries/${…}",
+      "kind": "fetch",
+      "method": "DELETE"
+     },
+     {
+      "value": "https://api.punchclock.example/v3/me/preferences",
+      "kind": "fetch",
+      "method": "PATCH"
+     },
+     {
+      "value": "${…}/team/${…}",
+      "kind": "websocket",
+      "method": null
+     }
+    ],
+    "endpointsUnreadable": 5,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "license.key",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.main",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "window.widget",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.lastRun",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "sync.interval",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.locale",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "ui.currency",
+      "ops": [
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.position",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "widget.collapsed",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.activeProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "cookie",
+      "value": "document.cookie",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-v3",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-entries",
+      "ops": []
+     },
+     {
+      "kind": "indexedDB",
+      "value": "punchclock-attachments",
+      "ops": []
+     }
+    ]
+   }
+  },
+  "compare:dev/calls.O2.macho-arm64|dev/calls-v2.O2.macho-arm64": {
+   "compare": {
+    "imports": {
+     "key": "name",
+     "listsCutToSample": [],
+     "added": [
+      "_getenv"
+     ],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 8,
+     "partial": false
+    },
+    "symbols": {
+     "key": "name",
+     "listsCutToSample": [],
+     "added": [
+      "_audit",
+      "_getenv"
+     ],
+     "removed": [],
+     "changed": [],
+     "relocated": 5,
+     "unchanged": 12,
+     "partial": false
+    }
+   }
+  },
+  "compare:dev/notes-app.plain.asar|dev/notes-app-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "key": "channel",
+     "listsCutToSample": [],
+     "added": [
+      "doc:duplicate"
+     ],
+     "removed": [
+      "doc:rename"
+     ],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 5,
+     "partial": false
+    },
+    "contextBridge": {
+     "key": "api+member",
+     "listsCutToSample": [],
+     "added": [
+      "notes.duplicate"
+     ],
+     "removed": [
+      "notes.rename"
+     ],
+     "changed": [],
+     "relocated": 5,
+     "unchanged": 0,
+     "partial": false
+    },
+    "webPreferences": {
+     "key": "file+window+key",
+     "listsCutToSample": [],
+     "added": [],
+     "removed": [],
+     "changed": [
+      "nodeIntegration: true -> false",
+      "sandbox: false -> true"
+     ],
+     "relocated": 5,
+     "unchanged": 0,
+     "partial": false
+    },
+    "endpoints": {
+     "key": "file+kind+value",
+     "listsCutToSample": [],
+     "added": [
+      "https://api.notes.example/v2/search",
+      "wss://live.notes.example/v2/socket"
+     ],
+     "removed": [
+      "wss://live.notes.example/socket"
+     ],
+     "changed": [],
+     "relocated": 6,
+     "unchanged": 0,
+     "partial": false
+    },
+    "storage": {
+     "key": "file+kind+value+op",
+     "listsCutToSample": [],
+     "added": [
+      "localStorage lastSync"
+     ],
+     "removed": [
+      "localStorage token"
+     ],
+     "changed": [],
+     "relocated": 7,
+     "unchanged": 0,
+     "partial": false
+    }
+   }
+  },
+  "compare:validation/chat-app.plain.asar|validation/chat-app-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "key": "channel",
+     "listsCutToSample": [],
+     "added": [
+      "rooms:directory"
+     ],
+     "removed": [
+      "rooms:list",
+      "telemetry:hit"
+     ],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 15,
+     "partial": false
+    },
+    "contextBridge": {
+     "key": "api+member",
+     "listsCutToSample": [],
+     "added": [
+      "chat.listDirectory"
+     ],
+     "removed": [
+      "chat.listRooms"
+     ],
+     "changed": [],
+     "relocated": 12,
+     "unchanged": 0,
+     "partial": false
+    },
+    "webPreferences": {
+     "key": "file+window+key",
+     "listsCutToSample": [],
+     "added": [],
+     "removed": [],
+     "changed": [
+      "contextIsolation: false -> true",
+      "sandbox: false -> true"
+     ],
+     "relocated": 5,
+     "unchanged": 0,
+     "partial": false
+    },
+    "endpoints": {
+     "key": "file+kind+value",
+     "listsCutToSample": [],
+     "added": [
+      "https://api.chat.example/v3/rooms",
+      "https://metrics.chat.example/v2/batch"
+     ],
+     "removed": [
+      "https://api.chat.example/v2/rooms",
+      "https://metrics.chat.example/collect"
+     ],
+     "changed": [],
+     "relocated": 11,
+     "unchanged": 0,
+     "partial": false
+    },
+    "storage": {
+     "key": "file+kind+value+op",
+     "listsCutToSample": [],
+     "added": [
+      "electron-store auth.sessionKey",
+      "localStorage ui.scale"
+     ],
+     "removed": [
+      "electron-store auth.refreshToken",
+      "localStorage ui.density"
+     ],
+     "changed": [],
+     "relocated": 17,
+     "unchanged": 0,
+     "partial": false
+    }
+   }
+  },
+  "compare:holdout/time-tracker.plain.asar|holdout/time-tracker-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "key": "channel",
+     "listsCutToSample": [],
+     "added": [],
+     "removed": [
+      "widget:close"
+     ],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 10,
+     "partial": true
+    },
+    "contextBridge": {
+     "key": "api+member",
+     "listsCutToSample": [],
+     "added": [
+      "tracker.retitleProject"
+     ],
+     "removed": [
+      "tracker.renameProject"
+     ],
+     "changed": [],
+     "relocated": 20,
+     "unchanged": 0,
+     "partial": true
+    },
+    "webPreferences": {
+     "key": "file+window+key",
+     "listsCutToSample": [],
+     "added": [],
+     "removed": [
+      "main.js::2::sandbox"
+     ],
+     "changed": [],
+     "relocated": 2,
+     "unchanged": 0,
+     "partial": true
+    },
+    "endpoints": {
+     "key": "file+kind+value",
+     "listsCutToSample": [],
+     "added": [
+      "https://api.punchclock.example/v4/projects/${…}/entries?week=${…}",
+      "https://api.punchclock.example/v4/entries/${…}"
+     ],
+     "removed": [
+      "https://api.punchclock.example/v3/projects/${…}/entries?week=${…}",
+      "https://api.punchclock.example/v3/entries/${…}"
+     ],
+     "changed": [],
+     "relocated": 12,
+     "unchanged": 0,
+     "partial": true
+    },
+    "storage": {
+     "key": "file+kind+value+op",
+     "listsCutToSample": [],
+     "added": [],
+     "removed": [
+      "indexedDB punchclock-v3"
+     ],
+     "changed": [],
+     "relocated": 26,
+     "unchanged": 0,
+     "partial": true
+    }
+   }
+  },
+  "native:dev/calls.O0.macho-arm64:radare2": {
+   "native": {
+    "status": "RUN",
+    "engine": "radare2",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "validate",
+      "found": true,
+      "path": [
+       "main",
+       "parse",
+       "validate"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "system",
+      "found": true,
+      "path": [
+       "main",
+       "dispatch",
+       "run_command",
+       "system"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "puts",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse",
+      "to": "system",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:dev/calls.O0.macho-arm64:rizin": {
+   "native": {
+    "status": "RUN",
+    "engine": "rizin",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "validate",
+      "found": true,
+      "path": [
+       "entry0",
+       "parse",
+       "validate"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "system",
+      "found": true,
+      "path": [
+       "entry0",
+       "dispatch",
+       "run_command",
+       "system"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "puts",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse",
+      "to": "system",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:dev/calls.O2.macho-arm64:radare2": {
+   "native": {
+    "status": "RUN",
+    "engine": "radare2",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "validate",
+      "found": true,
+      "path": [
+       "main",
+       "parse",
+       "validate"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "system",
+      "found": true,
+      "path": [
+       "main",
+       "dispatch",
+       "run_command",
+       "system"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "puts",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse",
+      "to": "system",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:dev/calls.O2.macho-arm64:rizin": {
+   "native": {
+    "status": "RUN",
+    "engine": "rizin",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "validate",
+      "found": true,
+      "path": [
+       "entry0",
+       "parse",
+       "validate"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "system",
+      "found": true,
+      "path": [
+       "entry0",
+       "dispatch",
+       "run_command",
+       "system"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "puts",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse",
+      "to": "system",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:validation/dispatch.O0.macho-arm64:radare2": {
+   "native": {
+    "status": "RUN",
+    "engine": "radare2",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "strlen",
+      "found": true,
+      "path": [
+       "main",
+       "lookup",
+       "plausible",
+       "strlen"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "strcmp",
+      "found": true,
+      "path": [
+       "main",
+       "lookup",
+       "strcmp"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "main",
+       "finish",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "puts",
+      "found": true,
+      "path": [
+       "main",
+       "usage",
+       "emit",
+       "puts"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "tree_sum",
+      "found": true,
+      "path": [
+       "main",
+       "finish",
+       "tree_sum"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "cmd_env",
+      "to": "puts",
+      "found": true,
+      "path": [
+       "cmd_env",
+       "emit",
+       "puts"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "audit_cleanup",
+      "to": "remove",
+      "found": true,
+      "path": [
+       "audit_cleanup",
+       "remove"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "remove",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "audit_cleanup",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "lookup",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "finish",
+      "to": "strcmp",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "usage",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "tree_sum",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:validation/dispatch.O0.macho-arm64:rizin": {
+   "native": {
+    "status": "RUN",
+    "engine": "rizin",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "strlen",
+      "found": true,
+      "path": [
+       "entry0",
+       "lookup",
+       "plausible",
+       "strlen"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "strcmp",
+      "found": true,
+      "path": [
+       "entry0",
+       "lookup",
+       "strcmp"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "entry0",
+       "finish",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "puts",
+      "found": true,
+      "path": [
+       "entry0",
+       "usage",
+       "emit",
+       "puts"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "tree_sum",
+      "found": true,
+      "path": [
+       "entry0",
+       "finish",
+       "tree_sum"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "cmd_env",
+      "to": "puts",
+      "found": true,
+      "path": [
+       "cmd_env",
+       "emit",
+       "puts"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "audit_cleanup",
+      "to": "remove",
+      "found": true,
+      "path": [
+       "audit_cleanup",
+       "remove"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "remove",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "audit_cleanup",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "lookup",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "finish",
+      "to": "strcmp",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "usage",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "tree_sum",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:validation/dispatch.O2.macho-arm64:radare2": {
+   "native": {
+    "status": "RUN",
+    "engine": "radare2",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "strlen",
+      "found": true,
+      "path": [
+       "main",
+       "lookup",
+       "plausible",
+       "strlen"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "strcmp",
+      "found": true,
+      "path": [
+       "main",
+       "lookup",
+       "strcmp"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "main",
+       "finish",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "puts",
+      "found": true,
+      "path": [
+       "main",
+       "usage",
+       "emit",
+       "puts"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "tree_sum",
+      "found": true,
+      "path": [
+       "main",
+       "finish",
+       "tree_sum"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "cmd_env",
+      "to": "puts",
+      "found": true,
+      "path": [
+       "cmd_env",
+       "emit",
+       "puts"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "audit_cleanup",
+      "to": "remove",
+      "found": true,
+      "path": [
+       "audit_cleanup",
+       "remove"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "remove",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "audit_cleanup",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "lookup",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "finish",
+      "to": "strcmp",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "usage",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "tree_sum",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:validation/dispatch.O2.macho-arm64:rizin": {
+   "native": {
+    "status": "RUN",
+    "engine": "rizin",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "strlen",
+      "found": true,
+      "path": [
+       "entry0",
+       "lookup",
+       "plausible",
+       "strlen"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "strcmp",
+      "found": true,
+      "path": [
+       "entry0",
+       "lookup",
+       "strcmp"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "entry0",
+       "finish",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "puts",
+      "found": true,
+      "path": [
+       "entry0",
+       "usage",
+       "emit",
+       "puts"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "tree_sum",
+      "found": true,
+      "path": [
+       "entry0",
+       "finish",
+       "tree_sum"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "cmd_env",
+      "to": "puts",
+      "found": true,
+      "path": [
+       "cmd_env",
+       "emit",
+       "puts"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "audit_cleanup",
+      "to": "remove",
+      "found": true,
+      "path": [
+       "audit_cleanup",
+       "remove"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "remove",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "audit_cleanup",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "lookup",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "finish",
+      "to": "strcmp",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "usage",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "tree_sum",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:holdout/exprcalc.O0.macho-arm64:radare2": {
+   "native": {
+    "status": "RUN",
+    "engine": "radare2",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "main",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "report",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "main",
+       "report",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "parse_factor",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "parse_term",
+       "parse_factor"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "apply",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "apply"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_factor",
+      "to": "parse_term",
+      "found": true,
+      "path": [
+       "parse_factor",
+       "parse_expression",
+       "parse_term"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_term",
+      "to": "parse_expression",
+      "found": true,
+      "path": [
+       "parse_term",
+       "parse_factor",
+       "parse_expression"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_expression",
+      "to": "next_token",
+      "found": true,
+      "path": [
+       "parse_expression",
+       "next_token"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "debug_level",
+      "to": "atoi",
+      "found": true,
+      "path": [
+       "debug_level",
+       "atoi"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "atoi",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "debug_level",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "complain",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "fputs",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "report",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "next_token",
+      "to": "parse_expression",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "strtol",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "apply",
+      "to": "next_token",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:holdout/exprcalc.O0.macho-arm64:rizin": {
+   "native": {
+    "status": "RUN",
+    "engine": "rizin",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "entry0",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "report",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "entry0",
+       "report",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "parse_factor",
+      "found": true,
+      "path": [
+       "entry0",
+       "evaluate",
+       "parse_expression",
+       "parse_term",
+       "parse_factor"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "apply",
+      "found": true,
+      "path": [
+       "entry0",
+       "evaluate",
+       "parse_expression",
+       "apply"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_factor",
+      "to": "parse_term",
+      "found": true,
+      "path": [
+       "parse_factor",
+       "parse_expression",
+       "parse_term"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_term",
+      "to": "parse_expression",
+      "found": true,
+      "path": [
+       "parse_term",
+       "parse_factor",
+       "parse_expression"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_expression",
+      "to": "next_token",
+      "found": true,
+      "path": [
+       "parse_expression",
+       "next_token"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "debug_level",
+      "to": "atoi",
+      "found": true,
+      "path": [
+       "debug_level",
+       "atoi"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "atoi",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "debug_level",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "complain",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "fputs",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "report",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "next_token",
+      "to": "parse_expression",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "strtol",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "apply",
+      "to": "next_token",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:holdout/exprcalc.O2.macho-arm64:radare2": {
+   "native": {
+    "status": "RUN",
+    "engine": "radare2",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "main",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "report",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "main",
+       "report",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "parse_factor",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "parse_term",
+       "parse_factor"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "apply",
+      "found": true,
+      "path": [
+       "main",
+       "evaluate",
+       "parse_expression",
+       "apply"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_factor",
+      "to": "parse_term",
+      "found": true,
+      "path": [
+       "parse_factor",
+       "parse_expression",
+       "parse_term"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_term",
+      "to": "parse_expression",
+      "found": true,
+      "path": [
+       "parse_term",
+       "parse_factor",
+       "parse_expression"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_expression",
+      "to": "next_token",
+      "found": true,
+      "path": [
+       "parse_expression",
+       "next_token"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "debug_level",
+      "to": "atoi",
+      "found": true,
+      "path": [
+       "debug_level",
+       "atoi"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "atoi",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "debug_level",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "complain",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "fputs",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "report",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "next_token",
+      "to": "parse_expression",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "strtol",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "apply",
+      "to": "next_token",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  },
+  "native:holdout/exprcalc.O2.macho-arm64:rizin": {
+   "native": {
+    "status": "RUN",
+    "engine": "rizin",
+    "imports": [],
+    "functions": [],
+    "callers": [],
+    "paths": [
+     {
+      "from": "main",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "entry0",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "fputs",
+      "found": true,
+      "path": [
+       "report",
+       "complain",
+       "fputs"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "printf",
+      "found": true,
+      "path": [
+       "entry0",
+       "report",
+       "printf"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "parse_factor",
+      "found": true,
+      "path": [
+       "entry0",
+       "evaluate",
+       "parse_expression",
+       "parse_term",
+       "parse_factor"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "apply",
+      "found": true,
+      "path": [
+       "entry0",
+       "evaluate",
+       "parse_expression",
+       "apply"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_factor",
+      "to": "parse_term",
+      "found": true,
+      "path": [
+       "parse_factor",
+       "parse_expression",
+       "parse_term"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_term",
+      "to": "parse_expression",
+      "found": true,
+      "path": [
+       "parse_term",
+       "parse_factor",
+       "parse_expression"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "parse_expression",
+      "to": "next_token",
+      "found": true,
+      "path": [
+       "parse_expression",
+       "next_token"
+      ],
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "debug_level",
+      "to": "atoi",
+      "found": false,
+      "hedged": false,
+      "unresolved": "no answer"
+     },
+     {
+      "from": "main",
+      "to": "getenv",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "main",
+      "to": "atoi",
+      "found": false,
+      "hedged": false,
+      "unresolved": "no answer"
+     },
+     {
+      "from": "main",
+      "to": "debug_level",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "complain",
+      "to": "printf",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "fputs",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "evaluate",
+      "to": "report",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "next_token",
+      "to": "parse_expression",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "report",
+      "to": "strtol",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     },
+     {
+      "from": "apply",
+      "to": "next_token",
+      "found": false,
+      "path": null,
+      "hedged": false,
+      "limitations": []
+     }
+    ]
+   }
+  }
+ }
+}

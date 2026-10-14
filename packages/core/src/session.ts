@@ -1,8 +1,16 @@
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
-import { analyzeTarget, type AnyAnalysis, type AnalysisData } from "./analyzers/dispatch.js";
+import {
+  analyzeTarget,
+  type AnalyzeOptions,
+  type AnyAnalysis,
+  type AnalysisData,
+  type JsScanRequest,
+} from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
+import type { SideCoverage } from "./compare.js";
 import { UnknownsLedger } from "./unknowns.js";
 import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
 
@@ -43,6 +51,8 @@ interface Entry {
   loaded: LoadedTarget;
   analysis?: AnyAnalysis;
   pending?: Pending;
+  /** Options for the next analysis run only (a continued scan). */
+  next?: AnalyzeOptions;
   strings?: { key: string; items: TaggedString[] };
   collections?: Record<string, unknown[]>;
 }
@@ -138,8 +148,10 @@ export class Session {
               : {}),
             maxOldGenerationSizeMb: this.options.maxWorkerHeapMb ?? 2048,
             signal: controller.signal,
+            ...(e.next ? { analyze: e.next } : {}),
           })
-        : analyzeTarget(e.loaded);
+        : analyzeTarget(e.loaded, e.next ?? {});
+      delete e.next;
       const pending: Pending = { controller, waiters: 0, promise: run };
       pending.promise = run.then(
         (analysis) => {
@@ -195,6 +207,59 @@ export class Session {
         },
       );
     });
+  }
+
+  /**
+   * Reads more of a JavaScript application than the first analysis did: the next batch, every
+   * unread file, or the files under given paths. The stored scan state decides what is unread,
+   * so nothing is read twice. If the run fails or is cancelled, the target falls back to the last
+   * stored state on the next `analyze`.
+   */
+  async continueAnalysis(
+    id: string,
+    request: JsScanRequest,
+    signal?: AbortSignal,
+  ): Promise<AnyAnalysis> {
+    const e = this.entry(id);
+    if (e.pending) await e.pending.promise.catch(() => undefined);
+    delete e.analysis;
+    delete e.collections;
+    e.record.analyzed = false;
+    e.next = { js: request } satisfies AnalyzeOptions;
+    return this.analyze(id, signal);
+  }
+
+  /**
+   * For a JavaScript application whose analysis has not read every file: how much it has read.
+   * Null when the analysis is complete or the target is something else. Whatever is derived
+   * from such an analysis (a page, a comparison) covers the scanned part only and must say so.
+   */
+  async partial(
+    id: string,
+  ): Promise<{ scanned: number; total: number; remaining: number; skipped: number } | null> {
+    const analysis = await this.analyze(id);
+    if (analysis.data.kind !== "javascript-app" || analysis.data.app.coverage.complete) return null;
+    const { scanned, total, remaining, skipped } = analysis.data.app.coverage;
+    return { scanned, total, remaining, skipped };
+  }
+
+  /**
+   * Which files a JavaScript application's analysis read, for `compareItems`: an item that sits
+   * in a file the other side did not read is unknown there, not added or removed. Null for other
+   * targets, whose analyses are whole.
+   */
+  async coverage(id: string): Promise<SideCoverage | null> {
+    const analysis = await this.analyze(id);
+    if (analysis.data.kind !== "javascript-app") return null;
+    const { app } = analysis.data;
+    return {
+      complete: app.coverage.complete,
+      read: new Set(app.modules.map((m) => m.id)),
+      unreadable: new Set([
+        ...(app.coverage.skippedFiles ?? []),
+        ...(app.coverage.partialFiles ?? []),
+      ]),
+    };
   }
 
   /** Names of the list-like collections available for this target after analysis. */
@@ -314,9 +379,22 @@ export class Session {
   async export(
     id: string,
     destination: string,
-    options: { overwrite?: boolean | undefined } = {},
+    options: {
+      overwrite?: boolean | undefined;
+      /** Replace an existing file only when it is an earlier hexvero export (MCP sets this). */
+      onlyReplaceExports?: boolean | undefined;
+    } = {},
   ): Promise<{ path: string; bytes: number }> {
     const path = resolvePath(destination);
+    if (options.overwrite && options.onlyReplaceExports && existsSync(path)) {
+      const head = lstatSync(path).isFile() ? readFileSync(path, "utf8").slice(0, 64) : "";
+      if (!/^\{\s*"hexvero":\s*1\b/.test(head))
+        throw new AnalysisError(
+          "invalid_input",
+          `${path} exists and is not an earlier hexvero export; it is not replaced`,
+          { path },
+        );
+    }
     const analysis = await this.analyze(id);
     const text = JSON.stringify(
       {
@@ -614,8 +692,12 @@ export function collectionsOf(
       out["externals"] = d.app.externals;
       out["ipcChannels"] = d.app.ipcChannels;
       if (d.app.webPreferences.length) out["webPreferences"] = d.app.webPreferences;
+      if (d.app.windows?.length) out["windows"] = d.app.windows;
       if (d.app.contextBridge.length) out["contextBridge"] = d.app.contextBridge;
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
+      if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
+      if (d.app.storage.length) out["storage"] = d.app.storage;
+      if (d.app.urls.length) out["urls"] = d.app.urls;
       out["sourceMaps"] = d.app.sourceMaps;
       break;
     case "javascript":
@@ -626,6 +708,7 @@ export function collectionsOf(
       if (d.bundle.endpoints.length) out["endpoints"] = d.bundle.endpoints;
       if (d.bundle.routes.length) out["routes"] = d.bundle.routes;
       if (d.bundle.storage.length) out["storage"] = d.bundle.storage;
+      if (d.bundle.urls.length) out["urls"] = d.bundle.urls;
       if (d.bundle.vendors.length) out["vendors"] = d.bundle.vendors.map((name) => ({ name }));
       break;
     case "source-map":

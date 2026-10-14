@@ -1,3 +1,7 @@
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
 
@@ -55,9 +59,28 @@ async function openReadOnly(path: string): Promise<DatabaseLike> {
       {},
     );
   }
+  // Opening a WAL database, even read-only, makes SQLite create -wal and -shm files next to it.
+  // Without a pending -wal the file opens immutable; with one, a private copy of both is read.
+  let copyDir: string | undefined;
   try {
-    return new mod.DatabaseSync(path, { readOnly: true });
+    let location = `${pathToFileURL(path).href}?immutable=1`;
+    if (existsSync(`${path}-wal`)) {
+      copyDir = mkdtempSync(join(tmpdir(), "hexvero-sqlite-"));
+      location = join(copyDir, "copy.db");
+      copyFileSync(path, location);
+      copyFileSync(`${path}-wal`, `${location}-wal`);
+    }
+    const db = new mod.DatabaseSync(location, { readOnly: !copyDir });
+    const dir = copyDir;
+    return {
+      prepare: (sql) => db.prepare(sql),
+      close: () => {
+        db.close();
+        if (dir) rmSync(dir, { recursive: true, force: true });
+      },
+    };
   } catch (error) {
+    if (copyDir) rmSync(copyDir, { recursive: true, force: true });
     throw new AnalysisError(
       "malformed",
       `Cannot open SQLite database: ${error instanceof Error ? error.message : String(error)}`,

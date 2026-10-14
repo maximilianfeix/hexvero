@@ -1,0 +1,511 @@
+{
+  "case": "chat-app",
+  "kind": "electron",
+  "license": "MIT, written for this corpus",
+  "inputs": [
+    "validation/chat-app.plain.asar",
+    "validation/chat-app.bundled.asar",
+    "validation/chat-app.minified.asar"
+  ],
+  "method": "Every expectation was written from the sources in src/ by reading them; no analysis tool was run on the sources or on the built inputs, and no tool's detectors or output were looked at. The three inputs are the same program: packed as written, bundled by esbuild, and bundled and minified. Bundling keeps the file names main.js, preload.js, renderer.js and renderer-settings.js, folds ipc-names.js into main.js and preload.js and net.js into renderer.js, and drops the commented-out calls (the bundled input keeps a few comments that sit inside expressions and gains one path comment per source file; the minified input has no comments). Roles are attributed to those four entry files; in this case that is also right for the plain input, because ipc-names.js and net.js hold constants and helper objects only: every IPC call, window, bridge call, request and storage access is written in an entry file. After building, the bundled and the minified files were read to confirm that each expected channel name, address and storage key is still there as a string in the entry file it is attributed to, and that esbuild removed none of the calls (see README.md). An expectation states what the program does, also where that is hard to see (a wrapper, another name for a function, a constant from another file); what only looks like a finding is listed under absent. Negatives that live in a comment exist in the plain input only. webPreferences lists the keys preload, contextIsolation, nodeIntegration and sandbox only and is exhaustive for these four; the source also sets spellcheck on the main window and webSecurity on the settings dialog. A setting is the value the window is really created with: where a later property replaces an earlier one, only the later value is expected.",
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "chat:send-message",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: route(CHANNELS.SEND_MESSAGE, ...), and route() calls ipcMain.handle(channel, ...); preload.js: call(CHANNELS.SEND_MESSAGE) returns a function that calls ipcRenderer.invoke(channel, ...). The constant is SEND_MESSAGE in ipc-names.js"
+        },
+        {
+          "channel": "chat:history",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.handle(CHANNELS.HISTORY, ...) in main.js; ipcRenderer.invoke(CHANNELS.HISTORY, ...) in preload.js; the constant is HISTORY in ipc-names.js"
+        },
+        {
+          "channel": "rooms:list",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: route(\"rooms:list\", ...) registers through the wrapper around ipcMain.handle; preload.js: call(\"rooms:list\") sends through the wrapper around ipcRenderer.invoke"
+        },
+        {
+          "channel": "rooms:join",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: a key of the roomHandlers table; registerIpc() calls ipcMain.handle(channel, handler) for every entry of the table. preload.js: ipcRenderer.invoke(\"rooms:join\", room)"
+        },
+        {
+          "channel": "rooms:leave",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: the other key of the roomHandlers table, registered by the same loop; preload.js: ipcRenderer.invoke(\"rooms:leave\", room)"
+        },
+        {
+          "channel": "presence:typing",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: ipcMain.on with the literal; preload.js: emit(CHANNELS.TYPING, room), where emit is ipcRenderer.send.bind(ipcRenderer) and TYPING is a constant in ipc-names.js"
+        },
+        {
+          "channel": "app:renderer-ready",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.once in main.js; ipcRenderer.send in the DOMContentLoaded listener of preload.js, outside every exposed API"
+        },
+        {
+          "channel": "app:locale",
+          "receivers": ["main.js"],
+          "senders": ["renderer-settings.js"],
+          "why": "ipcMain.on in main.js (it answers through event.returnValue); ipcRenderer.sendSync in renderer-settings.js"
+        },
+        {
+          "channel": "auth:bootstrap",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.handleOnce in main.js; ipcRenderer.invoke in preload.js"
+        },
+        {
+          "channel": "auth:sign-out",
+          "receivers": ["main.js"],
+          "senders": ["preload.js", "renderer-settings.js"],
+          "why": "ipcMain.handle in main.js; ipcRenderer.invoke in preload.js (session.signOut) and in renderer-settings.js (the load listener of the XMLHttpRequest), where ipcRenderer comes from window.require(\"electron\")"
+        },
+        {
+          "channel": "settings:open",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in preload.js"
+        },
+        {
+          "channel": "settings:reset",
+          "receivers": ["main.js"],
+          "senders": ["renderer-settings.js"],
+          "why": "main.js calls ipcMain.removeHandler and then ipcMain.handle with this name, so a handler is registered; ipcRenderer.invoke in renderer-settings.js"
+        },
+        {
+          "channel": "settings:save",
+          "receivers": ["main.js"],
+          "senders": ["renderer-settings.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in renderer-settings.js"
+        },
+        {
+          "channel": "settings:saved",
+          "receivers": ["renderer-settings.js"],
+          "senders": ["main.js"],
+          "why": "main.js: event.sender.send in the settings:save listener; event.sender is the webContents of the sending window. renderer-settings.js: ipcRenderer.once"
+        },
+        {
+          "channel": "chat:incoming",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: mainWindow?.webContents.send; preload.js: ipcRenderer.on (and ipcRenderer.removeListener for the same name)"
+        },
+        {
+          "channel": "presence:update",
+          "receivers": ["preload.js", "renderer-settings.js"],
+          "senders": ["main.js"],
+          "why": "main.js: broadcast(\"presence:update\", ...) twice, and broadcast() calls win.webContents.send(channel, payload) for every window; ipcRenderer.on in preload.js (session.onPresence) and in renderer-settings.js"
+        },
+        {
+          "channel": "telemetry:hit",
+          "receivers": [],
+          "senders": ["preload.js"],
+          "why": "preload.js: emit(\"telemetry:hit\", ...), emit being ipcRenderer.send.bind(ipcRenderer); nothing listens for it"
+        }
+      ],
+      "absent": [
+        {
+          "channel": "chat:archive",
+          "why": "ARCHIVE in ipc-names.js is a constant that no IPC call uses"
+        },
+        {
+          "channel": "room:",
+          "why": "ipcMain.on(`room:${room}:ack`) in main.js: the name is built at run time from the keys of a Map; no fixed name exists (the same holds for \"room::ack\" or any other reading of the template)"
+        },
+        {
+          "channel": "ghost:commented-out",
+          "why": "main.js: the call is inside a comment (plain input only; bundling drops this comment)"
+        },
+        {
+          "channel": "ghost:preload-comment",
+          "why": "preload.js: the call is inside a comment (plain input only)"
+        },
+        {
+          "channel": "ghost:debug-dump",
+          "why": "preload.js: inside a commented-out exposeInMainWorld call (plain input only)"
+        },
+        { "channel": "ghost:in-a-string", "why": "main.js: text inside the string `manual`" },
+        {
+          "channel": "ghost:emitter-event",
+          "why": "main.js: on() and emit() of a node:events EventEmitter, not of ipcMain"
+        },
+        { "channel": "ghost:emitter-once", "why": "main.js: once() of the same EventEmitter" },
+        {
+          "channel": "ghost:scheduler-job",
+          "why": "main.js: handle() of the object `scheduler`, which pushes onto an array"
+        },
+        { "channel": "window-all-closed", "why": "main.js: app.on, an application event" },
+        { "channel": "activate", "why": "main.js: app.on, an application event" },
+        { "channel": "closed", "why": "main.js: win.on, a window event (so is \"close\")" },
+        { "channel": "ghost:port-message", "why": "preload.js: postMessage on a MessagePort" },
+        {
+          "channel": "ghost:dom-event",
+          "why": "preload.js: window.addEventListener, a DOM event name"
+        },
+        {
+          "channel": "ghost:socket-frame",
+          "why": "renderer.js: send() of a WebSocket, not of ipcRenderer"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "main window; basePreferences({ preload: PRELOAD, ... }) where PRELOAD is path.join(__dirname, \"preload.js\") and the function spreads its argument into the object it returns"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "main window; from the object basePreferences() returns"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "main window; from the object basePreferences() returns"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "why": "main window; basePreferences() starts with sandbox: false, then spreads its argument, and the argument says sandbox: true; the later property wins"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main.js",
+          "why": "settings dialog; spread from the constant LEGACY_PREFERENCES"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main.js",
+          "why": "settings dialog; spread from the constant LEGACY_PREFERENCES"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "why": "settings dialog; written in the webPreferences literal after the spread"
+        }
+      ],
+      "absent": [
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "count": 2,
+          "why": "the sandbox: false inside basePreferences() is replaced by sandbox: true in its only call, so no window is created with it; exactly one sandbox:false setting exists (settings dialog)"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "count": 2,
+          "why": "`apns` also says sandbox: true but holds options of a push gateway client, not of a window; exactly one sandbox:true setting exists (main window)"
+        },
+        {
+          "key": "preload",
+          "value": "metadata",
+          "file": "main.js",
+          "why": "linkPreviewAttributes holds HTML attributes for a <video> element; it is returned to the renderer as data, not passed to a BrowserWindow"
+        },
+        {
+          "key": "sandbox",
+          "value": "allow-scripts",
+          "file": "main.js",
+          "why": "linkPreviewAttributes again: the sandbox attribute of an <iframe>"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "chat",
+          "member": "sendMessage",
+          "channel": "chat:send-message",
+          "why": "call(CHANNELS.SEND_MESSAGE): the member is the function call() returns, which invokes on that channel"
+        },
+        {
+          "api": "chat",
+          "member": "listRooms",
+          "channel": "rooms:list",
+          "why": "call(\"rooms:list\")"
+        },
+        {
+          "api": "chat",
+          "member": "history",
+          "channel": "chat:history",
+          "why": "through the constant CHANNELS.HISTORY"
+        },
+        { "api": "chat", "member": "join", "channel": "rooms:join" },
+        { "api": "chat", "member": "leave", "channel": "rooms:leave" },
+        {
+          "api": "chat",
+          "member": "typing",
+          "channel": "presence:typing",
+          "why": "emit(CHANNELS.TYPING, room); emit is ipcRenderer.send bound to ipcRenderer"
+        },
+        {
+          "api": "chat",
+          "member": "onIncoming",
+          "channel": "chat:incoming",
+          "why": "a method that subscribes with ipcRenderer.on and returns a function that unsubscribes from the same channel"
+        },
+        { "api": "chat", "member": "openSettings", "channel": "settings:open" },
+        {
+          "api": "chat",
+          "member": "platform",
+          "channel": null,
+          "why": "a string (process.platform), not a function"
+        },
+        {
+          "api": "chat",
+          "member": "formatTime",
+          "channel": null,
+          "why": "a function that formats a date and talks to no channel"
+        },
+        {
+          "api": "session",
+          "member": "bootstrap",
+          "channel": "auth:bootstrap",
+          "why": "the API name is the constant SESSION_API (\"session\") and the object is the variable sessionApi"
+        },
+        {
+          "api": "session",
+          "member": "signOut",
+          "channel": "auth:sign-out",
+          "why": "a method of sessionApi"
+        },
+        {
+          "api": "session",
+          "member": "onPresence",
+          "channel": "presence:update",
+          "why": "assigned to sessionApi.onPresence after the object was created and before it is exposed"
+        }
+      ],
+      "absent": [
+        {
+          "api": "debug",
+          "member": "dump",
+          "why": "the exposeInMainWorld call is inside a comment (plain input only)"
+        },
+        {
+          "api": "SESSION_API",
+          "member": "bootstrap",
+          "why": "SESSION_API is the name of a constant; the exposed name is its value, session"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://api.chat.example/v2/rooms",
+          "why": "renderer.js loadRooms: fetch with a literal"
+        },
+        {
+          "prefix": "https://api.chat.example/v2/rooms/",
+          "why": "renderer.js loadMessages: fetch with a template: the constant API_ROOT from net.js, the fixed part /rooms/, then a run-time room id (and a fixed tail /messages?limit=50)"
+        },
+        {
+          "prefix": "https://api.chat.example/v2/users/",
+          "why": "renderer.js avatarOf: fetch with a concatenation: API_ROOT + \"/users/\" + a run-time user id + \"/avatar\""
+        },
+        {
+          "value": "https://api.chat.example/v2/messages",
+          "method": "POST",
+          "why": "renderer.js postMessage: fetch with a literal and { method: \"POST\" }"
+        },
+        {
+          "value": "https://status.chat.example/health.json",
+          "why": "renderer.js serviceStatus: a real request through httpGet, which is fetch destructured from globalThis under another name"
+        },
+        {
+          "value": "wss://gateway.chat.example/socket",
+          "why": "renderer.js openGateway: new WebSocket(GATEWAY_URL); the constant is defined in net.js"
+        },
+        {
+          "value": "https://events.chat.example/presence/stream",
+          "why": "renderer.js watchPresence: new EventSource"
+        },
+        {
+          "value": "https://metrics.chat.example/collect",
+          "why": "renderer.js reportUsage: navigator.sendBeacon (the code states no method)"
+        },
+        {
+          "value": "https://api.chat.example/v2/session",
+          "method": "DELETE",
+          "why": "renderer-settings.js signOutEverywhere: XMLHttpRequest.open"
+        },
+        {
+          "value": "https://updates.chat.example/desktop/latest.json",
+          "why": "main.js checkForUpdate: https.get of node:https"
+        },
+        {
+          "value": "https://updates.chat.example/desktop/report",
+          "method": "POST",
+          "why": "main.js checkForUpdate: net.request of Electron with { method: \"POST\", url }"
+        }
+      ],
+      "unreadable": 2,
+      "unreadableWhy": "renderer.js download calls fetch(attachment.href) and renderer-settings.js ping calls navigator.sendBeacon(target, payload); both addresses are run-time values of which nothing is known at the call. A tool should show the two calls and say the URL is unknown",
+      "absent": [
+        {
+          "value": "https://help.chat.example/faq",
+          "why": "HELP_URL in net.js is only put into the text of the help line (textContent); nothing requests it"
+        },
+        {
+          "value": "https://ghost.chat.example/in-a-comment",
+          "why": "renderer.js: the fetch is inside a comment (plain input only)"
+        },
+        {
+          "value": "wss://ghost.chat.example/in-a-string",
+          "why": "renderer.js: text inside the string `hint`"
+        },
+        {
+          "value": "Try new WebSocket(\"wss://ghost.chat.example/in-a-string\") in the console.",
+          "why": "the whole string is no URL either"
+        },
+        {
+          "value": "https://ghost.chat.example/cache-key",
+          "why": "avatarCache.fetch is a Map lookup defined in net.js"
+        },
+        {
+          "value": "https://ghost.chat.example/cache-open",
+          "method": "GET",
+          "why": "avatarCache.open(\"GET\", ...) writes into a Map; it only has the argument order of XMLHttpRequest.open"
+        },
+        {
+          "value": "https://ghost.chat.example/parsed-only",
+          "why": "new URL(...) is only asked for its hostname"
+        },
+        {
+          "value": "/ghost/history-entry",
+          "why": "history.replaceState changes the address shown; it loads nothing"
+        },
+        {
+          "value": "https://media.chat.example",
+          "why": "named in the Content-Security-Policy of index.html as an allowed image source; no code requests it"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "localStorage",
+          "value": "chat.lastRoom",
+          "ops": ["read", "write"],
+          "why": "renderer.js rememberRoom (setItem) and lastRoom (getItem)"
+        },
+        {
+          "kind": "localStorage",
+          "value": "auth.token",
+          "ops": ["read", "delete"],
+          "why": "renderer.js, through `ls`, another name for window.localStorage: ls.getItem in postMessage, ls.removeItem in forgetLogin"
+        },
+        {
+          "kind": "localStorage",
+          "value": "ui.density",
+          "ops": ["read"],
+          "why": "renderer.js density: window.localStorage.getItem"
+        },
+        {
+          "kind": "localStorage",
+          "value": "ui.zoom-draft",
+          "ops": ["read", "write"],
+          "why": "renderer-settings.js: getItem in the save listener, setItem in the reset listener"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "composer.unsent",
+          "ops": ["read", "write", "delete"],
+          "why": "renderer.js: the three members of `unsent` call getItem, setItem and removeItem"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "chat-cache",
+          "why": "renderer.js openCache: indexedDB.open"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "chat-cache-v1",
+          "ops": ["delete"],
+          "why": "renderer.js openCache: indexedDB.deleteDatabase"
+        },
+        {
+          "kind": "cookie",
+          "value": "document.cookie",
+          "ops": ["read", "write"],
+          "why": "renderer.js consent: document.cookie is read twice and assigned once"
+        },
+        {
+          "kind": "electron-store",
+          "value": "window.bounds",
+          "ops": ["read", "write"],
+          "why": "main.js: prefs is new Store({ name: \"chat-prefs\" }) from electron-store; prefs.get in openMainWindow, prefs.set in the close listener"
+        },
+        {
+          "kind": "electron-store",
+          "value": "ui.zoom",
+          "ops": ["read", "write"],
+          "why": "main.js: prefs.set and prefs.get in the settings:reset handler, prefs.set in the settings:save listener"
+        },
+        {
+          "kind": "electron-store",
+          "value": "auth.refreshToken",
+          "ops": ["delete"],
+          "why": "main.js: prefs.delete in the auth:sign-out handler"
+        }
+      ],
+      "absent": [
+        {
+          "value": "ghost.commented-out",
+          "why": "renderer.js: inside a comment (plain input only)"
+        },
+        { "value": "ghost.in-a-string", "why": "renderer.js: text inside the string `note`" },
+        {
+          "value": "ghost.own-object",
+          "why": "renderer.js: getItem/setItem/removeItem of `memory`, an object defined on the spot"
+        },
+        { "value": "ghost-query-param", "why": "renderer.js: get() of a URLSearchParams" },
+        {
+          "value": "ghost.map-key",
+          "why": "main.js: get/set/delete of a Map, not of the electron-store"
+        },
+        {
+          "value": "Content-Type",
+          "why": "net.js (in renderer.js when bundled): set() of a Headers object; so is Authorization"
+        },
+        { "value": "chat-prefs", "why": "main.js: the file name of the store, not a key in it" },
+        {
+          "value": "general",
+          "why": "main.js: a key of the Map `rooms`; in renderer.js the fallback value of lastRoom(), not a key"
+        },
+        {
+          "value": "consent",
+          "why": "the name of the cookie is part of the string written to document.cookie; the storage entry is document.cookie itself"
+        }
+      ]
+    }
+  }
+}

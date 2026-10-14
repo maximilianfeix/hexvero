@@ -1,0 +1,57 @@
+{
+  "from": "../chat-app/src",
+  "why": "v2 is v1 with the listed edits, and with 40 comment lines put in front of every JavaScript file. Nine edits change what the program does (a channel and its bridge member are renamed, a send is dropped, two settings of the settings dialog change, two addresses and two storage keys are replaced); the last edit changes only the text of a comment and is no change of the program. The comment lines move every other fact to a new line without changing it.",
+  "prependCommentLines": 40,
+  "edits": [
+    {
+      "file": "main.js",
+      "find": "  route(\"rooms:list\", () => [...rooms.keys()]);",
+      "replace": "  route(\"rooms:directory\", () => [...rooms.keys()]);"
+    },
+    {
+      "file": "preload.js",
+      "find": "  listRooms: call(\"rooms:list\"),",
+      "replace": "  listDirectory: call(\"rooms:directory\"),"
+    },
+    {
+      "file": "preload.js",
+      "find": "  // nobody in the main process listens for this one\n  emit(\"telemetry:hit\", { view: \"main\" });\n",
+      "replace": ""
+    },
+    {
+      "file": "main.js",
+      "find": "const LEGACY_PREFERENCES = { nodeIntegration: true, contextIsolation: false };",
+      "replace": "const LEGACY_PREFERENCES = { nodeIntegration: true, contextIsolation: true };"
+    },
+    {
+      "file": "main.js",
+      "find": "    webPreferences: { ...LEGACY_PREFERENCES, sandbox: false, webSecurity: false },",
+      "replace": "    webPreferences: { ...LEGACY_PREFERENCES, sandbox: true, webSecurity: false },"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  const res = await fetch(\"https://api.chat.example/v2/rooms\");",
+      "replace": "  const res = await fetch(\"https://api.chat.example/v3/rooms\");"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  navigator.sendBeacon(\"https://metrics.chat.example/collect\", JSON.stringify(counters));",
+      "replace": "  navigator.sendBeacon(\"https://metrics.chat.example/v2/batch\", JSON.stringify(counters));"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  return window.localStorage.getItem(\"ui.density\") || \"cozy\";",
+      "replace": "  return window.localStorage.getItem(\"ui.scale\") || \"cozy\";"
+    },
+    {
+      "file": "main.js",
+      "find": "    prefs.delete(\"auth.refreshToken\");",
+      "replace": "    prefs.delete(\"auth.sessionKey\");"
+    },
+    {
+      "file": "main.js",
+      "find": "  // ipcMain.handle(\"ghost:commented-out\", () => {});",
+      "replace": "  // ipcMain.handle(\"ghost:commented-away\", () => {});"
+    }
+  ]
+}

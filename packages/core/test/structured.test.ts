@@ -1,11 +1,22 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { afterAll, describe, expect, it } from "vitest";
 import { parseHar } from "../src/formats/har.js";
 import { parsePlist } from "../src/formats/plist.js";
 import { inspectSqlite } from "../src/formats/sqlite.js";
 import { Builder } from "./fixtures/builder.js";
+
+/** node:sqlite exists from Node 22.13 and 24; on 22.12 hexvero must say so instead of failing. */
+const hasSqlite = (() => {
+  try {
+    createRequire(import.meta.url)("node:sqlite");
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 describe("parsePlist", () => {
   it("decodes XML plists with entities, nesting and typed values", () => {
@@ -197,7 +208,7 @@ describe("inspectSqlite", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-sqlite-"));
   const path = join(dir, "app.db");
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
-  it("inventories schema, counts rows and samples data read-only", async () => {
+  it.skipIf(!hasSqlite)("inventories schema, counts rows and samples data read-only", async () => {
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(path);
     db.exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL, api_token TEXT, avatar BLOB, created DEFAULT CURRENT_TIMESTAMP);
@@ -240,7 +251,32 @@ describe("inspectSqlite", () => {
     expect(info.triggers[0]).toMatchObject({ name: "trg", table: "users" });
     expect(info.findings.map((f) => f.kind)).toEqual(["sqlite.secret-columns"]);
   });
-  it("reports unreadable files", async () => {
+  it.skipIf(hasSqlite)("says which Node versions have SQLite when this one does not", async () => {
+    await expect(inspectSqlite("/nonexistent.db")).rejects.toThrow(
+      /node:sqlite is unavailable; use Node.js 22.13\+ or 24\+/,
+    );
+  });
+
+  it.skipIf(!hasSqlite)("leaves no sidecar files and still reads a pending WAL", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const walDir = mkdtempSync(join(tmpdir(), "hexvero-wal-"));
+    const file = join(walDir, "app.db");
+    const writer = new DatabaseSync(file);
+    writer.exec("PRAGMA journal_mode=WAL; CREATE TABLE t(x); INSERT INTO t VALUES (1);");
+    writer.close();
+    expect(readdirSync(walDir)).toEqual(["app.db"]);
+    expect((await inspectSqlite(file)).tables[0]?.rowCount).toBe(1);
+    expect(readdirSync(walDir)).toEqual(["app.db"]);
+    const live = new DatabaseSync(file);
+    live.exec("PRAGMA wal_autocheckpoint=0; INSERT INTO t VALUES (2);");
+    const before = readdirSync(walDir).toSorted();
+    expect((await inspectSqlite(file)).tables[0]?.rowCount).toBe(2);
+    expect(readdirSync(walDir).toSorted()).toEqual(before);
+    live.close();
+    rmSync(walDir, { recursive: true, force: true });
+  });
+
+  it.skipIf(!hasSqlite)("reports unreadable files", async () => {
     await expect(inspectSqlite(join(dir, "missing.db"))).rejects.toThrow(/Cannot open/);
   });
 });

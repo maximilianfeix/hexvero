@@ -1,4 +1,7 @@
+import { checkWritePath } from "./writePolicy.js";
 import {
+  brief,
+  suggestNextSteps,
   AnalysisError,
   compact,
   compareItems,
@@ -54,8 +57,40 @@ export const toolSchemas = {
   hexvero_analyze: {
     title: "Analyze target",
     description:
-      "Run the built-in analyzer for the target's format (ELF/PE/Mach-O, Go, .NET, WASM, EVM, SQLite, plist, APK, ZIP, Electron ASAR, JavaScript apps, source maps, HAR). Returns a summary, findings with confidence, limitations, a compact overview and the collections available for paging.",
-    input: { targetId },
+      "Run the built-in analyzer for the target's format (ELF/PE/Mach-O, Go, .NET, WASM, EVM, SQLite, plist, APK, ZIP, Electron ASAR, JavaScript apps, source maps, HAR). Returns a summary, findings with confidence, limitations, a compact overview and the collections available for paging. Large JavaScript apps are read in batches: when `complete` is false, `coverage` says how many files are unread and every list covers the scanned part only; call again with scan to read more.",
+    input: {
+      targetId,
+      scan: z
+        .enum(["continue", "all", "fresh"])
+        .optional()
+        .describe(
+          "JavaScript apps only: continue = read the next batch of unread files, all = read every unread file, fresh = discard the stored scan and start again",
+        ),
+      detail: z
+        .enum(["brief", "full"])
+        .optional()
+        .describe(
+          "overview size: brief (default) lists only counts, full adds samples of every list",
+        ),
+      batch: z
+        .number()
+        .int()
+        .min(1)
+        .max(100000)
+        .optional()
+        .describe("JavaScript apps only: files per batch (default 5000)"),
+      fresh: z
+        .boolean()
+        .optional()
+        .describe("JavaScript apps only: discard the stored scan first; combines with scan"),
+      include: z
+        .array(z.string())
+        .max(32)
+        .optional()
+        .describe(
+          "JavaScript apps only: read the unread files under these paths (prefix or * pattern)",
+        ),
+    },
   },
   hexvero_collection: {
     title: "Page a collection",
@@ -132,6 +167,19 @@ export const toolSchemas = {
         .array(z.string())
         .optional()
         .describe("Fields to exclude from change detection, in addition to the position rule"),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Skip this many added, removed and changed items (for the next page)"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Items per list in this answer (default 50 added/removed, 25 changed)"),
       strict: z
         .boolean()
         .optional()
@@ -258,19 +306,46 @@ export function createHandlers(
     hexvero_close: async (a) => ({ closed: session.close(str(a["targetId"])) }),
     hexvero_analyze: async (a, signal) => {
       const id = str(a["targetId"]);
-      const analysis = await session.analyze(id, signal);
+      const scan = typeof a["scan"] === "string" ? a["scan"] : undefined;
+      const include = Array.isArray(a["include"])
+        ? a["include"].filter((p): p is string => typeof p === "string" && p.length > 0)
+        : [];
+      const request = {
+        ...(scan === "continue" ? { continue: true } : {}),
+        ...(scan === "all" ? { all: true } : {}),
+        ...(scan === "fresh" || a["fresh"] === true ? { fresh: true } : {}),
+        ...(typeof a["batch"] === "number" ? { maxJsFiles: a["batch"] } : {}),
+        ...(include.length ? { include } : {}),
+      };
+      const analysis = Object.keys(request).length
+        ? await session.continueAnalysis(id, request, signal)
+        : await session.analyze(id, signal);
+      const coverage = analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null;
       return {
         target: session.get(id),
         summary: analysis.summary,
         durationMs: analysis.durationMs,
+        ...(coverage ? { complete: coverage.complete, coverage } : {}),
         findings: analysis.findings,
         limitations: analysis.limitations,
         collections: await session.collections(id),
-        overview: compact(analysis.data),
+        // Calls that answer the obvious next questions about this kind of target.
+        next: suggestNextSteps(analysis, await session.collections(id)).map(
+          ({ question, tool, args }) => ({ question, tool, args: { targetId: id, ...args } }),
+        ),
+        // The facts without the lists (collections page through those); detail: "full" returns
+        // samples of every list as before.
+        overview: a["detail"] === "full" ? compact(analysis.data) : brief(analysis.data),
       };
     },
-    hexvero_collection: async (a) =>
-      session.collection(str(a["targetId"]), str(a["collection"]), paged(a)),
+    hexvero_collection: async (a) => {
+      const id = str(a["targetId"]);
+      const page = await session.collection(id, str(a["collection"]), paged(a));
+      // A page of a partly read application says so itself; the caller may never have seen
+      // the analysis result.
+      const partial = await session.partial(id);
+      return partial ? { ...page, partial } : page;
+    },
     hexvero_strings: async (a) => {
       const q: Parameters<Session["strings"]>[1] = paged(a);
       const minLength = num(a["minLength"]);
@@ -282,9 +357,15 @@ export function createHandlers(
     hexvero_bytes: async (a) =>
       session.bytes(str(a["targetId"]), Number(a["offset"]), Number(a["length"])),
     hexvero_export: async (a) =>
-      session.export(str(a["targetId"]), str(a["path"]), { overwrite: a["overwrite"] === true }),
+      session.export(str(a["targetId"]), checkWritePath(str(a["path"]), "export"), {
+        overwrite: a["overwrite"] === true,
+        onlyReplaceExports: true,
+      }),
     hexvero_recover: async (a) => {
-      const result = await session.recover(str(a["targetId"]), str(a["outputDir"]));
+      const result = await session.recover(
+        str(a["targetId"]),
+        checkWritePath(str(a["outputDir"]), "recover"),
+      );
       return {
         ...result,
         written: { count: result.written.length, sample: result.written.slice(0, 50) },
@@ -317,6 +398,17 @@ export function createHandlers(
       return session.unknowns.list(filter);
     },
     hexvero_compare: async (a) => {
+      const from = num(a["offset"]) ?? 0;
+      const per = num(a["limit"]);
+      const window = <T>(items: T[], fallback: number) => {
+        const size = per ?? fallback;
+        const sample = items.slice(from, from + size);
+        return {
+          count: items.length,
+          sample,
+          ...(from + sample.length < items.length ? { next: from + sample.length } : {}),
+        };
+      };
       const name = str(a["collection"]);
       const idA = str(a["targetA"]);
       const idB = str(a["targetB"]);
@@ -332,6 +424,7 @@ export function createHandlers(
           a["strict"] === true
             ? []
             : positionalFields(name, [session.get(idA).info.format, session.get(idB).info.format]),
+        coverage: { a: await session.coverage(idA), b: await session.coverage(idB) },
       });
       if (diff.keyMissing)
         throw new AnalysisError(
@@ -343,7 +436,15 @@ export function createHandlers(
         session.analyze(idB).then((x) => x.limitations.length),
       ]);
       const partial = left.truncated || right.truncated;
+      const partialScan = { a: await session.partial(idA), b: await session.partial(idB) };
       return {
+        ...(partialScan.a || partialScan.b
+          ? {
+              partialScan,
+              partialNote:
+                'At least one side was read only in part: an added or removed item may sit in a file that was not read on the other side. Run hexvero_analyze with scan: "all" on both targets first.',
+            }
+          : {}),
         collection: name,
         key: diff.key,
         ignored: diff.ignored,
@@ -368,9 +469,12 @@ export function createHandlers(
           limitsB === 0 &&
           diff.ignored.length === 0,
         unchanged: diff.unchanged,
-        added: { count: diff.added.length, sample: diff.added.slice(0, 50) },
-        removed: { count: diff.removed.length, sample: diff.removed.slice(0, 50) },
-        changed: { count: diff.changed.length, sample: diff.changed.slice(0, 25).map(fieldsOf) },
+        // Lists are paged like collections: `next` is the offset of the following page.
+        added: window(diff.added, 50),
+        removed: window(diff.removed, 50),
+        // Found on one side, in a file the other side did not read: neither added nor removed.
+        unknown: window(diff.unknown, 50),
+        changed: window(diff.changed.map(fieldsOf), 25),
         relocated: {
           count: diff.relocated,
           sample: diff.relocatedSample.slice(0, 5).map(fieldsOf),

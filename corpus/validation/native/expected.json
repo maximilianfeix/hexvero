@@ -1,0 +1,141 @@
+{
+  "case": "native-dispatch",
+  "kind": "native",
+  "license": "MIT, written for this corpus",
+  "inputs": ["validation/dispatch.O0.macho-arm64", "validation/dispatch.O2.macho-arm64"],
+  "method": "Expectations come from dispatch.c and, for the symbols and for which calls are jumps, from the system tools nm and otool -tV run on the two built files, not from any engine under test. Verified in the built files: both have the undefined symbols atoi, getenv, printf, puts, remove, strcmp, strlen and no other; both have a symbol for main and for each of the nine static functions (every one is noinline, none was inlined or dropped). At -O0 every call in the source is a bl (main has bl usage twice, tree_sum has bl tree_sum twice) and the call through the table is blr. At -O2 these are jumps (b): main -> usage (one jump for both source calls), main -> finish, usage -> emit, cmd_env -> emit, emit -> puts; these stay bl: main -> lookup, lookup -> plausible, lookup -> strcmp (twice, the loop is unrolled), plausible -> strlen, finish -> tree_sum, finish -> printf, cmd_double -> atoi, cmd_env -> getenv, audit_cleanup -> remove, tree_sum -> tree_sum (once; the second recursive call became a loop); the call through the table is still blr in main. So printf is reachable from main only through the jump main -> finish, and puts from main only through three jumps in a row. A path means a chain of direct calls or jumps to named functions; the call through the pointer table is not part of any expected path, and no question is asked whose answer depends on it. Callers are the functions that contain a direct call or jump to the function.",
+  "expect": {
+    "imports": {
+      "present": ["strcmp", "strlen", "printf", "puts", "atoi", "getenv", "remove"],
+      "absent": ["system", "execve", "fputs", "exit", "unlink"]
+    },
+    "functions": {
+      "present": [
+        "main",
+        "lookup",
+        "plausible",
+        "usage",
+        "emit",
+        "finish",
+        "tree_sum",
+        "cmd_double",
+        "cmd_env",
+        "audit_cleanup"
+      ]
+    },
+    "paths": [
+      {
+        "from": "main",
+        "to": "strlen",
+        "expect": "path",
+        "via": ["lookup", "plausible"],
+        "why": "main calls lookup, lookup calls plausible, plausible calls strlen; ordinary calls at both levels"
+      },
+      {
+        "from": "main",
+        "to": "strcmp",
+        "expect": "path",
+        "via": ["lookup"],
+        "why": "lookup calls strcmp in its loop; ordinary calls at both levels"
+      },
+      {
+        "from": "main",
+        "to": "printf",
+        "expect": "path",
+        "via": ["finish"],
+        "why": "main returns finish(), finish calls printf; at -O2 main -> finish is a jump and there is no other way from main to printf"
+      },
+      {
+        "from": "main",
+        "to": "puts",
+        "expect": "path",
+        "via": ["usage", "emit"],
+        "why": "main returns usage(), usage returns emit(), emit returns puts(); at -O2 all three are jumps and no call instruction lies on the way"
+      },
+      {
+        "from": "main",
+        "to": "tree_sum",
+        "expect": "path",
+        "via": ["finish"],
+        "why": "finish calls tree_sum with an ordinary call; main reaches finish by a call (-O0) or a jump (-O2)"
+      },
+      {
+        "from": "cmd_env",
+        "to": "puts",
+        "expect": "path",
+        "via": ["emit"],
+        "why": "cmd_env returns emit(), emit returns puts(); two jumps at -O2"
+      },
+      {
+        "from": "audit_cleanup",
+        "to": "remove",
+        "expect": "path",
+        "via": [],
+        "why": "a direct call at both levels"
+      },
+      {
+        "from": "main",
+        "to": "remove",
+        "expect": "no-path",
+        "why": "remove is used only by audit_cleanup, which nothing calls and which is in no table"
+      },
+      {
+        "from": "main",
+        "to": "audit_cleanup",
+        "expect": "no-path",
+        "why": "kept by the used attribute; no call, jump or table entry refers to it"
+      },
+      {
+        "from": "lookup",
+        "to": "printf",
+        "expect": "no-path",
+        "why": "lookup reaches plausible, strlen and strcmp only"
+      },
+      {
+        "from": "finish",
+        "to": "strcmp",
+        "expect": "no-path",
+        "why": "finish reaches tree_sum and printf only"
+      },
+      {
+        "from": "usage",
+        "to": "getenv",
+        "expect": "no-path",
+        "why": "usage reaches emit and puts only; getenv is called by cmd_env, which calls emit, not the other way round"
+      },
+      {
+        "from": "tree_sum",
+        "to": "printf",
+        "expect": "no-path",
+        "why": "tree_sum calls only itself; printf is called by its caller finish, and a path does not run from a function back to its caller"
+      }
+    ],
+    "callers": [
+      {
+        "of": "audit_cleanup",
+        "expect": [],
+        "why": "kept by the used attribute, called by nobody"
+      },
+      {
+        "of": "cmd_double",
+        "expect": [],
+        "why": "reached only through the commands table (blr in main); no direct call exists, and a tool that reports no caller should not conclude it is dead"
+      },
+      {
+        "of": "cmd_env",
+        "expect": [],
+        "why": "reached only through the commands table, like cmd_double"
+      },
+      { "of": "plausible", "expect": ["lookup"] },
+      { "of": "lookup", "expect": ["main"] },
+      { "of": "finish", "expect": ["main"], "why": "a jump at -O2" },
+      { "of": "usage", "expect": ["main"], "why": "two calls at -O0, one jump at -O2" },
+      { "of": "emit", "expect": ["usage", "cmd_env"], "why": "both are jumps at -O2" },
+      {
+        "of": "tree_sum",
+        "expect": ["finish", "tree_sum"],
+        "why": "finish calls it and it calls itself; at -O2 one recursive call instruction remains"
+      }
+    ]
+  }
+}

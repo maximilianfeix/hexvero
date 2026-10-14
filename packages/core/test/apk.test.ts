@@ -117,6 +117,14 @@ describe("openZip", () => {
     expect(new TextDecoder().decode(zip.read(zip.entries[1]!))).toBe("stored");
     expect(() => zip.read(zip.entries[0]!, 4)).toThrow(/expands to/);
   });
+  it("stops inflating once an archive has used its budget", () => {
+    const zip = openZip(buildZip({ "a.txt": "x".repeat(4000), "b.txt": "y".repeat(4000) }), {
+      inflateBudget: 6000,
+    });
+    expect(zip.read(zip.entries[0]!).length).toBe(4000);
+    expect(() => zip.read(zip.entries[1]!)).toThrow(/inflate budget/);
+  });
+
   it("reads ZIP64 central directories", () => {
     const zip = openZip(buildZip({ "a.txt": "alpha", "b.txt": "beta" }, { zip64: true }));
     expect(zip.entries.map((e) => e.name)).toEqual(["a.txt", "b.txt"]);

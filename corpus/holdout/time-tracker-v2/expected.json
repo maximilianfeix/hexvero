@@ -1,0 +1,52 @@
+{
+  "case": "time-tracker-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "a": "holdout/time-tracker.plain.asar",
+  "b": "holdout/time-tracker-v2.plain.asar",
+  "method": "v2 is built from v1 by the ten edits in changes.json plus 30 comment lines in front of every JavaScript file. The expected differences are the eight edits that change the program and nothing else: every fact the edits do not touch sits on another line in v2 and must not be reported as changed, added or removed. Edit 9 swaps the members startSync and cancelSync of the exposed API (same members, same channels, other order) and edit 10 rewrites a channel name inside a comment; neither is a difference. Three edits are made in a helper module and show up in facts attributed to other files: the window defaults in config/windows.js (main window, created in main.js), and the API base address in config/endpoints.js (four requests in renderer.js). The lists were written from changes.json and checked by extracting both archives and comparing them with diff -r; no analysis tool was run. Strings follow the dev set: a channel name, api.member, \"key: old -> new\", an address (for a partly dynamic address its known leading part, as in the prefix entries of time-tracker/expected.json), and \"kind key\" for storage.",
+  "expect": {
+    "compare": {
+      "ipcChannels": {
+        "added": ["projects:retitle"],
+        "removed": ["projects:rename"],
+        "changed": ["widget:close"],
+        "why": "projects:rename is renamed on both sides: the entry of projectRoutes in main.js, and in preload.js the argument of project(), which builds the name as `projects:${operation}`. widget:close keeps its listener in main.js (the Map widgetListeners) but loses its only sender, the deleted member widget.close in preload.js: the channel is in both versions, with senders [preload.js] before and [] after, which is a change of the channel and neither an addition nor a removal. sync:start and sync:cancel only swap places. ghost:disabled-handler -> ghost:retired-handler happens inside a comment: neither is a channel in either version"
+      },
+      "contextBridge": {
+        "added": ["tracker.retitleProject"],
+        "removed": ["tracker.renameProject", "widget.close"],
+        "changed": [],
+        "why": "one member is renamed together with its channel, one is deleted. tracker.startSync and tracker.cancelSync are written in the other order and are otherwise the same"
+      },
+      "webPreferences": {
+        "added": [],
+        "removed": [],
+        "changed": ["sandbox: false -> true", "contextIsolation: true -> false"],
+        "why": "sandbox: the widget window. widgetPreferences() is no longer given sandbox: false, so the default of its parameter, true, applies. contextIsolation: the main window, which takes it from secureDefaults in config/windows.js through Object.assign. The widget and the invoice window write contextIsolation: true themselves and keep it. Every other setting only moves; the invoice window's sandbox depends on the environment in both versions"
+      },
+      "endpoints": {
+        "added": [
+          "https://api.punchclock.example/v4/projects/",
+          "https://api.punchclock.example/v4/clients",
+          "https://api.punchclock.example/v4/timesheets/current",
+          "https://api.punchclock.example/v4/entries/"
+        ],
+        "removed": [
+          "https://api.punchclock.example/v3/projects/",
+          "https://api.punchclock.example/v3/clients",
+          "https://api.punchclock.example/v3/timesheets/current",
+          "https://api.punchclock.example/v3/entries/"
+        ],
+        "changed": [],
+        "why": "only the constant API_BASE changes, and with it the four requests of renderer.js that are built from it: loadEntries (template), loadClients (new URL), loadTimesheet (new URL, then a query parameter) and deleteEntry (concatenation, DELETE). Three of the four strings are the known leading part of an address that ends in run-time text; .../clients is a complete address. The three requests whose address is written out as a literal stay on v3 and are unchanged: https://api.punchclock.example/v3/me, https://api.punchclock.example/v3/entries (POST) and https://api.punchclock.example/v3/me/preferences (PATCH)"
+      },
+      "storage": {
+        "added": ["electron-store ui.weekStart"],
+        "removed": ["indexedDB punchclock-v3"],
+        "changed": [],
+        "why": "main.js: the object given to settings.set() at first start has a third key. renderer.js: the indexedDB.deleteDatabase(\"punchclock-v3\") call is deleted"
+      }
+    }
+  }
+}

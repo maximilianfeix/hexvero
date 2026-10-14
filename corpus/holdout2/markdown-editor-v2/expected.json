@@ -1,0 +1,48 @@
+{
+  "case": "markdown-editor-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "a": "holdout2/markdown-editor.plain.asar",
+  "b": "holdout2/markdown-editor-v2.plain.asar",
+  "method": "v2 is built from v1 by the eleven edits in changes.json plus 20 comment lines in front of every JavaScript file. The expected differences are the eight edits that change the program and nothing else: every fact the edits do not touch sits on another line in v2 and must not be reported as changed, added or removed. Edit 5 replaces inkwell.setTitle(current.title) in renderer.js by an assignment to document.title (a renderer calls a bridge member; it is no channel, member, setting, request or storage access), edit 10 swaps the members getSettings and setSetting of the exposed API (same members, same channels, other order), and edit 11 rewrites the text of a comment; none of them is a difference. One edit is made in a helper module and shows up in a fact attributed to another file: the sync base address in config/endpoints.js (the PUT request of renderer.js). The lists were written from changes.json; they were checked by extracting both archives, confirming that v2 minus its 20 comment lines differs from v1 in exactly main.js, preload.js, renderer.js and config/endpoints.js, and by bundling the v2 main.js and preload.js and running both versions against stand-ins for Electron (outside the repository, not kept): the channels and members that differ were exactly the ones listed, and of the web preferences only the settings window's sandbox differed. No analysis tool was run. Strings follow the dev set: a channel name, api.member, \"key: old -> new\", an address (for a partly dynamic address its known leading part, as in the prefix entries of markdown-editor/expected.json), and \"kind key\" for storage.",
+  "expect": {
+    "compare": {
+      "ipcChannels": {
+        "added": ["vault:rename"],
+        "removed": ["app:set-title"],
+        "changed": [],
+        "why": "vault:rename: main.js chains .handle(\"rename\", ...) onto the vault router (IpcRouter puts its namespace in front of the name), and preload.js adds renameNote: \"vault:rename\" to vaultInvokers, from which Object.fromEntries builds the invoking member. app:set-title: both the ipcMain.on listener in main.js and the only sender, the member setTitle in preload.js, are deleted, so the channel is in v1 only. The swapped getSettings/setSetting keep their channels; the comment edit touches no name"
+      },
+      "contextBridge": {
+        "added": ["inkwell.renameNote"],
+        "removed": ["inkwell.setTitle"],
+        "changed": [],
+        "why": "renameNote is a new entry of the member map vaultInvokers, spread into the API through `...vault`; setTitle is deleted from the object literal. inkwell.getSettings and inkwell.setSetting are written in the other order and are otherwise the same"
+      },
+      "webPreferences": {
+        "added": [],
+        "removed": [],
+        "changed": ["sandbox: true -> false"],
+        "why": "only the settings window's webPreferences literal changes. The preview pane keeps sandbox: true, the editor window's sandbox is a run-time condition in both versions, and every other setting only moves"
+      },
+      "endpoints": {
+        "added": [
+          "https://api.inkwell.example/v2/changelog",
+          "https://sync.inkwell.example/v3/vaults/"
+        ],
+        "removed": [
+          "https://api.inkwell.example/v1/changelog",
+          "https://sync.inkwell.example/v2/vaults/"
+        ],
+        "changed": [],
+        "why": "the literal given to http.getJson in loadChangelog is replaced; the constant SYNC_BASE in config/endpoints.js moves to v3, and with it the PUT request of syncNote (a known leading part followed by run-time text). The other three requests to api.inkwell.example (feedback, account, session) are written out as literals and stay on v1; BETA_SYNC_BASE is untouched and requested in neither version"
+      },
+      "storage": {
+        "added": [],
+        "removed": ["indexedDB inkwell-search-v1"],
+        "changed": [],
+        "why": "renderer.js: the indexedDB.deleteDatabase(\"inkwell-search-v1\") call is deleted together with its comment; the database inkwell-search is still opened"
+      }
+    }
+  }
+}

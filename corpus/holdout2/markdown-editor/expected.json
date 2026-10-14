@@ -1,0 +1,569 @@
+{
+  "case": "markdown-editor",
+  "kind": "electron",
+  "license": "MIT, written for this corpus",
+  "inputs": [
+    "holdout2/markdown-editor.plain.asar",
+    "holdout2/markdown-editor.bundled.asar",
+    "holdout2/markdown-editor.minified.asar"
+  ],
+  "method": "Every expectation was written from the sources in src/ by reading them; no analysis tool was run on the sources or on the built inputs, and no tool's detectors or output were looked at. The three inputs are the same program: packed as written, bundled by esbuild, and bundled and minified. main.js and preload.js are CommonJS (require); renderer.js, renderer-preview.js and renderer-settings.js are ES modules. Bundling keeps the file names main.js, preload.js, renderer.js, renderer-preview.js and renderer-settings.js and folds the helper modules (ipc/channels.js, config/defaults.js, config/endpoints.js, lib/markdown.js, lib/settings-file.js) into the entry files that use them. Roles and settings are attributed to the five entry files; that is right for the plain input as well, because the helper modules hold constants, option values, a markdown renderer and a JSON settings file class only: every IPC call, every new BrowserWindow and new WebContentsView, every exposeInMainWorld, every request and every storage access of the five listed kinds is written in an entry file. A window setting is attributed to the file that creates the window or view (main.js), also where its value is written in config/defaults.js. The bundled and minified main.js and preload.js were also run in Node against stand-ins for Electron (outside the repository, not kept); the channels registered and invoked, the exposed members and the channels they touch, and the web preferences of the two windows and the view were exactly the ones listed here (with the editor's sandbox following the stand-in's settings file, see below). Requests and storage of the renderers and the main-to-renderer sends inside handlers and listeners were checked by reading. An expectation states what the program does, also where that is hard to see; what only looks like a finding is listed under absent. webPreferences lists the keys preload, contextIsolation, nodeIntegration and sandbox only, one entry per window or view and key that the code writes; keys the code does not write are not listed with Electron's defaults (the settings window writes preload and sandbox only). The preview pane is a WebContentsView inside the editor window, created with its own webPreferences; its settings are listed like a window's. The editor window's sandbox is `unsafePlugins ? false : true`, where unsafePlugins is read from the user's settings file at run time: it is decided at run time and therefore is not listed; a tool should show that the key is set from a condition and must not report either value as a fact (the default sandbox: true of WEB_DEFAULTS is replaced by it). Storage: the main process keeps its settings in a JSON file through its own class SettingsFile (lib/settings-file.js), not through electron-store or a browser storage; the format has no kind for such a file, so its keys (editor.fontSize, plugins.unsafe, vault.path, recent.files, sync.vaultId) are listed neither as present nor as absent. Requests: renderer.js has a two-function helper `http` whose getJson(url) and postJson(url, body) call fetch with their parameter; each is called once with a literal address, and those requests are listed with that address. The two fetch calls inside the helper are not counted as unreadable, because every request through them has a known address. Likewise the page's preferences go through `prefs.get(name)`/`prefs.set(name, value)`, which use localStorage with the key PREF_PREFIX + name; the keys are listed in full. shell.openExternal and shell.showItemInFolder hand an address or a path to the operating system; the application requests nothing, so such addresses are absent and the calls are not request calls.",
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "file:open",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.handle with the literal in registerIpc; ipcRenderer.invoke in the member openFile"
+        },
+        {
+          "channel": "file:save",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.handle in main.js; ipcRenderer.invoke in saveFile"
+        },
+        {
+          "channel": "file:save-as",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.handle in main.js; ipcRenderer.invoke in saveFileAs"
+        },
+        {
+          "channel": "file:opened",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js sendOpened: editorWindow?.webContents.send(\"file:opened\", ...), called from the app's open-file listener and, for a file that arrived before the window, from the editor's did-finish-load listener (both only ever happen on macOS, which emits open-file); preload.js: on(\"file:opened\", listener), on() being a helper of preload.js that calls ipcRenderer.on(channel, ...)"
+        },
+        {
+          "channel": "app:set-title",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in setTitle"
+        },
+        {
+          "channel": "editor:dirty",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in setDirty"
+        },
+        {
+          "channel": "settings:open",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on in main.js (it calls showSettings); ipcRenderer.send in openSettings"
+        },
+        {
+          "channel": "preview:update",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in updatePreview"
+        },
+        {
+          "channel": "preview:render",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: preview?.webContents.send(\"preview:render\", renderMarkdown(markdown)) in the preview:update listener, preview being the WebContentsView of the preview pane; preload.js: on(\"preview:render\", ...) in the member onRender of the API \"preview\""
+        },
+        {
+          "channel": "preview:scroll",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in the member reportScroll of \"preview\""
+        },
+        {
+          "channel": "editor:scroll-to",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: editorWindow?.webContents.send(\"editor:scroll-to\", ratio) in the preview:scroll listener; preload.js: on(\"editor:scroll-to\", ...) in onScrollTo"
+        },
+        {
+          "channel": "menu:action",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: menuAction(action) returns a click handler that calls editorWindow?.webContents.send(\"menu:action\", action); it is the click of five menu items. preload.js: on(\"menu:action\", ...) in onMenuAction"
+        },
+        {
+          "channel": "app:confirm-close",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: editorWindow.webContents.send(\"app:confirm-close\") in the editor's close listener when the note is unsaved; preload.js: ipcRenderer.on in the method onConfirmClose"
+        },
+        {
+          "channel": "app:close-confirmed",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: ipcMain.once(\"app:close-confirmed\", ...) registered inside the editor's close listener, before it asks the page; preload.js: ipcRenderer.send in confirmClose"
+        },
+        {
+          "channel": "settings:get",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "both sides use channels.settings.get, a property of a nested object in ipc/channels.js (module.exports = { settings: { get: \"settings:get\", ... } }): ipcMain.handle in main.js, ipcRenderer.invoke in getSettings"
+        },
+        {
+          "channel": "settings:set",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "channels.settings.set on both sides: ipcMain.handle in main.js, ipcRenderer.invoke in setSetting"
+        },
+        {
+          "channel": "settings:changed",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: in the settings:set handler, `for (const contents of webContents.getAllWebContents()) contents.send(channels.settings.changed, key, value)`, through Electron's webContents module (every page, the preview view included); preload.js: on(channels.settings.changed, ...) in onSettingsChanged"
+        },
+        {
+          "channel": "plugin:invoke",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.handle in main.js; ipcRenderer.invoke(\"plugin:invoke\", pluginId, method, ...args) in the member invoke of the API \"plugins\""
+        },
+        {
+          "channel": "plugins:list",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: new IpcRouter(\"plugins\").handle(\"list\", ...); IpcRouter.handle calls ipcMain.handle(this.channel(name), ...) and channel(name) returns `${this.namespace}:${name}`. preload.js: ipcRenderer.invoke(\"plugins:list\") in the member list of \"plugins\""
+        },
+        {
+          "channel": "vault:list",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: new IpcRouter(\"vault\").handle(\"list\", ...), the first call of a chain (handle returns this). preload.js: the object vault is built with Object.fromEntries(Object.entries(vaultInvokers).map(([member, channel]) => [member, (...args) => ipcRenderer.invoke(channel, ...args)])), and vaultInvokers maps listNotes to \"vault:list\""
+        },
+        {
+          "channel": "vault:search",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: .handle(\"search\", ...) of the same router; preload.js: vaultInvokers maps searchNotes to \"vault:search\""
+        },
+        {
+          "channel": "vault:reveal",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: .on(\"reveal\", ...) of the vault router; IpcRouter.on calls ipcMain.on(this.channel(name), ...). preload.js: ipcRenderer.send(\"vault:reveal\", notePath) in revealNote"
+        }
+      ],
+      "absent": [
+        {
+          "channel": "plugin:",
+          "why": "main.js emitPluginEvent sends on `plugin:${pluginId}:event` and preload.js pluginsApi.onEvent listens on the same template; the plug-in ids come from manifest files read from disk at run time, so no fixed name exists (the same holds for \"plugin::event\" or any other reading of the template). The fixed channel plugin:invoke is listed as present"
+        },
+        {
+          "channel": "export:pdf",
+          "why": "channels.exporter.pdf in ipc/channels.js is a constant that no IPC call uses (so is export:html)"
+        },
+        {
+          "channel": "export:html",
+          "why": "channels.exporter.html, unused"
+        },
+        {
+          "channel": "vault:rebuild",
+          "why": "main.js registerIpc: text of a console.info message"
+        },
+        {
+          "channel": "editor:toggle-bold",
+          "why": "renderer.js: register(), on() and run() of the CommandRegistry, a registry of editor commands inside the page (so are editor:toggle-italic and workspace:toggle-preview)"
+        },
+        {
+          "channel": "workspace:toggle-preview",
+          "why": "renderer.js: a command of the in-page CommandRegistry"
+        },
+        {
+          "channel": "vault",
+          "why": "main.js: the namespace given to new IpcRouter(\"vault\"); the channels are vault:list, vault:search and vault:reveal (\"plugins\" is the namespace of plugins:list)"
+        },
+        {
+          "channel": "list",
+          "why": "main.js: the name given to IpcRouter.handle, to which the router puts its namespace in front"
+        },
+        {
+          "channel": "save-as",
+          "why": "a value sent ON menu:action by menuAction(\"save-as\") (so are new, open, save and toggle-preview), not a channel"
+        },
+        {
+          "channel": "will-navigate",
+          "why": "main.js: preview.webContents.on, an event of the page"
+        },
+        {
+          "channel": "open-file",
+          "why": "main.js: app.on, an application event (so are window-all-closed and activate)"
+        },
+        {
+          "channel": "close",
+          "why": "main.js: editorWindow.on and settingsWindow.on, a window event (so are closed, resize and ready-to-show)"
+        },
+        {
+          "channel": "did-finish-load",
+          "why": "main.js: editorWindow.webContents.once, an event of the page"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "editor window: createWindow({ ..., webPreferences: { preload: PRELOAD, sandbox: ... } }); createWindow calls new BrowserWindow({ ...WINDOW_DEFAULTS, ...options, webPreferences: { ...WEB_DEFAULTS, ...options.webPreferences } }). PRELOAD is path.join(__dirname, \"preload.js\")"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "editor window; from WEB_DEFAULTS in config/defaults.js, merged by createWindow and not overridden"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "editor window; from WEB_DEFAULTS, not overridden"
+        },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "settings window, created the first time showSettings() runs: a webPreferences literal in new BrowserWindow({...})"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "why": "settings window, in the literal"
+        },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "preview pane: new WebContentsView({ webPreferences: { ... } }) in openEditor"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "preview pane, in the literal"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "preview pane, in the literal"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "why": "preview pane, in the literal"
+        }
+      ],
+      "absent": [
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "count": 3,
+          "why": "exactly two places fix sandbox: true, the settings window and the preview pane. WEB_DEFAULTS also says sandbox: true, but its only use is the editor window, whose own webPreferences replace it with a run-time condition"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "why": "no window or view is created with a fixed sandbox: false. The `false` in the editor's `unsafePlugins ? false : true` is one side of a run-time condition"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "count": 3,
+          "why": "exactly two places fix it, the editor window (through WEB_DEFAULTS) and the preview pane. The settings window does not write contextIsolation; Electron's default is not a setting written by the code. LEGACY_MANIFEST says contextIsolation: false and is no window either"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "count": 3,
+          "why": "exactly two places fix it, the editor window and the preview pane; the settings window does not write the key"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main.js",
+          "why": "main.js: LEGACY_MANIFEST = { webPreferences: { nodeIntegration: true, contextIsolation: false } } is the shape of an old plug-in manifest that isLegacyPlugin() compares manifests with; it is never given to a window"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main.js",
+          "why": "LEGACY_MANIFEST again; no window or view has it"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "inkwell",
+          "member": "listNotes",
+          "channel": "vault:list",
+          "why": "the API object `api` is exposed as \"inkwell\" inside `if (process.contextIsolated) { try { ... } }` (every window and the view run with context isolation: two set it, the settings window keeps Electron's default). listNotes comes from `...vault`, an object made with Object.fromEntries from the map vaultInvokers (member name -> channel)"
+        },
+        {
+          "api": "inkwell",
+          "member": "searchNotes",
+          "channel": "vault:search",
+          "why": "the other entry of vaultInvokers, spread into `api` through `...vault`"
+        },
+        { "api": "inkwell", "member": "revealNote", "channel": "vault:reveal" },
+        { "api": "inkwell", "member": "openFile", "channel": "file:open" },
+        { "api": "inkwell", "member": "saveFile", "channel": "file:save" },
+        { "api": "inkwell", "member": "saveFileAs", "channel": "file:save-as" },
+        {
+          "api": "inkwell",
+          "member": "onFileOpened",
+          "channel": "file:opened",
+          "why": "on(\"file:opened\", listener): the helper on() subscribes with ipcRenderer.on and returns a function that unsubscribes"
+        },
+        { "api": "inkwell", "member": "setTitle", "channel": "app:set-title" },
+        { "api": "inkwell", "member": "setDirty", "channel": "editor:dirty" },
+        { "api": "inkwell", "member": "updatePreview", "channel": "preview:update" },
+        {
+          "api": "inkwell",
+          "member": "onScrollTo",
+          "channel": "editor:scroll-to",
+          "why": "through on()"
+        },
+        {
+          "api": "inkwell",
+          "member": "onMenuAction",
+          "channel": "menu:action",
+          "why": "through on()"
+        },
+        {
+          "api": "inkwell",
+          "member": "onConfirmClose",
+          "channel": "app:confirm-close",
+          "why": "a method that calls ipcRenderer.on directly"
+        },
+        { "api": "inkwell", "member": "confirmClose", "channel": "app:close-confirmed" },
+        { "api": "inkwell", "member": "openSettings", "channel": "settings:open" },
+        {
+          "api": "inkwell",
+          "member": "getSettings",
+          "channel": "settings:get",
+          "why": "ipcRenderer.invoke(channels.settings.get)"
+        },
+        {
+          "api": "inkwell",
+          "member": "setSetting",
+          "channel": "settings:set",
+          "why": "ipcRenderer.invoke(channels.settings.set, key, value)"
+        },
+        {
+          "api": "inkwell",
+          "member": "onSettingsChanged",
+          "channel": "settings:changed",
+          "why": "on(channels.settings.changed, listener)"
+        },
+        {
+          "api": "preview",
+          "member": "onRender",
+          "channel": "preview:render",
+          "why": "the object previewApi is exposed as \"preview\" in the same block"
+        },
+        { "api": "preview", "member": "reportScroll", "channel": "preview:scroll" },
+        {
+          "api": "plugins",
+          "member": "list",
+          "channel": "plugins:list",
+          "why": "the object pluginsApi is exposed as \"plugins\" in the same block"
+        },
+        { "api": "plugins", "member": "invoke", "channel": "plugin:invoke" },
+        {
+          "api": "plugins",
+          "member": "onEvent",
+          "channel": null,
+          "why": "it listens on `plugin:${pluginId}:event`, a name made at run time from its argument (see the absent channel plugin:); the member exists, but no fixed channel can be named for it"
+        }
+      ],
+      "absent": [
+        {
+          "api": "previewApi",
+          "member": "onRender",
+          "why": "previewApi is the name of a variable; the exposed name is \"preview\" (likewise pluginsApi is exposed as \"plugins\")"
+        },
+        {
+          "api": "api",
+          "member": "openFile",
+          "why": "`api` is the name of the variable; the exposed name is \"inkwell\""
+        },
+        {
+          "api": "vaultInvokers",
+          "member": "listNotes",
+          "why": "vaultInvokers is a map from member names to channels that the API is built from; it is not exposed"
+        },
+        {
+          "api": "inkwell",
+          "member": "vault",
+          "why": "vault is spread into `api`: its members become members of inkwell, the object itself is not one"
+        },
+        {
+          "api": "inkwell",
+          "member": "on",
+          "why": "on() is a helper function of preload.js used to build members; it is not a member"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://plugins.inkwell.example/registry.json",
+          "why": "main.js checkPluginUpdates: fetch(PLUGIN_REGISTRY, { headers }) with Node's global fetch; the constant is in config/endpoints.js"
+        },
+        {
+          "prefix": "https://cdn.inkwell.example/plugins/",
+          "why": "main.js checkPluginUpdates: fetch(`${PLUGIN_CDN}/${id}/${latest.version}/plugin.zip`) for a plug-in with a newer version; id and version are run-time values"
+        },
+        {
+          "value": "https://api.inkwell.example/v1/changelog",
+          "why": "renderer.js loadChangelog: http.getJson(literal); getJson(url) calls fetch(url, { headers }) (no method stated)"
+        },
+        {
+          "value": "https://api.inkwell.example/v1/feedback",
+          "method": "POST",
+          "why": "renderer.js sendFeedback: http.postJson(literal, ...); postJson(url, body) calls fetch(url, { method: \"POST\", ... })"
+        },
+        {
+          "prefix": "https://sync.inkwell.example/v2/vaults/",
+          "method": "PUT",
+          "why": "renderer.js syncNote: fetch(`${SYNC_BASE}/vaults/${vaultId}/files/${...}`, { method: \"PUT\", ... }); SYNC_BASE is in config/endpoints.js"
+        },
+        {
+          "prefix": "https://embed.inkwell.example/oembed",
+          "why": "renderer.js embedFor: url = new URL(\"/oembed\", EMBED_BASE) (EMBED_BASE is https://embed.inkwell.example), then url.searchParams.set(\"url\", link) with a run-time link and set(\"maxwidth\", \"640\"), then fetch(url). The request goes to .../oembed?url=...; the part before the query is fixed"
+        },
+        {
+          "prefix": "wss://collab.inkwell.example/rooms/",
+          "why": "renderer.js joinRoom: new WebSocket(`${COLLAB_URL}/rooms/${encodeURIComponent(roomId)}`, \"inkwell-collab.v1\")"
+        },
+        {
+          "value": "https://api.inkwell.example/v1/account",
+          "why": "renderer-settings.js loadAccount: fetch with a literal and { credentials: \"include\" }"
+        },
+        {
+          "value": "https://api.inkwell.example/v1/session",
+          "method": "DELETE",
+          "why": "renderer-settings.js signOut: fetch with a literal and { method: \"DELETE\", ... }"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "renderer.js linkIsAlive calls fetch(href, { method: \"HEAD\" }) for every link written in the note; the addresses are whatever the user wrote, and nothing about them is known. A tool should show the call and say the URL is unknown. The two fetch calls inside the helper http are not counted (see method)",
+      "absent": [
+        {
+          "value": "https://inkwell.example/guide",
+          "why": "GUIDE_URL is only given to shell.openExternal from the Help menu; the same address is text inside the WELCOME note in main.js"
+        },
+        {
+          "value": "https://plugins.inkwell.example/browse",
+          "why": "main.js: a markdown link inside the text of the WELCOME note; the preview shows it as a link, and navigating to it is prevented and handed to shell.openExternal"
+        },
+        {
+          "value": "https://beta.sync.inkwell.example/v2",
+          "why": "BETA_SYNC_BASE in config/endpoints.js is a constant that nothing uses"
+        },
+        {
+          "value": "https://api.inkwell.example/v0/changelog",
+          "why": "renderer.js loadChangelog: inside a comment (plain input only)"
+        },
+        {
+          "value": "https://video.example/watch?v=...",
+          "why": "renderer.js: the placeholder text of an input element"
+        },
+        {
+          "value": "index.html",
+          "why": "main.js: loadFile(\"index.html\") on the windows and on the view loads a file of the package, not an address"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "localStorage",
+          "value": "inkwell.theme",
+          "ops": ["read", "write"],
+          "why": "renderer.js: prefs.get(\"theme\", \"light\") in restoreLayout and prefs.set(\"theme\", ...) in applyTheme; prefs.get calls localStorage.getItem(PREF_PREFIX + name), prefs.set calls localStorage.setItem(PREF_PREFIX + name, ...), and PREF_PREFIX is \"inkwell.\" (config/defaults.js)"
+        },
+        {
+          "kind": "localStorage",
+          "value": "inkwell.sidebarWidth",
+          "ops": ["read", "write"],
+          "why": "renderer.js: prefs.get(\"sidebarWidth\", 260) in restoreLayout, prefs.set(\"sidebarWidth\", ...) in rememberSidebar"
+        },
+        {
+          "kind": "localStorage",
+          "value": "inkwell.draft",
+          "ops": ["read", "write", "delete"],
+          "why": "renderer.js: getItem in restoreDraft, setItem in saveDraft, removeItem in clearDraft"
+        },
+        {
+          "kind": "localStorage",
+          "value": "inkwell.recent",
+          "ops": ["read", "write"],
+          "why": "renderer.js pushRecent: getItem(RECENT_KEY) and setItem(RECENT_KEY, ...); the constant is in config/defaults.js"
+        },
+        {
+          "kind": "localStorage",
+          "value": "inkwell.settingsTab",
+          "ops": ["read", "write"],
+          "why": "renderer-settings.js: setItem in selectTab, getItem in start"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "preview.scrollRatio",
+          "ops": ["read", "write"],
+          "why": "renderer-preview.js: getItem(SCROLL_KEY) in restoreScroll, setItem(SCROLL_KEY, ...) in the scroll listener; SCROLL_KEY is a constant of that file"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "inkwell-search",
+          "why": "renderer.js openSearchIndex: indexedDB.open(SEARCH_DB, SEARCH_DB_VERSION); both constants are in config/defaults.js"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "inkwell-search-v1",
+          "ops": ["delete"],
+          "why": "renderer.js openSearchIndex: indexedDB.deleteDatabase"
+        }
+      ],
+      "absent": [
+        {
+          "value": "theme",
+          "why": "the name given to prefs.get/prefs.set; the key in localStorage is inkwell.theme (likewise sidebarWidth is stored as inkwell.sidebarWidth)"
+        },
+        {
+          "value": "inkwell.",
+          "why": "PREF_PREFIX alone is the start of a key, not a key"
+        },
+        {
+          "value": "inkwell.legacyTheme",
+          "why": "renderer.js restoreLayout: inside a comment (plain input only)"
+        },
+        {
+          "value": "url",
+          "why": "renderer.js embedFor: set() of the URLSearchParams of a request address, a query parameter (so is maxwidth)"
+        },
+        {
+          "value": "room",
+          "why": "renderer.js: get() of the URLSearchParams of location.search"
+        },
+        {
+          "value": "terms",
+          "why": "renderer.js: the object store inside the database inkwell-search, not a database"
+        }
+      ]
+    }
+  }
+}

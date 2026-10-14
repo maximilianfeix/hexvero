@@ -1,0 +1,73 @@
+{
+ "tool": {
+  "name": "rea.complete via mcp"
+ },
+ "observations": {
+  "holdout2/markdown-editor.plain.asar": {
+   "electron": {
+    "complete": null,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": []
+   }
+  },
+  "holdout2/markdown-editor.bundled.asar": {
+   "electron": {
+    "complete": null,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": []
+   }
+  },
+  "holdout2/markdown-editor.minified.asar": {
+   "electron": {
+    "complete": null,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": []
+   }
+  },
+  "holdout2/music-player.plain.asar": {
+   "electron": {
+    "complete": null,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": []
+   }
+  },
+  "holdout2/music-player.bundled.asar": {
+   "electron": {
+    "complete": null,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": []
+   }
+  },
+  "holdout2/music-player.minified.asar": {
+   "electron": {
+    "complete": null,
+    "ipcChannels": [],
+    "webPreferences": [],
+    "contextBridge": [],
+    "endpoints": [],
+    "endpointsUnreadable": 0,
+    "storage": []
+   }
+  }
+ }
+}

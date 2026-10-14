@@ -1,16 +1,21 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { AnalysisError } from "../model.js";
 import type { LoadedTarget } from "../target.js";
-import { analyzeTarget } from "./dispatch.js";
+import { analyzeTarget, type AnalyzeOptions } from "./dispatch.js";
 
-const data = workerData as { info: LoadedTarget["info"]; bytes: Uint8Array; lazy: boolean };
+const data = workerData as {
+  info: LoadedTarget["info"];
+  bytes: Uint8Array;
+  lazy: boolean;
+  options?: AnalyzeOptions;
+};
 const target: LoadedTarget = {
   info: data.info,
   bytes: data.bytes,
   ...(data.lazy ? { lazy: true } : {}),
 };
 
-analyzeTarget(target).then(
+analyzeTarget(target, data.options ?? {}).then(
   (analysis) => parentPort?.postMessage({ ok: true, analysis }),
   (error: unknown) => {
     const e =

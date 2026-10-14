@@ -4,7 +4,14 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Io } from "../src/format.js";
 import { insertJsonc, stripJsonc } from "../src/jsonc.js";
-import { CLIENTS, entryFor, patchToml, setup, type SetupContext } from "../src/setup.js";
+import {
+  CLIENTS,
+  entryFor,
+  patchToml,
+  setup,
+  unpatchToml,
+  type SetupContext,
+} from "../src/setup.js";
 
 function capture(): Io & { stdout: string[]; stderr: string[] } {
   const io = {
@@ -122,6 +129,54 @@ describe("setup", () => {
       expect(statSync(`${file}.hexvero-backup`).mode & 0o077).toBe(0);
     }
   });
+
+  it("never replaces a differing hexvero entry and keeps plain JSON formatting", async () => {
+    mkdirSync(join(home, ".cursor"), { recursive: true });
+    const file = join(home, ".cursor", "mcp.json");
+    const pinned =
+      '{\n    "mcpServers": {\n        "hexvero": { "command": "/opt/hexvero/bin/hexvero", "args": ["mcp"] }\n    }\n}\n';
+    writeFileSync(file, pinned);
+    const io = capture();
+    await setup(io, { client: "cursor", apply: true, json: true }, ctx);
+    expect(JSON.parse(io.stdout.join("")).results[0].action).toContain("different hexvero entry");
+    expect(readFileSync(file, "utf8")).toBe(pinned);
+    const other =
+      '{\n    "zeta": 1,\n    "mcpServers": {\n        "other": { "command": "x" }\n    },\n    "alpha": [1, 2]\n}\n';
+    writeFileSync(file, other);
+    await setup(capture(), { client: "cursor", apply: true, json: true }, ctx);
+    const written = readFileSync(file, "utf8");
+    expect(written.startsWith('{\n    "zeta": 1,\n    "mcpServers": {')).toBe(true);
+    expect(written).toContain('"alpha": [1, 2]');
+    expect(JSON.parse(written).mcpServers.hexvero).toEqual(entryFor("stdio"));
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "reports a file it cannot write and goes on with the other clients",
+    async () => {
+      const locked = mkdtempSync(join(tmpdir(), "hexvero-locked-"));
+      const lockedCtx: SetupContext = { home: locked, platform: "linux", env: { HOME: locked } };
+      mkdirSync(join(locked, ".cursor"), { recursive: true });
+      mkdirSync(join(locked, ".kiro", "settings"), { recursive: true });
+      writeFileSync(join(locked, ".cursor", "mcp.json"), "{}\n");
+      const { chmodSync } = await import("node:fs");
+      chmodSync(join(locked, ".cursor"), 0o500);
+      try {
+        const io = capture();
+        await setup(io, { all: true, apply: true, json: true }, lockedCtx);
+        const results = JSON.parse(io.stdout.join("")).results as Array<{
+          client: string;
+          action: string;
+        }>;
+        expect(results.find((r) => r.client === "cursor")?.action).toMatch(
+          /skipped: cannot write the file \(EACCES\)/,
+        );
+        expect(results.find((r) => r.client === "kiro")?.action).toBe("created");
+      } finally {
+        chmodSync(join(locked, ".cursor"), 0o700);
+        rmSync(locked, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("uses platform specific paths for Zed and VS Code on Windows", () => {
     const win: SetupContext = {
@@ -255,5 +310,89 @@ describe("setup", () => {
     );
     expect(patchToml('[tools]\nhexvero = "unrelated"\n').skipped).toBeNull();
     expect(patchToml('[mcp_servers]\nhexvero = { command = "x" }\n').skipped).toContain("already");
+  });
+
+  it("removes exactly its own entry again, with backups, and is idempotent", async () => {
+    const own = mkdtempSync(join(tmpdir(), "hexvero-remove-"));
+    const c: SetupContext = { home: own, platform: "linux", env: { HOME: own } };
+    try {
+      mkdirSync(join(own, ".codex"), { recursive: true });
+      mkdirSync(join(own, ".claude"), { recursive: true });
+      mkdirSync(join(own, ".config", "zed"), { recursive: true });
+      const codex = `model = "gpt-5"\n\n[mcp_servers.other]\ncommand = "keep"\n`;
+      writeFileSync(join(own, ".codex", "config.toml"), codex);
+      writeFileSync(
+        join(own, ".claude.json"),
+        JSON.stringify({ n: 1, mcpServers: { other: { command: "x" } } }),
+      );
+      writeFileSync(
+        join(own, ".config", "zed", "settings.json"),
+        '{\n  // keep this comment\n  "context_servers": {}\n}\n',
+      );
+      await setup(capture(), { apply: true, json: true }, c);
+      expect(readFileSync(join(own, ".codex", "config.toml"), "utf8")).toContain(
+        "[mcp_servers.hexvero]",
+      );
+      // a dry run changes nothing and says what it would do
+      const dry = capture();
+      await setup(dry, { apply: false, json: true, remove: true }, c);
+      const planned = JSON.parse(dry.stdout.join("")).results as Array<{
+        client: string;
+        action: string;
+      }>;
+      expect(planned.map((r) => `${r.client}: ${r.action}`).toSorted()).toEqual([
+        "claude-code: would remove hexvero",
+        "codex: would remove hexvero",
+        'zed: skipped: the file has comments; remove the "hexvero" entry by hand',
+      ]);
+      expect(readFileSync(join(own, ".codex", "config.toml"), "utf8")).toContain("hexvero");
+      // the real run removes only hexvero's entries and keeps backups
+      await setup(capture(), { apply: true, json: true, remove: true }, c);
+      expect(readFileSync(join(own, ".codex", "config.toml"), "utf8")).toBe(codex);
+      expect(JSON.parse(readFileSync(join(own, ".claude.json"), "utf8"))).toEqual({
+        n: 1,
+        mcpServers: { other: { command: "x" } },
+      });
+      expect(readFileSync(join(own, ".config", "zed", "settings.json"), "utf8")).toContain(
+        "// keep this comment",
+      );
+      // again: only the file with comments, which needs a hand, is still mentioned
+      const again = capture();
+      await setup(again, { apply: true, json: true, remove: true }, c);
+      expect(
+        (JSON.parse(again.stdout.join("")).results as Array<{ client: string }>).map(
+          (r) => r.client,
+        ),
+      ).toEqual(["zed"]);
+      const none = capture();
+      await setup(none, { apply: true, json: false, remove: true, client: "codex" }, c);
+      expect(none.stdout.join("\n")).toContain("nothing to remove");
+      expect(
+        unpatchToml(
+          'a = 1\n[mcp_servers.hexvero]\ncommand = "npx"\n[mcp_servers.hexvero.env]\nX = "1"\n[b]\nc = 2\n',
+        ),
+      ).toBe("a = 1\n[b]\nc = 2\n");
+      expect(unpatchToml("a = 1\n")).toBeNull();
+    } finally {
+      rmSync(own, { recursive: true, force: true });
+    }
+  });
+
+  it("says plainly when no client is found instead of listing every miss", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "hexvero-empty-"));
+    try {
+      const io = capture();
+      await setup(
+        io,
+        { apply: false, json: false },
+        { home: empty, platform: "linux", env: { HOME: empty } },
+      );
+      const text = io.stdout.join("\n");
+      expect(text).toContain("No MCP client configuration was found");
+      expect(text).toContain("hexvero setup --client claude-code --apply");
+      expect(text.split("\n").length).toBeLessThan(6);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 });

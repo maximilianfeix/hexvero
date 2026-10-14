@@ -155,6 +155,15 @@ export function parsePe(bytes: Uint8Array): PeInfo {
     r.skip(12);
     const flags = r.u32();
     rawSections.push({ va, vsize, raw, rawSize });
+    if (
+      rawSize > 0 &&
+      raw + rawSize > bytes.length &&
+      !limitations.some((l) => l.code === "file_truncated")
+    )
+      limitations.push({
+        code: "file_truncated",
+        message: `The file is ${bytes.length} bytes, but section data extends beyond its end: the file is cut short, so imports, exports, resources and anything read from those parts may be missing or incomplete.`,
+      });
     const body = bytes.subarray(raw, Math.min(bytes.length, raw + rawSize));
     sections.push({
       name,

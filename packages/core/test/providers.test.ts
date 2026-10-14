@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -6,6 +6,22 @@ import { detectProviders } from "../src/providers/index.js";
 import { loadCallGraph, runProvider } from "../src/providers/run.js";
 
 const unixOnly = process.platform === "win32" ? describe.skip : describe;
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const waitFor = async (check: () => boolean): Promise<boolean> => {
+  for (let i = 0; i < 100; i++) {
+    if (check()) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+};
 
 unixOnly("providers", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-prov-"));
@@ -317,6 +333,33 @@ esac
       }),
     ).rejects.toThrow(/cancelled/);
     expect(performance.now() - started).toBeLessThan(3000);
+  });
+
+  it("stops a shared call-graph run once every waiting caller has cancelled", async () => {
+    const pidFile = join(dir, "engine.pid");
+    writeFileSync(
+      join(dir, "rizin"),
+      `#!/bin/sh\nif [ "$1" = "-v" ]; then echo "rizin shared"; exit 0; fi\necho $$ > "${pidFile}"\necho start >> "${pidFile}.log"\nsleep 30\n`,
+    );
+    chmodSync(join(dir, "rizin"), 0o755);
+    const target = join(dir, "bin-shared");
+    writeFileSync(target, "shared");
+    const first = new AbortController();
+    const second = new AbortController();
+    const a = loadCallGraph({ targetPath: target, provider: "rizin", signal: first.signal });
+    const b = loadCallGraph({ targetPath: target, provider: "rizin", signal: second.signal });
+    expect(await waitFor(() => existsSync(pidFile))).toBe(true);
+    const pid = Number(readFileSync(pidFile, "utf8"));
+    first.abort();
+    await expect(a).rejects.toThrow(/cancelled/);
+    // the other caller still waits, so the engine keeps running
+    await new Promise((r) => setTimeout(r, 200));
+    expect(alive(pid)).toBe(true);
+    second.abort();
+    await expect(b).rejects.toThrow(/cancelled/);
+    expect(await waitFor(() => !alive(pid))).toBe(true);
+    // both callers shared one engine run
+    expect(readFileSync(`${pidFile}.log`, "utf8").trim().split("\n")).toHaveLength(1);
   });
 
   it("kills engines that exceed the timeout", async () => {

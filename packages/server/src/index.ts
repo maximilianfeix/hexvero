@@ -13,7 +13,7 @@ export interface ServerOptions {
   /** Directory with the built web UI; omitted means API only. */
   staticDir?: string;
   session?: Session;
-  /** Pre-shared token; generated when omitted. Sent as `Authorization: Bearer` or `?token=`. */
+  /** Pre-shared token; generated when omitted. Sent as `Authorization: Bearer`. */
   token?: string;
   maxUploadBytes?: number;
 }
@@ -121,15 +121,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     const b = Buffer.from(token);
     return a.length === b.length && timingSafeEqual(a, b);
   };
-  const authorized = (req: IncomingMessage, url: URL): boolean => {
+  const authorized = (req: IncomingMessage): boolean => {
     const header = req.headers.authorization;
-    if (header?.startsWith("Bearer ") && sameToken(header.slice(7))) return true;
-    // The query form exists for the UI's download link only; every other route needs the header.
-    return (
-      req.method === "GET" &&
-      /^\/api\/targets\/[^/]+\/export$/.test(url.pathname) &&
-      sameToken(url.searchParams.get("token"))
-    );
+    // Only the header: a token in a URL ends up in history, logs and Referer headers.
+    return !!header?.startsWith("Bearer ") && sameToken(header.slice(7));
   };
 
   const api = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
@@ -159,7 +154,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       });
       return;
     }
-    if (!authorized(req, url)) {
+    if (!authorized(req)) {
       json(res, 401, {
         error: {
           code: "unauthorized",
@@ -234,8 +229,20 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         };
         res.once("close", onClose);
         let analysis;
+        // ?scan=continue reads the next batch of a large JavaScript app, ?scan=all the rest.
+        const scan = q.get("scan");
+        if (scan !== null && scan !== "continue" && scan !== "all")
+          return json(res, 400, {
+            error: { code: "invalid_input", message: "scan must be continue or all" },
+          });
         try {
-          analysis = await session.analyze(id, controller.signal);
+          analysis = scan
+            ? await session.continueAnalysis(
+                id,
+                scan === "all" ? { all: true } : { continue: true },
+                controller.signal,
+              )
+            : await session.analyze(id, controller.signal);
         } finally {
           res.removeListener("close", onClose);
         }
@@ -246,12 +253,21 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           durationMs: analysis.durationMs,
           findings: analysis.findings,
           limitations: analysis.limitations,
+          ...(analysis.data.kind === "javascript-app"
+            ? {
+                complete: analysis.data.app.coverage.complete,
+                coverage: analysis.data.app.coverage,
+              }
+            : {}),
           collections: await session.collections(id),
           data: full ? analysis.data : compact(analysis.data, { maxItems: 12 }),
         });
       }
-      if (sub === "collections" && parts[3])
-        return json(res, 200, await session.collection(id, parts[3], paging()));
+      if (sub === "collections" && parts[3]) {
+        const page = await session.collection(id, parts[3], paging());
+        const partial = await session.partial(id);
+        return json(res, 200, partial ? { ...page, partial } : page);
+      }
       if (sub === "strings") {
         const query: Parameters<Session["strings"]>[1] = paging();
         const minLength = num("minLength");
@@ -322,6 +338,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? host}`);
     res.setHeader("x-content-type-options", "nosniff");
     res.setHeader("referrer-policy", "no-referrer");
+    res.setHeader(
+      "content-security-policy",
+      "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+    );
     if (url.pathname.startsWith("/api/")) {
       api(req, res, url).catch((error) => fail(res, error));
       return;

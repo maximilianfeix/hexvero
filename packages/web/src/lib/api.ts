@@ -31,6 +31,16 @@ export interface AnalysisResponse {
   findings: Finding[];
   limitations: Limitation[];
   collections: Record<string, number>;
+  /** Present for JavaScript applications: how much of the code has been read. */
+  coverage?: {
+    total: number;
+    scanned: number;
+    remaining: number;
+    skipped: number;
+    complete: boolean;
+    resumed: boolean;
+    nextFiles: string[];
+  };
   data: Record<string, unknown> & { kind: string };
 }
 export interface Page<T> {
@@ -145,6 +155,12 @@ export const api = {
     return request<{ closed: boolean }>(`/targets/${id}`, { method: "DELETE" });
   },
   analysis: (id: string) => cached<AnalysisResponse>(`/targets/${id}/analysis`),
+  /** Reads more of a partially scanned JavaScript app; everything cached for the target is stale after it. */
+  scanMore: async (id: string, mode: "continue" | "all") => {
+    const result = await request<AnalysisResponse>(`/targets/${id}/analysis?scan=${mode}`);
+    evictCache(`/targets/${id}`);
+    return result;
+  },
   collection: <T = Record<string, unknown>>(
     id: string,
     name: string,
@@ -166,7 +182,31 @@ export const api = {
     ),
   bytes: (id: string, offset: number, length: number) =>
     cached<ByteWindow>(`/targets/${id}/bytes?offset=${offset}&length=${length}`),
-  exportUrl: (id: string) => `/api/targets/${id}/export?token=${encodeURIComponent(token())}`,
+  /**
+   * Downloads the full analysis. Fetched with the Authorization header like every other call and
+   * saved from a Blob, so the session token never appears in a URL, history or a server log.
+   */
+  exportJson: async (id: string): Promise<void> => {
+    const res = await fetch(`/api/targets/${id}/export`, {
+      headers: { authorization: `Bearer ${token()}` },
+    });
+    if (!res.ok) throw new HttpError(res.status, String(res.status), res.statusText);
+    const name =
+      /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ??
+      "analysis.hexvero.json";
+    const url = URL.createObjectURL(await res.blob());
+    try {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+    } finally {
+      // the click has handed the Blob to the browser's download by now
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    }
+  },
 };
 
 function params(q: Record<string, string | number | boolean | undefined>): string {

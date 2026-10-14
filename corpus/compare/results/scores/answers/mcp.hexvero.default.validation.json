@@ -1,0 +1,759 @@
+{
+ "tool": {
+  "name": "hexvero.default via mcp"
+ },
+ "totals": [
+  {
+   "set": "validation",
+   "class": "IPC channels",
+   "hit": 51,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "IPC senders and receivers",
+   "hit": 105,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "window settings",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "bridge members",
+   "hit": 39,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "bridge member channel",
+   "hit": 39,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "endpoints",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "endpoint method",
+   "hit": 9,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "requests with an unknown URL shown",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "storage keys",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "storage read/write/delete",
+   "hit": 30,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in webPreferences",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in storage",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "imports",
+   "hit": 0,
+   "missed": 28,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "functions",
+   "hit": 0,
+   "missed": 40,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "call paths",
+   "hit": 52,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "direct callers",
+   "hit": 0,
+   "missed": 44,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  }
+ ],
+ "rows": [
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 35,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "bridge members",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "bridge member channel",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "endpoints",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 35,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "bridge members",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "endpoints",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 35,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "bridge members",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "bridge member channel",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "endpoints",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 0,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed strcmp",
+    "missed strlen",
+    "missed printf",
+    "missed puts",
+    "missed atoi",
+    "missed getenv",
+    "missed remove"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 0,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed main",
+    "missed lookup",
+    "missed plausible",
+    "missed usage",
+    "missed emit",
+    "missed finish",
+    "missed tree_sum",
+    "missed cmd_double",
+    "missed cmd_env",
+    "missed audit_cleanup"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 0,
+   "missed": 11,
+   "false": 0,
+   "notes": [
+    "audit_cleanup: function not found",
+    "cmd_double: function not found",
+    "cmd_env: function not found",
+    "plausible: function not found",
+    "lookup: function not found",
+    "finish: function not found",
+    "usage: function not found",
+    "emit: function not found",
+    "tree_sum: function not found"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 0,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed strcmp",
+    "missed strlen",
+    "missed printf",
+    "missed puts",
+    "missed atoi",
+    "missed getenv",
+    "missed remove"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 0,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed main",
+    "missed lookup",
+    "missed plausible",
+    "missed usage",
+    "missed emit",
+    "missed finish",
+    "missed tree_sum",
+    "missed cmd_double",
+    "missed cmd_env",
+    "missed audit_cleanup"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 0,
+   "missed": 11,
+   "false": 0,
+   "notes": [
+    "audit_cleanup: function not found",
+    "cmd_double: function not found",
+    "cmd_env: function not found",
+    "plausible: function not found",
+    "lookup: function not found",
+    "finish: function not found",
+    "usage: function not found",
+    "emit: function not found",
+    "tree_sum: function not found"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 0,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed strcmp",
+    "missed strlen",
+    "missed printf",
+    "missed puts",
+    "missed atoi",
+    "missed getenv",
+    "missed remove"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 0,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed main",
+    "missed lookup",
+    "missed plausible",
+    "missed usage",
+    "missed emit",
+    "missed finish",
+    "missed tree_sum",
+    "missed cmd_double",
+    "missed cmd_env",
+    "missed audit_cleanup"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 0,
+   "missed": 11,
+   "false": 0,
+   "notes": [
+    "audit_cleanup: function not found",
+    "cmd_double: function not found",
+    "cmd_env: function not found",
+    "plausible: function not found",
+    "lookup: function not found",
+    "finish: function not found",
+    "usage: function not found",
+    "emit: function not found",
+    "tree_sum: function not found"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 0,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed strcmp",
+    "missed strlen",
+    "missed printf",
+    "missed puts",
+    "missed atoi",
+    "missed getenv",
+    "missed remove"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 0,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed main",
+    "missed lookup",
+    "missed plausible",
+    "missed usage",
+    "missed emit",
+    "missed finish",
+    "missed tree_sum",
+    "missed cmd_double",
+    "missed cmd_env",
+    "missed audit_cleanup"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 0,
+   "missed": 11,
+   "false": 0,
+   "notes": [
+    "audit_cleanup: function not found",
+    "cmd_double: function not found",
+    "cmd_env: function not found",
+    "plausible: function not found",
+    "lookup: function not found",
+    "finish: function not found",
+    "usage: function not found",
+    "emit: function not found",
+    "tree_sum: function not found"
+   ]
+  }
+ ]
+}

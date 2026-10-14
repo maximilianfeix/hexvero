@@ -1,0 +1,765 @@
+{
+  "case": "time-tracker",
+  "kind": "electron",
+  "license": "MIT, written for this corpus",
+  "inputs": [
+    "holdout/time-tracker.plain.asar",
+    "holdout/time-tracker.bundled.asar",
+    "holdout/time-tracker.minified.asar"
+  ],
+  "method": "Every expectation was written from the sources in src/ by reading them; no analysis tool was run on the sources or on the built inputs, and no tool's detectors or output were looked at. The three inputs are the same program: packed as written, bundled by esbuild, and bundled and minified. Bundling keeps the file names main.js, preload.js, renderer.js and renderer-widget.js and folds the helper modules (config/windows.js, config/endpoints.js, ipc/channels.js, ipc/events.js, ipc/index.js, lib/keys.js, lib/format.js) into the entry files that use them. main.js is written with import statements and is bundled to CommonJS, so in the bundles ipcMain.handle(...) reads import_electron.ipcMain.handle(...) (minified: o.ipcMain.handle(...)) and the two import statements from \"electron\" become two variables for the same module. Roles and settings are attributed to the four entry files. That is right for the plain input as well, because the helper modules hold constants, option values and formatting functions only: every IPC call, every new BrowserWindow, every exposeInMainWorld, every request and every storage access is written in an entry file. A window setting is attributed to the file that creates the window (main.js), also where the value is written in config/windows.js. After building, the three archives were extracted and the bundled and minified files were read: every call that an expectation rests on is still there, and each expected name is still there as a string in the entry file it is attributed to, with the exceptions that also hold for the sources (timer:tick and the three projects:* names in preload.js are put together from two strings). The commented-out calls exist in the plain input only. An expectation states what the program does, also where that is hard to see; what only looks like a finding is listed under absent. Something that happens only on one platform (dock:badge, tracker.setBadge: macOS) is listed as present, because the code that does it is in the program, and its why says so. webPreferences lists the keys preload, contextIsolation, nodeIntegration and sandbox only and is exhaustive for the values that are fixed in the code: one entry per window and key, so the same key and value appears once for every window that has it. A setting is the value the window is really created with. The invoice window's sandbox is `isDev ? false : true` (minified: `!L`), where isDev is process.env.NODE_ENV === \"development\": it is decided at run time and therefore is not listed; a tool should show that the key is set from a condition and must not report either value as a fact. The sources also set spellcheck (main window) and backgroundThrottling (widget). describeWindow() in main.js and tracker.runtime in preload.js are objects with the keys sandbox, contextIsolation and nodeIntegration whose values are read from the running process; they are reports, not settings. Requests: shell.openExternal(address) hands an address to the operating system, which opens it in the user's browser; the application itself requests nothing, so such addresses are absent and the call is not a request call (it is not counted in unreadable either).",
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "timer:start",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: the constructor of the class TimerService calls ipcMain.handle(Channel.TimerStart, ...), and `new TimerService()` runs when the app is ready; preload.js: ipcRenderer.invoke(Channel.TimerStart, ...). The constant is TimerStart of the frozen object Channel in ipc/channels.js, re-exported by ipc/index.js with `export *`"
+        },
+        {
+          "channel": "timer:stop",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: the method TimerService.register() calls ipcMain.handle(Channel.TimerStop, ...), and the app calls `new TimerService().register()`; preload.js: ipcRenderer.invoke(Channel.TimerStop) in the method stopTimer"
+        },
+        {
+          "channel": "timer:tick",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: this.target?.webContents.send(TIMER_PREFIX + \"tick\", ...) in TimerService.start, target being the main BrowserWindow; preload.js: ipcRenderer.on(`${TIMER_PREFIX}tick`, ...) (and ipcRenderer.off for the same name). TIMER_PREFIX is \"timer:\" in ipc/channels.js; the full name is written nowhere"
+        },
+        {
+          "channel": "projects:list",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: the `channel` of the first entry of the array projectRoutes; registerIpc() runs projectRoutes.forEach(({ channel, run }) => rpc.handle(channel, run)), and rpc is ipcMain imported under another name (import { ipcMain as rpc } from \"electron\"). preload.js: project(\"list\") returns a function that calls ipcRenderer.invoke(`projects:${operation}`, ...)"
+        },
+        {
+          "channel": "projects:create",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: second entry of projectRoutes, registered by the same forEach; preload.js: project(\"create\")"
+        },
+        {
+          "channel": "projects:rename",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: third entry of projectRoutes; preload.js: project(\"rename\")"
+        },
+        {
+          "channel": "widget:pin",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: a key of the Map widgetListeners; registerIpc() runs widgetListeners.forEach((listener, channel) => ipcMain.on(channel, listener)) (Map.forEach passes the value first, the key second). preload.js: ipcRenderer.send(\"widget:pin\", ...)"
+        },
+        {
+          "channel": "widget:close",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: the other key of widgetListeners, registered by the same forEach; preload.js: ipcRenderer.send(\"widget:close\")"
+        },
+        {
+          "channel": "invoice:create",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: secured(\"scope:billing\", \"invoice:create\", ...); secured(scope, channel, handler) calls rpc.handle(channel, ...), the channel being its SECOND argument. preload.js: request(8000, \"invoice:create\", draft); request(timeoutMs, channel, ...args) calls ipcRenderer.invoke(channel, ...args), again the second argument"
+        },
+        {
+          "channel": "invoice:export",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on(Channel.InvoiceExport, ...) in main.js; ipcRenderer.send(Channel.InvoiceExport, ...) in preload.js"
+        },
+        {
+          "channel": "invoice:exported",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: sender.send(\"invoice:exported\", ...) in the invoice:export listener, whose first parameter is destructured as ({ sender }, invoiceId): sender is event.sender, the webContents of the asking window. preload.js: ipcRenderer.once"
+        },
+        {
+          "channel": "sync:start",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in preload.js"
+        },
+        {
+          "channel": "sync:progress",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: event.reply(Channel.SyncProgress, ...) twice in the sync:start listener; preload.js: ipcRenderer.on(Channel.SyncProgress, ...)"
+        },
+        {
+          "channel": "sync:cancel",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: rpc.handle(\"sync:cancel\", ...) inside the sync:start listener and rpc.removeHandler(\"sync:cancel\") when the sync is over: a handler exists while a sync runs. preload.js: ipcRenderer.invoke"
+        },
+        {
+          "channel": "config:get-sync",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: ipcMain.on(ConfigSync, ...), answering through event.returnValue; preload.js: ipcRenderer.sendSync(ConfigSync, ...). ConfigSync is defined in ipc/index.js as Channel.ConfigGetSync, whose value is in ipc/channels.js"
+        },
+        {
+          "channel": "app:first-paint",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.once in main.js; ipcRenderer.send inside requestAnimationFrame in the DOMContentLoaded listener of preload.js, outside every exposed API"
+        },
+        {
+          "channel": "license:activate",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "rpc.handleOnce in main.js (rpc is ipcMain); ipcRenderer.invoke in preload.js"
+        },
+        {
+          "channel": "widget:port",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "preload.js: ipcRenderer.postMessage(\"widget:port\", null, [port2]) sends a message on this channel and transfers a MessagePort with it; main.js: ipcMain.on(\"widget:port\", ...) reads event.ports"
+        },
+        {
+          "channel": "timer:port",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: win.webContents.postMessage(\"timer:port\", null, [port1]) in the widget's did-finish-load listener, the main-process counterpart of ipcRenderer.postMessage; preload.js: ipcRenderer.on(\"timer:port\", ...) at the top level"
+        },
+        {
+          "channel": "menu:new-entry",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: BrowserWindow.getFocusedWindow()?.webContents.send(Push.MenuNewEntry) in the callback of a global shortcut; preload.js: ipcRenderer.on(Push.MenuNewEntry, ...). Push is defined in ipc/events.js in the form tsc gives a string enum: Push[\"MenuNewEntry\"] = \"menu:new-entry\" inside a function that is called at once"
+        },
+        {
+          "channel": "update:ready",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: BrowserWindow.getAllWindows().forEach((win) => win.webContents.send(Push.UpdateReady, ...)) in checkForUpdate; preload.js: ipcRenderer.addListener(Push.UpdateReady, ...), addListener being the other name of on"
+        },
+        {
+          "channel": "theme:changed",
+          "receivers": [],
+          "senders": ["main.js"],
+          "why": "main.js: widget?.webContents?.send(\"theme:changed\", ...) in the nativeTheme listener, widget being the widget's BrowserWindow; nothing listens for it"
+        },
+        {
+          "channel": "debug:dump-state",
+          "receivers": ["main.js"],
+          "senders": [],
+          "why": "ipcMain.on in main.js; nothing in the application sends it"
+        },
+        {
+          "channel": "dock:badge",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "both sides are inside `if (process.platform === \"darwin\")`: ipcMain.on in main.js, and in preload.js the member setBadge, which calls ipcRenderer.send. The channel exists on macOS only; it is listed because the code is in the program"
+        }
+      ],
+      "absent": [
+        {
+          "channel": "projects:archive",
+          "why": "ProjectsArchive in ipc/channels.js is a constant that no IPC call uses, and no call of project() names \"archive\""
+        },
+        {
+          "channel": "legacy:export",
+          "why": "main.js only calls rpc.removeHandler(\"legacy:export\"). No handler is ever registered under this name and nothing sends on it, so there is no receiver, no sender and no communication"
+        },
+        {
+          "channel": "scope:billing",
+          "why": "the FIRST argument of secured(): a licence scope looked up in the Set `grants`. The channel is the second argument"
+        },
+        {
+          "channel": "project:",
+          "why": "ipcMain.on(`project:${id}:touch`) in main.js: the name is built at run time from the keys of a Map; no fixed name exists (the same holds for \"project::touch\" or any other reading of the template)"
+        },
+        {
+          "channel": "timer:",
+          "why": "TIMER_PREFIX alone is the start of a name, not a channel; the channels are timer:tick, timer:start, timer:stop and timer:port"
+        },
+        {
+          "channel": "ghost:disabled-handler",
+          "why": "main.js: the call is inside a comment (plain input only; bundling drops the comment)"
+        },
+        {
+          "channel": "ghost:debug-reload",
+          "why": "preload.js: inside a commented-out exposeInMainWorld call (plain input only)"
+        },
+        {
+          "channel": "ghost:documented",
+          "why": "main.js: text inside a string that is given to the logger"
+        },
+        {
+          "channel": "ghost:print-job",
+          "why": "main.js: send() of the object `spooler`, which pushes onto an array"
+        },
+        {
+          "channel": "ghost:port-ready",
+          "why": "main.js: the `type` of an object given to postMessage of a MessagePortMain; a port message has no channel name"
+        },
+        {
+          "channel": "ghost:port-hello",
+          "why": "preload.js: the same on a MessagePort of the page (port1.postMessage)"
+        },
+        {
+          "channel": "ghost:port-ack",
+          "why": "renderer-widget.js: port.postMessage on the port the page received"
+        },
+        {
+          "channel": "message",
+          "why": "main.js: port.on(\"message\", ...) on a MessagePortMain, twice; renderer-widget.js: window.addEventListener(\"message\", ...). An event name, not a channel"
+        },
+        {
+          "channel": "timer-port",
+          "why": "preload.js: window.postMessage(\"timer-port\", \"*\", event.ports) passes the port on to the page as a window message; renderer-widget.js compares event.data with it. The IPC channel is timer:port"
+        },
+        {
+          "channel": "ghost:bridge-ready",
+          "why": "preload.js: the name of a CustomEvent dispatched on window"
+        },
+        {
+          "channel": "ghost:widget-sync",
+          "why": "renderer-widget.js: the name of a BroadcastChannel, a browser API between pages of one origin"
+        },
+        {
+          "channel": "/entries/changed",
+          "why": "renderer.js: on() and post() of `localBus`, a publish/subscribe object inside the page"
+        },
+        {
+          "channel": "lock-screen",
+          "why": "main.js: powerMonitor.on, a system event"
+        },
+        { "channel": "updated", "why": "main.js: nativeTheme.on, a system event" },
+        {
+          "channel": "did-finish-load",
+          "why": "main.js: win.webContents.once, an event of the page (so are the window events ready-to-show, close and moved)"
+        },
+        {
+          "channel": "window-all-closed",
+          "why": "main.js: app.on, an application event (so is will-quit)"
+        },
+        { "channel": "uncaughtException", "why": "main.js: process.on" },
+        {
+          "channel": "error",
+          "why": "main.js: request.on(\"error\", ...) on the ClientRequest of node:https"
+        },
+        {
+          "channel": "CommandOrControl+Shift+N",
+          "why": "main.js: the accelerator given to globalShortcut.register; the channel sent from its callback is menu:new-entry"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "main window; the class field MainWindow.options builds webPreferences with Object.assign({ preload: PRELOAD, spellcheck: false }, windowConfig.secureDefaults), PRELOAD being path.join(__dirname, \"preload.js\"); open() passes this.options to new BrowserWindow"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "main window; copied by that Object.assign from secureDefaults, which config/windows.js defines as a frozen object and exports with module.exports"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "main window; from secureDefaults in config/windows.js"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "why": "main window; from secureDefaults in config/windows.js"
+        },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "widget window; widgetPreferences({ preload: PRELOAD, sandbox: false }) returns an object with the shorthand property `preload`"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "widget window; written in the object widgetPreferences() returns"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "why": "widget window; the parameter of widgetPreferences is destructured with the default sandbox = true, but the call passes sandbox: false, and the returned object has the shorthand property `sandbox`"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "widget window; the call does not pass nodeIntegration, so the default of the destructured parameter (nodeIntegration = false) is returned"
+        },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "why": "invoice window; the object is built in the variable webPreferences and passed as a shorthand property"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "invoice window; in the variable webPreferences"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "invoice window; in the variable webPreferences"
+        }
+      ],
+      "absent": [
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window is created with a fixed sandbox: true, the main window. `mailer` also says sandbox: true but holds the options of a mail provider; the default sandbox = true of widgetPreferences() is replaced by the argument of its only call; the invoice window's sandbox is decided at run time and is no fixed value"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window is created with a fixed sandbox: false, the widget. The `false` in the invoice window's `isDev ? false : true` is one side of a run-time condition"
+        },
+        {
+          "key": "preload",
+          "value": "templates",
+          "file": "main.js",
+          "why": "`mailer` again: the name of a set of mail templates, not a script and not a window setting"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main.js",
+          "why": "no window has it: secureDefaults, the default of widgetPreferences() and the invoice window all say false"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main.js",
+          "why": "no window has it: all three windows are created with contextIsolation: true"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "tracker",
+          "member": "startTimer",
+          "channel": "timer:start",
+          "why": "the object is built in the variable trackerApi and exposed as \"tracker\"; through the constant Channel.TimerStart"
+        },
+        {
+          "api": "tracker",
+          "member": "stopTimer",
+          "channel": "timer:stop",
+          "why": "a method; through the constant Channel.TimerStop"
+        },
+        {
+          "api": "tracker",
+          "member": "onTick",
+          "channel": "timer:tick",
+          "why": "a method that subscribes with ipcRenderer.on(`${TIMER_PREFIX}tick`, ...) and returns a function that unsubscribes"
+        },
+        {
+          "api": "tracker",
+          "member": "listProjects",
+          "channel": "projects:list",
+          "why": "project(\"list\"): the member is the function project() returns, which invokes `projects:${operation}`"
+        },
+        {
+          "api": "tracker",
+          "member": "createProject",
+          "channel": "projects:create",
+          "why": "project(\"create\")"
+        },
+        {
+          "api": "tracker",
+          "member": "renameProject",
+          "channel": "projects:rename",
+          "why": "project(\"rename\")"
+        },
+        {
+          "api": "tracker",
+          "member": "createInvoice",
+          "channel": "invoice:create",
+          "why": "request(8000, \"invoice:create\", draft); request() invokes on its second argument"
+        },
+        {
+          "api": "tracker",
+          "member": "exportInvoice",
+          "channel": "invoice:export",
+          "why": "ipcRenderer.send through the constant Channel.InvoiceExport"
+        },
+        {
+          "api": "tracker",
+          "member": "onceExported",
+          "channel": "invoice:exported",
+          "why": "ipcRenderer.once"
+        },
+        { "api": "tracker", "member": "startSync", "channel": "sync:start" },
+        { "api": "tracker", "member": "cancelSync", "channel": "sync:cancel" },
+        {
+          "api": "tracker",
+          "member": "onSyncProgress",
+          "channel": "sync:progress",
+          "why": "ipcRenderer.on through the constant Channel.SyncProgress"
+        },
+        {
+          "api": "tracker",
+          "member": "setting",
+          "channel": "config:get-sync",
+          "why": "ipcRenderer.sendSync(ConfigSync, name); ConfigSync comes from ipc/index.js"
+        },
+        { "api": "tracker", "member": "activate", "channel": "license:activate" },
+        {
+          "api": "tracker",
+          "member": "onNewEntry",
+          "channel": "menu:new-entry",
+          "why": "ipcRenderer.on(Push.MenuNewEntry, ...)"
+        },
+        {
+          "api": "tracker",
+          "member": "onUpdateReady",
+          "channel": "update:ready",
+          "why": "ipcRenderer.addListener(Push.UpdateReady, ...)"
+        },
+        {
+          "api": "tracker",
+          "member": "setBadge",
+          "channel": "dock:badge",
+          "why": "assigned to trackerApi.setBadge after the object was created and before it is exposed, inside `if (process.platform === \"darwin\")`: the member exists on macOS only. It is listed because the code that adds it is in the program"
+        },
+        {
+          "api": "tracker",
+          "member": "formatDuration",
+          "channel": null,
+          "why": "the function formatDuration of lib/format.js, written as a shorthand property; it formats a number and talks to no channel"
+        },
+        {
+          "api": "tracker",
+          "member": "copy",
+          "channel": null,
+          "why": "writes to the clipboard of the page (navigator.clipboard.writeText)"
+        },
+        {
+          "api": "tracker",
+          "member": "runtime",
+          "channel": null,
+          "why": "an object of three values read from `process`, not a function"
+        },
+        {
+          "api": "widget",
+          "member": "pin",
+          "channel": "widget:pin",
+          "why": "the second API is exposed with exposeInMainWorld(widgetBridge.key, widgetBridge.api): its name is the property `key` of an object (\"widget\") and its members are the property `api`"
+        },
+        { "api": "widget", "member": "close", "channel": "widget:close" },
+        {
+          "api": "widget",
+          "member": "connect",
+          "channel": "widget:port",
+          "why": "a method that creates a MessageChannel and sends one of its ports with ipcRenderer.postMessage(\"widget:port\", null, [port2])"
+        }
+      ],
+      "absent": [
+        {
+          "api": "debug",
+          "member": "reload",
+          "why": "the exposeInMainWorld call is inside a comment (plain input only)"
+        },
+        {
+          "api": "widgetBridge",
+          "member": "pin",
+          "why": "widgetBridge is the name of the variable that describes the API; the exposed name is the value of its property `key`, widget (\"key\" and \"api\" are no API names either)"
+        },
+        {
+          "api": "trackerApi",
+          "member": "startTimer",
+          "why": "trackerApi is the name of a variable; the exposed name is the literal \"tracker\""
+        },
+        {
+          "api": "tracker",
+          "member": "request",
+          "why": "request() and project() are helper functions of preload.js; they are called while the API object is built and are not members of it"
+        },
+        {
+          "api": "tracker",
+          "member": "sandbox",
+          "why": "a property of the object tracker.runtime, not a member of the API"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://api.punchclock.example/v3/me",
+          "why": "renderer.js loadProfile: fetch with a literal and options that state no method"
+        },
+        {
+          "prefix": "https://api.punchclock.example/v3/projects/",
+          "why": "renderer.js loadEntries: fetch with a template: the constant API_BASE from config/endpoints.js (it ends in a slash), the fixed part projects/, then a run-time project id (and /entries?week= with a run-time week)"
+        },
+        {
+          "prefix": "https://rates.punchclock.example/latest?base=",
+          "why": "renderer.js exchangeRate: fetch with a concatenation in which the constant is the host: \"https://\" + RATES_HOST + \"/latest?base=\" + a run-time currency"
+        },
+        {
+          "value": "https://api.punchclock.example/v3/clients",
+          "why": "renderer.js loadClients: fetch(new URL(\"clients\", API_BASE)); a relative path resolved against a base that ends in a slash (checked with node: new URL(\"clients\", \"https://api.punchclock.example/v3/\").href)"
+        },
+        {
+          "prefix": "https://api.punchclock.example/v3/timesheets/current",
+          "why": "renderer.js loadTimesheet: a URL object is made with new URL(\"timesheets/current\", API_BASE), gets a query parameter tz with a run-time value (url.searchParams.set), and is then given to fetch. The request goes to .../timesheets/current?tz=<time zone>; the part before the query is fixed"
+        },
+        {
+          "value": "https://api.punchclock.example/v3/entries",
+          "method": "POST",
+          "why": "renderer.js saveEntry: a Request object is built with new Request(literal, { method: \"POST\", ... }) and given to fetch"
+        },
+        {
+          "prefix": "https://api.punchclock.example/v3/entries/",
+          "method": "DELETE",
+          "why": "renderer.js deleteEntry: fetch(API_BASE + \"entries/\" + entryId, { method: \"DELETE\" })"
+        },
+        {
+          "value": "https://api.punchclock.example/v3/me/preferences",
+          "method": "PATCH",
+          "why": "renderer.js savePreferences: window.fetch with a literal and { method: \"PATCH\" }"
+        },
+        {
+          "value": "https://files.punchclock.example/invoices",
+          "method": "POST",
+          "why": "renderer.js uploadInvoice: XMLHttpRequest.open(\"POST\", links.upload); the address is the property upload of the object links in config/endpoints.js"
+        },
+        {
+          "prefix": "wss://live.punchclock.example/team/",
+          "why": "renderer.js openTeamFeed: new WebSocket(`${links.live}/team/${teamId}`); links.live is defined in config/endpoints.js"
+        },
+        {
+          "value": "https://status.punchclock.example/api/v2/summary.json",
+          "why": "renderer-widget.js serviceStatus: fetch(STATUS_URL, { cache: \"no-store\" }); the constant is defined in config/endpoints.js"
+        },
+        {
+          "value": "https://telemetry.punchclock.example/v1/events",
+          "why": "renderer-widget.js flushCounters: navigator.sendBeacon (the code states no method)"
+        },
+        {
+          "value": "https://updates.punchclock.example/feed/stable.json",
+          "why": "main.js checkForUpdate: electronNet.fetch(`${links.updates}/feed/stable.json`). electronNet is Electron's net module imported under another name (import { net as electronNet }), and its fetch() is a request from the main process; the template has a constant and a fixed tail, so the whole address is known"
+        },
+        {
+          "value": "https://hooks.punchclock.example/invoice-exported",
+          "method": "POST",
+          "why": "main.js notifyBilling: https.request(literal, { method: \"POST\", ... }, callback) of node:https"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "renderer.js downloadReceipt calls fetch(receipt.downloadUrl); the address is a run-time value of which nothing is known at the call. A tool should show the call and say the URL is unknown. Every other request call has an address that is known at least in its leading part. shell.openExternal(url) in the window-open handler of main.js also has a run-time argument, but it is not a request call (see method) and is not counted",
+      "absent": [
+        {
+          "value": "https://punchclock.example/pricing",
+          "why": "links.pricing is only given to shell.openExternal in main.js: the operating system opens it in the user's browser, the application requests nothing"
+        },
+        {
+          "value": "https://docs.punchclock.example/help/invoices",
+          "why": "renderer.js showHelp: new URL(\"help/invoices\", links.docs).href is put into the text of an element (textContent); nothing requests it. The same holds for its base, https://docs.punchclock.example/"
+        },
+        {
+          "value": "https://staging-api.punchclock.example/v3/",
+          "why": "links.staging in config/endpoints.js is a constant that nothing uses"
+        },
+        {
+          "value": "https://ghost.punchclock.example/disabled",
+          "why": "renderer.js: the fetch is inside a comment (plain input only)"
+        },
+        {
+          "value": "https://ghost.punchclock.example/console-tip",
+          "why": "renderer.js: text inside the string `tip`, which becomes a tooltip"
+        },
+        {
+          "value": "Run fetch('https://ghost.punchclock.example/console-tip') in DevTools to test it.",
+          "why": "the whole string is no URL either"
+        },
+        {
+          "value": "https://ghost.punchclock.example/logged-only",
+          "why": "renderer.js: an argument of log.info, which calls console.info"
+        },
+        {
+          "value": "https://punchclock.example/releases/latest",
+          "why": "main.js checkForUpdate: an argument of log.info, which calls console.log"
+        },
+        {
+          "value": "/entries/changed",
+          "method": "POST",
+          "why": "renderer.js: localBus.post(\"/entries/changed\", ...) calls the subscribers of a topic inside the page; it only has the shape of an HTTP client's post(path, body)"
+        },
+        {
+          "value": "https://cdn.punchclock.example",
+          "why": "named in the Content-Security-Policy of index.html as an allowed font source; no code requests it"
+        },
+        {
+          "value": "index.html",
+          "why": "main.js: loadFile(\"index.html\") loads a file of the package from disk, not an address"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "localStorage",
+          "value": "punch.theme",
+          "ops": ["read", "write"],
+          "why": "renderer.js: getItem(StorageKey.Theme) in restoreUi, setItem(StorageKey.Theme, ...) in setTheme; the key is a constant in lib/keys.js"
+        },
+        {
+          "kind": "localStorage",
+          "value": "punch.session",
+          "ops": ["write", "delete"],
+          "why": "renderer.js: setItem(StorageKey.Session, ...) in loadProfile, removeItem(StorageKey.Session) in signOut; a constant in lib/keys.js"
+        },
+        {
+          "kind": "localStorage",
+          "value": "punch.activeProject",
+          "ops": ["read", "write"],
+          "why": "renderer.js: getItem in restoreUi, setItem in selectProject, both with the literal"
+        },
+        {
+          "kind": "localStorage",
+          "value": "sidebarWidth",
+          "ops": ["read", "write"],
+          "why": "renderer.js: the key is used as a property of the storage object, which is the same as getItem/setItem: `localStorage.sidebarWidth` is read in restoreUi and assigned in resizeSidebar"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "widget.position",
+          "ops": ["read", "write", "delete"],
+          "why": "renderer-widget.js: session.getItem and session.removeItem, where `session` is sessionStorage destructured from window under another name, and window.sessionStorage.setItem"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "widget.collapsed",
+          "ops": ["read", "write"],
+          "why": "renderer-widget.js: sessionStorage.getItem in startWidget, sessionStorage.setItem in resetWidget"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "punchclock-entries",
+          "why": "renderer.js openDatabases: indexedDB.open(DB_NAME, DB_VERSION); both constants are in lib/keys.js"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "punchclock-attachments",
+          "why": "renderer.js openDatabases: window.indexedDB.open with the literal"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "punchclock-v3",
+          "ops": ["delete"],
+          "why": "renderer.js openDatabases: indexedDB.deleteDatabase"
+        },
+        {
+          "kind": "cookie",
+          "value": "document.cookie",
+          "ops": ["read", "write"],
+          "why": "renderer.js: read in hasSession, assigned in signOut"
+        },
+        {
+          "kind": "electron-store",
+          "value": "window.main",
+          "ops": ["read", "write"],
+          "why": "main.js: settings is new Store({ name: \"punchclock\", ... }), Store being the default import of electron-store; settings.get in MainWindow.open, settings.set in its close listener"
+        },
+        {
+          "kind": "electron-store",
+          "value": "window.widget",
+          "ops": ["write", "delete"],
+          "why": "main.js: settings.set in the widget's moved listener, settings.delete in the widget:close listener"
+        },
+        {
+          "kind": "electron-store",
+          "value": "sync.interval",
+          "ops": ["read"],
+          "why": "main.js: settings.get(\"sync.interval\", 15) in the sync:start listener. The key also has a default in the options of the store, which is no access"
+        },
+        {
+          "kind": "electron-store",
+          "value": "sync.lastRun",
+          "ops": ["read", "write"],
+          "why": "main.js, through the constant LAST_SYNC: settings.get in checkForUpdate, settings.set in the sync:start listener"
+        },
+        {
+          "kind": "electron-store",
+          "value": "ui.locale",
+          "ops": ["read", "write"],
+          "why": "main.js: settings.get(\"ui.locale\") at start and in the config:get-sync listener; written at first start by settings.set({ \"ui.locale\": ..., \"ui.currency\": ... }), the form of set() that takes an object of keys and values"
+        },
+        {
+          "kind": "electron-store",
+          "value": "ui.currency",
+          "ops": ["read", "write"],
+          "why": "main.js: settings.get(\"ui.currency\") in the config:get-sync listener; written by the same settings.set({ ... }) as ui.locale"
+        },
+        {
+          "kind": "electron-store",
+          "value": "license.key",
+          "ops": ["read", "write"],
+          "why": "main.js: a second store, held in the private field #store of the class LicenseVault (new Store({ name: \"license\", ... })); this.#store.get in the getter `key`, this.#store.set in save(); both are used by the license:activate handler"
+        }
+      ],
+      "absent": [
+        {
+          "value": "ghost.disabled-key",
+          "why": "renderer.js: inside a comment (plain input only)"
+        },
+        {
+          "value": "ghost.documented-key",
+          "why": "renderer.js: text inside the string `hint`"
+        },
+        {
+          "value": "ghost.form-field",
+          "why": "renderer.js: set(), get() and delete() of a FormData object"
+        },
+        { "value": "hours", "why": "renderer.js: get() of the same FormData (so is note)" },
+        {
+          "value": "tz",
+          "why": "renderer.js: set() of the URLSearchParams of a URL: a query parameter of a request"
+        },
+        {
+          "value": "punch_sid",
+          "why": "the name of the cookie is part of the strings compared with and written to document.cookie; the storage entry is document.cookie itself"
+        },
+        {
+          "value": "punchclock",
+          "why": "main.js: the file name of the settings store, not a key in it (so is license, the file name of the second store)"
+        },
+        {
+          "value": "scope:billing",
+          "why": "main.js: an element of the Set `grants`, tested with has()"
+        },
+        { "value": "documents", "why": "main.js: app.getPath(\"documents\") names a folder" },
+        {
+          "value": "content-type",
+          "why": "a request header: setRequestHeader in renderer.js, a key of the headers objects in renderer.js and main.js"
+        }
+      ]
+    }
+  }
+}

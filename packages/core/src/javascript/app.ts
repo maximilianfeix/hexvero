@@ -3,9 +3,16 @@ import { join, posix, relative, sep } from "node:path";
 import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
+import { Constants, resolveAliases } from "./aliases.js";
+import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
+import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
+import { ExpressionResolver, type ModuleHost, type Val } from "./resolve.js";
 import {
+  ALIAS_TARGETS,
   scanJavaScript,
   tokenize,
+  type ScanContext,
+  type ScanResult,
   type IpcUsage,
   type ModuleReference,
   type Token,
@@ -20,6 +27,8 @@ export interface FileTree {
   read(path: string, maxBytes?: number): Uint8Array;
   /** Symbolic links that pointed outside the root and were therefore not followed. */
   skippedLinks?: string[];
+  /** Set when the listing itself is incomplete, with the reason: later files are unknown. */
+  truncated?: string;
 }
 
 export interface JsModule {
@@ -33,6 +42,16 @@ export interface JsModule {
   ipc: IpcUsage[];
   sourceMappingUrl: string | null;
   role: "main" | "preload" | "renderer" | "unknown";
+  /** String constants the file exports, kept so other files' channel names can be resolved. */
+  constants?: Record<string, string>;
+  /** Names the file passes on from other modules, and `export *` sources (see aliases.ts). */
+  reexports?: Record<string, { specifier: string; property: string }>;
+  starExports?: string[];
+  /**
+   * IPC names the file defines for other files, and its calls on names it does not bind that are
+   * still waiting for a definition (see `ambient.ts`).
+   */
+  ambient?: AmbientFacts;
 }
 
 /** How far back a setting may be from `webPreferences` / `BrowserWindow` to count as a window option. */
@@ -65,12 +84,599 @@ function list(items: string[], max: number): string {
     : items.join(", ");
 }
 
+/** What may follow `object.key` when the key is only read. */
+const READ_FOLLOWERS = new Set([
+  ")",
+  ",",
+  ";",
+  "}",
+  "]",
+  "?",
+  ":",
+  "&&",
+  "||",
+  "??",
+  "===",
+  "!==",
+  "==",
+  "!=",
+  "<",
+  ">",
+  "<=",
+  ">=",
+]);
+
+/** Where a reply was read and what it sends: rows carry no column. */
+const lineAndChannel = (u: IpcUsage): string => `${u.line}\0${u.channel}`;
+
+/** The settings that decide what a page's scripts and its preload can reach. */
+const CORE_KEYS = ["nodeIntegration", "contextIsolation", "sandbox"] as const;
+type CoreKey = (typeof CORE_KEYS)[number];
+/** Further boolean settings read as written; each has a finding of its own or none. */
+const OTHER_KEYS = [
+  "webSecurity",
+  "allowRunningInsecureContent",
+  "webviewTag",
+  "nodeIntegrationInSubFrames",
+  "nodeIntegrationInWorker",
+  "enableRemoteModule",
+] as const;
+const BOOLEAN_KEYS: ReadonlySet<string> = new Set([...CORE_KEYS, ...OTHER_KEYS]);
+const isCoreKey = (key: string): key is CoreKey => (CORE_KEYS as readonly string[]).includes(key);
+export type PreferenceKey = "preload" | CoreKey | (typeof OTHER_KEYS)[number];
+
 /** One BrowserWindow setting as written in the source: the evidence behind the Electron flags. */
 export interface WebPreference {
-  key: "preload" | "nodeIntegration" | "contextIsolation" | "sandbox";
-  value: string | boolean;
+  key: PreferenceKey;
+  /** The literal written in the code; null when the value is computed at run time. */
+  value: string | boolean | null;
+  /** The expression in place of a literal (`!isDev`, `options.sandbox`), shortened. */
+  computed?: string;
   file: string;
   line: number;
+  /**
+   * Which window of the file the setting belongs to, counted in source order from 1; null when
+   * the setting sits in a `webPreferences` object that is not part of a window constructor call
+   * (returned by a helper, or used to override a child window's options).
+   */
+  window: number | null;
+  /**
+   * A name for the window that survives code moving and windows being added before it: the
+   * variable the constructor call is assigned to (`promptWindow = new BrowserWindow(…)`), with
+   * `#2`, `#3` appended when a file assigns several windows to the same name; `#<window>` when
+   * the call is not assigned; null where `window` is null. `compare` matches settings by it.
+   */
+  windowName: string | null;
+  /**
+   * Where the value is written when that is not the window's own constructor call: a defaults
+   * object in another module, read by following the window's options (`resolve.ts`). `file` and
+   * `line` then name the window, so the setting stays with it.
+   */
+  definedIn?: { file: string; line: number };
+}
+
+/**
+ * How a setting stands for one window: its literal, computed at run time, absent from the code,
+ * or `conflicting` when two different literals are written for the window in places whose order
+ * of effect cannot be read (two separate objects), so neither is taken.
+ */
+export type SettingState = boolean | "computed" | "conflicting" | "not written";
+
+/**
+ * What holds for a window. `on`/`off`: decided by what the code writes. `default on`/`default
+ * off`: the setting is not written, and this is Electron's default for the version package.json
+ * asks for. That version is a statement of the application's own metadata, not the runtime that
+ * is shipped, so a default is an assumption and never reads as a fact. `unknown`: computed, or
+ * not written with no version named.
+ */
+export type Effect = "on" | "off" | "default on" | "default off" | "unknown";
+
+/**
+ * One window with its core settings side by side, and what follows from them together, by
+ * Electron's documented rules (docs/electron-findings.md). This describes the configuration, not
+ * the behaviour of a running app.
+ */
+export interface WindowSummary {
+  file: string;
+  window: number;
+  windowName: string;
+  line: number;
+  nodeIntegration: SettingState;
+  contextIsolation: SettingState;
+  sandbox: SettingState;
+  preload: string | null;
+  nodeIntegrationInEffect: Effect;
+  contextIsolationInEffect: Effect;
+  sandboxInEffect: Effect;
+  /**
+   * Whether the page's own scripts get Node's `require`. `… by default` rests on a default of the
+   * version package.json names, see `Effect`.
+   */
+  pageRequire: "yes" | "no" | "yes by default" | "no by default" | "unknown";
+  /** The rule each derived value rests on. */
+  basis: string;
+}
+
+/** A state from which no value can be taken. */
+const noValue = (state: SettingState): state is "computed" | "conflicting" =>
+  state === "computed" || state === "conflicting";
+
+/** Text taken from the analyzed file, bounded before it goes into a message. */
+const short = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
+
+/** The major version in a package.json range such as `^38.0.0`; null when it names none. */
+export function electronMajor(range: string | null | undefined): number | null {
+  const m = /^[\^~>=v\s]*(\d+)(?:\.|\s|$)/.exec(range ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * The derived columns of a window. Sources, all electronjs.org: breaking changes (5.0
+ * nodeIntegration off, 12.0 contextIsolation on and `require()` in a page only with
+ * nodeIntegration on and contextIsolation off, 20.0 sandbox on unless nodeIntegration is on or
+ * sandbox is false), the WebPreferences structure, and the sandbox tutorial (app.enableSandbox
+ * overrides `sandbox: false`). `major` is the version package.json asks for, or null.
+ */
+export function windowEffects(
+  w: Pick<WindowSummary, "nodeIntegration" | "contextIsolation" | "sandbox">,
+  major: number | null,
+  enableSandbox: boolean | "maybe",
+): Pick<
+  WindowSummary,
+  | "nodeIntegrationInEffect"
+  | "contextIsolationInEffect"
+  | "sandboxInEffect"
+  | "pageRequire"
+  | "basis"
+> {
+  const basis: string[] = [];
+  const byDefault = (name: string, since: number): Effect => {
+    if (major === null) {
+      basis.push(`${name} not written: on by default since Electron ${since}, version not known`);
+      return "unknown";
+    }
+    const on = major >= since;
+    basis.push(
+      `${name} not written: ${on ? "on" : "off"} by default in Electron ${major}, the version package.json asks for (on since ${since}); the shipped runtime was not checked`,
+    );
+    return on ? "default on" : "default off";
+  };
+  // nodeIntegration was on by default before Electron 5 and is off since.
+  let node: Effect;
+  if (typeof w.nodeIntegration === "boolean") node = w.nodeIntegration ? "on" : "off";
+  else if (noValue(w.nodeIntegration)) {
+    node = "unknown";
+    basis.push(`nodeIntegration is ${w.nodeIntegration}`);
+  } else if (major === null) {
+    node = "unknown";
+    basis.push("nodeIntegration not written: off by default since Electron 5, version not known");
+  } else {
+    node = major < 5 ? "default on" : "default off";
+    basis.push(
+      `nodeIntegration not written: ${major < 5 ? "on" : "off"} by default in Electron ${major}, the version package.json asks for (off since 5); the shipped runtime was not checked`,
+    );
+  }
+  let isolation: Effect;
+  if (typeof w.contextIsolation === "boolean") {
+    isolation = w.contextIsolation ? "on" : "off";
+    basis.push("contextIsolation as written");
+  } else if (noValue(w.contextIsolation)) {
+    isolation = "unknown";
+    basis.push(`contextIsolation is ${w.contextIsolation}`);
+  } else isolation = byDefault("contextIsolation", 12);
+  let sandbox: Effect;
+  // Both written: the documentation says Node integration disables the sandbox, and does not
+  // say what an explicit `sandbox: true` next to it does. Nothing is claimed for that pair.
+  const contested = w.nodeIntegration === true && (w.sandbox === true || enableSandbox === true);
+  if (contested) {
+    sandbox = "unknown";
+    basis.push(
+      `nodeIntegration: true and ${w.sandbox === true ? "sandbox: true" : "app.enableSandbox()"} are both written; Electron's documentation does not say which decides`,
+    );
+  } else if (enableSandbox === true) {
+    sandbox = "on";
+    basis.push("app.enableSandbox() is called, which overrides per-window settings");
+  } else if (node === "on") {
+    sandbox = "off";
+    basis.push("nodeIntegration: true disables the sandbox");
+  } else if (typeof w.sandbox === "boolean") {
+    sandbox = w.sandbox ? "on" : "off";
+    basis.push("sandbox as written");
+  } else if (noValue(w.sandbox) || noValue(w.nodeIntegration)) {
+    sandbox = "unknown";
+    basis.push(
+      noValue(w.sandbox) ? `sandbox is ${w.sandbox}` : `nodeIntegration is ${w.nodeIntegration}`,
+    );
+  } else sandbox = byDefault("sandbox", 20);
+  if (enableSandbox === "maybe" && sandbox !== "on") {
+    sandbox = "unknown";
+    basis.push(
+      "app.enableSandbox() is called inside a function or behind a condition; whether it runs was not read",
+    );
+  }
+  // A page gets require() only with Node integration on AND context isolation off. The answer
+  // is as certain as its least certain part: `by default` when either rests on a default.
+  let pageRequire: WindowSummary["pageRequire"];
+  if (node === "off") pageRequire = "no";
+  else if (node === "unknown") pageRequire = isolation === "on" ? "no" : "unknown";
+  else if (node === "default off") pageRequire = isolation === "on" ? "no" : "no by default";
+  else if (isolation === "on") pageRequire = "no";
+  else if (isolation === "unknown") pageRequire = "unknown";
+  else if (isolation === "default on") pageRequire = "no by default";
+  else pageRequire = node === "on" && isolation === "off" ? "yes" : "yes by default";
+  // If the sandbox does decide for that pair, the renderer has no Node at all.
+  if (contested && pageRequire !== "no") pageRequire = "unknown";
+  return {
+    nodeIntegrationInEffect: node,
+    contextIsolationInEffect: isolation,
+    sandboxInEffect: sandbox,
+    pageRequire,
+    basis: basis.join("; "),
+  };
+}
+
+/** A stretch of source that holds a window's options, and which window it is. */
+interface WindowRange {
+  start: number;
+  end: number;
+  window: number | null;
+  name: string | null;
+  /**
+   * For a base object (`inherited`): the place in the window's own options where it is applied,
+   * the `...` of a spread or the helper call. JavaScript lets the later of two writes of a key
+   * win, so a base applied after a key replaces it, and one applied before is replaced.
+   */
+  at: number | null;
+  /**
+   * The object is a base the window's own options are laid over (a spread object, or what a
+   * helper function returns): a key written directly for the window replaces the same key here.
+   */
+  inherited: boolean;
+}
+
+const WINDOW_CLASSES = new Set(["BrowserWindow", "BrowserView", "WebContentsView"]);
+
+/**
+ * Where window options are written in a file: the argument of every `new BrowserWindow(…)`, a
+ * `webPreferences` object passed to it by name or spread into it, and any other object under a
+ * `webPreferences` key. A setting outside these is not a window setting, however near it is.
+ */
+/** Past every place of a file: an options value that cannot be followed hides every key. */
+const EVERYWHERE = Number.MAX_SAFE_INTEGER;
+
+/** The ranges of a file, and what could not be followed while locating them. */
+interface WindowRanges {
+  ranges: WindowRange[];
+  /** Names of objects that were followed to their declaration as window options. */
+  traced: Set<string>;
+  /** Windows whose options come, in part, from such a named object. */
+  viaName: Set<number>;
+  /**
+   * Windows whose options take a value that could not be followed (a parameter, a call, a
+   * conditional, a spread of something unknown), with the place up to which keys written for
+   * the window may be replaced by it. A key the code writes after that place stands.
+   */
+  opaque: Map<number, number>;
+}
+
+function windowRanges(
+  tokens: Token[],
+  aliases: Map<number, string>,
+  /** Built on first use: reads a factory's parameter from the arguments at its call sites. */
+  resolver: () => ExpressionResolver,
+): WindowRanges {
+  const traced = new Set<string>();
+  const viaName = new Set<number>();
+  const follow = (name: string, window: number | null): void => {
+    traced.add(name);
+    if (window !== null) viaName.add(window);
+  };
+  const opaque = new Map<number, number>();
+  const hide = (window: number | null, upTo: number): void => {
+    if (window !== null) opaque.set(window, Math.max(opaque.get(window) ?? -1, upTo));
+  };
+  const ranges: WindowRange[] = [];
+  const is = (i: number, value: string): boolean =>
+    tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  const close = (open: number): number => {
+    let d = 0;
+    for (let k = open; k < tokens.length && k < open + 20_000; k++) {
+      const p = tokens[k]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+      else if (p.value === "}" || p.value === ")" || p.value === "]") {
+        d--;
+        if (d === 0) return k;
+      }
+    }
+    return -1;
+  };
+  let declared: Map<string, number> | null = null;
+  /** `name = Object.assign(…)`: the index of the call's `(`. */
+  let assigned: Map<string, number> | null = null;
+  const objectOf = (name: string): number => {
+    if (!declared || !assigned) {
+      declared = new Map();
+      assigned = new Map();
+      for (let k = 0; k + 2 < tokens.length; k++) {
+        if (tokens[k]!.type !== "ident" || !is(k + 1, "=")) continue;
+        const key = tokens[k]!.value;
+        if (is(k + 2, "{") && !declared.has(key)) declared.set(key, k + 2);
+        else if (
+          tokens[k + 2]?.type === "ident" &&
+          tokens[k + 2]!.value === "Object" &&
+          is(k + 3, ".") &&
+          tokens[k + 4]?.value === "assign" &&
+          is(k + 5, "(") &&
+          !declared.has(key) &&
+          !assigned.has(key)
+        )
+          assigned.set(key, k + 5);
+      }
+    }
+    return declared.get(name) ?? -1;
+  };
+  /**
+   * `Object.assign(target, a, b, …)` read as `{ ...a, ...b }`: each argument is a base applied at
+   * its own place in the call, so a later one wins over an earlier one, as in JavaScript.
+   * Returns false when an argument cannot be read.
+   */
+  const assignedTo = (name: string, window: number | null, depth: number): boolean => {
+    const plan = assignPlan(name, depth);
+    if (!plan) return false;
+    for (const step of plan) {
+      if (step.follow) follow(step.follow, window);
+      add(step.open, window, true, depth + 1, step.at);
+    }
+    follow(name, window);
+    return true;
+  };
+  /** What `name = Object.assign(…)` applies, in order; null when an argument cannot be read. */
+  const assignPlan = (
+    name: string,
+    depth: number,
+  ): Array<{ open: number; at: number; follow: string | null }> | null => {
+    objectOf(name);
+    const open = assigned?.get(name);
+    if (open === undefined || depth > 3) return null;
+    const end = close(open);
+    if (end === -1) return null;
+    const plan: Array<{ open: number; at: number; follow: string | null }> = [];
+    let from = open + 1;
+    while (from < end) {
+      let to = from;
+      for (let d = 0; to < end; to++) {
+        const p = tokens[to]!;
+        if (p.type !== "punct") continue;
+        if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+        else if (p.value === "}" || p.value === ")" || p.value === "]") d--;
+        else if (p.value === "," && d === 0) break;
+      }
+      const first = tokens[from]!;
+      // Just before the argument, inside the call: every argument is then applied in the same
+      // enclosing object or block, one after the other.
+      const at = first.start - 1;
+      if (is(from, "{") && close(from) === to - 1) plan.push({ open: from, at, follow: null });
+      else if (first.type === "ident" && to === from + 1) {
+        const base = objectOf(first.value);
+        if (base !== -1) plan.push({ open: base, at, follow: first.value });
+        else {
+          const inner = assignPlan(first.value, depth + 1);
+          if (!inner) return null;
+          plan.push(...inner.map((step) => ({ ...step, at })));
+        }
+      } else return null;
+      from = to + 1;
+    }
+    return plan;
+  };
+  /**
+   * `...extra` or `new BrowserWindow(options)` where the name is a parameter of the function
+   * around it: the object literals its callers pass. False when any caller passes something else.
+   */
+  const passedTo = (
+    k: number,
+    window: number | null,
+    depth: number,
+    at: number | null,
+  ): boolean => {
+    const sites = resolver().argumentsFor(k);
+    if (!sites?.length) return false;
+    const objects: number[] = [];
+    for (const site of sites) {
+      if (!is(site, "{")) return false;
+      const end = close(site);
+      if (end === -1 || !(is(end + 1, ",") || is(end + 1, ")"))) return false;
+      objects.push(site);
+    }
+    for (const site of objects) {
+      // `webPreferences: helper({ … })` lays the argument over what the helper returns already;
+      // it is the same object, and is not placed a second time.
+      const start = tokens[site]!.start;
+      if (ranges.some((r) => r.window === window && start >= r.start && start < r.end)) continue;
+      add(site, window, true, depth + 1, at ?? start);
+    }
+    return true;
+  };
+  /** The object literal a function of this file returns: `function f() { return {…} }`, `f = () => ({…})`. */
+  /**
+   * The object literal a function of this file returns: `function f() { return {…} }`,
+   * `f = () => ({…})`. Function declarations are indexed once, however many are asked for.
+   */
+  let returned: Map<string, number> | null = null;
+  const returnedBy = (name: string): number => {
+    if (!returned) {
+      returned = new Map();
+      for (let k = 0; k + 3 < tokens.length; k++) {
+        const t = tokens[k]!;
+        if (t.type !== "ident" || returned.has(t.value)) continue;
+        const isDeclaration =
+          (tokens[k - 1]?.type === "ident" &&
+            tokens[k - 1]!.value === "function" &&
+            is(k + 1, "(")) ||
+          (is(k + 1, "=") &&
+            !is(k - 1, ".") &&
+            (is(k + 2, "(") || (tokens[k + 2]?.type === "ident" && is(k + 3, "=>"))));
+        if (!isDeclaration) continue;
+        for (let j = k + 1; j + 2 < tokens.length && j < k + 300; j++) {
+          if (tokens[j]!.type === "ident" && tokens[j]!.value === "return" && is(j + 1, "{")) {
+            returned.set(t.value, j + 1);
+            break;
+          }
+          // `return ({ … })`
+          if (
+            tokens[j]!.type === "ident" &&
+            tokens[j]!.value === "return" &&
+            is(j + 1, "(") &&
+            is(j + 2, "{")
+          ) {
+            returned.set(t.value, j + 2);
+            break;
+          }
+          if (is(j, "=>") && is(j + 1, "(") && is(j + 2, "{")) {
+            returned.set(t.value, j + 2);
+            break;
+          }
+        }
+      }
+    }
+    return returned.get(name) ?? -1;
+  };
+  let work = 400_000;
+  const add = (
+    open: number,
+    window: number | null,
+    inherited = false,
+    depth = 0,
+    at: number | null = null,
+  ): void => {
+    if (ranges.length >= 2000 || work <= 0) return;
+    const end = close(open);
+    if (end === -1) {
+      work -= 20_000;
+      return;
+    }
+    work -= end - open;
+    ranges.push({
+      start: tokens[open]!.start,
+      end: tokens[end]!.end,
+      window,
+      name: window === null ? null : (names.get(window) ?? `#${window}`),
+      inherited,
+      at,
+    });
+    if (depth >= 3) return;
+    // Objects that are named, spread or returned by a helper inside belong to the same window.
+    for (let k = open + 1; k < end; k++) {
+      const t = tokens[k]!;
+      const next = tokens[k + 1];
+      if (is(k, "...")) {
+        // `...name`, `...helper()`; anything else (`...(dev ? a : b)`, `...opts.prefs`), or a
+        // name that is not an object of this file, may write any key at this place.
+        const simple = next?.type === "ident" && !is(k + 2, ".") && !is(k + 2, "[");
+        const base = !simple ? -1 : is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
+        // Inside a base, everything is applied where that base is applied.
+        if (base !== -1) {
+          if (!is(k + 2, "(")) follow(next!.value, window);
+          add(base, window, true, depth + 1, at ?? t.start);
+        } else if (
+          !(simple && !is(k + 2, "(") && assignedTo(next!.value, window, depth)) &&
+          !(simple && !is(k + 2, "(") && passedTo(k + 1, window, depth, at ?? t.start))
+        )
+          hide(window, at ?? t.start);
+      } else if (
+        t.type === "ident" &&
+        t.value === "webPreferences" &&
+        is(k + 1, ":") &&
+        tokens[k + 2]?.type === "ident"
+      ) {
+        const name = tokens[k + 2]!.value;
+        if (is(k + 3, ",") || is(k + 3, "}")) {
+          const named = objectOf(name);
+          if (named !== -1) {
+            follow(name, window);
+            add(named, window, inherited, depth + 1, at);
+          } else if (!assignedTo(name, window, depth) && !passedTo(k + 2, window, depth, at))
+            hide(window, EVERYWHERE);
+        } else if (is(k + 3, "(")) {
+          // `webPreferences: helper({ … })`: what the helper returns is the base, its argument
+          // (inside this range already) is laid over it.
+          const result = returnedBy(name);
+          // Applied at the very start of the argument object, so the argument's own keys,
+          // which are laid over what the helper returns, come after it in the same object.
+          const applied = is(k + 4, "{") ? tokens[k + 4]!.start + 1 : tokens[k + 2]!.start;
+          if (result !== -1) add(result, window, true, depth + 1, at ?? applied);
+          else hide(window, EVERYWHERE);
+        } else hide(window, EVERYWHERE); // `webPreferences: options.prefs`, `a ? b : c`
+      } else if (
+        t.type === "ident" &&
+        t.value === "webPreferences" &&
+        is(k + 1, ":") &&
+        !is(k + 2, "{")
+      ) {
+        // `webPreferences: dev ? {…} : {…}`, `webPreferences: (…)`: not an object written here
+        hide(window, EVERYWHERE);
+      }
+    }
+  };
+  let count = 0;
+  const names = new Map<number, string>();
+  const named = new Map<string, number>();
+  for (let k = 0; k + 2 < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident") continue;
+    if (t.value === "new") {
+      // `new BrowserWindow(`, `new electron.BrowserWindow(`, or a renamed binding of it
+      let c = k + 1;
+      if (tokens[c]?.type === "ident" && is(c + 1, ".") && tokens[c + 2]?.type === "ident") c += 2;
+      const ctor = tokens[c];
+      if (ctor?.type !== "ident" || !is(c + 1, "(")) continue;
+      if (!WINDOW_CLASSES.has(aliases.get(c) ?? ctor.value)) continue;
+      const window = ++count;
+      // `name = new BrowserWindow(…)`, also after `const` or `this.`
+      const target = is(k - 1, "=") ? tokens[k - 2] : undefined;
+      if (target?.type === "ident") {
+        const seen = (named.get(target.value) ?? 0) + 1;
+        named.set(target.value, seen);
+        names.set(window, seen === 1 ? target.value : `${target.value}#${seen}`);
+      }
+      // `new BrowserWindow(this.options)` with `options = {…}` a field of the class
+      if (
+        tokens[c + 2]?.type === "ident" &&
+        tokens[c + 2]!.value === "this" &&
+        is(c + 3, ".") &&
+        tokens[c + 4]?.type === "ident" &&
+        is(c + 5, ")")
+      ) {
+        const field = objectOf(tokens[c + 4]!.value);
+        if (field !== -1) {
+          follow(tokens[c + 4]!.value, window);
+          add(field, window);
+        } else hide(window, EVERYWHERE);
+        add(c + 1, window);
+        continue;
+      }
+      // `new BrowserWindow(options)` with the options object declared elsewhere
+      const first = tokens[c + 2];
+      if (first?.type === "ident" && is(c + 3, ")")) {
+        const at = objectOf(first.value);
+        if (at !== -1) {
+          follow(first.value, window);
+          add(at, window);
+        } else if (!assignedTo(first.value, window, 0) && !passedTo(c + 2, window, 0, null))
+          hide(window, EVERYWHERE); // an import, or a parameter not every caller fills in
+      } else if (!is(c + 2, "{") && !is(c + 2, ")")) {
+        // `new BrowserWindow(dev ? {…} : {…})`, `new BrowserWindow(makeOptions())`
+        hide(window, EVERYWHERE);
+      }
+      add(c + 1, window);
+    } else if (t.value === "webPreferences" && is(k + 1, ":") && is(k + 2, "{")) {
+      const start = tokens[k + 2]!.start;
+      // Already inside a window's range: nothing to add.
+      if (!ranges.some((r) => start >= r.start && start < r.end)) add(k + 2, null);
+    }
+  }
+  return { ranges, traced, viaName, opaque };
 }
 
 /** One member a preload script exposes to the page through contextBridge. */
@@ -84,6 +690,8 @@ export interface BridgeMember {
   world: "main" | "isolated";
   file: string;
   line: number;
+  /** A channel named by a constant of another module, until that module has been read. */
+  channelRef?: { specifier: string; property: string };
 }
 
 /** What one source file exposes, and whether a cap or an unclosed literal cut the reading short. */
@@ -117,23 +725,36 @@ const textOf = (t: Token | undefined): string | null =>
  * be read as a member (spread, computed key, a value built elsewhere) is a row with member null.
  */
 export function bridgeMembers(
-  source: string | { tokens: Token[]; truncated: boolean },
+  source: string | { tokens: Token[]; truncated: boolean; context?: ScanContext },
   file: string,
 ): BridgeScan {
   const { tokens, truncated: cut } = typeof source === "string" ? tokenize(source) : source;
+  const context: ScanContext =
+    typeof source !== "string" && source.context
+      ? source.context
+      : {
+          aliases: resolveAliases(tokens, ALIAS_TARGETS),
+          constants: new Constants(tokens),
+          wrappers: new Map(),
+        };
   const members: BridgeMember[] = [];
   let truncated = cut;
   let budget = BRIDGE_WALK_BUDGET;
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  /** Named objects whose later `name.member = …` assignments were already collected. */
+  const stepwise = new Set<string>();
   let objects: Map<string, number> | null = null;
   const objectOf = (name: string): number => {
     if (!objects) {
       objects = new Map();
+      // `const api = {`, and in a declaration list (as minifiers write it) `, api = {`
       for (let k = 0; k + 3 < tokens.length; k++) {
         const t = tokens[k]!;
-        if (t.type !== "ident" || (t.value !== "const" && t.value !== "let" && t.value !== "var"))
-          continue;
+        const declares =
+          (t.type === "ident" && (t.value === "const" || t.value === "let" || t.value === "var")) ||
+          (t.type === "punct" && t.value === ",");
+        if (!declares) continue;
         const id = tokens[k + 1]!;
         if (id.type === "ident" && is(k + 2, "=") && is(k + 3, "{") && !objects.has(id.value))
           objects.set(id.value, k + 3);
@@ -147,9 +768,23 @@ export function bridgeMembers(
     if (t.value !== "exposeInMainWorld" && t.value !== "exposeInIsolatedWorld") continue;
     if (!(is(i - 1, ".") || is(i - 1, "?.")) || !is(i + 1, "(")) continue;
     const world = t.value === "exposeInMainWorld" ? "main" : "isolated";
-    const push = (member: string | null, channel: string | null, line: number): void => {
+    const push = (
+      member: string | null,
+      channel: string | null,
+      line: number,
+      channelRef?: BridgeMember["channelRef"],
+    ): void => {
       if (members.length >= MAX_BRIDGE_PER_FILE) truncated = true;
-      else members.push({ api, member, channel, world, file, line });
+      else
+        members.push({
+          api,
+          member,
+          channel,
+          world,
+          file,
+          line,
+          ...(channelRef ? { channelRef } : {}),
+        });
     };
     let at = i + 2;
     if (world === "isolated") {
@@ -169,8 +804,11 @@ export function bridgeMembers(
     }
     const keyToken = tokens[at];
     const simple = is(at + 1, ",");
+    const apiName =
+      simple && keyToken?.type === "ident" ? context.constants.stringOf(keyToken.value, at) : null;
     const api =
       (simple ? textOf(keyToken) : null) ??
+      apiName ??
       (simple && keyToken?.type === "ident" ? `[${keyToken.value}]` : "[computed]");
     let open = -1;
     if (simple) {
@@ -182,13 +820,22 @@ export function bridgeMembers(
       push(null, null, t.line);
       continue;
     }
-    let start = open + 1;
-    const flush = (end: number): void => {
-      let s = start;
-      start = end + 1;
+    /** One member, from token `from` to `end` (its `,` or `}`), of the object at `objectOpen`. */
+    const readMember = (from: number, end: number, level: number, objectOpen: number): void => {
+      let s = from;
       if (s >= end) return;
       const first = tokens[s]!;
-      if (is(s, "...")) return push(null, null, first.line);
+      if (is(s, "...")) {
+        // `...libraryApi` with `const libraryApi = {…}` in this file: its members, in place
+        const spread = tokens[s + 1];
+        const base =
+          spread?.type === "ident" && s + 2 === end && level < 3 ? objectOf(spread.value) : -1;
+        if (base !== -1 && base !== objectOpen) {
+          if (!walk(base, level + 1)) truncated = true;
+          return;
+        }
+        return push(null, null, first.line);
+      }
       while (
         s + 1 < end &&
         tokens[s]!.type === "ident" &&
@@ -205,39 +852,96 @@ export function bridgeMembers(
           : textOf(nameToken);
       if (name === null) return push(null, null, first.line);
       const channels = new Set<string>();
-      for (let j = s + 1; j + 4 < end; j++) {
+      const refs: Array<NonNullable<BridgeMember["channelRef"]>> = [];
+      for (let j = s + 1; j + 2 < end; j++) {
         const callee = tokens[j + 2]!;
         if (
           tokens[j]!.type === "ident" &&
-          tokens[j]!.value === "ipcRenderer" &&
+          (context.aliases.get(j) ?? tokens[j]!.value) === "ipcRenderer" &&
           is(j + 1, ".") &&
           callee.type === "ident" &&
           CHANNEL_CALLS.has(callee.value) &&
           is(j + 3, "(")
         ) {
-          const channel = textOf(tokens[j + 4]);
-          if (channel !== null) channels.add(channel);
+          const channelName = context.constants.resolve(j + 4);
+          if (channelName && "value" in channelName) channels.add(channelName.value);
+          else if (channelName && "ref" in channelName) refs.push(channelName.ref);
+        } else if (
+          tokens[j]!.type === "ident" &&
+          is(j + 1, "(") &&
+          context.aliases.get(j) === tokens[j]!.value &&
+          context.wrappers.get(tokens[j]!.value)?.startsWith("ipcRenderer.")
+        ) {
+          // a helper of the file that forwards its first argument as the channel
+          const channelName = context.constants.resolve(j + 2);
+          if (channelName && "value" in channelName) channels.add(channelName.value);
+          else if (channelName && "ref" in channelName) refs.push(channelName.ref);
         }
       }
       // Two different channels in one member: which one it forwards to is not decidable here.
-      push(name, channels.size === 1 ? [...channels][0]! : null, first.line);
+      const only = channels.size + refs.length === 1;
+      push(
+        name,
+        only && channels.size === 1 ? [...channels][0]! : null,
+        first.line,
+        only && refs.length === 1 ? refs[0] : undefined,
+      );
     };
-    let depth = 0;
-    let closed = false;
-    for (let k = open; k < tokens.length && budget > 0; k++, budget--) {
-      const p = tokens[k]!;
-      if (p.type !== "punct") continue;
-      if (p.value === "{" || p.value === "(" || p.value === "[") depth++;
-      else if (p.value === "}" || p.value === ")" || p.value === "]") {
-        depth--;
-        if (depth === 0) {
-          flush(k);
-          closed = true;
-          break;
+    /** Walks the members of the object literal at `objectOpen`; spreads of named objects inside. */
+    const walk = (objectOpen: number, level: number): boolean => {
+      let start = objectOpen + 1;
+      const flush = (end: number): void => {
+        const from = start;
+        start = end + 1;
+        readMember(from, end, level, objectOpen);
+      };
+      let depth = 0;
+      for (let k = objectOpen; k < tokens.length && budget > 0; k++, budget--) {
+        const p = tokens[k]!;
+        if (p.type !== "punct") continue;
+        if (p.value === "{" || p.value === "(" || p.value === "[") depth++;
+        else if (p.value === "}" || p.value === ")" || p.value === "]") {
+          depth--;
+          if (depth === 0) {
+            flush(k);
+            return true;
+          }
+        } else if (p.value === "," && depth === 1) flush(k);
+      }
+      return false;
+    };
+    if (!walk(open, 0)) truncated = true;
+    // An object put together in steps: `api.onChange = (fn) => …` after `const api = {…}`.
+    const objectName =
+      simple && tokens[at + 2]?.type === "ident" && is(at + 3, ")") ? tokens[at + 2]!.value : null;
+    if (objectName && !stepwise.has(objectName)) {
+      stepwise.add(objectName);
+      budget -= tokens.length;
+      if (budget <= 0) truncated = true;
+      else
+        for (let k = 0; k + 3 < tokens.length; k++) {
+          if (
+            tokens[k]!.type !== "ident" ||
+            tokens[k]!.value !== objectName ||
+            is(k - 1, ".") ||
+            !is(k + 1, ".") ||
+            tokens[k + 2]!.type !== "ident" ||
+            !is(k + 3, "=")
+          )
+            continue;
+          let end = k + 4;
+          for (let d = 0; end < tokens.length && end < k + 2000; end++) {
+            const p = tokens[end]!;
+            if (p.type !== "punct") continue;
+            if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+            else if (p.value === "}" || p.value === ")" || p.value === "]") {
+              if (d === 0) break;
+              d--;
+            } else if (p.value === ";" && d === 0) break;
+          }
+          readMember(k + 2, end, 0, -1);
         }
-      } else if (p.value === "," && depth === 1) flush(k);
     }
-    if (!closed) truncated = true;
   }
   return { members, truncated };
 }
@@ -273,6 +977,8 @@ export interface JsAppInfo {
   externals: Array<{ specifier: string; count: number; builtin: boolean }>;
   /** BrowserWindow settings as written in the sources, each with file and line. */
   webPreferences: WebPreference[];
+  /** One row per window with its core settings and what follows from them together. */
+  windows: WindowSummary[];
   /** What preload scripts expose to pages through contextBridge, member by member. */
   contextBridge: BridgeMember[];
   ipcChannels: Array<{
@@ -282,9 +988,161 @@ export interface JsAppInfo {
   }>;
   sourceMaps: Array<{ file: string; sources: number; packages: string[] }>;
   nativeAddons: string[];
+  /** Network calls read from the sources, each with file, line and column. */
+  endpoints: AppCandidate[];
+  /** Storage accesses (web storage, IndexedDB, cookies, electron-store) with their keys. */
+  storage: AppCandidate[];
+  /** URLs that occur as plain strings. Not endpoints: nothing shows they are requested. */
+  urls: AppCandidate[];
+  /** How much of the application's JavaScript this analysis has read. */
+  coverage: JsCoverage;
   totals: { files: number; javascript: number; bytes: number; skipped: number };
   findings: Finding[];
   limitations: Limitation[];
+}
+
+/** An endpoint, storage access or URL literal with the file it was read from. */
+export interface AppCandidate extends Candidate {
+  file: string;
+}
+
+export interface JsCoverage {
+  /** JavaScript files of the application (node_modules excluded). */
+  total: number;
+  /** Files read so far, over all runs that were continued. */
+  scanned: number;
+  /** Files not read yet. Zero means every list below covers the whole application. */
+  remaining: number;
+  /** Files that were passed over for exceeding the per-file size limit; they count as scanned. */
+  skipped: number;
+  complete: boolean;
+  /** True when this result continues an earlier, stored scan of the same input. */
+  resumed: boolean;
+  /** The fixed order files are taken in, so a continued scan never repeats or omits a file. */
+  order: "entry file, then path depth, then path";
+  /** The first files that are still unread, in scan order. */
+  nextFiles: string[];
+  /** The files that were passed over (the first 200); nothing is known about their contents. */
+  skippedFiles: string[];
+  /** The files that were read only up to the token budget (the first 200). */
+  partialFiles: string[];
+}
+
+/** Bump when the facts change shape or a detector changes what it reads. */
+export const JS_SCAN_SCHEMA = 5;
+
+/**
+ * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
+ * continued later; the analysis result is assembled from it.
+ */
+export interface JsScanFacts {
+  schema: number;
+  /** Paths already processed, in scan order. A file is processed exactly once. */
+  scanned: string[];
+  skippedFiles: string[];
+  /** Files whose reading stopped at the token budget: what follows the cut is not known. */
+  truncatedFiles: string[];
+  skipped: number;
+  bytes: number;
+  modules: JsModule[];
+  edges: JsEdge[];
+  externals: Record<string, number>;
+  webPreferences: WebPreference[];
+  /** Every window constructor call that was located, also one that writes no setting. */
+  windows: Array<{
+    file: string;
+    window: number;
+    windowName: string;
+    line: number;
+    /**
+     * Keys whose value for this window is not what the code next to it says: the options take
+     * something that could not be followed, or the followed object is assigned to later.
+     */
+    computed?: string[];
+    /** The options take a value that could not be followed. */
+    opaque?: true;
+  }>;
+  /**
+   * `app.enableSandbox()`: `always` when it is a statement at the top of a file, `maybe` when it
+   * sits inside a function or behind a condition, false when no such call was read.
+   */
+  enableSandbox: "always" | "maybe" | false;
+  contextBridge: BridgeMember[];
+  endpoints: AppCandidate[];
+  storage: AppCandidate[];
+  urls: AppCandidate[];
+  preloadScripts: string[];
+  flags: {
+    nodeIntegration: boolean | null;
+    contextIsolation: boolean | null;
+    sandbox: boolean | null;
+    remoteModule: boolean;
+  };
+  electronSeen: boolean;
+  prefsCapped: boolean;
+  bridgeCapped: boolean;
+  candidatesCapped: boolean;
+  /** Limitations that belong to single files (e.g. a token budget that ran out). */
+  limitations: Limitation[];
+}
+
+export function emptyJsScanFacts(): JsScanFacts {
+  return {
+    schema: JS_SCAN_SCHEMA,
+    scanned: [],
+    skippedFiles: [],
+    truncatedFiles: [],
+    skipped: 0,
+    bytes: 0,
+    modules: [],
+    edges: [],
+    externals: {},
+    webPreferences: [],
+    windows: [],
+    enableSandbox: false,
+    contextBridge: [],
+    endpoints: [],
+    storage: [],
+    urls: [],
+    preloadScripts: [],
+    flags: { nodeIntegration: null, contextIsolation: null, sandbox: null, remoteModule: false },
+    electronSeen: false,
+    prefsCapped: false,
+    bridgeCapped: false,
+    candidatesCapped: false,
+    limitations: [],
+  };
+}
+
+const MAX_CANDIDATES = 5000;
+/** Every detector of candidates.ts needs one of these in the source to report anything. */
+const CAN_HOLD_CANDIDATES =
+  /https?:|wss?:|fetch|Storage|indexedDB|cookie|caches|axios|\.(get|post|put|patch|delete|head|options|request|open)\(|sendBeacon|EventSource|WebSocket|path\s*:|electron-store|["'`]\/(api|graphql|v\d|rest|rpc)/;
+const pathDepth = (path: string): number => path.split("/").length;
+
+/** `src/**`, `renderer/` or `*.min.js`: a path prefix, or a pattern with `*` wildcards. */
+function pathMatcher(patterns: readonly string[]): (path: string) => boolean {
+  const tests = patterns.slice(0, 32).map((p) => {
+    if (!p.includes("*"))
+      return (path: string): boolean =>
+        path === p || path.startsWith(p.endsWith("/") ? p : `${p}/`);
+    const parts = p.slice(0, 512).split("*");
+    // The parts between the stars are found left to right, each at its first possible place:
+    // linear in the path, however many stars there are (a regular expression is not).
+    return (path: string): boolean => {
+      const first = parts[0]!;
+      const last = parts[parts.length - 1]!;
+      if (!path.startsWith(first)) return false;
+      let at = first.length;
+      for (let i = 1; i < parts.length - 1; i++) {
+        const found = path.indexOf(parts[i]!, at);
+        if (found === -1) return false;
+        at = found + parts[i]!.length;
+      }
+      return path.length - last.length >= at && path.endsWith(last);
+    };
+  });
+  return (path) => tests.some((t) => t(path));
 }
 
 const JS_EXT = /\.(m?js|cjs|jsx)$/i;
@@ -330,27 +1188,42 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
   const realRoot = realpathSync(root);
   const inside = (real: string): boolean => real === realRoot || real.startsWith(realRoot + sep);
   const visitedDirs = new Set<string>([realRoot]);
+  // Dependencies are listed (native addons are found there) but do not use up the limit: an
+  // application's own files must not go unlisted because node_modules came first.
+  let own = 0;
+  let truncated: string | undefined;
+  const atLimit = (): boolean => own >= maxFiles || files.length >= maxFiles * 4;
   const walk = (dir: string, depth: number): void => {
-    if (depth > 32 || files.length >= maxFiles) return;
+    if (depth > 32) {
+      truncated ??= "The directory is nested deeper than 32 levels.";
+      return;
+    }
+    if (atLimit()) {
+      truncated ??= `The directory has more than ${maxFiles} files of its own, or more than ${maxFiles * 4} in all.`;
+      return;
+    }
     let entries: string[];
     try {
-      entries = readdirSync(dir);
+      // The application's own directories before its dependencies.
+      entries = readdirSync(dir).toSorted(
+        (a, b) => Number(a === "node_modules") - Number(b === "node_modules") || (a < b ? -1 : 1),
+      );
     } catch {
       return;
     }
     for (const name of entries) {
       if (SKIP_DIRS.has(name)) continue;
-      const full = join(dir, name);
+      const entry = join(dir, name);
       let st;
       try {
-        st = lstatSync(full);
+        st = lstatSync(entry);
         if (st.isSymbolicLink()) {
           // Follow a link only when its target stays inside the root (pnpm/workspace layouts);
           // anything pointing outside is recorded and never read.
-          const real = realpathSync(full);
+          const real = realpathSync(entry);
           if (!inside(real)) {
             if (skippedLinks.length < 200)
-              skippedLinks.push(relative(root, full).split(sep).join("/"));
+              skippedLinks.push(relative(root, entry).split(sep).join("/"));
             continue;
           }
           st = statSync(real);
@@ -362,13 +1235,15 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
       } catch {
         continue;
       }
-      if (st.isDirectory()) walk(full, depth + 1);
+      if (st.isDirectory()) walk(entry, depth + 1);
       else if (st.isFile()) {
-        files.push({
-          path: relative(root, full).split(sep).join("/"),
-          size: st.size,
-        });
-        if (files.length >= maxFiles) return;
+        const path = relative(root, entry).split(sep).join("/");
+        files.push({ path, size: st.size });
+        if (!path.includes("node_modules/")) own++;
+        if (atLimit()) {
+          truncated ??= `The directory has more than ${maxFiles} files of its own.`;
+          return;
+        }
       }
     }
   };
@@ -378,6 +1253,7 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
     root,
     files,
     ...(skippedLinks.length ? { skippedLinks } : {}),
+    ...(truncated ? { truncated } : {}),
     read: (path, maxBytes = 64 << 20) => {
       const full = join(root, ...path.split("/"));
       if (relative(root, full).startsWith(".."))
@@ -445,12 +1321,403 @@ function resolveSpecifier(from: string, specifier: string, known: Set<string>): 
   return candidates.find((c) => known.has(c)) ?? null;
 }
 
-export function analyzeJavaScriptTree(
+const jsFilesOf = (tree: FileTree): FileTree["files"] =>
+  tree.files.filter((f) => JS_EXT.test(f.path) && !f.path.includes("node_modules/"));
+
+/** The entry file, then shallow paths before deep ones, then by path. */
+function scanOrder(files: FileTree["files"], main: string | null): FileTree["files"] {
+  const mainPath = main ? posix.normalize(main) : null;
+  return files.toSorted(
+    (a, b) =>
+      Number(b.path === mainPath) - Number(a.path === mainPath) ||
+      pathDepth(a.path) - pathDepth(b.path) ||
+      (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
+  );
+}
+
+/**
+ * The files `analyzeJavaScriptTree` will read with these options, by the same order and budgets,
+ * so their tokens can be read ahead in worker threads. Only sizes decide here; a file that turns
+ * out unreadable during the scan can shift the end of a run, and whatever this list misses or
+ * has in excess is read by the scan itself or ignored.
+ */
+export function plannedReads(
   tree: FileTree,
   options: {
     maxJsFiles?: number;
     maxFileBytes?: number;
     maxTotalBytes?: number;
+    resume?: JsScanFacts;
+    include?: readonly string[];
+    all?: boolean;
+  } = {},
+): FileTree["files"] {
+  const maxJsFiles = options.maxJsFiles ?? 5000;
+  const maxFileBytes = options.maxFileBytes ?? 16 << 20;
+  const maxTotalBytes = options.maxTotalBytes ?? 256 << 20;
+  let main: string | null = null;
+  if (tree.files.some((f) => f.path === "package.json")) {
+    try {
+      main = (JSON.parse(decode(tree.read("package.json"))) as PackageJson).main ?? null;
+    } catch {
+      main = null;
+    }
+  }
+  const done = new Set(options.resume?.schema === JS_SCAN_SCHEMA ? options.resume.scanned : []);
+  const wanted = options.include?.length ? pathMatcher(options.include) : null;
+  const batch = Number.isFinite(maxJsFiles) && maxJsFiles >= 1 ? Math.floor(maxJsFiles) : 5000;
+  const runFiles = options.all ? Number.POSITIVE_INFINITY : maxJsFiles === 0 ? 0 : batch;
+  const out: FileTree["files"] = [];
+  let taken = 0;
+  let runBytes = 0;
+  for (const file of scanOrder(jsFilesOf(tree), main)) {
+    if (done.has(file.path) || (wanted && !wanted(file.path))) continue;
+    if (taken >= runFiles) break;
+    if (
+      !options.all &&
+      taken > 0 &&
+      file.size <= maxFileBytes &&
+      runBytes + file.size > maxTotalBytes
+    )
+      break;
+    taken++;
+    if (file.size > maxFileBytes) continue;
+    runBytes += file.size;
+    out.push(file);
+  }
+  return out;
+}
+
+/** Index of the token that starts at a source offset, by binary search; -1 if none does. */
+function tokenAtOffset(tokens: Token[], offset: number): number {
+  let lo = 0;
+  let hi = tokens.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const start = tokens[mid]!.start;
+    if (start === offset) return mid;
+    if (start < offset) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return -1;
+}
+
+/**
+ * The settings an evaluated options object gives a window: literal values with where they are
+ * written, and the keys that cannot be read (null values, or not listed in an open object).
+ * Null when the options or their webPreferences are not known at all.
+ */
+function optionSettings(options: Val | null): {
+  settings: Array<{ key: string; value: string | boolean; src: { file: string; line: number } }>;
+  unknown: Set<string>;
+} | null {
+  if (options?.kind !== "obj") return null;
+  const unknown = new Set<string>();
+  const settings: Array<{
+    key: string;
+    value: string | boolean;
+    src: { file: string; line: number };
+  }> = [];
+  const keys = ["preload", ...BOOLEAN_KEYS];
+  const prefs = options.props.has("webPreferences")
+    ? options.props.get("webPreferences")
+    : options.open
+      ? null
+      : ({ kind: "undef" } as const);
+  if (prefs === null || prefs === undefined) return null;
+  if (prefs.kind === "undef") return { settings, unknown };
+  if (prefs.kind !== "obj") return null;
+  for (const key of keys) {
+    if (!prefs.props.has(key)) {
+      if (prefs.open) unknown.add(key);
+      continue;
+    }
+    const v = prefs.props.get(key) ?? null;
+    if (v?.kind === "bool" && key !== "preload") settings.push({ key, value: v.value, src: v.src });
+    else if (v?.kind === "str" && key === "preload" && v.values.length === 1 && v.src)
+      settings.push({ key, value: v.values[0]!.replace(/^[\\/]+/, ""), src: v.src });
+    else if (v?.kind !== "undef") unknown.add(key);
+  }
+  return { settings, unknown };
+}
+
+/** A setting written as `key: value` in an options object, at a source offset. */
+type SettingAt = {
+  key: Exclude<PreferenceKey, "preload">;
+  value: boolean | null;
+  computed?: string;
+  start: number;
+};
+
+/**
+ * What one file's tokens say before anything is merged into the application's facts: no caps,
+ * no shared state. The same source gives the same result here or in a worker thread
+ * (`tokenPool.ts`), so a parallel scan merges exactly what a sequential one would.
+ */
+export interface FileTokenFacts {
+  scan: ScanResult;
+  ambient: ReturnType<typeof collectAmbient> | null;
+  located: WindowRanges | null;
+  ranges: WindowRange[];
+  mutated: string[];
+  sandboxCall: "always" | "maybe" | null;
+  settingsAt: SettingAt[];
+  preloadsAt: number[];
+  braces: Array<[number, number]>;
+  preferenceObjects: Array<[number, number]>;
+  candidates: ReturnType<typeof findCandidates> | null;
+  bridge: ReturnType<typeof bridgeMembers> | null;
+}
+
+export function readFileTokens(path: string, source: string): FileTokenFacts {
+  let ranges: WindowRange[] = [];
+  let located: WindowRanges | null = null;
+  /** Keys of a followed options object that are assigned after its declaration. */
+  const mutated = new Set<string>();
+  let sandboxCall: "always" | "maybe" | null = null;
+  // Settings are read from tokens, so text in a comment or a string is never a setting.
+  const settingsAt: SettingAt[] = [];
+  const preloadsAt = new Set<number>();
+  /** Every `{ … }` of the file as [start, end) offsets, in source order; filled when needed. */
+  let braces: Array<[number, number]> = [];
+  /** For an object that is the value of a `webPreferences:` property: where that key stands. */
+  const preferenceObjects = new Map<number, number>();
+  let ambient: ReturnType<typeof collectAmbient> | null = null;
+  let candidates: ReturnType<typeof findCandidates> | null = null;
+  let bridge: ReturnType<typeof bridgeMembers> | null = null;
+  const scan = scanJavaScript(source, {
+    onTokens: (tokens, truncated, context) => {
+      if (source.includes("enableSandbox")) {
+        // Read from tokens, so a comment or a string is no call. Only a statement at the top
+        // of the file that no condition guards is certain to run.
+        let depth = 0;
+        for (let k = 0; k < tokens.length; k++) {
+          const t = tokens[k]!;
+          if (t.type === "punct") {
+            if (t.value === "{" || t.value === "(" || t.value === "[") depth++;
+            else if (t.value === "}" || t.value === ")" || t.value === "]") depth--;
+            continue;
+          }
+          if (
+            t.type !== "ident" ||
+            t.value !== "enableSandbox" ||
+            tokens[k - 1]?.value !== "." ||
+            tokens[k + 1]?.value !== "("
+          )
+            continue;
+          // back to the start of the statement: nothing but `app.` may stand before the call
+          const owner = tokens[k - 2];
+          const before = tokens[k - 3];
+          const plain =
+            depth === 0 &&
+            owner?.type === "ident" &&
+            (!before ||
+              before.line !== owner.line ||
+              (before.type === "punct" && (before.value === ";" || before.value === "}")));
+          if (plain) sandboxCall = "always";
+          else sandboxCall ??= "maybe";
+        }
+      }
+      if (
+        /ipcMain|ipcRenderer|\.(on|once|handle|handleOnce|send|invoke|sendSync|sendToHost|postMessage)\(|\b(window|self|globalThis|global)\.[\w$]+\s*=[^=]/.test(
+          source,
+        )
+      )
+        ambient = collectAmbient(tokens, context.aliases);
+      if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source)) {
+        let resolver: ExpressionResolver | null = null;
+        located = windowRanges(
+          tokens,
+          context.aliases,
+          () => (resolver ??= new ExpressionResolver(tokens, context.constants)),
+        );
+        ranges = located.ranges;
+        // `prefs.sandbox = false`, `prefs["sandbox"] = false`, `Object.assign(prefs, …)` on an
+        // object that was followed as window options: what the declaration says no longer
+        // holds, so the key reads as computed.
+        const { traced } = located;
+        const is = (i: number, value: string): boolean =>
+          tokens[i]?.type === "punct" && tokens[i]!.value === value;
+        const everyKey = (): void => {
+          for (const key of BOOLEAN_KEYS) mutated.add(key);
+          mutated.add("preload");
+        };
+        const declared = new Set<string>();
+        for (let k = 0; traced.size && k + 1 < tokens.length; k++) {
+          const t = tokens[k]!;
+          if (t.type !== "ident" || !traced.has(t.value) || is(k - 1, ".")) continue;
+          // The declaration that was followed: `name = {`, once.
+          if (is(k + 1, "=") && is(k + 2, "{") && !declared.has(t.value)) {
+            declared.add(t.value);
+            continue;
+          }
+          // Its use as options: `new X(name)` for a window class, and `webPreferences: name`
+          // or `...name` INSIDE the options of a located window. The same shapes anywhere
+          // else (`tweak({ webPreferences: name })`, `const copy = { ...name }`, which shares
+          // the nested objects) hand the object on, and what happens to it there is not read.
+          const inWindow = ranges.some(
+            (r) => r.window !== null && t.start >= r.start && t.start < r.end,
+          );
+          const asOptions =
+            (is(k - 1, "(") &&
+              is(k + 1, ")") &&
+              // `new BrowserWindow(name)`, `new electron.BrowserWindow(name)`
+              (tokens[k - 3]?.value === "new" ||
+                (is(k - 3, ".") && tokens[k - 5]?.value === "new")) &&
+              WINDOW_CLASSES.has(tokens[k - 2]?.value ?? "")) ||
+            (inWindow &&
+              ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") || is(k - 1, "...")));
+          if (asOptions) continue;
+          // A write to one key: `name.key =`, `name.webPreferences.key =`, `name["key"] =`.
+          let at = k + 1;
+          if (is(at, ".") && tokens[at + 1]?.value === "webPreferences") at += 2;
+          const key = is(at, ".")
+            ? tokens[at + 1]?.type === "ident"
+              ? tokens[at + 1]!.value
+              : null
+            : is(at, "[") && tokens[at + 1]?.type === "string" && is(at + 2, "]")
+              ? tokens[at + 1]!.value
+              : null;
+          const after = is(at, ".") ? at + 2 : at + 3;
+          if (key !== null && is(after, "=") && !is(after + 1, "=")) {
+            // `name.webPreferences = other` replaces every key
+            if (key === "webPreferences") everyKey();
+            else mutated.add(key);
+            continue;
+          }
+          // A plain read of one key changes nothing. Only what is certainly a read counts as
+          // one: the key followed by the end of an expression or by a comparison or logical
+          // operator. `name.key ||= x`, `name.key += 1`, `name.key++` and anything else that is
+          // not on this list is a write.
+          const follower = tokens[after];
+          const reads =
+            key !== null &&
+            tokens[k - 1]?.value !== "delete" &&
+            tokens[k - 1]?.value !== "++" &&
+            tokens[k - 1]?.value !== "--" &&
+            (!follower || (follower.type === "punct" && READ_FOLLOWERS.has(follower.value)));
+          if (reads) continue;
+          if (key !== null && !is(after, ".") && !is(after, "[") && !is(after, "(")) {
+            mutated.add(key);
+            continue;
+          }
+          // Anything else may change the object in a way that is not read here: a second
+          // assignment to the name, a deeper or computed write, `delete`, the object handed to
+          // a function (`Object.assign(name, …)`, `tweak(name)`), a method called on it.
+          everyKey();
+        }
+        const open: number[] = [];
+        const pairs: Array<[number, number]> = [];
+        for (const t of tokens) {
+          if (t.type !== "punct") continue;
+          if (t.value === "{") {
+            open.push(pairs.length);
+            pairs.push([t.start, Number.MAX_SAFE_INTEGER]);
+          } else if (t.value === "}" && open.length) pairs[open.pop()!]![1] = t.end;
+        }
+        for (let k = 2; k < tokens.length; k++)
+          if (
+            is(k, "{") &&
+            is(k - 1, ":") &&
+            tokens[k - 2]!.type === "ident" &&
+            tokens[k - 2]!.value === "webPreferences"
+          )
+            preferenceObjects.set(tokens[k]!.start, tokens[k - 2]!.start);
+        braces = pairs;
+      }
+      if (
+        /nodeIntegration|contextIsolation|sandbox|preload|webSecurity|allowRunningInsecureContent|webviewTag|enableRemoteModule/.test(
+          source,
+        )
+      )
+        for (let k = 0; k + 2 < tokens.length; k++) {
+          const t = tokens[k]!;
+          const colon = tokens[k + 1]!;
+          if (t.type !== "ident" || colon.type !== "punct" || colon.value !== ":") continue;
+          if (t.value === "preload") preloadsAt.add(t.start);
+          else if (BOOLEAN_KEYS.has(t.value)) {
+            const key = t.value as Exclude<PreferenceKey, "preload">;
+            const v = tokens[k + 2]!;
+            const n = tokens[k + 3];
+            // true, false, and what minifiers write for them: !0 and !1
+            const value =
+              v.type === "ident" && (v.value === "true" || v.value === "false")
+                ? v.value === "true"
+                : v.type === "punct" &&
+                    v.value === "!" &&
+                    n?.type === "number" &&
+                    /^[01]$/.test(n.value)
+                  ? n.value === "0"
+                  : null;
+            // `sandbox: true && flag` is not the setting `true`: the value must end there.
+            const after = tokens[v.type === "ident" ? k + 3 : k + 4];
+            const ends =
+              !after || (after.type === "punct" && (after.value === "," || after.value === "}"));
+            if (value !== null && ends) settingsAt.push({ key, value, start: t.start });
+            else {
+              // Not a literal: the value is decided at run time. The expression is kept, up
+              // to the `,` or `}` that ends the property, so a reader sees what decides it.
+              let nested = 0;
+              let end = k + 2;
+              for (; end < tokens.length && end < k + 60; end++) {
+                const p = tokens[end]!;
+                if (p.type !== "punct") continue;
+                if (p.value === "(" || p.value === "[" || p.value === "{") nested++;
+                else if (p.value === ")" || p.value === "]" || p.value === "}") {
+                  if (nested === 0) break;
+                  nested--;
+                } else if (p.value === "," && nested === 0) break;
+              }
+              const computed = source
+                .slice(v.start, tokens[end - 1]?.end ?? v.end)
+                .replace(/\s+/g, " ")
+                .slice(0, 80);
+              settingsAt.push({ key, value: null, computed, start: t.start });
+            }
+          }
+        }
+      // Endpoints, storage and URL literals: only where the text can contain one at all.
+      if (CAN_HOLD_CANDIDATES.test(source)) {
+        candidates = findCandidates(tokens, source, undefined, context.aliases, context.constants);
+      }
+      if (!source.includes("exposeIn")) return;
+      bridge = bridgeMembers({ tokens, truncated, context }, path);
+    },
+  });
+  return {
+    scan,
+    ambient,
+    located,
+    ranges,
+    mutated: [...mutated],
+    sandboxCall,
+    settingsAt,
+    preloadsAt: [...preloadsAt],
+    braces,
+    preferenceObjects: [...preferenceObjects],
+    candidates,
+    bridge,
+  };
+}
+
+export function analyzeJavaScriptTree(
+  tree: FileTree,
+  options: {
+    /** Files read in one run (default 5,000). With `all`, the size of one batch. */
+    maxJsFiles?: number;
+    maxFileBytes?: number;
+    /** Source bytes read in one run (default 256 MiB); what is over stays unread, not skipped. */
+    maxTotalBytes?: number;
+    /** Facts of an earlier run on the same input; files in it are not read again. */
+    resume?: JsScanFacts;
+    /** Read only unread files whose path matches one of these prefixes or `*` patterns. */
+    include?: readonly string[];
+    /** Read every unread file, batch after batch, ignoring the per-run budgets. */
+    all?: boolean;
+    /** Receives the facts after every batch and at the end, to store them. */
+    onFacts?: (facts: JsScanFacts) => void;
+    /** Token facts already read for some files (in worker threads); the rest is read here. */
+    prepared?: ReadonlyMap<string, FileTokenFacts>;
   } = {},
 ): JsAppInfo {
   const maxJsFiles = options.maxJsFiles ?? 5000;
@@ -488,32 +1755,96 @@ export function analyzeJavaScriptTree(
       code: "symlinks_skipped",
       message: `${tree.skippedLinks.length} symbolic link(s) point outside the analyzed directory and were not followed (e.g. ${tree.skippedLinks[0]}).`,
     });
-  const jsFiles = tree.files.filter(
-    (f) => JS_EXT.test(f.path) && !f.path.includes("node_modules/"),
-  );
+  const jsFiles = jsFilesOf(tree);
   const known = new Set(jsFiles.map((f) => f.path));
-  const modules: JsModule[] = [];
-  const edges: JsEdge[] = [];
-  const externals = new Map<string, number>();
-  let bytes = 0;
-  let skipped = 0;
-  let electronSeen = false;
-  const preloadScripts = new Set<string>();
+  const facts: JsScanFacts =
+    options.resume && options.resume.schema === JS_SCAN_SCHEMA
+      ? options.resume
+      : emptyJsScanFacts();
+  const resumed = facts.scanned.length > 0;
+  const { modules, edges, webPreferences, contextBridge, flags } = facts;
+  const externals = new Map<string, number>(Object.entries(facts.externals));
+  const preloadScripts = new Set<string>(facts.preloadScripts);
+  let bytes = facts.bytes;
+  let skipped = facts.skipped;
+  let electronSeen = facts.electronSeen;
   /** Every webPreferences-style setting read from source, with the place it was read. */
-  const webPreferences: WebPreference[] = [];
-  const contextBridge: BridgeMember[] = [];
-  let prefsCapped = false;
-  let bridgeCapped = false;
-  const flags = {
-    nodeIntegration: null as boolean | null,
-    contextIsolation: null as boolean | null,
-    sandbox: null as boolean | null,
-    remoteModule: false,
+  let prefsCapped = facts.prefsCapped;
+  let bridgeCapped = facts.bridgeCapped;
+  let ambientCapped = false;
+  /** Writes the running counters back, so `facts` is a complete, storable state. */
+  const sync = (): JsScanFacts => {
+    facts.bytes = bytes;
+    facts.skipped = skipped;
+    facts.electronSeen = electronSeen;
+    facts.prefsCapped = prefsCapped;
+    facts.bridgeCapped = bridgeCapped;
+    facts.externals = Object.fromEntries(externals);
+    facts.preloadScripts = [...preloadScripts];
+    return facts;
   };
 
-  for (const file of jsFiles.slice(0, maxJsFiles)) {
-    if (file.size > maxFileBytes || bytes + file.size > maxTotalBytes) {
+  // A fixed order: the entry file, then shallow paths before deep ones, then by path. Entry
+  // points and preloads sit near the root, so the first batch sees them; and because the order
+  // depends on nothing but the file list, a continued scan takes up exactly where it stopped.
+  const ordered = scanOrder(jsFiles, pkg?.main ?? null);
+  const done = new Set(facts.scanned);
+  const wanted = options.include?.length ? pathMatcher(options.include) : null;
+  const todo = ordered.filter((f) => !done.has(f.path) && (!wanted || wanted(f.path)));
+  // 0 is meaningful (show a stored scan without reading); anything else is at least one file.
+  const batch = Number.isFinite(maxJsFiles) && maxJsFiles >= 1 ? Math.floor(maxJsFiles) : 5000;
+  const runFiles = options.all ? Number.POSITIVE_INFINITY : maxJsFiles === 0 ? 0 : batch;
+  let runBytes = 0;
+  let taken = 0;
+
+  // Modules read again for following window options across files, each tokenized once.
+  const modulesRead = new Map<string, { tokens: Token[]; resolver: ExpressionResolver } | null>();
+  const host: ModuleHost = {
+    load: (from, specifier) => {
+      const target = resolveSpecifier(from, specifier, known);
+      if (!target) return null;
+      if (!modulesRead.has(target)) {
+        try {
+          modulesRead.set(target, moduleResolver(target, decode(tree.read(target, maxFileBytes))));
+        } catch {
+          modulesRead.set(target, null);
+        }
+      }
+      return modulesRead.get(target)?.resolver ?? null;
+    },
+  };
+  const moduleResolver = (
+    path: string,
+    text: string,
+  ): { tokens: Token[]; resolver: ExpressionResolver } => {
+    const cached = modulesRead.get(path);
+    if (cached) return cached;
+    const { tokens } = tokenize(text);
+    const made = {
+      tokens,
+      resolver: new ExpressionResolver(tokens, new Constants(tokens), path, host),
+    };
+    modulesRead.set(path, made);
+    return made;
+  };
+
+  for (const file of todo) {
+    if (taken >= runFiles) break;
+    // Over the budget of this run: the file stays unread and a continued scan takes it.
+    // The first file of a run is always taken, so a file larger than the budget cannot stall it.
+    if (
+      !options.all &&
+      taken > 0 &&
+      file.size <= maxFileBytes &&
+      runBytes + file.size > maxTotalBytes
+    )
+      break;
+    if (options.all && taken > 0 && taken % batch === 0) options.onFacts?.(sync());
+    facts.scanned.push(file.path);
+    taken++;
+    if (file.size > maxFileBytes) {
       skipped++;
+      if (facts.skippedFiles.length < 200) facts.skippedFiles.push(file.path);
       continue;
     }
     let source: string;
@@ -521,23 +1852,61 @@ export function analyzeJavaScriptTree(
       source = decode(tree.read(file.path, maxFileBytes));
     } catch {
       skipped++;
+      if (facts.skippedFiles.length < 200) facts.skippedFiles.push(file.path);
       continue;
     }
+    runBytes += file.size;
     bytes += file.size;
-    const scan = scanJavaScript(source, {
-      onTokens: (tokens, truncated) => {
-        if (!source.includes("exposeIn")) return;
-        const bridge = bridgeMembers({ tokens, truncated }, file.path);
-        const room = MAX_BRIDGE - contextBridge.length;
-        contextBridge.push(...bridge.members.slice(0, room));
-        if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
-      },
-    });
-    if (scan.truncated)
-      limitations.push({
+    const tokenFacts = options.prepared?.get(file.path) ?? readFileTokens(file.path, source);
+    const { scan, located, ranges, sandboxCall, settingsAt, braces } = tokenFacts;
+    const ambient = tokenFacts.ambient;
+    const mutated = new Set(tokenFacts.mutated);
+    const preloadsAt = new Set(tokenFacts.preloadsAt);
+    const preferenceObjects = new Map(tokenFacts.preferenceObjects);
+    /** The start of the innermost object or block that holds the offset. */
+    const objectAt = (offset: number): number => {
+      let inner = -1;
+      for (const [start, end] of braces) {
+        if (start > offset) break;
+        if (offset < end) inner = start;
+      }
+      return inner;
+    };
+    const cand = tokenFacts.candidates;
+    if (cand) {
+      if (cand.truncated) facts.candidatesCapped = true;
+      for (const [from, to] of [
+        [cand.endpoints, facts.endpoints],
+        [cand.storage, facts.storage],
+        [cand.urls, facts.urls],
+      ] as const) {
+        for (const row of from) {
+          if (to.length >= MAX_CANDIDATES) {
+            facts.candidatesCapped = true;
+            break;
+          }
+          to.push({ file: file.path, ...row });
+        }
+      }
+    }
+    const bridge = tokenFacts.bridge;
+    if (bridge) {
+      const room = MAX_BRIDGE - contextBridge.length;
+      contextBridge.push(...bridge.members.slice(0, room));
+      if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
+    }
+    if (scan.truncated && facts.truncatedFiles.length < 200) facts.truncatedFiles.push(file.path);
+    if (scan.truncated && facts.limitations.length < 200)
+      facts.limitations.push({
         code: "scan_truncated",
         message: `${file.path}: token budget exhausted; references after the cut are missing.`,
       });
+    const open = ambient as ReturnType<typeof collectAmbient> | null;
+    if (open?.ipc.length) {
+      scan.ipc.push(...open.ipc);
+      scan.ipc.sort((x, y) => x.line - y.line);
+    }
+    if (open?.truncated) ambientCapped = true;
     let role: JsModule["role"] = "unknown";
     const usesElectron = scan.references.some((r) => r.specifier === "electron");
     if (usesElectron) electronSeen = true;
@@ -569,43 +1938,287 @@ export function analyzeJavaScriptTree(
     };
     // A setting counts only where it can belong to a BrowserWindow: near `webPreferences` or
     // `BrowserWindow`. A payment SDK's `{ sandbox: false }` in a renderer file is not Electron's.
-    const inWindowOptions = (index: number): boolean => {
+    // Where the options of a window could be located in the code (`ranges`), a setting counts
+    // only inside them. Only a file where none could be located falls back to nearness.
+    /** Lines of `webPreferences` objects no located window takes (see windowsOf). */
+    const unattached = new Set<number>();
+    const windowsOf = (
+      index: number,
+    ): Array<{
+      window: number | null;
+      windowName: string | null;
+      inherited: boolean;
+      order: number;
+      scope: number;
+      group: number | null;
+      groupOrder: number;
+    }> => {
+      if (ranges.length) {
+        // The innermost range decides which window it is; a helper used by two windows has one
+        // range per window with the same extent, and the setting then counts for each.
+        // A range that belongs to a window comes before one that belongs to none: an options
+        // object declared above its `new BrowserWindow(options)` is met first as a bare
+        // `webPreferences: {…}`, and its settings are still that window's.
+        let best: WindowRange | undefined;
+        for (const bound of [true, false]) {
+          for (const r of ranges)
+            if (
+              (r.window !== null) === bound &&
+              index >= r.start &&
+              index < r.end &&
+              (!best || r.end - r.start < best.end - best.start)
+            )
+              best = r;
+          if (best) break;
+        }
+        if (!best) return [];
+        // A `webPreferences: {…}` that no window of this file takes, in a file whose windows
+        // were located (a table of refused settings, a manifest check): not a window's setting.
+        // It is named in a limitation instead, so it is not lost.
+        if (best.window === null && ranges.some((r) => r.window !== null))
+          unattached.add(lineAt(best.start));
+        const { start, end } = best;
+        const same = ranges.filter((r) => r.start === start && r.end === end);
+        // Where the write takes effect in the window's own options, at two levels.
+        // Key level: the object the key is written into, and the place of the write: its own,
+        // or where its base object is applied. Object level: a `webPreferences: {…}` is itself
+        // one write of the key `webPreferences` into the options (`group`) at the place of that
+        // key (`groupOrder`); a later such write, or a base spread later that brings its own
+        // `webPreferences`, replaces the whole earlier object.
+        const inner = objectAt(index);
+        const placed = (
+          r: WindowRange,
+        ): { order: number; scope: number; group: number | null; groupOrder: number } => {
+          if (r.at !== null && preferenceObjects.has(inner)) {
+            // inside the base's own `webPreferences`: the base replaces that whole object
+            return { scope: inner, order: index, group: objectAt(r.at), groupOrder: r.at };
+          }
+          const order = r.at ?? index;
+          const scope = objectAt(order);
+          const key = preferenceObjects.get(scope);
+          return key === undefined
+            ? { scope, order, group: null, groupOrder: 0 }
+            : { scope, order, group: objectAt(key), groupOrder: key };
+        };
+        return [
+          ...new Map(
+            same.map((r) => [
+              r.window,
+              { window: r.window, windowName: r.name, inherited: r.inherited, ...placed(r) },
+            ]),
+          ).values(),
+        ];
+      }
       const before = source.slice(Math.max(0, index - WINDOW_CONTEXT), index);
-      return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before);
+      return /webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(before)
+        ? [
+            {
+              window: null,
+              windowName: null,
+              inherited: false,
+              order: index,
+              scope: index,
+              group: null,
+              groupOrder: 0,
+            },
+          ]
+        : [];
     };
-    let settings = 0;
-    const record = (pref: WebPreference): boolean => {
-      if (settings++ >= MAX_PREFS_PER_FILE || webPreferences.length >= MAX_PREFS) {
+    // Settings of this file first; what a window overrides is dropped before they are kept.
+    type Written = WebPreference & {
+      inherited: boolean;
+      order: number;
+      scope: number;
+      group: number | null;
+      groupOrder: number;
+    };
+    const found: Written[] = [];
+    const record = (pref: Written): boolean => {
+      if (found.length >= MAX_PREFS_PER_FILE || webPreferences.length + found.length >= MAX_PREFS) {
         prefsCapped = true;
         return false;
       }
-      webPreferences.push(pref);
+      found.push(pref);
       return true;
     };
     // `preload: <expression>`: the script is the last path-like string literal of the expression
     // (`path.join(__dirname, "dist", "preload.js")`, `__dirname + "/preload.js"`). The expression
     // is read from a bounded window, so no input makes this scan slow.
-    for (let at = source.indexOf("preload"); at !== -1; at = source.indexOf("preload", at + 7)) {
+    preloads: for (
+      let at = source.indexOf("preload");
+      at !== -1;
+      at = source.indexOf("preload", at + 7)
+    ) {
       const m = /^preload\s*:\s*/.exec(source.slice(at, at + 24));
-      if (!m || /[\w$.]/.test(source[at - 1] ?? "") || !inWindowOptions(at)) continue;
-      const expression = preloadExpression(source, at + m[0].length);
+      const windows = m && preloadsAt.has(at) ? windowsOf(at) : [];
+      if (!m || /[\w$.]/.test(source[at - 1] ?? "") || !windows.length) continue;
+      let expression = preloadExpression(source, at + m[0].length);
+      // `preload: PRELOAD` with the path built in a constant: read the constant's initializer.
+      const constant = /^\s*([A-Za-z_$][\w$]*)\s*[,}]?\s*$/.exec(expression)?.[1];
+      if (constant) {
+        const initializer = new RegExp(
+          `(?:\\b(?:const|let|var)\\s+|,\\s*)${constant.replace(/\$/g, "\\$")}\\s*=(?!=)\\s*`,
+        ).exec(source);
+        if (initializer)
+          expression = preloadExpression(source, initializer.index + initializer[0].length);
+      }
       const literals = [...expression.matchAll(/(['"`])((?:(?!\1)[^\\\n])*)\1/g)].map((x) => x[2]!);
       const script = literals.toReversed().find((v) => /\.(c|m)?[jt]s$/.test(v));
       if (!script) continue;
       const value = script.replace(/^\$\{[^}]*\}/, "").replace(/^[\\/]+/, "");
-      preloadScripts.add(value);
-      if (!record({ key: "preload", value, file: file.path, line: lineAt(at) })) break;
+      for (const w of windows)
+        if (!record({ key: "preload", value, file: file.path, line: lineAt(at), ...w }))
+          break preloads;
     }
-    for (const m of source.matchAll(
-      /\b(nodeIntegration|contextIsolation|sandbox)\s*:\s*(true|false|!0|!1)\b/g,
-    )) {
-      if (!inWindowOptions(m.index)) continue;
-      const key = m[1] as "nodeIntegration" | "contextIsolation" | "sandbox";
-      const v = m[2] === "true" || m[2] === "!0";
-      if (!record({ key, value: v, file: file.path, line: lineAt(m.index) })) break;
-      // the least safe value seen in any window decides the app-wide flag
-      flags[key] =
-        key === "nodeIntegration" ? (flags[key] ?? false) || v : (flags[key] ?? true) && v;
+    settings: for (const { key, value, computed, start } of settingsAt)
+      for (const w of windowsOf(start))
+        if (
+          !record({
+            key,
+            value,
+            ...(computed === undefined ? {} : { computed }),
+            file: file.path,
+            line: lineAt(start),
+            ...w,
+          })
+        )
+          break settings;
+    // Windows whose options could not be followed by ranges: evaluate the options expression,
+    // across modules if need be. What it reads replaces the rows of that window; keys it cannot
+    // read stay computed.
+    const evaluated = new Map<number, Set<string>>();
+    const opaque = (located as WindowRanges | null)?.opaque;
+    if (opaque?.size) {
+      const own = moduleResolver(file.path, source);
+      const tokens = own.tokens;
+      for (const r of ranges) {
+        if (r.window === null || r.inherited || r.at !== null || !opaque.has(r.window)) continue;
+        const paren = tokenAtOffset(tokens, r.start);
+        if (paren === -1 || tokens[paren]!.value !== "(") continue;
+        // one value, or one per call of the function the window is created in
+        const { values, partial } = own.resolver.valuesAt(paren + 1);
+        const reads = values.map(optionSettings);
+        if (!reads.length || reads.some((x) => x === null)) continue;
+        const read = {
+          settings: reads.flatMap((x) => x!.settings),
+          unknown: new Set(reads.flatMap((x) => [...x!.unknown])),
+        };
+        // a caller whose options cannot be read may set any key
+        if (partial) for (const key of ["preload", ...BOOLEAN_KEYS]) read.unknown.add(key);
+        const window = r.window;
+        const windowLine = lineAt(r.start);
+        for (let i = found.length - 1; i >= 0; i--)
+          if (found[i]!.window === window) found.splice(i, 1);
+        let order = 0;
+        const seen = new Set<string>();
+        for (const { key, value, src } of read.settings) {
+          const id = `${key}\u0000${String(value)}\u0000${src.file}:${src.line}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          record({
+            key: key as PreferenceKey,
+            value,
+            file: file.path,
+            line: src.file === file.path ? src.line : windowLine,
+            ...(src.file === file.path ? {} : { definedIn: src }),
+            window,
+            windowName: r.name,
+            inherited: false,
+            order: order++,
+            scope: -1 - window,
+            group: null,
+            groupOrder: 0,
+          });
+        }
+        evaluated.set(window, read.unknown);
+        // still named as not followed when one of the calls could not be read
+        if (!partial) opaque.delete(window);
+      }
+    }
+    // A `webPreferences: {…}` that no window of this file takes (a table of refused settings, a
+    // manifest check) is not a window's setting, once every window's options are known. While a
+    // window's options are not, such an object may be them, and its rows stay (window null).
+    const windowsKnown =
+      !(located as WindowRanges | null)?.opaque.size &&
+      !(mutated.size && (located as WindowRanges | null)?.viaName.size);
+    if (unattached.size && windowsKnown) {
+      for (let i = found.length - 1; i >= 0; i--) if (found[i]!.window === null) found.splice(i, 1);
+      if (facts.limitations.length < 200)
+        facts.limitations.push({
+          code: "webpreferences_unattached",
+          message: `${file.path}: ${unattached.size === 1 ? "a webPreferences object" : `${unattached.size} webPreferences objects`} at line ${[...unattached].slice(0, 10).join(", ")}${unattached.size > 10 ? " …" : ""} that no window in the file takes (its settings are not listed as a window's).`,
+        });
+    }
+    // Every located window, so one that writes no setting at all is still a row.
+    for (const r of ranges) {
+      if (r.window === null || r.inherited || facts.windows.length >= MAX_PREFS) continue;
+      if (facts.windows.some((w) => w.file === file.path && w.window === r.window)) continue;
+      const where = located as WindowRanges | null;
+      const hiddenUpTo = where?.opaque.get(r.window);
+      // A change to a followed object concerns the windows that take options from such an
+      // object; a window whose options are all written in place cannot be changed that way.
+      const computedKeys = new Set<string>(where?.viaName.has(r.window) ? mutated : []);
+      for (const key of evaluated.get(r.window) ?? []) computedKeys.add(key);
+      if (hiddenUpTo !== undefined)
+        // What could not be followed may write any key; a key the code writes for the window
+        // after that place stands, every other one is not known.
+        for (const key of ["preload", ...BOOLEAN_KEYS])
+          if (!found.some((o) => o.window === r.window && o.key === key && o.order > hiddenUpTo))
+            computedKeys.add(key);
+      facts.windows.push({
+        file: file.path,
+        window: r.window,
+        windowName: r.name ?? `#${r.window}`,
+        line: lineAt(r.start),
+        ...(computedKeys.size ? { computed: [...computedKeys] } : {}),
+        ...(hiddenUpTo === undefined ? {} : { opaque: true as const }),
+      });
+    }
+    if (sandboxCall === "always") facts.enableSandbox = "always";
+    else if (sandboxCall === "maybe" && facts.enableSandbox !== "always")
+      facts.enableSandbox = "maybe";
+    for (const { inherited: _inherited, order, scope, group, groupOrder, ...pref } of found) {
+      if (pref.window !== null) {
+        // A whole `webPreferences` object that a later write of that key replaces: gone with
+        // everything in it (`{ ...base, webPreferences: {…} }` keeps nothing of the base's).
+        if (
+          group !== null &&
+          found.some(
+            (o) => o.window === pref.window && o.group === group && o.groupOrder > groupOrder,
+          )
+        )
+          continue;
+        // The same key written twice into ONE object, directly or through a base that is spread
+        // into it: the later write wins, as in JavaScript (`{ sandbox: true, ...base }` takes
+        // the base's value). Writes in two separate objects of a window are both kept: which of
+        // them takes effect cannot be read, and dropping one could hide the unsafe value.
+        if (
+          found.some(
+            (o) =>
+              o.window === pref.window &&
+              o.key === pref.key &&
+              o.scope === scope &&
+              o.order > order,
+          )
+        )
+          continue;
+      }
+      webPreferences.push(pref);
+      if (pref.key === "preload") preloadScripts.add(String(pref.value));
+      // Where windows could be located, an object that belongs to none of them (a base that is
+      // spread and overridden, options only handed to a function) does not speak for the app.
+      else if (
+        isCoreKey(pref.key) &&
+        typeof pref.value === "boolean" &&
+        (pref.window !== null || !ranges.some((r) => r.window !== null))
+      ) {
+        // the least safe value seen in any window decides the app-wide flag
+        const v = pref.value === true;
+        flags[pref.key] =
+          pref.key === "nodeIntegration"
+            ? (flags[pref.key] ?? false) || v
+            : (flags[pref.key] ?? true) && v;
+      }
     }
     if (
       /@electron\/remote|require\(['"]electron['"]\)\.remote|enableRemoteModule\s*:\s*true/.test(
@@ -625,6 +2238,12 @@ export function analyzeJavaScriptTree(
       ipc: scan.ipc,
       sourceMappingUrl: scan.sourceMappingUrl,
       role,
+      ...(scan.constants ? { constants: scan.constants } : {}),
+      ...(scan.reexports ? { reexports: scan.reexports } : {}),
+      ...(scan.starExports ? { starExports: scan.starExports } : {}),
+      ...(open && (open.facts.defines || open.facts.calls || open.facts.replies)
+        ? { ambient: open.facts }
+        : {}),
     });
     for (const ref of scan.references) {
       if (ref.dynamic) {
@@ -662,10 +2281,37 @@ export function analyzeJavaScriptTree(
       }
     }
   }
-  if (jsFiles.length > maxJsFiles)
+  options.onFacts?.(sync());
+  for (const limitation of facts.limitations) limitations.push(limitation);
+  const scannedNow = new Set(facts.scanned);
+  const remainingFiles = ordered.filter((f) => !scannedNow.has(f.path));
+  const coverage: JsCoverage = {
+    total: ordered.length,
+    scanned: ordered.length - remainingFiles.length,
+    remaining: remainingFiles.length,
+    skipped,
+    // Complete means every file was read: none left for later, none passed over, none unlisted.
+    complete: remainingFiles.length === 0 && skipped === 0 && !tree.truncated,
+    resumed,
+    order: "entry file, then path depth, then path",
+    nextFiles: remainingFiles.slice(0, 5).map((f) => f.path),
+    skippedFiles: [...facts.skippedFiles],
+    partialFiles: [...(facts.truncatedFiles ?? [])],
+  };
+  if (tree.truncated)
+    limitations.push({
+      code: "directory_truncated",
+      message: `${tree.truncated} Files beyond that are not listed, so they are neither analyzed nor counted.`,
+    });
+  if (coverage.remaining > 0)
     limitations.push({
       code: "js_files_truncated",
-      message: `Scanned ${maxJsFiles} of ${jsFiles.length} JavaScript files.`,
+      message: `Scanned ${coverage.scanned} of ${coverage.total} JavaScript files; ${coverage.remaining} are unread, so every list and count here covers only the scanned part. Continue the analysis to read more.`,
+    });
+  if (facts.candidatesCapped)
+    limitations.push({
+      code: "candidates_truncated",
+      message: `More endpoints, storage accesses or URLs exist than the ${MAX_CANDIDATES} per list recorded.`,
     });
   if (bridgeCapped)
     limitations.push({
@@ -686,8 +2332,127 @@ export function analyzeJavaScriptTree(
   if (skipped)
     limitations.push({
       code: "js_files_skipped",
-      message: `${skipped} files skipped for exceeding size budgets.`,
+      message: `${skipped} files were not read because they exceed the per-file size limit or could not be decoded (e.g. ${facts.skippedFiles.slice(0, 3).join(", ")}).`,
     });
+
+  // Channel names that are constants of another module: looked up now that modules are known.
+  // A reference stays in place while its module is unread, so a continued scan resolves it later.
+  const moduleById = new Map(modules.map((m) => [m.id, m]));
+  // A name may be passed on through index modules (`export { A as B } from`, `module.exports =
+  // { B: x.A }`, `export *`): followed a few modules deep, never in a circle.
+  const lookUp = (
+    from: string,
+    ref: { specifier: string; property: string },
+    depth = 0,
+  ): string | null => {
+    if (depth > 5) return null;
+    const target = resolveSpecifier(from, ref.specifier, known);
+    const m = target ? moduleById.get(target) : undefined;
+    if (!m) return null;
+    const own = m.constants?.[ref.property];
+    if (own !== undefined) return own;
+    // `TABLE.KEY` where TABLE itself is passed on
+    const dot = ref.property.indexOf(".");
+    const head = dot === -1 ? ref.property : ref.property.slice(0, dot);
+    const passed = m.reexports?.[ref.property] ?? m.reexports?.[head];
+    if (passed) {
+      const property =
+        passed === m.reexports?.[ref.property]
+          ? passed.property
+          : `${passed.property}${ref.property.slice(dot)}`;
+      const found = lookUp(m.id, { specifier: passed.specifier, property }, depth + 1);
+      if (found !== null) return found;
+    }
+    for (const specifier of m.starExports ?? []) {
+      const found = lookUp(m.id, { specifier, property: ref.property }, depth + 1);
+      if (found !== null) return found;
+    }
+    return null;
+  };
+  for (const m of modules)
+    for (const u of m.ipc) {
+      if (u.channel !== null || !u.channelRef) continue;
+      const channel = lookUp(m.id, u.channelRef);
+      if (channel === null) continue;
+      u.channel = channel;
+      u.via = "constant";
+      delete u.channelRef;
+    }
+  for (const b of contextBridge) {
+    if (b.channel !== null || !b.channelRef) continue;
+    const channel = lookUp(b.file, b.channelRef);
+    if (channel === null) continue;
+    b.channel = channel;
+    delete b.channelRef;
+  }
+
+  // IPC calls on names another file defines, now that the files are known.
+  const ambientResult = resolveAmbient(
+    modules,
+    new Set(edges.filter((e) => e.resolved).map((e) => e.to)),
+  );
+  for (const m of modules) {
+    if (m.role !== "main" && m.ipc.some((u) => u.via === "global" && u.api.startsWith("ipcMain.")))
+      m.role = "main";
+    // Replies and port transfers count only in a file that uses Electron's IPC: it has IPC rows
+    // by now, or it loads the electron module. The scanner reads a reply inside a listener on a
+    // written-out `ipcMain` itself; rows carry no column and minified code has everything on one
+    // line, so those are matched as a multiset of (line, channel) and only as many are dropped
+    // as the scanner already has.
+    const replies = m.ambient?.replies;
+    if (!replies?.length) continue;
+    const usesIpc =
+      m.ipc.length > 0 || m.references.some((r) => /^electron(\/|$)/.test(r.specifier));
+    if (!usesIpc) continue;
+    const have = new Map<string, number>();
+    for (const u of m.ipc)
+      if (u.api === "event.sender.send")
+        have.set(lineAndChannel(u), (have.get(lineAndChannel(u)) ?? 0) + 1);
+    for (const u of replies) {
+      const left = u.api === "event.sender.send" ? (have.get(lineAndChannel(u)) ?? 0) : 0;
+      if (left > 0) have.set(lineAndChannel(u), left - 1);
+      else m.ipc.push(u);
+    }
+    m.ipc.sort((x, y) => x.line - y.line);
+    delete m.ambient!.replies;
+  }
+  if (ambientResult.unresolvedTotal) {
+    const sample = ambientResult.unresolved
+      .slice(0, 5)
+      .map((u) => `${short(u.name)}.${u.method}("${short(u.channel)}") at ${u.file}:${u.line}`)
+      .join(", ");
+    const more = ambientResult.unresolvedTotal - Math.min(5, ambientResult.unresolved.length);
+    limitations.push({
+      code: "ipc_receiver_unresolved",
+      message: `${ambientResult.unresolvedTotal} call(s) that look like IPC are on a name that could not be traced to ipcMain or ipcRenderer and are not listed: ${sample}${more ? ` … and ${more} more` : ""}.`,
+    });
+  }
+  // Calls on an IPC object whose channel is a parameter or a computed value: listed without a
+  // channel, and said so, because the channel list is then not the whole picture.
+  const channelless = modules.flatMap((m) =>
+    m.ipc
+      .filter((u) => u.channel === null && !u.channelRef && !u.api.startsWith("contextBridge."))
+      .map((u) => `${u.api} at ${m.id}:${u.line}`),
+  );
+  if (channelless.length)
+    limitations.push({
+      code: "ipc_channel_unresolved",
+      message: `${channelless.length} IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ${channelless.slice(0, 5).join(", ")}${channelless.length > 5 ? ` … and ${channelless.length - 5} more` : ""}.`,
+    });
+  if (ambientCapped)
+    limitations.push({
+      code: "ipc_open_calls_capped",
+      message:
+        "A file has more calls on undeclared names than are kept for cross-file resolution; IPC through a name defined in another file may be missing there.",
+    });
+
+  // Endpoints and storage keys with a part that is a constant of another module.
+  const finished = (rows: AppCandidate[]): AppCandidate[] =>
+    rows.map((row) =>
+      resolvePending(row, (specifier, property) => lookUp(row.file, { specifier, property })),
+    );
+  const endpoints = finished(facts.endpoints);
+  const storage = finished(facts.storage);
 
   // IPC channel matching
   const channels = new Map<string, { senders: Set<string>; receivers: Set<string> }>();
@@ -729,17 +2494,84 @@ export function analyzeJavaScriptTree(
   }
   const nativeAddons = tree.files.filter((f) => f.path.endsWith(".node")).map((f) => f.path);
 
+  /**
+   * The app-wide flag of a setting: the least safe literal written for any window. A safe value
+   * stands only if no window leaves the setting open; where one does (a computed value, options
+   * that could not be followed, an object assigned to later), the flag is null, not "safe".
+   */
+  const appWide = (key: CoreKey): boolean | null => {
+    const value = flags[key];
+    const safe = key !== "nodeIntegration";
+    if (value !== safe) return value;
+    const open =
+      webPreferences.some((p) => p.key === key && p.value === null) ||
+      (facts.windows ?? []).some((w) => w.computed?.includes(key));
+    return open ? null : value;
+  };
   const electron =
     electronSeen || electronVersion || tree.kind === "asar"
       ? {
           version: electronVersion,
           preloadScripts: [...preloadScripts],
-          nodeIntegration: flags.nodeIntegration,
-          contextIsolation: flags.contextIsolation,
-          sandbox: flags.sandbox,
+          nodeIntegration: appWide("nodeIntegration"),
+          contextIsolation: appWide("contextIsolation"),
+          sandbox: appWide("sandbox"),
           remoteModule: flags.remoteModule,
         }
       : null;
+
+  // One row per window: what is written, and what follows from the settings together.
+  const major = electronMajor(electronVersion);
+  const windows: WindowSummary[] = (facts.windows ?? []).map((w) => {
+    // One row per key is left where the order of writes could be read. Several rows with
+    // different values are writes in separate objects: neither is taken.
+    const stateOf = (key: CoreKey): SettingState => {
+      if (w.computed?.includes(key)) return "computed";
+      const rows = webPreferences.filter(
+        (x) => x.file === w.file && x.window === w.window && x.key === key,
+      );
+      if (!rows.length) return "not written";
+      if (rows.some((p) => typeof p.value !== "boolean")) return "computed";
+      const values = new Set(rows.map((p) => p.value));
+      return values.size === 1 ? (rows[0]!.value as boolean) : "conflicting";
+    };
+    const states = {
+      nodeIntegration: stateOf("nodeIntegration"),
+      contextIsolation: stateOf("contextIsolation"),
+      sandbox: stateOf("sandbox"),
+    };
+    const preload = webPreferences.findLast(
+      (x) => x.file === w.file && x.window === w.window && x.key === "preload",
+    );
+    return {
+      ...w,
+      ...states,
+      preload: typeof preload?.value === "string" ? preload.value : null,
+      ...windowEffects(
+        states,
+        major,
+        facts.enableSandbox === "always" ? true : facts.enableSandbox === "maybe" ? "maybe" : false,
+      ),
+    };
+  });
+  const opaqueWindows = facts.windows.filter((w) => w.opaque);
+  if (opaqueWindows.length)
+    limitations.push({
+      code: "window_options_unresolved",
+      message: `${opaqueWindows.length} window(s) take options that could not be followed (a parameter, a call, a condition, a spread of something not declared in the file), so settings not written after that are not known and read as computed: ${opaqueWindows
+        .slice(0, 5)
+        .map((w) => `${w.windowName} at ${w.file}:${w.line}`)
+        .join(", ")}${opaqueWindows.length > 5 ? ` … and ${opaqueWindows.length - 5} more` : ""}.`,
+    });
+  const computedPrefs = webPreferences.filter((w) => w.value === null);
+  if (computedPrefs.length)
+    limitations.push({
+      code: "webpreferences_computed",
+      message: `${computedPrefs.length} window setting(s) are computed at run time, so their value is not known: ${computedPrefs
+        .slice(0, 5)
+        .map((w) => `${w.key} at ${w.file}:${w.line} (${w.computed})`)
+        .join(", ")}${computedPrefs.length > 5 ? ` … and ${computedPrefs.length - 5} more` : ""}.`,
+    });
 
   /** `file:line` of the first place a setting was read with the given value. */
   const where = (key: WebPreference["key"], value?: boolean): string | undefined => {
@@ -749,13 +2581,48 @@ export function analyzeJavaScriptTree(
     return hit ? `${hit.file}:${hit.line}` : undefined;
   };
   if (electron) {
-    if (electron.nodeIntegration === true)
+    if (electron.nodeIntegration === true) {
+      // What the flag means depends on the other settings of the same window, so the detail is
+      // chosen from that window's row, never from another window's (docs/electron-findings.md).
+      // The window where page scripts get require() is reported before one where they do not.
+      const rank = { yes: 0, "yes by default": 1, unknown: 2, "no by default": 3, no: 4 } as const;
+      const row = windows
+        .filter((w) => w.nodeIntegration === true || w.nodeIntegration === "conflicting")
+        .toSorted((x, y) => rank[x.pageRequire] - rank[y.pageRequire])[0];
+      const sandboxNote = "Node integration keeps the renderer out of the Chromium sandbox.";
+      const detail =
+        row?.pageRequire === "yes"
+          ? "contextIsolation is off for the same window: page scripts can require Node modules, so script injection there becomes code execution."
+          : row?.pageRequire === "no"
+            ? `contextIsolation is on for the same window, so page scripts do not get require(). ${sandboxNote}`
+            : row?.pageRequire === "yes by default"
+              ? `contextIsolation is not written for the same window and is off by default in the Electron version package.json asks for (${electronVersion}): if that is the runtime, page scripts can require Node modules. ${sandboxNote}`
+              : row?.pageRequire === "no by default"
+                ? `contextIsolation is not written for the same window. It is on by default in the Electron version package.json asks for (${electronVersion}), and then page scripts do not get require(); the shipped runtime was not checked. ${sandboxNote}`
+                : `Whether page scripts get require() depends on contextIsolation of the same window, which is not known here (computed, or not written with the Electron version unknown). ${sandboxNote}`;
+      const pref =
+        row &&
+        webPreferences.findLast(
+          (w) => w.file === row.file && w.window === row.window && w.key === "nodeIntegration",
+        );
       findings.push({
         kind: "electron.node-integration",
         title: "nodeIntegration: true in a BrowserWindow",
-        detail: "Renderer code can require Node modules; XSS becomes RCE.",
+        detail,
         confidence: "inferred",
-        location: where("nodeIntegration", true),
+        location: pref ? `${pref.file}:${pref.line}` : where("nodeIntegration", true),
+      });
+    }
+    const defaultRequire = windows.find(
+      (w) => w.nodeIntegration === "not written" && w.pageRequire === "yes by default",
+    );
+    if (defaultRequire)
+      findings.push({
+        kind: "electron.node-integration-default",
+        title: "nodeIntegration is not written and on by default before Electron 5",
+        detail: `package.json asks for Electron ${electronVersion}. If that is the runtime, page scripts of this window can require Node modules; the shipped runtime was not checked.`,
+        confidence: "inferred",
+        location: `${defaultRequire.file}:${defaultRequire.line}`,
       });
     if (electron.contextIsolation === false)
       findings.push({
@@ -772,6 +2639,38 @@ export function analyzeJavaScriptTree(
         detail: "The renderer process runs without the Chromium sandbox.",
         confidence: "inferred",
         location: where("sandbox", false),
+      });
+    const written = (key: PreferenceKey, value: boolean): WebPreference | undefined =>
+      webPreferences.find((w) => w.key === key && w.value === value);
+    const at = (p: WebPreference): string => `${p.file}:${p.line}`;
+    const noWebSecurity = written("webSecurity", false);
+    if (noWebSecurity)
+      findings.push({
+        kind: "electron.web-security",
+        title: "webSecurity: false in a BrowserWindow",
+        detail:
+          "Turns off the same-origin policy for the window and allows insecure content unless allowRunningInsecureContent is set otherwise.",
+        confidence: "inferred",
+        location: at(noWebSecurity),
+      });
+    const insecureContent = written("allowRunningInsecureContent", true);
+    if (insecureContent)
+      findings.push({
+        kind: "electron.insecure-content",
+        title: "allowRunningInsecureContent: true in a BrowserWindow",
+        detail: "An https page may run scripts, styles or plugins loaded from http URLs.",
+        confidence: "inferred",
+        location: at(insecureContent),
+      });
+    const webview = written("webviewTag", true);
+    if (webview)
+      findings.push({
+        kind: "electron.webview-tag",
+        title: "webviewTag: true in a BrowserWindow",
+        detail:
+          "The <webview> tag is enabled; a preload script configured on a <webview> runs with Node integration.",
+        confidence: "inferred",
+        location: at(webview),
       });
     if (electron.remoteModule)
       findings.push({
@@ -791,7 +2690,9 @@ export function analyzeJavaScriptTree(
           ipcChannels.map((c) => c.channel),
           8,
         )} (collections ipcChannels, ipc)`,
-        confidence: "confirmed",
+        // Calls that could not be traced, or whose channel could not be read, exist: the list
+        // is then not known to be complete.
+        confidence: ambientResult.unresolvedTotal || channelless.length ? "inferred" : "confirmed",
         location: first ? `${first.m.id}:${first.u.line}` : undefined,
       });
     }
@@ -837,6 +2738,27 @@ export function analyzeJavaScriptTree(
       title: `${sourceMaps.length} source maps shipped (original sources recoverable)`,
       confidence: "confirmed",
     });
+  for (const [rows, kind, noun, collection] of [
+    [endpoints, "js.endpoints", "network endpoint", "endpoints"],
+    [storage, "js.storage", "storage key", "storage"],
+  ] as const) {
+    if (!rows.length) continue;
+    const values = [...new Set(rows.filter((r) => r.value !== null).map((r) => r.value!))];
+    const unread = rows.filter((r) => r.value === null).length;
+    const first = rows[0]!;
+    findings.push({
+      kind,
+      title: values.length
+        ? `${values.length} ${noun}${values.length === 1 ? "" : "s"} read from the code`
+        : `${unread} ${noun} call${unread === 1 ? "" : "s"} with a value that could not be read`,
+      detail: `${values.length ? list(values, 6) : ""}${
+        values.length && unread ? `; ${unread} more with an unreadable value` : ""
+      } (collection ${collection})`.trim(),
+      // Confirmed only when every value stands as a literal at its call.
+      confidence: rows.every((r) => r.evidence === "literal") ? "confirmed" : "inferred",
+      location: `${first.file}:${first.line}`,
+    });
+  }
   if (nativeAddons.length)
     findings.push({
       kind: "js.native-addons",
@@ -858,6 +2780,19 @@ export function analyzeJavaScriptTree(
       message: `${unresolved} relative or dynamic references could not be resolved to files.`,
     });
 
+  // Counts of a scan that has not read everything are counts of the scanned part, and are
+  // worded and rated as such.
+  if (!coverage.complete)
+    for (const finding of findings)
+      if (
+        /^(electron\.(ipc|context-bridge|preload)|js\.(endpoints|storage|minified))$/.test(
+          finding.kind,
+        )
+      ) {
+        finding.title = `${finding.title} in the scanned part (${coverage.scanned} of ${coverage.total} files)`;
+        finding.confidence = "inferred";
+      }
+
   return {
     package: pkg,
     electron,
@@ -872,7 +2807,12 @@ export function analyzeJavaScriptTree(
       .toSorted((a, b) => b.count - a.count),
     ipcChannels,
     webPreferences,
+    windows,
     contextBridge,
+    endpoints,
+    storage,
+    urls: facts.urls,
+    coverage,
     sourceMaps,
     nativeAddons,
     totals: {

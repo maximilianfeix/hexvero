@@ -1,0 +1,198 @@
+{
+ "at": "2026-10-13T19:04:34.548Z",
+ "loadBefore": [
+  8.15,
+  10.91,
+  11.33
+ ],
+ "reps": 5,
+ "servers": [
+  {
+   "label": "hexvero",
+   "env": {},
+   "server": {
+    "name": "hexvero",
+    "version": "0.3.0"
+   },
+   "instructionsBytes": 560,
+   "connectMs": {
+    "n": 5,
+    "min": 114,
+    "median": 121,
+    "max": 195
+   },
+   "toolsListMs": {
+    "n": 5,
+    "min": 4,
+    "median": 4,
+    "max": 5
+   },
+   "tools": 15,
+   "pages": 1,
+   "toolsListResultBytes": 13428,
+   "inputSchemaBytes": 7316,
+   "outputSchemaBytes": 0,
+   "descriptionBytes": 2664,
+   "largestTools": [
+    [
+     "hexvero_collection",
+     1298
+    ],
+    [
+     "hexvero_analyze",
+     1291
+    ],
+    [
+     "hexvero_call_graph",
+     1283
+    ],
+    [
+     "hexvero_unknowns",
+     1264
+    ],
+    [
+     "hexvero_compare",
+     1260
+    ]
+   ],
+   "prompts": {
+    "count": 5,
+    "resultBytes": 1650
+   },
+   "resources": {
+    "unsupported": "MCP error -32601: Method not found"
+   },
+   "treePeakRssBytes": 0,
+   "maxProcessesInTree": 0,
+   "rssSamples": 0,
+   "sizeStableOverRuns": true
+  },
+  {
+   "label": "rea (default)",
+   "env": {},
+   "server": {
+    "name": "rea",
+    "version": "6.4.0"
+   },
+   "instructionsBytes": 304,
+   "connectMs": {
+    "n": 5,
+    "min": 896,
+    "median": 953,
+    "max": 1544
+   },
+   "toolsListMs": {
+    "n": 5,
+    "min": 1778,
+    "median": 2206,
+    "max": 2609
+   },
+   "tools": 170,
+   "pages": 1,
+   "toolsListResultBytes": 1954693,
+   "inputSchemaBytes": 365646,
+   "outputSchemaBytes": 1493900,
+   "descriptionBytes": 58597,
+   "largestTools": [
+    [
+     "compare_web_captures",
+     69778
+    ],
+    [
+     "analyze_javascript_application",
+     44807
+    ],
+    [
+     "capture_browser_scenario",
+     43165
+    ],
+    [
+     "compare_application_versions",
+     35239
+    ],
+    [
+     "reconcile_javascript_runtime",
+     34269
+    ]
+   ],
+   "prompts": {
+    "count": 6,
+    "resultBytes": 4348
+   },
+   "resources": {
+    "unsupported": "MCP error -32601: Method not found"
+   },
+   "treePeakRssBytes": 399474688,
+   "maxProcessesInTree": 1,
+   "rssSamples": 3,
+   "sizeStableOverRuns": true
+  },
+  {
+   "label": "rea (REA_MCP_INPUT_SCHEMA_PROFILE=compact)",
+   "env": {
+    "REA_MCP_INPUT_SCHEMA_PROFILE": "compact"
+   },
+   "server": {
+    "name": "rea",
+    "version": "6.4.0"
+   },
+   "instructionsBytes": 304,
+   "connectMs": {
+    "n": 5,
+    "min": 879,
+    "median": 1009,
+    "max": 1493
+   },
+   "toolsListMs": {
+    "n": 5,
+    "min": 1638,
+    "median": 1807,
+    "max": 2027
+   },
+   "tools": 170,
+   "pages": 1,
+   "toolsListResultBytes": 1772772,
+   "inputSchemaBytes": 183725,
+   "outputSchemaBytes": 1493900,
+   "descriptionBytes": 58597,
+   "largestTools": [
+    [
+     "analyze_javascript_application",
+     42862
+    ],
+    [
+     "reconcile_javascript_runtime",
+     36867
+    ],
+    [
+     "trace_application_feature",
+     32714
+    ],
+    [
+     "capture_browser_scenario",
+     31241
+    ],
+    [
+     "compare_application_versions",
+     29900
+    ]
+   ],
+   "prompts": {
+    "count": 6,
+    "resultBytes": 4348
+   },
+   "resources": {
+    "unsupported": "MCP error -32601: Method not found"
+   },
+   "treePeakRssBytes": 396754944,
+   "maxProcessesInTree": 1,
+   "rssSamples": 5,
+   "sizeStableOverRuns": true
+  }
+ ],
+ "loadAfter": [
+  8.06,
+  10.61,
+  11.21
+ ]
+}

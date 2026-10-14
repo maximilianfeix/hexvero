@@ -234,6 +234,50 @@ export function normalizeCallGraph(
         if (target && target !== from) tailCalls.push([from.id, target.id]);
       }
     }
+    // radare2 prints its code references as text (`from > CODE > to`). A jump from inside one
+    // function to the entry of another is a tail call. The list counts only when it was printed
+    // to its end marker; a cut list would silently lose edges.
+    // A list with lines of which none can be read is a format this code does not know, not an
+    // answer; an empty list is one.
+    const jumpLines = Array.isArray(sections["jumps"]) ? (sections["jumps"] as unknown[]) : null;
+    const JUMP = /(0x[0-9a-fA-F]+)\s*>\s*CODE\S*\s*>\s*(0x[0-9a-fA-F]+)/;
+    const readable =
+      jumpLines !== null &&
+      (jumpLines.length === 0 || jumpLines.some((l) => typeof l === "string" && JUMP.test(l)));
+    if (readable && sections["jumpsEnd"] === true) {
+      sawCodeRefs = true;
+      const spans: Array<{ start: number; end: number; node: GraphNode }> = [];
+      for (const item of asArray(sections["functions"])) {
+        if (!isRecord(item) || typeof item["name"] !== "string") continue;
+        const start = typeof item["offset"] === "number" ? item["offset"] : item["addr"];
+        const node = byName.get(item["name"]);
+        if (typeof start === "number" && typeof item["size"] === "number" && node)
+          spans.push({ start, end: start + item["size"], node });
+      }
+      spans.sort((a, b) => a.start - b.start);
+      const ownerOf = (address: number): GraphNode | undefined => {
+        let lo = 0;
+        let hi = spans.length - 1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          const span = spans[mid]!;
+          if (address < span.start) hi = mid - 1;
+          else if (address >= span.end) lo = mid + 1;
+          else return span.node;
+        }
+        return undefined;
+      };
+      for (const line of sections["jumps"] as unknown[]) {
+        const m =
+          typeof line === "string"
+            ? /(0x[0-9a-fA-F]+)\s*>\s*CODE\S*\s*>\s*(0x[0-9a-fA-F]+)/.exec(line)
+            : null;
+        if (!m) continue;
+        const from = ownerOf(Number.parseInt(m[1]!, 16));
+        const target = byAddress.get(hex(Number.parseInt(m[2]!, 16)));
+        if (from && target && target !== from) tailCalls.push([from.id, target.id]);
+      }
+    }
     let sawGraph = false;
     const graph = sections["graph"];
     if (Array.isArray(graph)) {

@@ -1,0 +1,12 @@
+{
+  "name": "corpus-chat-app",
+  "version": "3.1.0",
+  "license": "MIT",
+  "main": "main.js",
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

@@ -1,0 +1,3086 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.3.0",
+  "commit": "60722a4+uncommitted",
+  "node": "v25.2.1",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  }
+ },
+ "totals": [
+  {
+   "set": "dev",
+   "class": "changes in imports",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in symbols",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "imports",
+   "hit": 24,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "dev",
+   "class": "functions",
+   "hit": 28,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "dev",
+   "class": "call paths",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "dev",
+   "class": "direct callers",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "dev",
+   "class": "IPC channels",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "IPC senders and receivers",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "window settings",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "bridge members",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "bridge member channel",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "endpoints",
+   "hit": 17,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "endpoint method",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "requests with an unknown URL shown",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "storage keys",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "storage read/write/delete",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "dev",
+   "class": "changes in ipcChannels",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in webPreferences",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in endpoints",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "dev",
+   "class": "changes in storage",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "IPC channels",
+   "hit": 51,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "IPC senders and receivers",
+   "hit": 105,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "window settings",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "bridge members",
+   "hit": 39,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "bridge member channel",
+   "hit": 39,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "endpoints",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "endpoint method",
+   "hit": 9,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "requests with an unknown URL shown",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "storage keys",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "storage read/write/delete",
+   "hit": 30,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "validation",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in webPreferences",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "changes in storage",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "validation",
+   "class": "imports",
+   "hit": 28,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "functions",
+   "hit": 40,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "call paths",
+   "hit": 52,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "validation",
+   "class": "direct callers",
+   "hit": 44,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "imports",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "functions",
+   "hit": 68,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "call paths",
+   "hit": 70,
+   "missed": 2,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "direct callers",
+   "hit": 91,
+   "missed": 0,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout",
+   "class": "IPC channels",
+   "hit": 60,
+   "missed": 12,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "IPC senders and receivers",
+   "hit": 91,
+   "missed": 26,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "window settings",
+   "hit": 21,
+   "missed": 12,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "bridge members",
+   "hit": 60,
+   "missed": 9,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "bridge member channel",
+   "hit": 28,
+   "missed": 32,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "endpoints",
+   "hit": 24,
+   "missed": 18,
+   "false": 5,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "endpoint method",
+   "hit": 6,
+   "missed": 3,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "requests with an unknown URL shown",
+   "hit": 3,
+   "missed": 0,
+   "false": 12,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "storage keys",
+   "hit": 42,
+   "missed": 9,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "storage read/write/delete",
+   "hit": 30,
+   "missed": 6,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 4,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout",
+   "class": "changes in storage",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "IPC channels",
+   "hit": 110,
+   "missed": 16,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "IPC senders and receivers",
+   "hit": 203,
+   "missed": 17,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "window settings",
+   "hit": 46,
+   "missed": 17,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "bridge members",
+   "hit": 129,
+   "missed": 6,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "bridge member channel",
+   "hit": 113,
+   "missed": 16,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "endpoints",
+   "hit": 15,
+   "missed": 42,
+   "false": 10,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "endpoint method",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 3
+  },
+  {
+   "set": "holdout2",
+   "class": "requests with an unknown URL shown",
+   "hit": 6,
+   "missed": 0,
+   "false": 12,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "storage keys",
+   "hit": 47,
+   "missed": 10,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "storage read/write/delete",
+   "hit": 43,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in ipcChannels",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in contextBridge",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in endpoints",
+   "hit": 2,
+   "missed": 2,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout2",
+   "class": "changes in storage",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "damaged",
+   "class": "damaged input",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 6
+  }
+ ],
+ "rows": [
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 → dev/calls-v2.O2.macho-arm64",
+   "class": "changes in imports",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 → dev/calls-v2.O2.macho-arm64",
+   "class": "changes in symbols",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O0.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "by_pointer: indirect caller main reported"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/calls.O2.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "by_pointer: indirect caller main reported"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "storage keys",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "storage keys",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "bridge members",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "bridge member channel",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed /v1/login"
+   ]
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "storage keys",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "dev",
+   "input": "dev/notes-app.plain.asar → dev/notes-app-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 35,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "not scored: 1 row(s) with other keys"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "bridge members",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "bridge member channel",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "endpoints",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 35,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "not scored: 1 row(s) with other keys"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "bridge members",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "endpoints",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 35,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "not scored: 1 row(s) with other keys"
+   ]
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "bridge members",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "bridge member channel",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "endpoints",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/chat-app.plain.asar → validation/chat-app-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O0.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 13,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "validation",
+   "input": "validation/dispatch.O2.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 23,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 6,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O0.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 22,
+   "missed": 0,
+   "false": 1,
+   "notes": [
+    "count_binary: caller next_token false"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (radare2)",
+   "class": "imports",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (radare2)",
+   "class": "functions",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (radare2)",
+   "class": "call paths",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (radare2)",
+   "class": "direct callers",
+   "hit": 23,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
+   "class": "imports",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
+   "class": "functions",
+   "hit": 17,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
+   "class": "call paths",
+   "hit": 16,
+   "missed": 2,
+   "false": 0,
+   "hedged": 0,
+   "notes": [
+    "debug_level → atoi: path not found, stated without warning (no function atoi)",
+    "main → atoi: not answered (no function atoi)"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/exprcalc.O2.macho-arm64 (rizin)",
+   "class": "direct callers",
+   "hit": 23,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "state_blank: indirect caller next_token reported"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "IPC channels",
+   "hit": 19,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed timer:tick",
+    "missed config:get-sync",
+    "missed menu:new-entry",
+    "missed update:ready",
+    "missed theme:changed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 32,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "projects:list: sender preload.js missed",
+    "projects:create: sender preload.js missed",
+    "projects:rename: sender preload.js missed",
+    "invoice:exported: sender main.js missed",
+    "sync:progress: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed main.js sandbox=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed widget.pin",
+    "missed widget.close",
+    "missed widget.connect",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "bridge member channel",
+   "hit": 12,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "tracker.onTick: expected timer:tick, got null",
+    "tracker.listProjects: expected projects:list, got null",
+    "tracker.createProject: expected projects:create, got null",
+    "tracker.renameProject: expected projects:rename, got null",
+    "tracker.createInvoice: expected invoice:create, got null",
+    "tracker.setting: expected config:get-sync, got null",
+    "tracker.onNewEntry: expected menu:new-entry, got null",
+    "tracker.onUpdateReady: expected update:ready, got null"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "endpoints",
+   "hit": 8,
+   "missed": 6,
+   "false": 1,
+   "notes": [
+    "missed https://api.punchclock.example/v3/clients",
+    "missed https://api.punchclock.example/v3/timesheets/current…",
+    "missed https://api.punchclock.example/v3/entries",
+    "missed https://files.punchclock.example/invoices",
+    "missed wss://live.punchclock.example/team/…",
+    "missed https://updates.punchclock.example/feed/stable.json",
+    "false ${…}/team/${…}"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://hooks.punchclock.example/invoice-exported: expected POST"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 4,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "storage keys",
+   "hit": 14,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed localStorage punch.theme",
+    "missed localStorage punch.session",
+    "missed localStorage sidebarWidth"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "electron-store ui.locale: expected read+write, got read",
+    "electron-store ui.currency: expected read+write, got read"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "IPC channels",
+   "hit": 23,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed theme:changed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 33,
+   "missed": 12,
+   "false": 0,
+   "notes": [
+    "timer:start: sender preload.js missed",
+    "timer:stop: sender preload.js missed",
+    "timer:tick: receiver preload.js missed",
+    "projects:list: sender preload.js missed",
+    "projects:create: sender preload.js missed",
+    "projects:rename: sender preload.js missed",
+    "invoice:export: sender preload.js missed",
+    "invoice:exported: sender main.js missed",
+    "sync:progress: receiver preload.js missed",
+    "config:get-sync: sender preload.js missed",
+    "menu:new-entry: receiver preload.js missed",
+    "update:ready: receiver preload.js missed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed main.js sandbox=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed widget.pin",
+    "missed widget.close",
+    "missed widget.connect",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 8,
+   "missed": 12,
+   "false": 0,
+   "notes": [
+    "tracker.startTimer: expected timer:start, got null",
+    "tracker.stopTimer: expected timer:stop, got null",
+    "tracker.onTick: expected timer:tick, got null",
+    "tracker.listProjects: expected projects:list, got null",
+    "tracker.createProject: expected projects:create, got null",
+    "tracker.renameProject: expected projects:rename, got null",
+    "tracker.createInvoice: expected invoice:create, got null",
+    "tracker.exportInvoice: expected invoice:export, got null",
+    "tracker.onSyncProgress: expected sync:progress, got null",
+    "tracker.setting: expected config:get-sync, got null",
+    "tracker.onNewEntry: expected menu:new-entry, got null",
+    "tracker.onUpdateReady: expected update:ready, got null"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "endpoints",
+   "hit": 8,
+   "missed": 6,
+   "false": 2,
+   "notes": [
+    "missed https://api.punchclock.example/v3/clients",
+    "missed https://api.punchclock.example/v3/timesheets/current…",
+    "missed https://api.punchclock.example/v3/entries",
+    "missed https://files.punchclock.example/invoices",
+    "missed wss://live.punchclock.example/team/…",
+    "missed https://updates.punchclock.example/feed/stable.json",
+    "false ${…}/feed/stable.json",
+    "false ${…}/team/${…}"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://hooks.punchclock.example/invoice-exported: expected POST"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 4,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "storage keys",
+   "hit": 14,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed localStorage punch.theme",
+    "missed localStorage punch.session",
+    "missed localStorage sidebarWidth"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "electron-store ui.locale: expected read+write, got read",
+    "electron-store ui.currency: expected read+write, got read"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "IPC channels",
+   "hit": 18,
+   "missed": 6,
+   "false": 0,
+   "notes": [
+    "missed projects:list",
+    "missed projects:create",
+    "missed projects:rename",
+    "missed menu:new-entry",
+    "missed update:ready",
+    "missed theme:changed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 26,
+   "missed": 9,
+   "false": 0,
+   "notes": [
+    "timer:start: sender preload.js missed",
+    "timer:stop: sender preload.js missed",
+    "timer:tick: receiver preload.js missed",
+    "widget:pin: receiver main.js missed",
+    "widget:close: receiver main.js missed",
+    "invoice:export: sender preload.js missed",
+    "invoice:exported: sender main.js missed",
+    "sync:progress: receiver preload.js missed",
+    "config:get-sync: sender preload.js missed"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed main.js sandbox=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "not scored: 1 row(s) with a computed value"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed widget.pin",
+    "missed widget.close",
+    "missed widget.connect",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "bridge member channel",
+   "hit": 8,
+   "missed": 12,
+   "false": 0,
+   "notes": [
+    "tracker.startTimer: expected timer:start, got null",
+    "tracker.stopTimer: expected timer:stop, got null",
+    "tracker.onTick: expected timer:tick, got null",
+    "tracker.listProjects: expected projects:list, got null",
+    "tracker.createProject: expected projects:create, got null",
+    "tracker.renameProject: expected projects:rename, got null",
+    "tracker.createInvoice: expected invoice:create, got null",
+    "tracker.exportInvoice: expected invoice:export, got null",
+    "tracker.onSyncProgress: expected sync:progress, got null",
+    "tracker.setting: expected config:get-sync, got null",
+    "tracker.onNewEntry: expected menu:new-entry, got null",
+    "tracker.onUpdateReady: expected update:ready, got null"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "endpoints",
+   "hit": 8,
+   "missed": 6,
+   "false": 2,
+   "notes": [
+    "missed https://api.punchclock.example/v3/clients",
+    "missed https://api.punchclock.example/v3/timesheets/current…",
+    "missed https://api.punchclock.example/v3/entries",
+    "missed https://files.punchclock.example/invoices",
+    "missed wss://live.punchclock.example/team/…",
+    "missed https://updates.punchclock.example/feed/stable.json",
+    "false ${…}/feed/stable.json",
+    "false ${…}/team/${…}"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://hooks.punchclock.example/invoice-exported: expected POST"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 4,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "storage keys",
+   "hit": 14,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed localStorage punch.theme",
+    "missed localStorage punch.session",
+    "missed localStorage sidebarWidth"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "electron-store ui.locale: expected read+write, got read",
+    "electron-store ui.currency: expected read+write, got read"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed -widget.close"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 1,
+   "notes": [
+    "missed ~sandbox: false -> true",
+    "missed ~contextIsolation: true -> false",
+    "false -main.js::win::sandbox"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 4,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed +https://api.punchclock.example/v4/clients",
+    "missed +https://api.punchclock.example/v4/timesheets/current",
+    "missed -https://api.punchclock.example/v3/clients",
+    "missed -https://api.punchclock.example/v3/timesheets/current"
+   ]
+  },
+  {
+   "set": "holdout",
+   "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed +electron-store ui.weekStart"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "IPC channels",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 42,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "settings:changed: sender main.js missed",
+    "vault:reveal: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "bridge members",
+   "hit": 21,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed inkwell.listNotes",
+    "missed inkwell.searchNotes",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "bridge member channel",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed https://api.inkwell.example/v1/changelog",
+    "missed https://api.inkwell.example/v1/feedback",
+    "missed https://embed.inkwell.example/oembed…"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 2,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "storage keys",
+   "hit": 6,
+   "missed": 2,
+   "false": 1,
+   "notes": [
+    "missed localStorage inkwell.theme",
+    "missed localStorage inkwell.sidebarWidth",
+    "false localStorage inkwell.${…}"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "IPC channels",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 39,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "settings:changed: sender main.js missed",
+    "plugins:list: receiver main.js missed",
+    "vault:list: receiver main.js missed",
+    "vault:search: receiver main.js missed",
+    "vault:reveal: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "bridge members",
+   "hit": 21,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed inkwell.listNotes",
+    "missed inkwell.searchNotes",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "endpoints",
+   "hit": 2,
+   "missed": 7,
+   "false": 3,
+   "notes": [
+    "missed https://plugins.inkwell.example/registry.json",
+    "missed https://cdn.inkwell.example/plugins/…",
+    "missed https://api.inkwell.example/v1/changelog",
+    "missed https://api.inkwell.example/v1/feedback",
+    "missed https://sync.inkwell.example/v2/vaults/…",
+    "missed https://embed.inkwell.example/oembed…",
+    "missed wss://collab.inkwell.example/rooms/…",
+    "false ${…}/${…}/${…}/plugin.zip",
+    "false ${…}/vaults/${…}/files/${…}",
+    "false ${…}/rooms/${…}"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 3,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed localStorage inkwell.theme",
+    "missed localStorage inkwell.sidebarWidth",
+    "missed localStorage inkwell.recent",
+    "missed indexedDB inkwell-search"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "IPC channels",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 39,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "settings:changed: sender main.js missed",
+    "plugins:list: receiver main.js missed",
+    "vault:list: receiver main.js missed",
+    "vault:search: receiver main.js missed",
+    "vault:reveal: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "window settings",
+   "hit": 6,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "bridge members",
+   "hit": 21,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed inkwell.listNotes",
+    "missed inkwell.searchNotes",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "bridge member channel",
+   "hit": 21,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "endpoints",
+   "hit": 2,
+   "missed": 7,
+   "false": 3,
+   "notes": [
+    "missed https://plugins.inkwell.example/registry.json",
+    "missed https://cdn.inkwell.example/plugins/…",
+    "missed https://api.inkwell.example/v1/changelog",
+    "missed https://api.inkwell.example/v1/feedback",
+    "missed https://sync.inkwell.example/v2/vaults/…",
+    "missed https://embed.inkwell.example/oembed…",
+    "missed wss://collab.inkwell.example/rooms/…",
+    "false ${…}/${…}/${…}/plugin.zip",
+    "false ${…}/vaults/${…}/files/${…}",
+    "false ${…}/rooms/${…}"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 4,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed localStorage inkwell.theme",
+    "missed localStorage inkwell.sidebarWidth",
+    "missed localStorage inkwell.recent",
+    "missed indexedDB inkwell-search"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed +inkwell.renameNote"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 2,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed +https://api.inkwell.example/v2/changelog",
+    "missed -https://api.inkwell.example/v1/changelog"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "IPC channels",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 35,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "playlists:list: receiver main.js missed",
+    "playlists:save: receiver main.js missed",
+    "settings:get: receiver main.js missed",
+    "settings:set: receiver main.js missed",
+    "mini:get-artwork: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "window settings",
+   "hit": 12,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "bridge members",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "bridge member channel",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "endpoints",
+   "hit": 3,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed https://api.cadence.example/v2/me/recommendations",
+    "missed https://api.cadence.example/v2/artists/…",
+    "missed https://api.cadence.example/v2/scrobbles",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://lyrics.cadence.example/v1/search?…",
+    "missed https://updates.cadence.example/stable/latest.json"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "IPC channels",
+   "hit": 12,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed playlists:list",
+    "missed playlists:save",
+    "missed settings:get",
+    "missed settings:set",
+    "missed settings:changed",
+    "missed player:state-changed",
+    "missed player:state",
+    "missed mini:get-artwork"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 24,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "bridge members",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 14,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "cadence.listPlaylists: expected playlists:list, got null",
+    "cadence.savePlaylist: expected playlists:save, got null",
+    "cadence.reportState: expected player:state-changed, got null",
+    "cadence.getSettings: expected settings:get, got null",
+    "cadence.updateSettings: expected settings:set, got null",
+    "cadence.onSettingsChanged: expected settings:changed, got null",
+    "mini.onState: expected player:state, got null",
+    "mini.getArtwork: expected mini:get-artwork, got null"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "endpoints",
+   "hit": 1,
+   "missed": 9,
+   "false": 2,
+   "notes": [
+    "missed https://api.cadence.example/v2/me/recommendations",
+    "missed https://api.cadence.example/v2/artists/…",
+    "missed https://api.cadence.example/v2/scrobbles",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/live/friends",
+    "missed wss://together.cadence.example/socket?session=…",
+    "missed https://lyrics.cadence.example/v1/search?…",
+    "missed https://updates.cadence.example/stable/latest.json",
+    "false ${…}/live/friends",
+    "false ${…}?session=${…}"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "IPC channels",
+   "hit": 12,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed playlists:list",
+    "missed playlists:save",
+    "missed settings:get",
+    "missed settings:set",
+    "missed settings:changed",
+    "missed player:state-changed",
+    "missed player:state",
+    "missed mini:get-artwork"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 24,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "window settings",
+   "hit": 7,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "bridge members",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "bridge member channel",
+   "hit": 14,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "cadence.listPlaylists: expected playlists:list, got null",
+    "cadence.savePlaylist: expected playlists:save, got null",
+    "cadence.reportState: expected player:state-changed, got null",
+    "cadence.getSettings: expected settings:get, got null",
+    "cadence.updateSettings: expected settings:set, got null",
+    "cadence.onSettingsChanged: expected settings:changed, got null",
+    "mini.onState: expected player:state, got null",
+    "mini.getArtwork: expected mini:get-artwork, got null"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "endpoints",
+   "hit": 1,
+   "missed": 9,
+   "false": 2,
+   "notes": [
+    "missed https://api.cadence.example/v2/me/recommendations",
+    "missed https://api.cadence.example/v2/artists/…",
+    "missed https://api.cadence.example/v2/scrobbles",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/me/likes/…",
+    "missed https://api.cadence.example/v2/live/friends",
+    "missed wss://together.cadence.example/socket?session=…",
+    "missed https://lyrics.cadence.example/v1/search?…",
+    "missed https://updates.cadence.example/stable/latest.json",
+    "false ${…}/live/friends",
+    "false ${…}?session=${…}"
+   ]
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "storage keys",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/empty.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error malformed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/header-cut.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error malformed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/header-length-lies.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "error malformed"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/contents-cut.asar",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "flagged (package_json_invalid, js_files_skipped, ipc_channel_unresolved)"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/load-commands-cut.macho-arm64",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "flagged (load_command_invalid, file_truncated)"
+   ]
+  },
+  {
+   "set": "damaged",
+   "input": "damaged/body-cut.macho-arm64",
+   "class": "damaged input",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "flagged (file_truncated)"
+   ]
+  }
+ ]
+}

@@ -17,6 +17,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  callersOf,
   compareItems,
   detectProviders,
   loadCallGraph,
@@ -69,7 +70,35 @@ describe("flow 1: Electron app", () => {
       "electron.ipc",
       "electron.context-bridge",
       "electron.preload",
+      "js.endpoints",
+      "js.storage",
     ]);
+    // endpoints and storage keys of an archive, each with the file, line and column it was read at
+    const endpoints = (await session.collection(target.id, "endpoints")).items as Array<{
+      value: string | null;
+      kind: string;
+      evidence: string;
+      file: string;
+      line: number;
+      column: number;
+    }>;
+    expect(endpoints.map((e) => `${e.kind} ${e.value} [${e.evidence}]`)).toContain(
+      "fetch https://telemetry.notesdesk.example/collect [literal]",
+    );
+    for (const e of endpoints) {
+      expect(e.file).toBe("renderer/app.bundle.js");
+      expect(e.line).toBeGreaterThan(0);
+      expect(e.column).toBeGreaterThan(0);
+    }
+    expect(
+      ((await session.collection(target.id, "storage")).items as Array<{ value: string }>).map(
+        (s) => s.value,
+      ),
+    ).toEqual(["notesdesk.token"]);
+    // a small app is read completely, and says so
+    expect(
+      analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null,
+    ).toMatchObject({ total: 4, scanned: 4, remaining: 0, complete: true });
     // every location names a file and line whose text really is the evidence
     const archive = openAsar(new Uint8Array(readFileSync(v14)));
     const lineOf = (location: string): string => {
@@ -208,10 +237,12 @@ describe.skipIf(!compiler)("flow 2: native binary compiled here", () => {
       // not reachable is a definite answer on a complete graph …
       const reverse = tracePath(graph, system, main.node!);
       expect(reverse.status).toBe("not_reached");
-      // rizin's graph includes tail calls; radare2 says that it cannot see them
-      expect(reverse.limitations.map((l) => l.code)).toEqual(
-        engine.name === "radare2" ? ["callgraph_tail_calls_unknown"] : [],
-      );
+      // both engines' graphs include tail calls (rizin lists them per function, radare2 as
+      // jump references), so the answer needs no reservation
+      expect(
+        reverse.limitations.map((l) => l.code),
+        engine.name,
+      ).toEqual([]);
       // … and an explicit "cannot tell" on a partial one
       const partial = tracePath({ ...graph, truncated: true }, system, main.node!);
       expect(partial.limitations.map((l) => l.code)).toContain("trace_graph_truncated");
@@ -270,6 +301,84 @@ describe.skipIf(!compiler)("flow 2: native binary compiled here", () => {
     expect(changed.cached).toBe(false);
     expect(resolveNode(changed.graph, "read_config").node).toBeNull();
     expect(resolveNode(graph, "read_config").node).not.toBeNull();
+  });
+
+  it("answers the corpus's call-path questions through every installed engine, tail calls included", async () => {
+    // corpus/dev/native/calls.c at -O2: main jumps to dispatch, dispatch jumps to run_command,
+    // run_command calls system. Which calls are jumps was read from otool, not from an engine.
+    const binary = join(root, "corpus", "built", "dev", "calls.O2.macho-arm64");
+    for (const engine of engines) {
+      const { graph } = await loadCallGraph({ targetPath: binary, provider: engine.name }, engines);
+      const node = (name: string) => {
+        const hit = [name, `_${name}`, `sym._${name}`, `sym.imp.${name}`]
+          .map((spec) => resolveNode(graph, spec).node)
+          .find(Boolean);
+        expect(hit, `${engine.name}: ${name}`).toBeTruthy();
+        return hit!;
+      };
+      const found = tracePath(graph, node("main"), node("system"));
+      expect(found.status, engine.name).toBe("found");
+      expect(found.path, engine.name).toEqual([
+        node("main").id,
+        node("dispatch").id,
+        node("run_command").id,
+        node("system").id,
+      ]);
+      // puts is used only by a function nobody calls: no path, and stated without reservation
+      const none = tracePath(graph, node("main"), node("puts"));
+      expect(none.status, engine.name).toBe("not_reached");
+      expect(none.limitations, engine.name).toEqual([]);
+      expect(tracePath(graph, node("parse"), node("system")).status, engine.name).toBe(
+        "not_reached",
+      );
+      expect(callersOf(graph, node("run_command").id), engine.name).toEqual([node("dispatch").id]);
+      expect(callersOf(graph, node("unused_helper").id), engine.name).toEqual([]);
+    }
+    if (engines.length === 0)
+      console.log("SKIPPED (no engine installed): corpus call paths were not verified");
+    // Ghidra is one of the three supported engines; when it is not installed that is said here
+    // rather than passed over.
+    const ghidra = (await detectProviders()).find((p) => p.name === "ghidra");
+    if (!ghidra?.available)
+      console.log("NOT RUN (Ghidra is not installed): Ghidra was not verified against the corpus");
+  });
+
+  it("stops a real engine at the timeout and refuses what an engine cannot do", async () => {
+    if (engines.length === 0) {
+      console.log("SKIPPED (no engine installed): timeout with a real engine was not verified");
+      return;
+    }
+    const engine = engines[0]!;
+    const subject = join(work, "timeout-subject");
+    copyFileSync(join(root, "corpus", "built", "dev", "calls.O0.macho-arm64"), subject);
+    const started = performance.now();
+    await expect(
+      runProvider(
+        { targetPath: subject, provider: engine.name, operation: "functions", timeoutMs: 1 },
+        engines,
+      ),
+    ).rejects.toThrow(/exceeded 1 ms/);
+    expect(performance.now() - started).toBeLessThan(5000);
+    // the engine process is gone, not left running in the background
+    await new Promise((done) => setTimeout(done, 300));
+    const left = spawnSync("pgrep", ["-f", subject], { encoding: "utf8" }).stdout.trim();
+    expect(left, "an engine process outlived its timeout").toBe("");
+    // the same request works with a normal limit: the timeout left nothing broken behind
+    const functions = await runProvider(
+      { targetPath: subject, provider: engine.name, operation: "functions" },
+      engines,
+    );
+    expect(JSON.stringify(functions.result)).toContain("main");
+    await expect(
+      runProvider(
+        { targetPath: subject, provider: engine.name, operation: "teleport" as "functions" },
+        engines,
+      ),
+    ).rejects.toThrow(/does not support teleport/);
+    const absent = engines.map((e) => ({ ...e, available: false }));
+    await expect(
+      runProvider({ targetPath: subject, provider: engine.name, operation: "functions" }, absent),
+    ).rejects.toThrow(/not installed or not on PATH/);
   });
 });
 
@@ -454,7 +563,7 @@ describe("flow 4: a coding agent over MCP stdio", () => {
         analysis: { findings: unknown[] };
       };
       expect(file.unknowns).toHaveLength(1);
-      expect(file.analysis.findings).toHaveLength(5);
+      expect(file.analysis.findings).toHaveLength(7);
       expect((await call("hexvero_export", { targetId: id, path: out })).ok).toBe(false);
 
       // errors are structured, never a crash
