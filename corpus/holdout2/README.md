@@ -34,11 +34,11 @@ License: MIT, written for this corpus. The code is original and copies no real p
 
 ## Cases
 
-| Case                                  | Sources                                                               | Built inputs (`corpus/built/holdout2/`)                                                       |
-| ------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `music-player` (kind `electron`)      | `music-player/src/`                                                   | `music-player.plain.asar`, `music-player.bundled.asar`, `music-player.minified.asar`          |
-| `markdown-editor` (kind `electron`)   | `markdown-editor/src/`                                                | `markdown-editor.plain.asar`, `markdown-editor.bundled.asar`, `markdown-editor.minified.asar` |
-| `markdown-editor-v2` (kind `compare`) | `markdown-editor-v2/changes.json`, applied to `markdown-editor/src/`  | `markdown-editor-v2.plain.asar`                                                               |
+| Case                                  | Sources                                                              | Built inputs (`corpus/built/holdout2/`)                                                       |
+| ------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `music-player` (kind `electron`)      | `music-player/src/`                                                  | `music-player.plain.asar`, `music-player.bundled.asar`, `music-player.minified.asar`          |
+| `markdown-editor` (kind `electron`)   | `markdown-editor/src/`                                               | `markdown-editor.plain.asar`, `markdown-editor.bundled.asar`, `markdown-editor.minified.asar` |
+| `markdown-editor-v2` (kind `compare`) | `markdown-editor-v2/changes.json`, applied to `markdown-editor/src/` | `markdown-editor-v2.plain.asar`                                                               |
 
 **music-player** is "Cadence", a desktop music player with a main window, a mini player and an
 about box. `main.js`, `preload.js` and the helper modules are written as `tsc` emits TypeScript
@@ -213,11 +213,11 @@ settings and to prefix strings in the compare lists is taken from the earlier se
 
 ## Toolchain
 
-| Tool           | Version                            |
-| -------------- | ---------------------------------- |
-| node           | v25.2.1                            |
-| esbuild        | 0.28.2 (pinned in `package.json`)  |
-| @electron/asar | 4.3.1 (pinned in `package.json`)   |
+| Tool           | Version                           |
+| -------------- | --------------------------------- |
+| node           | v25.2.1                           |
+| esbuild        | 0.28.2 (pinned in `package.json`) |
+| @electron/asar | 4.3.1 (pinned in `package.json`)  |
 
 Build from the repository root:
 

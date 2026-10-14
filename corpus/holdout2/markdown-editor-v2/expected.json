@@ -26,8 +26,14 @@
         "why": "only the settings window's webPreferences literal changes. The preview pane keeps sandbox: true, the editor window's sandbox is a run-time condition in both versions, and every other setting only moves"
       },
       "endpoints": {
-        "added": ["https://api.inkwell.example/v2/changelog", "https://sync.inkwell.example/v3/vaults/"],
-        "removed": ["https://api.inkwell.example/v1/changelog", "https://sync.inkwell.example/v2/vaults/"],
+        "added": [
+          "https://api.inkwell.example/v2/changelog",
+          "https://sync.inkwell.example/v3/vaults/"
+        ],
+        "removed": [
+          "https://api.inkwell.example/v1/changelog",
+          "https://sync.inkwell.example/v2/vaults/"
+        ],
         "changed": [],
         "why": "the literal given to http.getJson in loadChangelog is replaced; the constant SYNC_BASE in config/endpoints.js moves to v3, and with it the PUT request of syncNote (a known leading part followed by run-time text). The other three requests to api.inkwell.example (feedback, account, session) are written out as literals and stay on v1; BETA_SYNC_BASE is untouched and requested in neither version"
       },

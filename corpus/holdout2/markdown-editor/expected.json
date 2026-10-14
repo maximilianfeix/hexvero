@@ -328,8 +328,18 @@
         { "api": "inkwell", "member": "setTitle", "channel": "app:set-title" },
         { "api": "inkwell", "member": "setDirty", "channel": "editor:dirty" },
         { "api": "inkwell", "member": "updatePreview", "channel": "preview:update" },
-        { "api": "inkwell", "member": "onScrollTo", "channel": "editor:scroll-to", "why": "through on()" },
-        { "api": "inkwell", "member": "onMenuAction", "channel": "menu:action", "why": "through on()" },
+        {
+          "api": "inkwell",
+          "member": "onScrollTo",
+          "channel": "editor:scroll-to",
+          "why": "through on()"
+        },
+        {
+          "api": "inkwell",
+          "member": "onMenuAction",
+          "channel": "menu:action",
+          "why": "through on()"
+        },
         {
           "api": "inkwell",
           "member": "onConfirmClose",

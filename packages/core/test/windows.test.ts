@@ -344,9 +344,7 @@ describe("window settings as written, computed, or absent", () => {
     // The argument's `sandbox: true` is laid over the helper's value. The helper also spreads
     // its parameter after `contextIsolation: false`; its only call passes `{ sandbox: true }`,
     // which does not touch that key, so it stays false.
-    expect(info.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual([
-      "true false",
-    ]);
+    expect(info.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual(["true false"]);
     // with a caller whose argument cannot be read, the key is not known
     const opaque = analyze(
       "function base (extra) { return { sandbox: false, contextIsolation: false, ...extra } }\nconst w = new BrowserWindow({ webPreferences: base({ sandbox: true }) });\nbase(userOptions);",

@@ -194,9 +194,24 @@
           "file": "main.js",
           "why": "main window (createMainWindow): a webPreferences literal in new electron_1.BrowserWindow({...}); PRELOAD is node_path_1.default.join(__dirname, \"preload.js\")"
         },
-        { "key": "contextIsolation", "value": true, "file": "main.js", "why": "main window, in the literal" },
-        { "key": "nodeIntegration", "value": false, "file": "main.js", "why": "main window, in the literal" },
-        { "key": "sandbox", "value": false, "file": "main.js", "why": "main window, in the literal" },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "why": "main window, in the literal"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "why": "main window, in the literal"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "why": "main window, in the literal"
+        },
         {
           "key": "preload",
           "value": "preload.js",
@@ -283,7 +298,12 @@
           "channel": "library:get-tracks",
           "why": "the API object `api` is built by spreading four objects (libraryApi, playerApi, settingsApi, windowApi) and adding two members; it is exposed with electron_1.contextBridge.exposeInMainWorld(\"cadence\", api). getTracks comes from libraryApi"
         },
-        { "api": "cadence", "member": "addFolder", "channel": "library:add-folder", "why": "from libraryApi" },
+        {
+          "api": "cadence",
+          "member": "addFolder",
+          "channel": "library:add-folder",
+          "why": "from libraryApi"
+        },
         {
           "api": "cadence",
           "member": "onScanProgress",
@@ -302,17 +322,42 @@
           "channel": "playlists:save",
           "why": "from libraryApi; through ipc_1.Channels.PlaylistsSave"
         },
-        { "api": "cadence", "member": "exportPlaylist", "channel": "playlists:export", "why": "from libraryApi" },
+        {
+          "api": "cadence",
+          "member": "exportPlaylist",
+          "channel": "playlists:export",
+          "why": "from libraryApi"
+        },
         {
           "api": "cadence",
           "member": "reportState",
           "channel": "player:state-changed",
           "why": "from playerApi; ipcRenderer.send through ipc_1.PLAYER_STATE_CHANGED"
         },
-        { "api": "cadence", "member": "onMediaKey", "channel": "media:key", "why": "from playerApi" },
-        { "api": "cadence", "member": "onCommand", "channel": "player:command", "why": "from playerApi" },
-        { "api": "cadence", "member": "fetchLyrics", "channel": "lyrics:fetch", "why": "from playerApi" },
-        { "api": "cadence", "member": "toggleMiniPlayer", "channel": "mini:toggle", "why": "from playerApi" },
+        {
+          "api": "cadence",
+          "member": "onMediaKey",
+          "channel": "media:key",
+          "why": "from playerApi"
+        },
+        {
+          "api": "cadence",
+          "member": "onCommand",
+          "channel": "player:command",
+          "why": "from playerApi"
+        },
+        {
+          "api": "cadence",
+          "member": "fetchLyrics",
+          "channel": "lyrics:fetch",
+          "why": "from playerApi"
+        },
+        {
+          "api": "cadence",
+          "member": "toggleMiniPlayer",
+          "channel": "mini:toggle",
+          "why": "from playerApi"
+        },
         {
           "api": "cadence",
           "member": "getSettings",
@@ -331,9 +376,24 @@
           "channel": "settings:changed",
           "why": "from settingsApi; through ipc_1.Channels.SettingsChanged"
         },
-        { "api": "cadence", "member": "minimize", "channel": "window:minimize", "why": "from windowApi" },
-        { "api": "cadence", "member": "toggleMaximize", "channel": "window:toggle-maximize", "why": "from windowApi" },
-        { "api": "cadence", "member": "getVersion", "channel": "app:get-version", "why": "from windowApi" },
+        {
+          "api": "cadence",
+          "member": "minimize",
+          "channel": "window:minimize",
+          "why": "from windowApi"
+        },
+        {
+          "api": "cadence",
+          "member": "toggleMaximize",
+          "channel": "window:toggle-maximize",
+          "why": "from windowApi"
+        },
+        {
+          "api": "cadence",
+          "member": "getVersion",
+          "channel": "app:get-version",
+          "why": "from windowApi"
+        },
         {
           "api": "cadence",
           "member": "platform",
