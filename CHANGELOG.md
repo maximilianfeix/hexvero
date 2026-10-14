@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-14
+
 ### Accuracy
 
 - esbuild's ES-module interop in CommonJS bundles is read: names declared bare at the top and

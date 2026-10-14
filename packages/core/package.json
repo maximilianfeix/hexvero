@@ -1,6 +1,6 @@
 {
   "name": "@hexvero/core",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Zero-dependency static analyzers for binaries, apps and web bundles.",
   "keywords": [
     "hexvero",

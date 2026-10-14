@@ -1,6 +1,6 @@
 {
   "name": "hexvero",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Static, execution-free first look at binaries, Electron apps, APKs and archives: an MCP server with 15 tools and a skill for evidence-backed investigations.",
   "author": { "name": "Maximilian Feix", "url": "https://github.com/maximilianfeix" },
   "homepage": "https://github.com/maximilianfeix/hexvero",
