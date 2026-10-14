@@ -413,12 +413,12 @@ describe("channels named by a compiled TypeScript enum", () => {
   });
 
   it("resolves nothing through an enum name that the file also binds to something else", () => {
-    // a local of the same name is a different object
+    // a local of the same name is a different object: its own value, never the enum's
     expect(
       channel(
         'function f () { const Channels = { SAVE: "other" }; ipcMain.on(Channels.SAVE, g); }',
       ),
-    ).toEqual(["main/main.js ipcMain.on null 3"]);
+    ).toEqual(["main/main.js ipcMain.on other 3 resolved"]);
     expect(channel("function f (Channels) { ipcMain.on(Channels.SAVE, g); }")).toEqual([
       "main/main.js ipcMain.on null 3",
     ]);

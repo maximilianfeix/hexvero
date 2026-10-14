@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "bdb69b6+uncommitted",
+  "commit": "60722a4+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -1126,8 +1126,7 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -1286,26 +1285,6 @@
     ],
     "webPreferences": [
      {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
       "key": "nodeIntegration",
       "value": true,
       "file": "main.js"
@@ -1323,6 +1302,26 @@
      {
       "key": "webSecurity",
       "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
       "file": "main.js"
      }
     ],
@@ -1553,8 +1552,7 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -1713,26 +1711,6 @@
     ],
     "webPreferences": [
      {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
       "key": "nodeIntegration",
       "value": true,
       "file": "main.js"
@@ -1750,6 +1728,26 @@
      {
       "key": "webSecurity",
       "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
       "file": "main.js"
      }
     ],
@@ -4731,6 +4729,11 @@
       "file": "main.js"
      },
      {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
       "key": "contextIsolation",
       "value": true,
       "file": "main.js"
@@ -4738,6 +4741,21 @@
      {
       "key": "sandbox",
       "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
       "file": "main.js"
      }
     ],
@@ -5210,6 +5228,11 @@
       "file": "main.js"
      },
      {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
       "key": "contextIsolation",
       "value": true,
       "file": "main.js"
@@ -5217,6 +5240,21 @@
      {
       "key": "sandbox",
       "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
       "file": "main.js"
      }
     ],
@@ -5668,12 +5706,17 @@
      },
      {
       "key": "nodeIntegration",
-      "value": null,
+      "value": false,
       "file": "main.js"
      },
      {
       "key": "sandbox",
-      "value": false,
+      "value": null,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
       "file": "main.js"
      },
      {
@@ -5682,13 +5725,8 @@
       "file": "main.js"
      },
      {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
       "key": "sandbox",
-      "value": null,
+      "value": false,
       "file": "main.js"
      }
     ],
@@ -6004,7 +6042,7 @@
       "main.js::win::sandbox"
      ],
      "changed": [],
-     "relocated": 2,
+     "relocated": 6,
      "unchanged": 0
     },
     "endpoints": {
@@ -6037,10 +6075,9 @@
    "electron": {
     "complete": true,
     "limitations": [
+     "webpreferences_unattached",
      "context_bridge_members_unreadable",
-     "ipc_channel_unresolved",
-     "window_options_unresolved",
-     "webpreferences_computed"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -6147,7 +6184,9 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "preview:render",
@@ -6177,7 +6216,41 @@
       ]
      },
      {
+      "channel": "settings:changed",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "settings:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "vault:list",
       "senders": [
        "preload.js"
       ],
@@ -6191,6 +6264,15 @@
        "preload.js"
       ],
       "receivers": []
+     },
+     {
+      "channel": "vault:search",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
      }
     ],
     "webPreferences": [
@@ -6205,43 +6287,28 @@
       "file": "main.js"
      },
      {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
       "key": "preload",
       "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": null,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": false,
       "file": "main.js"
      }
     ],
@@ -6319,17 +6386,17 @@
      {
       "api": "inkwell",
       "member": "getSettings",
-      "channel": null
+      "channel": "settings:get"
      },
      {
       "api": "inkwell",
       "member": "setSetting",
-      "channel": null
+      "channel": "settings:set"
      },
      {
       "api": "inkwell",
       "member": "onSettingsChanged",
-      "channel": null
+      "channel": "settings:changed"
      },
      {
       "api": "preview",
@@ -6457,10 +6524,9 @@
    "electron": {
     "complete": true,
     "limitations": [
+     "webpreferences_unattached",
      "context_bridge_members_unreadable",
-     "ipc_channel_unresolved",
-     "window_options_unresolved",
-     "webpreferences_computed"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -6597,6 +6663,22 @@
       ]
      },
      {
+      "channel": "settings:changed",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "settings:open",
       "senders": [
        "preload.js"
@@ -6606,7 +6688,30 @@
       ]
      },
      {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "vault:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "vault:reveal",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "vault:search",
       "senders": [
        "preload.js"
       ],
@@ -6625,43 +6730,28 @@
       "file": "main.js"
      },
      {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
       "key": "preload",
       "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": null,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": false,
       "file": "main.js"
      }
     ],
@@ -6739,17 +6829,17 @@
      {
       "api": "inkwell",
       "member": "getSettings",
-      "channel": null
+      "channel": "settings:get"
      },
      {
       "api": "inkwell",
       "member": "setSetting",
-      "channel": null
+      "channel": "settings:set"
      },
      {
       "api": "inkwell",
       "member": "onSettingsChanged",
-      "channel": null
+      "channel": "settings:changed"
      },
      {
       "api": "preview",
@@ -6850,10 +6940,9 @@
    "electron": {
     "complete": true,
     "limitations": [
+     "webpreferences_unattached",
      "context_bridge_members_unreadable",
-     "ipc_channel_unresolved",
-     "window_options_unresolved",
-     "webpreferences_computed"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -6990,6 +7079,22 @@
       ]
      },
      {
+      "channel": "settings:changed",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "settings:open",
       "senders": [
        "preload.js"
@@ -6999,7 +7104,30 @@
       ]
      },
      {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "vault:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "vault:reveal",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "vault:search",
       "senders": [
        "preload.js"
       ],
@@ -7018,16 +7146,6 @@
       "file": "main.js"
      },
      {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": null,
-      "file": "main.js"
-     },
-     {
       "key": "contextIsolation",
       "value": true,
       "file": "main.js"
@@ -7045,16 +7163,6 @@
      {
       "key": "sandbox",
       "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": false,
       "file": "main.js"
      }
     ],
@@ -7132,17 +7240,17 @@
      {
       "api": "inkwell",
       "member": "getSettings",
-      "channel": null
+      "channel": "settings:get"
      },
      {
       "api": "inkwell",
       "member": "setSetting",
-      "channel": null
+      "channel": "settings:set"
      },
      {
       "api": "inkwell",
       "member": "onSettingsChanged",
-      "channel": null
+      "channel": "settings:changed"
      },
      {
       "api": "preview",
@@ -7243,13 +7351,15 @@
    "compare": {
     "ipcChannels": {
      "key": "channel",
-     "added": [],
+     "added": [
+      "vault:rename"
+     ],
      "removed": [
       "app:set-title"
      ],
      "changed": [],
      "relocated": 0,
-     "unchanged": 16
+     "unchanged": 21
     },
     "contextBridge": {
      "key": "api+member",
@@ -7268,7 +7378,7 @@
      "changed": [
       "sandbox: true -> false"
      ],
-     "relocated": 9,
+     "relocated": 6,
      "unchanged": 0
     },
     "endpoints": {
@@ -7299,9 +7409,7 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "context_bridge_members_unreadable",
-     "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -7420,6 +7528,43 @@
       ]
      },
      {
+      "channel": "playlists:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "playlists:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "window:minimize",
       "senders": [
        "preload.js"
@@ -7445,13 +7590,8 @@
       "file": "main.js"
      },
      {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "preload",
-      "value": "preload.js",
+      "key": "nodeIntegration",
+      "value": false,
       "file": "main.js"
      },
      {
@@ -7460,41 +7600,136 @@
       "file": "main.js"
      },
      {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
       "key": "nodeIntegration",
       "value": false,
       "file": "main.js"
      },
      {
-      "key": "sandbox",
-      "value": false,
+      "key": "contextIsolation",
+      "value": true,
       "file": "main.js"
      },
      {
       "key": "sandbox",
       "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
       "file": "main.js"
      }
     ],
     "contextBridge": [
      {
       "api": "cadence",
-      "member": null,
-      "channel": null
+      "member": "getTracks",
+      "channel": "library:get-tracks"
      },
      {
       "api": "cadence",
-      "member": null,
-      "channel": null
+      "member": "addFolder",
+      "channel": "library:add-folder"
      },
      {
       "api": "cadence",
-      "member": null,
-      "channel": null
+      "member": "onScanProgress",
+      "channel": "library:scan-progress"
      },
      {
       "api": "cadence",
-      "member": null,
-      "channel": null
+      "member": "listPlaylists",
+      "channel": "playlists:list"
+     },
+     {
+      "api": "cadence",
+      "member": "savePlaylist",
+      "channel": "playlists:save"
+     },
+     {
+      "api": "cadence",
+      "member": "exportPlaylist",
+      "channel": "playlists:export"
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
+      "channel": "player:state-changed"
+     },
+     {
+      "api": "cadence",
+      "member": "onMediaKey",
+      "channel": "media:key"
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": "player:command"
+     },
+     {
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": "lyrics:fetch"
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": "mini:toggle"
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
+      "channel": "settings:get"
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
+      "channel": "settings:set"
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": "settings:changed"
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": "window:minimize"
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": "window:toggle-maximize"
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": "app:get-version"
      },
      {
       "api": "cadence",
@@ -7634,7 +7869,6 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
      "window_options_unresolved"
     ],
@@ -7760,13 +7994,13 @@
       "file": "main.js"
      },
      {
-      "key": "preload",
-      "value": "preload.js",
+      "key": "sandbox",
+      "value": false,
       "file": "main.js"
      },
      {
-      "key": "contextIsolation",
-      "value": true,
+      "key": "preload",
+      "value": "preload.js",
       "file": "main.js"
      },
      {
@@ -7775,8 +8009,8 @@
       "file": "main.js"
      },
      {
-      "key": "sandbox",
-      "value": false,
+      "key": "contextIsolation",
+      "value": true,
       "file": "main.js"
      },
      {
@@ -7788,23 +8022,88 @@
     "contextBridge": [
      {
       "api": "cadence",
-      "member": null,
+      "member": "getTracks",
+      "channel": "library:get-tracks"
+     },
+     {
+      "api": "cadence",
+      "member": "addFolder",
+      "channel": "library:add-folder"
+     },
+     {
+      "api": "cadence",
+      "member": "onScanProgress",
+      "channel": "library:scan-progress"
+     },
+     {
+      "api": "cadence",
+      "member": "listPlaylists",
       "channel": null
      },
      {
       "api": "cadence",
-      "member": null,
+      "member": "savePlaylist",
       "channel": null
      },
      {
       "api": "cadence",
-      "member": null,
+      "member": "exportPlaylist",
+      "channel": "playlists:export"
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
       "channel": null
      },
      {
       "api": "cadence",
-      "member": null,
+      "member": "onMediaKey",
+      "channel": "media:key"
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": "player:command"
+     },
+     {
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": "lyrics:fetch"
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": "mini:toggle"
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
       "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": "window:minimize"
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": "window:toggle-maximize"
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": "app:get-version"
      },
      {
       "api": "cadence",
@@ -7944,7 +8243,6 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
      "window_options_unresolved"
     ],
@@ -8098,23 +8396,88 @@
     "contextBridge": [
      {
       "api": "cadence",
-      "member": null,
+      "member": "getTracks",
+      "channel": "library:get-tracks"
+     },
+     {
+      "api": "cadence",
+      "member": "addFolder",
+      "channel": "library:add-folder"
+     },
+     {
+      "api": "cadence",
+      "member": "onScanProgress",
+      "channel": "library:scan-progress"
+     },
+     {
+      "api": "cadence",
+      "member": "listPlaylists",
       "channel": null
      },
      {
       "api": "cadence",
-      "member": null,
+      "member": "savePlaylist",
       "channel": null
      },
      {
       "api": "cadence",
-      "member": null,
+      "member": "exportPlaylist",
+      "channel": "playlists:export"
+     },
+     {
+      "api": "cadence",
+      "member": "reportState",
       "channel": null
      },
      {
       "api": "cadence",
-      "member": null,
+      "member": "onMediaKey",
+      "channel": "media:key"
+     },
+     {
+      "api": "cadence",
+      "member": "onCommand",
+      "channel": "player:command"
+     },
+     {
+      "api": "cadence",
+      "member": "fetchLyrics",
+      "channel": "lyrics:fetch"
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMiniPlayer",
+      "channel": "mini:toggle"
+     },
+     {
+      "api": "cadence",
+      "member": "getSettings",
       "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "updateSettings",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "onSettingsChanged",
+      "channel": null
+     },
+     {
+      "api": "cadence",
+      "member": "minimize",
+      "channel": "window:minimize"
+     },
+     {
+      "api": "cadence",
+      "member": "toggleMaximize",
+      "channel": "window:toggle-maximize"
+     },
+     {
+      "api": "cadence",
+      "member": "getVersion",
+      "channel": "app:get-version"
      },
      {
       "api": "cadence",

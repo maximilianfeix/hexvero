@@ -651,6 +651,10 @@ export class Constants {
       ) {
         const v = text(tokens[k + 4]);
         if (v !== null && !wrapper) this.exported[tokens[k + 2]!.value] = v;
+        // `exports.Channels = { Save: "doc:save" }`: one entry per `Channels.Save`
+        else if (!wrapper && is(tokens[k + 4], "punct", "{"))
+          for (const [key, entry] of this.object(k + 4))
+            this.exported[`${tokens[k + 2]!.value}.${key}`] = entry;
         else if (!wrapper && is(tokens[k + 4], "ident"))
           this.exportNames.push({ key: tokens[k + 2]!.value, at: k + 4 });
         continue;
@@ -854,6 +858,11 @@ export class Constants {
     return this.sees(k, name) ? (this.imported.get(name) ?? null) : null;
   }
 
+  /** The module a name was bound to with `const NAME = require("…")`, as used at token k. */
+  requireOf(name: string, k?: number): string | null {
+    return this.sees(k, name) ? (this.requires.get(name) ?? null) : null;
+  }
+
   /** A string constant of this file, as used at token k. */
   stringOf(name: string, k?: number): string | null {
     return this.sees(k, name) && !this.reassigned.has(name)
@@ -878,7 +887,7 @@ export class Constants {
   }
 
   /** `key: "text"` pairs at the top level of the object literal that opens at `open`. */
-  private object(open: number): Map<string, string> {
+  private object(open: number, depth = 0): Map<string, string> {
     const table = new Map<string, string>();
     const tokens = this.tokens;
     let d = 0;
@@ -894,6 +903,11 @@ export class Constants {
       }
       if (d !== 1 || !is(tokens[k + 1], "punct", ":")) continue;
       const key = t.type === "ident" ? t.value : text(t);
+      // a nested group: `settings: { get: "settings:get" }` is the entry `settings.get`
+      if (key !== null && is(tokens[k + 2], "punct", "{") && depth < 3) {
+        for (const [inner, v] of this.object(k + 2, depth + 1)) table.set(`${key}.${inner}`, v);
+        continue;
+      }
       const v = text(tokens[k + 2]);
       const after = tokens[k + 3];
       if (key !== null && v !== null && (is(after, "punct", ",") || is(after, "punct", "}")))
@@ -944,9 +958,15 @@ export class Constants {
     if (!t || t.type !== "ident" || !this.sees(k, t.value)) return null;
     const next = tokens[k + 1];
     if (is(next, "punct", ".") && is(tokens[k + 2], "ident")) {
-      const end = tokens[k + 3];
+      // `T.KEY`, or a nested group `T.group.KEY`
+      let last = k + 2;
+      while (is(tokens[last + 1], "punct", ".") && is(tokens[last + 2], "ident") && last < k + 8)
+        last += 2;
+      const end = tokens[last + 1];
       if (!is(end, "punct", ",") && !is(end, "punct", ")")) return null;
-      const property = tokens[k + 2]!.value;
+      const parts: string[] = [];
+      for (let j = k + 2; j <= last; j += 2) parts.push(tokens[j]!.value);
+      const property = parts.join(".");
       if (this.reassigned.has(t.value) || this.reassigned.has(`${t.value}.${property}`))
         return null;
       const value = this.tables.get(t.value)?.get(property);

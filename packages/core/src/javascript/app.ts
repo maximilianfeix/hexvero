@@ -6,7 +6,7 @@ import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
 import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
-import { ExpressionResolver } from "./resolve.js";
+import { ExpressionResolver, type ModuleHost, type Val } from "./resolve.js";
 import {
   ALIAS_TARGETS,
   scanJavaScript,
@@ -147,6 +147,12 @@ export interface WebPreference {
    * the call is not assigned; null where `window` is null. `compare` matches settings by it.
    */
   windowName: string | null;
+  /**
+   * Where the value is written when that is not the window's own constructor call: a defaults
+   * object in another module, read by following the window's options (`resolve.ts`). `file` and
+   * `line` then name the window, so the setting stays with it.
+   */
+  definedIn?: { file: string; line: number };
 }
 
 /**
@@ -634,6 +640,22 @@ function windowRanges(
         named.set(target.value, seen);
         names.set(window, seen === 1 ? target.value : `${target.value}#${seen}`);
       }
+      // `new BrowserWindow(this.options)` with `options = {…}` a field of the class
+      if (
+        tokens[c + 2]?.type === "ident" &&
+        tokens[c + 2]!.value === "this" &&
+        is(c + 3, ".") &&
+        tokens[c + 4]?.type === "ident" &&
+        is(c + 5, ")")
+      ) {
+        const field = objectOf(tokens[c + 4]!.value);
+        if (field !== -1) {
+          follow(tokens[c + 4]!.value, window);
+          add(field, window);
+        } else hide(window, EVERYWHERE);
+        add(c + 1, window);
+        continue;
+      }
       // `new BrowserWindow(options)` with the options object declared elsewhere
       const first = tokens[c + 2];
       if (first?.type === "ident" && is(c + 3, ")")) {
@@ -798,13 +820,22 @@ export function bridgeMembers(
       push(null, null, t.line);
       continue;
     }
-    let start = open + 1;
-    const flush = (end: number): void => {
-      let s = start;
-      start = end + 1;
+    /** One member, from token `from` to `end` (its `,` or `}`), of the object at `objectOpen`. */
+    const readMember = (from: number, end: number, level: number, objectOpen: number): void => {
+      let s = from;
       if (s >= end) return;
       const first = tokens[s]!;
-      if (is(s, "...")) return push(null, null, first.line);
+      if (is(s, "...")) {
+        // `...libraryApi` with `const libraryApi = {…}` in this file: its members, in place
+        const spread = tokens[s + 1];
+        const base =
+          spread?.type === "ident" && s + 2 === end && level < 3 ? objectOf(spread.value) : -1;
+        if (base !== -1 && base !== objectOpen) {
+          if (!walk(base, level + 1)) truncated = true;
+          return;
+        }
+        return push(null, null, first.line);
+      }
       while (
         s + 1 < end &&
         tokens[s]!.type === "ident" &&
@@ -856,22 +887,30 @@ export function bridgeMembers(
         only && refs.length === 1 ? refs[0] : undefined,
       );
     };
-    let depth = 0;
-    let closed = false;
-    for (let k = open; k < tokens.length && budget > 0; k++, budget--) {
-      const p = tokens[k]!;
-      if (p.type !== "punct") continue;
-      if (p.value === "{" || p.value === "(" || p.value === "[") depth++;
-      else if (p.value === "}" || p.value === ")" || p.value === "]") {
-        depth--;
-        if (depth === 0) {
-          flush(k);
-          closed = true;
-          break;
-        }
-      } else if (p.value === "," && depth === 1) flush(k);
-    }
-    if (!closed) truncated = true;
+    /** Walks the members of the object literal at `objectOpen`; spreads of named objects inside. */
+    const walk = (objectOpen: number, level: number): boolean => {
+      let start = objectOpen + 1;
+      const flush = (end: number): void => {
+        const from = start;
+        start = end + 1;
+        readMember(from, end, level, objectOpen);
+      };
+      let depth = 0;
+      for (let k = objectOpen; k < tokens.length && budget > 0; k++, budget--) {
+        const p = tokens[k]!;
+        if (p.type !== "punct") continue;
+        if (p.value === "{" || p.value === "(" || p.value === "[") depth++;
+        else if (p.value === "}" || p.value === ")" || p.value === "]") {
+          depth--;
+          if (depth === 0) {
+            flush(k);
+            return true;
+          }
+        } else if (p.value === "," && depth === 1) flush(k);
+      }
+      return false;
+    };
+    if (!walk(open, 0)) truncated = true;
     // An object put together in steps: `api.onChange = (fn) => …` after `const api = {…}`.
     const objectName =
       simple && tokens[at + 2]?.type === "ident" && is(at + 3, ")") ? tokens[at + 2]!.value : null;
@@ -900,8 +939,7 @@ export function bridgeMembers(
               d--;
             } else if (p.value === ";" && d === 0) break;
           }
-          start = k + 2;
-          flush(end);
+          readMember(k + 2, end, 0, -1);
         }
     }
   }
@@ -1350,6 +1388,59 @@ export function plannedReads(
   return out;
 }
 
+/** Index of the token that starts at a source offset, by binary search; -1 if none does. */
+function tokenAtOffset(tokens: Token[], offset: number): number {
+  let lo = 0;
+  let hi = tokens.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const start = tokens[mid]!.start;
+    if (start === offset) return mid;
+    if (start < offset) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return -1;
+}
+
+/**
+ * The settings an evaluated options object gives a window: literal values with where they are
+ * written, and the keys that cannot be read (null values, or not listed in an open object).
+ * Null when the options or their webPreferences are not known at all.
+ */
+function optionSettings(options: Val | null): {
+  settings: Array<{ key: string; value: string | boolean; src: { file: string; line: number } }>;
+  unknown: Set<string>;
+} | null {
+  if (options?.kind !== "obj") return null;
+  const unknown = new Set<string>();
+  const settings: Array<{
+    key: string;
+    value: string | boolean;
+    src: { file: string; line: number };
+  }> = [];
+  const keys = ["preload", ...BOOLEAN_KEYS];
+  const prefs = options.props.has("webPreferences")
+    ? options.props.get("webPreferences")
+    : options.open
+      ? null
+      : ({ kind: "undef" } as const);
+  if (prefs === null || prefs === undefined) return null;
+  if (prefs.kind === "undef") return { settings, unknown };
+  if (prefs.kind !== "obj") return null;
+  for (const key of keys) {
+    if (!prefs.props.has(key)) {
+      if (prefs.open) unknown.add(key);
+      continue;
+    }
+    const v = prefs.props.get(key) ?? null;
+    if (v?.kind === "bool" && key !== "preload") settings.push({ key, value: v.value, src: v.src });
+    else if (v?.kind === "str" && key === "preload" && v.values.length === 1 && v.src)
+      settings.push({ key, value: v.values[0]!.replace(/^[\\/]+/, ""), src: v.src });
+    else if (v?.kind !== "undef") unknown.add(key);
+  }
+  return { settings, unknown };
+}
+
 /** A setting written as `key: value` in an options object, at a source offset. */
 type SettingAt = {
   key: Exclude<PreferenceKey, "preload">;
@@ -1706,6 +1797,37 @@ export function analyzeJavaScriptTree(
   let runBytes = 0;
   let taken = 0;
 
+  // Modules read again for following window options across files, each tokenized once.
+  const modulesRead = new Map<string, { tokens: Token[]; resolver: ExpressionResolver } | null>();
+  const host: ModuleHost = {
+    load: (from, specifier) => {
+      const target = resolveSpecifier(from, specifier, known);
+      if (!target) return null;
+      if (!modulesRead.has(target)) {
+        try {
+          modulesRead.set(target, moduleResolver(target, decode(tree.read(target, maxFileBytes))));
+        } catch {
+          modulesRead.set(target, null);
+        }
+      }
+      return modulesRead.get(target)?.resolver ?? null;
+    },
+  };
+  const moduleResolver = (
+    path: string,
+    text: string,
+  ): { tokens: Token[]; resolver: ExpressionResolver } => {
+    const cached = modulesRead.get(path);
+    if (cached) return cached;
+    const { tokens } = tokenize(text);
+    const made = {
+      tokens,
+      resolver: new ExpressionResolver(tokens, new Constants(tokens), path, host),
+    };
+    modulesRead.set(path, made);
+    return made;
+  };
+
   for (const file of todo) {
     if (taken >= runFiles) break;
     // Over the budget of this run: the file stays unread and a continued scan takes it.
@@ -1818,6 +1940,8 @@ export function analyzeJavaScriptTree(
     // `BrowserWindow`. A payment SDK's `{ sandbox: false }` in a renderer file is not Electron's.
     // Where the options of a window could be located in the code (`ranges`), a setting counts
     // only inside them. Only a file where none could be located falls back to nearness.
+    /** Lines of `webPreferences` objects no located window takes (see windowsOf). */
+    const unattached = new Set<number>();
     const windowsOf = (
       index: number,
     ): Array<{
@@ -1848,6 +1972,11 @@ export function analyzeJavaScriptTree(
           if (best) break;
         }
         if (!best) return [];
+        // A `webPreferences: {…}` that no window of this file takes, in a file whose windows
+        // were located (a table of refused settings, a manifest check): not a window's setting.
+        // It is named in a limitation instead, so it is not lost.
+        if (best.window === null && ranges.some((r) => r.window !== null))
+          unattached.add(lineAt(best.start));
         const { start, end } = best;
         const same = ranges.filter((r) => r.start === start && r.end === end);
         // Where the write takes effect in the window's own options, at two levels.
@@ -1954,6 +2083,72 @@ export function analyzeJavaScriptTree(
           })
         )
           break settings;
+    // Windows whose options could not be followed by ranges: evaluate the options expression,
+    // across modules if need be. What it reads replaces the rows of that window; keys it cannot
+    // read stay computed.
+    const evaluated = new Map<number, Set<string>>();
+    const opaque = (located as WindowRanges | null)?.opaque;
+    if (opaque?.size) {
+      const own = moduleResolver(file.path, source);
+      const tokens = own.tokens;
+      for (const r of ranges) {
+        if (r.window === null || r.inherited || r.at !== null || !opaque.has(r.window)) continue;
+        const paren = tokenAtOffset(tokens, r.start);
+        if (paren === -1 || tokens[paren]!.value !== "(") continue;
+        // one value, or one per call of the function the window is created in
+        const { values, partial } = own.resolver.valuesAt(paren + 1);
+        const reads = values.map(optionSettings);
+        if (!reads.length || reads.some((x) => x === null)) continue;
+        const read = {
+          settings: reads.flatMap((x) => x!.settings),
+          unknown: new Set(reads.flatMap((x) => [...x!.unknown])),
+        };
+        // a caller whose options cannot be read may set any key
+        if (partial) for (const key of ["preload", ...BOOLEAN_KEYS]) read.unknown.add(key);
+        const window = r.window;
+        const windowLine = lineAt(r.start);
+        for (let i = found.length - 1; i >= 0; i--)
+          if (found[i]!.window === window) found.splice(i, 1);
+        let order = 0;
+        const seen = new Set<string>();
+        for (const { key, value, src } of read.settings) {
+          const id = `${key}\u0000${String(value)}\u0000${src.file}:${src.line}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          record({
+            key: key as PreferenceKey,
+            value,
+            file: file.path,
+            line: src.file === file.path ? src.line : windowLine,
+            ...(src.file === file.path ? {} : { definedIn: src }),
+            window,
+            windowName: r.name,
+            inherited: false,
+            order: order++,
+            scope: -1 - window,
+            group: null,
+            groupOrder: 0,
+          });
+        }
+        evaluated.set(window, read.unknown);
+        // still named as not followed when one of the calls could not be read
+        if (!partial) opaque.delete(window);
+      }
+    }
+    // A `webPreferences: {…}` that no window of this file takes (a table of refused settings, a
+    // manifest check) is not a window's setting, once every window's options are known. While a
+    // window's options are not, such an object may be them, and its rows stay (window null).
+    const windowsKnown =
+      !(located as WindowRanges | null)?.opaque.size &&
+      !(mutated.size && (located as WindowRanges | null)?.viaName.size);
+    if (unattached.size && windowsKnown) {
+      for (let i = found.length - 1; i >= 0; i--) if (found[i]!.window === null) found.splice(i, 1);
+      if (facts.limitations.length < 200)
+        facts.limitations.push({
+          code: "webpreferences_unattached",
+          message: `${file.path}: ${unattached.size === 1 ? "a webPreferences object" : `${unattached.size} webPreferences objects`} at line ${[...unattached].slice(0, 10).join(", ")}${unattached.size > 10 ? " …" : ""} that no window in the file takes (its settings are not listed as a window's).`,
+        });
+    }
     // Every located window, so one that writes no setting at all is still a row.
     for (const r of ranges) {
       if (r.window === null || r.inherited || facts.windows.length >= MAX_PREFS) continue;
@@ -1963,6 +2158,7 @@ export function analyzeJavaScriptTree(
       // A change to a followed object concerns the windows that take options from such an
       // object; a window whose options are all written in place cannot be changed that way.
       const computedKeys = new Set<string>(where?.viaName.has(r.window) ? mutated : []);
+      for (const key of evaluated.get(r.window) ?? []) computedKeys.add(key);
       if (hiddenUpTo !== undefined)
         // What could not be followed may write any key; a key the code writes for the window
         // after that place stands, every other one is not known.

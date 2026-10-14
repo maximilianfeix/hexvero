@@ -345,12 +345,17 @@ describe("window settings as written, computed, or absent", () => {
     // its parameter after `contextIsolation: false`; its only call passes `{ sandbox: true }`,
     // which does not touch that key, so it stays false.
     expect(info.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual(["true false"]);
-    // with a caller whose argument cannot be read, the key is not known
-    const opaque = analyze(
+    // another caller of the helper creates no window and changes nothing for this one
+    const other = analyze(
       "function base (extra) { return { sandbox: false, contextIsolation: false, ...extra } }\nconst w = new BrowserWindow({ webPreferences: base({ sandbox: true }) });\nbase(userOptions);",
     );
+    expect(other.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual(["true false"]);
+    // a window that passes something unreadable: the keys after the spread are not known
+    const opaque = analyze(
+      "function base (extra) { return { sandbox: false, contextIsolation: false, ...extra } }\nconst w = new BrowserWindow({ webPreferences: base(userOptions) });",
+    );
     expect(opaque.windows.map((w) => `${w.sandbox} ${w.contextIsolation}`)).toEqual([
-      "true computed",
+      "computed computed",
     ]);
     const plain = analyze(
       "function base () { return { sandbox: false, contextIsolation: false } }\nconst w = new BrowserWindow({ webPreferences: base({ sandbox: true }) });",

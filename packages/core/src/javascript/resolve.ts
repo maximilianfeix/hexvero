@@ -25,17 +25,39 @@ export interface ResolvedValues {
   partial: boolean;
 }
 
-type Val =
-  | { kind: "str"; values: string[] }
-  | { kind: "fn"; def: FnDef; env: Env }
+/** Where a literal value is written. */
+export interface ValueSource {
+  file: string;
+  line: number;
+}
+
+/** What an expression is known to be; null anywhere means "not known". */
+export type Val =
+  | { kind: "str"; values: string[]; src?: ValueSource }
+  | { kind: "bool"; value: boolean; src: ValueSource }
+  /** `undefined`: a parameter nobody passed, a key a closed object does not have. */
+  | { kind: "undef" }
+  /** A function of the module `res` reads; its tokens are that module's. */
+  | { kind: "fn"; def: FnDef; env: Env; res: ExpressionResolver }
   | { kind: "arr"; elems: Array<Val | null>; line: number }
-  | { kind: "obj"; props: Map<string, Val | null> }
-  | { kind: "map"; entries: Array<[Val | null, Val | null]>; line: number };
+  /**
+   * An object literal, with spreads applied in order. `open`: a spread of something unknown came
+   * after some keys, so keys not listed may still be there (and earlier ones were set to null).
+   */
+  | { kind: "obj"; props: Map<string, Val | null>; open?: boolean }
+  | { kind: "map"; entries: Array<[Val | null, Val | null]>; line: number }
+  /** Another module's exports (`require("./x")`, CommonJS `exports` of this one). */
+  | { kind: "ns"; resolver: ExpressionResolver };
+
+/** Finds the resolver of another module of the application, for imports. */
+export interface ModuleHost {
+  load(from: string, specifier: string): ExpressionResolver | null;
+}
 
 type Env = Map<string, Val>;
 
 type Param =
-  | { kind: "name"; name: string }
+  | { kind: "name"; name: string; fallback?: [number, number] }
   | { kind: "object"; props: Map<string, string> } // property -> local name
   | { kind: "array"; names: Array<string | null> };
 
@@ -70,6 +92,8 @@ const product = (parts: string[][]): string[] | null => {
 
 export class ExpressionResolver {
   private readonly match: Int32Array;
+  /** For a closing bracket, its opening one. */
+  private readonly opener: Int32Array;
   private defs: FnDef[] | null = null;
   private topDecls: Map<string, [number, number] | null> | null = null;
   private classes: Array<{ name: string; start: number; end: number }> | null = null;
@@ -82,8 +106,12 @@ export class ExpressionResolver {
   constructor(
     private readonly tokens: Token[],
     private readonly constants: Constants,
+    /** The module's path in the application, for sources and imports. */
+    readonly file = "",
+    private readonly host: ModuleHost | null = null,
   ) {
     this.match = new Int32Array(tokens.length).fill(-1);
+    this.opener = new Int32Array(tokens.length).fill(-1);
     const open: number[] = [];
     for (let j = 0; j < tokens.length; j++) {
       const p = tokens[j]!;
@@ -91,7 +119,10 @@ export class ExpressionResolver {
       if (p.value === "{" || p.value === "(" || p.value === "[") open.push(j);
       else if (p.value === "}" || p.value === ")" || p.value === "]") {
         const at = open.pop();
-        if (at !== undefined) this.match[at] = j;
+        if (at !== undefined) {
+          this.match[at] = j;
+          this.opener[j] = at;
+        }
       }
     }
   }
@@ -232,6 +263,121 @@ export class ExpressionResolver {
     return out;
   }
 
+  /** What the expression starting at token k is, as far as it can be read; null if not at all. */
+  valueAt(k: number): Val | null {
+    this.budget = 20_000;
+    return this.evalRange(k, this.exprEnd(k), new Map(), 0);
+  }
+
+  /**
+   * The values of the expression at token k for each way the function around it is called:
+   * one value when it uses no parameter of that function, one per readable call site when it
+   * does. `partial`: a call site could not be read, so its value is not among them.
+   */
+  valuesAt(k: number): { values: Val[]; partial: boolean } {
+    this.budget = 40_000;
+    this.partial = false;
+    const end = this.exprEnd(k);
+    const def = this.enclosing(k);
+    const usesParameter =
+      def !== null &&
+      def.name !== null &&
+      (() => {
+        for (let j = k; j < end; j++)
+          if (
+            this.is(j, "ident") &&
+            !this.punct(j - 1, ".") &&
+            this.paramIndex(def, this.tokens[j]!.value) !== -1
+          )
+            return true;
+        return false;
+      })();
+    if (!usesParameter) {
+      const v = this.evalRange(k, end, new Map(), 0);
+      return { values: v ? [v] : [], partial: false };
+    }
+    const envs = this.bindings(def!, 0) ?? [];
+    const values: Val[] = [];
+    let partial = envs.length === 0;
+    for (const env of envs) {
+      const v = this.evalRange(k, end, env, 1);
+      if (v) values.push(v);
+      else partial = true;
+    }
+    return { values, partial: partial || this.partial };
+  }
+
+  private exportIndex: Map<string, [number, number]> | null = null;
+  /**
+   * The value this module exports under a name: `exports.NAME = …` (the last assignment that is
+   * not `void 0`), `module.exports = { NAME: … }`, `export const NAME = …`, `export function NAME`.
+   */
+  exportValue(name: string, depth: number): Val | null {
+    if (depth > MAX_DEPTH) return null;
+    if (!this.exportIndex) {
+      const index = new Map<string, [number, number]>();
+      const tokens = this.tokens;
+      for (let k = 0; k + 3 < tokens.length; k++) {
+        const t = tokens[k]!;
+        if (t.type !== "ident") continue;
+        let at = -1;
+        // exports.NAME = / module.exports.NAME =
+        if (t.value === "exports" && !this.punct(k - 1, ".") && this.punct(k + 1, ".")) at = k + 2;
+        else if (
+          t.value === "module" &&
+          this.punct(k + 1, ".") &&
+          this.is(k + 2, "ident", "exports") &&
+          this.punct(k + 3, ".")
+        )
+          at = k + 4;
+        if (
+          at !== -1 &&
+          this.is(at, "ident") &&
+          this.punct(at + 1, "=") &&
+          !this.punct(at + 2, "=")
+        ) {
+          const value = at + 2;
+          const isVoid = this.is(value, "ident", "void") && this.tokens[value + 1]?.value === "0";
+          if (!isVoid) index.set(tokens[at]!.value, [value, this.exprEnd(value)]);
+          continue;
+        }
+        // module.exports = { … }
+        if (
+          t.value === "module" &&
+          this.punct(k + 1, ".") &&
+          this.is(k + 2, "ident", "exports") &&
+          this.punct(k + 3, "=") &&
+          this.punct(k + 4, "{")
+        ) {
+          const close = this.match[k + 4]!;
+          for (let j = k + 5; j < close;) {
+            const key = this.tokens[j]!;
+            const end = Math.min(this.exprEnd(j), close);
+            if (key.type === "ident" && this.punct(j + 1, ":")) index.set(key.value, [j + 2, end]);
+            else if (key.type === "ident" && end === j + 1) index.set(key.value, [j, j + 1]);
+            j = end + 1;
+          }
+          continue;
+        }
+        // export const NAME = … / export function NAME
+        if (t.value === "export") {
+          if (
+            /^(const|let|var)$/.test(tokens[k + 1]?.value ?? "") &&
+            this.is(k + 2, "ident") &&
+            this.punct(k + 3, "=")
+          )
+            index.set(tokens[k + 2]!.value, [k + 4, this.exprEnd(k + 4)]);
+          else if (this.is(k + 1, "ident", "function") && this.is(k + 2, "ident"))
+            index.set(tokens[k + 2]!.value, [k + 2, k + 3]);
+        }
+      }
+      this.exportIndex = index;
+    }
+    const range = this.exportIndex.get(name);
+    if (!range) return null;
+    return this.evalRange(range[0], range[1], new Map(), depth + 1);
+  }
+
   /** Name of the innermost named function around token k. */
   enclosingName(k: number): string | null {
     return this.enclosing(k)?.name ?? null;
@@ -244,6 +390,18 @@ export class ExpressionResolver {
     // ( … ) around the whole range
     if (this.punct(start, "(") && this.match[start] === end - 1)
       return this.evalRange(start + 1, end - 1, env, depth);
+    // `!0`, `!1`: what minifiers write for true and false
+    if (
+      end === start + 2 &&
+      this.punct(start, "!") &&
+      this.tokens[start + 1]?.type === "number" &&
+      /^[01]$/.test(this.tokens[start + 1]!.value)
+    )
+      return {
+        kind: "bool",
+        value: this.tokens[start + 1]!.value === "0",
+        src: { file: this.file, line: this.tokens[start]!.line },
+      };
     // an arrow function: `(a) => …`, `a => …`
     if (
       (this.punct(start, "(") && this.punct(this.match[start]! + 1, "=>")) ||
@@ -283,7 +441,10 @@ export class ExpressionResolver {
   private evalOperand(start: number, end: number, env: Env, depth: number): Val | null {
     const t = this.tokens[start];
     if (!t) return null;
-    if (t.type === "string") return end === start + 1 ? { kind: "str", values: [t.value] } : null;
+    if (t.type === "string")
+      return end === start + 1
+        ? { kind: "str", values: [t.value], src: { file: this.file, line: t.line } }
+        : null;
     if (t.type === "template") return this.evalTemplate(start, end, env, depth);
     if (t.type === "punct" && t.value === "[") {
       const close = this.match[start]!;
@@ -298,11 +459,23 @@ export class ExpressionResolver {
     if (t.type === "punct" && t.value === "(") {
       // an arrow function value: `(a, b) => …`
       const close = this.match[start]!;
-      if (close !== -1 && this.punct(close + 1, "=>")) return this.arrowAt(start, env);
-      return null;
+      if (close === -1) return null;
+      if (this.punct(close + 1, "=>")) return this.arrowAt(start, env);
+      // `(a, b)`: the last expression, as compilers write `(0, ns.fn)(…)`; then members and calls
+      let last = start + 1;
+      for (let j = start + 1; j < close; j = Math.min(this.exprEnd(j), close) + 1) last = j;
+      const inner = this.evalRange(last, Math.min(this.exprEnd(last), close), env, depth + 1);
+      return this.chain(inner, close + 1, end, env, depth);
     }
     if (t.type !== "ident") return null;
     if (this.is(start + 1, "punct", "=>")) return this.arrowAt(start, env);
+    if ((t.value === "true" || t.value === "false") && end === start + 1)
+      return { kind: "bool", value: t.value === "true", src: { file: this.file, line: t.line } };
+    if (
+      (t.value === "undefined" && end === start + 1) ||
+      (t.value === "void" && end === start + 2 && this.tokens[start + 1]?.value === "0")
+    )
+      return { kind: "undef" };
     if (t.value === "new" && this.is(start + 1, "ident", "Map") && this.punct(start + 2, "(")) {
       const close = this.match[start + 2]!;
       if (close !== end - 1) return null;
@@ -312,6 +485,28 @@ export class ExpressionResolver {
         e?.kind === "arr" && e.elems.length === 2 ? [e.elems[0]!, e.elems[1]!] : [null, null],
       );
       return { kind: "map", entries, line: t.line };
+    }
+    // Object.entries(x), Object.keys(x), Object.values(x) of an object that is fully known
+    if (
+      t.value === "Object" &&
+      this.punct(start + 1, ".") &&
+      this.is(start + 2, "ident") &&
+      /^(entries|keys|values)$/.test(this.tokens[start + 2]!.value) &&
+      this.punct(start + 3, "(")
+    ) {
+      const close = this.match[start + 3]!;
+      if (close === -1 || close >= end) return null;
+      const o = this.evalRange(start + 4, close, env, depth + 1);
+      if (o?.kind !== "obj" || o.open) return null;
+      const how = this.tokens[start + 2]!.value;
+      const elems: Array<Val | null> = [...o.props].map(([key, v]) =>
+        how === "keys"
+          ? { kind: "str", values: [key] }
+          : how === "values"
+            ? v
+            : { kind: "arr", elems: [{ kind: "str", values: [key] }, v], line: t.line },
+      );
+      return this.chain({ kind: "arr", elems, line: t.line }, close + 1, end, env, depth);
     }
     // Object.freeze(x), Object.seal(x)
     if (
@@ -324,6 +519,38 @@ export class ExpressionResolver {
       if (close !== end - 1) return null;
       return this.evalRange(start + 4, close, env, depth + 1);
     }
+    // `require("./x")`: that module's exports, when it is a module of the application
+    if (
+      t.value === "require" &&
+      this.punct(start + 1, "(") &&
+      this.tokens[start + 2]?.type === "string" &&
+      this.punct(start + 3, ")") &&
+      this.host
+    ) {
+      const other = this.host.load(this.file, this.tokens[start + 2]!.value);
+      return this.chain(other ? { kind: "ns", resolver: other } : null, start + 4, end, env, depth);
+    }
+    // `path.join(__dirname, "preload.js")`, `path_1.default.resolve(…)`: the script a preload
+    // path names is its last path-like literal, as the scan reads `preload:` anywhere.
+    if (
+      this.punct(end - 1, ")") &&
+      this.opener[end - 1]! > start &&
+      /^(join|resolve)$/.test(this.tokens[this.opener[end - 1]! - 1]?.value ?? "") &&
+      this.punct(this.opener[end - 1]! - 2, ".")
+    ) {
+      const open = this.opener[end - 1]!;
+      let last: Token | null = null;
+      for (let j = open + 1; j < end - 1; j = Math.min(this.exprEnd(j), end - 1) + 1) {
+        const a = this.tokens[j]!;
+        if (a.type === "string" && this.exprEnd(j) === j + 1) last = a;
+      }
+      if (last && /\.(c|m)?js$/.test(last.value))
+        return {
+          kind: "str",
+          values: [last.value.replace(/^.*[\\/]/, "")],
+          src: { file: this.file, line: last.line },
+        };
+    }
     // name, name.prop, name(args), name(args)(args), name.prop(args)
     let value = this.lookup(t.value, start, env, depth);
     let j = start + 1;
@@ -332,6 +559,13 @@ export class ExpressionResolver {
       const member = this.constants.memberOf(t.value, this.tokens[j + 1]!.value, start);
       return member === null ? null : { kind: "str", values: [member] };
     }
+    return this.chain(value, j, end, env, depth);
+  }
+
+  /** Members and calls after a value: `.a`, `["a"]`, `(…)`, up to `end`. */
+  private chain(start: Val | null, from: number, end: number, env: Env, depth: number): Val | null {
+    let value = start;
+    let j = from;
     while (j < end) {
       if (value === null) return null;
       if ((this.punct(j, ".") || this.punct(j, "?.")) && this.is(j + 1, "ident")) {
@@ -401,39 +635,78 @@ export class ExpressionResolver {
 
   private object(open: number, close: number, env: Env, depth: number): Val {
     const props = new Map<string, Val | null>();
+    let unknown = false;
     let k = open + 1;
     while (k < close && props.size < 256) {
       const t = this.tokens[k]!;
-      const key = t.type === "ident" ? t.value : t.type === "string" ? t.value : null;
       const end = Math.min(this.exprEnd(k), close);
-      if (key !== null && this.punct(k + 1, ":"))
+      if (this.punct(k, "...")) {
+        // `...x`: x's keys at this place. Something unknown may write any key, so every key
+        // before it is unknown, and keys not listed may exist.
+        const spread = this.evalRange(k + 1, end, env, depth + 1);
+        if (spread?.kind === "obj") {
+          if (spread.open) {
+            for (const key of props.keys()) props.set(key, null);
+            unknown = true;
+          }
+          for (const [key, v] of spread.props) props.set(key, v);
+        } else if (spread?.kind !== "undef") {
+          for (const key of props.keys()) props.set(key, null);
+          unknown = true;
+        }
+        k = end + 1;
+        continue;
+      }
+      const key = t.type === "ident" ? t.value : t.type === "string" ? t.value : null;
+      if (key !== null && this.punct(k + 1, ":")) {
+        props.delete(key); // a later write moves the key, as in JavaScript it replaces it
         props.set(key, this.evalRange(k + 2, end, env, depth + 1));
-      else if (key !== null && end === k + 1) props.set(key, this.lookup(key, k, env, depth + 1));
+      } else if (key !== null && end === k + 1) {
+        props.delete(key);
+        props.set(key, this.lookup(key, k, env, depth + 1));
+      } else if (key !== null) props.set(key, null); // a method or a computed value
+      else unknown = true; // a computed key: `[name]: …`
       k = end + 1;
     }
-    return { kind: "obj", props };
+    return unknown ? { kind: "obj", props, open: true } : { kind: "obj", props };
   }
 
   private member(value: Val, property: string): Val | null {
-    if (value.kind === "obj") return value.props.get(property) ?? null;
+    if (value.kind === "obj") {
+      if (value.props.has(property)) return value.props.get(property) ?? null;
+      return value.open ? null : { kind: "undef" };
+    }
+    if (value.kind === "ns") return value.resolver.exportValue(property, MAX_DEPTH - 2);
     return null;
   }
 
   private call(callee: Val, open: number, close: number, env: Env, depth: number): Val | null {
     if (callee.kind !== "fn" || depth >= MAX_DEPTH) return null;
     const args = this.list(open, close, env, depth);
-    const inner = new Map(callee.env);
-    if (!this.bind(callee.def.params, args, inner)) return null;
-    const out = this.evalBody(callee.def, inner, depth + 1);
+    const out = callee.res.apply(callee, args, depth);
     if (out) this.note("call");
     return out;
+  }
+
+  /** Calls a function of this module with argument values (from any module). */
+  apply(callee: Extract<Val, { kind: "fn" }>, args: Array<Val | null>, depth: number): Val | null {
+    if (depth >= MAX_DEPTH || this.budget-- <= 0) return null;
+    const inner = new Map(callee.env);
+    if (!this.bind(callee.def.params, args, inner)) return null;
+    return this.evalBody(callee.def, inner, depth + 1);
   }
 
   /** Binds parameters to argument values; false when a pattern cannot be bound. */
   private bind(params: Param[], args: Array<Val | null>, env: Env): boolean {
     params.forEach((p, i) => {
-      const a = args[i] ?? null;
+      const passed = i < args.length;
+      let a = args[i] ?? null;
       if (p.kind === "name") {
+        // a parameter nobody passed: its default, or undefined
+        if (!passed)
+          a = p.fallback
+            ? this.evalRange(p.fallback[0], p.fallback[1], new Map(env), 1)
+            : { kind: "undef" };
         if (a) env.set(p.name, a);
       } else if (p.kind === "object") {
         for (const [prop, local] of p.props) {
@@ -441,8 +714,9 @@ export class ExpressionResolver {
           if (v) env.set(local, v);
         }
       } else if (a?.kind === "arr") {
+        const elems = a.elems;
         p.names.forEach((n, j) => {
-          const v = a.elems[j];
+          const v = elems[j];
           if (n && v) env.set(n, v);
         });
       }
@@ -470,6 +744,11 @@ export class ExpressionResolver {
   private lookup(name: string, k: number, env: Env, depth: number): Val | null {
     const bound = env.get(name);
     if (bound) return bound;
+    if (name === "this") return null;
+    // a `const` of the function around k, declared once before k: its initializer, read with
+    // the same bindings
+    const local = this.localConst(k, name);
+    if (local) return this.evalRange(local[0], local[1], env, depth + 1);
     const constant = this.constants.stringOf(name, k);
     if (constant !== null) return { kind: "str", values: [constant] };
     if (depth >= MAX_DEPTH) return null;
@@ -478,15 +757,41 @@ export class ExpressionResolver {
     if (this.enclosingParam(k, name) || this.declaredLocally(k, name)) return null;
     const decl = this.topDeclarations().get(name);
     if (decl) return this.evalRange(decl[0], decl[1], new Map(), depth + 1);
+    // CommonJS: `exports.X` and `module.exports.X` of this module
+    if (name === "exports" && !this.topDeclarations().has(name))
+      return { kind: "ns", resolver: this };
+    if (name === "module" && !this.topDeclarations().has(name))
+      return {
+        kind: "obj",
+        props: new Map([["exports", { kind: "ns", resolver: this }]]),
+        open: true,
+      };
+    // a name another module of the application defines
+    if (this.host) {
+      const imported = this.constants.importOf(name, k);
+      if (imported) {
+        const other = this.host.load(this.file, imported.specifier);
+        if (!other) return null;
+        const [head, ...rest] = imported.property.split(".");
+        let v = other.exportValue(head!, depth + 1);
+        for (const p of rest) v = v ? this.member(v, p) : null;
+        return v;
+      }
+      const required = this.constants.requireOf(name, k);
+      if (required) {
+        const other = this.host.load(this.file, required);
+        return other ? { kind: "ns", resolver: other } : null;
+      }
+    }
     const fn = this.functions().find((d) => d.name === name && d.owner === null && d.block);
     if (fn && this.topDeclarations().has(name) === false && this.depthAt(fn.paramsAt) === 0)
-      return { kind: "fn", def: fn, env: new Map() };
+      return { kind: "fn", def: fn, env: new Map(), res: this };
     return null;
   }
 
   private arrowAt(k: number, env: Env): Val | null {
     const def = this.functions().find((d) => d.paramsAt === k);
-    return def ? { kind: "fn", def, env } : null;
+    return def ? { kind: "fn", def, env, res: this } : null;
   }
 
   private depths: Int32Array | null = null;
@@ -577,7 +882,12 @@ export class ExpressionResolver {
     while (k < close) {
       const end = Math.min(this.exprEnd(k), close);
       const t = this.tokens[k]!;
-      if (t.type === "ident") params.push({ kind: "name", name: t.value === "..." ? "" : t.value });
+      if (t.type === "ident")
+        params.push(
+          this.punct(k + 1, "=")
+            ? { kind: "name", name: t.value, fallback: [k + 2, end] }
+            : { kind: "name", name: t.value },
+        );
       else if (t.type === "punct" && t.value === "{") {
         const props = new Map<string, string>();
         const m = this.match[k]!;
@@ -772,19 +1082,54 @@ export class ExpressionResolver {
     return false;
   }
 
+  /** `const NAME = …` once in the innermost function around k that declares NAME, before k. */
+  private localConst(k: number, name: string): [number, number] | null {
+    for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
+      let found: [number, number] | null = null;
+      let declared = 0;
+      for (let j = d.body[0]; j < d.body[1]; j++) {
+        if (!this.is(j, "ident", name) || this.punct(j - 1, ".")) continue;
+        const before = this.tokens[j - 1];
+        if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) {
+          declared++;
+          if (before.value === "const" && this.punct(j + 1, "=") && j < k)
+            found = [j + 2, this.exprEnd(j + 2)];
+        } else if (this.punct(j + 1, "=") && !this.punct(j + 2, "=")) declared += 2;
+      }
+      if (declared) return declared === 1 ? found : null;
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    return null;
+  }
+
   /** Names read in [start, end) that are parameters of the function around k. */
   private throughParameters(start: number, end: number, depth: number): string[] | null {
     if (depth > 3) return null;
-    const def = this.enclosing(start);
-    if (!def) return this.throughLoop(start, end, depth);
+    // the innermost function around the expression that declares one of the names it reads
+    let def = this.enclosing(start);
     const used = new Set<string>();
-    for (let j = start; j < end; j++)
-      if (
-        this.is(j, "ident") &&
-        !this.punct(j - 1, ".") &&
-        this.paramIndex(def, this.tokens[j]!.value) !== -1
-      )
-        used.add(this.tokens[j]!.value);
+    // what the expression reads, with the initializers of local consts it reads
+    const reads: Array<[number, number]> = [[start, end]];
+    for (let r = 0; r < reads.length && r < 8; r++)
+      for (let j = reads[r]![0]; j < reads[r]![1]; j++) {
+        if (!this.is(j, "ident") || this.punct(j - 1, ".")) continue;
+        const local = this.localConst(j, this.tokens[j]!.value);
+        if (local && !reads.some(([a]) => a === local[0])) reads.push(local);
+      }
+    for (let guard = 0; def && guard < 8; guard++) {
+      for (const [a, b] of reads)
+        for (let j = a; j < b; j++)
+          if (
+            this.is(j, "ident") &&
+            !this.punct(j - 1, ".") &&
+            (this.paramIndex(def, this.tokens[j]!.value) !== -1 ||
+              (this.tokens[j]!.value === "this" && def.owner !== null))
+          )
+            used.add(this.tokens[j]!.value);
+      if (used.size) break;
+      def = this.enclosing(def.paramsAt - 1);
+    }
+    if (!def) return this.throughLoop(start, end, depth);
     if (!used.size) return this.throughLoop(start, end, depth);
     const envs = this.bindings(def, depth);
     if (!envs?.length) return null;
@@ -899,11 +1244,124 @@ export class ExpressionResolver {
         }
       }
       this.bind(def.params, args, env);
+      // a method: `this` is the instance the call is made on, when its construction is read
+      if (def.owner) {
+        const self = this.instanceAt(open - 3, def.owner, depth + 1);
+        if (self) env.set("this", self);
+      }
       envs.push(env);
       this.lines.add(this.tokens[open]!.line);
     }
     this.note("parameter");
     return envs;
+  }
+
+  /**
+   * The instance a method call is made on, where `receiverEnd` is the token before `.method`:
+   * `x` with `x = new C(…)` once in the file, `new C(…)` itself, or a chain of calls on one
+   * instance (`new C(…).a(…).b(…)`, methods that `return this`).
+   */
+  private instanceAt(receiverEnd: number, cls: string, depth: number): Val | null {
+    if (depth > MAX_DEPTH) return null;
+    const t = this.tokens[receiverEnd];
+    if (!t) return null;
+    if (t.type === "ident" && t.value !== "this") {
+      let site = -1;
+      for (let k = 0; k + 3 < this.tokens.length; k++)
+        if (
+          this.is(k, "ident", t.value) &&
+          this.punct(k + 1, "=") &&
+          this.is(k + 2, "ident", "new") &&
+          this.is(k + 3, "ident", cls) &&
+          this.punct(k + 4, "(")
+        ) {
+          if (site !== -1) return null; // assigned twice: which instance is not read
+          site = k + 4;
+        }
+      return site === -1 ? null : this.construct(cls, site, depth);
+    }
+    if (t.type === "punct" && t.value === ")") {
+      const open = this.opener[receiverEnd]!;
+      if (open === -1) return null;
+      if (this.is(open - 1, "ident", cls) && this.is(open - 2, "ident", "new"))
+        return this.construct(cls, open, depth);
+      // `….method(…)` before: the same instance when that method returns `this`
+      if (this.is(open - 1, "ident") && this.punct(open - 2, ".")) {
+        const method = this.functions().find(
+          (d) => d.owner === cls && d.name === this.tokens[open - 1]!.value,
+        );
+        if (method && this.returnsThis(method)) return this.instanceAt(open - 3, cls, depth + 1);
+      }
+    }
+    return null;
+  }
+
+  private returnsThis(def: FnDef): boolean {
+    for (let j = def.body[0]; j < def.body[1]; j++)
+      if (
+        this.is(j, "ident", "return") &&
+        this.is(j + 1, "ident", "this") &&
+        (this.punct(j + 2, ";") || this.punct(j + 2, "}"))
+      )
+        return true;
+    return false;
+  }
+
+  /** `new cls(args)` at `open`: fields the constructor assigns, and the class's methods. */
+  private construct(cls: string, open: number, depth: number): Val | null {
+    const range = this.classRanges().find((c) => c.name === cls);
+    if (!range) return null;
+    const close = this.match[open]!;
+    if (close === -1) return null;
+    const args = this.list(open, close, new Map(), depth + 1);
+    const props = new Map<string, Val | null>();
+    const self: Val = { kind: "obj", props, open: true };
+    const ctor = this.functions().find((d) => d.owner === cls && d.name === "constructor");
+    // fields assigned anywhere in the class but the constructor are not known
+    const elsewhere = new Set<string>();
+    for (let j = range.start; j < range.end; j++)
+      if (
+        this.is(j, "ident", "this") &&
+        this.punct(j + 1, ".") &&
+        this.is(j + 2, "ident") &&
+        this.punct(j + 3, "=") &&
+        !this.punct(j + 4, "=") &&
+        !(ctor && ctor.body[0] <= j && j < ctor.body[1])
+      )
+        elsewhere.add(this.tokens[j + 2]!.value);
+    if (ctor) {
+      const env: Env = new Map([["this", self]]);
+      this.bind(ctor.params, args, env);
+      for (let j = ctor.body[0]; j < ctor.body[1]; j++) {
+        if (
+          !this.is(j, "ident", "this") ||
+          !this.punct(j + 1, ".") ||
+          !this.is(j + 2, "ident") ||
+          !this.punct(j + 3, "=") ||
+          this.punct(j + 4, "=")
+        )
+          continue;
+        const field = this.tokens[j + 2]!.value;
+        // only a statement of the constructor's own block, not one inside a condition or loop
+        // (with braces, or a single statement after `if (…)`, `else`, a loop header)
+        const before = this.tokens[j - 1];
+        const guarded =
+          (before?.type === "punct" && before.value === ")") ||
+          (before?.type === "ident" && /^(else|do)$/.test(before.value));
+        if (guarded || this.depthAt(j) !== this.depthAt(ctor.body[0]) + 1) {
+          props.set(field, null);
+          continue;
+        }
+        props.set(
+          field,
+          elsewhere.has(field) ? null : this.evalRange(j + 4, this.exprEnd(j + 4), env, depth + 1),
+        );
+      }
+    }
+    for (const d of this.functions())
+      if (d.owner === cls && d.name && d.name !== "constructor" && !props.has(d.name))
+        props.set(d.name, { kind: "fn", def: d, env: new Map([["this", self]]), res: this });
+    return self;
   }
 
   private argStart(open: number, close: number, index: number): number | null {
@@ -921,12 +1379,7 @@ export class ExpressionResolver {
     for (let guard = 0; j >= 0 && guard < 50; guard++) {
       const t = this.tokens[j]!;
       if (t.type === "punct" && (t.value === ")" || t.value === "]")) {
-        let open = -1;
-        for (let o = j - 1; o >= 0 && o > j - 4000; o--)
-          if (this.match[o] === j) {
-            open = o;
-            break;
-          }
+        const open = this.opener[j]!;
         if (open === -1) return null;
         j = open;
         if (this.is(j - 1, "ident") && t.value === ")") j--;
@@ -984,12 +1437,7 @@ export class ExpressionResolver {
       }
       // a chain: `r.handle(…).handle(…)` or `new Router().handle(…)`
       if (receiver?.type === "punct" && receiver.value === ")") {
-        let open = -1;
-        for (let o = k - 3; o >= 0 && o > k - 4000; o--)
-          if (this.match[o] === k - 2) {
-            open = o;
-            break;
-          }
+        const open = this.opener[k - 2]!;
         if (
           open !== -1 &&
           this.is(open - 1, "ident", def.owner) &&

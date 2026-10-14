@@ -425,13 +425,27 @@ describe("directory analysis", () => {
   it("scans hostile repetitive input in linear time and caps what it records", () => {
     const hostile = buildAsar({
       "package.json": JSON.stringify({ name: "x", main: "main.js" }),
-      "main.js": `new BrowserWindow({});\n${"preload:a(".repeat(60_000)}\n${"x\nwebPreferences: { sandbox: true }\n".repeat(20_000)}`,
+      // no window in the file, so every object counts (with a window, they would be unattached)
+      "main.js": `${"preload:a(".repeat(60_000)}\n${"x\nwebPreferences: { sandbox: true }\n".repeat(20_000)}`,
     });
     const started = performance.now();
     const info = analyzeJavaScriptTree(asarTree(hostile, "app.asar"));
     expect(performance.now() - started).toBeLessThan(5000);
     expect(info.webPreferences.length).toBeLessThanOrEqual(200);
     expect(info.limitations.map((l) => l.code)).toContain("web_preferences_truncated");
+    // with a window in the file, objects no window takes are named, briefly, not listed
+    const attached = analyzeJavaScriptTree(
+      asarTree(
+        buildAsar({
+          "package.json": JSON.stringify({ name: "x", main: "main.js" }),
+          "main.js": `new BrowserWindow({});\n${"x\nwebPreferences: { sandbox: true }\n".repeat(20_000)}`,
+        }),
+        "app.asar",
+      ),
+    );
+    expect(attached.webPreferences).toEqual([]);
+    const note = attached.limitations.find((l) => l.code === "webpreferences_unattached");
+    expect(note?.message.length).toBeLessThan(300);
   });
 
   it("lists what contextBridge exposes, member by member, with the channel each forwards to", () => {

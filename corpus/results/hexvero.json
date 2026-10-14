@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.3.0",
-  "commit": "bdb69b6+uncommitted",
+  "commit": "60722a4+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -428,8 +428,8 @@
   {
    "set": "holdout",
    "class": "window settings",
-   "hit": 12,
-   "missed": 21,
+   "hit": 21,
+   "missed": 12,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -545,8 +545,8 @@
   {
    "set": "holdout2",
    "class": "IPC channels",
-   "hit": 90,
-   "missed": 36,
+   "hit": 110,
+   "missed": 16,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -554,8 +554,8 @@
   {
    "set": "holdout2",
    "class": "IPC senders and receivers",
-   "hit": 173,
-   "missed": 7,
+   "hit": 203,
+   "missed": 17,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -563,17 +563,17 @@
   {
    "set": "holdout2",
    "class": "window settings",
-   "hit": 42,
-   "missed": 21,
-   "false": 6,
+   "hit": 46,
+   "missed": 17,
+   "false": 0,
    "hedged": 0,
    "inputs": 6
   },
   {
    "set": "holdout2",
    "class": "bridge members",
-   "hit": 78,
-   "missed": 57,
+   "hit": 129,
+   "missed": 6,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -581,8 +581,8 @@
   {
    "set": "holdout2",
    "class": "bridge member channel",
-   "hit": 65,
-   "missed": 13,
+   "hit": 113,
+   "missed": 16,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -635,8 +635,8 @@
   {
    "set": "holdout2",
    "class": "changes in ipcChannels",
-   "hit": 1,
-   "missed": 1,
+   "hit": 2,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 1
@@ -1833,16 +1833,12 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "window settings",
-   "hit": 3,
-   "missed": 8,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
    "notes": [
-    "missed main.js nodeIntegration=false",
     "missed main.js sandbox=true",
-    "missed main.js preload=preload.js",
-    "missed main.js contextIsolation=true",
     "missed main.js nodeIntegration=false",
-    "missed main.js preload=preload.js",
     "missed main.js contextIsolation=true",
     "missed main.js nodeIntegration=false"
    ]
@@ -1978,16 +1974,12 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "window settings",
-   "hit": 3,
-   "missed": 8,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
    "notes": [
-    "missed main.js nodeIntegration=false",
     "missed main.js sandbox=true",
-    "missed main.js preload=preload.js",
-    "missed main.js contextIsolation=true",
     "missed main.js nodeIntegration=false",
-    "missed main.js preload=preload.js",
     "missed main.js contextIsolation=true",
     "missed main.js nodeIntegration=false"
    ]
@@ -2130,16 +2122,15 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "window settings",
-   "hit": 6,
-   "missed": 5,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
    "notes": [
     "missed main.js sandbox=true",
     "missed main.js nodeIntegration=false",
-    "missed main.js preload=preload.js",
     "missed main.js contextIsolation=true",
     "missed main.js nodeIntegration=false",
-    "not scored: 2 row(s) with a computed value"
+    "not scored: 1 row(s) with a computed value"
    ]
   },
   {
@@ -2303,26 +2294,20 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "IPC channels",
-   "hit": 17,
-   "missed": 5,
+   "hit": 22,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed settings:get",
-    "missed settings:set",
-    "missed settings:changed",
-    "missed vault:list",
-    "missed vault:search"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "IPC senders and receivers",
-   "hit": 32,
+   "hit": 42,
    "missed": 2,
    "false": 0,
    "notes": [
-    "plugins:list: receiver main.js missed",
+    "settings:changed: sender main.js missed",
     "vault:reveal: receiver main.js missed"
    ]
   },
@@ -2332,13 +2317,10 @@
    "class": "window settings",
    "hit": 7,
    "missed": 2,
-   "false": 2,
+   "false": 0,
    "notes": [
     "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "false main.js nodeIntegration=true",
-    "false main.js contextIsolation=false",
-    "not scored: 1 row(s) with a computed value"
+    "missed main.js nodeIntegration=false"
    ]
   },
   {
@@ -2358,14 +2340,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "bridge member channel",
-   "hit": 18,
-   "missed": 3,
+   "hit": 21,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "inkwell.getSettings: expected settings:get, got null",
-    "inkwell.setSetting: expected settings:set, got null",
-    "inkwell.onSettingsChanged: expected settings:changed, got null"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
@@ -2424,26 +2402,23 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "IPC channels",
-   "hit": 17,
-   "missed": 5,
+   "hit": 22,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed settings:get",
-    "missed settings:set",
-    "missed settings:changed",
-    "missed vault:list",
-    "missed vault:search"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "IPC senders and receivers",
-   "hit": 32,
-   "missed": 2,
+   "hit": 39,
+   "missed": 5,
    "false": 0,
    "notes": [
+    "settings:changed: sender main.js missed",
     "plugins:list: receiver main.js missed",
+    "vault:list: receiver main.js missed",
+    "vault:search: receiver main.js missed",
     "vault:reveal: receiver main.js missed"
    ]
   },
@@ -2453,13 +2428,10 @@
    "class": "window settings",
    "hit": 7,
    "missed": 2,
-   "false": 2,
+   "false": 0,
    "notes": [
     "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "false main.js nodeIntegration=true",
-    "false main.js contextIsolation=false",
-    "not scored: 1 row(s) with a computed value"
+    "missed main.js nodeIntegration=false"
    ]
   },
   {
@@ -2479,14 +2451,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "bridge member channel",
-   "hit": 18,
-   "missed": 3,
+   "hit": 21,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "inkwell.getSettings: expected settings:get, got null",
-    "inkwell.setSetting: expected settings:set, got null",
-    "inkwell.onSettingsChanged: expected settings:changed, got null"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
@@ -2553,26 +2521,23 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "IPC channels",
-   "hit": 17,
-   "missed": 5,
+   "hit": 22,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed settings:get",
-    "missed settings:set",
-    "missed settings:changed",
-    "missed vault:list",
-    "missed vault:search"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 32,
-   "missed": 2,
+   "hit": 39,
+   "missed": 5,
    "false": 0,
    "notes": [
+    "settings:changed: sender main.js missed",
     "plugins:list: receiver main.js missed",
+    "vault:list: receiver main.js missed",
+    "vault:search: receiver main.js missed",
     "vault:reveal: receiver main.js missed"
    ]
   },
@@ -2580,15 +2545,13 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "window settings",
-   "hit": 7,
-   "missed": 2,
-   "false": 2,
+   "hit": 6,
+   "missed": 3,
+   "false": 0,
    "notes": [
+    "missed main.js preload=preload.js",
     "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "false main.js nodeIntegration=true",
-    "false main.js contextIsolation=false",
-    "not scored: 1 row(s) with a computed value"
+    "missed main.js nodeIntegration=false"
    ]
   },
   {
@@ -2608,14 +2571,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "bridge member channel",
-   "hit": 18,
-   "missed": 3,
+   "hit": 21,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "inkwell.getSettings: expected settings:get, got null",
-    "inkwell.setSetting: expected settings:set, got null",
-    "inkwell.onSettingsChanged: expected settings:changed, got null"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
@@ -2682,12 +2641,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
    "class": "changes in ipcChannels",
-   "hit": 1,
-   "missed": 1,
+   "hit": 2,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed +vault:rename"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
@@ -2734,25 +2691,23 @@
    "set": "holdout2",
    "input": "holdout2/music-player.plain.asar",
    "class": "IPC channels",
-   "hit": 15,
-   "missed": 5,
+   "hit": 20,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed playlists:list",
-    "missed playlists:save",
-    "missed settings:get",
-    "missed settings:set",
-    "missed settings:changed"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/music-player.plain.asar",
    "class": "IPC senders and receivers",
-   "hit": 29,
-   "missed": 1,
+   "hit": 35,
+   "missed": 5,
    "false": 0,
    "notes": [
+    "playlists:list: receiver main.js missed",
+    "playlists:save: receiver main.js missed",
+    "settings:get: receiver main.js missed",
+    "settings:set: receiver main.js missed",
     "mini:get-artwork: receiver main.js missed"
    ]
   },
@@ -2760,50 +2715,25 @@
    "set": "holdout2",
    "input": "holdout2/music-player.plain.asar",
    "class": "window settings",
-   "hit": 7,
-   "missed": 5,
+   "hit": 12,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "missed main.js sandbox=true"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/music-player.plain.asar",
    "class": "bridge members",
-   "hit": 5,
-   "missed": 17,
+   "hit": 22,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed cadence.getTracks",
-    "missed cadence.addFolder",
-    "missed cadence.onScanProgress",
-    "missed cadence.listPlaylists",
-    "missed cadence.savePlaylist",
-    "missed cadence.exportPlaylist",
-    "missed cadence.reportState",
-    "missed cadence.onMediaKey",
-    "missed cadence.onCommand",
-    "missed cadence.fetchLyrics",
-    "missed cadence.toggleMiniPlayer",
-    "missed cadence.getSettings",
-    "missed cadence.updateSettings",
-    "missed cadence.onSettingsChanged",
-    "missed cadence.minimize",
-    "missed cadence.toggleMaximize",
-    "missed cadence.getVersion",
-    "4 entries reported as unreadable"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/music-player.plain.asar",
    "class": "bridge member channel",
-   "hit": 5,
+   "hit": 22,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2898,38 +2828,25 @@
    "set": "holdout2",
    "input": "holdout2/music-player.bundled.asar",
    "class": "bridge members",
-   "hit": 5,
-   "missed": 17,
+   "hit": 22,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed cadence.getTracks",
-    "missed cadence.addFolder",
-    "missed cadence.onScanProgress",
-    "missed cadence.listPlaylists",
-    "missed cadence.savePlaylist",
-    "missed cadence.exportPlaylist",
-    "missed cadence.reportState",
-    "missed cadence.onMediaKey",
-    "missed cadence.onCommand",
-    "missed cadence.fetchLyrics",
-    "missed cadence.toggleMiniPlayer",
-    "missed cadence.getSettings",
-    "missed cadence.updateSettings",
-    "missed cadence.onSettingsChanged",
-    "missed cadence.minimize",
-    "missed cadence.toggleMaximize",
-    "missed cadence.getVersion",
-    "4 entries reported as unreadable"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/music-player.bundled.asar",
    "class": "bridge member channel",
-   "hit": 3,
-   "missed": 2,
+   "hit": 14,
+   "missed": 8,
    "false": 0,
    "notes": [
+    "cadence.listPlaylists: expected playlists:list, got null",
+    "cadence.savePlaylist: expected playlists:save, got null",
+    "cadence.reportState: expected player:state-changed, got null",
+    "cadence.getSettings: expected settings:get, got null",
+    "cadence.updateSettings: expected settings:set, got null",
+    "cadence.onSettingsChanged: expected settings:changed, got null",
     "mini.onState: expected player:state, got null",
     "mini.getArtwork: expected mini:get-artwork, got null"
    ]
@@ -3028,38 +2945,25 @@
    "set": "holdout2",
    "input": "holdout2/music-player.minified.asar",
    "class": "bridge members",
-   "hit": 5,
-   "missed": 17,
+   "hit": 22,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed cadence.getTracks",
-    "missed cadence.addFolder",
-    "missed cadence.onScanProgress",
-    "missed cadence.listPlaylists",
-    "missed cadence.savePlaylist",
-    "missed cadence.exportPlaylist",
-    "missed cadence.reportState",
-    "missed cadence.onMediaKey",
-    "missed cadence.onCommand",
-    "missed cadence.fetchLyrics",
-    "missed cadence.toggleMiniPlayer",
-    "missed cadence.getSettings",
-    "missed cadence.updateSettings",
-    "missed cadence.onSettingsChanged",
-    "missed cadence.minimize",
-    "missed cadence.toggleMaximize",
-    "missed cadence.getVersion",
-    "4 entries reported as unreadable"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/music-player.minified.asar",
    "class": "bridge member channel",
-   "hit": 3,
-   "missed": 2,
+   "hit": 14,
+   "missed": 8,
    "false": 0,
    "notes": [
+    "cadence.listPlaylists: expected playlists:list, got null",
+    "cadence.savePlaylist: expected playlists:save, got null",
+    "cadence.reportState: expected player:state-changed, got null",
+    "cadence.getSettings: expected settings:get, got null",
+    "cadence.updateSettings: expected settings:set, got null",
+    "cadence.onSettingsChanged: expected settings:changed, got null",
     "mini.onState: expected player:state, got null",
     "mini.getArtwork: expected mini:get-artwork, got null"
    ]

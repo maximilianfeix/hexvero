@@ -121,6 +121,43 @@ const CASES: Record<string, Case> = {
     },
     want: ["p:save", "p:push"],
   },
+  "ipc2:nested-group": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nconst channels = require('./ipc/channels');\nipcMain.handle(channels.settings.get, () => 1);",
+      "ipc/channels.js": "module.exports = { settings: { get: 'st:get', set: 'st:set' } };",
+    },
+    want: ["st:get"],
+  },
+  "ipc2:nested-local": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nconst C = { a: { b: 'nl:ab' } };\nipcMain.on(C.a.b, () => 1);",
+    },
+    want: ["nl:ab"],
+  },
+  "ipc2:entries-map": {
+    files: {
+      "preload.js":
+        "const { ipcRenderer, contextBridge } = require('electron');\nconst inv = { list: 'v:list', search: 'v:search' };\nconst api = Object.fromEntries(Object.entries(inv).map(([m, ch]) => [m, (...a) => ipcRenderer.invoke(ch, ...a)]));\ncontextBridge.exposeInMainWorld('x', api);",
+      "main.js": "",
+    },
+    want: ["v:list", "v:search"],
+  },
+  "ipc2:keys-forEach": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nconst T = { 'k:a': 1, 'k:b': 2 };\nObject.keys(T).forEach((ch) => ipcMain.on(ch, () => 1));",
+    },
+    want: ["k:a", "k:b"],
+  },
+  "ipc2:router-namespace": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nclass Router {\n  constructor(ns) { this.ns = ns; }\n  channel(n) { return `${this.ns}:${n}`; }\n  handle(n, fn) { const channel = this.channel(n); ipcMain.handle(channel, fn); return this; }\n}\nnew Router('vault').handle('list', a).handle('search', b);\nconst s = new Router('sync');\ns.handle('now', c);",
+    },
+    want: ["vault:list", "vault:search", "sync:now"],
+  },
   "neg:partial-sites": {
     files: {
       "main.js":
@@ -200,6 +237,54 @@ const CASES: Record<string, Case> = {
     },
     want: [],
     forbid: ["win:"],
+  },
+  "neg2:router-unknown-ns": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nclass R { constructor(ns) { this.ns = ns; } handle(n, f) { ipcMain.handle(`${this.ns}:${n}`, f); return this; } }\nnew R(process.env.NS).handle('list', a);",
+    },
+    want: [],
+    forbid: ["undefined:list", ":list"],
+  },
+  "neg2:router-field-reassigned": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nclass R { constructor(ns) { this.ns = ns; } rename(x) { this.ns = x; } handle(n, f) { ipcMain.handle(`${this.ns}:${n}`, f); } }\nconst r = new R('a');\nr.handle('b', f);",
+    },
+    want: [],
+    forbid: ["a:b"],
+  },
+  "neg2:instance-twice": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nclass R { constructor(ns) { this.ns = ns; } handle(n, f) { ipcMain.handle(`${this.ns}:${n}`, f); } }\nlet r = new R('a');\nr = new R('b');\nr.handle('x', f);",
+    },
+    want: [],
+    forbid: ["a:x", "b:x"],
+  },
+  "neg2:entries-open": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nconst T = { 'e:a': 1, ...extra };\nObject.keys(T).forEach((c) => ipcMain.on(c, f));",
+    },
+    want: [],
+    forbid: ["e:a"],
+  },
+  "neg2:local-shadow": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nfunction reg(n) { const ch = 'x:' + n; { const ch = other(); ipcMain.on(ch, f); } }\nreg('a');",
+    },
+    want: [],
+    forbid: ["x:a"],
+  },
+  "neg2:conditional-field": {
+    files: {
+      "main.js":
+        "const { ipcMain } = require('electron');\nclass R { constructor(ns) { if (ns) this.ns = ns; } handle(n, f) { ipcMain.handle(`${this.ns}:${n}`, f); } }\nconst r = new R('a');\nr.handle('b', f);",
+    },
+    want: [],
+    forbid: ["a:b"],
   },
   "win:direct": {
     kind: "window",
@@ -325,8 +410,8 @@ const CASES: Record<string, Case> = {
       "main.js":
         "const { BrowserWindow } = require('electron');\nfunction make(extra) { return new BrowserWindow({ webPreferences: { ...extra } }); }\nmake({ sandbox: false });\nmake(userPrefs);",
     },
-    want: [],
-    forbid: ["sandbox=false"],
+    want: ["sandbox=false"],
+    forbid: [],
   },
   "winneg:assign-other-object": {
     kind: "window",
@@ -359,7 +444,7 @@ function observe(c: Case): string[] {
 }
 
 /** Not read yet: window options declared in another module. The analysis must say so. */
-const KNOWN_GAPS = new Set(["win:config-module", "win:config-module-esm"]);
+const KNOWN_GAPS = new Set<string>();
 
 describe("bounded expression resolution", () => {
   for (const name of KNOWN_GAPS)
@@ -380,6 +465,33 @@ describe("bounded expression resolution", () => {
       for (const want of c.want) expect(got).toContain(want);
       for (const forbid of c.forbid ?? []) expect(got).not.toContain(forbid);
     });
+
+  it("reads bridge members spread in from objects of the file, and exported tables", () => {
+    const info = analyzeJavaScriptTree(
+      asarTree(
+        buildAsar({
+          "package.json": JSON.stringify({ name: "p", main: "main.js" }),
+          "main.js": "",
+          "preload.js": [
+            'const electron_1 = require("electron");',
+            'const ipc_1 = require("./ipc");',
+            "const files = { open: () => electron_1.ipcRenderer.invoke(ipc_1.Channels.Open) };",
+            'const prefs = { get: () => electron_1.ipcRenderer.invoke("prefs:get") };',
+            "const api = { ...files, ...prefs, ...unknownPart, version: 1 };",
+            'electron_1.contextBridge.exposeInMainWorld("app", api);',
+          ].join("\n"),
+          "ipc.js": 'exports.Channels = void 0;\nexports.Channels = { Open: "files:open" };',
+        }),
+        "app.asar",
+      ),
+    );
+    expect(info.contextBridge.map((b) => `${b.member} ${b.channel}`)).toEqual([
+      "open files:open",
+      "get prefs:get",
+      "null null", // the spread of something not declared in the file stays unreadable
+      "version null",
+    ]);
+  });
 
   it("says how a resolved channel was read and where it was bound", () => {
     const info = analyzeJavaScriptTree(
