@@ -298,7 +298,21 @@ export function resolveAliases(
                 !is(tokens[j + 4], "punct", "(")
                   ? tokens[j + 3]!.value
                   : null;
-              const target = direct ?? member;
+              // `x = require("electron").ipcRenderer`: the member of the module itself.
+              const required =
+                value!.value === "require" &&
+                is(after, "punct", "(") &&
+                tokens[j + 3]?.type === "string" &&
+                /^electron(\/|$)/.test(tokens[j + 3]!.value) &&
+                is(tokens[j + 4], "punct", ")") &&
+                is(tokens[j + 5], "punct", ".") &&
+                is(tokens[j + 6], "ident") &&
+                targets.has(tokens[j + 6]!.value) &&
+                !is(tokens[j + 7], "punct", ".") &&
+                !is(tokens[j + 7], "punct", "(")
+                  ? tokens[j + 6]!.value
+                  : null;
+              const target = direct ?? member ?? required;
               if (target) put(name!.value, target);
             }
             let e = 0;
@@ -394,8 +408,145 @@ export class Constants {
   /** Names and `TABLE.KEY` entries that are assigned after their declaration. */
   private readonly reassigned = new Set<string>();
   private readonly exportsName = "exports";
+  /**
+   * Compiled TypeScript string enums, by enum name: `(function (E) { E.A = "a"; E["B"] = "b" })(E
+   * || (exports.E = E = {}))`, also as minifiers write it. Null marks a name that two enums of the
+   * file share with different contents: nothing is resolved through it.
+   */
+  private readonly enums = new Map<string, Map<string, string> | null>();
+
+  /** Reads the compiled string enums of the file into `enums`. */
+  private readEnums(): void {
+    const tokens = this.tokens;
+    /** Token ranges of the enum definitions themselves. */
+    const spans: Array<[number, number]> = [];
+    for (let k = 0; k + 6 < tokens.length; k++) {
+      if (
+        !is(tokens[k], "ident", "function") ||
+        !is(tokens[k + 1], "punct", "(") ||
+        !is(tokens[k + 2], "ident") ||
+        !is(tokens[k + 3], "punct", ")") ||
+        !is(tokens[k + 4], "punct", "{")
+      )
+        continue;
+      const parameter = tokens[k + 2]!.value;
+      const members = new Map<string, string>();
+      let j = k + 5;
+      // `E.A = "a"` or `E["A"] = "a"`, separated by `,` or `;`, and nothing else in the body
+      for (; j + 4 < tokens.length && members.size < 5000;) {
+        if (!is(tokens[j], "ident", parameter)) break;
+        let key: string | null = null;
+        let at = j + 1;
+        if (is(tokens[at], "punct", ".") && is(tokens[at + 1], "ident")) {
+          key = tokens[at + 1]!.value;
+          at += 2;
+        } else if (
+          is(tokens[at], "punct", "[") &&
+          tokens[at + 1]?.type === "string" &&
+          is(tokens[at + 2], "punct", "]")
+        ) {
+          key = tokens[at + 1]!.value;
+          at += 3;
+        }
+        const value = text(tokens[at + 1]);
+        if (key === null || !is(tokens[at], "punct", "=") || value === null) break;
+        members.set(key, value);
+        j = at + 2;
+        if (is(tokens[j], "punct", ",") || is(tokens[j], "punct", ";")) j++;
+      }
+      if (!members.size || !is(tokens[j], "punct", "}")) continue;
+      // The call that follows names the enum: `(E || (E = {}))`, `(i || (n.IpcEvents = i = {}))`
+      let open = j + 1;
+      if (is(tokens[open], "punct", ")")) open++;
+      if (!is(tokens[open], "punct", "(")) continue;
+      const names = new Set<string>();
+      let argumentsEnd = open + 1;
+      for (let a = open + 1, depth = 1; a < tokens.length && a < open + 24 && depth > 0; a++) {
+        argumentsEnd = a;
+        const t = tokens[a]!;
+        if (t.type === "punct") {
+          if (t.value === "(") depth++;
+          else if (t.value === ")") depth--;
+          continue;
+        }
+        // A one- or two-letter name is a minifier's local: it means something else in every
+        // other function of the bundle, so the enum is not known by it.
+        if (t.type === "ident" && is(tokens[a + 1], "punct", "=") && t.value.length > 2)
+          names.add(t.value);
+      }
+      if (parameter.length > 2) names.add(parameter);
+      spans.push([k, argumentsEnd]);
+      for (const name of names) {
+        const known = this.enums.get(name);
+        if (known === undefined) {
+          this.enums.set(name, members);
+          continue;
+        }
+        if (known === null) continue;
+        // The same enum compiled into two modules is one enum: equal members, equal values.
+        // Anything else under one name is two enums, and a member of one must not be resolved
+        // where the other is in scope.
+        const same =
+          known.size === members.size && [...members].every(([key, v]) => known.get(key) === v);
+        if (!same) this.enums.set(name, null);
+      }
+      k = j;
+    }
+    if (!this.enums.size) return;
+    // The enum's name must mean the enum everywhere in the file. Outside the definitions, any
+    // other binding of the name (a declaration with a value, an assignment, a parameter, a
+    // destructured or imported name) makes it ambiguous, and nothing is resolved through it:
+    // a local `const Channels = { SAVE: "other" }` must not be read through the enum's table.
+    let span = 0;
+    for (let k = 0; k < tokens.length; k++) {
+      while (span < spans.length && spans[span]![1] < k) span++;
+      if (span < spans.length && k >= spans[span]![0]) continue;
+      const t = tokens[k]!;
+      if (t.type !== "ident" || this.enums.get(t.value) == null) continue;
+      const next = tokens[k + 1];
+      const property = is(tokens[k - 1], "punct", ".");
+      // `x.Name = void 0` is how compiled modules announce the export before defining it;
+      // `var Name;` is the declaration TypeScript emits in front of the enum.
+      const announced =
+        is(next, "punct", "=") &&
+        is(tokens[k + 2], "ident", "void") &&
+        tokens[k + 3]?.value === "0";
+      const rebound =
+        (is(next, "punct", "=") && !is(tokens[k + 2], "punct", "=") && !announced) ||
+        (!property &&
+          !is(next, "punct", ".") &&
+          !is(next, "punct", ";") &&
+          !(next && next.line !== t.line) &&
+          (is(next, "punct", ",") ||
+            is(next, "punct", ")") ||
+            is(next, "punct", "}") ||
+            is(next, "punct", ":")));
+      if (rebound) this.enums.set(t.value, null);
+    }
+  }
+
+  /**
+   * The value of `Enum.MEMBER` or `anything.Enum.MEMBER` used as an argument at token `k`.
+   * The object in front of the enum name is whatever the module was imported as and is not
+   * looked at: the enum name and the member decide.
+   */
+  private enumMember(k: number): string | null {
+    const tokens = this.tokens;
+    if (!this.enums.size || tokens[k]?.type !== "ident") return null;
+    const chain = [tokens[k]!.value];
+    let at = k + 1;
+    while (chain.length < 3 && is(tokens[at], "punct", ".") && is(tokens[at + 1], "ident")) {
+      chain.push(tokens[at + 1]!.value);
+      at += 2;
+    }
+    if (chain.length < 2 || (!is(tokens[at], "punct", ",") && !is(tokens[at], "punct", ")")))
+      return null;
+    const [name, member] = chain.slice(-2) as [string, string];
+    return this.enums.get(name)?.get(member) ?? null;
+  }
 
   constructor(private readonly tokens: Token[]) {
+    this.readEnums();
     const wrappers = new Map<string, Map<string, string>>();
     /** A bundler's module wrapper being read: `var W = helper({ "file.js"(exports, module) {`. */
     let wrapper: { name: string; until: number; depth: number } | null = null;
@@ -659,6 +810,8 @@ export class Constants {
     const t = tokens[k];
     const literal = text(t);
     if (literal !== null) return { value: literal, via: "literal" };
+    const member = this.enumMember(k);
+    if (member !== null) return { value: member, via: "constant" };
     if (!t || t.type !== "ident" || !this.sees(k, t.value)) return null;
     const next = tokens[k + 1];
     if (is(next, "punct", ".") && is(tokens[k + 2], "ident")) {

@@ -88,6 +88,11 @@ The observer knows nothing about the expectations; the scorer knows nothing abou
 meet in a neutral observation format (see the top of `observe-hexvero.mjs`), so another tool can be
 scored by writing an observer for it. The comparison with REA in `compare/` does that.
 
+Window settings are scored for the four keys every `expected.json` lists (`preload`,
+`contextIsolation`, `nodeIntegration`, `sandbox`); a row a tool reports for another key is not
+scored and its count is given in the notes. A row whose value is null, meaning the value is
+computed at run time, claims no value and is likewise not scored, only counted in the notes.
+
 Per class and input the scorer counts:
 
 - **hit**: an expected item the tool reported

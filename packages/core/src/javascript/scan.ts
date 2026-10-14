@@ -24,8 +24,11 @@ export interface IpcUsage {
    * name for ipcMain/ipcRenderer (`alias`), with a channel name taken from a constant, through
    * a helper function of the file that passes its first argument on as the channel (`wrapper`),
    * or as one of the keys of an object whose entries are registered in a loop (`table`).
+   * `global`: through a name another file defines (a `window.` global, or a name at the top of a
+   * file that is built together with this one). `webContents`: on one page's own channel object
+   * (`webContents.ipc.on`).
    */
-  via?: "alias" | "constant" | "wrapper" | "table";
+  via?: "alias" | "constant" | "wrapper" | "table" | "global" | "webContents";
   /** A channel named by a constant of another module, to be looked up there. */
   channelRef?: { specifier: string; property: string };
 }

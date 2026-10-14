@@ -377,6 +377,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
                 .map((f) => f.trim())
                 .filter(Boolean),
         positional: strict ? [] : positionalFields(name, [a.info.format, b.info.format]),
+        coverage: { a: await session.coverage(a.id), b: await session.coverage(b.id) },
       });
       if (diff.keyMissing)
         throw new UsageError(
@@ -423,7 +424,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           io,
           `${name}: ${diff.added.length} added, ${diff.removed.length} removed, ${diff.changed.length} changed, ${diff.unchanged} unchanged${
             diff.relocated ? `, ${diff.relocated} relocated` : ""
-          }${paint(io, "dim", diff.key ? ` · matched by ${diff.key}` : " · matched by full content")}`,
+          }${diff.unknown.length ? `, ${diff.unknown.length} unknown` : ""}${paint(io, "dim", diff.key ? ` · matched by ${diff.key}` : " · matched by full content")}`,
         ),
       );
       const MAX_LINES = 200;
@@ -435,6 +436,11 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         line(`  ${paint(io, "green", "+")} ${k || paint(io, "dim", "(empty)")}`);
       for (const k of diff.removed)
         line(`  ${paint(io, "red", "-")} ${k || paint(io, "dim", "(empty)")}`);
+      // Found on one side, in a file the other side did not read: neither added nor removed.
+      for (const u of diff.unknown)
+        line(
+          `  ${paint(io, "yellow", "?")} ${u.key || paint(io, "dim", "(empty)")}${paint(io, "dim", `  only in ${u.side}; ${u.file}: ${u.reason}`)}`,
+        );
       for (const c of diff.changed) {
         const detail = c.fields
           .slice(0, 4)
@@ -463,6 +469,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       }
       if (diff.ignored.length)
         io.out(paint(io, "dim", `  ignored on request: ${diff.ignored.join(", ")}`));
+      if (diff.matchedByPosition)
+        io.out(
+          paint(
+            io,
+            "dim",
+            `  ${diff.matchedByPosition} item(s) belong to windows without a name (#n) and were matched by the window's position in its file; a window added before them would pair different windows`,
+          ),
+        );
       if (diff.duplicateKeys)
         io.out(
           paint(

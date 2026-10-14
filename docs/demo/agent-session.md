@@ -20,7 +20,7 @@ model reasons. Results are real and only shortened where marked.
     "sha256": "875c2bb7fb7eebcdc6ef2824fbc2f3419293f30931ab9dcd36a425576606ed20",
     "format": "asar"
   },
-  "openedAt": "2026-10-14T15:29:21.121Z",
+  "openedAt": "2026-10-14T16:06:33.900Z",
   "analyzed": false
 }
 ```
@@ -39,7 +39,7 @@ _256 bytes received._
     {
       "kind": "electron.node-integration",
       "title": "nodeIntegration: true in a BrowserWindow",
-      "detail": "Renderer code can require Node modules; XSS becomes RCE.",
+      "detail": "contextIsolation is on for the same window, so page scripts do not get require(). Node integration keeps the renderer out of the Chromium sandbox.",
       "confidence": "inferred",
       "location": "main.js:14"
     },
@@ -95,7 +95,7 @@ _256 bytes received._
   … (30 more lines)
 ```
 
-_3619 bytes received._
+_3816 bytes received._
 
 ### Follow the first suggestion: the channels with senders and receivers
 
@@ -191,7 +191,7 @@ _247 bytes received._
     "sha256": "03ee8043a8396b7d307815290374998456226e77abc9a76dd0ea19ff6d7f4554",
     "format": "asar"
   },
-  "openedAt": "2026-10-14T15:29:21.175Z",
+  "openedAt": "2026-10-14T16:06:33.957Z",
   "analyzed": false
 }
 ```
@@ -204,7 +204,7 @@ _256 bytes received._
 
 ```json
 {
-  "key": "file+window+key",
+  "key": "file+windowName+key",
   "complete": true,
   "added": {
     "count": 0,
@@ -218,7 +218,7 @@ _256 bytes received._
     "count": 2,
     "sample": [
       {
-        "key": "main.js::1::nodeIntegration",
+        "key": "main.js::win::nodeIntegration",
         "fields": [
           {
             "field": "value",
@@ -228,7 +228,7 @@ _256 bytes received._
         ]
       },
       {
-        "key": "main.js::1::sandbox",
+        "key": "main.js::win::sandbox",
         "fields": [
           {
             "field": "value",
@@ -242,7 +242,7 @@ _256 bytes received._
 }
 ```
 
-_638 bytes received._
+_689 bytes received._
 
 ### Compare the channels
 
@@ -267,7 +267,7 @@ _638 bytes received._
 }
 ```
 
-_466 bytes received._
+_500 bytes received._
 
 ## An answer the evidence supports
 

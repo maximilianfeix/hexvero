@@ -46,6 +46,8 @@ function sets3(present, absent, observed, exhaustive) {
   return { hit, missed, wrong };
 }
 const fileName = (f) => String(f).split(/[\\/]/).at(-1);
+/** The window settings the corpus defines: every expected.json lists these four keys and no other. */
+const SCORED_SETTINGS = new Set(["preload", "contextIsolation", "nodeIntegration", "sandbox"]);
 const bare = (name) =>
   String(name)
     .replace(/^(sym\.imp\.|sym\.|imp\.)/, "")
@@ -92,7 +94,16 @@ function scoreElectron(c, input, o) {
     const key = (w) =>
       `${fileName(w.file)} ${w.key}=${w.key === "preload" ? fileName(w.value) : w.value}`;
     const want = e.webPreferences.present.map(key);
-    const have = o.webPreferences.map(key);
+    // Scored: a literal value for one of the four keys every expected.json lists. A row with
+    // another key has no written-down result to be checked against, and a row whose value is
+    // null says the value is computed at run time, which the results deliberately do not list.
+    // Neither is a claimed value: both are counted in the notes and nowhere else.
+    const scored = o.webPreferences.filter((w) => w.value !== null && SCORED_SETTINGS.has(w.key));
+    const otherKeys = o.webPreferences.filter((w) => !SCORED_SETTINGS.has(w.key)).length;
+    const computed = o.webPreferences.filter(
+      (w) => w.value === null && SCORED_SETTINGS.has(w.key),
+    ).length;
+    const have = scored.map(key);
     const left = [...have];
     const missed = [];
     let hit = 0;
@@ -107,6 +118,8 @@ function scoreElectron(c, input, o) {
     add(...where, "window settings", { hit, missed: missed.length, false: left.length }, [
       ...missed.map((m) => `missed ${m}`),
       ...left.map((w) => `false ${w}`),
+      ...(otherKeys ? [`not scored: ${otherKeys} row(s) with other keys`] : []),
+      ...(computed ? [`not scored: ${computed} row(s) with a computed value`] : []),
     ]);
   }
   if (e.contextBridge) {

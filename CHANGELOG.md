@@ -71,6 +71,38 @@ All notable changes to hexvero are listed here. The format follows
 - Window settings are attributed to a window (`window` field, counted per file) and read from the
   options of `new BrowserWindow(…)`, including an object passed by name, spread in, or returned by
   a helper; a key written for the window replaces the same key of its base object.
+- IPC through names another file defines: a page global (`window.ipc = electron.ipcRenderer`,
+  used as bare `ipc` in the page's other scripts) and a name bound at the top of a main-process
+  file whose siblings in the same directory are built into one script. Evidence is required:
+  the same directory and no file importing the using file; a `window.` global does not reach
+  main-process files; a non-IPC global of the same name makes the name ambiguous. Also read:
+  `x = require("electron").ipcRenderer`, a call written above the binding it uses,
+  `webContents.ipc.on(…)`, `webContents.postMessage(…)` and `event.sender.send(…)` in listeners
+  registered under another name. Rows read this way carry `via: "global"`.
+- Channel names from compiled TypeScript string enums (`IpcEvents.RUN`, `module.IpcEvents.RUN`,
+  also minified). A minifier's one-letter local is not taken as the enum's name, and a name the
+  file binds to anything else resolves nothing.
+- Limitations that name what could be seen but not read, with file and line:
+  `ipc_receiver_unresolved` (a call that looks like IPC on a name that could not be traced),
+  `ipc_channel_unresolved` (a channel that is a parameter or computed), `webpreferences_computed`
+  and `window_options_unresolved`. The IPC finding is `confirmed` only when the first two are
+  absent.
+- Collection `windows`: one row per window constructor call, also one that writes no setting,
+  with `nodeIntegration`, `contextIsolation` and `sandbox` each as `true`, `false`, `computed`,
+  `conflicting` or `not written`, and the derived `nodeIntegrationInEffect`,
+  `contextIsolationInEffect`, `sandboxInEffect` and `pageRequire` with the rule each rests on
+  (`basis`). A default taken from the Electron version in `package.json` is `default on` /
+  `default off` and `… by default`, never `on` / `off`. Rules and sources:
+  `docs/electron-findings.md`.
+- Six more window settings are read as written (`webSecurity`, `allowRunningInsecureContent`,
+  `webviewTag`, `nodeIntegrationInSubFrames`, `nodeIntegrationInWorker`, `enableRemoteModule`),
+  with findings for `webSecurity: false`, `allowRunningInsecureContent: true` and
+  `webviewTag: true`, and `electron.node-integration-default` when nothing is written and the
+  named Electron version predates 5.
+- `compare` reports `unknown` for an item found on one side whose file the other side did not
+  read, could not read, or read only up to the token budget (`?` lines on the command line,
+  `unknown` in JSON and over MCP), and `matchedByPosition` for settings of windows without a
+  name.
 
 - Results that are derived from a partly read application say so themselves: a collection page
   carries `partial`, a comparison `partialScan` and a warning, and counts in findings read "in
@@ -101,6 +133,14 @@ All notable changes to hexvero are listed here. The format follows
   and storage by file, kind, value and operation; line and column are positions for these lists.
   A known identity is kept for short lists with a repeated item, and a composite key may have an
   empty part.
+- Window settings are matched in `compare` by the variable the window is assigned to
+  (`windowName`, with `#n` for a window that is not assigned), so a window added before another
+  no longer pairs two different windows; the window number is a position.
+- A window setting whose value is not a literal is a row with `value: null` and the expression
+  in `computed`, instead of being dropped. It decides no app-wide flag.
+- `app.enableSandbox()` is read from code, not text, and counts as certain only as an
+  unconditional statement at the top of a file.
+- Stored scans of earlier detectors are not reused (`JS_SCAN_SCHEMA` 5).
 
 ### Fixed
 
@@ -119,6 +159,21 @@ All notable changes to hexvero are listed here. The format follows
   were intact; it now carries `file_truncated`.
 - A file over the size budget of one run was counted as skipped for good; it now stays unread and
   a continued scan takes it.
+- The `nodeIntegration: true` finding said "XSS becomes RCE" whatever `contextIsolation` was. Its
+  text now follows `pageRequire` of the same window; no finding derives that conclusion from one
+  setting.
+- For one window and key the later write wins, as in JavaScript, also across a spread
+  (`{ sandbox: true, ...base }` takes the base's value); the directly written key used to win
+  always, which could show the safe value where the unsafe one is in effect. Two different values
+  in separate objects of one window are `conflicting`, not one of the two.
+- A helper that returns its options as `return ({ … })` was not followed.
+- Settings of an options object declared above its `new BrowserWindow(options)` were rows without
+  a window, and the window read as not written.
+- `{ ...base, webPreferences: {…} }`: the later `webPreferences` now replaces the whole object the
+  base brought, and the other way round.
+- Settings of a window whose options could not be followed (a parameter, a call, a condition, a
+  spread of something unknown), or whose options object is assigned to later, read as
+  `computed`; they used to read as not written.
 
 ## [0.3.0] - 2026-10-13
 

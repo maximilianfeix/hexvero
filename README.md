@@ -48,7 +48,7 @@ Summary
 
 Findings
   ○ nodeIntegration: true in a BrowserWindow  @ main.js:14
-      Renderer code can require Node modules; XSS becomes RCE.
+      contextIsolation is on for the same window, so page scripts do not get require(). Node integration keeps the renderer out of the Chromium sandbox.
   ○ sandbox: false in a BrowserWindow  @ main.js:15
       The renderer process runs without the Chromium sandbox.
   ● 6 IPC channels  @ main.js:25
@@ -69,7 +69,7 @@ Next
   … (two more)
 ```
 
-A filled dot is a fact read from the file, a hollow dot an inference from a pattern; `@ main.js:14` is where it was read. Settings are reported as written, never as assumed Electron defaults. `${…}` marks the part of an address that is computed at run time.
+A filled dot is a fact read from the file, a hollow dot an inference from a pattern; `@ main.js:14` is where it was read. Settings are reported as written, never as assumed Electron defaults. `${…}` marks the part of an address that is computed at run time. The `windows` collection puts each window's `nodeIntegration`, `contextIsolation` and `sandbox` side by side as `true`, `false`, `computed` or `not written` and says what follows from them together; a value that rests on Electron's default for the version in `package.json` is marked `default on` / `default off`. The rules and their sources are in [docs/electron-findings.md](docs/electron-findings.md). The IPC finding is a filled dot only when every IPC-shaped call could be traced; otherwise the limitations name the calls that could not, with file and line.
 
 <a id="use-cases"></a>
 
@@ -95,15 +95,21 @@ main
 
 ```text
 $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar webPreferences
-webPreferences: 0 added, 0 removed, 2 changed, 2 unchanged · matched by file+window+key
-  ~ main.js::1::nodeIntegration  value: true → false
-  ~ main.js::1::sandbox  value: false → true
+webPreferences: 0 added, 0 removed, 2 changed, 2 unchanged · matched by file+windowName+key
+  ~ main.js::win::nodeIntegration  value: true → false
+  ~ main.js::win::sandbox  value: false → true
+
+$ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar windows
+windows: 0 added, 0 removed, 1 changed, 0 unchanged · matched by file+windowName
+  ~ main.js::win  nodeIntegration: true → false, nodeIntegrationInEffect: "on" → "off", sandbox: false → true, sandboxInEffect: "off" → "on"
 
 $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar contextBridge
 contextBridge: 1 added, 1 removed, 0 changed, 5 unchanged · matched by api+member
   + notesdesk::checkUpdate
   - notesdesk::openInShell
 ```
+
+Nothing is ignored by default; code that only moved in a native binary is counted as `relocated`. Windows are matched by the variable they are assigned to (`win`), so adding a window does not mis-pair the others. An item found on one side only is `added` or `removed` only if the other side read the file it sits in; otherwise it is `unknown` (`?`).
 
 **3. Let an AI agent investigate.** `npx hexvero setup --apply` registers the MCP server with the coding agents it finds (Claude Code, Codex, Cursor, VS Code, and 14 more), and `npx hexvero setup --skill --apply` installs a skill that teaches the investigation loop. The agent then opens a target, reads a small first answer with suggested next calls, pages only the lists it needs, and cites `file:line` for each claim. Text inside the target is treated as data, never as instructions; a test plants such text in a target to check it. See [For AI agents](#for-ai-agents).
 
@@ -265,12 +271,14 @@ Call graphs include tail calls through both radare2 (from its jump references) a
 ## Limits
 
 - hexvero is static. It reads files and never observes a running program: a finding is what the code contains, not what it does at run time.
-- On code it was not tuned on, it still misses a lot: in the corpus's hold-out app about four in ten IPC channels and six in ten window settings (channels registered from classes or Maps, options assembled with `Object.assign`). Absence from a list is weaker evidence than presence.
-- A JavaScript app is read 5,000 files at a time; until `--all` has run, every list covers the scanned part and says so. Reading an app takes about twice as long as in 0.3.0 because names are followed through aliases and constants.
+- On code it was not tuned on, it still misses a lot: in the corpus's blind hold-out app about four in ten IPC channels and six in ten window settings. Absence from a list is weaker evidence than presence. What it saw but could not read is named in the limitations with file and line (`ipc_receiver_unresolved`, `ipc_channel_unresolved`, `webpreferences_computed`, `window_options_unresolved`).
+- IPC is followed through other names for `ipcMain`/`ipcRenderer`, `window.` globals, names defined at the top of another file in the same directory, constants, tables and compiled TypeScript string enums. Not followed: an application's own wrapper methods around IPC, channels passed as parameters or iterated from arrays, and names defined in files that were not read.
+- Window settings: ten `webPreferences` keys, where they are written, spread in or returned by a helper. Electron fuses, CSP, navigation and permission handlers are not checked, and nothing is rated by severity. The derived `windows` columns do not know the Electron version actually shipped or run-time changes.
+- A JavaScript app is read 5,000 files at a time; until `--all` has run, every list covers the scanned part and says so.
 - A channel name or URL computed at run time cannot be named statically; it is left out or shown as `${…}`.
 - Call graphs depend on the engine's analysis; a function reached only through a pointer has no direct caller. Ghidra is verified on fixtures only.
 - Very large single items are returned compacted with a marker; very large files above the per-file budget are listed as unread.
-- `compare` is a per-collection diff: it does not line up renamed functions or match code by structure.
+- `compare` is a per-collection diff: it does not line up renamed functions or match code by structure; a renamed window shows up as removed and added.
 - Native findings cite a collection (imports, symbols) rather than a file offset.
 - Files above 512 MiB are read lazily only for ASAR archives; other formats that large are refused with `too_large`.
 - No dynamic analysis, debugging, device access, firmware unpacking or packet capture: for those, see [REA](#compared-with-rea).

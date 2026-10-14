@@ -424,6 +424,7 @@ export function createHandlers(
           a["strict"] === true
             ? []
             : positionalFields(name, [session.get(idA).info.format, session.get(idB).info.format]),
+        coverage: { a: await session.coverage(idA), b: await session.coverage(idB) },
       });
       if (diff.keyMissing)
         throw new AnalysisError(
@@ -471,6 +472,8 @@ export function createHandlers(
         // Lists are paged like collections: `next` is the offset of the following page.
         added: window(diff.added, 50),
         removed: window(diff.removed, 50),
+        // Found on one side, in a file the other side did not read: neither added nor removed.
+        unknown: window(diff.unknown, 50),
         changed: window(diff.changed.map(fieldsOf), 25),
         relocated: {
           count: diff.relocated,
