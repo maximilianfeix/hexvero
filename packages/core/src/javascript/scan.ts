@@ -89,23 +89,34 @@ function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string
     }
     return null;
   };
+  // The closing bracket of every opening one, counting all three kinds alike, matched once.
+  // A body's end is then found by jumping over bracket groups instead of walking every token.
+  const match = new Int32Array(tokens.length).fill(-1);
+  const opened: number[] = [];
+  for (let j = 0; j < tokens.length; j++) {
+    const p = tokens[j]!;
+    if (p.type !== "punct") continue;
+    if (p.value === "{" || p.value === "(" || p.value === "[") opened.push(j);
+    else if (p.value === "}" || p.value === ")" || p.value === "]") {
+      const at = opened.pop();
+      if (at !== undefined) match[at] = j;
+    }
+  }
   /** End of the function body that starts at `k` (a brace block, or an expression). */
-  // All function bodies together may cost this many token visits; unclosed bodies would
-  // otherwise each be walked to their limit.
-  let budget = 400_000;
   const bodyEnd = (k: number): number => {
-    let d = 0;
-    const block = is(k, "punct", "{");
-    for (let j = k; j < tokens.length && j < k + 4000 && budget-- > 0; j++) {
+    const limit = Math.min(tokens.length, k + 4000);
+    if (is(k, "punct", "{")) return match[k]! !== -1 && match[k]! < limit ? match[k]! : limit;
+    // An expression ends at a `;` or `,` outside brackets, or where its enclosing bracket closes.
+    for (let j = k; j < limit; j++) {
       const p = tokens[j]!;
       if (p.type !== "punct") continue;
-      if (p.value === "{" || p.value === "(" || p.value === "[") d++;
-      else if (p.value === "}" || p.value === ")" || p.value === "]") {
-        d--;
-        if (d < 0 || (block && d === 0)) return j;
-      } else if (!block && d === 0 && (p.value === ";" || p.value === ",")) return j;
+      if (p.value === "{" || p.value === "(" || p.value === "[") {
+        if (match[j] === -1) return limit;
+        j = match[j]!;
+      } else if (p.value === "}" || p.value === ")" || p.value === "]") return j;
+      else if (p.value === ";" || p.value === ",") return j;
     }
-    return Math.min(tokens.length, k + 4000);
+    return limit;
   };
   let depth = 0;
   for (let k = 0; k + 4 < tokens.length; k++) {
@@ -241,8 +252,24 @@ const PUNCT2 = new Set([
   "<<",
   ">>",
 ]);
-const isIdentStart = (c: string): boolean => /[A-Za-z_$À-￿]/.test(c);
-const isIdentPart = (c: string): boolean => /[\w$À-￿]/.test(c);
+/** Characters that can follow the first one of a multi-character punctuator. */
+const PUNCT_SECOND = new Set([...PUNCT2, ...PUNCT3].map((p) => p[1]!));
+// ASCII by char code; everything from U+00C0 up counts as a letter, as before.
+const isIdentStart = (c: string): boolean => {
+  const x = c.charCodeAt(0);
+  return (x >= 97 && x <= 122) || (x >= 65 && x <= 90) || x === 95 || x === 36 || x >= 0xc0;
+};
+const isIdentPart = (c: string): boolean => {
+  const x = c.charCodeAt(0);
+  return (
+    (x >= 97 && x <= 122) ||
+    (x >= 65 && x <= 90) ||
+    (x >= 48 && x <= 57) ||
+    x === 95 ||
+    x === 36 ||
+    x >= 0xc0
+  );
+};
 
 export function tokenize(
   source: string,
@@ -289,15 +316,17 @@ export function tokenize(
       const startLine = line;
       let j = i + 1;
       let value = "";
+      let run = j;
       while (j < n && source[j] !== c && source[j] !== "\n") {
         if (source[j] === "\\") {
-          value += source[j + 1] ?? "";
+          value += source.slice(run, j) + (source[j + 1] ?? "");
           j += 2;
+          run = j;
           continue;
         }
-        value += source[j];
         j++;
       }
+      value += source.slice(run, Math.min(j, n));
       tokens.push({ type: "string", value, line: startLine, start: i, end: j + 1 });
       i = j + 1;
       continue;
@@ -376,9 +405,14 @@ export function tokenize(
     }
     if (c === "{") braceDepth++;
     if (c === "}") braceDepth--;
-    const three = source.slice(i, i + 3);
-    const two = source.slice(i, i + 2);
-    const punct = PUNCT3.has(three) ? three : PUNCT2.has(two) ? two : c;
+    // Most punctuation is one character; only look for a longer one when the next character
+    // could continue it (saves two substrings per character on minified code).
+    let punct = c;
+    if (PUNCT_SECOND.has(source[i + 1] ?? "")) {
+      const three = source.slice(i, i + 3);
+      const two = source.slice(i, i + 2);
+      punct = PUNCT3.has(three) ? three : PUNCT2.has(two) ? two : c;
+    }
     tokens.push({ type: "punct", value: punct, line, start: i, end: i + punct.length });
     i += punct.length;
   }
@@ -611,7 +645,12 @@ export function scanJavaScript(
       default:
         break;
     }
-    if (is(k + 1, "punct", ".") && is(k + 2, "ident") && is(k + 3, "punct", "(")) {
+    if (
+      is(k + 1, "punct", ".") &&
+      is(k + 2, "ident") &&
+      IPC_METHODS.has(at(k + 2)!.value) &&
+      is(k + 3, "punct", "(")
+    ) {
       const owner = aliases.get(k) ?? t.value;
       const api = `${owner}.${at(k + 2)!.value}`;
       if (IPC_APIS.has(api)) {

@@ -11,6 +11,7 @@ import {
   scanJavaScript,
   tokenize,
   type ScanContext,
+  type ScanResult,
   type IpcUsage,
   type ModuleReference,
   type Token,
@@ -1175,6 +1176,327 @@ function resolveSpecifier(from: string, specifier: string, known: Set<string>): 
   return candidates.find((c) => known.has(c)) ?? null;
 }
 
+const jsFilesOf = (tree: FileTree): FileTree["files"] =>
+  tree.files.filter((f) => JS_EXT.test(f.path) && !f.path.includes("node_modules/"));
+
+/** The entry file, then shallow paths before deep ones, then by path. */
+function scanOrder(files: FileTree["files"], main: string | null): FileTree["files"] {
+  const mainPath = main ? posix.normalize(main) : null;
+  return files.toSorted(
+    (a, b) =>
+      Number(b.path === mainPath) - Number(a.path === mainPath) ||
+      pathDepth(a.path) - pathDepth(b.path) ||
+      (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
+  );
+}
+
+/**
+ * The files `analyzeJavaScriptTree` will read with these options, by the same order and budgets,
+ * so their tokens can be read ahead in worker threads. Only sizes decide here; a file that turns
+ * out unreadable during the scan can shift the end of a run, and whatever this list misses or
+ * has in excess is read by the scan itself or ignored.
+ */
+export function plannedReads(
+  tree: FileTree,
+  options: {
+    maxJsFiles?: number;
+    maxFileBytes?: number;
+    maxTotalBytes?: number;
+    resume?: JsScanFacts;
+    include?: readonly string[];
+    all?: boolean;
+  } = {},
+): FileTree["files"] {
+  const maxJsFiles = options.maxJsFiles ?? 5000;
+  const maxFileBytes = options.maxFileBytes ?? 16 << 20;
+  const maxTotalBytes = options.maxTotalBytes ?? 256 << 20;
+  let main: string | null = null;
+  if (tree.files.some((f) => f.path === "package.json")) {
+    try {
+      main = (JSON.parse(decode(tree.read("package.json"))) as PackageJson).main ?? null;
+    } catch {
+      main = null;
+    }
+  }
+  const done = new Set(options.resume?.schema === JS_SCAN_SCHEMA ? options.resume.scanned : []);
+  const wanted = options.include?.length ? pathMatcher(options.include) : null;
+  const batch = Number.isFinite(maxJsFiles) && maxJsFiles >= 1 ? Math.floor(maxJsFiles) : 5000;
+  const runFiles = options.all ? Number.POSITIVE_INFINITY : maxJsFiles === 0 ? 0 : batch;
+  const out: FileTree["files"] = [];
+  let taken = 0;
+  let runBytes = 0;
+  for (const file of scanOrder(jsFilesOf(tree), main)) {
+    if (done.has(file.path) || (wanted && !wanted(file.path))) continue;
+    if (taken >= runFiles) break;
+    if (
+      !options.all &&
+      taken > 0 &&
+      file.size <= maxFileBytes &&
+      runBytes + file.size > maxTotalBytes
+    )
+      break;
+    taken++;
+    if (file.size > maxFileBytes) continue;
+    runBytes += file.size;
+    out.push(file);
+  }
+  return out;
+}
+
+/** A setting written as `key: value` in an options object, at a source offset. */
+type SettingAt = {
+  key: Exclude<PreferenceKey, "preload">;
+  value: boolean | null;
+  computed?: string;
+  start: number;
+};
+
+/**
+ * What one file's tokens say before anything is merged into the application's facts: no caps,
+ * no shared state. The same source gives the same result here or in a worker thread
+ * (`tokenPool.ts`), so a parallel scan merges exactly what a sequential one would.
+ */
+export interface FileTokenFacts {
+  scan: ScanResult;
+  ambient: ReturnType<typeof collectAmbient> | null;
+  located: WindowRanges | null;
+  ranges: WindowRange[];
+  mutated: string[];
+  sandboxCall: "always" | "maybe" | null;
+  settingsAt: SettingAt[];
+  preloadsAt: number[];
+  braces: Array<[number, number]>;
+  preferenceObjects: Array<[number, number]>;
+  candidates: ReturnType<typeof findCandidates> | null;
+  bridge: ReturnType<typeof bridgeMembers> | null;
+}
+
+export function readFileTokens(path: string, source: string): FileTokenFacts {
+  let ranges: WindowRange[] = [];
+  let located: WindowRanges | null = null;
+  /** Keys of a followed options object that are assigned after its declaration. */
+  const mutated = new Set<string>();
+  let sandboxCall: "always" | "maybe" | null = null;
+  // Settings are read from tokens, so text in a comment or a string is never a setting.
+  const settingsAt: SettingAt[] = [];
+  const preloadsAt = new Set<number>();
+  /** Every `{ … }` of the file as [start, end) offsets, in source order; filled when needed. */
+  let braces: Array<[number, number]> = [];
+  /** For an object that is the value of a `webPreferences:` property: where that key stands. */
+  const preferenceObjects = new Map<number, number>();
+  let ambient: ReturnType<typeof collectAmbient> | null = null;
+  let candidates: ReturnType<typeof findCandidates> | null = null;
+  let bridge: ReturnType<typeof bridgeMembers> | null = null;
+  const scan = scanJavaScript(source, {
+    onTokens: (tokens, truncated, context) => {
+      if (source.includes("enableSandbox")) {
+        // Read from tokens, so a comment or a string is no call. Only a statement at the top
+        // of the file that no condition guards is certain to run.
+        let depth = 0;
+        for (let k = 0; k < tokens.length; k++) {
+          const t = tokens[k]!;
+          if (t.type === "punct") {
+            if (t.value === "{" || t.value === "(" || t.value === "[") depth++;
+            else if (t.value === "}" || t.value === ")" || t.value === "]") depth--;
+            continue;
+          }
+          if (
+            t.type !== "ident" ||
+            t.value !== "enableSandbox" ||
+            tokens[k - 1]?.value !== "." ||
+            tokens[k + 1]?.value !== "("
+          )
+            continue;
+          // back to the start of the statement: nothing but `app.` may stand before the call
+          const owner = tokens[k - 2];
+          const before = tokens[k - 3];
+          const plain =
+            depth === 0 &&
+            owner?.type === "ident" &&
+            (!before ||
+              before.line !== owner.line ||
+              (before.type === "punct" && (before.value === ";" || before.value === "}")));
+          if (plain) sandboxCall = "always";
+          else sandboxCall ??= "maybe";
+        }
+      }
+      if (
+        /ipcMain|ipcRenderer|\.(on|once|handle|handleOnce|send|invoke|sendSync|sendToHost|postMessage)\(|\b(window|self|globalThis|global)\.[\w$]+\s*=[^=]/.test(
+          source,
+        )
+      )
+        ambient = collectAmbient(tokens, context.aliases);
+      if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source)) {
+        located = windowRanges(tokens, context.aliases);
+        ranges = located.ranges;
+        // `prefs.sandbox = false`, `prefs["sandbox"] = false`, `Object.assign(prefs, …)` on an
+        // object that was followed as window options: what the declaration says no longer
+        // holds, so the key reads as computed.
+        const { traced } = located;
+        const is = (i: number, value: string): boolean =>
+          tokens[i]?.type === "punct" && tokens[i]!.value === value;
+        const everyKey = (): void => {
+          for (const key of BOOLEAN_KEYS) mutated.add(key);
+          mutated.add("preload");
+        };
+        const declared = new Set<string>();
+        for (let k = 0; traced.size && k + 1 < tokens.length; k++) {
+          const t = tokens[k]!;
+          if (t.type !== "ident" || !traced.has(t.value) || is(k - 1, ".")) continue;
+          // The declaration that was followed: `name = {`, once.
+          if (is(k + 1, "=") && is(k + 2, "{") && !declared.has(t.value)) {
+            declared.add(t.value);
+            continue;
+          }
+          // Its use as options: `new X(name)` for a window class, and `webPreferences: name`
+          // or `...name` INSIDE the options of a located window. The same shapes anywhere
+          // else (`tweak({ webPreferences: name })`, `const copy = { ...name }`, which shares
+          // the nested objects) hand the object on, and what happens to it there is not read.
+          const inWindow = ranges.some(
+            (r) => r.window !== null && t.start >= r.start && t.start < r.end,
+          );
+          const asOptions =
+            (is(k - 1, "(") &&
+              is(k + 1, ")") &&
+              // `new BrowserWindow(name)`, `new electron.BrowserWindow(name)`
+              (tokens[k - 3]?.value === "new" ||
+                (is(k - 3, ".") && tokens[k - 5]?.value === "new")) &&
+              WINDOW_CLASSES.has(tokens[k - 2]?.value ?? "")) ||
+            (inWindow &&
+              ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") || is(k - 1, "...")));
+          if (asOptions) continue;
+          // A write to one key: `name.key =`, `name.webPreferences.key =`, `name["key"] =`.
+          let at = k + 1;
+          if (is(at, ".") && tokens[at + 1]?.value === "webPreferences") at += 2;
+          const key = is(at, ".")
+            ? tokens[at + 1]?.type === "ident"
+              ? tokens[at + 1]!.value
+              : null
+            : is(at, "[") && tokens[at + 1]?.type === "string" && is(at + 2, "]")
+              ? tokens[at + 1]!.value
+              : null;
+          const after = is(at, ".") ? at + 2 : at + 3;
+          if (key !== null && is(after, "=") && !is(after + 1, "=")) {
+            // `name.webPreferences = other` replaces every key
+            if (key === "webPreferences") everyKey();
+            else mutated.add(key);
+            continue;
+          }
+          // A plain read of one key changes nothing. Only what is certainly a read counts as
+          // one: the key followed by the end of an expression or by a comparison or logical
+          // operator. `name.key ||= x`, `name.key += 1`, `name.key++` and anything else that is
+          // not on this list is a write.
+          const follower = tokens[after];
+          const reads =
+            key !== null &&
+            tokens[k - 1]?.value !== "delete" &&
+            tokens[k - 1]?.value !== "++" &&
+            tokens[k - 1]?.value !== "--" &&
+            (!follower || (follower.type === "punct" && READ_FOLLOWERS.has(follower.value)));
+          if (reads) continue;
+          if (key !== null && !is(after, ".") && !is(after, "[") && !is(after, "(")) {
+            mutated.add(key);
+            continue;
+          }
+          // Anything else may change the object in a way that is not read here: a second
+          // assignment to the name, a deeper or computed write, `delete`, the object handed to
+          // a function (`Object.assign(name, …)`, `tweak(name)`), a method called on it.
+          everyKey();
+        }
+        const open: number[] = [];
+        const pairs: Array<[number, number]> = [];
+        for (const t of tokens) {
+          if (t.type !== "punct") continue;
+          if (t.value === "{") {
+            open.push(pairs.length);
+            pairs.push([t.start, Number.MAX_SAFE_INTEGER]);
+          } else if (t.value === "}" && open.length) pairs[open.pop()!]![1] = t.end;
+        }
+        for (let k = 2; k < tokens.length; k++)
+          if (
+            is(k, "{") &&
+            is(k - 1, ":") &&
+            tokens[k - 2]!.type === "ident" &&
+            tokens[k - 2]!.value === "webPreferences"
+          )
+            preferenceObjects.set(tokens[k]!.start, tokens[k - 2]!.start);
+        braces = pairs;
+      }
+      if (
+        /nodeIntegration|contextIsolation|sandbox|preload|webSecurity|allowRunningInsecureContent|webviewTag|enableRemoteModule/.test(
+          source,
+        )
+      )
+        for (let k = 0; k + 2 < tokens.length; k++) {
+          const t = tokens[k]!;
+          const colon = tokens[k + 1]!;
+          if (t.type !== "ident" || colon.type !== "punct" || colon.value !== ":") continue;
+          if (t.value === "preload") preloadsAt.add(t.start);
+          else if (BOOLEAN_KEYS.has(t.value)) {
+            const key = t.value as Exclude<PreferenceKey, "preload">;
+            const v = tokens[k + 2]!;
+            const n = tokens[k + 3];
+            // true, false, and what minifiers write for them: !0 and !1
+            const value =
+              v.type === "ident" && (v.value === "true" || v.value === "false")
+                ? v.value === "true"
+                : v.type === "punct" &&
+                    v.value === "!" &&
+                    n?.type === "number" &&
+                    /^[01]$/.test(n.value)
+                  ? n.value === "0"
+                  : null;
+            // `sandbox: true && flag` is not the setting `true`: the value must end there.
+            const after = tokens[v.type === "ident" ? k + 3 : k + 4];
+            const ends =
+              !after || (after.type === "punct" && (after.value === "," || after.value === "}"));
+            if (value !== null && ends) settingsAt.push({ key, value, start: t.start });
+            else {
+              // Not a literal: the value is decided at run time. The expression is kept, up
+              // to the `,` or `}` that ends the property, so a reader sees what decides it.
+              let nested = 0;
+              let end = k + 2;
+              for (; end < tokens.length && end < k + 60; end++) {
+                const p = tokens[end]!;
+                if (p.type !== "punct") continue;
+                if (p.value === "(" || p.value === "[" || p.value === "{") nested++;
+                else if (p.value === ")" || p.value === "]" || p.value === "}") {
+                  if (nested === 0) break;
+                  nested--;
+                } else if (p.value === "," && nested === 0) break;
+              }
+              const computed = source
+                .slice(v.start, tokens[end - 1]?.end ?? v.end)
+                .replace(/\s+/g, " ")
+                .slice(0, 80);
+              settingsAt.push({ key, value: null, computed, start: t.start });
+            }
+          }
+        }
+      // Endpoints, storage and URL literals: only where the text can contain one at all.
+      if (CAN_HOLD_CANDIDATES.test(source)) {
+        candidates = findCandidates(tokens, source, undefined, context.aliases, context.constants);
+      }
+      if (!source.includes("exposeIn")) return;
+      bridge = bridgeMembers({ tokens, truncated, context }, path);
+    },
+  });
+  return {
+    scan,
+    ambient,
+    located,
+    ranges,
+    mutated: [...mutated],
+    sandboxCall,
+    settingsAt,
+    preloadsAt: [...preloadsAt],
+    braces,
+    preferenceObjects: [...preferenceObjects],
+    candidates,
+    bridge,
+  };
+}
+
 export function analyzeJavaScriptTree(
   tree: FileTree,
   options: {
@@ -1191,6 +1513,8 @@ export function analyzeJavaScriptTree(
     all?: boolean;
     /** Receives the facts after every batch and at the end, to store them. */
     onFacts?: (facts: JsScanFacts) => void;
+    /** Token facts already read for some files (in worker threads); the rest is read here. */
+    prepared?: ReadonlyMap<string, FileTokenFacts>;
   } = {},
 ): JsAppInfo {
   const maxJsFiles = options.maxJsFiles ?? 5000;
@@ -1228,9 +1552,7 @@ export function analyzeJavaScriptTree(
       code: "symlinks_skipped",
       message: `${tree.skippedLinks.length} symbolic link(s) point outside the analyzed directory and were not followed (e.g. ${tree.skippedLinks[0]}).`,
     });
-  const jsFiles = tree.files.filter(
-    (f) => JS_EXT.test(f.path) && !f.path.includes("node_modules/"),
-  );
+  const jsFiles = jsFilesOf(tree);
   const known = new Set(jsFiles.map((f) => f.path));
   const facts: JsScanFacts =
     options.resume && options.resume.schema === JS_SCAN_SCHEMA
@@ -1262,13 +1584,7 @@ export function analyzeJavaScriptTree(
   // A fixed order: the entry file, then shallow paths before deep ones, then by path. Entry
   // points and preloads sit near the root, so the first batch sees them; and because the order
   // depends on nothing but the file list, a continued scan takes up exactly where it stopped.
-  const mainPath = pkg?.main ? posix.normalize(pkg.main) : null;
-  const ordered = jsFiles.toSorted(
-    (a, b) =>
-      Number(b.path === mainPath) - Number(a.path === mainPath) ||
-      pathDepth(a.path) - pathDepth(b.path) ||
-      (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
-  );
+  const ordered = scanOrder(jsFiles, pkg?.main ?? null);
   const done = new Set(facts.scanned);
   const wanted = options.include?.length ? pathMatcher(options.include) : null;
   const todo = ordered.filter((f) => !done.has(f.path) && (!wanted || wanted(f.path)));
@@ -1307,23 +1623,12 @@ export function analyzeJavaScriptTree(
     }
     runBytes += file.size;
     bytes += file.size;
-    let ranges: WindowRange[] = [];
-    let located: WindowRanges | null = null;
-    /** Keys of a followed options object that are assigned after its declaration. */
-    const mutated = new Set<string>();
-    let sandboxCall: "always" | "maybe" | null = null;
-    // Settings are read from tokens, so text in a comment or a string is never a setting.
-    const settingsAt: Array<{
-      key: Exclude<PreferenceKey, "preload">;
-      value: boolean | null;
-      computed?: string;
-      start: number;
-    }> = [];
-    const preloadsAt = new Set<number>();
-    /** Every `{ … }` of the file as [start, end) offsets, in source order; filled when needed. */
-    let braces: Array<[number, number]> = [];
-    /** For an object that is the value of a `webPreferences:` property: where that key stands. */
-    const preferenceObjects = new Map<number, number>();
+    const tokenFacts = options.prepared?.get(file.path) ?? readFileTokens(file.path, source);
+    const { scan, located, ranges, sandboxCall, settingsAt, braces } = tokenFacts;
+    const ambient = tokenFacts.ambient;
+    const mutated = new Set(tokenFacts.mutated);
+    const preloadsAt = new Set(tokenFacts.preloadsAt);
+    const preferenceObjects = new Map(tokenFacts.preferenceObjects);
     /** The start of the innermost object or block that holds the offset. */
     const objectAt = (offset: number): number => {
       let inner = -1;
@@ -1333,225 +1638,29 @@ export function analyzeJavaScriptTree(
       }
       return inner;
     };
-    let ambient: ReturnType<typeof collectAmbient> | null = null;
-    const scan = scanJavaScript(source, {
-      onTokens: (tokens, truncated, context) => {
-        if (source.includes("enableSandbox")) {
-          // Read from tokens, so a comment or a string is no call. Only a statement at the top
-          // of the file that no condition guards is certain to run.
-          let depth = 0;
-          for (let k = 0; k < tokens.length; k++) {
-            const t = tokens[k]!;
-            if (t.type === "punct") {
-              if (t.value === "{" || t.value === "(" || t.value === "[") depth++;
-              else if (t.value === "}" || t.value === ")" || t.value === "]") depth--;
-              continue;
-            }
-            if (
-              t.type !== "ident" ||
-              t.value !== "enableSandbox" ||
-              tokens[k - 1]?.value !== "." ||
-              tokens[k + 1]?.value !== "("
-            )
-              continue;
-            // back to the start of the statement: nothing but `app.` may stand before the call
-            const owner = tokens[k - 2];
-            const before = tokens[k - 3];
-            const plain =
-              depth === 0 &&
-              owner?.type === "ident" &&
-              (!before ||
-                before.line !== owner.line ||
-                (before.type === "punct" && (before.value === ";" || before.value === "}")));
-            if (plain) sandboxCall = "always";
-            else sandboxCall ??= "maybe";
+    const cand = tokenFacts.candidates;
+    if (cand) {
+      if (cand.truncated) facts.candidatesCapped = true;
+      for (const [from, to] of [
+        [cand.endpoints, facts.endpoints],
+        [cand.storage, facts.storage],
+        [cand.urls, facts.urls],
+      ] as const) {
+        for (const row of from) {
+          if (to.length >= MAX_CANDIDATES) {
+            facts.candidatesCapped = true;
+            break;
           }
+          to.push({ file: file.path, ...row });
         }
-        if (
-          /ipcMain|ipcRenderer|\.(on|once|handle|handleOnce|send|invoke|sendSync|sendToHost|postMessage)\(|\b(window|self|globalThis|global)\.[\w$]+\s*=[^=]/.test(
-            source,
-          )
-        )
-          ambient = collectAmbient(tokens, context.aliases);
-        if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source)) {
-          located = windowRanges(tokens, context.aliases);
-          ranges = located.ranges;
-          // `prefs.sandbox = false`, `prefs["sandbox"] = false`, `Object.assign(prefs, …)` on an
-          // object that was followed as window options: what the declaration says no longer
-          // holds, so the key reads as computed.
-          const { traced } = located;
-          const is = (i: number, value: string): boolean =>
-            tokens[i]?.type === "punct" && tokens[i]!.value === value;
-          const everyKey = (): void => {
-            for (const key of BOOLEAN_KEYS) mutated.add(key);
-            mutated.add("preload");
-          };
-          const declared = new Set<string>();
-          for (let k = 0; traced.size && k + 1 < tokens.length; k++) {
-            const t = tokens[k]!;
-            if (t.type !== "ident" || !traced.has(t.value) || is(k - 1, ".")) continue;
-            // The declaration that was followed: `name = {`, once.
-            if (is(k + 1, "=") && is(k + 2, "{") && !declared.has(t.value)) {
-              declared.add(t.value);
-              continue;
-            }
-            // Its use as options: `new X(name)` for a window class, and `webPreferences: name`
-            // or `...name` INSIDE the options of a located window. The same shapes anywhere
-            // else (`tweak({ webPreferences: name })`, `const copy = { ...name }`, which shares
-            // the nested objects) hand the object on, and what happens to it there is not read.
-            const inWindow = ranges.some(
-              (r) => r.window !== null && t.start >= r.start && t.start < r.end,
-            );
-            const asOptions =
-              (is(k - 1, "(") &&
-                is(k + 1, ")") &&
-                // `new BrowserWindow(name)`, `new electron.BrowserWindow(name)`
-                (tokens[k - 3]?.value === "new" ||
-                  (is(k - 3, ".") && tokens[k - 5]?.value === "new")) &&
-                WINDOW_CLASSES.has(tokens[k - 2]?.value ?? "")) ||
-              (inWindow &&
-                ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
-                  is(k - 1, "...")));
-            if (asOptions) continue;
-            // A write to one key: `name.key =`, `name.webPreferences.key =`, `name["key"] =`.
-            let at = k + 1;
-            if (is(at, ".") && tokens[at + 1]?.value === "webPreferences") at += 2;
-            const key = is(at, ".")
-              ? tokens[at + 1]?.type === "ident"
-                ? tokens[at + 1]!.value
-                : null
-              : is(at, "[") && tokens[at + 1]?.type === "string" && is(at + 2, "]")
-                ? tokens[at + 1]!.value
-                : null;
-            const after = is(at, ".") ? at + 2 : at + 3;
-            if (key !== null && is(after, "=") && !is(after + 1, "=")) {
-              // `name.webPreferences = other` replaces every key
-              if (key === "webPreferences") everyKey();
-              else mutated.add(key);
-              continue;
-            }
-            // A plain read of one key changes nothing. Only what is certainly a read counts as
-            // one: the key followed by the end of an expression or by a comparison or logical
-            // operator. `name.key ||= x`, `name.key += 1`, `name.key++` and anything else that is
-            // not on this list is a write.
-            const follower = tokens[after];
-            const reads =
-              key !== null &&
-              tokens[k - 1]?.value !== "delete" &&
-              tokens[k - 1]?.value !== "++" &&
-              tokens[k - 1]?.value !== "--" &&
-              (!follower || (follower.type === "punct" && READ_FOLLOWERS.has(follower.value)));
-            if (reads) continue;
-            if (key !== null && !is(after, ".") && !is(after, "[") && !is(after, "(")) {
-              mutated.add(key);
-              continue;
-            }
-            // Anything else may change the object in a way that is not read here: a second
-            // assignment to the name, a deeper or computed write, `delete`, the object handed to
-            // a function (`Object.assign(name, …)`, `tweak(name)`), a method called on it.
-            everyKey();
-          }
-          const open: number[] = [];
-          const pairs: Array<[number, number]> = [];
-          for (const t of tokens) {
-            if (t.type !== "punct") continue;
-            if (t.value === "{") {
-              open.push(pairs.length);
-              pairs.push([t.start, Number.MAX_SAFE_INTEGER]);
-            } else if (t.value === "}" && open.length) pairs[open.pop()!]![1] = t.end;
-          }
-          for (let k = 2; k < tokens.length; k++)
-            if (
-              is(k, "{") &&
-              is(k - 1, ":") &&
-              tokens[k - 2]!.type === "ident" &&
-              tokens[k - 2]!.value === "webPreferences"
-            )
-              preferenceObjects.set(tokens[k]!.start, tokens[k - 2]!.start);
-          braces = pairs;
-        }
-        if (
-          /nodeIntegration|contextIsolation|sandbox|preload|webSecurity|allowRunningInsecureContent|webviewTag|enableRemoteModule/.test(
-            source,
-          )
-        )
-          for (let k = 0; k + 2 < tokens.length; k++) {
-            const t = tokens[k]!;
-            const colon = tokens[k + 1]!;
-            if (t.type !== "ident" || colon.type !== "punct" || colon.value !== ":") continue;
-            if (t.value === "preload") preloadsAt.add(t.start);
-            else if (BOOLEAN_KEYS.has(t.value)) {
-              const key = t.value as Exclude<PreferenceKey, "preload">;
-              const v = tokens[k + 2]!;
-              const n = tokens[k + 3];
-              // true, false, and what minifiers write for them: !0 and !1
-              const value =
-                v.type === "ident" && (v.value === "true" || v.value === "false")
-                  ? v.value === "true"
-                  : v.type === "punct" &&
-                      v.value === "!" &&
-                      n?.type === "number" &&
-                      /^[01]$/.test(n.value)
-                    ? n.value === "0"
-                    : null;
-              // `sandbox: true && flag` is not the setting `true`: the value must end there.
-              const after = tokens[v.type === "ident" ? k + 3 : k + 4];
-              const ends =
-                !after || (after.type === "punct" && (after.value === "," || after.value === "}"));
-              if (value !== null && ends) settingsAt.push({ key, value, start: t.start });
-              else {
-                // Not a literal: the value is decided at run time. The expression is kept, up
-                // to the `,` or `}` that ends the property, so a reader sees what decides it.
-                let nested = 0;
-                let end = k + 2;
-                for (; end < tokens.length && end < k + 60; end++) {
-                  const p = tokens[end]!;
-                  if (p.type !== "punct") continue;
-                  if (p.value === "(" || p.value === "[" || p.value === "{") nested++;
-                  else if (p.value === ")" || p.value === "]" || p.value === "}") {
-                    if (nested === 0) break;
-                    nested--;
-                  } else if (p.value === "," && nested === 0) break;
-                }
-                const computed = source
-                  .slice(v.start, tokens[end - 1]?.end ?? v.end)
-                  .replace(/\s+/g, " ")
-                  .slice(0, 80);
-                settingsAt.push({ key, value: null, computed, start: t.start });
-              }
-            }
-          }
-        // Endpoints, storage and URL literals: only where the text can contain one at all.
-        if (CAN_HOLD_CANDIDATES.test(source)) {
-          const found = findCandidates(
-            tokens,
-            source,
-            undefined,
-            context.aliases,
-            context.constants,
-          );
-          if (found.truncated) facts.candidatesCapped = true;
-          for (const [from, to] of [
-            [found.endpoints, facts.endpoints],
-            [found.storage, facts.storage],
-            [found.urls, facts.urls],
-          ] as const) {
-            for (const row of from) {
-              if (to.length >= MAX_CANDIDATES) {
-                facts.candidatesCapped = true;
-                break;
-              }
-              to.push({ file: file.path, ...row });
-            }
-          }
-        }
-        if (!source.includes("exposeIn")) return;
-        const bridge = bridgeMembers({ tokens, truncated, context }, file.path);
-        const room = MAX_BRIDGE - contextBridge.length;
-        contextBridge.push(...bridge.members.slice(0, room));
-        if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
-      },
-    });
+      }
+    }
+    const bridge = tokenFacts.bridge;
+    if (bridge) {
+      const room = MAX_BRIDGE - contextBridge.length;
+      contextBridge.push(...bridge.members.slice(0, room));
+      if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
+    }
     if (scan.truncated && facts.truncatedFiles.length < 200) facts.truncatedFiles.push(file.path);
     if (scan.truncated && facts.limitations.length < 200)
       facts.limitations.push({

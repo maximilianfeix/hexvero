@@ -126,12 +126,28 @@ export function collectAmbient(
   // property access (`name.x`) counts as that. This also covers parameters and destructuring,
   // and it over-counts plain uses (`f(name)`), which is why a count above one is reported
   // rather than resolved.
-  const bound = new Map<string, number>();
-  for (let i = 0; i < tokens.length; i++) {
+  // Counted only for names that are called as `name.method("literal"`, the only ones the count
+  // is read for; counting every identifier of a large bundle costs more than the rest of this.
+  const called = new Set<string>();
+  for (let i = 0; i + 4 < tokens.length; i++) {
     const t = tokens[i]!;
-    if (t.type === "ident" && !is(i - 1, ".") && !is(i + 1, "."))
-      bound.set(t.value, (bound.get(t.value) ?? 0) + 1);
+    if (
+      t.type === "ident" &&
+      is(i + 1, ".") &&
+      tokens[i + 2]!.type === "ident" &&
+      ANY_METHOD.has(tokens[i + 2]!.value) &&
+      is(i + 3, "(") &&
+      literal(tokens[i + 4]) !== null
+    )
+      called.add(t.value);
   }
+  const bound = new Map<string, number>();
+  if (called.size)
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i]!;
+      if (t.type === "ident" && called.has(t.value) && !is(i - 1, ".") && !is(i + 1, "."))
+        bound.set(t.value, (bound.get(t.value) ?? 0) + 1);
+    }
 
   const defines = new Map<string, AmbientDefinition>();
   const calls: AmbientCall[] = [];

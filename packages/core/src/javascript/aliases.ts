@@ -70,6 +70,20 @@ export function resolveAliases(
   // `{ ipcRenderer: t }`, as minifiers write it). Chains are followed a few links deep.
   const bound = new Set<string>();
   let sources: ReadonlySet<string> = targets;
+  // Places where an identifier stands in one of the binding shapes below: found once, so later
+  // rounds look only at these instead of the whole file.
+  const sites: number[] = [];
+  for (let k = 0; k < tokens.length; k++) {
+    if (tokens[k]!.type !== "ident") continue;
+    const next = tokens[k + 1];
+    const before = tokens[k - 1];
+    if (
+      ((is(next, "punct", ":") || is(next, "ident", "as")) && is(tokens[k + 2], "ident")) ||
+      (is(before, "punct", "=") && is(tokens[k - 2], "ident")) ||
+      (is(before, "punct", ".") && is(tokens[k - 3], "punct", "=") && is(tokens[k - 4], "ident"))
+    )
+      sites.push(k);
+  }
   for (let round = 0; round < 4; round++) {
     const added = new Set<string>();
     const add = (name: string): void => {
@@ -79,9 +93,9 @@ export function resolveAliases(
       bound.add(name);
       tracked.add(name);
     };
-    for (let k = 0; k < tokens.length; k++) {
+    for (const k of sites) {
       const t = tokens[k]!;
-      if (t.type !== "ident" || !sources.has(t.value)) continue;
+      if (!sources.has(t.value)) continue;
       const next = tokens[k + 1];
       const renamed = tokens[k + 2];
       // `{ target: name }`, `target as name`

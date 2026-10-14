@@ -16,7 +16,9 @@ import {
   type FileTree,
   type JsAppInfo,
   type JsScanFacts,
+  plannedReads,
 } from "../javascript/app.js";
+import { PARALLEL_MIN_BYTES, readTokensInParallel, scanThreads } from "../javascript/tokenPool.js";
 import { dropScan, loadScan, saveScan, scanKey } from "../javascript/scanState.js";
 import { analyzeBundle, type JsBundleInfo } from "../javascript/bundle.js";
 import { scanJavaScript, type ScanResult } from "../javascript/scan.js";
@@ -73,11 +75,11 @@ export interface AnalyzeOptions {
  * State is stored only when it is needed to continue: after a partial run, or once a scan has
  * been continued. A small application read in one run touches no disk.
  */
-function scanApplication(
+async function scanApplication(
   info: LoadedTarget["info"],
   tree: FileTree,
   request: JsScanRequest = {},
-): JsAppInfo {
+): Promise<JsAppInfo> {
   const key = scanKey(info, tree);
   if (key && request.fresh) dropScan(key);
   const stored = key ? loadScan(key, tree) : null;
@@ -94,7 +96,7 @@ function scanApplication(
       notSaved ??= error instanceof Error ? error.message : String(error);
     }
   };
-  const app = analyzeJavaScriptTree(tree, {
+  const run = {
     ...(stored ? { resume: stored } : {}),
     // A stored scan is shown as it stands unless the caller asks to read more.
     ...(stored && !advancing ? { maxJsFiles: 0 } : {}),
@@ -103,6 +105,31 @@ function scanApplication(
       : {}),
     ...(request.all ? { all: true } : {}),
     ...(request.include?.length ? { include: request.include } : {}),
+  };
+  // Large applications: the files of this run are tokenized ahead in worker threads. The scan
+  // merges in its own order and reads anything missing itself, so the result does not change.
+  const planned = plannedReads(tree, run);
+  const threads = scanThreads();
+  const prepared =
+    threads > 0 && planned.reduce((sum, f) => sum + f.size, 0) >= PARALLEL_MIN_BYTES
+      ? await readTokensInParallel(
+          planned.map((f) => ({
+            path: f.path,
+            size: f.size,
+            read: () => {
+              try {
+                return decode(tree.read(f.path, 16 << 20));
+              } catch {
+                return null;
+              }
+            },
+          })),
+          threads,
+        )
+      : undefined;
+  const app = analyzeJavaScriptTree(tree, {
+    ...run,
+    ...(prepared ? { prepared } : {}),
     onFacts: (facts) => {
       // In `all` mode every finished batch is stored at once, so a timeout or a kill costs one
       // batch at most and the next run continues from there.
@@ -247,7 +274,7 @@ async function analyzeTargetUnsafe(
     }
     case "asar": {
       const app = strip(
-        scanApplication(
+        await scanApplication(
           info,
           target.lazy ? asarTreeFromFile(info.path) : asarTree(bytes, info.path),
           options.js,
@@ -274,7 +301,7 @@ async function analyzeTargetUnsafe(
           { kind: "bundle", bundle },
         );
       }
-      const app = strip(scanApplication(info, directoryTree(info.path), options.js));
+      const app = strip(await scanApplication(info, directoryTree(info.path), options.js));
       return done(
         `Directory: ${app.totals.files} files, ${
           app.coverage.complete
