@@ -752,6 +752,12 @@ code,
   font-family: var(--sans);
 }
 
+.cell .tag.reduced {
+  margin: 0 6px 0 0;
+  background: var(--amber-soft);
+  color: var(--amber-ink);
+}
+
 .cell .bool-true {
   color: var(--ok);
 }

@@ -6,6 +6,12 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Web UI collection tables page with the server's `next` offset, so a page the byte budget cut
+  short no longer skips rows, and a row the server shortened to fit is marked with the full
+  item's size (#81).
+
 ## [0.5.1] - 2026-10-14
 
 ### Accuracy

@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, formatCount, type Page } from "../lib/api.js";
+import { formatBytes, nextOffset, reducedRow } from "../lib/pages.js";
 import { navigate } from "../lib/route.js";
 import { useAsync } from "../lib/useAsync.js";
 
@@ -33,7 +34,12 @@ export function CollectionView({
           page.data ? statusLine(page.data, text) : page.error ? page.error.message : "Loading…"
         }
       />
-      <Table rows={page.data?.items ?? []} loading={page.loading} label={name} />
+      <Table
+        rows={page.data?.items ?? []}
+        loading={page.loading}
+        label={name}
+        reduced={page.data ? reducedRow(page.data) : null}
+      />
       {page.data && (page.data.truncated || offset > 0) && (
         <div className="pager">
           <button
@@ -45,10 +51,10 @@ export function CollectionView({
           </button>
           <button
             className="btn"
-            disabled={!page.data.truncated}
-            onClick={() => setQuery(text, offset + PAGE)}
+            disabled={nextOffset(page.data) === null}
+            onClick={() => setQuery(text, nextOffset(page.data!) ?? offset)}
           >
-            Next {PAGE}
+            Next
           </button>
         </div>
       )}
@@ -61,7 +67,9 @@ export function statusLine(page: Page<unknown>, text: string): string {
   const to = page.offset + page.items.length;
   return `${formatCount(from)}–${formatCount(to)} of ${formatCount(page.total)}${
     text ? " matching" : ""
-  }${page.truncated ? " · more below" : ""}`;
+  }${page.truncated ? " · more below" : ""}${
+    page.itemTruncated ? ` · first row shortened (${formatBytes(page.itemBytes ?? 0)} in full)` : ""
+  }`;
 }
 
 export function Toolbar({
@@ -106,10 +114,13 @@ export function Table({
   rows,
   loading,
   label,
+  reduced = null,
 }: {
   rows: Row[];
   loading: boolean;
   label?: string;
+  /** A row the server shortened to fit the page, with the full item's size. */
+  reduced?: { index: number; bytes: number } | null;
 }): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
   const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((c) =>
@@ -178,6 +189,14 @@ export function Table({
                       role="cell"
                       title={cellText(row[c])}
                     >
+                      {i === 0 && reduced?.index === item.index && (
+                        <span
+                          className="tag reduced"
+                          title={`Shortened to fit the page; the full item is ${formatBytes(reduced.bytes)}. Export the target for all of it.`}
+                        >
+                          shortened
+                        </span>
+                      )}
                       <Cell value={row[c]} />
                     </div>
                   ))}
