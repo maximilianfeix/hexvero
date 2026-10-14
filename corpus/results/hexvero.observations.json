@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.6.0",
-  "commit": "7c66e1e+uncommitted",
+  "commit": "3fa5cfe+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -5112,7 +5112,9 @@
      },
      {
       "channel": "config:get-sync",
-      "senders": [],
+      "senders": [
+       "preload.js"
+      ],
       "receivers": [
        "main.js"
       ]
@@ -5144,7 +5146,9 @@
      },
      {
       "channel": "invoice:export",
-      "senders": [],
+      "senders": [
+       "preload.js"
+      ],
       "receivers": [
        "main.js"
       ]
@@ -5170,7 +5174,9 @@
       "senders": [
        "main.js"
       ],
-      "receivers": []
+      "receivers": [
+       "preload.js"
+      ]
      },
      {
       "channel": "projects:create",
@@ -5207,7 +5213,9 @@
       "senders": [
        "main.js"
       ],
-      "receivers": []
+      "receivers": [
+       "preload.js"
+      ]
      },
      {
       "channel": "sync:start",
@@ -5229,14 +5237,18 @@
      },
      {
       "channel": "timer:start",
-      "senders": [],
+      "senders": [
+       "preload.js"
+      ],
       "receivers": [
        "main.js"
       ]
      },
      {
       "channel": "timer:stop",
-      "senders": [],
+      "senders": [
+       "preload.js"
+      ],
       "receivers": [
        "main.js"
       ]
@@ -5246,7 +5258,9 @@
       "senders": [
        "main.js"
       ],
-      "receivers": []
+      "receivers": [
+       "preload.js"
+      ]
      },
      {
       "channel": "update:ready",
@@ -5324,17 +5338,17 @@
      {
       "api": "tracker",
       "member": "startTimer",
-      "channel": null
+      "channel": "timer:start"
      },
      {
       "api": "tracker",
       "member": "stopTimer",
-      "channel": null
+      "channel": "timer:stop"
      },
      {
       "api": "tracker",
       "member": "onTick",
-      "channel": null
+      "channel": "timer:tick"
      },
      {
       "api": "tracker",
@@ -5359,7 +5373,7 @@
      {
       "api": "tracker",
       "member": "exportInvoice",
-      "channel": null
+      "channel": "invoice:export"
      },
      {
       "api": "tracker",
@@ -5379,12 +5393,12 @@
      {
       "api": "tracker",
       "member": "onSyncProgress",
-      "channel": null
+      "channel": "sync:progress"
      },
      {
       "api": "tracker",
       "member": "setting",
-      "channel": null
+      "channel": "config:get-sync"
      },
      {
       "api": "tracker",
@@ -5394,12 +5408,12 @@
      {
       "api": "tracker",
       "member": "onNewEntry",
-      "channel": null
+      "channel": "menu:new-entry"
      },
      {
       "api": "tracker",
       "member": "onUpdateReady",
-      "channel": null
+      "channel": "update:ready"
      },
      {
       "api": "tracker",
