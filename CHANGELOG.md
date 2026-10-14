@@ -6,6 +6,15 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The README showed a plugin install command Claude Code does not have (`--marketplace`); it is
+  `/plugin marketplace add maximilianfeix/hexvero`, then `/plugin install hexvero@hexvero`
+  (installed and checked in a clean Claude Code configuration). The plugin manifest said 0.3.0;
+  releases now bump it with the packages.
+- CLI tables show lists of plain values (an IPC channel's senders and receivers) instead of
+  leaving the column out.
+
 ## [0.4.0] - 2026-10-14
 
 ### Accuracy

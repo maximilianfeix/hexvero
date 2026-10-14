@@ -48,6 +48,7 @@ const constants = [
   ["packages/mcp/src/index.ts", /SERVER_VERSION = "[^"]+"/, `SERVER_VERSION = "${version}"`],
   ["packages/cli/src/index.ts", /VERSION = "[^"]+"/, `VERSION = "${version}"`],
   ["server.json", /"version": "[^"]+"/g, `"version": "${version}"`],
+  [".claude-plugin/plugin.json", /"version": "[^"]+"/, `"version": "${version}"`],
 ];
 for (const [file, re, replacement] of constants)
   writeFileSync(file, readFileSync(file, "utf8").replace(re, replacement));
