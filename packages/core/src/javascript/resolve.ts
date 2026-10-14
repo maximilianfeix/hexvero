@@ -47,7 +47,9 @@ export type Val =
   | { kind: "obj"; props: Map<string, Val | null>; open?: boolean }
   | { kind: "map"; entries: Array<[Val | null, Val | null]>; line: number }
   /** Another module's exports (`require("./x")`, CommonJS `exports` of this one). */
-  | { kind: "ns"; resolver: ExpressionResolver };
+  | { kind: "ns"; resolver: ExpressionResolver }
+  /** `require("./x")` when the other module cannot be read here: members become references. */
+  | { kind: "nsref"; specifier: string };
 
 /** Finds the resolver of another module of the application, for imports. */
 export interface ModuleHost {
@@ -90,17 +92,46 @@ const product = (parts: string[][]): string[] | null => {
   return out;
 };
 
+/** What a resolver derives from a file's tokens alone; built once per token array. */
+interface Structure {
+  match: Int32Array;
+  opener: Int32Array;
+  defs: FnDef[] | null;
+  /** First plain block function per name, and every function by the token of its parameters. */
+  defsByName: Map<string, FnDef> | null;
+  defsByParams: Map<number, FnDef> | null;
+  declCache: Map<string, { range: [number, number] | null } | null>;
+  topDecls: Map<string, [number, number] | null> | null;
+  classes: Array<{ name: string; start: number; end: number }> | null;
+  /** Positions of every identifier by name. */
+  names: Map<string, number[]> | null;
+  depths: Int32Array | null;
+  innermost: Int32Array | null;
+}
+
+const structures = new WeakMap<Token[], Structure>();
+
 export class ExpressionResolver {
   private readonly match: Int32Array;
   /** For a closing bracket, its opening one. */
   private readonly opener: Int32Array;
-  private defs: FnDef[] | null = null;
-  private topDecls: Map<string, [number, number] | null> | null = null;
-  private classes: Array<{ name: string; start: number; end: number }> | null = null;
+  /** Indexes of the file's tokens, shared with every other resolver of the same tokens. */
+  private readonly s: Structure;
   /** Method used by the outermost resolution, set while resolving. */
   private method: ResolveMethod = "concatenation";
   private lines = new Set<number>();
   private partial = false;
+  private readonly siteCache = new Map<FnDef, number[]>();
+  private readonly bindingCache = new Map<
+    FnDef,
+    { envs: Env[] | null; partial: boolean; lines: number[] }
+  >();
+  private readonly newSites = new Map<string, Array<{ name: string; open: number }>>();
+  /**
+   * Token visits for scanning function bodies and call sites, for the whole file. When it is used
+   * up, the slow path stops resolving: no value is better than an unbounded search.
+   */
+  private work = 3_000_000;
   private budget = 20_000;
 
   constructor(
@@ -109,22 +140,52 @@ export class ExpressionResolver {
     /** The module's path in the application, for sources and imports. */
     readonly file = "",
     private readonly host: ModuleHost | null = null,
+    /**
+     * Without a host: how to write a string that another module defines, so the caller can fill
+     * it in once that module is known (endpoint detection writes its reference markers).
+     */
+    private readonly reference: ((specifier: string, property: string) => string) | null = null,
+    /**
+     * Gaps: a part of a template or concatenation that cannot be read becomes `${…}` instead of
+     * making the whole value unknown (endpoint detection reports such templates as templates).
+     */
+    private readonly gaps = false,
   ) {
-    this.match = new Int32Array(tokens.length).fill(-1);
-    this.opener = new Int32Array(tokens.length).fill(-1);
-    const open: number[] = [];
-    for (let j = 0; j < tokens.length; j++) {
-      const p = tokens[j]!;
-      if (p.type !== "punct") continue;
-      if (p.value === "{" || p.value === "(" || p.value === "[") open.push(j);
-      else if (p.value === "}" || p.value === ")" || p.value === "]") {
-        const at = open.pop();
-        if (at !== undefined) {
-          this.match[at] = j;
-          this.opener[j] = at;
+    let shared = structures.get(tokens);
+    if (!shared) {
+      const match = new Int32Array(tokens.length).fill(-1);
+      const opener = new Int32Array(tokens.length).fill(-1);
+      const open: number[] = [];
+      for (let j = 0; j < tokens.length; j++) {
+        const p = tokens[j]!;
+        if (p.type !== "punct") continue;
+        if (p.value === "{" || p.value === "(" || p.value === "[") open.push(j);
+        else if (p.value === "}" || p.value === ")" || p.value === "]") {
+          const at = open.pop();
+          if (at !== undefined) {
+            match[at] = j;
+            opener[j] = at;
+          }
         }
       }
+      shared = {
+        match,
+        opener,
+        defs: null,
+        defsByName: null,
+        defsByParams: null,
+        declCache: new Map(),
+        topDecls: null,
+        classes: null,
+        names: null,
+        depths: null,
+        innermost: null,
+      };
+      structures.set(tokens, shared);
     }
+    this.s = shared;
+    this.match = shared.match;
+    this.opener = shared.opener;
   }
 
   private is(k: number, type: Token["type"], value?: string): boolean {
@@ -157,16 +218,19 @@ export class ExpressionResolver {
    * top-level `,` or `)`.
    */
   resolveArgument(k: number): ResolvedValues | null {
+    if (this.work <= 0) return null;
     this.method = "concatenation";
     this.lines = new Set();
     this.partial = false;
     this.budget = 20_000;
     const end = this.exprEnd(k);
     const direct = this.evalRange(k, end, new Map(), 0);
-    if (direct?.kind === "str") return this.result(direct.values);
+    const read = direct?.kind === "str" ? this.result(direct.values) : null;
+    // With gaps, a parameter in the expression became a gap; its bindings may fill it in.
+    if (read && !(this.gaps && read.values.some((v) => v.includes("${…}")))) return read;
     // The expression uses a parameter of the function it is in: read every binding of it.
     const bound = this.throughParameters(k, end, 0);
-    return bound ? this.result(bound) : null;
+    return bound ? this.result(bound) : read;
   }
 
   private result(values: string[]): ResolvedValues | null {
@@ -275,6 +339,7 @@ export class ExpressionResolver {
    * does. `partial`: a call site could not be read, so its value is not among them.
    */
   valuesAt(k: number): { values: Val[]; partial: boolean } {
+    if (this.work <= 0) return { values: [], partial: true };
     this.budget = 40_000;
     this.partial = false;
     const end = this.exprEnd(k);
@@ -383,6 +448,55 @@ export class ExpressionResolver {
     return this.enclosing(k)?.name ?? null;
   }
 
+  private positions(name: string): number[] {
+    if (!this.s.names) {
+      const names = new Map<string, number[]>();
+      for (let k = 0; k < this.tokens.length; k++) {
+        const t = this.tokens[k]!;
+        if (t.type !== "ident") continue;
+        const list = names.get(t.value);
+        if (list) list.push(k);
+        else names.set(t.value, [k]);
+      }
+      this.s.names = names;
+    }
+    return this.s.names.get(name) ?? [];
+  }
+
+  /** Positions of `name` in [from, to), by binary search over the name index. */
+  private occurrences(name: string, from: number, to: number): number[] {
+    const all = this.positions(name);
+    let lo = 0;
+    let hi = all.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (all[mid]! < from) lo = mid + 1;
+      else hi = mid;
+    }
+    const out: number[] = [];
+    for (let i = lo; i < all.length && all[i]! < to; i++) out.push(all[i]!);
+    this.work -= out.length + 1;
+    return out;
+  }
+
+  /** `NAME = new cls(` sites of the file, with the index of the `(`. */
+  private instancesOf(cls: string): Array<{ name: string; open: number }> {
+    let found = this.newSites.get(cls);
+    if (!found) {
+      found = [];
+      for (const k of this.positions(cls))
+        if (
+          this.is(k - 1, "ident", "new") &&
+          this.punct(k + 1, "(") &&
+          this.punct(k - 2, "=") &&
+          this.is(k - 3, "ident")
+        )
+          found.push({ name: this.tokens[k - 3]!.value, open: k + 1 });
+      this.newSites.set(cls, found);
+    }
+    return found;
+  }
+
   // ---------- expressions ----------
 
   private evalRange(start: number, end: number, env: Env, depth: number): Val | null {
@@ -427,11 +541,16 @@ export class ExpressionResolver {
     parts.push([from, end]);
     if (parts.length === 1) return this.evalOperand(start, end, env, depth);
     const strings: string[][] = [];
+    let known = 0;
     for (const [a, b] of parts) {
       const v = this.evalOperand(a, b, env, depth);
-      if (v?.kind !== "str") return null;
-      strings.push(v.values);
+      if (v?.kind === "str") {
+        strings.push(v.values);
+        known++;
+      } else if (this.gaps) strings.push(["${…}"]);
+      else return null;
     }
+    if (!known) return null;
     const values = product(strings);
     if (!values) return null;
     this.note("concatenation");
@@ -525,9 +644,11 @@ export class ExpressionResolver {
       this.punct(start + 1, "(") &&
       this.tokens[start + 2]?.type === "string" &&
       this.punct(start + 3, ")") &&
-      this.host
+      (this.host || this.reference)
     ) {
-      const other = this.host.load(this.file, this.tokens[start + 2]!.value);
+      const specifier = this.tokens[start + 2]!.value;
+      if (!this.host) return this.chain({ kind: "nsref", specifier }, start + 4, end, env, depth);
+      const other = this.host.load(this.file, specifier);
       return this.chain(other ? { kind: "ns", resolver: other } : null, start + 4, end, env, depth);
     }
     // `path.join(__dirname, "preload.js")`, `path_1.default.resolve(…)`: the script a preload
@@ -610,8 +731,9 @@ export class ExpressionResolver {
         k++;
       }
       const v = this.evalRange(j, k, env, depth + 1);
-      if (v?.kind !== "str") return null;
-      parts.push(v.values);
+      if (v?.kind === "str") parts.push(v.values);
+      else if (this.gaps) parts.push(["${…}"]);
+      else return null;
       j = k;
     }
     if (j !== end) return null;
@@ -677,6 +799,8 @@ export class ExpressionResolver {
       return value.open ? null : { kind: "undef" };
     }
     if (value.kind === "ns") return value.resolver.exportValue(property, MAX_DEPTH - 2);
+    if (value.kind === "nsref" && this.reference)
+      return { kind: "str", values: [this.reference(value.specifier, property)] };
     return null;
   }
 
@@ -766,6 +890,14 @@ export class ExpressionResolver {
         props: new Map([["exports", { kind: "ns", resolver: this }]]),
         open: true,
       };
+    // a name another module defines, written as a reference to be filled in later
+    if (!this.host && this.reference) {
+      const imported = this.constants.importOf(name, k);
+      if (imported)
+        return { kind: "str", values: [this.reference(imported.specifier, imported.property)] };
+      const required = this.constants.requireOf(name, k);
+      if (required) return { kind: "nsref", specifier: required };
+    }
     // a name another module of the application defines
     if (this.host) {
       const imported = this.constants.importOf(name, k);
@@ -783,21 +915,36 @@ export class ExpressionResolver {
         return other ? { kind: "ns", resolver: other } : null;
       }
     }
-    const fn = this.functions().find((d) => d.name === name && d.owner === null && d.block);
+    const fn = this.namedFunction(name);
     if (fn && this.topDeclarations().has(name) === false && this.depthAt(fn.paramsAt) === 0)
       return { kind: "fn", def: fn, env: new Map(), res: this };
     return null;
   }
 
+  private namedFunction(name: string): FnDef | undefined {
+    if (!this.s.defsByName) {
+      const byName = new Map<string, FnDef>();
+      for (const d of this.functions())
+        if (d.name !== null && d.owner === null && d.block && !byName.has(d.name))
+          byName.set(d.name, d);
+      this.s.defsByName = byName;
+    }
+    return this.s.defsByName.get(name);
+  }
+
   private arrowAt(k: number, env: Env): Val | null {
-    const def = this.functions().find((d) => d.paramsAt === k);
+    if (!this.s.defsByParams) {
+      const byParams = new Map<number, FnDef>();
+      for (const d of this.functions()) if (!byParams.has(d.paramsAt)) byParams.set(d.paramsAt, d);
+      this.s.defsByParams = byParams;
+    }
+    const def = this.s.defsByParams.get(k);
     return def ? { kind: "fn", def, env, res: this } : null;
   }
 
-  private depths: Int32Array | null = null;
   /** Bracket depth (all kinds) at token k, from the start of the file; computed once. */
   private depthAt(k: number): number {
-    if (!this.depths) {
+    if (!this.s.depths) {
       const depths = new Int32Array(this.tokens.length);
       let d = 0;
       for (let j = 0; j < this.tokens.length; j++) {
@@ -807,14 +954,14 @@ export class ExpressionResolver {
         if (p.value === "{" || p.value === "(" || p.value === "[") d++;
         else if (p.value === "}" || p.value === ")" || p.value === "]") d--;
       }
-      this.depths = depths;
+      this.s.depths = depths;
     }
-    return this.depths[k] ?? 0;
+    return this.s.depths[k] ?? 0;
   }
 
   /** `const|let|var NAME = <expr>` at depth 0, declared once and not assigned elsewhere. */
   private topDeclarations(): Map<string, [number, number] | null> {
-    if (this.topDecls) return this.topDecls;
+    if (this.s.topDecls) return this.s.topDecls;
     const decls = new Map<string, [number, number] | null>();
     const assigned = new Set<string>();
     let d = 0;
@@ -870,7 +1017,7 @@ export class ExpressionResolver {
         assigned.add(t.value);
     }
     for (const name of assigned) if (decls.has(name)) decls.set(name, null);
-    this.topDecls = decls;
+    this.s.topDecls = decls;
     return decls;
   }
 
@@ -918,7 +1065,7 @@ export class ExpressionResolver {
   }
 
   private classRanges(): Array<{ name: string; start: number; end: number }> {
-    if (this.classes) return this.classes;
+    if (this.s.classes) return this.s.classes;
     const out: Array<{ name: string; start: number; end: number }> = [];
     for (let k = 0; k + 2 < this.tokens.length; k++) {
       if (!this.is(k, "ident", "class") || !this.is(k + 1, "ident")) continue;
@@ -928,13 +1075,13 @@ export class ExpressionResolver {
       if (this.punct(open, "{") && close !== -1)
         out.push({ name: this.tokens[k + 1]!.value, start: open, end: close });
     }
-    this.classes = out;
+    this.s.classes = out;
     return out;
   }
 
   /** Every function of the file with its parameters and body. */
   private functions(): FnDef[] {
-    if (this.defs) return this.defs;
+    if (this.s.defs) return this.s.defs;
     const defs: FnDef[] = [];
     const tokens = this.tokens;
     const classes = this.classRanges();
@@ -1020,7 +1167,7 @@ export class ExpressionResolver {
         });
       }
     }
-    this.defs = defs;
+    this.s.defs = defs;
     return defs;
   }
 
@@ -1032,16 +1179,28 @@ export class ExpressionResolver {
     return { method: this.tokens[open - 1]!.value, receiverEnd: open - 2 };
   }
 
+  /** The innermost function whose body holds token k; one table for the file, built once. */
   private enclosing(k: number): FnDef | null {
-    let best: FnDef | null = null;
-    for (const d of this.functions())
-      if (
-        d.body[0] <= k &&
-        k < d.body[1] &&
-        (!best || d.body[1] - d.body[0] < best.body[1] - best.body[0])
-      )
-        best = d;
-    return best;
+    if (!this.s.innermost) {
+      const defs = this.functions();
+      const table = new Int32Array(this.tokens.length).fill(-1);
+      // larger bodies first, so a nested body overwrites the function around it
+      const order = defs
+        .map((_, i) => i)
+        .toSorted(
+          (a, b) =>
+            defs[b]!.body[1] - defs[b]!.body[0] - (defs[a]!.body[1] - defs[a]!.body[0]) ||
+            // equal sizes: the earlier function is written last and wins, as the scan did
+            b - a,
+        );
+      for (const i of order) {
+        const [from, to] = defs[i]!.body;
+        table.fill(i, Math.max(0, from), Math.min(this.tokens.length, to));
+      }
+      this.s.innermost = table;
+    }
+    const i = this.s.innermost[k] ?? -1;
+    return i === -1 ? null : this.functions()[i]!;
   }
 
   private paramIndex(def: FnDef, name: string): number {
@@ -1068,8 +1227,8 @@ export class ExpressionResolver {
    */
   private declaredLocally(k: number, name: string): boolean {
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
-      for (let j = d.body[0]; j < d.body[1]; j++) {
-        if (!this.is(j, "ident", name) || this.punct(j - 1, ".")) continue;
+      for (const j of this.occurrences(name, d.body[0], d.body[1])) {
+        if (this.punct(j - 1, ".")) continue;
         const before = this.tokens[j - 1];
         if (
           (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) ||
@@ -1085,21 +1244,39 @@ export class ExpressionResolver {
   /** `const NAME = …` once in the innermost function around k that declares NAME, before k. */
   private localConst(k: number, name: string): [number, number] | null {
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
-      let found: [number, number] | null = null;
-      let declared = 0;
-      for (let j = d.body[0]; j < d.body[1]; j++) {
-        if (!this.is(j, "ident", name) || this.punct(j - 1, ".")) continue;
-        const before = this.tokens[j - 1];
-        if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) {
-          declared++;
-          if (before.value === "const" && this.punct(j + 1, "=") && j < k)
-            found = [j + 2, this.exprEnd(j + 2)];
-        } else if (this.punct(j + 1, "=") && !this.punct(j + 2, "=")) declared += 2;
-      }
-      if (declared) return declared === 1 ? found : null;
+      const decl = this.declarationIn(d, name);
+      if (decl) return decl.range && decl.range[0] - 2 < k ? decl.range : null;
       d = this.enclosing(d.paramsAt - 1);
     }
     return null;
+  }
+
+  /**
+   * How `name` is declared directly in the body of d: null when it is not, otherwise the
+   * initializer of its single `const` (null range for anything else).
+   */
+  private declarationIn(d: FnDef, name: string): { range: [number, number] | null } | null {
+    const key = `${d.paramsAt}:${name}`;
+    const cached = this.s.declCache.get(key);
+    if (cached !== undefined) return cached;
+    let at = -1;
+    let declared = 0;
+    for (const j of this.occurrences(name, d.body[0], d.body[1])) {
+      if (this.punct(j - 1, ".")) continue;
+      const before = this.tokens[j - 1];
+      if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) {
+        declared++;
+        if (before.value === "const" && this.punct(j + 1, "=")) at = j;
+      } else if (this.punct(j + 1, "=") && !this.punct(j + 2, "=")) declared += 2;
+    }
+    const result = !declared
+      ? null
+      : {
+          range:
+            declared === 1 && at >= 0 ? ([at + 2, this.exprEnd(at + 2)] as [number, number]) : null,
+        };
+    this.s.declCache.set(key, result);
+    return result;
   }
 
   /** Names read in [start, end) that are parameters of the function around k. */
@@ -1195,6 +1372,29 @@ export class ExpressionResolver {
 
   /** Every environment the function's parameters are bound to: its call sites, or the list a callback runs over. */
   private bindings(def: FnDef, depth: number): Env[] | null {
+    // Computed once per function: its call sites do not change between questions.
+    const cached = this.bindingCache.get(def);
+    if (cached) {
+      if (cached.partial) this.partial = true;
+      for (const line of cached.lines) this.lines.add(line);
+      if (cached.envs) this.note(def.calledBy && def.name === null ? "element" : "parameter");
+      return cached.envs;
+    }
+    if (this.work <= 0) return null;
+    const partialBefore = this.partial;
+    const linesBefore = new Set(this.lines);
+    this.partial = false;
+    const envs = this.bindingsUncached(def, depth);
+    this.bindingCache.set(def, {
+      envs,
+      partial: this.partial,
+      lines: [...this.lines].filter((l) => !linesBefore.has(l)),
+    });
+    this.partial = this.partial || partialBefore;
+    return envs;
+  }
+
+  private bindingsUncached(def: FnDef, depth: number): Env[] | null {
     // a callback of `LIST.forEach((x, i) => …)` or `MAP.forEach((value, key) => …)`
     if (def.calledBy && def.name === null) {
       if (def.calledBy.method !== "forEach" && def.calledBy.method !== "map") return null;
@@ -1228,32 +1428,55 @@ export class ExpressionResolver {
     const envs: Env[] = [];
     for (const open of sites) {
       const close = this.match[open]!;
-      const args = this.list(open, close, new Map(), depth + 1);
-      // an argument that is itself a parameter of the caller: follow one level further
-      const env: Env = new Map();
-      for (let i = 0; i < def.params.length; i++) {
-        if (args[i] === null || args[i] === undefined) {
-          const argStart = this.argStart(open, close, i);
-          if (argStart === null) continue;
-          const deeper = this.throughParameters(
-            argStart,
-            Math.min(this.exprEnd(argStart), close),
-            depth + 1,
-          );
-          if (deeper) args[i] = { kind: "str", values: deeper };
+      // The arguments are read where the call is: inside another function, with that
+      // function's own bindings (its parameters and `this` at each of its call sites).
+      for (const caller of this.callerEnvs(open, close, depth)) {
+        const args = this.list(open, close, caller, depth + 1);
+        const env: Env = new Map();
+        this.bind(def.params, args, env);
+        // a method: `this` is the instance the call is made on, when its construction is read
+        if (def.owner) {
+          const self = this.is(open - 3, "ident", "this")
+            ? (caller.get("this") ?? null)
+            : this.instanceAt(open - 3, def.owner, depth + 1);
+          if (self) env.set("this", self);
         }
+        envs.push(env);
+        if (envs.length > MAX_VALUES) return envs;
       }
-      this.bind(def.params, args, env);
-      // a method: `this` is the instance the call is made on, when its construction is read
-      if (def.owner) {
-        const self = this.instanceAt(open - 3, def.owner, depth + 1);
-        if (self) env.set("this", self);
-      }
-      envs.push(env);
       this.lines.add(this.tokens[open]!.line);
     }
     this.note("parameter");
     return envs;
+  }
+
+  /**
+   * The environments a call's arguments are read in: one empty environment when the call reads
+   * nothing of the function around it, else that function's bindings. A caller whose bindings
+   * cannot be read makes the result partial.
+   */
+  private callerEnvs(open: number, close: number, depth: number): Env[] {
+    const caller = this.enclosing(open);
+    if (!caller || depth > 3) return [new Map()];
+    let reads = false;
+    for (let j = open - 3; j < close && !reads; j++) {
+      const t = this.tokens[j];
+      if (t?.type !== "ident" || this.punct(j - 1, ".")) continue;
+      if ((t.value === "this" && caller.owner) || this.paramIndex(caller, t.value) !== -1)
+        reads = true;
+      const local = this.localConst(j, t.value);
+      if (local)
+        for (let m = local[0]; m < local[1] && !reads; m++)
+          if (this.is(m, "ident") && this.paramIndex(caller, this.tokens[m]!.value) !== -1)
+            reads = true;
+    }
+    if (!reads) return [new Map()];
+    const outer = this.bindings(caller, depth + 1);
+    if (!outer?.length) {
+      this.partial = true;
+      return [new Map()];
+    }
+    return outer;
   }
 
   /**
@@ -1266,19 +1489,9 @@ export class ExpressionResolver {
     const t = this.tokens[receiverEnd];
     if (!t) return null;
     if (t.type === "ident" && t.value !== "this") {
-      let site = -1;
-      for (let k = 0; k + 3 < this.tokens.length; k++)
-        if (
-          this.is(k, "ident", t.value) &&
-          this.punct(k + 1, "=") &&
-          this.is(k + 2, "ident", "new") &&
-          this.is(k + 3, "ident", cls) &&
-          this.punct(k + 4, "(")
-        ) {
-          if (site !== -1) return null; // assigned twice: which instance is not read
-          site = k + 4;
-        }
-      return site === -1 ? null : this.construct(cls, site, depth);
+      const sites = this.instancesOf(cls).filter((x) => x.name === t.value);
+      // assigned twice: which instance is meant is not read
+      return sites.length === 1 ? this.construct(cls, sites[0]!.open, depth) : null;
     }
     if (t.type === "punct" && t.value === ")") {
       const open = this.opener[receiverEnd]!;
@@ -1402,19 +1615,16 @@ export class ExpressionResolver {
    * class and `x.name(` where x is a `new Class(…)` of the file, also in a chain of such calls.
    */
   private callSites(def: FnDef): number[] {
+    const cached = this.siteCache.get(def);
+    if (cached) return cached;
     const out: number[] = [];
+    this.siteCache.set(def, out);
     const tokens = this.tokens;
-    const instances = new Set<string>();
-    if (def.owner)
-      for (let k = 0; k + 3 < tokens.length; k++)
-        if (
-          this.is(k, "ident") &&
-          this.punct(k + 1, "=") &&
-          this.is(k + 2, "ident", "new") &&
-          this.is(k + 3, "ident", def.owner)
-        )
-          instances.add(tokens[k]!.value);
-    for (let k = 0; k + 1 < tokens.length && out.length < MAX_SITES; k++) {
+    const instances = new Set<string>(
+      def.owner ? this.instancesOf(def.owner).map((x) => x.name) : [],
+    );
+    for (const k of this.positions(def.name!)) {
+      if (out.length >= MAX_SITES) break;
       if (!this.is(k, "ident", def.name!) || !this.punct(k + 1, "(") || k + 1 === def.paramsAt)
         continue;
       // a parameter or local of the same name at the call hides the function

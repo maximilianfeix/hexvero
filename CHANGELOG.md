@@ -6,6 +6,21 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- Endpoints and storage keys the fast scan cannot read go through the expression resolver: an
+  address passed in by the callers of the function that makes the request (also through class
+  methods and `this` fields set in a constructor), members of a `require`d module, and templates
+  whose unreadable parts are kept as `${…}`. A value read this way only counts as a request
+  address when it starts like one (scheme, absolute path, or another module's constant), so
+  strings that callers pass for other reasons are not reported. Corpus, blind sets now used for
+  development: holdout endpoints 24 → 30 of 42 with 5 → 1 false, storage keys 42 → 46 of 51;
+  holdout2 endpoints 15 → 22 of 57, false reports unchanged at 10. Endpoints and storage of the
+  real applications checked (Claude, Discord, Electron Fiddle, Electron API Demos) are unchanged.
+- Resolvers of the same file share their indexes. A cold analysis of the Claude desktop archive
+  takes about 10% longer sequentially (6.9 s → 7.6 s) and about 6% with worker threads
+  (4.8 s → 5.1 s) on the test machine.
+
 ### Fixed
 
 - The README showed a plugin install command Claude Code does not have (`--marketplace`); it is
