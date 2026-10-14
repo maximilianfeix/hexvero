@@ -36,6 +36,9 @@ music-player.plain, `47479ec6ed75f18e` .bundled, `404d37bcc0849885` .minified.
 | Storage keys                       | 15 of 57          | 47 of 57, 1 false        | 47 of 57, 1 false  | hexvero                         |
 | Changes between versions (5 lists) | 2 of 10, 4 false  | 6 of 10                  | 7 of 10            | hexvero                         |
 
+hexvero 0.4.1 (`4faa524`, also a development result): endpoints 22 of 57 with 10 false; the
+other classes are as in the right column (`corpus/results/hexvero.md`).
+
 Only the middle column is a blind measurement of hexvero (`corpus/results/round3`). The work after
 it used holdout2's misses, so the right column is a development result. Denominators of the
 dependent classes (senders and receivers, bridge member channel) grow with what a tool finds. The
