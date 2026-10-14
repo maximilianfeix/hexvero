@@ -39,7 +39,7 @@ const published = (name) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /**
  * Polls the registry until it serves this tarball. Right after a publish npm can take minutes to
- * show a new version (three releases failed a two-minute wait), so this waits up to ten.
+ * show a new version (three attempts in two releases failed a two-minute wait), so this waits up to ten.
  */
 async function appears(t) {
   let seen = null;
