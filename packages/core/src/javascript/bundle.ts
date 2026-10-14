@@ -29,8 +29,12 @@ export interface BundleModule {
   line: number;
   requires: string[];
   exports: string[];
-  /** Method shorthand (esbuild) needs `function` prepended to become a valid expression. */
-  factory: "function" | "method";
+  /**
+   * Method shorthand (esbuild) needs `function` prepended to become a valid expression.
+   * `hoisted`: a section of a scope-hoisted bundle, bounded by the path comment the bundler wrote
+   * before it; its names are shared with the other sections, so it is no function at all.
+   */
+  factory: "function" | "method" | "hoisted";
 }
 
 /** An endpoint, route, storage access or URL literal, with the bundle module it sits in. */
@@ -50,7 +54,69 @@ export interface JsBundleInfo {
   storage: BundleCandidate[];
   /** URLs that occur as plain strings. Not endpoints: nothing shows they are requested. */
   urls: BundleCandidate[];
+  /** Other chunk files this one imports (`./chunk-x.js`), when no module boundaries were found. */
+  chunks?: string[];
   limitations: Limitation[];
+}
+
+/** `// src/renderer/app.ts` at the start of a line: the path comment esbuild writes before each module. */
+const PATH_BANNER = /^\/\/ ((?:[\w@.+-]+\/)*[\w@.+-]+\.(?:[cm]?[jt]sx?|vue|svelte|json))[ \t]*$/gm;
+
+/**
+ * Sections of a scope-hoisted bundle, split at the path comments its bundler wrote (esbuild with
+ * `format: "esm"` or `"iife"`, which hoists modules instead of wrapping them). Comments inside a
+ * string or template do not count. At least two are needed; one says nothing about boundaries.
+ */
+function hoistedSections(source: string, tokens: Token[]): BundleModule[] {
+  const inside = (offset: number): boolean => {
+    let lo = 0;
+    let hi = tokens.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const t = tokens[mid]!;
+      if (t.end <= offset) lo = mid + 1;
+      else if (t.start > offset) hi = mid - 1;
+      else return true;
+    }
+    return false;
+  };
+  const marks: Array<{ path: string; at: number }> = [];
+  for (const m of source.matchAll(PATH_BANNER))
+    if (!inside(m.index)) marks.push({ path: m[1]!, at: m.index });
+  if (marks.length < 2) return [];
+  return marks.map((mark, i) => {
+    const end = marks[i + 1]?.at ?? source.length;
+    const body = source.slice(mark.at, end);
+    const requires = new Set<string>();
+    for (const r of body.matchAll(
+      /\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+    ))
+      requires.add((r[1] ?? r[2])!);
+    return {
+      id: mark.path,
+      name: mark.path,
+      start: mark.at,
+      end,
+      size: end - mark.at,
+      line: source.slice(0, mark.at).split("\n").length,
+      requires: [...requires],
+      exports: [],
+      factory: "hoisted" as const,
+    };
+  });
+}
+
+/** Relative files a chunk imports statically or with `import()`: the other chunks of its build. */
+function chunkImports(tokens: Token[]): string[] {
+  const out = new Set<string>();
+  for (let k = 0; k + 1 < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident" || (t.value !== "from" && t.value !== "import")) continue;
+    const spec = is(tokens[k + 1], "punct", "(") ? tokens[k + 2] : tokens[k + 1];
+    if (spec?.type === "string" && /^\.\.?\//.test(spec.value) && /\.[cm]?js$/.test(spec.value))
+      out.add(spec.value);
+  }
+  return [...out].toSorted();
 }
 
 const VENDORS: Array<[string, RegExp]> = [
@@ -572,7 +638,15 @@ export function analyzeBundle(source: string, options: { maxTokens?: number } = 
     else if (bundler === "esbuild") m.requireParam = null;
     else m.requireParam = m.fn.params[2] ?? null;
   }
-  const modules = found.map((m) => collectBody(tokens, m)).toSorted((a, b) => a.start - b.start);
+  const wrapped = found.map((m) => collectBody(tokens, m)).toSorted((a, b) => a.start - b.start);
+  // no module map: a scope-hoisted bundle may still say where each module starts
+  const modules = wrapped.length ? wrapped : hoistedSections(source, tokens);
+  const chunks = modules.length ? [] : chunkImports(tokens);
+  if (!modules.length && chunks.length)
+    limitations.push({
+      code: "bundle_chunk_only",
+      message: `No module boundaries inside this file (Rollup and Vite keep none); it imports ${chunks.length} other chunk file(s) of its build: ${chunks.slice(0, 5).join(", ")}${chunks.length > 5 ? ", …" : ""}. Recover those files on their own, or use a source map.`,
+    });
   const moduleOf = (offset: number): string | null =>
     modules.find((m) => offset >= m.start && offset < m.end)?.id ?? null;
   const cands = findCandidates(tokens, source, (row, at) => {
@@ -597,5 +671,15 @@ export function analyzeBundle(source: string, options: { maxTokens?: number } = 
       message: `${bundler} markers are present but no module map could be delimited; the runtime may use an unsupported layout.`,
     });
   }
-  return { bundler, hasRuntime, chunkIds, entryIds, modules, vendors, ...candidates, limitations };
+  return {
+    bundler,
+    hasRuntime,
+    chunkIds,
+    entryIds,
+    modules,
+    vendors,
+    ...candidates,
+    ...(chunks.length ? { chunks } : {}),
+    limitations,
+  };
 }

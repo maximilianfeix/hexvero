@@ -6,6 +6,14 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `hexvero recover` splits scope-hoisted bundles (esbuild `format: "esm"` or `"iife"`) at the
+  `// src/path.js` comments the bundler writes before each module; the files keep the code as
+  written and say that names are shared between sections. Rollup and Vite chunks keep no module
+  boundaries: instead of guessing, the analysis lists the chunk files they import (`chunks`) with
+  the limitation `bundle_chunk_only` (#82).
+
 ### Fixed
 
 - Native findings say where they were read (#80): notable imports name the first matching import
