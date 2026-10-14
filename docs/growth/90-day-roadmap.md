@@ -17,7 +17,12 @@ is not claimed.
   named IPC channels against 9 literal ones (same file; an observation on one app without ground
   truth).
 - In the agent experiment both tools led to fully correct answers when files could be read; hexvero in less than half the time and with about a third fewer tokens (`docs/audits/agent-task-evaluation.md`). Not: "agents answer better with hexvero".
-- Not to be claimed: speed against hexvero 0.3.0 (it is slower), completeness, dynamic analysis.
+- Endpoints in 0.4.1, on sets that are now used for development: holdout 30 of 42 with 1 false
+  (0.4.0: 24, 5 false), holdout2 22 of 57 with 10 false (0.4.0: 15, 10 false); REA 6.5.0 on
+  holdout2: 6 of 57 with 39 false (`CHANGELOG.md`, `docs/competitive/rea-scorecard.md`).
+  Endpoints are still the weakest class; say so.
+- Not to be claimed: speed against hexvero 0.3.0 or 0.4.0 (0.4.1 is about 10% slower than 0.4.0
+  on the Claude archive sequentially), completeness, dynamic analysis.
 
 Article ideas that teach something on their own: mapping an Electron app's IPC surface without
 running it (with the typed IPC layer of a real app as the example); what a blind test set changed
