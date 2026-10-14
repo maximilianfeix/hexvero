@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.3.0",
-  "commit": "60722a4+uncommitted",
+  "version": "0.4.0",
+  "commit": "3301abc+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -455,16 +455,16 @@
   {
    "set": "holdout",
    "class": "endpoints",
-   "hit": 24,
-   "missed": 18,
-   "false": 5,
+   "hit": 30,
+   "missed": 12,
+   "false": 1,
    "hedged": 0,
    "inputs": 3
   },
   {
    "set": "holdout",
    "class": "endpoint method",
-   "hit": 6,
+   "hit": 8,
    "missed": 3,
    "false": 0,
    "hedged": 0,
@@ -475,15 +475,15 @@
    "class": "requests with an unknown URL shown",
    "hit": 3,
    "missed": 0,
-   "false": 12,
+   "false": 10,
    "hedged": 0,
    "inputs": 3
   },
   {
    "set": "holdout",
    "class": "storage keys",
-   "hit": 42,
-   "missed": 9,
+   "hit": 46,
+   "missed": 5,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -491,7 +491,7 @@
   {
    "set": "holdout",
    "class": "storage read/write/delete",
-   "hit": 30,
+   "hit": 34,
    "missed": 6,
    "false": 0,
    "hedged": 0,
@@ -590,8 +590,8 @@
   {
    "set": "holdout2",
    "class": "endpoints",
-   "hit": 15,
-   "missed": 42,
+   "hit": 22,
+   "missed": 35,
    "false": 10,
    "hedged": 0,
    "inputs": 6
@@ -600,17 +600,17 @@
    "set": "holdout2",
    "class": "endpoint method",
    "hit": 4,
-   "missed": 0,
+   "missed": 3,
    "false": 0,
    "hedged": 0,
-   "inputs": 3
+   "inputs": 4
   },
   {
    "set": "holdout2",
    "class": "requests with an unknown URL shown",
    "hit": 6,
    "missed": 0,
-   "false": 12,
+   "false": 11,
    "hedged": 0,
    "inputs": 6
   },
@@ -2024,25 +2024,20 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "endpoints",
-   "hit": 8,
-   "missed": 6,
-   "false": 2,
+   "hit": 11,
+   "missed": 3,
+   "false": 0,
    "notes": [
     "missed https://api.punchclock.example/v3/clients",
     "missed https://api.punchclock.example/v3/timesheets/current…",
-    "missed https://api.punchclock.example/v3/entries",
-    "missed https://files.punchclock.example/invoices",
-    "missed wss://live.punchclock.example/team/…",
-    "missed https://updates.punchclock.example/feed/stable.json",
-    "false ${…}/feed/stable.json",
-    "false ${…}/team/${…}"
+    "missed https://api.punchclock.example/v3/entries"
    ]
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "endpoint method",
-   "hit": 2,
+   "hit": 3,
    "missed": 1,
    "false": 0,
    "notes": [
@@ -2055,19 +2050,17 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 4,
+   "false": 3,
    "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "storage keys",
-   "hit": 14,
-   "missed": 3,
+   "hit": 16,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed localStorage punch.theme",
-    "missed localStorage punch.session",
     "missed localStorage sidebarWidth"
    ]
   },
@@ -2075,7 +2068,7 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "storage read/write/delete",
-   "hit": 10,
+   "hit": 12,
    "missed": 2,
    "false": 0,
    "notes": [
@@ -2173,25 +2166,20 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "endpoints",
-   "hit": 8,
-   "missed": 6,
-   "false": 2,
+   "hit": 11,
+   "missed": 3,
+   "false": 0,
    "notes": [
     "missed https://api.punchclock.example/v3/clients",
     "missed https://api.punchclock.example/v3/timesheets/current…",
-    "missed https://api.punchclock.example/v3/entries",
-    "missed https://files.punchclock.example/invoices",
-    "missed wss://live.punchclock.example/team/…",
-    "missed https://updates.punchclock.example/feed/stable.json",
-    "false ${…}/feed/stable.json",
-    "false ${…}/team/${…}"
+    "missed https://api.punchclock.example/v3/entries"
    ]
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "endpoint method",
-   "hit": 2,
+   "hit": 3,
    "missed": 1,
    "false": 0,
    "notes": [
@@ -2204,19 +2192,17 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 4,
+   "false": 3,
    "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "storage keys",
-   "hit": 14,
-   "missed": 3,
+   "hit": 16,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed localStorage punch.theme",
-    "missed localStorage punch.session",
     "missed localStorage sidebarWidth"
    ]
   },
@@ -2224,7 +2210,7 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "storage read/write/delete",
-   "hit": 10,
+   "hit": 12,
    "missed": 2,
    "false": 0,
    "notes": [
@@ -2742,17 +2728,22 @@
    "set": "holdout2",
    "input": "holdout2/music-player.plain.asar",
    "class": "endpoints",
-   "hit": 3,
-   "missed": 7,
+   "hit": 10,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout2",
+   "input": "holdout2/music-player.plain.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 3,
    "false": 0,
    "notes": [
-    "missed https://api.cadence.example/v2/me/recommendations",
-    "missed https://api.cadence.example/v2/artists/…",
-    "missed https://api.cadence.example/v2/scrobbles",
-    "missed https://api.cadence.example/v2/me/likes/…",
-    "missed https://api.cadence.example/v2/me/likes/…",
-    "missed https://lyrics.cadence.example/v1/search?…",
-    "missed https://updates.cadence.example/stable/latest.json"
+    "https://api.cadence.example/v2/scrobbles: expected POST",
+    "https://api.cadence.example/v2/me/likes/…: expected POST",
+    "https://api.cadence.example/v2/me/likes/…: expected DELETE"
    ]
   },
   {
@@ -2761,7 +2752,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 1,
+   "false": 0,
    "notes": []
   },
   {

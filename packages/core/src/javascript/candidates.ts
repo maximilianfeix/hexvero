@@ -15,6 +15,7 @@
  * A URL that merely occurs as a string is not an endpoint. Those go to `urls`.
  */
 import { Constants, resolveAliases } from "./aliases.js";
+import { ExpressionResolver } from "./resolve.js";
 import type { Token } from "./scan.js";
 
 const OWN_TARGETS: ReadonlySet<string> = new Set(["fetch", "localStorage", "sessionStorage"]);
@@ -24,9 +25,16 @@ const OWN_TARGETS: ReadonlySet<string> = new Set(["fetch", "localStorage", "sess
  * reference between these marks until that module is known; `resolvePending` replaces it.
  */
 const REF_OPEN = "\u0001";
+/** What an address resolved from an expression must start with: a scheme, an absolute path, or a
+ * reference to another module's constant (filled in later). */
+// eslint-disable-next-line no-control-regex
+const ADDRESS_START = /^(?:[a-z][a-z0-9+.-]*:\/\/|\/(?!\/)|\u0001)/i;
 const REF_SPLIT = "\u0002";
 // eslint-disable-next-line no-control-regex
 const REF = /\u0001([^\u0001\u0002]*)\u0002([^\u0001\u0002]*)\u0001/g;
+/** How a value read through the resolver was obtained: a template when part of it is a gap. */
+const resolvedEvidence = (v: string): CandidateEvidence =>
+  v.includes("${…}") ? "template" : "inferred";
 
 /**
  * Fills in the cross-module constants of a row, or marks them unknown. Returns a row without
@@ -133,6 +141,8 @@ interface Read {
   value: string | null;
   evidence: CandidateEvidence;
   expression?: string;
+  /** Further values the same call takes (one per readable call site of a helper). */
+  more?: string[];
 }
 
 export function findCandidates(
@@ -244,9 +254,44 @@ export function findCandidates(
     }
     return { value, evidence };
   };
+  // The slow path, for arguments the reader above cannot complete: the bounded resolver of
+  // resolve.ts (helpers, API client classes, parameters bound at their call sites). Names from
+  // other modules become references, filled in when the application scan knows that module.
+  let resolver: ExpressionResolver | null = null;
+  let resolved = 0;
+  const throughResolver = (k: number, url: boolean): Read | null => {
+    if (resolved++ > 32) return null;
+    resolver ??= new ExpressionResolver(
+      tokens,
+      constants,
+      "",
+      null,
+      (specifier, property) => `${REF_OPEN}${specifier}${REF_SPLIT}${property}${REF_OPEN}`,
+      true,
+    );
+    // Values from the call sites that could be read are real requests, even when another call
+    // site could not be read; a value that is nothing but gaps says nothing and is dropped.
+    const found = resolver.resolveArgument(k);
+    // For a request, only something shaped like an address counts: a value bound from call sites
+    // in library code can be any string (error messages, event names), and that is no endpoint.
+    const values = (found?.values ?? []).filter(
+      (v) => v.replaceAll("${…}", "") !== "" && (!url || ADDRESS_START.test(v)),
+    );
+    const [first, ...rest] = values;
+    if (first === undefined) return null;
+    return {
+      value: first,
+      evidence: resolvedEvidence(first),
+      ...(rest.length ? { more: rest } : {}),
+    };
+  };
   /** A value with no fixed text at all (only `${…}`) says nothing: it is an unread argument. */
-  const readArg = (k: number): Read | null => {
-    const r = read(k);
+  const readArg = (k: number, url = false): Read | null => {
+    const fast = read(k);
+    const r =
+      fast && (fast.value === null || fast.value.includes("${…}"))
+        ? (throughResolver(k, url) ?? fast)
+        : fast;
     if (r && r.value !== null && r.value.replaceAll("${…}", "") === "")
       return { value: null, evidence: "unknown", expression: "<expression>" };
     return r;
@@ -283,6 +328,14 @@ export function findCandidates(
     seen.set(key, row);
     list.push(row);
     onRow?.(row, t);
+    for (const value of r.more ?? [])
+      push(
+        list,
+        kind,
+        { value, evidence: value.includes("${…}") ? "template" : "inferred" },
+        t,
+        extra,
+      );
   };
 
   // Variables that hold an electron-store instance; only looked for when the package is named.
@@ -421,11 +474,11 @@ export function findCandidates(
         continue;
       // `{ fetch(key) { … } }` defines a method of that name: a parameter list followed by a body.
       if (definesMethod(k + 1)) continue;
-      const r = readArg(k + 2);
+      const r = readArg(k + 2, true);
       if (r) push(out.endpoints, "fetch", r, t, verb(k + 1));
     } else if (called && !member && aliases.get(k) === "fetch") {
       // Another name for fetch (`const request = fetch`): a request, but known by inference.
-      const r = readArg(k + 2);
+      const r = readArg(k + 2, true);
       if (r)
         push(
           out.endpoints,
@@ -445,7 +498,7 @@ export function findCandidates(
           push(out.endpoints, "http-client", { value: url, evidence: "inferred" }, t, verb(k + 1));
         continue;
       }
-      const r = readArg(k + 2);
+      const r = readArg(k + 2, true);
       if (!r || r.value === null) continue;
       // An unknown object with a verb method is only taken for a request when the URL is
       // absolute and the verb is not one a collection has too: `router.get("/users", handler)`,
@@ -463,7 +516,7 @@ export function findCandidates(
           t.value === "request" ? {} : { method: t.value.toUpperCase() },
         );
     } else if (t.value === "axios" && called && !member) {
-      const r = readArg(k + 2);
+      const r = readArg(k + 2, true);
       if (r && r.value !== null) push(out.endpoints, "http-client", r, t);
     } else if (t.value === "open" && member && called) {
       // XMLHttpRequest: open("METHOD", url), on a variable that was created as one. Another
@@ -476,7 +529,7 @@ export function findCandidates(
         /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/i.test(method!.value) &&
         is(tokens[k + 3], "punct", ",")
       ) {
-        const r = readArg(k + 4);
+        const r = readArg(k + 4, true);
         if (r) push(out.endpoints, "xhr", r, t, { method: method!.value.toUpperCase() });
       }
     } else if (
@@ -484,10 +537,10 @@ export function findCandidates(
       is(prev, "ident", "new") &&
       called
     ) {
-      const r = readArg(k + 2);
+      const r = readArg(k + 2, true);
       if (r) push(out.endpoints, t.value === "WebSocket" ? "websocket" : "event-source", r, t);
     } else if (t.value === "sendBeacon" && member && called) {
-      const r = readArg(k + 2);
+      const r = readArg(k + 2, true);
       if (r) push(out.endpoints, "beacon", r, t, { method: "POST" });
     } else if (
       t.value === "localStorage" ||

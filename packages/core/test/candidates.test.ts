@@ -5,6 +5,10 @@ import { scanJavaScript, tokenize } from "../src/javascript/scan.js";
 
 const known = (specifier: string, property: string): string | null =>
   specifier === "./net.js" && property === "API" ? "https://api.example/v2" : null;
+const config = (specifier: string, property: string): string | null =>
+  specifier === "./config" && property === "UPDATES_URL"
+    ? "https://updates.example/feed.json"
+    : null;
 const ipc = (source: string): string[] =>
   scanJavaScript(source).ipc.map((u) => `${u.api} ${u.channel}${u.via ? ` (${u.via})` : ""}`);
 const find = (source: string) => findCandidates(tokenize(source).tokens, source);
@@ -100,6 +104,48 @@ describe("endpoints", () => {
       evidence: "template",
     });
     expect(resolvePending(bare!, () => null)).toMatchObject({ value: null, evidence: "unknown" });
+  });
+
+  it("reads an address passed in by the callers of the function that makes the request", () => {
+    const found = find(
+      [
+        'function sync(base) { return fetch(base + "/notes/sync"); }',
+        'sync("https://api.example/v1");',
+        "class ApiClient {",
+        "  constructor(baseUrl) { this.baseUrl = baseUrl; }",
+        "  request(path, init = {}) { return fetch(`${this.baseUrl}${path}`, init); }",
+        "  get(path) { return this.request(path); }",
+        '  post(path, body) { return this.request(path, { method: "POST", body }); }',
+        "}",
+        'const api = new ApiClient("https://api.example/v2");',
+        'api.get("/me/recommendations");',
+        "api.post(`/me/likes/${trackId}`, {});",
+      ].join("\n"),
+    );
+    expect(show(found.endpoints)).toEqual([
+      "fetch https://api.example/v1/notes/sync [inferred]",
+      "fetch https://api.example/v2/me/recommendations [inferred]",
+      "fetch https://api.example/v2/me/likes/${…} [template]",
+    ]);
+  });
+
+  it("fills in a member of a required module", () => {
+    const [row] = find('const cfg = require("./config");\nfetch(cfg.UPDATES_URL);').endpoints;
+    expect(resolvePending(row!, config)).toMatchObject({
+      value: "https://updates.example/feed.json",
+      evidence: "inferred",
+    });
+  });
+
+  it("does not take a string a caller passes for an address unless it reads as one", () => {
+    const found = find(
+      [
+        "function fail(message) { return fetch(message); }",
+        'fail("invalid url");',
+        'fail("Proxy response was not ok");',
+      ].join("\n"),
+    );
+    expect(show(found.endpoints)).toEqual(["fetch ?message [unknown]"]);
   });
 });
 

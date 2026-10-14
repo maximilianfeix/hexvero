@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.3.0",
-  "commit": "60722a4+uncommitted",
+  "version": "0.4.0",
+  "commit": "3301abc+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -1424,7 +1424,7 @@
       "evidence": "template"
      },
      {
-      "value": "https://api.chat.example/v2/users/${…}",
+      "value": "https://api.chat.example/v2/users/${…}/avatar",
       "kind": "fetch",
       "method": null,
       "evidence": "template"
@@ -1850,7 +1850,7 @@
       "evidence": "template"
      },
      {
-      "value": "https://api.chat.example/v2/users/${…}",
+      "value": "https://api.chat.example/v2/users/${…}/avatar",
       "kind": "fetch",
       "method": null,
       "evidence": "template"
@@ -2276,7 +2276,7 @@
       "evidence": "template"
      },
      {
-      "value": "https://api.chat.example/v2/users/${…}",
+      "value": "https://api.chat.example/v2/users/${…}/avatar",
       "kind": "fetch",
       "method": null,
       "evidence": "template"
@@ -5373,10 +5373,10 @@
       "evidence": "inferred"
      },
      {
-      "value": "${…}/feed/stable.json",
+      "value": "https://updates.punchclock.example/feed/stable.json",
       "kind": "fetch",
       "method": null,
-      "evidence": "template"
+      "evidence": "inferred"
      },
      {
       "value": "https://status.punchclock.example/api/v2/summary.json",
@@ -5421,13 +5421,19 @@
       "evidence": "literal"
      },
      {
-      "value": "${…}/team/${…}",
+      "value": "https://files.punchclock.example/invoices",
+      "kind": "xhr",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "wss://live.punchclock.example/team/${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 5,
+    "endpointsUnreadable": 4,
     "storage": [
      {
       "kind": "electron-store",
@@ -5497,6 +5503,22 @@
       "ops": [
        "write",
        "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.session",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.theme",
+      "ops": [
+       "read",
+       "write"
       ]
      },
      {
@@ -5845,10 +5867,10 @@
       "evidence": "inferred"
      },
      {
-      "value": "${…}/feed/stable.json",
+      "value": "https://updates.punchclock.example/feed/stable.json",
       "kind": "fetch",
       "method": null,
-      "evidence": "template"
+      "evidence": "inferred"
      },
      {
       "value": "https://status.punchclock.example/api/v2/summary.json",
@@ -5893,13 +5915,19 @@
       "evidence": "literal"
      },
      {
-      "value": "${…}/team/${…}",
+      "value": "https://files.punchclock.example/invoices",
+      "kind": "xhr",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "wss://live.punchclock.example/team/${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 5,
+    "endpointsUnreadable": 4,
     "storage": [
      {
       "kind": "electron-store",
@@ -5969,6 +5997,22 @@
       "ops": [
        "write",
        "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.session",
+      "ops": [
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "punch.theme",
+      "ops": [
+       "read",
+       "write"
       ]
      },
      {
@@ -7759,6 +7803,42 @@
     ],
     "endpoints": [
      {
+      "value": "https://lyrics.cadence.example/v1/search?${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://updates.cadence.example/stable/latest.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.cadence.example/v2/me/recommendations",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.cadence.example/v2/artists/${…}/top-tracks",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.cadence.example/v2/scrobbles",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.cadence.example/v2/me/likes/${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
       "value": "https://api.cadence.example/v2/live/friends",
       "kind": "event-source",
       "method": null,
@@ -7777,7 +7857,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 2,
+    "endpointsUnreadable": 1,
     "storage": [
      {
       "kind": "electron-store",
