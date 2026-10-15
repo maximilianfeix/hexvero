@@ -1,6 +1,6 @@
 {
   "name": "hexvero",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Evidence-first software intelligence: inspect binaries and app bundles, trace Electron interfaces, compare builds, without running them. CLI, MCP server and web UI.",
   "keywords": [
     "apk",
@@ -51,9 +51,9 @@
     "prepack": "node -e \"require('node:fs').cpSync('../../skills','./skills',{recursive:true})\""
   },
   "dependencies": {
-    "@hexvero/core": "0.7.2",
-    "@hexvero/mcp": "0.7.2",
-    "@hexvero/server": "0.7.2"
+    "@hexvero/core": "0.7.3",
+    "@hexvero/mcp": "0.7.3",
+    "@hexvero/server": "0.7.3"
   },
   "engines": {
     "node": ">=22.12.0"

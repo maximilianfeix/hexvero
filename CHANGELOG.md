@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-15
+
 ### Accuracy
 
 - Window settings written as `webPreferences: Object.assign({}, BASE, { … })` are read: the
