@@ -85,4 +85,35 @@ describe("idioms of channel and bridge definitions", () => {
       expect.objectContaining({ api: "api", member: null, channel: null }),
     ]);
   });
+
+  it("follows tables through a bundler's module wrappers, also minified", () => {
+    const bundled = [
+      'var { ipcMain } = require("electron");',
+      "var require_channels = __commonJS({",
+      '  "src/channels.js"(exports2, module2) {',
+      '    var Library2 = class { static LIST = "library:list"; };',
+      '    var PREFIX2 = "download:";',
+      "    module2.exports = { Library: Library2, PREFIX: PREFIX2 };",
+      "  }",
+      "});",
+      "var require_shared = __commonJS({",
+      '  "src/shared.js"(exports2, module2) {',
+      "    var channels = require_channels();",
+      "    module2.exports = { ...channels };",
+      "  }",
+      "});",
+      "var { Library, PREFIX } = require_shared();",
+      "ipcMain.handle(Library.LIST, () => 1);",
+      "ipcMain.handle(`${PREFIX}cancel`, () => 1);",
+    ].join("\n");
+    const minified =
+      'var y=(t,e)=>()=>e||t((e={exports:{}}).exports,e),e.exports;var p=y((C,S)=>{var c=class{static LIST="library:list"},P="download:";S.exports={Library:c,PREFIX:P}});var{ipcMain:a}=require("electron"),{Library:r,PREFIX:I}=p(),m=new Map([[r.LIST,()=>1]]);for(const[k,f]of m)a.handle(k,f);a.handle(`${I}cancel`,()=>1);';
+    for (const main of [bundled, minified]) {
+      const info = analyze({ "main.js": main });
+      expect(info.modules[0]!.ipc.map((u) => u.channel)).toEqual([
+        "library:list",
+        "download:cancel",
+      ]);
+    }
+  });
 });

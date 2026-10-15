@@ -410,6 +410,11 @@ export class Constants {
   /** `import { A as B } from "x"` and `const { A: B } = require("x")`: B is A of module x. */
   private readonly imported = new Map<string, { specifier: string; property: string }>();
   private readonly tableKeys = new Map<string, string[]>();
+  /** What a bundler's module wrapper exports: strings, and tables under their export names. */
+  private readonly wrapperStrings = new Map<string, Map<string, string>>();
+  private readonly wrapperTables = new Map<string, Map<string, Map<string, string>>>();
+  /** `var channels = require_channels()`: the wrapper a name holds the exports of. */
+  private readonly wrapperOf = new Map<string, string>();
   /** `const T = [[a, f], …]` and `const T = new Map([[a, f], …])`: where the list opens. */
   private readonly pairLists = new Map<string, number>();
   /**
@@ -574,7 +579,7 @@ export class Constants {
 
   constructor(private readonly tokens: Token[]) {
     this.readEnums();
-    const wrappers = new Map<string, Map<string, string>>();
+    const wrappers = this.wrapperStrings;
     /** A bundler's module wrapper being read: `var W = helper({ "file.js"(exports, module) {`. */
     let wrapper: { name: string; until: number; depth: number } | null = null;
     // Only declarations at the top level of the file, or of a module inside a bundler's wrapper,
@@ -585,6 +590,13 @@ export class Constants {
       if (wrapper && k > wrapper.until) wrapper = null;
       const t = tokens[k]!;
       if (t.type === "punct") {
+        // `var a = 1, { Library: r } = p()`: a pattern in a declaration list, as minifiers write it
+        if (
+          t.value === "," &&
+          is(tokens[k + 1], "punct", "{") &&
+          (wrapper ? depth <= wrapper.depth + 2 : depth === 0)
+        )
+          this.bindings(k + 1);
         if (t.value === "{") depth++;
         else if (t.value === "}") depth--;
         continue;
@@ -609,27 +621,7 @@ export class Constants {
       // `class Channels { static SAVE = "doc:save" }`: a table of its static string fields.
       if (t.value === "class" && is(tokens[k + 1], "ident") && !is(tokens[k - 1], "punct", ".")) {
         const name = tokens[k + 1]!.value;
-        let open = k + 2;
-        while (open < tokens.length && open < k + 50 && !is(tokens[open], "punct", "{")) open++;
-        const table = new Map<string, string>();
-        let d = 0;
-        for (let j = open; j < tokens.length; j++) {
-          const p = tokens[j]!;
-          if (p.type === "punct") {
-            if (p.value === "{" || p.value === "(" || p.value === "[") d++;
-            else if (p.value === "}" || p.value === ")" || p.value === "]") {
-              d--;
-              if (d === 0) break;
-            }
-            continue;
-          }
-          if (d !== 1 || p.value !== "static" || !is(tokens[j + 1], "ident")) continue;
-          if (!is(tokens[j + 2], "punct", "=")) continue;
-          const v = text(tokens[j + 3]);
-          const end = tokens[j + 4];
-          if (v !== null && (!end || is(end, "punct", ";") || is(end, "punct", "}")))
-            table.set(tokens[j + 1]!.value, v);
-        }
+        const table = this.staticTable(k + 2);
         if (table.size && !this.tables.has(name) && !this.strings.has(name)) {
           this.tables.set(name, table);
           if (is(tokens[k - 1], "ident", "export")) this.export(name);
@@ -667,8 +659,25 @@ export class Constants {
         // `module.exports = { … }` or, in a wrapper, `<param>.exports = { … }`
         const at = frozen !== -1 ? frozen : k + 2;
         const table = this.object(at);
-        if (wrapper) wrappers.set(wrapper.name, table);
-        else {
+        if (wrapper) {
+          wrappers.set(wrapper.name, table);
+          // `module.exports = { Library: Library2 }` with `var Library2 = class {…}` or `{…}`
+          const tables = new Map<string, Map<string, string>>();
+          for (const [key, local] of this.namedEntries(at)) {
+            const found = this.tables.get(local);
+            const string = this.strings.get(local);
+            if (found) tables.set(key, found);
+            else if (typeof string === "string" && !table.has(key)) table.set(key, string);
+          }
+          // `module.exports = { ...channels, ...require_endpoints() }`: another wrapper's exports
+          for (const other of this.spreadWrappers(at)) {
+            for (const [key, v] of this.wrapperStrings.get(other) ?? [])
+              if (!table.has(key)) table.set(key, v);
+            for (const [key, v] of this.wrapperTables.get(other) ?? [])
+              if (!tables.has(key)) tables.set(key, v);
+          }
+          if (tables.size) this.wrapperTables.set(wrapper.name, tables);
+        } else {
           for (const [key, v] of table) this.exported[key] = v;
           // `module.exports = { CHANNELS, API_ROOT }`: this file's own constants, by name
           for (const key of this.keys(at, true)) this.export(key);
@@ -718,8 +727,12 @@ export class Constants {
         const keys = this.keys(at);
         if (keys.length) this.tableKeys.set(t.value, keys);
         if (exportedHere) this.export(t.value);
+      } else if (is(value, "ident", "class")) {
+        // `var Library2 = class { static LIST = "…" }`, as bundlers write a class
+        const table = this.staticTable(k + 3);
+        if (table.size && !this.tables.has(t.value)) this.tables.set(t.value, table);
       } else if (
-        declared &&
+        (declared || listed) &&
         (is(value, "punct", "[") ||
           (is(value, "ident", "new") &&
             is(tokens[k + 3], "ident", "Map") &&
@@ -745,6 +758,7 @@ export class Constants {
           // `var CH = require_channels()`: the table a wrapper exported
           const table = wrappers.get(value!.value);
           if (table) this.tables.set(t.value, table);
+          if (wrappers.has(value!.value)) this.wrapperOf.set(t.value, value!.value);
         } else if (!wrapper) {
           // `var W = helper({ "file.js"(exports, module) { … } })`, or minified
           // `var W = h((e, m) => { … })`: remember the wrapper until the call closes
@@ -1052,6 +1066,35 @@ export class Constants {
           is(tokens[close + 3], "punct", "(")
         ? text(tokens[close + 4])
         : null;
+    // `var { Library } = require_channels()`: the names a bundler's module wrapper exports
+    const wrapperCall =
+      is(tokens[close + 1], "punct", "=") &&
+      is(tokens[close + 2], "ident") &&
+      is(tokens[close + 3], "punct", "(") &&
+      is(tokens[close + 4], "punct", ")")
+        ? tokens[close + 2]!.value
+        : null;
+    if (specifier === null && wrapperCall !== null) {
+      const strings = this.wrapperStrings.get(wrapperCall);
+      const tables = this.wrapperTables.get(wrapperCall);
+      if (!strings && !tables) return;
+      for (let k = open + 1; k < close; k++) {
+        const name = tokens[k]!;
+        if (name.type !== "ident") continue;
+        const renamed = is(tokens[k + 1], "punct", ":") && is(tokens[k + 2], "ident");
+        const local = renamed ? tokens[k + 2]!.value : name.value;
+        const table = tables?.get(name.value);
+        const value = strings?.get(name.value);
+        if (table && !this.tables.has(local)) this.tables.set(local, table);
+        else if (value !== undefined) {
+          // The same name for the same text (the wrapper's own `var KEY = "…"`) is no ambiguity.
+          const known = this.strings.get(local);
+          this.strings.set(local, known === undefined || known === value ? value : null);
+        }
+        if (renamed) k += 2;
+      }
+      return;
+    }
     if (specifier === null) return;
     for (let k = open + 1; k < close; k++) {
       const name = tokens[k]!;
@@ -1165,6 +1208,87 @@ export class Constants {
    * Property names at the top level of the object literal that opens at `open`: those written
    * with a value (`key: …`, `key() {…}`), or with `shorthand` those written as a bare name.
    */
+  /** Wrappers whose exports are spread into the object literal at `open`, in order. */
+  private spreadWrappers(open: number): string[] {
+    const tokens = this.tokens;
+    const out: string[] = [];
+    let d = 0;
+    for (let k = open; k < tokens.length && k < open + 4000; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "{" || t.value === "(" || t.value === "[") d++;
+      else if (t.value === "}" || t.value === ")" || t.value === "]") {
+        d--;
+        if (d === 0) break;
+      } else if (d === 1 && t.value === "..." && is(tokens[k + 1], "ident")) {
+        const name = tokens[k + 1]!.value;
+        if (is(tokens[k + 2], "punct", "(") && is(tokens[k + 3], "punct", ")")) {
+          if (this.wrapperStrings.has(name)) out.push(name);
+        } else {
+          const held = this.wrapperOf.get(name);
+          if (held) out.push(held);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Static string fields of the class body that opens at or after token `from`. */
+  private staticTable(from: number): Map<string, string> {
+    const tokens = this.tokens;
+    let open = from;
+    while (open < tokens.length && open < from + 50 && !is(tokens[open], "punct", "{")) open++;
+    const table = new Map<string, string>();
+    let d = 0;
+    for (let j = open; j < tokens.length && j < open + 20_000; j++) {
+      const p = tokens[j]!;
+      if (p.type === "punct") {
+        if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+        else if (p.value === "}" || p.value === ")" || p.value === "]") {
+          d--;
+          if (d === 0) break;
+        }
+        continue;
+      }
+      if (d !== 1 || p.value !== "static" || !is(tokens[j + 1], "ident")) continue;
+      if (!is(tokens[j + 2], "punct", "=")) continue;
+      const v = text(tokens[j + 3]);
+      const end = tokens[j + 4];
+      if (v !== null && (!end || is(end, "punct", ";") || is(end, "punct", "}")))
+        table.set(tokens[j + 1]!.value, v);
+    }
+    return table;
+  }
+
+  /** `key: name` entries at the top level of the object literal that opens at `open`. */
+  private namedEntries(open: number): Array<[string, string]> {
+    const tokens = this.tokens;
+    const out: Array<[string, string]> = [];
+    let d = 0;
+    for (let k = open; k < tokens.length && k < open + 4000; k++) {
+      const t = tokens[k]!;
+      if (t.type === "punct") {
+        if (t.value === "{" || t.value === "(" || t.value === "[") d++;
+        else if (t.value === "}" || t.value === ")" || t.value === "]") {
+          d--;
+          if (d === 0) break;
+        }
+        continue;
+      }
+      if (d !== 1 || !(is(tokens[k - 1], "punct", "{") || is(tokens[k - 1], "punct", ",")))
+        continue;
+      const key = t.type === "ident" ? t.value : text(t);
+      if (key === null) continue;
+      if (is(tokens[k + 1], "punct", ":") && is(tokens[k + 2], "ident")) {
+        const after = tokens[k + 3];
+        if (is(after, "punct", ",") || is(after, "punct", "}"))
+          out.push([key, tokens[k + 2]!.value]);
+      } else if (is(tokens[k + 1], "punct", ",") || is(tokens[k + 1], "punct", "}"))
+        out.push([key, key]);
+    }
+    return out;
+  }
+
   /**
    * `module.exports = { ...channels, ...require("./endpoints") }` with `channels` required from a
    * module: everything that module exports is exported here too, like `export * from`.

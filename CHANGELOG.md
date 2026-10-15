@@ -27,6 +27,12 @@ All notable changes to hexvero are listed here. The format follows
   another module.
 - `event.reply(CONSTANT, …)` and `event.sender.send(…)` with a constant or another module's
   constant. Holdout time-tracker: one more sender found (`sync:progress`).
+- Bundled and minified builds (esbuild): a class expression with static fields
+  (`var Library2 = class { static LIST = "…" }`), tables and strings a `__commonJS` wrapper exports
+  by name, spreads of other wrappers' exports, `var { Library } = require_channels()`, and the
+  minified forms of both inside declaration lists. The corpus now bundles every preload, so
+  holdout3 is scored on all three builds: each scores the same (channels 23/23, senders and
+  receivers 46/47, bridge members and their channels 26/26, endpoints 6/7, 0 false).
 - Real applications (Claude, Discord, Discord core, two Electron Fiddle builds, Electron API
   Demos) are unchanged.
 
