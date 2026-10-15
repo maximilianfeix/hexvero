@@ -6,6 +6,17 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- Window settings written as `webPreferences: Object.assign({}, BASE, { … })` are read: the
+  arguments are laid over each other from left to right, and the later of two writes of a key
+  wins, as in JavaScript. Bases declared as `const BASE = Object.freeze({ … })` are followed
+  (also when spread or returned by a helper), and passing such a base to `Object.assign` as a
+  source no longer counts as a change to it. holdout3 window settings 9/14 → 11/14 on all three
+  builds, 0 false. Claude desktop: 15 settings of two `WebContentsView`s now read from the frozen
+  base they are built from (`sandbox`, `contextIsolation`, `nodeIntegration`, …); no other real
+  app changed.
+
 ## [0.7.2] - 2026-10-15
 
 ### Fixed

@@ -135,4 +135,25 @@ describe("idioms of channel and bridge definitions", () => {
     );
     expect(once.members.map((m) => `${m.api}.${m.member}`)).toEqual(["app.open"]);
   });
+
+  it("lays Object.assign arguments over a frozen base in webPreferences, the later one winning", () => {
+    const info = analyze({
+      "main.js": [
+        'const { BrowserWindow } = require("electron");',
+        "const SAFE = Object.freeze({ contextIsolation: true, sandbox: true });",
+        "const win = new BrowserWindow({",
+        "  webPreferences: Object.assign({}, SAFE, { sandbox: false }),",
+        "});",
+        "const later = new BrowserWindow({",
+        "  webPreferences: Object.assign({}, { sandbox: false }, SAFE),",
+        "});",
+      ].join("\n"),
+    });
+    const summary = (name: string) => {
+      const w = info.windows.find((x) => x.windowName === name)!;
+      return `${w.contextIsolation} ${w.sandbox} ${w.computed ?? "-"}`;
+    };
+    expect(summary("win")).toBe("true false -");
+    expect(summary("later")).toBe("true true -");
+  });
 });

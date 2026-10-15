@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.7.1",
-  "commit": "c01e8a0+uncommitted",
+  "version": "0.7.2",
+  "commit": "fb43fcd+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -698,8 +698,8 @@
   {
    "set": "holdout3",
    "class": "window settings",
-   "hit": 27,
-   "missed": 15,
+   "hit": 33,
+   "missed": 9,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -3093,16 +3093,14 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.plain.asar",
    "class": "window settings",
-   "hit": 9,
-   "missed": 5,
+   "hit": 11,
+   "missed": 3,
    "false": 0,
    "notes": [
     "missed main.js webSecurity=true",
     "missed main.js webSecurity=true",
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
     "missed main.js webSecurity=false",
-    "not scored: 2 row(s) with other keys"
+    "not scored: 3 row(s) with other keys"
    ]
   },
   {
@@ -3194,16 +3192,14 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.bundled.asar",
    "class": "window settings",
-   "hit": 9,
-   "missed": 5,
+   "hit": 11,
+   "missed": 3,
    "false": 0,
    "notes": [
     "missed main.js webSecurity=true",
     "missed main.js webSecurity=true",
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
     "missed main.js webSecurity=false",
-    "not scored: 2 row(s) with other keys"
+    "not scored: 3 row(s) with other keys"
    ]
   },
   {
@@ -3295,16 +3291,14 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.minified.asar",
    "class": "window settings",
-   "hit": 9,
-   "missed": 5,
+   "hit": 11,
+   "missed": 3,
    "false": 0,
    "notes": [
     "missed main.js webSecurity=true",
     "missed main.js webSecurity=true",
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
     "missed main.js webSecurity=false",
-    "not scored: 2 row(s) with other keys"
+    "not scored: 3 row(s) with other keys"
    ]
   },
   {

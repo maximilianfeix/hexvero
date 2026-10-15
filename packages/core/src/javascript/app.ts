@@ -402,6 +402,17 @@ function windowRanges(
         if (tokens[k]!.type !== "ident" || !is(k + 1, "=")) continue;
         const key = tokens[k]!.value;
         if (is(k + 2, "{") && !declared.has(key)) declared.set(key, k + 2);
+        // `SECURE = Object.freeze({ … })`: the frozen object is the object
+        else if (
+          tokens[k + 2]?.type === "ident" &&
+          tokens[k + 2]!.value === "Object" &&
+          is(k + 3, ".") &&
+          tokens[k + 4]?.value === "freeze" &&
+          is(k + 5, "(") &&
+          is(k + 6, "{") &&
+          !declared.has(key)
+        )
+          declared.set(key, k + 6);
         else if (
           tokens[k + 2]?.type === "ident" &&
           tokens[k + 2]!.value === "Object" &&
@@ -438,7 +449,15 @@ function windowRanges(
   ): Array<{ open: number; at: number; follow: string | null }> | null => {
     objectOf(name);
     const open = assigned?.get(name);
-    if (open === undefined || depth > 3) return null;
+    if (open === undefined) return null;
+    return planOfCall(open, depth);
+  };
+  /** The steps of the `Object.assign(…)` call whose `(` is at `open`; null when one is unreadable. */
+  const planOfCall = (
+    open: number,
+    depth: number,
+  ): Array<{ open: number; at: number; follow: string | null }> | null => {
+    if (depth > 3) return null;
     const end = close(open);
     if (end === -1) return null;
     const plan: Array<{ open: number; at: number; follow: string | null }> = [];
@@ -607,6 +626,38 @@ function windowRanges(
           const applied = is(k + 4, "{") ? tokens[k + 4]!.start + 1 : tokens[k + 2]!.start;
           if (result !== -1) add(result, window, true, depth + 1, at ?? applied);
           else hide(window, EVERYWHERE);
+        } else if (
+          name === "Object" &&
+          is(k + 3, ".") &&
+          tokens[k + 4]?.type === "ident" &&
+          tokens[k + 4]!.value === "assign" &&
+          is(k + 5, "(")
+        ) {
+          // `webPreferences: Object.assign({}, BASE, { … })`: the arguments are laid over each
+          // other from left to right, as `name = Object.assign(…)` is read.
+          const plan = planOfCall(k + 5, depth);
+          if (!plan) hide(window, EVERYWHERE);
+          else {
+            // An object literal argument lies inside this range already, and its keys belong to
+            // its own braces. The named bases are placed into those same braces, before the
+            // literal's keys when they come before it in the call and after them otherwise, so
+            // the later of two writes of a key wins, as in JavaScript.
+            const inside = (step: { open: number }): boolean => {
+              const start = tokens[step.open]!.start;
+              return ranges.some((r) => r.window === window && start >= r.start && start < r.end);
+            };
+            const literal = plan.filter(inside).at(-1);
+            for (const step of plan) {
+              if (step.follow) follow(step.follow, window);
+              if (inside(step)) continue;
+              const place = !literal
+                ? step.at
+                : step.at < tokens[literal.open]!.start
+                  ? tokens[literal.open]!.start + 1
+                  : tokens[close(literal.open)]!.start;
+              add(step.open, window, true, depth + 1, at ?? place);
+            }
+          }
         } else hide(window, EVERYWHERE); // `webPreferences: options.prefs`, `a ? b : c`
       } else if (
         t.type === "ident" &&
@@ -1684,10 +1735,40 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
         for (let k = 0; traced.size && k + 1 < tokens.length; k++) {
           const t = tokens[k]!;
           if (t.type !== "ident" || !traced.has(t.value) || is(k - 1, ".")) continue;
-          // The declaration that was followed: `name = {`, once.
-          if (is(k + 1, "=") && is(k + 2, "{") && !declared.has(t.value)) {
+          // The declaration that was followed: `name = {` or `name = Object.freeze({`, once.
+          const frozen =
+            tokens[k + 2]?.value === "Object" &&
+            is(k + 3, ".") &&
+            tokens[k + 4]?.value === "freeze" &&
+            is(k + 5, "(") &&
+            is(k + 6, "{");
+          if (is(k + 1, "=") && (is(k + 2, "{") || frozen) && !declared.has(t.value)) {
             declared.add(t.value);
             continue;
+          }
+          // A source of `Object.assign(target, …, name, …)`: read, not changed. Only the first
+          // argument, the target, is written to.
+          if (is(k - 1, ",") && (is(k + 1, ",") || is(k + 1, ")"))) {
+            let open = -1;
+            for (let d = 0, j = k - 1; j >= 0 && j > k - 2000; j--) {
+              const p = tokens[j]!;
+              if (p.type !== "punct") continue;
+              if (p.value === ")" || p.value === "]" || p.value === "}") d++;
+              else if (p.value === "(" || p.value === "[" || p.value === "{") {
+                if (d === 0) {
+                  open = p.value === "(" ? j : -1;
+                  break;
+                }
+                d--;
+              }
+            }
+            if (
+              open > 3 &&
+              tokens[open - 1]?.value === "assign" &&
+              is(open - 2, ".") &&
+              tokens[open - 3]?.value === "Object"
+            )
+              continue;
           }
           // Its use as options: `new X(name)` for a window class, and `webPreferences: name`
           // or `...name` INSIDE the options of a located window. The same shapes anywhere

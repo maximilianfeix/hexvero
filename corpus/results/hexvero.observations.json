@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.7.1",
-  "commit": "c01e8a0+uncommitted",
+  "version": "0.7.2",
+  "commit": "fb43fcd+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -9055,8 +9055,7 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -9270,6 +9269,21 @@
      {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": true,
       "file": "main.js"
      },
      {
@@ -9570,8 +9584,7 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -9785,6 +9798,21 @@
      {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": true,
       "file": "main.js"
      },
      {
@@ -10085,8 +10113,7 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -10300,6 +10327,21 @@
      {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": true,
       "file": "main.js"
      },
      {
@@ -10639,7 +10681,7 @@
       "sandbox: true -> false"
      ],
      "relocated": 3,
-     "unchanged": 6
+     "unchanged": 9
     },
     "endpoints": {
      "key": "file+kind+value",
