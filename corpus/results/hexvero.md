@@ -1,6 +1,6 @@
-# hexvero 0.7.3 on the hexvero corpus
+# hexvero 0.7.4 on the hexvero corpus
 
-Tool: name hexvero · version 0.7.3 · commit ebf4a2a+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -52,7 +52,7 @@ Tool: name hexvero · version 0.7.3 · commit ebf4a2a+uncommitted · node v25.2.
 | holdout | direct callers | 4 | 91 | 0 | 1 |  |
 | holdout | IPC channels | 3 | 64 | 8 | 0 |  |
 | holdout | IPC senders and receivers | 3 | 105 | 20 | 0 |  |
-| holdout | window settings | 3 | 24 | 9 | 0 |  |
+| holdout | window settings | 3 | 27 | 6 | 0 |  |
 | holdout | bridge members | 3 | 60 | 9 | 0 |  |
 | holdout | bridge member channel | 3 | 40 | 20 | 0 |  |
 | holdout | endpoints | 3 | 36 | 6 | 0 |  |
@@ -62,12 +62,12 @@ Tool: name hexvero · version 0.7.3 · commit ebf4a2a+uncommitted · node v25.2.
 | holdout | storage read/write/delete | 3 | 39 | 6 | 0 |  |
 | holdout | changes in ipcChannels | 1 | 3 | 0 | 0 |  |
 | holdout | changes in contextBridge | 1 | 2 | 1 | 0 |  |
-| holdout | changes in webPreferences | 1 | 1 | 1 | 0 |  |
+| holdout | changes in webPreferences | 1 | 2 | 0 | 0 |  |
 | holdout | changes in endpoints | 1 | 4 | 4 | 0 |  |
 | holdout | changes in storage | 1 | 1 | 1 | 0 |  |
 | holdout2 | IPC channels | 6 | 118 | 8 | 0 |  |
 | holdout2 | IPC senders and receivers | 6 | 219 | 17 | 0 |  |
-| holdout2 | window settings | 6 | 46 | 17 | 0 |  |
+| holdout2 | window settings | 6 | 48 | 15 | 0 |  |
 | holdout2 | bridge members | 6 | 129 | 6 | 0 |  |
 | holdout2 | bridge member channel | 6 | 113 | 16 | 0 |  |
 | holdout2 | endpoints | 6 | 54 | 3 | 0 |  |
@@ -240,7 +240,7 @@ Tool: name hexvero · version 0.7.3 · commit ebf4a2a+uncommitted · node v25.2.
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | direct callers | 23 | 0 | 0 | state_blank: indirect caller next_token reported |
 | holdout | holdout/time-tracker.plain.asar | IPC channels | 23 | 1 | 0 | missed theme:changed |
 | holdout | holdout/time-tracker.plain.asar | IPC senders and receivers | 39 | 6 | 0 | timer:tick: sender main.js missed; projects:list: sender preload.js missed; projects:create: sender preload.js missed; projects:rename: sender preload.js missed; invoice:exported: sender main.js missed; update:ready: receiver preload.js missed |
-| holdout | holdout/time-tracker.plain.asar | window settings | 8 | 3 | 0 | missed main.js sandbox=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false |
+| holdout | holdout/time-tracker.plain.asar | window settings | 11 | 0 | 0 |  |
 | holdout | holdout/time-tracker.plain.asar | bridge members | 20 | 3 | 0 | missed widget.pin; missed widget.close; missed widget.connect; 1 entry reported as unreadable |
 | holdout | holdout/time-tracker.plain.asar | bridge member channel | 16 | 4 | 0 | tracker.listProjects: expected projects:list, got null; tracker.createProject: expected projects:create, got null; tracker.renameProject: expected projects:rename, got null; tracker.createInvoice: expected invoice:create, got null |
 | holdout | holdout/time-tracker.plain.asar | endpoints | 10 | 4 | 0 | missed https://api.punchclock.example/v3/clients; missed https://api.punchclock.example/v3/timesheets/current…; missed https://api.punchclock.example/v3/entries; missed https://updates.punchclock.example/feed/stable.json |
@@ -270,12 +270,12 @@ Tool: name hexvero · version 0.7.3 · commit ebf4a2a+uncommitted · node v25.2.
 | holdout | holdout/time-tracker.minified.asar | storage read/write/delete | 13 | 2 | 0 | electron-store ui.locale: expected read+write, got read; electron-store ui.currency: expected read+write, got read |
 | holdout | holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar | changes in ipcChannels | 3 | 0 | 0 |  |
 | holdout | holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar | changes in contextBridge | 2 | 1 | 0 | missed -widget.close |
-| holdout | holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar | changes in webPreferences | 1 | 1 | 0 | missed ~contextIsolation: true -> false |
+| holdout | holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar | changes in webPreferences | 2 | 0 | 0 |  |
 | holdout | holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar | changes in endpoints | 4 | 4 | 0 | missed +https://api.punchclock.example/v4/clients; missed +https://api.punchclock.example/v4/timesheets/current; missed -https://api.punchclock.example/v3/clients; missed -https://api.punchclock.example/v3/timesheets/current |
 | holdout | holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar | changes in storage | 1 | 1 | 0 | missed +electron-store ui.weekStart |
 | holdout2 | holdout2/markdown-editor.plain.asar | IPC channels | 22 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar | IPC senders and receivers | 42 | 2 | 0 | settings:changed: sender main.js missed; vault:reveal: receiver main.js missed |
-| holdout2 | holdout2/markdown-editor.plain.asar | window settings | 7 | 2 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false |
+| holdout2 | holdout2/markdown-editor.plain.asar | window settings | 9 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar | bridge members | 21 | 2 | 0 | missed inkwell.listNotes; missed inkwell.searchNotes; 1 entry reported as unreadable |
 | holdout2 | holdout2/markdown-editor.plain.asar | bridge member channel | 21 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar | endpoints | 8 | 1 | 0 | missed https://embed.inkwell.example/oembed… |

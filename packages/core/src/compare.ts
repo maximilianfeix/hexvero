@@ -147,6 +147,8 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
 const NESTED_LINE_FIELDS: Record<string, ReadonlyArray<readonly [string, string]>> = {
   interfaces: [["ends", "line"]],
   ipc: [["resolution", "lines"]],
+  // the place in another module a window's setting was read from
+  webPreferences: [["definedIn", "line"]],
 };
 
 /**

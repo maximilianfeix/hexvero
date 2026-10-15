@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.7.3",
-  "commit": "ebf4a2a+uncommitted",
+  "version": "0.7.4",
+  "commit": "2fa9b6e+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -428,8 +428,8 @@
   {
    "set": "holdout",
    "class": "window settings",
-   "hit": 24,
-   "missed": 9,
+   "hit": 27,
+   "missed": 6,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -518,8 +518,8 @@
   {
    "set": "holdout",
    "class": "changes in webPreferences",
-   "hit": 1,
-   "missed": 1,
+   "hit": 2,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 1
@@ -563,8 +563,8 @@
   {
    "set": "holdout2",
    "class": "window settings",
-   "hit": 46,
-   "missed": 17,
+   "hit": 48,
+   "missed": 15,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -2118,14 +2118,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "window settings",
-   "hit": 8,
-   "missed": 3,
+   "hit": 11,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js sandbox=true",
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
@@ -2489,12 +2485,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
    "class": "changes in webPreferences",
-   "hit": 1,
-   "missed": 1,
+   "hit": 2,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed ~contextIsolation: true -> false"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
@@ -2546,13 +2540,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "window settings",
-   "hit": 7,
-   "missed": 2,
+   "hit": 9,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
