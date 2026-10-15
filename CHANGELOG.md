@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-15
+
 ### Fixed
 
 - False contextBridge members: an exposed value passed by name was followed to any object
