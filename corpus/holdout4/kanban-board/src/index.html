@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https:; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'" />
+    <title>Lattice</title>
+  </head>
+  <body data-theme="paper">
+    <header>
+      <h1 id="title">Lattice</h1>
+      <input id="filter" type="search" placeholder="Filter cards" />
+      <span id="zoom">100%</span>
+      <select id="theme">
+        <option value="paper">Paper</option>
+        <option value="night">Night</option>
+      </select>
+      <span id="tools"></span>
+      <button id="import">Import…</button>
+    </header>
+    <main id="lanes"></main>
+    <aside>
+      <form id="link-form">
+        <input id="link" type="url" placeholder="Paste a link, e.g. https://example.org/spec" />
+        <button>Preview</button>
+        <p id="link-result"></p>
+      </form>
+      <h3>Team</h3>
+      <p id="members"></p>
+      <h3>Sync</h3>
+      <input id="token" type="password" placeholder="Sync token" />
+      <button id="sign-in">Sign in</button>
+      <button id="sign-out">Sign out</button>
+      <h3>Templates</h3>
+      <ul id="templates"></ul>
+      <form id="feedback-form">
+        <textarea id="feedback"></textarea>
+        <button>Send feedback</button>
+      </form>
+    </aside>
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>

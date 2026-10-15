@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Import a Trello export</title>
+  </head>
+  <body>
+    <h1>Import a Trello export</h1>
+    <p>Choose the JSON file Trello gives you under Menu → Print, export and share → Export as JSON.</p>
+    <input id="file" type="file" accept="application/json" />
+    <button id="sample">Try the sample export</button>
+    <p id="status"></p>
+    <ul id="preview"></ul>
+    <button id="run" disabled>Import</button>
+    <script src="renderer-import.js"></script>
+  </body>
+</html>

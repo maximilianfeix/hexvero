@@ -1,6 +1,6 @@
-# hexvero 0.7.2 on the hexvero corpus
+# hexvero 0.7.3 on the hexvero corpus
 
-Tool: name hexvero · version 0.7.2 · commit fb43fcd+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.7.3 · commit 514345e · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -96,6 +96,22 @@ Tool: name hexvero · version 0.7.2 · commit fb43fcd+uncommitted · node v25.2.
 | holdout3 | changes in webPreferences | 1 | 2 | 0 | 0 |  |
 | holdout3 | changes in endpoints | 1 | 1 | 0 | 0 |  |
 | holdout3 | changes in storage | 1 | 1 | 0 | 0 |  |
+| holdout4 | IPC channels | 3 | 12 | 45 | 0 |  |
+| holdout4 | IPC senders and receivers | 3 | 18 | 6 | 0 |  |
+| holdout4 | window settings | 3 | 36 | 12 | 4 |  |
+| holdout4 | bridge members | 3 | 66 | 0 | 0 |  |
+| holdout4 | bridge member channel | 3 | 21 | 45 | 0 |  |
+| holdout4 | endpoints | 3 | 12 | 9 | 0 |  |
+| holdout4 | endpoint method | 3 | 3 | 0 | 0 |  |
+| holdout4 | requests with an unknown URL shown | 3 | 3 | 0 | 5 |  |
+| holdout4 | storage keys | 3 | 12 | 6 | 0 |  |
+| holdout4 | storage read/write/delete | 3 | 9 | 0 | 0 |  |
+| holdout4 | changes in ipcChannels | 1 | 0 | 2 | 0 |  |
+| holdout4 | changes in contextBridge | 1 | 2 | 0 | 0 |  |
+| holdout4 | changes in interfaceLinks | 1 | 0 | 2 | 0 |  |
+| holdout4 | changes in webPreferences | 1 | 2 | 0 | 0 |  |
+| holdout4 | changes in endpoints | 1 | 0 | 1 | 0 |  |
+| holdout4 | changes in storage | 1 | 1 | 0 | 0 |  |
 | damaged | damaged input | 6 | 6 | 0 | 0 |  |
 
 ## Per input
@@ -358,6 +374,42 @@ Tool: name hexvero · version 0.7.2 · commit fb43fcd+uncommitted · node v25.2.
 | holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in webPreferences | 2 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in endpoints | 1 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in storage | 1 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.plain.asar | IPC channels | 4 | 15 | 0 | missed board:list; missed board:move; missed board:archive; missed board:changed; missed card:create; missed card:rename; missed card:remove; missed card:link-preview; missed lane:collapse; missed lane:expand; missed lane:reorder; missed prefs:load; missed prefs:save; missed auth:sign-in; missed auth:sign-out |
+| holdout4 | holdout4/kanban-board.plain.asar | IPC senders and receivers | 6 | 2 | 0 | activity:push: sender main.js missed; activity:clear: receiver main.js missed |
+| holdout4 | holdout4/kanban-board.plain.asar | window settings | 8 | 8 | 4 | missed main.js nodeIntegration=false; missed main.js sandbox=false; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js sandbox=true; missed main.js webSecurity=false; false window-factory.js contextIsolation=true; false window-factory.js nodeIntegration=false; false window-factory.js sandbox=true; false window-factory.js webSecurity=true; not scored: 1 row(s) with a computed value |
+| holdout4 | holdout4/kanban-board.plain.asar | bridge members | 22 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.plain.asar | bridge member channel | 7 | 15 | 0 | lattice.listBoards: expected board:list, got null; lattice.moveCard: expected board:move, got null; lattice.archiveBoard: expected board:archive, got null; lattice.onBoardChanged: expected board:changed, got null; lattice.collapseLane: expected lane:collapse, got null; lattice.expandLane: expected lane:expand, got null; lattice.reorderLanes: expected lane:reorder, got null; lattice.loadPrefs: expected prefs:load, got null; lattice.savePrefs: expected prefs:save, got null; lattice.signIn: expected auth:sign-in, got null; lattice.signOut: expected auth:sign-out, got null; cards.create: expected card:create, got null; cards.rename: expected card:rename, got null; cards.remove: expected card:remove, got null; cards.linkPreview: expected card:link-preview, got null |
+| holdout4 | holdout4/kanban-board.plain.asar | endpoints | 4 | 3 | 0 | missed https://sync.lattice.example/api/boards/…; missed https://api.lattice.example/v1/templates; missed https://api.lattice.example/v1/feedback |
+| holdout4 | holdout4/kanban-board.plain.asar | endpoint method | 1 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.plain.asar | requests with an unknown URL shown | 1 | 0 | 2 |  |
+| holdout4 | holdout4/kanban-board.plain.asar | storage keys | 4 | 2 | 0 | missed file lattice-settings.json; missed cookie lattice_sid |
+| holdout4 | holdout4/kanban-board.plain.asar | storage read/write/delete | 3 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.bundled.asar | IPC channels | 4 | 15 | 0 | missed board:list; missed board:move; missed board:archive; missed board:changed; missed card:create; missed card:rename; missed card:remove; missed card:link-preview; missed lane:collapse; missed lane:expand; missed lane:reorder; missed prefs:load; missed prefs:save; missed auth:sign-in; missed auth:sign-out |
+| holdout4 | holdout4/kanban-board.bundled.asar | IPC senders and receivers | 6 | 2 | 0 | activity:push: sender main.js missed; activity:clear: receiver main.js missed |
+| holdout4 | holdout4/kanban-board.bundled.asar | window settings | 14 | 2 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false; not scored: 1 row(s) with a computed value |
+| holdout4 | holdout4/kanban-board.bundled.asar | bridge members | 22 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.bundled.asar | bridge member channel | 7 | 15 | 0 | lattice.listBoards: expected board:list, got null; lattice.moveCard: expected board:move, got null; lattice.archiveBoard: expected board:archive, got null; lattice.onBoardChanged: expected board:changed, got null; lattice.collapseLane: expected lane:collapse, got null; lattice.expandLane: expected lane:expand, got null; lattice.reorderLanes: expected lane:reorder, got null; lattice.loadPrefs: expected prefs:load, got null; lattice.savePrefs: expected prefs:save, got null; lattice.signIn: expected auth:sign-in, got null; lattice.signOut: expected auth:sign-out, got null; cards.create: expected card:create, got null; cards.rename: expected card:rename, got null; cards.remove: expected card:remove, got null; cards.linkPreview: expected card:link-preview, got null |
+| holdout4 | holdout4/kanban-board.bundled.asar | endpoints | 4 | 3 | 0 | missed https://sync.lattice.example/api/boards/…; missed https://api.lattice.example/v1/templates; missed https://api.lattice.example/v1/feedback |
+| holdout4 | holdout4/kanban-board.bundled.asar | endpoint method | 1 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.bundled.asar | requests with an unknown URL shown | 1 | 0 | 2 |  |
+| holdout4 | holdout4/kanban-board.bundled.asar | storage keys | 4 | 2 | 0 | missed file lattice-settings.json; missed cookie lattice_sid |
+| holdout4 | holdout4/kanban-board.bundled.asar | storage read/write/delete | 3 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.minified.asar | IPC channels | 4 | 15 | 0 | missed board:list; missed board:move; missed board:archive; missed board:changed; missed card:create; missed card:rename; missed card:remove; missed card:link-preview; missed lane:collapse; missed lane:expand; missed lane:reorder; missed prefs:load; missed prefs:save; missed auth:sign-in; missed auth:sign-out |
+| holdout4 | holdout4/kanban-board.minified.asar | IPC senders and receivers | 6 | 2 | 0 | activity:push: sender main.js missed; activity:clear: receiver main.js missed |
+| holdout4 | holdout4/kanban-board.minified.asar | window settings | 14 | 2 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false; not scored: 1 row(s) with a computed value |
+| holdout4 | holdout4/kanban-board.minified.asar | bridge members | 22 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.minified.asar | bridge member channel | 7 | 15 | 0 | lattice.listBoards: expected board:list, got null; lattice.moveCard: expected board:move, got null; lattice.archiveBoard: expected board:archive, got null; lattice.onBoardChanged: expected board:changed, got null; lattice.collapseLane: expected lane:collapse, got null; lattice.expandLane: expected lane:expand, got null; lattice.reorderLanes: expected lane:reorder, got null; lattice.loadPrefs: expected prefs:load, got null; lattice.savePrefs: expected prefs:save, got null; lattice.signIn: expected auth:sign-in, got null; lattice.signOut: expected auth:sign-out, got null; cards.create: expected card:create, got null; cards.rename: expected card:rename, got null; cards.remove: expected card:remove, got null; cards.linkPreview: expected card:link-preview, got null |
+| holdout4 | holdout4/kanban-board.minified.asar | endpoints | 4 | 3 | 0 | missed https://sync.lattice.example/api/boards/…; missed https://api.lattice.example/v1/templates; missed https://api.lattice.example/v1/feedback |
+| holdout4 | holdout4/kanban-board.minified.asar | endpoint method | 1 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.minified.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
+| holdout4 | holdout4/kanban-board.minified.asar | storage keys | 4 | 2 | 0 | missed file lattice-settings.json; missed cookie lattice_sid |
+| holdout4 | holdout4/kanban-board.minified.asar | storage read/write/delete | 3 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in ipcChannels | 0 | 2 | 0 | missed +board:export; missed -board:archive |
+| holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in contextBridge | 2 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in interfaceLinks | 0 | 2 | 0 | missed +[object Object]; missed -[object Object] |
+| holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in webPreferences | 2 | 0 | 0 |  |
+| holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in endpoints | 0 | 1 | 0 | missed +https://api.lattice.example/v1/changelog |
+| holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in storage | 1 | 0 | 0 |  |
 | damaged | damaged/empty.asar | damaged input | 1 | 0 | 0 | error malformed |
 | damaged | damaged/header-cut.asar | damaged input | 1 | 0 | 0 | error malformed |
 | damaged | damaged/header-length-lies.asar | damaged input | 1 | 0 | 0 | error malformed |

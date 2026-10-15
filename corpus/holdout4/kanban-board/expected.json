@@ -1,0 +1,868 @@
+{
+  "case": "kanban-board",
+  "kind": "electron",
+  "license": "MIT, written for this corpus",
+  "inputs": [
+    "holdout4/kanban-board.plain.asar",
+    "holdout4/kanban-board.bundled.asar",
+    "holdout4/kanban-board.minified.asar"
+  ],
+  "method": "Every expectation was written from the sources in src/ by reading them; no analysis tool was run on the sources, and no tool's detectors, source code or output were looked at. A scratch script outside the repository ran main.js, preload.js and preload-activity.js in Node against a stand-in for the electron module and printed every ipcMain registration with the line it comes from, every window's and view's webPreferences after the merges, and the channel each exposed member invokes, sends on or listens to; its output agreed with the expectations below. main.js, preload.js, preload-activity.js and the modules in lib/ are CommonJS; renderer.js and renderer-activity.js are ES modules (index.html, activity.html); renderer-import.js is a classic script (import.html) that reaches Node and Electron through window.require, because its window has nodeIntegration on and contextIsolation off. corpus/build.mjs (as read for this set) bundles main.js and every preload*.js and copies the renderers and pages, so all three inputs contain every entry file. Roles and settings are attributed to the entry files main.js, preload.js, preload-activity.js, renderer.js, renderer-activity.js and renderer-import.js. The modules in lib/ hold no IPC call, no window, no exposeInMainWorld, no request and no storage access: lib/channels.js defines the function defineChannels and the channel objects it returns, lib/window-factory.js defines makeWindow (it returns an options object; main.js passes it to new BrowserWindow) and the defaults it merges in, lib/board-model.js holds pure functions over a board. A window setting is attributed to main.js, the file that creates the window or view, also where its value comes from DEFAULT_WEB_PREFERENCES in lib/window-factory.js. There are three windows and one view: boardWindow (preload.js), activityView (a BrowserView docked in boardWindow, preload preload-activity.js), importWindow (no preload, import.html) and printWindow (a local variable of savePdf, no preload, a data: page printed to PDF). webPreferences lists the keys preload, contextIsolation, nodeIntegration, sandbox, webSecurity and allowRunningInsecureContent, one entry per window or view and key that the code writes, directly or through makeWindow; keys the code does not write are not listed with Electron's defaults. Each entry has a field window naming the variable. Channels made by defineChannels(area, actions) are `${area}:${action}`: the function is pure and every argument is a literal, so the names follow from the source text by evaluating it (a reader can do this; a tool must model the loop and the template); these channels count as resolvable. The two zoom members use `zoom:${token}`, where the token is crypto.randomUUID() in main.js handed to the preload on the command line (additionalArguments); no static reading names that channel. Storage kinds: sessionStorage, localStorage, indexedDB, cookie (session.defaultSession.cookies in main.js) and file (the app's own JSON settings file, written with fs in main.js); cookie and file are kinds this set adds, see the README. interfaceLinks follows holdout3: a handler registered through a helper (the handle(channel)(fn) decorator, the constructor of LaneListeners) or a send made through a helper (forward(), an EventEmitter bridge) has the line of the ipcMain / webContents call inside the helper as its line, and the line where the channel is given to the helper as entryLine. An expectation states what the program does, also where that is hard to see; what only looks like a finding is listed under absent.",
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "board:list",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: handle(board.list)(async () => ...), handle being `(channel) => (fn) => { ipcMain.handle(channel, ...) }` and board = defineChannels(\"board\", [\"list\", \"move\", \"archive\", \"changed\"]) from lib/channels.js. preload.js listBoards: ipcRenderer.invoke(board.list)"
+        },
+        {
+          "channel": "board:move",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "handle(board.move)(...); preload.js moveCard"
+        },
+        {
+          "channel": "board:archive",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "handle(board.archive)(...); preload.js archiveBoard"
+        },
+        {
+          "channel": "board:changed",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: forward(\"board-changed\", board.changed, () => boardWindow) subscribes to the EventEmitter bus and calls contents.send(channel, payload) on the board window's webContents whenever the bus emits board-changed (in changed(), called by most handlers and by LaneListeners). preload.js onBoardChanged: subscribe(board.changed, listener), subscribe being a preload helper that calls ipcRenderer.on"
+        },
+        {
+          "channel": "card:create",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js handle(card.create)(...). preload.js: the member create of \"cards\" is cardRemote.create, read from a Proxy whose get trap returns (...args) => ipcRenderer.invoke(card[member], ...args); card.create is \"card:create\""
+        },
+        {
+          "channel": "card:rename",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "handle(card.rename)(...); cardRemote.rename through the Proxy"
+        },
+        {
+          "channel": "card:remove",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "handle(card.remove)(...); cardRemote.remove through the Proxy (no page calls it, the member exists)"
+        },
+        {
+          "channel": "card:link-preview",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "defineChannels turns the action \"link-preview\" into the key linkPreview and the name card:link-preview. main.js handle(card.linkPreview)(...); preload.js cardRemote.linkPreview, whose get trap reads card[\"linkPreview\"]"
+        },
+        {
+          "channel": "lane:collapse",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: new LaneListeners(LANE_CHANNELS, boardStore), whose constructor calls ipcMain.on(channel, ...) for every element of LANE_CHANNELS = [lane.collapse, lane.expand, lane.reorder]. preload.js collapseLane: ipcRenderer.send(lane.collapse, laneId)"
+        },
+        {
+          "channel": "lane:expand",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "LaneListeners; preload.js expandLane"
+        },
+        {
+          "channel": "lane:reorder",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "LaneListeners; preload.js reorderLanes"
+        },
+        {
+          "channel": "activity:push",
+          "receivers": ["preload-activity.js"],
+          "senders": ["main.js"],
+          "why": "main.js: forward(\"activity\", activity.push, () => activityView) sends on the BrowserView's webContents whenever the bus emits activity. preload-activity.js onPush: ipcRenderer.on(\"activity:push\", ...) with the literal (a sandboxed preload, it requires electron only)"
+        },
+        {
+          "channel": "activity:clear",
+          "receivers": ["main.js"],
+          "senders": ["preload-activity.js"],
+          "why": "main.js ipcMain.on(activity.clear, ...) directly; preload-activity.js clear: ipcRenderer.send(\"activity:clear\")"
+        },
+        {
+          "channel": "prefs:load",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "handle(prefs.load)(...); preload.js loadPrefs"
+        },
+        {
+          "channel": "prefs:save",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "handle(prefs.save)(...); preload.js savePrefs"
+        },
+        {
+          "channel": "auth:sign-in",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "auth = defineChannels(\"auth\", [\"sign-in\", \"sign-out\"]): auth.signIn is \"auth:sign-in\". main.js handle(auth.signIn)(...); preload.js signIn"
+        },
+        {
+          "channel": "auth:sign-out",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "handle(auth.signOut)(...); preload.js signOut"
+        },
+        {
+          "channel": "import:open",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on with the literal in registerIpc; preload.js openImporter: ipcRenderer.send(\"import:open\")"
+        },
+        {
+          "channel": "import:cards",
+          "receivers": ["main.js"],
+          "senders": ["renderer-import.js"],
+          "why": "main.js ipcMain.handle(\"import:cards\", ...) with the literal. The sender is a page, not a preload: renderer-import.js takes ipcRenderer from window.require(\"electron\") (nodeIntegration on, contextIsolation off) and calls ipcRenderer.invoke(\"import:cards\", rows)"
+        }
+      ],
+      "absent": [
+        {
+          "channel": "zoom:",
+          "why": "main.js zoomChannel is `zoom:${windowToken}`, windowToken = crypto.randomUUID() at every start; main.js listens with ipcMain.on(zoomChannel, ...) and sends with boardWindow?.webContents.send(zoomChannel, level) in sendZoom. preload.js builds the same name from the --lattice-window= argument main.js puts on the window's command line (webPreferences.additionalArguments). No fixed name exists; the members onZoom and setZoom are listed with channel null and in interfaceLinks with resolvable false"
+        },
+        {
+          "channel": "zoom:none",
+          "why": "preload.js: the fallback of the template when the command-line argument is missing; main.js never uses it"
+        },
+        {
+          "channel": "board:export",
+          "why": "main.js: only in a comment (`// ipcMain.handle(\"board:export\", ...) comes with the JSON export in 2.4.`); export is not among the actions given to defineChannels(\"board\", ...). The comment exists in the plain input only"
+        },
+        {
+          "channel": "board-changed",
+          "why": "main.js: an event name of the EventEmitter bus (bus.emit / bus.on / forward), main process only; it is carried to the page on board:changed (so is the bus event activity, carried on activity:push)"
+        },
+        {
+          "channel": "board:focus-search",
+          "why": "renderer.js KEYMAP: a keyboard command id handled in runCommand inside the page (so are card:new-inline and board:clear-selection)"
+        },
+        {
+          "channel": "card:new-inline",
+          "why": "renderer.js KEYMAP command id"
+        },
+        {
+          "channel": "lattice-tabs",
+          "why": "renderer.js: new BroadcastChannel(\"lattice-tabs\"), a web messaging channel between pages, not Electron IPC"
+        },
+        {
+          "channel": "card:remove failed",
+          "why": "main.js: text of a console.error message in the card:remove handler"
+        },
+        {
+          "channel": "board",
+          "why": "lib/channels.js: the area argument of defineChannels (so are card, lane, activity, prefs, auth); an action like list or move alone is no channel either"
+        },
+        {
+          "channel": "list",
+          "why": "an action argument of defineChannels, only part of board:list"
+        },
+        {
+          "channel": "--lattice-window=",
+          "why": "a command-line argument (webPreferences.additionalArguments) read by preload.js from process.argv"
+        },
+        {
+          "channel": "card",
+          "why": "renderer-activity.js: source.addEventListener(\"card\", ...), an event type of the EventSource stream"
+        },
+        {
+          "channel": "sync-online",
+          "why": "main.js: a value of the kind field of an activity entry sent ON activity:push (so are sync-offline, signed-in, cleared, move, create, ...)"
+        },
+        {
+          "channel": "ready-to-show",
+          "why": "main.js: window events of boardWindow and importWindow (so are resize and closed)"
+        },
+        {
+          "channel": "window-all-closed",
+          "why": "main.js: app.on, an application event (so is activate)"
+        },
+        {
+          "channel": "dragstart",
+          "why": "renderer.js: DOM events (so are drop, dragover, dblclick, click, input, scroll, submit, keydown, change)"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "window": "boardWindow",
+          "why": "createBoardWindow: new BrowserWindow(makeWindow({ preload: path.join(__dirname, \"preload.js\"), sandbox: false, additionalArguments: [...] }, { title: \"Lattice\" })); makeWindow puts preload into webPreferences"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "window": "boardWindow",
+          "why": "from DEFAULT_WEB_PREFERENCES in lib/window-factory.js, spread first in makeWindow and not overridden"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "window": "boardWindow",
+          "why": "from DEFAULT_WEB_PREFERENCES, not overridden"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "window": "boardWindow",
+          "why": "the caller passes sandbox: false; makeWindow writes `sandbox: sandbox ?? DEFAULT_WEB_PREFERENCES.sandbox`, which is false (?? keeps false)"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main.js",
+          "window": "boardWindow",
+          "why": "from DEFAULT_WEB_PREFERENCES, not overridden (the rest object `more` holds only additionalArguments)"
+        },
+        {
+          "key": "preload",
+          "value": "preload-activity.js",
+          "file": "main.js",
+          "window": "activityView",
+          "why": "attachActivity: new BrowserView({ webPreferences: { preload: path.join(__dirname, \"preload-activity.js\"), sandbox: true, contextIsolation: true } }), a literal; the view is put into boardWindow with setBrowserView"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "window": "activityView",
+          "why": "in the BrowserView's literal"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "window": "activityView",
+          "why": "in the BrowserView's literal"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main.js",
+          "window": "importWindow",
+          "why": "openImporter: a webPreferences literal in new BrowserWindow({...}), with a comment that the 1.x importer reads the export with Node's fs from the page"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main.js",
+          "window": "importWindow",
+          "why": "in the literal"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main.js",
+          "window": "importWindow",
+          "why": "in the literal"
+        },
+        {
+          "key": "allowRunningInsecureContent",
+          "value": true,
+          "file": "main.js",
+          "window": "importWindow",
+          "why": "in the literal; the page fetches its sample export over http"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "window": "printWindow",
+          "why": "savePdf: new BrowserWindow(makeWindow({ webSecurity: false }, { width: 1100 })); contextIsolation from DEFAULT_WEB_PREFERENCES"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "window": "printWindow",
+          "why": "from DEFAULT_WEB_PREFERENCES"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "window": "printWindow",
+          "why": "the caller passes no sandbox, so makeWindow writes DEFAULT_WEB_PREFERENCES.sandbox (true) through ??"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main.js",
+          "window": "printWindow",
+          "why": "the caller's webSecurity: false is in the rest object `more`, spread after DEFAULT_WEB_PREFERENCES, so it replaces the default true"
+        }
+      ],
+      "absent": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window loads preload.js (boardWindow). printWindow also goes through makeWindow, which writes `preload: undefined` for it: it has no preload and no preload entry; importWindow writes no preload"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "count": 4,
+          "why": "exactly three have it: boardWindow and printWindow through DEFAULT_WEB_PREFERENCES, activityView in its literal. DEFAULT_WEB_PREFERENCES itself (lib/window-factory.js) is no window"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window has it, importWindow"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window has it, importWindow"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "count": 3,
+          "why": "exactly two windows have it, boardWindow and printWindow; activityView writes no nodeIntegration"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "count": 3,
+          "why": "exactly two have it: activityView (literal) and printWindow (default through ??). boardWindow passes false"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window has it, boardWindow"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window has it, boardWindow; printWindow overrides the default with false"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main.js",
+          "count": 3,
+          "why": "exactly two windows have it, importWindow and printWindow"
+        },
+        {
+          "key": "allowRunningInsecureContent",
+          "value": false,
+          "file": "main.js",
+          "why": "no window writes it as false; only importWindow writes it, as true"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "lattice",
+          "member": "version",
+          "channel": null,
+          "why": "preload.js: exposeInMainWorld(\"lattice\", { ... }), an object literal written inside the call; version is the string \"2.3.0\", no IPC"
+        },
+        { "api": "lattice", "member": "listBoards", "channel": "board:list" },
+        { "api": "lattice", "member": "moveCard", "channel": "board:move" },
+        { "api": "lattice", "member": "archiveBoard", "channel": "board:archive" },
+        {
+          "api": "lattice",
+          "member": "onBoardChanged",
+          "channel": "board:changed",
+          "why": "through the preload helper subscribe()"
+        },
+        { "api": "lattice", "member": "collapseLane", "channel": "lane:collapse" },
+        { "api": "lattice", "member": "expandLane", "channel": "lane:expand" },
+        { "api": "lattice", "member": "reorderLanes", "channel": "lane:reorder" },
+        { "api": "lattice", "member": "loadPrefs", "channel": "prefs:load" },
+        { "api": "lattice", "member": "savePrefs", "channel": "prefs:save" },
+        { "api": "lattice", "member": "signIn", "channel": "auth:sign-in" },
+        { "api": "lattice", "member": "signOut", "channel": "auth:sign-out" },
+        { "api": "lattice", "member": "openImporter", "channel": "import:open" },
+        {
+          "api": "lattice",
+          "member": "onZoom",
+          "channel": null,
+          "why": "subscribe(zoomChannel, listener): the channel is `zoom:${token}` with a token chosen at random by main.js and received on the command line (see the absent channel zoom:)"
+        },
+        {
+          "api": "lattice",
+          "member": "setZoom",
+          "channel": null,
+          "why": "ipcRenderer.send(zoomChannel, level), the same run-time channel"
+        },
+        {
+          "api": "cards",
+          "member": "create",
+          "channel": "card:create",
+          "why": "preload.js: exposeInMainWorld(\"cards\", { create: cardRemote.create, ... }); reading cardRemote.create runs the Proxy's get trap at expose time, which returns a function invoking card[\"create\"]"
+        },
+        {
+          "api": "cards",
+          "member": "rename",
+          "channel": "card:rename",
+          "why": "cardRemote.rename through the Proxy"
+        },
+        {
+          "api": "cards",
+          "member": "remove",
+          "channel": "card:remove",
+          "why": "cardRemote.remove through the Proxy"
+        },
+        {
+          "api": "cards",
+          "member": "linkPreview",
+          "channel": "card:link-preview",
+          "why": "cardRemote.linkPreview; the trap reads card.linkPreview, which defineChannels made from the action link-preview"
+        },
+        {
+          "api": "feed",
+          "member": "onPush",
+          "channel": "activity:push",
+          "why": "preload-activity.js: exposeInMainWorld(\"feed\", { onPush(listener) {...}, ... }), a method written in shorthand that calls ipcRenderer.on with the literal"
+        },
+        { "api": "feed", "member": "clear", "channel": "activity:clear" },
+        {
+          "api": "feed",
+          "member": "locale",
+          "channel": null,
+          "why": "navigator.language, a value; no IPC"
+        }
+      ],
+      "absent": [
+        {
+          "api": "cardRemote",
+          "member": "create",
+          "why": "cardRemote is the variable holding the Proxy; it is not exposed, its properties are copied into the object exposed as \"cards\""
+        },
+        {
+          "api": "cards",
+          "member": "get",
+          "why": "get is the trap of the Proxy's handler, not a member of the exposed object"
+        },
+        {
+          "api": "lattice",
+          "member": "subscribe",
+          "why": "subscribe is a helper function of preload.js used by onBoardChanged and onZoom"
+        },
+        {
+          "api": "lattice",
+          "member": "zoomChannel",
+          "why": "a variable of preload.js, not exposed"
+        },
+        {
+          "api": "lattice",
+          "member": "cards",
+          "why": "\"cards\" is a second API exposed under its own name, not a member of \"lattice\""
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://graph.lattice.example/graphql",
+          "method": "POST",
+          "why": "main.js fetchMembers: a GraphQL request, fetch(GRAPHQL_URL, { method: \"POST\", body: JSON.stringify({ query: MEMBERS_QUERY, ... }) }), called by the board:list handler"
+        },
+        {
+          "prefix": "https://sync.lattice.example/api/boards/",
+          "method": "PUT",
+          "why": "main.js syncBoard: fetch(new URL(`boards/${encodeURIComponent(snapshot.id)}`, SYNC_BASE), { method: \"PUT\", ... }) with SYNC_BASE = \"https://sync.lattice.example/api/\"; a relative path keeps /api/. The board id is a run-time value"
+        },
+        {
+          "value": "https://sync.lattice.example/health",
+          "why": "main.js checkSyncHealth: fetch(new URL(\"/health\", SYNC_BASE)); the leading slash replaces the base's path, so the address is outside /api/ (checked with node's URL)"
+        },
+        {
+          "value": "https://api.lattice.example/v1/templates",
+          "method": "GET",
+          "why": "renderer.js loadTemplates: client.get(\"/templates\"), client = createClient({ baseURL: \"https://api.lattice.example/v1\", ... }), an axios-style client of the page whose request() calls fetch(baseURL + url, ...)"
+        },
+        {
+          "value": "https://api.lattice.example/v1/feedback",
+          "method": "POST",
+          "why": "renderer.js sendFeedback: client.post(\"/feedback\", {...})"
+        },
+        {
+          "prefix": "https://events.lattice.example/v1/stream",
+          "why": "renderer-activity.js: new EventSource(`${EVENTS_ROOT}/stream?since=${since}`), EVENTS_ROOT a constant of that file, since a run-time value"
+        },
+        {
+          "value": "http://templates.lattice.example/samples/trello-export.json",
+          "why": "renderer-import.js: fetch(SAMPLE_URL) when the sample button is clicked; plain http"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "main.js card:link-preview handler: net.fetch(url, ...) with Electron's net module, url being whatever link the user pasted into the page (cards.linkPreview(url)). The fetch inside createClient in renderer.js is not counted: both of its callers pass literals, listed above",
+      "absent": [
+        {
+          "value": "https://sync.lattice.example/api/health",
+          "why": "a wrong reading of new URL(\"/health\", SYNC_BASE): the leading slash drops /api/ (so is https://sync.lattice.example/api//health)"
+        },
+        {
+          "value": "https://sync.lattice.example",
+          "why": "main.js SYNC_ORIGIN = new URL(SYNC_BASE).origin is only the url of the session cookie (cookies.set/get/remove); no request goes to it"
+        },
+        {
+          "value": "https://docs.lattice.example/shortcuts",
+          "why": "DOCS_URL is only given to shell.openExternal from the Help menu"
+        },
+        {
+          "value": "https://lattice-sync.herokuapp.example/v1",
+          "why": "LEGACY_SYNC in main.js is a constant that nothing uses"
+        },
+        {
+          "value": "http://www.w3.org/2000/svg",
+          "why": "renderer.js: the xmlns of an inline SVG icon"
+        },
+        {
+          "value": "https://example.org/spec",
+          "why": "index.html: part of the placeholder text of the link input"
+        },
+        {
+          "value": "data:text/html;charset=utf-8,",
+          "why": "main.js savePdf: printWindow.loadURL of a data: URL made from the board; a page loaded into a window, no request to a server"
+        },
+        {
+          "value": "index.html",
+          "why": "main.js: loadFile(\"index.html\"), webContents.loadFile(\"activity.html\") and loadFile(\"import.html\") load files of the package"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "file",
+          "value": "lattice-settings.json",
+          "ops": ["read", "write"],
+          "why": "main.js: readSettings() reads and writeSettings() writes the whole JSON object with fs.readFileSync / fs.writeFileSync at path.join(app.getPath(\"userData\"), \"lattice-settings.json\"); used by prefs:load, prefs:save, the zoom listener and sendZoom. This is the app's own settings file, neither web storage nor electron-store; kind file is new in this set (see the README)"
+        },
+        {
+          "kind": "cookie",
+          "value": "lattice_sid",
+          "ops": ["read", "write", "delete"],
+          "why": "main.js: session.defaultSession.cookies.set({ url: SYNC_ORIGIN, name: SESSION_COOKIE, ... }) in auth:sign-in, cookies.get({ url, name }) in syncBoard, cookies.remove(SYNC_ORIGIN, SESSION_COOKIE) in auth:sign-out; SESSION_COOKIE = \"lattice_sid\". kind cookie is new in this set"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "lattice.filter",
+          "ops": ["read", "write"],
+          "why": "renderer.js: getItem(FILTER_KEY) in render and start, setItem(FILTER_KEY, ...) in the filter's input listener"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "lattice.scrollTop",
+          "ops": ["read", "write"],
+          "why": "renderer.js start: getItem(SCROLL_KEY) for the lanes' scrollLeft, setItem(SCROLL_KEY, ...) in the scroll listener"
+        },
+        {
+          "kind": "localStorage",
+          "value": "activity.collapsed",
+          "ops": ["read", "write"],
+          "why": "renderer-activity.js: getItem(COLLAPSED_KEY) at start, setItem(COLLAPSED_KEY, ...) on the collapse button"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "lattice-offline",
+          "why": "renderer.js openOfflineDb: indexedDB.open(OFFLINE_DB, OFFLINE_DB_VERSION), constants of that file (version 3)"
+        }
+      ],
+      "absent": [
+        {
+          "value": "theme",
+          "why": "a field of the object in lattice-settings.json (so are zoom and lastBoard), passed over prefs:save; the file is the storage entry"
+        },
+        {
+          "value": "snapshots",
+          "why": "renderer.js: the object store inside the database lattice-offline"
+        },
+        {
+          "value": "board.pdf",
+          "why": "main.js savePdf: the default name in a save dialog; the user's export file, written once to a path the user picks, is no storage of the app"
+        },
+        {
+          "value": "userData",
+          "why": "main.js: the argument of app.getPath, a folder name"
+        },
+        {
+          "value": "x-lattice-client",
+          "why": "renderer.js: a request header of the client (so are accept and content-type)"
+        },
+        {
+          "value": "text/plain",
+          "why": "renderer.js: the format of dataTransfer.setData/getData during drag and drop"
+        },
+        {
+          "value": "since",
+          "why": "renderer-activity.js: a query parameter of the EventSource address"
+        }
+      ]
+    },
+    "interfaceLinks": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "lattice",
+          "member": "version",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 31,
+          "ends": [],
+          "resolvable": true,
+          "why": "no IPC"
+        },
+        {
+          "api": "lattice",
+          "member": "listBoards",
+          "channel": "board:list",
+          "preload": "preload.js",
+          "memberLine": 32,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 154 }],
+          "resolvable": true,
+          "why": "line 92 is the ipcMain.handle inside the decorator handle; line 154 is handle(board.list)(...). Resolvable by evaluating defineChannels on its literal arguments"
+        },
+        {
+          "api": "lattice",
+          "member": "moveCard",
+          "channel": "board:move",
+          "preload": "preload.js",
+          "memberLine": 33,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 159 }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "archiveBoard",
+          "channel": "board:archive",
+          "preload": "preload.js",
+          "memberLine": 34,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 163 }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "onBoardChanged",
+          "channel": "board:changed",
+          "preload": "preload.js",
+          "memberLine": 35,
+          "ends": [{ "file": "main.js", "line": 76, "api": "webContents.send", "entryLine": 150 }],
+          "resolvable": true,
+          "why": "line 76 is contents.send(channel, payload) inside forward(), contents being target()?.webContents; line 150 is forward(\"board-changed\", board.changed, () => boardWindow). The bus.emit calls that trigger it (line 82 and others) are no ends"
+        },
+        {
+          "api": "lattice",
+          "member": "collapseLane",
+          "channel": "lane:collapse",
+          "preload": "preload.js",
+          "memberLine": 36,
+          "ends": [{ "file": "main.js", "line": 101, "api": "ipcMain.on", "entryLine": 113 }],
+          "resolvable": true,
+          "why": "line 101 is the ipcMain.on in the constructor of LaneListeners, line 113 the array LANE_CHANNELS given to it (by new LaneListeners(LANE_CHANNELS, boardStore) on line 197)"
+        },
+        {
+          "api": "lattice",
+          "member": "expandLane",
+          "channel": "lane:expand",
+          "preload": "preload.js",
+          "memberLine": 37,
+          "ends": [{ "file": "main.js", "line": 101, "api": "ipcMain.on", "entryLine": 113 }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "reorderLanes",
+          "channel": "lane:reorder",
+          "preload": "preload.js",
+          "memberLine": 38,
+          "ends": [{ "file": "main.js", "line": 101, "api": "ipcMain.on", "entryLine": 113 }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "loadPrefs",
+          "channel": "prefs:load",
+          "preload": "preload.js",
+          "memberLine": 39,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 201 }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "savePrefs",
+          "channel": "prefs:save",
+          "preload": "preload.js",
+          "memberLine": 40,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 202 }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "signIn",
+          "channel": "auth:sign-in",
+          "preload": "preload.js",
+          "memberLine": 41,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 204 }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "signOut",
+          "channel": "auth:sign-out",
+          "preload": "preload.js",
+          "memberLine": 42,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 217 }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "openImporter",
+          "channel": "import:open",
+          "preload": "preload.js",
+          "memberLine": 43,
+          "ends": [{ "file": "main.js", "line": 171, "api": "ipcMain.on" }],
+          "resolvable": true
+        },
+        {
+          "api": "lattice",
+          "member": "onZoom",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 44,
+          "ends": [{ "file": "main.js", "line": 236, "api": "webContents.send" }],
+          "resolvable": false,
+          "why": "the channel is `zoom:${windowToken}` in main.js (windowToken = crypto.randomUUID(), line 70) and `zoom:${...}` of the --lattice-window= argument in preload.js. The end, boardWindow?.webContents.send(zoomChannel, level) in sendZoom, is known by reading the program, not from the channel text"
+        },
+        {
+          "api": "lattice",
+          "member": "setZoom",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 45,
+          "ends": [{ "file": "main.js", "line": 228, "api": "ipcMain.on" }],
+          "resolvable": false,
+          "why": "ipcMain.on(zoomChannel, ...) in registerIpc, the same run-time channel"
+        },
+        {
+          "api": "cards",
+          "member": "create",
+          "channel": "card:create",
+          "preload": "preload.js",
+          "memberLine": 49,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 173 }],
+          "resolvable": true,
+          "why": "the ipcRenderer.invoke is on line 25 inside the Proxy's get trap; the channel is card[member] with member the literal property name read on line 49. Resolvable from the source text by evaluating defineChannels and the get trap, with no run-time input"
+        },
+        {
+          "api": "cards",
+          "member": "rename",
+          "channel": "card:rename",
+          "preload": "preload.js",
+          "memberLine": 50,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 177 }],
+          "resolvable": true
+        },
+        {
+          "api": "cards",
+          "member": "remove",
+          "channel": "card:remove",
+          "preload": "preload.js",
+          "memberLine": 51,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 181 }],
+          "resolvable": true
+        },
+        {
+          "api": "cards",
+          "member": "linkPreview",
+          "channel": "card:link-preview",
+          "preload": "preload.js",
+          "memberLine": 52,
+          "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 190 }],
+          "resolvable": true
+        },
+        {
+          "api": "feed",
+          "member": "onPush",
+          "channel": "activity:push",
+          "preload": "preload-activity.js",
+          "memberLine": 7,
+          "ends": [{ "file": "main.js", "line": 76, "api": "webContents.send", "entryLine": 151 }],
+          "resolvable": true,
+          "why": "forward(\"activity\", activity.push, () => activityView) on line 151; the send on line 76 goes to the BrowserView's webContents"
+        },
+        {
+          "api": "feed",
+          "member": "clear",
+          "channel": "activity:clear",
+          "preload": "preload-activity.js",
+          "memberLine": 12,
+          "ends": [{ "file": "main.js", "line": 199, "api": "ipcMain.on" }],
+          "resolvable": true
+        },
+        {
+          "api": "feed",
+          "member": "locale",
+          "channel": null,
+          "preload": "preload-activity.js",
+          "memberLine": 13,
+          "ends": [],
+          "resolvable": true,
+          "why": "no IPC"
+        }
+      ],
+      "absent": [
+        {
+          "api": null,
+          "member": null,
+          "file": "main.js",
+          "line": 169,
+          "why": "a comment naming ipcMain.handle(\"board:export\", ...) (plain input only); it is the end of no member"
+        },
+        {
+          "api": null,
+          "member": null,
+          "file": "main.js",
+          "line": 222,
+          "why": "ipcMain.handle(\"import:cards\", ...) is a real receiver, but its sender is the page renderer-import.js, not a bridge member; no interface link ends here"
+        },
+        {
+          "api": "lattice",
+          "member": "onBoardChanged",
+          "file": "main.js",
+          "line": 152,
+          "why": "bus.on(\"board-changed\", ...) is a listener of the EventEmitter that starts a sync request; it sends nothing to a page"
+        }
+      ]
+    }
+  }
+}
