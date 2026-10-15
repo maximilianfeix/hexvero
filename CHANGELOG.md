@@ -16,6 +16,10 @@ All notable changes to hexvero are listed here. The format follows
   builds, 0 false. Claude desktop: 15 settings of two `WebContentsView`s now read from the frozen
   base they are built from (`sandbox`, `contextIsolation`, `nodeIntegration`, …); no other real
   app changed.
+- Corpus scorer: window settings are scored for every key a case lists, not only the four every
+  case lists. holdout3 also lists `webSecurity`, which hexvero reported and the scorer counted
+  as missed. holdout3 window settings are 14/14 on all three builds; its blind result, rescored
+  from the recorded observations, is 11/14 (README).
 
 ## [0.7.2] - 2026-10-15
 

@@ -184,7 +184,7 @@ a development set.
 | ---------------------------------- | --- | ------ | ----- |
 | IPC channels                       | 16  | 7      | 0     |
 | IPC senders and receivers          | 24  | 9      | 0     |
-| window settings                    | 9   | 5      | 0     |
+| window settings (see note)         | 9   | 5      | 0     |
 | bridge members                     | 0   | 26     | 0     |
 | endpoints                          | 4   | 3      | 2     |
 | requests with an unknown URL shown | 2   | 0      | 0     |
@@ -199,3 +199,8 @@ a development set.
 Only `podcast-player.plain.asar` is scored. The bundled and minified builds leave out the second
 preload, because `build.mjs` bundles `preload.js` only. `interfaceLinks` is not scored by
 `corpus/score.mjs`. No member was read, so the interface map had nothing to link.
+
+Note on window settings: the scorer then scored only `preload`, `contextIsolation`,
+`nodeIntegration` and `sandbox`, and counted this set's `webSecurity` expectations as missed
+even where hexvero reported them. Rescored with the corrected scorer, from the observations of
+that run (commit `3057f4b`), the blind result is 11 hit, 3 missed, 0 false.

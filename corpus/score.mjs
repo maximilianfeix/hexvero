@@ -48,7 +48,10 @@ function sets3(present, absent, observed, exhaustive) {
   return { hit, missed, wrong };
 }
 const fileName = (f) => String(f).split(/[\\/]/).at(-1);
-/** The window settings the corpus defines: every expected.json lists these four keys and no other. */
+/**
+ * The window settings every expected.json lists. A case may list more keys (holdout3 lists
+ * `webSecurity`); those are scored for that case too.
+ */
 const SCORED_SETTINGS = new Set(["preload", "contextIsolation", "nodeIntegration", "sandbox"]);
 const bare = (name) =>
   String(name)
@@ -96,15 +99,19 @@ function scoreElectron(c, input, o) {
     const key = (w) =>
       `${fileName(w.file)} ${w.key}=${w.key === "preload" ? fileName(w.value) : w.value}`;
     const want = e.webPreferences.present.map(key);
-    // Scored: a literal value for one of the four keys every expected.json lists. A row with
+    // Scored: a literal value for one of the keys the case lists (at least the four every
+    // expected.json lists). A row with
     // another key has no written-down result to be checked against, and a row whose value is
     // null says the value is computed at run time, which the results deliberately do not list.
     // Neither is a claimed value: both are counted in the notes and nowhere else.
-    const scored = o.webPreferences.filter((w) => w.value !== null && SCORED_SETTINGS.has(w.key));
-    const otherKeys = o.webPreferences.filter((w) => !SCORED_SETTINGS.has(w.key)).length;
-    const computed = o.webPreferences.filter(
-      (w) => w.value === null && SCORED_SETTINGS.has(w.key),
-    ).length;
+    const listed = new Set([
+      ...SCORED_SETTINGS,
+      ...e.webPreferences.present.map((w) => w.key),
+      ...(e.webPreferences.absent ?? []).map((w) => w.key),
+    ]);
+    const scored = o.webPreferences.filter((w) => w.value !== null && listed.has(w.key));
+    const otherKeys = o.webPreferences.filter((w) => !listed.has(w.key)).length;
+    const computed = o.webPreferences.filter((w) => w.value === null && listed.has(w.key)).length;
     const have = scored.map(key);
     const left = [...have];
     const missed = [];

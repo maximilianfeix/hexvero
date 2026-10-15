@@ -698,8 +698,8 @@
   {
    "set": "holdout3",
    "class": "window settings",
-   "hit": 33,
-   "missed": 9,
+   "hit": 42,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -3093,15 +3093,10 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.plain.asar",
    "class": "window settings",
-   "hit": 11,
-   "missed": 3,
+   "hit": 14,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js webSecurity=true",
-    "missed main.js webSecurity=true",
-    "missed main.js webSecurity=false",
-    "not scored: 3 row(s) with other keys"
-   ]
+   "notes": []
   },
   {
    "set": "holdout3",
@@ -3192,15 +3187,10 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.bundled.asar",
    "class": "window settings",
-   "hit": 11,
-   "missed": 3,
+   "hit": 14,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js webSecurity=true",
-    "missed main.js webSecurity=true",
-    "missed main.js webSecurity=false",
-    "not scored: 3 row(s) with other keys"
-   ]
+   "notes": []
   },
   {
    "set": "holdout3",
@@ -3291,15 +3281,10 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.minified.asar",
    "class": "window settings",
-   "hit": 11,
-   "missed": 3,
+   "hit": 14,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js webSecurity=true",
-    "missed main.js webSecurity=true",
-    "missed main.js webSecurity=false",
-    "not scored: 3 row(s) with other keys"
-   ]
+   "notes": []
   },
   {
    "set": "holdout3",
