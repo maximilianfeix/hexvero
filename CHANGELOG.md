@@ -6,6 +6,15 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Performance
+
+- A JavaScript application with 1 MiB of JavaScript or more is stored even when one run read it
+  whole, so the next `analyze`, `collection`, `compare` or `export` of the same archive reuses the
+  scan. Claude desktop's 47 MiB `app.asar`: 10.2 s and 776 MB cold, 0.3–1.0 s warm. Cold and
+  warm exports of six real Electron apps are byte-identical apart from timing fields and
+  `coverage.resumed`. `--fresh`
+  reads everything again; smaller apps still touch no disk.
+
 ### Documentation
 
 - Two walkthroughs on the NotesDesk example: [Electron interface map](docs/use-cases/electron-interface-map.md)
@@ -43,6 +52,9 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Fixed
 
+- A scan continued over several runs dropped `ipc_open_calls_capped` when the cap was met in an
+  earlier run, so the result looked more complete than it was. The flag is now stored with the
+  scan (scan schema 6; stored scans of older versions are read again from the start).
 - `compare … ipc` no longer reports a call that only moved as removed and added: the identity is
   `module+api+channel` and the line is a position. NotesDesk-style v1 → v2 (corpus `notes-app`):
   14 added and 14 removed before, 2 and 2 now (the renamed channel), 12 relocated.

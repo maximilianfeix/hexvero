@@ -250,7 +250,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         io.out(
           `\n${heading(io, "Coverage")}\n  ${
             coverage.complete
-              ? `all ${coverage.total} JavaScript files scanned, over more than one run`
+              ? `all ${coverage.total} JavaScript files scanned, read from the stored scan (--fresh reads them again)`
               : `${paint(io, "yellow", "partial")}: ${coverage.scanned} of ${coverage.total} JavaScript files scanned (${percent}%), ${coverage.remaining} unread. Everything below covers the scanned part only.`
           }${
             coverage.complete

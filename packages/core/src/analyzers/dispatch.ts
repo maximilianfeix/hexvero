@@ -71,9 +71,17 @@ export interface AnalyzeOptions {
 }
 
 /**
+ * JavaScript an application must hold before a scan finished in one run is stored too. Reading it
+ * again would cost seconds (Claude's 47 MiB archive: about 8 s, against 0.3 s from the stored
+ * scan), so the next `collection`, `compare` or `export` of the same input reuses it. A small
+ * application read in one run still touches no disk.
+ */
+const STORE_COMPLETE_MIN_BYTES = 1 << 20;
+
+/**
  * Scans a JavaScript application, continuing a stored scan of the same input when there is one.
- * State is stored only when it is needed to continue: after a partial run, or once a scan has
- * been continued. A small application read in one run touches no disk.
+ * State is stored when it is needed to continue (after a partial run, or once a scan has been
+ * continued) and when a large application was read whole in one run.
  */
 async function scanApplication(
   info: LoadedTarget["info"],
@@ -137,7 +145,16 @@ async function scanApplication(
       last = facts;
     },
   });
-  if (key && last && !request.all && (advancing || (!stored && !app.coverage.complete))) save(last);
+  const large = (): boolean =>
+    tree.files.reduce((sum, f) => sum + (/\.[cm]?js$/i.test(f.path) ? f.size : 0), 0) >=
+    STORE_COMPLETE_MIN_BYTES;
+  if (
+    key &&
+    last &&
+    !request.all &&
+    (advancing || (!stored && (!app.coverage.complete || large())))
+  )
+    save(last);
   if (notSaved)
     app.limitations.push({
       code: "scan_state_not_saved",

@@ -61,8 +61,9 @@ Files are taken in a fixed order: the entry file from `package.json`, then shall
 deep ones, then by path. A continued scan therefore never reads a file twice and never leaves one
 out. What has been read is stored under `~/.cache/hexvero/scans` (or `HEXVERO_CACHE_DIR`), keyed by
 the content of the input, so `collection`, `compare` and `export` in later invocations see the
-same state, and a changed archive starts from nothing. An application that fits into one batch
-stores nothing. If a run is interrupted, the state of the last finished batch remains.
+same state, and a changed archive starts from nothing. An application with 1 MiB of JavaScript
+or more is stored even when one batch read it whole, so later invocations reuse the scan (Claude's
+47 MiB archive: about 8 s cold, 0.3 s from the stored scan); a smaller one stores nothing. If a run is interrupted, the state of the last finished batch remains.
 
 Applications with 4 MiB of source or more are tokenized in up to three worker threads, largest
 file first; the results are merged in the fixed order above, so the analysis is the same as with
