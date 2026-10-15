@@ -74,6 +74,8 @@ export {
   type CollectionPage,
   type StringsQuery,
   type CollectionComparison,
+  type CollectionDiff,
+  type CompareCollectionOptions,
   type CompareAllResult,
 } from "./session.js";
 export {

@@ -3,11 +3,9 @@ import {
   AnalysisError,
   Session,
   compact,
-  compareItems,
   loadCallGraph,
   MAX_PAGE_BYTES,
   neighborhood,
-  positionalFields,
   suggestNextSteps,
   PROVIDER_OPERATIONS,
   resolveNode,
@@ -409,16 +407,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       const name = need(2, "collection");
       const keyFlag = flagString(args.flags, "key");
       const ignoreFlag = flagString(args.flags, "ignore");
-      const [left, right] = await Promise.all([
-        session.collection(a.id, name, { limit: 2000, maxBytes: 64 << 20 }),
-        session.collection(b.id, name, { limit: 2000, maxBytes: 64 << 20 }),
-      ]);
       // --ignore a,b excludes those fields on top of the position rules; --strict (or the older
       // --ignore none) switches the position rules off so every difference counts.
-      const strict = Boolean(args.flags["strict"]) || ignoreFlag === "none";
-      const diff = compareItems(left.items, right.items, {
+      const { diff, left, right } = await session.compareCollection(a.id, b.id, name, {
         key: keyFlag,
-        collection: name,
         ignore:
           ignoreFlag === undefined || ignoreFlag === "none"
             ? []
@@ -426,8 +418,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
                 .split(",")
                 .map((f) => f.trim())
                 .filter(Boolean),
-        positional: strict ? [] : positionalFields(name, [a.info.format, b.info.format]),
-        coverage: { a: await session.coverage(a.id), b: await session.coverage(b.id) },
+        strict: Boolean(args.flags["strict"]) || ignoreFlag === "none",
       });
       if (diff.keyMissing)
         throw new UsageError(

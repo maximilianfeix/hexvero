@@ -8,6 +8,16 @@ import { openAsarFile } from "../src/formats/asar.js";
 import { buildElf } from "./fixtures/elf.js";
 import { buildAsar } from "./fixtures/asar.js";
 
+const har = (urls: string[]): string =>
+  JSON.stringify({
+    log: {
+      entries: urls.map((url) => ({
+        request: { method: "GET", url, headers: [] },
+        response: { status: 200, headers: [], content: { size: 0 } },
+      })),
+    },
+  });
+
 describe("Session", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-session-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -176,5 +186,25 @@ describe("Session", () => {
     const before = process.memoryUsage().arrayBuffers;
     expect(() => openAsarFile(path)).toThrow(/truncated/);
     expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(64 * 1024 * 1024);
+  });
+
+  it("never reports an item as added or removed when the other side was compared only in part", async () => {
+    // 2,500 requests in opposite orders: each side's first 2,000 rows hold different requests,
+    // although both captures contain exactly the same ones.
+    const urls = Array.from({ length: 2500 }, (_, i) => `https://api.example.test/v1/item/${i}`);
+    writeFileSync(join(dir, "a.har"), har(urls));
+    writeFileSync(join(dir, "b.har"), har(urls.toReversed()));
+    const a = await session.open(join(dir, "a.har"));
+    const b = await session.open(join(dir, "b.har"));
+    const { diff, left, right } = await session.compareCollection(a.id, b.id, "requests");
+    expect(left.truncated && right.truncated).toBe(true);
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual([]);
+    // First 2,000 of a: 0..1999; of b: 2499..500. Each side has 500 the other did not compare.
+    expect(diff.unknown.length).toBe(500 + 500);
+    expect(diff.unknown[0]?.reason).toBe("the other side was compared only in part");
+    const all = await session.compareAll(a.id, b.id);
+    const requests = all.collections.find((c) => c.collection === "requests");
+    expect(requests).toMatchObject({ added: 0, removed: 0, unknown: 1000, partial: true });
   });
 });

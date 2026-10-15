@@ -6,6 +6,15 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `compare` no longer reports false additions and removals for collections longer than 2,000
+  items. Each side is compared up to 2,000 items; an item found on one side only while the other
+  side was cut there is now `unknown` ("the other side was compared only in part"), not added or
+  removed. Two captures with the same 2,500 requests in opposite order used to show 500 removed
+  and 500 added; they now show 0 of each and 1,000 unknown. CLI, MCP and the `compare --all`
+  overview share one implementation (`Session.compareCollection`).
+
 ## [0.6.2] - 2026-10-14
 
 ### Accuracy

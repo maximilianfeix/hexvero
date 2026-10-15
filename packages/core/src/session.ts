@@ -10,7 +10,12 @@ import {
 } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
-import { compareItems, positionalFields, type SideCoverage } from "./compare.js";
+import {
+  compareItems,
+  positionalFields,
+  type CompareResult,
+  type SideCoverage,
+} from "./compare.js";
 import { UnknownsLedger } from "./unknowns.js";
 import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
 
@@ -55,6 +60,22 @@ export interface CompareAllResult {
   onlyB: string[];
   /** A JavaScript application read only in part: items in unread files are unknown, not gone. */
   partialScan: { a: boolean; b: boolean };
+}
+
+/** One collection of two targets compared, as `Session.compareCollection` returns it. */
+export interface CollectionDiff {
+  diff: CompareResult;
+  /** The pages that were compared: up to 2,000 items per side. */
+  left: CollectionPage;
+  right: CollectionPage;
+}
+
+export interface CompareCollectionOptions {
+  /** Identity field; undefined picks one (see `compareItems`). */
+  key?: string | undefined;
+  ignore?: readonly string[] | undefined;
+  /** Count differences in position fields (addresses, lines) as changes. */
+  strict?: boolean | undefined;
 }
 
 export interface StringsQuery extends CollectionQuery {
@@ -308,26 +329,44 @@ export class Session {
   }
 
   /**
+   * Diff of one collection of two targets. Each side is compared up to 2,000 items; an item found
+   * on one side only while the other side was cut there is `unknown`, not added or removed, and
+   * so is an item in a file the other side did not read.
+   */
+  async compareCollection(
+    idA: string,
+    idB: string,
+    name: string,
+    options: CompareCollectionOptions = {},
+  ): Promise<CollectionDiff> {
+    const [left, right] = await Promise.all([
+      this.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
+      this.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),
+    ]);
+    const diff = compareItems(left.items, right.items, {
+      key: options.key,
+      collection: name,
+      ignore: options.ignore ?? [],
+      positional: options.strict
+        ? []
+        : positionalFields(name, [this.get(idA).info.format, this.get(idB).info.format]),
+      coverage: { a: await this.coverage(idA), b: await this.coverage(idB) },
+      cut: { a: left.truncated, b: right.truncated },
+    });
+    return { diff, left, right };
+  }
+
+  /**
    * Counts of added, removed, changed, relocated and unchanged items for every collection the two
    * targets share: the overview before diffing one collection. Each side is compared up to 2,000
    * items per collection; a collection cut there says so with `partial`.
    */
   async compareAll(idA: string, idB: string): Promise<CompareAllResult> {
     const [countsA, countsB] = await Promise.all([this.collections(idA), this.collections(idB)]);
-    const formats = [this.get(idA).info.format, this.get(idB).info.format];
-    const coverage = { a: await this.coverage(idA), b: await this.coverage(idB) };
     const collections: CollectionComparison[] = [];
     for (const name of Object.keys(countsA)) {
       if (!(name in countsB) || (countsA[name] === 0 && countsB[name] === 0)) continue;
-      const [left, right] = await Promise.all([
-        this.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
-        this.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),
-      ]);
-      const diff = compareItems(left.items, right.items, {
-        collection: name,
-        positional: positionalFields(name, formats),
-        coverage,
-      });
+      const { diff, left, right } = await this.compareCollection(idA, idB, name);
       collections.push({
         collection: name,
         key: diff.key,

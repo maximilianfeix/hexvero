@@ -42,6 +42,12 @@ export interface CompareOptions {
    * read that file; otherwise nothing is known about it there and it is `unknown`.
    */
   coverage?: { a?: SideCoverage | null; b?: SideCoverage | null } | undefined;
+  /**
+   * Sides whose list is only the first part of the collection (a page cut at a size limit). An
+   * item found on the other side only may sit in the part that was not compared, so it is
+   * `unknown`, never `added` or `removed`.
+   */
+  cut?: { a?: boolean; b?: boolean } | undefined;
 }
 
 /** Which files an analysis read. */
@@ -62,7 +68,8 @@ export interface UnknownItem {
   reason:
     | "file not read on the other side"
     | "file could not be read on the other side"
-    | "the other side was read only in part";
+    | "the other side was read only in part"
+    | "the other side was compared only in part";
 }
 
 export interface CompareResult {
@@ -81,7 +88,7 @@ export interface CompareResult {
   removed: string[];
   /**
    * Items found on one side only, in a file the other side did not read: neither added nor
-   * removed. Empty unless the caller passed `coverage`.
+   * removed. Empty unless the caller passed `coverage` or `cut`.
    */
   unknown: UnknownItem[];
   changed: ChangedItem[];
@@ -447,6 +454,15 @@ export function compareItems(
   const unknown: UnknownItem[] = [];
   /** Records an item found on `side` only: removed/added when the other side read its file. */
   const oneSided = (item: unknown, shown: string, side: "a" | "b"): void => {
+    if (side === "a" ? options.cut?.b : options.cut?.a) {
+      unknown.push({
+        key: shown,
+        side,
+        file: filesOf(item)[0] ?? "",
+        reason: "the other side was compared only in part",
+      });
+      return;
+    }
     const other = side === "a" ? options.coverage?.b : options.coverage?.a;
     if (other) {
       const files = filesOf(item);

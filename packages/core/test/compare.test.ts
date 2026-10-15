@@ -415,7 +415,22 @@ describe("compareItems", () => {
   });
 });
 
+const rows = (...names: string[]) => names.map((name) => ({ name }));
+
 describe("items on one side only", () => {
+  it("calls an item unknown, not added or removed, when the other side's list was cut", () => {
+    const cutRight = compareItems(rows("a", "b", "c"), rows("a", "d"), { cut: { b: true } });
+    expect(cutRight.removed).toEqual([]);
+    expect(cutRight.unknown.map((u) => [u.key, u.side, u.reason])).toEqual([
+      ["b", "a", "the other side was compared only in part"],
+      ["c", "a", "the other side was compared only in part"],
+    ]);
+    // The left side was whole, so an item only on the cut right side is still added.
+    expect(cutRight.added).toEqual(["d"]);
+    const neither = compareItems(rows("a", "b"), rows("a", "c"), { cut: { a: false, b: false } });
+    expect([neither.added, neither.removed, neither.unknown]).toEqual([["c"], ["b"], []]);
+  });
+
   const old = [ipcRow("main.js", "open"), ipcRow("main.js", "quit"), ipcRow("extra.js", "debug")];
   const next = [ipcRow("main.js", "open"), ipcRow("main.js", "update")];
   const options = { collection: "ipc", key: "channel" };

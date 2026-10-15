@@ -4,8 +4,6 @@ import {
   suggestNextSteps,
   AnalysisError,
   compact,
-  compareItems,
-  positionalFields,
   neighborhood,
   originalPositionFor,
   resolveNode,
@@ -419,19 +417,10 @@ export function createHandlers(
         };
       }
       const name = str(a["collection"]);
-      const [left, right] = await Promise.all([
-        session.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
-        session.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),
-      ]);
-      const diff = compareItems(left.items, right.items, {
+      const { diff, left, right } = await session.compareCollection(idA, idB, name, {
         key: typeof a["key"] === "string" ? a["key"] : undefined,
-        collection: name,
         ignore: Array.isArray(a["ignore"]) ? (a["ignore"] as string[]) : [],
-        positional:
-          a["strict"] === true
-            ? []
-            : positionalFields(name, [session.get(idA).info.format, session.get(idB).info.format]),
-        coverage: { a: await session.coverage(idA), b: await session.coverage(idB) },
+        strict: a["strict"] === true,
       });
       if (diff.keyMissing)
         throw new AnalysisError(
