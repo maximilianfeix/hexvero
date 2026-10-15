@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.7.3",
-  "commit": "666c9b1+uncommitted",
+  "commit": "ebf4a2a+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -10954,6 +10954,12 @@
       "evidence": "inferred"
      },
      {
+      "value": "https://sync.lattice.example/api/boards/${…}",
+      "kind": "fetch",
+      "method": "PUT",
+      "evidence": "template"
+     },
+     {
       "value": "https://sync.lattice.example/health",
       "kind": "fetch",
       "method": null,
@@ -10972,7 +10978,7 @@
       "evidence": "inferred"
      }
     ],
-    "endpointsUnreadable": 3,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "localStorage",
@@ -11245,6 +11251,12 @@
       "evidence": "inferred"
      },
      {
+      "value": "https://sync.lattice.example/api/boards/${…}",
+      "kind": "fetch",
+      "method": "PUT",
+      "evidence": "template"
+     },
+     {
       "value": "https://sync.lattice.example/health",
       "kind": "fetch",
       "method": null,
@@ -11263,7 +11275,7 @@
       "evidence": "inferred"
      }
     ],
-    "endpointsUnreadable": 3,
+    "endpointsUnreadable": 2,
     "storage": [
      {
       "kind": "localStorage",
@@ -11536,6 +11548,12 @@
       "evidence": "inferred"
      },
      {
+      "value": "https://sync.lattice.example/api/boards/${…}",
+      "kind": "fetch",
+      "method": "PUT",
+      "evidence": "template"
+     },
+     {
       "value": "https://sync.lattice.example/health",
       "kind": "fetch",
       "method": null,
@@ -11554,7 +11572,7 @@
       "evidence": "inferred"
      }
     ],
-    "endpointsUnreadable": 2,
+    "endpointsUnreadable": 1,
     "storage": [
      {
       "kind": "localStorage",

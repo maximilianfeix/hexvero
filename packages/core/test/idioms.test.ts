@@ -191,4 +191,20 @@ describe("idioms of channel and bridge definitions", () => {
     // The factory's defaults are those windows' settings, not a second, windowless row.
     expect(info.webPreferences.filter((p) => p.window === null && p.value !== null)).toEqual([]);
   });
+
+  it("reads new URL(template, base) with a gap in the path, never with a gap that may be the origin", () => {
+    const info = analyze({
+      "main.js": [
+        'const BASE = "https://sync.example/api/";',
+        "async function push(board, host) {",
+        "  await fetch(new URL(`boards/${encodeURIComponent(board.id)}`, BASE));",
+        "  await fetch(new URL(`${host}/status`, BASE));",
+        "}",
+      ].join("\n"),
+    });
+    expect(info.endpoints.map((e) => `${e.evidence} ${e.value}`)).toEqual([
+      "template https://sync.example/api/boards/${…}",
+      "unknown null",
+    ]);
+  });
 });

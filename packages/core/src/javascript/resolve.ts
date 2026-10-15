@@ -641,12 +641,26 @@ export class ExpressionResolver {
       const [path, base] = this.list(start + 2, close, env, depth);
       if (path?.kind !== "str" || (base && base.kind !== "str")) return null;
       const out: string[] = [];
+      // A gap in the path (`boards/${…}`) is carried through as a placeholder when gaps are
+      // shown; a gap in the base decides the origin, so the address stays unknown.
+      // Letters and underscores only: the URL parser neither encodes nor strips them.
+      const GAP = "__hexvero_gap__";
       for (const p of path.values)
         for (const b of base?.kind === "str" ? base.values : [undefined]) {
-          if (p.includes("${…}") || b?.includes("${…}") || (p + (b ?? "")).includes("\u0001"))
-            return null;
+          if (b?.includes("${…}") || (p + (b ?? "")).includes("\u0001")) return null;
+          if (p.includes("${…}") && (!this.gaps || p.includes(GAP))) return null;
+          // A gap before any `/` may be a whole address of its own (`${host}/x`): its origin is
+          // not known.
+          if (p.includes("${…}") && !p.split("${…}")[0]!.includes("/")) return null;
           try {
-            out.push(new URL(p, b).href);
+            const href = new URL(p.replaceAll("${…}", GAP), b).href;
+            // The placeholder must survive as written, as often as it was put in, and only in
+            // the path: anything else is not this address.
+            const count = (text: string): number => text.split(GAP).length - 1;
+            const url = new URL(href);
+            if (count(href) !== count(p.replaceAll("${…}", GAP)) || count(url.origin)) return null;
+            const back = href.replaceAll(GAP, "${…}");
+            out.push(back);
           } catch {
             return null;
           }

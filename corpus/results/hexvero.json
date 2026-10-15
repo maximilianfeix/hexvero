@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.7.3",
-  "commit": "666c9b1+uncommitted",
+  "commit": "ebf4a2a+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -869,8 +869,8 @@
   {
    "set": "holdout4",
    "class": "endpoints",
-   "hit": 12,
-   "missed": 9,
+   "hit": 15,
+   "missed": 6,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -878,7 +878,7 @@
   {
    "set": "holdout4",
    "class": "endpoint method",
-   "hit": 3,
+   "hit": 6,
    "missed": 0,
    "false": 0,
    "hedged": 0,
@@ -889,7 +889,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 3,
    "missed": 0,
-   "false": 5,
+   "false": 2,
    "hedged": 0,
    "inputs": 3
   },
@@ -3638,11 +3638,10 @@
    "set": "holdout4",
    "input": "holdout4/kanban-board.plain.asar",
    "class": "endpoints",
-   "hit": 4,
-   "missed": 3,
+   "hit": 5,
+   "missed": 2,
    "false": 0,
    "notes": [
-    "missed https://sync.lattice.example/api/boards/…",
     "missed https://api.lattice.example/v1/templates",
     "missed https://api.lattice.example/v1/feedback"
    ]
@@ -3651,7 +3650,7 @@
    "set": "holdout4",
    "input": "holdout4/kanban-board.plain.asar",
    "class": "endpoint method",
-   "hit": 1,
+   "hit": 2,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -3659,282 +3658,280 @@
   {
    "set": "holdout4",
    "input": "holdout4/kanban-board.plain.asar",
-   "class": "requests with an unknown URL shown",
-   "hit": 1,
-   "missed": 0,
-   "false": 2,
-   "notes": []
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.plain.asar",
-   "class": "storage keys",
-   "hit": 4,
-   "missed": 2,
-   "false": 0,
-   "notes": [
-    "missed file lattice-settings.json",
-    "missed cookie lattice_sid"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.plain.asar",
-   "class": "storage read/write/delete",
-   "hit": 3,
-   "missed": 0,
-   "false": 0,
-   "notes": []
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "IPC channels",
-   "hit": 4,
-   "missed": 15,
-   "false": 0,
-   "notes": [
-    "missed board:list",
-    "missed board:move",
-    "missed board:archive",
-    "missed board:changed",
-    "missed card:create",
-    "missed card:rename",
-    "missed card:remove",
-    "missed card:link-preview",
-    "missed lane:collapse",
-    "missed lane:expand",
-    "missed lane:reorder",
-    "missed prefs:load",
-    "missed prefs:save",
-    "missed auth:sign-in",
-    "missed auth:sign-out"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "IPC senders and receivers",
-   "hit": 6,
-   "missed": 2,
-   "false": 0,
-   "notes": [
-    "activity:push: sender main.js missed",
-    "activity:clear: receiver main.js missed"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "window settings",
-   "hit": 14,
-   "missed": 2,
-   "false": 0,
-   "notes": [
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "not scored: 1 row(s) with a computed value"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "bridge members",
-   "hit": 22,
-   "missed": 0,
-   "false": 0,
-   "notes": []
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "bridge member channel",
-   "hit": 7,
-   "missed": 15,
-   "false": 0,
-   "notes": [
-    "lattice.listBoards: expected board:list, got null",
-    "lattice.moveCard: expected board:move, got null",
-    "lattice.archiveBoard: expected board:archive, got null",
-    "lattice.onBoardChanged: expected board:changed, got null",
-    "lattice.collapseLane: expected lane:collapse, got null",
-    "lattice.expandLane: expected lane:expand, got null",
-    "lattice.reorderLanes: expected lane:reorder, got null",
-    "lattice.loadPrefs: expected prefs:load, got null",
-    "lattice.savePrefs: expected prefs:save, got null",
-    "lattice.signIn: expected auth:sign-in, got null",
-    "lattice.signOut: expected auth:sign-out, got null",
-    "cards.create: expected card:create, got null",
-    "cards.rename: expected card:rename, got null",
-    "cards.remove: expected card:remove, got null",
-    "cards.linkPreview: expected card:link-preview, got null"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "endpoints",
-   "hit": 4,
-   "missed": 3,
-   "false": 0,
-   "notes": [
-    "missed https://sync.lattice.example/api/boards/…",
-    "missed https://api.lattice.example/v1/templates",
-    "missed https://api.lattice.example/v1/feedback"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "endpoint method",
-   "hit": 1,
-   "missed": 0,
-   "false": 0,
-   "notes": []
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "requests with an unknown URL shown",
-   "hit": 1,
-   "missed": 0,
-   "false": 2,
-   "notes": []
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "storage keys",
-   "hit": 4,
-   "missed": 2,
-   "false": 0,
-   "notes": [
-    "missed file lattice-settings.json",
-    "missed cookie lattice_sid"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.bundled.asar",
-   "class": "storage read/write/delete",
-   "hit": 3,
-   "missed": 0,
-   "false": 0,
-   "notes": []
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.minified.asar",
-   "class": "IPC channels",
-   "hit": 4,
-   "missed": 15,
-   "false": 0,
-   "notes": [
-    "missed board:list",
-    "missed board:move",
-    "missed board:archive",
-    "missed board:changed",
-    "missed card:create",
-    "missed card:rename",
-    "missed card:remove",
-    "missed card:link-preview",
-    "missed lane:collapse",
-    "missed lane:expand",
-    "missed lane:reorder",
-    "missed prefs:load",
-    "missed prefs:save",
-    "missed auth:sign-in",
-    "missed auth:sign-out"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.minified.asar",
-   "class": "IPC senders and receivers",
-   "hit": 6,
-   "missed": 2,
-   "false": 0,
-   "notes": [
-    "activity:push: sender main.js missed",
-    "activity:clear: receiver main.js missed"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.minified.asar",
-   "class": "window settings",
-   "hit": 14,
-   "missed": 2,
-   "false": 0,
-   "notes": [
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "not scored: 1 row(s) with a computed value"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.minified.asar",
-   "class": "bridge members",
-   "hit": 22,
-   "missed": 0,
-   "false": 0,
-   "notes": []
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.minified.asar",
-   "class": "bridge member channel",
-   "hit": 7,
-   "missed": 15,
-   "false": 0,
-   "notes": [
-    "lattice.listBoards: expected board:list, got null",
-    "lattice.moveCard: expected board:move, got null",
-    "lattice.archiveBoard: expected board:archive, got null",
-    "lattice.onBoardChanged: expected board:changed, got null",
-    "lattice.collapseLane: expected lane:collapse, got null",
-    "lattice.expandLane: expected lane:expand, got null",
-    "lattice.reorderLanes: expected lane:reorder, got null",
-    "lattice.loadPrefs: expected prefs:load, got null",
-    "lattice.savePrefs: expected prefs:save, got null",
-    "lattice.signIn: expected auth:sign-in, got null",
-    "lattice.signOut: expected auth:sign-out, got null",
-    "cards.create: expected card:create, got null",
-    "cards.rename: expected card:rename, got null",
-    "cards.remove: expected card:remove, got null",
-    "cards.linkPreview: expected card:link-preview, got null"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.minified.asar",
-   "class": "endpoints",
-   "hit": 4,
-   "missed": 3,
-   "false": 0,
-   "notes": [
-    "missed https://sync.lattice.example/api/boards/…",
-    "missed https://api.lattice.example/v1/templates",
-    "missed https://api.lattice.example/v1/feedback"
-   ]
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.minified.asar",
-   "class": "endpoint method",
-   "hit": 1,
-   "missed": 0,
-   "false": 0,
-   "notes": []
-  },
-  {
-   "set": "holdout4",
-   "input": "holdout4/kanban-board.minified.asar",
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
    "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.plain.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file lattice-settings.json",
+    "missed cookie lattice_sid"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "IPC channels",
+   "hit": 4,
+   "missed": 15,
+   "false": 0,
+   "notes": [
+    "missed board:list",
+    "missed board:move",
+    "missed board:archive",
+    "missed board:changed",
+    "missed card:create",
+    "missed card:rename",
+    "missed card:remove",
+    "missed card:link-preview",
+    "missed lane:collapse",
+    "missed lane:expand",
+    "missed lane:reorder",
+    "missed prefs:load",
+    "missed prefs:save",
+    "missed auth:sign-in",
+    "missed auth:sign-out"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 6,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "activity:push: sender main.js missed",
+    "activity:clear: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "window settings",
+   "hit": 14,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "not scored: 1 row(s) with a computed value"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "bridge members",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 7,
+   "missed": 15,
+   "false": 0,
+   "notes": [
+    "lattice.listBoards: expected board:list, got null",
+    "lattice.moveCard: expected board:move, got null",
+    "lattice.archiveBoard: expected board:archive, got null",
+    "lattice.onBoardChanged: expected board:changed, got null",
+    "lattice.collapseLane: expected lane:collapse, got null",
+    "lattice.expandLane: expected lane:expand, got null",
+    "lattice.reorderLanes: expected lane:reorder, got null",
+    "lattice.loadPrefs: expected prefs:load, got null",
+    "lattice.savePrefs: expected prefs:save, got null",
+    "lattice.signIn: expected auth:sign-in, got null",
+    "lattice.signOut: expected auth:sign-out, got null",
+    "cards.create: expected card:create, got null",
+    "cards.rename: expected card:rename, got null",
+    "cards.remove: expected card:remove, got null",
+    "cards.linkPreview: expected card:link-preview, got null"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed https://api.lattice.example/v1/templates",
+    "missed https://api.lattice.example/v1/feedback"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file lattice-settings.json",
+    "missed cookie lattice_sid"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.minified.asar",
+   "class": "IPC channels",
+   "hit": 4,
+   "missed": 15,
+   "false": 0,
+   "notes": [
+    "missed board:list",
+    "missed board:move",
+    "missed board:archive",
+    "missed board:changed",
+    "missed card:create",
+    "missed card:rename",
+    "missed card:remove",
+    "missed card:link-preview",
+    "missed lane:collapse",
+    "missed lane:expand",
+    "missed lane:reorder",
+    "missed prefs:load",
+    "missed prefs:save",
+    "missed auth:sign-in",
+    "missed auth:sign-out"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 6,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "activity:push: sender main.js missed",
+    "activity:clear: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.minified.asar",
+   "class": "window settings",
+   "hit": 14,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "not scored: 1 row(s) with a computed value"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.minified.asar",
+   "class": "bridge members",
+   "hit": 22,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.minified.asar",
+   "class": "bridge member channel",
+   "hit": 7,
+   "missed": 15,
+   "false": 0,
+   "notes": [
+    "lattice.listBoards: expected board:list, got null",
+    "lattice.moveCard: expected board:move, got null",
+    "lattice.archiveBoard: expected board:archive, got null",
+    "lattice.onBoardChanged: expected board:changed, got null",
+    "lattice.collapseLane: expected lane:collapse, got null",
+    "lattice.expandLane: expected lane:expand, got null",
+    "lattice.reorderLanes: expected lane:reorder, got null",
+    "lattice.loadPrefs: expected prefs:load, got null",
+    "lattice.savePrefs: expected prefs:save, got null",
+    "lattice.signIn: expected auth:sign-in, got null",
+    "lattice.signOut: expected auth:sign-out, got null",
+    "cards.create: expected card:create, got null",
+    "cards.rename: expected card:rename, got null",
+    "cards.remove: expected card:remove, got null",
+    "cards.linkPreview: expected card:link-preview, got null"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.minified.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed https://api.lattice.example/v1/templates",
+    "missed https://api.lattice.example/v1/feedback"
+   ]
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.minified.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout4",
+   "input": "holdout4/kanban-board.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
    "notes": []
   },
   {
