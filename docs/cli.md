@@ -36,7 +36,7 @@ Exit codes: `0` success (including `--help`), `1` analysis error (`{"error":{"co
 | Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                                                 |
 | DEX                  | classes, packages, dexStrings                                                                                                                    |
 | ZIP                  | files                                                                                                                                            |
-| Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, contextBridge, endpoints, storage, urls, sourceMaps                                 |
+| Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, windows, contextBridge, interfaces, endpoints, storage, urls, sourceMaps            |
 | JavaScript file      | references, ipc, exports, bundleModules, endpoints, routes, storage, urls                                                                        |
 | Source map           | sources, packages                                                                                                                                |
 

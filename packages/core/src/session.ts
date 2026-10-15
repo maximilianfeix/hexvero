@@ -23,6 +23,7 @@ export type { CollectionPage, CollectionQuery } from "./paging.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
 import { AnalysisError, type TargetInfo } from "./model.js";
+import { interfaceMap } from "./javascript/interfaces.js";
 import { loadTarget, type LoadedTarget } from "./target.js";
 import { CORE_VERSION } from "./version.js";
 
@@ -816,6 +817,7 @@ export function collectionsOf(
       if (d.app.webPreferences.length) out["webPreferences"] = d.app.webPreferences;
       if (d.app.windows?.length) out["windows"] = d.app.windows;
       if (d.app.contextBridge.length) out["contextBridge"] = d.app.contextBridge;
+      if (d.app.contextBridge.length) out["interfaces"] = interfaceMap(d.app, analysis.limitations);
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
       if (d.app.storage.length) out["storage"] = d.app.storage;

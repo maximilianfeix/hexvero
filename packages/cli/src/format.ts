@@ -52,10 +52,24 @@ export function formatLimitations(io: Io, limitations: Limitation[]): string[] {
 const plainList = (v: unknown): v is Array<string | number | boolean> =>
   Array.isArray(v) && v.every((x) => x === null || typeof x !== "object");
 
+/** A list of places (`{ file, line, api? }`), shown as `main.js:40 handle`. */
+const placeList = (v: unknown): v is Array<{ file: string; line: number; api?: string }> =>
+  Array.isArray(v) &&
+  v.length > 0 &&
+  v.every(
+    (x) =>
+      x !== null &&
+      typeof x === "object" &&
+      typeof (x as { file?: unknown }).file === "string" &&
+      typeof (x as { line?: unknown }).line === "number",
+  );
+
 export function table(rows: Array<Record<string, unknown>>, maxWidth = 60): string[] {
   if (!rows.length) return ["  (empty)"];
   const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((c) =>
-    rows.some((r) => r[c] !== undefined && (typeof r[c] !== "object" || plainList(r[c]))),
+    rows.some(
+      (r) => r[c] !== undefined && (typeof r[c] !== "object" || plainList(r[c]) || placeList(r[c])),
+    ),
   );
   const cell = (v: unknown): string => {
     const text =
@@ -63,9 +77,13 @@ export function table(rows: Array<Record<string, unknown>>, maxWidth = 60): stri
         ? ""
         : plainList(v)
           ? v.join(", ")
-          : typeof v === "object"
-            ? JSON.stringify(v)
-            : String(v);
+          : placeList(v)
+            ? v
+                .map((p) => `${p.file}:${p.line}${p.api ? ` ${p.api.split(".").pop()}` : ""}`)
+                .join(", ")
+            : typeof v === "object"
+              ? JSON.stringify(v)
+              : String(v);
     return text.length > maxWidth ? `${text.slice(0, maxWidth - 1)}…` : text;
   };
   const widths = columns.map((c) => Math.max(c.length, ...rows.map((r) => cell(r[c]).length)));

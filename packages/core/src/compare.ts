@@ -129,12 +129,24 @@ const POSITION_FIELDS: Record<string, readonly string[]> = {
  */
 const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   contextBridge: ["line"],
+  interfaces: ["line"],
+  ipc: ["line"],
   webPreferences: ["line", "window"],
   windows: ["line", "window"],
   endpoints: ["line", "column"],
   storage: ["line", "column"],
   urls: ["line", "column"],
   routes: ["line", "column"],
+};
+
+/**
+ * Source lines nested inside an item, as [field, line field]: the `line` of each end of an
+ * interface row, the call-site `lines` of a resolved IPC channel. With the line rules on, those
+ * are positions too.
+ */
+const NESTED_LINE_FIELDS: Record<string, ReadonlyArray<readonly [string, string]>> = {
+  interfaces: [["ends", "line"]],
+  ipc: [["resolution", "lines"]],
 };
 
 /**
@@ -174,7 +186,9 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
     ["class", "selector"],
   ],
   columns: [["table", "name"]],
-  ipc: [["module", "api", "channel", "line"]],
+  // The same call may occur twice in a file; those repeats are matched as a multiset, and the
+  // line is a position (below), so a call that only moved is not reported as removed and added.
+  ipc: [["module", "api", "channel"]],
   // A file may configure several windows. The variable a window is assigned to tells their
   // settings apart and stays the same when code moves or a window is added before it; the
   // window number is the fallback for an analysis without names.
@@ -187,6 +201,7 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   windows: [["file", "windowName"]],
   cil: [["method", "offset"]],
   contextBridge: [["api", "member"]],
+  interfaces: [["file", "api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.
   endpoints: [
     ["file", "kind", "value"],
@@ -426,8 +441,28 @@ export function compareItems(
     }
     return m;
   };
+  const nested =
+    (positional.includes("line") && options.collection && NESTED_LINE_FIELDS[options.collection]) ||
+    [];
+  /** The item with the lines of its nested entries removed, when those count as positions. */
+  const strip = (item: unknown): unknown => {
+    if (!isRecord(item) || nested.length === 0) return item;
+    const copy: Record<string, unknown> = { ...item };
+    const drop = (entry: unknown, name: string): unknown => {
+      if (!isRecord(entry)) return entry;
+      const rest = { ...entry };
+      delete rest[name];
+      return rest;
+    };
+    for (const [f, line] of nested) {
+      const value = copy[f];
+      copy[f] = Array.isArray(value) ? value.map((e) => drop(e, line)) : drop(value, line);
+    }
+    return copy;
+  };
   /** The item without caller-ignored fields; position fields stay, they are judged per pair. */
-  const content = (item: unknown): string => {
+  const content = (raw: unknown): string => {
+    const item = strip(raw);
     if (!isRecord(item)) return canonical(item);
     const copy: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(item))
@@ -435,7 +470,8 @@ export function compareItems(
     return canonical(copy);
   };
   /** Content with address-like position fields removed, for matching items that only moved. */
-  const withoutPositions = (item: unknown): string => {
+  const withoutPositions = (raw: unknown): string => {
+    const item = strip(raw);
     if (!isRecord(item)) return canonical(item);
     const copy: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(item))
@@ -530,13 +566,14 @@ export function compareItems(
     }
     const fields: FieldChange[] = [];
     const moved: FieldChange[] = [];
-    if (isRecord(before) && isRecord(after)) {
-      for (const f of [...new Set([...Object.keys(before), ...Object.keys(after)])].toSorted()) {
+    const [sb, sa] = [strip(before), strip(after)];
+    if (isRecord(sb) && isRecord(sa)) {
+      for (const f of [...new Set([...Object.keys(sb), ...Object.keys(sa)])].toSorted()) {
         if (ignored.includes(f) || derived.includes(f)) continue;
-        if (canonical(before[f]) === canonical(after[f])) continue;
-        if (positional.includes(f) && addressLike(before[f]) && addressLike(after[f]))
-          moved.push({ field: f, before: before[f], after: after[f] });
-        else diffPaths(before[f], after[f], f, 1, fields);
+        if (canonical(sb[f]) === canonical(sa[f])) continue;
+        if (positional.includes(f) && addressLike(sb[f]) && addressLike(sa[f]))
+          moved.push({ field: f, before: sb[f], after: sa[f] });
+        else diffPaths(sb[f], sa[f], f, 1, fields);
       }
     }
     if (fields.length === 0 && moved.length > 0) {

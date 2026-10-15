@@ -8,6 +8,17 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- `interfaces` collection for Electron apps: one row per contextBridge member, joined to the
+  windows that load its preload and to the main-process ends of its channel (`ipcMain.handle`,
+  `webContents.send`, … with file and line). `link` says how the join holds: `direct`,
+  `resolved` (through a constant, alias or wrapper), `unresolved` (the member's channel is not
+  readable), `unknown` (no end found, while the analysis has blind spots it names) or `none` (no
+  end in an analysis that read everything). Rows are joined on exact names only. On the corpus's
+  15 Electron inputs (all development sets) it makes no false link; every member whose channel
+  and handler are both read is linked to the right file. `compare` matches rows by
+  `file+api+member` and treats lines, including the lines of the ends, as positions. Text tables
+  show lists of places as `main.js:40 handle`.
+
 - Exports state which analyzer produced them and whether they are whole: `generator`
   (`@hexvero/core` and its version), `complete` (false when the analysis recorded any limitation),
   `incomplete` (the limitation codes) and `volatile` (the fields that differ between two exports
@@ -16,6 +27,10 @@ All notable changes to hexvero are listed here. The format follows
   and unresolved, and what `compare` promises for each.
 
 ### Fixed
+
+- `compare … ipc` no longer reports a call that only moved as removed and added: the identity is
+  `module+api+channel` and the line is a position. NotesDesk-style v1 → v2 (corpus `notes-app`):
+  14 added and 14 removed before, 2 and 2 now (the renamed channel), 12 relocated.
 
 - A single JavaScript file whose IPC call passes a computed channel now reports
   `ipc_channel_unresolved`, as an application directory already did. Before, the row had
