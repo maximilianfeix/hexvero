@@ -1,0 +1,76 @@
+{
+  "from": "../kanban-board/src",
+  "why": "v2 is v1 with the fourteen listed edits; no comment lines are put in front of the files, so facts that no edit touches keep their lines unless an edit above them in the same file adds or removes lines. Edit 1 changes the actions given to defineChannels(\"board\", ...): archive goes, export comes. Edits 2 and 3 delete the board:archive handler and put a board:export handler where v1 had only a comment naming it; edit 4 deletes the bridge member lattice.archiveBoard and edit 5 adds lattice.exportBoard; edit 6 makes the page's archive button call exportBoard instead (a renderer change, not a difference). Edits 7 and 8 move the import:open listener, unchanged, from near the start of registerIpc to just before the import:cards handler: another line only, not a difference. Edit 9 turns the activity view's sandbox off (more permissive), edit 10 turns the importer's allowRunningInsecureContent off (more restrictive). Edit 11 adds loadChangelog, a GET of the changelog through the page's client, and edit 14 calls it at the end of start(). Edits 12 and 13 delete every access of the sessionStorage key lattice.scrollTop.",
+  "edits": [
+    {
+      "file": "lib/channels.js",
+      "find": "const board = defineChannels(\"board\", [\"list\", \"move\", \"archive\", \"changed\"]);\n",
+      "replace": "const board = defineChannels(\"board\", [\"list\", \"move\", \"changed\", \"export\"]);\n"
+    },
+    {
+      "file": "main.js",
+      "find": "  handle(board.archive)(async (boardId) => {\n    const target = boardStore.boards.find((b) => b.id === boardId);\n    if (!target) return null;\n    return changed({ ...target, archived: true }, { kind: \"archive\", boardId });\n  });\n\n",
+      "replace": ""
+    },
+    {
+      "file": "main.js",
+      "find": "  // ipcMain.handle(\"board:export\", ...) comes with the JSON export in 2.4.\n",
+      "replace": "  handle(board.export)(async () => JSON.stringify(boardStore.current(), null, 2));\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "  archiveBoard: (boardId) => ipcRenderer.invoke(board.archive, boardId),\n",
+      "replace": ""
+    },
+    {
+      "file": "preload.js",
+      "find": "  signOut: () => ipcRenderer.invoke(auth.signOut),\n",
+      "replace": "  signOut: () => ipcRenderer.invoke(auth.signOut),\n  exportBoard: () => ipcRenderer.invoke(board.export),\n"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  const archive = el(\"button\", { className: \"archive\", title: \"Archive board\" });\n  archive.innerHTML = ARCHIVE_ICON;\n  archive.addEventListener(\"click\", () => lattice.archiveBoard(snapshot.id));\n",
+      "replace": "  const archive = el(\"button\", { className: \"archive\", title: \"Copy board as JSON\" });\n  archive.innerHTML = ARCHIVE_ICON;\n  archive.addEventListener(\"click\", async () => navigator.clipboard.writeText(await lattice.exportBoard()));\n"
+    },
+    {
+      "file": "main.js",
+      "find": "  ipcMain.on(\"import:open\", () => openImporter());\n\n",
+      "replace": ""
+    },
+    {
+      "file": "main.js",
+      "find": "  ipcMain.handle(\"import:cards\", async (_event, rows) => {\n",
+      "replace": "  ipcMain.on(\"import:open\", () => openImporter());\n\n  ipcMain.handle(\"import:cards\", async (_event, rows) => {\n"
+    },
+    {
+      "file": "main.js",
+      "find": "      preload: path.join(__dirname, \"preload-activity.js\"),\n      sandbox: true,\n",
+      "replace": "      preload: path.join(__dirname, \"preload-activity.js\"),\n      sandbox: false,\n"
+    },
+    {
+      "file": "main.js",
+      "find": "      allowRunningInsecureContent: true,\n",
+      "replace": "      allowRunningInsecureContent: false,\n"
+    },
+    {
+      "file": "renderer.js",
+      "find": "async function sendFeedback(text) {\n",
+      "replace": "async function loadChangelog() {\n  const { entries } = await client.get(\"/changelog\");\n  $(\"#changelog\")?.replaceChildren(...entries.map((e) => el(\"li\", { textContent: e.title })));\n}\n\nasync function sendFeedback(text) {\n"
+    },
+    {
+      "file": "renderer.js",
+      "find": "const SCROLL_KEY = \"lattice.scrollTop\";\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "  const lanes = $(\"#lanes\");\n  lanes.scrollLeft = Number(sessionStorage.getItem(SCROLL_KEY) ?? 0);\n  lanes.addEventListener(\"scroll\", () => sessionStorage.setItem(SCROLL_KEY, String(lanes.scrollLeft)));\n\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "  loadTemplates();\n}\n",
+      "replace": "  loadTemplates();\n  loadChangelog().catch(() => {});\n}\n"
+    }
+  ]
+}

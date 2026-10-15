@@ -1,0 +1,9 @@
+{
+  "name": "lattice",
+  "productName": "Lattice",
+  "version": "2.3.0",
+  "description": "A kanban board for small teams, written for the hexvero corpus",
+  "license": "MIT",
+  "main": "main.js",
+  "private": true
+}

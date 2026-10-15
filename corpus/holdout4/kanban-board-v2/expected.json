@@ -1,0 +1,106 @@
+{
+  "case": "kanban-board-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "a": "holdout4/kanban-board.plain.asar",
+  "b": "holdout4/kanban-board-v2.plain.asar",
+  "method": "v2 is built from v1 by the fourteen edits in changes.json; as in holdout3, no comment lines are put in front of the files, so a fact keeps its line unless an edit above it in the same file adds or removes lines. The expected differences are the edits that change the program and nothing else. Edits 7 and 8 move the ipcMain.on(\"import:open\", ...) listener, unchanged, from main.js line 171 in v1 to line 214 in v2 (just before the import:cards handler): same channel, same receiver, same handler, another line; it must not be reported as added, removed or changed, and the link of lattice.openImporter is the same link with a new end line. Edit 6 changes the page's archive button to call exportBoard instead of archiveBoard (a page calling a bridge member is no channel, member, setting, request or storage access). Every other fact only moves by the lines the edits add or remove above it. The lists were written from changes.json; the edits were applied by a scratch script that does what derive() in corpus/build.mjs does (each edit must match exactly once; all fourteen did), the derived main.js, preload.js and renderer.js were checked with node --check, and the derived main.js and both preloads were run against the same electron stand-in as v1: the registered channels, members and web preferences differed from v1 exactly as listed here. No analysis tool was run. Strings follow holdout3: a channel name, api.member, \"key: old -> new\", an address, \"kind key\" for storage. windowChanges, unchangedMoves and interfaceLinks are used as holdout3 defined them; the setting allowRunningInsecureContent is new in this set.",
+  "expect": {
+    "compare": {
+      "ipcChannels": {
+        "added": ["board:export"],
+        "removed": ["board:archive"],
+        "changed": [],
+        "unchangedMoves": [
+          {
+            "channel": "import:open",
+            "file": "main.js",
+            "api": "ipcMain.on",
+            "lineBefore": 171,
+            "lineAfter": 214,
+            "why": "edits 7 and 8 cut the listener from its place after the board handlers and paste it, byte for byte, before ipcMain.handle(\"import:cards\", ...); the sender (openImporter in preload.js, line 43 in both versions) is untouched"
+          }
+        ],
+        "why": "board:export: edit 1 adds the action export to defineChannels(\"board\", ...), edit 3 registers handle(board.export)(...) in main.js (line 163 in v2, through the ipcMain.handle on line 92) where v1 had a comment naming it, and edit 5 adds the member exportBoard that invokes it. board:archive: edit 1 removes the action archive, edit 2 deletes its handler and edit 4 its only sender, archiveBoard; the name is made nowhere in v2. import:open only moves"
+      },
+      "contextBridge": {
+        "added": ["lattice.exportBoard"],
+        "removed": ["lattice.archiveBoard"],
+        "changed": [],
+        "why": "both are properties of the object literal exposed as \"lattice\" in preload.js: archiveBoard (v1 line 34) is deleted, exportBoard is added after signOut (v2 line 42)"
+      },
+      "interfaceLinks": {
+        "added": [
+          {
+            "api": "lattice",
+            "member": "exportBoard",
+            "channel": "board:export",
+            "preload": "preload.js",
+            "memberLine": 42,
+            "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 163 }],
+            "resolvable": true
+          }
+        ],
+        "removed": [
+          {
+            "api": "lattice",
+            "member": "archiveBoard",
+            "channel": "board:archive",
+            "preload": "preload.js",
+            "memberLine": 34,
+            "ends": [{ "file": "main.js", "line": 92, "api": "ipcMain.handle", "entryLine": 163 }],
+            "resolvable": true,
+            "why": "the v1 link; v2 has neither the member nor the handler. The handler of board:export in v2 sits on the same line 163 and goes through the same line 92: a tool that compares links by line alone would wrongly call this a change; by channel and member it is one link removed and one added"
+          }
+        ],
+        "changed": [],
+        "unchangedMoves": [
+          {
+            "api": "lattice",
+            "member": "openImporter",
+            "channel": "import:open",
+            "endBefore": { "file": "main.js", "line": 171 },
+            "endAfter": { "file": "main.js", "line": 214 },
+            "why": "the same link; only the line of its end differs. The entry lines of other links in main.js also shift (card.create from 173 to 165, prefs.load from 201 to 193, auth.signOut from 217 to 209; activity:clear from 199 to 191, setZoom's listener from 228 to 222, onZoom's send from 236 to 230) because lines were removed above them; none of those is a change. Lines 76, 92, 101 and 113 (the helpers) do not move"
+          }
+        ]
+      },
+      "webPreferences": {
+        "added": [],
+        "removed": [],
+        "changed": ["sandbox: true -> false", "allowRunningInsecureContent: true -> false"],
+        "windowChanges": [
+          {
+            "window": { "file": "main.js", "variable": "activityView" },
+            "setting": "sandbox",
+            "before": true,
+            "after": false,
+            "direction": "more permissive",
+            "why": "edit 9 replaces `sandbox: true` by `sandbox: false` in the BrowserView's webPreferences literal (main.js line 268 in v1, 262 in v2)"
+          },
+          {
+            "window": { "file": "main.js", "variable": "importWindow" },
+            "setting": "allowRunningInsecureContent",
+            "before": true,
+            "after": false,
+            "direction": "more restrictive",
+            "why": "edit 10 replaces `allowRunningInsecureContent: true` by false in the importer's literal (main.js line 295 in v1, 289 in v2); its nodeIntegration: true, contextIsolation: false and webSecurity: false stay"
+          }
+        ],
+        "why": "only these two settings change. lib/window-factory.js is untouched, so boardWindow and printWindow keep every setting; printWindow keeps sandbox: true and webSecurity: false"
+      },
+      "endpoints": {
+        "added": ["https://api.lattice.example/v1/changelog"],
+        "removed": [],
+        "changed": [],
+        "why": "edits 11 and 14 add loadChangelog to renderer.js, client.get(\"/changelog\") with the client's baseURL https://api.lattice.example/v1 (GET), and call it at the end of start(). The other requests are untouched; the unreadable net.fetch of main.js stays"
+      },
+      "storage": {
+        "added": [],
+        "removed": ["sessionStorage lattice.scrollTop"],
+        "changed": [],
+        "why": "edits 12 and 13 delete the constant SCROLL_KEY and the three lines of start() that read it (getItem) and write it (setItem in the scroll listener); no access of the key is left. lattice.filter, activity.collapsed, the database lattice-offline, the cookie lattice_sid and the file lattice-settings.json are untouched"
+      }
+    }
+  }
+}
