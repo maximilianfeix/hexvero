@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.7.0",
-  "commit": "d543b70+uncommitted",
+  "commit": "c9ed461+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -680,92 +680,92 @@
   {
    "set": "holdout3",
    "class": "IPC channels",
-   "hit": 23,
+   "hit": 69,
    "missed": 0,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "IPC senders and receivers",
-   "hit": 46,
-   "missed": 1,
+   "hit": 138,
+   "missed": 3,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "window settings",
-   "hit": 9,
-   "missed": 5,
+   "hit": 27,
+   "missed": 15,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "bridge members",
-   "hit": 26,
+   "hit": 78,
    "missed": 0,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "bridge member channel",
-   "hit": 26,
+   "hit": 78,
    "missed": 0,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "endpoints",
-   "hit": 6,
-   "missed": 1,
+   "hit": 18,
+   "missed": 3,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "endpoint method",
-   "hit": 1,
+   "hit": 3,
    "missed": 0,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "requests with an unknown URL shown",
-   "hit": 2,
+   "hit": 6,
    "missed": 0,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "storage keys",
-   "hit": 9,
+   "hit": 27,
    "missed": 0,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
    "class": "storage read/write/delete",
-   "hit": 8,
+   "hit": 24,
    "missed": 0,
    "false": 0,
    "hedged": 0,
-   "inputs": 1
+   "inputs": 3
   },
   {
    "set": "holdout3",
@@ -3164,6 +3164,208 @@
   {
    "set": "holdout3",
    "input": "holdout3/podcast-player.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "IPC channels",
+   "hit": 23,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 46,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "download:progress: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "window settings",
+   "hit": 9,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed main.js webSecurity=true",
+    "missed main.js webSecurity=true",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js webSecurity=false",
+    "not scored: 2 row(s) with other keys"
+   ]
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "bridge members",
+   "hit": 26,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 26,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://api.driftwood.example/v1/directory/top"
+   ]
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "storage keys",
+   "hit": 9,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "IPC channels",
+   "hit": 23,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 46,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "download:progress: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "window settings",
+   "hit": 9,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed main.js webSecurity=true",
+    "missed main.js webSecurity=true",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js webSecurity=false",
+    "not scored: 2 row(s) with other keys"
+   ]
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "bridge members",
+   "hit": 26,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "bridge member channel",
+   "hit": 26,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://api.driftwood.example/v1/directory/top"
+   ]
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
+   "class": "storage keys",
+   "hit": 9,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout3",
+   "input": "holdout3/podcast-player.minified.asar",
    "class": "storage read/write/delete",
    "hit": 8,
    "missed": 0,

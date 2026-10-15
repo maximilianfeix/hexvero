@@ -73,11 +73,12 @@ function derive(changesFile, stage) {
       );
 }
 
-/** Bundles the three entry points the way an Electron build would. */
+/** Bundles the main process, every preload and every renderer the way an Electron build would. */
 async function bundle(src, stage, minify) {
   mkdirSync(stage, { recursive: true });
   const common = { bundle: true, minify, logLevel: "silent", legalComments: "none" };
-  for (const entry of ["main.js", "preload.js"])
+  const preloads = readdirSync(src).filter((f) => /^preload.*\.js$/.test(f));
+  for (const entry of ["main.js", ...preloads])
     if (existsSync(join(src, entry)))
       await build({
         ...common,
@@ -95,7 +96,7 @@ async function bundle(src, stage, minify) {
       platform: "browser",
       format: "esm",
     });
-  for (const file of ["package.json", "index.html"])
+  for (const file of ["package.json", ...readdirSync(src).filter((f) => f.endsWith(".html"))])
     if (existsSync(join(src, file))) cpSync(join(src, file), join(stage, file));
 }
 

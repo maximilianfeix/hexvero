@@ -1,6 +1,6 @@
 # hexvero 0.7.0 on the hexvero corpus
 
-Tool: name hexvero · version 0.7.0 · commit d543b70+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.7.0 · commit c9ed461+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -80,16 +80,16 @@ Tool: name hexvero · version 0.7.0 · commit d543b70+uncommitted · node v25.2.
 | holdout2 | changes in webPreferences | 1 | 1 | 0 | 0 |  |
 | holdout2 | changes in endpoints | 1 | 4 | 0 | 0 |  |
 | holdout2 | changes in storage | 1 | 1 | 0 | 0 |  |
-| holdout3 | IPC channels | 1 | 23 | 0 | 0 |  |
-| holdout3 | IPC senders and receivers | 1 | 46 | 1 | 0 |  |
-| holdout3 | window settings | 1 | 9 | 5 | 0 |  |
-| holdout3 | bridge members | 1 | 26 | 0 | 0 |  |
-| holdout3 | bridge member channel | 1 | 26 | 0 | 0 |  |
-| holdout3 | endpoints | 1 | 6 | 1 | 0 |  |
-| holdout3 | endpoint method | 1 | 1 | 0 | 0 |  |
-| holdout3 | requests with an unknown URL shown | 1 | 2 | 0 | 0 |  |
-| holdout3 | storage keys | 1 | 9 | 0 | 0 |  |
-| holdout3 | storage read/write/delete | 1 | 8 | 0 | 0 |  |
+| holdout3 | IPC channels | 3 | 69 | 0 | 0 |  |
+| holdout3 | IPC senders and receivers | 3 | 138 | 3 | 0 |  |
+| holdout3 | window settings | 3 | 27 | 15 | 0 |  |
+| holdout3 | bridge members | 3 | 78 | 0 | 0 |  |
+| holdout3 | bridge member channel | 3 | 78 | 0 | 0 |  |
+| holdout3 | endpoints | 3 | 18 | 3 | 0 |  |
+| holdout3 | endpoint method | 3 | 3 | 0 | 0 |  |
+| holdout3 | requests with an unknown URL shown | 3 | 6 | 0 | 0 |  |
+| holdout3 | storage keys | 3 | 27 | 0 | 0 |  |
+| holdout3 | storage read/write/delete | 3 | 24 | 0 | 0 |  |
 | holdout3 | changes in ipcChannels | 1 | 2 | 0 | 0 |  |
 | holdout3 | changes in contextBridge | 1 | 2 | 0 | 0 |  |
 | holdout3 | changes in interfaceLinks | 1 | 0 | 2 | 0 |  |
@@ -332,6 +332,26 @@ Tool: name hexvero · version 0.7.0 · commit d543b70+uncommitted · node v25.2.
 | holdout3 | holdout3/podcast-player.plain.asar | requests with an unknown URL shown | 2 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | storage keys | 9 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | storage read/write/delete | 8 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.bundled.asar | IPC channels | 23 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.bundled.asar | IPC senders and receivers | 46 | 1 | 0 | download:progress: sender main.js missed |
+| holdout3 | holdout3/podcast-player.bundled.asar | window settings | 9 | 5 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js webSecurity=false; not scored: 2 row(s) with other keys |
+| holdout3 | holdout3/podcast-player.bundled.asar | bridge members | 26 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.bundled.asar | bridge member channel | 26 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.bundled.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
+| holdout3 | holdout3/podcast-player.bundled.asar | endpoint method | 1 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.bundled.asar | requests with an unknown URL shown | 2 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.bundled.asar | storage keys | 9 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.bundled.asar | storage read/write/delete | 8 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.minified.asar | IPC channels | 23 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.minified.asar | IPC senders and receivers | 46 | 1 | 0 | download:progress: sender main.js missed |
+| holdout3 | holdout3/podcast-player.minified.asar | window settings | 9 | 5 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js webSecurity=false; not scored: 2 row(s) with other keys |
+| holdout3 | holdout3/podcast-player.minified.asar | bridge members | 26 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.minified.asar | bridge member channel | 26 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.minified.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
+| holdout3 | holdout3/podcast-player.minified.asar | endpoint method | 1 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.minified.asar | requests with an unknown URL shown | 2 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.minified.asar | storage keys | 9 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.minified.asar | storage read/write/delete | 8 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in ipcChannels | 2 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in contextBridge | 2 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in interfaceLinks | 0 | 2 | 0 | missed +[object Object]; missed -[object Object] |

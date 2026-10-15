@@ -2,7 +2,11 @@
   "case": "podcast-player",
   "kind": "electron",
   "license": "MIT, written for this corpus",
-  "inputs": ["holdout3/podcast-player.plain.asar"],
+  "inputs": [
+    "holdout3/podcast-player.plain.asar",
+    "holdout3/podcast-player.bundled.asar",
+    "holdout3/podcast-player.minified.asar"
+  ],
   "method": "Every expectation was written from the sources in src/ by reading them; no analysis tool was run on the sources, and no tool's detectors, source code or output were looked at. The input is the program packed as written (see the README for why only the plain input is listed: corpus/build.mjs bundles one preload, preload.js, and the second preload preload-player.js would be missing from a bundled input). main.js, preload.js, preload-player.js and the modules in shared/ are CommonJS; renderer.js and renderer-player.js are ES modules loaded by index.html and player.html. Roles and settings are attributed to the entry files main.js, preload.js, preload-player.js, renderer.js and renderer-player.js: the modules shared/channels.js, shared/endpoints.js and shared/index.js hold constants (channel names, addresses, menu labels) and the label lookup t() only, and contain no IPC call, no window, no exposeInMainWorld, no request and no storage access. A window setting is attributed to the file that creates the window (main.js), also where its value comes from the frozen SECURE_DEFAULTS object merged in with Object.assign or a spread. There are three windows: libraryWindow (preload.js), playerWindow (preload-player.js) and helpWindow (no preload; it loads index.html#help, where renderer.js finds no bridge and shows the guide). webPreferences lists the keys preload, contextIsolation, nodeIntegration, sandbox and webSecurity, one entry per window and key that the code writes, directly or through SECURE_DEFAULTS; keys the code does not write are not listed with Electron's defaults (helpWindow writes no preload). Each webPreferences entry carries an extra field window naming the variable that holds the BrowserWindow. Storage kinds: electron-store (main.js, `new Store({ name: \"driftwood-prefs\", ... })` from the electron-store package), localStorage and indexedDB. interfaceLinks is a class this set adds: for every exposed member, the channel it uses (null when it uses no IPC or when its channel is made at run time), the preload that defines it, the line of the member in that preload (memberLine), and its ends: the main-process calls on the same channel, with the 1-based line of the call in main.js. For a member that invokes or sends, the ends are the ipcMain.handle / ipcMain.on registrations; for a member that listens, they are the webContents.send, sender.send and event.reply calls. A handler registered by a loop over a table (the array `routes` of [channel, handler] pairs and the Map `episodeHandlers`) has the line of the ipcMain.handle call inside the loop as its line, and the line of its table entry as entryLine. resolvable says whether the channel can be read from the source text without running the program (through constants, static class fields, a frozen object, a re-export, a template on a constant prefix); it is false only for driftwood.onAlert, whose channel name is chosen at random at start. An expectation states what the program does, also where that is hard to see; what only looks like a finding is listed under absent.",
   "expect": {
     "ipcChannels": {
@@ -397,24 +401,48 @@
           "channel": "library:list",
           "why": "call(Library.LIST)"
         },
-        { "api": "driftwood", "member": "subscribe", "channel": "library:subscribe" },
-        { "api": "driftwood", "member": "unsubscribe", "channel": "library:unsubscribe" },
-        { "api": "driftwood", "member": "refreshAll", "channel": "library:refresh" },
+        {
+          "api": "driftwood",
+          "member": "subscribe",
+          "channel": "library:subscribe"
+        },
+        {
+          "api": "driftwood",
+          "member": "unsubscribe",
+          "channel": "library:unsubscribe"
+        },
+        {
+          "api": "driftwood",
+          "member": "refreshAll",
+          "channel": "library:refresh"
+        },
         {
           "api": "driftwood",
           "member": "onLibraryChanged",
           "channel": "library:changed",
           "why": "through listen()"
         },
-        { "api": "driftwood", "member": "getSetting", "channel": "settings:get" },
-        { "api": "driftwood", "member": "setSetting", "channel": "settings:set" },
+        {
+          "api": "driftwood",
+          "member": "getSetting",
+          "channel": "settings:get"
+        },
+        {
+          "api": "driftwood",
+          "member": "setSetting",
+          "channel": "settings:set"
+        },
         {
           "api": "driftwood",
           "member": "onAlert",
           "channel": null,
           "why": "listen(topics.alerts, listener): the channel name is received at run time and chosen at random by the main process (see the absent channel alerts.); the member exists, but no fixed channel can be named for it"
         },
-        { "api": "driftwood", "member": "openHelp", "channel": "help:open" },
+        {
+          "api": "driftwood",
+          "member": "openHelp",
+          "channel": "help:open"
+        },
         {
           "api": "driftwood",
           "member": "onMenuCommand",
@@ -469,9 +497,21 @@
           "channel": "playback:toggle",
           "why": "preload-player.js: exposeInMainWorld(\"player\", Object.freeze({ ... })), an object literal frozen inside the call"
         },
-        { "api": "player", "member": "seek", "channel": "playback:seek" },
-        { "api": "player", "member": "ready", "channel": "player:hello" },
-        { "api": "player", "member": "close", "channel": "player:close" },
+        {
+          "api": "player",
+          "member": "seek",
+          "channel": "playback:seek"
+        },
+        {
+          "api": "player",
+          "member": "ready",
+          "channel": "player:hello"
+        },
+        {
+          "api": "player",
+          "member": "close",
+          "channel": "player:close"
+        },
         {
           "api": "player",
           "member": "nowPlaying",
@@ -682,7 +722,14 @@
           "channel": "library:list",
           "preload": "preload.js",
           "memberLine": 37,
-          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 277 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 292,
+              "api": "ipcMain.handle",
+              "entryLine": 277
+            }
+          ],
           "resolvable": true
         },
         {
@@ -691,7 +738,14 @@
           "channel": "library:subscribe",
           "preload": "preload.js",
           "memberLine": 38,
-          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 278 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 292,
+              "api": "ipcMain.handle",
+              "entryLine": 278
+            }
+          ],
           "resolvable": true
         },
         {
@@ -700,7 +754,14 @@
           "channel": "library:unsubscribe",
           "preload": "preload.js",
           "memberLine": 39,
-          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 279 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 292,
+              "api": "ipcMain.handle",
+              "entryLine": 279
+            }
+          ],
           "resolvable": true
         },
         {
@@ -709,7 +770,14 @@
           "channel": "library:refresh",
           "preload": "preload.js",
           "memberLine": 40,
-          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 280 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 292,
+              "api": "ipcMain.handle",
+              "entryLine": 280
+            }
+          ],
           "resolvable": true
         },
         {
@@ -718,7 +786,13 @@
           "channel": "library:changed",
           "preload": "preload.js",
           "memberLine": 41,
-          "ends": [{ "file": "main.js", "line": 146, "api": "webContents.send" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 146,
+              "api": "webContents.send"
+            }
+          ],
           "resolvable": true,
           "why": "FeedService.notify: this.#window.webContents.send(Library.CHANGED, ...)"
         },
@@ -728,7 +802,14 @@
           "channel": "settings:get",
           "preload": "preload.js",
           "memberLine": 42,
-          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 282 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 292,
+              "api": "ipcMain.handle",
+              "entryLine": 282
+            }
+          ],
           "resolvable": true
         },
         {
@@ -737,7 +818,14 @@
           "channel": "settings:set",
           "preload": "preload.js",
           "memberLine": 43,
-          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 283 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 292,
+              "api": "ipcMain.handle",
+              "entryLine": 283
+            }
+          ],
           "resolvable": true
         },
         {
@@ -746,7 +834,13 @@
           "channel": null,
           "preload": "preload.js",
           "memberLine": 44,
-          "ends": [{ "file": "main.js", "line": 378, "api": "webContents.send" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 378,
+              "api": "webContents.send"
+            }
+          ],
           "resolvable": false,
           "why": "the channel is topics.alerts on both sides: `alerts.${crypto.randomBytes(4).toString(\"hex\")}` in main.js, handed to the preload at run time through ipcRenderer.sendSync(App.TOPICS) (main.js line 297 answers with event.returnValue = topics). The one end, libraryWindow?.webContents.send(topics.alerts, alert) in connectAlerts, is known by reading the program, not from the channel text: no static reading of the source gives the name"
         },
@@ -756,7 +850,13 @@
           "channel": "help:open",
           "preload": "preload.js",
           "memberLine": 45,
-          "ends": [{ "file": "main.js", "line": 325, "api": "ipcMain.on" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 325,
+              "api": "ipcMain.on"
+            }
+          ],
           "resolvable": true
         },
         {
@@ -765,7 +865,13 @@
           "channel": "menu:command",
           "preload": "preload.js",
           "memberLine": 46,
-          "ends": [{ "file": "main.js", "line": 338, "api": "webContents.send" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 338,
+              "api": "webContents.send"
+            }
+          ],
           "resolvable": true,
           "why": "sendCommand in buildMenu, the click of two menu items"
         },
@@ -775,7 +881,14 @@
           "channel": "episodes:list",
           "preload": "preload.js",
           "memberLine": 50,
-          "ends": [{ "file": "main.js", "line": 293, "api": "ipcMain.handle", "entryLine": 287 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 293,
+              "api": "ipcMain.handle",
+              "entryLine": 287
+            }
+          ],
           "resolvable": true
         },
         {
@@ -784,7 +897,14 @@
           "channel": "episodes:mark-played",
           "preload": "preload.js",
           "memberLine": 51,
-          "ends": [{ "file": "main.js", "line": 293, "api": "ipcMain.handle", "entryLine": 288 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 293,
+              "api": "ipcMain.handle",
+              "entryLine": 288
+            }
+          ],
           "resolvable": true
         },
         {
@@ -793,7 +913,14 @@
           "channel": "download:start",
           "preload": "preload.js",
           "memberLine": 52,
-          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 281 }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 292,
+              "api": "ipcMain.handle",
+              "entryLine": 281
+            }
+          ],
           "resolvable": true
         },
         {
@@ -802,7 +929,13 @@
           "channel": "download:cancel",
           "preload": "preload.js",
           "memberLine": 53,
-          "ends": [{ "file": "main.js", "line": 295, "api": "ipcMain.handle" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 295,
+              "api": "ipcMain.handle"
+            }
+          ],
           "resolvable": true,
           "why": "a template on the constant prefix DOWNLOAD_PREFIX on both sides"
         },
@@ -812,7 +945,13 @@
           "channel": "download:progress",
           "preload": "preload.js",
           "memberLine": 54,
-          "ends": [{ "file": "main.js", "line": 188, "api": "webContents.send" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 188,
+              "api": "webContents.send"
+            }
+          ],
           "resolvable": true,
           "why": "DownloadManager.#report: sender.send(Downloads.PROGRESS, progress), sender being the event.sender WebContents of the download:start request"
         },
@@ -822,7 +961,13 @@
           "channel": "playback:play",
           "preload": "preload.js",
           "memberLine": 55,
-          "ends": [{ "file": "main.js", "line": 301, "api": "ipcMain.on" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 301,
+              "api": "ipcMain.on"
+            }
+          ],
           "resolvable": true
         },
         {
@@ -832,8 +977,16 @@
           "preload": "preload.js",
           "memberLine": 56,
           "ends": [
-            { "file": "main.js", "line": 203, "api": "webContents.send" },
-            { "file": "main.js", "line": 310, "api": "event.reply" }
+            {
+              "file": "main.js",
+              "line": 203,
+              "api": "webContents.send"
+            },
+            {
+              "file": "main.js",
+              "line": 310,
+              "api": "event.reply"
+            }
           ],
           "resolvable": true,
           "why": "both main-process calls on playback:state. At run time PlaybackHub.broadcast (line 203) reaches the library window, while event.reply (line 310) answers player:hello and therefore reaches only the mini player"
@@ -844,7 +997,13 @@
           "channel": "playback:toggle",
           "preload": "preload-player.js",
           "memberLine": 12,
-          "ends": [{ "file": "main.js", "line": 306, "api": "ipcMain.on" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 306,
+              "api": "ipcMain.on"
+            }
+          ],
           "resolvable": true
         },
         {
@@ -853,7 +1012,13 @@
           "channel": "playback:seek",
           "preload": "preload-player.js",
           "memberLine": 13,
-          "ends": [{ "file": "main.js", "line": 307, "api": "ipcMain.on" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 307,
+              "api": "ipcMain.on"
+            }
+          ],
           "resolvable": true
         },
         {
@@ -862,7 +1027,13 @@
           "channel": "player:hello",
           "preload": "preload-player.js",
           "memberLine": 14,
-          "ends": [{ "file": "main.js", "line": 309, "api": "ipcMain.on" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 309,
+              "api": "ipcMain.on"
+            }
+          ],
           "resolvable": true
         },
         {
@@ -871,7 +1042,13 @@
           "channel": "player:close",
           "preload": "preload-player.js",
           "memberLine": 15,
-          "ends": [{ "file": "main.js", "line": 312, "api": "ipcMain.on" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 312,
+              "api": "ipcMain.on"
+            }
+          ],
           "resolvable": true
         },
         {
@@ -880,7 +1057,13 @@
           "channel": "player:now-playing",
           "preload": "preload-player.js",
           "memberLine": 16,
-          "ends": [{ "file": "main.js", "line": 314, "api": "ipcMain.handle" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 314,
+              "api": "ipcMain.handle"
+            }
+          ],
           "resolvable": true
         },
         {
@@ -889,7 +1072,13 @@
           "channel": "player:artwork",
           "preload": "preload-player.js",
           "memberLine": 17,
-          "ends": [{ "file": "main.js", "line": 315, "api": "ipcMain.handle" }],
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 315,
+              "api": "ipcMain.handle"
+            }
+          ],
           "resolvable": true
         },
         {
@@ -899,8 +1088,16 @@
           "preload": "preload-player.js",
           "memberLine": 18,
           "ends": [
-            { "file": "main.js", "line": 203, "api": "webContents.send" },
-            { "file": "main.js", "line": 310, "api": "event.reply" }
+            {
+              "file": "main.js",
+              "line": 203,
+              "api": "webContents.send"
+            },
+            {
+              "file": "main.js",
+              "line": 310,
+              "api": "event.reply"
+            }
           ],
           "resolvable": true,
           "why": "both main-process calls on playback:state; at run time both reach the mini player"
