@@ -6,6 +6,16 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Documentation
+
+- Two walkthroughs on the NotesDesk example: [Electron interface map](docs/use-cases/electron-interface-map.md)
+  and [what changed between two builds](docs/use-cases/release-interface-diff.md), with the JSON
+  a CI job can read. [Positioning](docs/strategy/positioning.md) and
+  [differentiation](docs/strategy/differentiation.md) say what hexvero is for, next to REA and
+  Electronegativity, and which test backs each claim.
+- New tagline in the README, package, registry entry, plugin and website: evidence-first
+  software intelligence. Inspect artifacts, trace interfaces, compare builds.
+
 ### Added
 
 - `interfaces` collection for Electron apps: one row per contextBridge member, joined to the

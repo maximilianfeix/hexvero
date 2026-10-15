@@ -2,7 +2,7 @@
   "name": "hexvero-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "hexvero — the first look at a binary or app bundle: static analysis with evidence, locally.",
+  "description": "hexvero — evidence-first software intelligence: inspect artifacts, trace interfaces, compare builds, locally.",
   "license": "MIT",
   "workspaces": [
     "packages/*"
