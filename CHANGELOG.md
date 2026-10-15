@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-10-15
+
 ### Accuracy
 
 - Window bases another module exports (`import windowConfig from "./config/windows.js"` and
