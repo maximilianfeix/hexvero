@@ -1,6 +1,6 @@
-# hexvero 0.6.1 on the hexvero corpus
+# hexvero 0.7.0 on the hexvero corpus
 
-Tool: name hexvero · version 0.6.1 · commit 016983b+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.7.0 · commit d543b70+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -51,7 +51,7 @@ Tool: name hexvero · version 0.6.1 · commit 016983b+uncommitted · node v25.2.
 | holdout | call paths | 4 | 70 | 2 | 0 |  |
 | holdout | direct callers | 4 | 91 | 0 | 1 |  |
 | holdout | IPC channels | 3 | 64 | 8 | 0 |  |
-| holdout | IPC senders and receivers | 3 | 104 | 21 | 0 |  |
+| holdout | IPC senders and receivers | 3 | 105 | 20 | 0 |  |
 | holdout | window settings | 3 | 24 | 9 | 0 |  |
 | holdout | bridge members | 3 | 60 | 9 | 0 |  |
 | holdout | bridge member channel | 3 | 40 | 20 | 0 |  |
@@ -80,6 +80,22 @@ Tool: name hexvero · version 0.6.1 · commit 016983b+uncommitted · node v25.2.
 | holdout2 | changes in webPreferences | 1 | 1 | 0 | 0 |  |
 | holdout2 | changes in endpoints | 1 | 4 | 0 | 0 |  |
 | holdout2 | changes in storage | 1 | 1 | 0 | 0 |  |
+| holdout3 | IPC channels | 1 | 23 | 0 | 0 |  |
+| holdout3 | IPC senders and receivers | 1 | 46 | 1 | 0 |  |
+| holdout3 | window settings | 1 | 9 | 5 | 0 |  |
+| holdout3 | bridge members | 1 | 26 | 0 | 0 |  |
+| holdout3 | bridge member channel | 1 | 26 | 0 | 0 |  |
+| holdout3 | endpoints | 1 | 6 | 1 | 0 |  |
+| holdout3 | endpoint method | 1 | 1 | 0 | 0 |  |
+| holdout3 | requests with an unknown URL shown | 1 | 2 | 0 | 0 |  |
+| holdout3 | storage keys | 1 | 9 | 0 | 0 |  |
+| holdout3 | storage read/write/delete | 1 | 8 | 0 | 0 |  |
+| holdout3 | changes in ipcChannels | 1 | 2 | 0 | 0 |  |
+| holdout3 | changes in contextBridge | 1 | 2 | 0 | 0 |  |
+| holdout3 | changes in interfaceLinks | 1 | 0 | 2 | 0 |  |
+| holdout3 | changes in webPreferences | 1 | 2 | 0 | 0 |  |
+| holdout3 | changes in endpoints | 1 | 1 | 0 | 0 |  |
+| holdout3 | changes in storage | 1 | 1 | 0 | 0 |  |
 | damaged | damaged input | 6 | 6 | 0 | 0 |  |
 
 ## Per input
@@ -207,7 +223,7 @@ Tool: name hexvero · version 0.6.1 · commit 016983b+uncommitted · node v25.2.
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | call paths | 16 | 2 | 0 | debug_level → atoi: path not found, stated without warning (no function atoi); main → atoi: not answered (no function atoi) |
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | direct callers | 23 | 0 | 0 | state_blank: indirect caller next_token reported |
 | holdout | holdout/time-tracker.plain.asar | IPC channels | 23 | 1 | 0 | missed theme:changed |
-| holdout | holdout/time-tracker.plain.asar | IPC senders and receivers | 38 | 7 | 0 | timer:tick: sender main.js missed; projects:list: sender preload.js missed; projects:create: sender preload.js missed; projects:rename: sender preload.js missed; invoice:exported: sender main.js missed; sync:progress: sender main.js missed; update:ready: receiver preload.js missed |
+| holdout | holdout/time-tracker.plain.asar | IPC senders and receivers | 39 | 6 | 0 | timer:tick: sender main.js missed; projects:list: sender preload.js missed; projects:create: sender preload.js missed; projects:rename: sender preload.js missed; invoice:exported: sender main.js missed; update:ready: receiver preload.js missed |
 | holdout | holdout/time-tracker.plain.asar | window settings | 8 | 3 | 0 | missed main.js sandbox=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false |
 | holdout | holdout/time-tracker.plain.asar | bridge members | 20 | 3 | 0 | missed widget.pin; missed widget.close; missed widget.connect; 1 entry reported as unreadable |
 | holdout | holdout/time-tracker.plain.asar | bridge member channel | 16 | 4 | 0 | tracker.listProjects: expected projects:list, got null; tracker.createProject: expected projects:create, got null; tracker.renameProject: expected projects:rename, got null; tracker.createInvoice: expected invoice:create, got null |
@@ -306,6 +322,22 @@ Tool: name hexvero · version 0.6.1 · commit 016983b+uncommitted · node v25.2.
 | holdout2 | holdout2/music-player.minified.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
 | holdout2 | holdout2/music-player.minified.asar | storage keys | 11 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.minified.asar | storage read/write/delete | 10 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | IPC channels | 23 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | IPC senders and receivers | 46 | 1 | 0 | download:progress: sender main.js missed |
+| holdout3 | holdout3/podcast-player.plain.asar | window settings | 9 | 5 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js webSecurity=false; not scored: 2 row(s) with other keys |
+| holdout3 | holdout3/podcast-player.plain.asar | bridge members | 26 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | bridge member channel | 26 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
+| holdout3 | holdout3/podcast-player.plain.asar | endpoint method | 1 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | requests with an unknown URL shown | 2 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | storage keys | 9 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | storage read/write/delete | 8 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in ipcChannels | 2 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in contextBridge | 2 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in interfaceLinks | 0 | 2 | 0 | missed +[object Object]; missed -[object Object] |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in webPreferences | 2 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in endpoints | 1 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in storage | 1 | 0 | 0 |  |
 | damaged | damaged/empty.asar | damaged input | 1 | 0 | 0 | error malformed |
 | damaged | damaged/header-cut.asar | damaged input | 1 | 0 | 0 | error malformed |
 | damaged | damaged/header-length-lies.asar | damaged input | 1 | 0 | 0 | error malformed |

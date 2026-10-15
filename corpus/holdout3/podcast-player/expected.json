@@ -1,0 +1,927 @@
+{
+  "case": "podcast-player",
+  "kind": "electron",
+  "license": "MIT, written for this corpus",
+  "inputs": ["holdout3/podcast-player.plain.asar"],
+  "method": "Every expectation was written from the sources in src/ by reading them; no analysis tool was run on the sources, and no tool's detectors, source code or output were looked at. The input is the program packed as written (see the README for why only the plain input is listed: corpus/build.mjs bundles one preload, preload.js, and the second preload preload-player.js would be missing from a bundled input). main.js, preload.js, preload-player.js and the modules in shared/ are CommonJS; renderer.js and renderer-player.js are ES modules loaded by index.html and player.html. Roles and settings are attributed to the entry files main.js, preload.js, preload-player.js, renderer.js and renderer-player.js: the modules shared/channels.js, shared/endpoints.js and shared/index.js hold constants (channel names, addresses, menu labels) and the label lookup t() only, and contain no IPC call, no window, no exposeInMainWorld, no request and no storage access. A window setting is attributed to the file that creates the window (main.js), also where its value comes from the frozen SECURE_DEFAULTS object merged in with Object.assign or a spread. There are three windows: libraryWindow (preload.js), playerWindow (preload-player.js) and helpWindow (no preload; it loads index.html#help, where renderer.js finds no bridge and shows the guide). webPreferences lists the keys preload, contextIsolation, nodeIntegration, sandbox and webSecurity, one entry per window and key that the code writes, directly or through SECURE_DEFAULTS; keys the code does not write are not listed with Electron's defaults (helpWindow writes no preload). Each webPreferences entry carries an extra field window naming the variable that holds the BrowserWindow. Storage kinds: electron-store (main.js, `new Store({ name: \"driftwood-prefs\", ... })` from the electron-store package), localStorage and indexedDB. interfaceLinks is a class this set adds: for every exposed member, the channel it uses (null when it uses no IPC or when its channel is made at run time), the preload that defines it, the line of the member in that preload (memberLine), and its ends: the main-process calls on the same channel, with the 1-based line of the call in main.js. For a member that invokes or sends, the ends are the ipcMain.handle / ipcMain.on registrations; for a member that listens, they are the webContents.send, sender.send and event.reply calls. A handler registered by a loop over a table (the array `routes` of [channel, handler] pairs and the Map `episodeHandlers`) has the line of the ipcMain.handle call inside the loop as its line, and the line of its table entry as entryLine. resolvable says whether the channel can be read from the source text without running the program (through constants, static class fields, a frozen object, a re-export, a template on a constant prefix); it is false only for driftwood.onAlert, whose channel name is chosen at random at start. An expectation states what the program does, also where that is hard to see; what only looks like a finding is listed under absent.",
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "library:list",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: the pair [Library.LIST, ...] of the array routes, registered by `for (const [channel, handler] of routes) ipcMain.handle(channel, handler)`; Library is a class with static fields in shared/channels.js, required through the re-exporting module shared/index.js. preload.js: listShows: call(Library.LIST), where call = (ch) => (...a) => ipcRenderer.invoke(ch, ...a)"
+        },
+        {
+          "channel": "library:subscribe",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "routes pair [Library.SUBSCRIBE, ...]; preload.js subscribe: call(Library.SUBSCRIBE)"
+        },
+        {
+          "channel": "library:unsubscribe",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "routes pair [Library.UNSUBSCRIBE, ...]; preload.js unsubscribe: call(Library.UNSUBSCRIBE)"
+        },
+        {
+          "channel": "library:refresh",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "routes pair [Library.REFRESH, ...]; preload.js refreshAll: call(Library.REFRESH)"
+        },
+        {
+          "channel": "library:changed",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: the method notify of the class FeedService calls this.#window.webContents.send(Library.CHANGED, ...), #window being the library window given to attach(); notify is called by subscribe, unsubscribe, refreshAll and markPlayed. preload.js: listen(Library.CHANGED, listener) in onLibraryChanged, listen() being a helper of preload.js that calls ipcRenderer.on(channel, ...)"
+        },
+        {
+          "channel": "episodes:list",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: an entry of the Map episodeHandlers (new Map([[Episodes.LIST, ...], ...])), registered by `for (const [channel, handler] of episodeHandlers) ipcMain.handle(channel, handler)`. preload.js listEpisodes: call(Episodes.LIST)"
+        },
+        {
+          "channel": "episodes:mark-played",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "the other entry of episodeHandlers; preload.js markPlayed: call(Episodes.MARK_PLAYED)"
+        },
+        {
+          "channel": "download:start",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "routes pair [Downloads.START, ...], Downloads being an Object.freeze object in shared/channels.js; preload.js download: call(Downloads.START)"
+        },
+        {
+          "channel": "download:cancel",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "written nowhere in full: main.js ipcMain.handle(`${DOWNLOAD_PREFIX}cancel`, ...) and preload.js cancelDownload: call(`${DOWNLOAD_PREFIX}cancel`), DOWNLOAD_PREFIX being \"download:\" in shared/channels.js"
+        },
+        {
+          "channel": "download:progress",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: the private method #report of DownloadManager calls sender.send(Downloads.PROGRESS, progress), sender being event.sender of the download:start request (a WebContents) passed through start() and #run(). preload.js: listen(Downloads.PROGRESS, listener) in onDownloadProgress"
+        },
+        {
+          "channel": "settings:get",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "routes pair [Settings.GET, ...]; preload.js getSetting: call(Settings.GET)"
+        },
+        {
+          "channel": "settings:set",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "routes pair [Settings.SET, ...]; preload.js setSetting: call(Settings.SET)"
+        },
+        {
+          "channel": "app:topics",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js: ipcMain.on(App.TOPICS, (event) => { event.returnValue = topics; }); preload.js: `const topics = ipcRenderer.sendSync(App.TOPICS)` at the top level of the preload (no bridge member calls it; it runs when the preload loads)"
+        },
+        {
+          "channel": "help:open",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on with the literal in registerIpc; ipcRenderer.send(\"help:open\") in openHelp"
+        },
+        {
+          "channel": "menu:command",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js buildMenu: sendCommand = (item) => libraryWindow?.webContents.send(App.MENU, item.id), the click of the menu items subscribe and refresh; preload.js: listen(App.MENU, listener) in onMenuCommand"
+        },
+        {
+          "channel": "playback:play",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "ipcMain.on(Playback.PLAY, ...) in main.js, Playback being an Object.freeze object; ipcRenderer.send(Playback.PLAY, episode) in play"
+        },
+        {
+          "channel": "playback:state",
+          "receivers": ["preload.js", "preload-player.js"],
+          "senders": ["main.js"],
+          "why": "main.js: the method broadcast of PlaybackHub sends with win.webContents.send(Playback.STATE, this.state) to the library window and the mini player, in a loop over [libraryWindow, playerWindow]; and the player:hello listener answers with event.reply(Playback.STATE, playback.state). preload.js: listen(Playback.STATE, listener) in onPlaybackState; preload-player.js: ipcRenderer.on(\"playback:state\", ...) in the method onState"
+        },
+        {
+          "channel": "playback:toggle",
+          "receivers": ["main.js"],
+          "senders": ["preload-player.js"],
+          "why": "ipcMain.on with the literal in main.js; ipcRenderer.send in the member toggle of \"player\""
+        },
+        {
+          "channel": "playback:seek",
+          "receivers": ["main.js"],
+          "senders": ["preload-player.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in seek"
+        },
+        {
+          "channel": "player:hello",
+          "receivers": ["main.js"],
+          "senders": ["preload-player.js"],
+          "why": "ipcMain.on in main.js (it answers with event.reply on playback:state); ipcRenderer.send in ready"
+        },
+        {
+          "channel": "player:close",
+          "receivers": ["main.js"],
+          "senders": ["preload-player.js"],
+          "why": "ipcMain.on in main.js; ipcRenderer.send in close"
+        },
+        {
+          "channel": "player:now-playing",
+          "receivers": ["main.js"],
+          "senders": ["preload-player.js"],
+          "why": "ipcMain.handle in main.js; preload-player.js nowPlaying: call(\"player:now-playing\"), with the preload's own call helper"
+        },
+        {
+          "channel": "player:artwork",
+          "receivers": ["main.js"],
+          "senders": ["preload-player.js"],
+          "why": "ipcMain.handle in main.js; preload-player.js artwork: call(\"player:artwork\")"
+        }
+      ],
+      "absent": [
+        {
+          "channel": "alerts.",
+          "why": "main.js: topics.alerts is `alerts.${crypto.randomBytes(4).toString(\"hex\")}`, a name chosen at random at every start; connectAlerts sends on it with libraryWindow?.webContents.send(topics.alerts, alert), and preload.js listens on topics.alerts, an object it receives at run time through ipcRenderer.sendSync(App.TOPICS). No fixed name exists (neither \"alerts.\" nor any other reading of the template). The member onAlert is listed with channel null and in interfaceLinks with resolvable false"
+        },
+        {
+          "channel": "library:import-opml",
+          "why": "Library.IMPORT_OPML is a static field that no IPC call uses; main.js mentions it only in a commented-out ipcMain.handle (the comment exists in the plain input only)"
+        },
+        {
+          "channel": "download:",
+          "why": "DOWNLOAD_PREFIX alone is the start of the name download:cancel, not a channel"
+        },
+        {
+          "channel": "menu:file",
+          "why": "shared/index.js: a key of MESSAGES, the menu labels, given to t(); so are menu:help, menu:playback, menu:file.subscribe, menu:file.refresh, menu:playback.toggle, menu:help.guide, menu:help.status and menu:help.prefs"
+        },
+        {
+          "channel": "menu:help",
+          "why": "a label id looked up by t(), not a channel"
+        },
+        {
+          "channel": "settings:open",
+          "why": "main.js buildMenu: the start of the text of a console.info message (\"settings:open is not a window; ...\"); no IPC call uses the name"
+        },
+        {
+          "channel": "help:open failed",
+          "why": "main.js: text of a console.error message in the help:open listener (the channel help:open itself is present)"
+        },
+        {
+          "channel": "episode:selected",
+          "why": "renderer.js playEpisode: a DOM CustomEvent dispatched on document"
+        },
+        {
+          "channel": "subscribe",
+          "why": "main.js: the id of a menu item, a value sent ON menu:command by sendCommand (so is refresh)"
+        },
+        {
+          "channel": "driftwood:view",
+          "why": "renderer.js VIEW_KEY: a localStorage key (listed under storage), not a channel"
+        },
+        {
+          "channel": "message",
+          "why": "main.js connectAlerts: socket.addEventListener on the WebSocket (so is close)"
+        },
+        {
+          "channel": "closed",
+          "why": "main.js: window events of libraryWindow, playerWindow and helpWindow (so is moved)"
+        },
+        {
+          "channel": "data",
+          "why": "main.js requestText: res.on on the response stream of https.get (so are end and error)"
+        },
+        {
+          "channel": "window-all-closed",
+          "why": "main.js: app.on, an application event (so is activate)"
+        },
+        {
+          "channel": "ended",
+          "why": "renderer-player.js: audio.addEventListener, a DOM event (so are volumechange, keydown, submit and click)"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "window": "libraryWindow",
+          "why": "createLibraryWindow: webPreferences: Object.assign({}, SECURE_DEFAULTS, { preload: path.join(__dirname, \"preload.js\"), sandbox: false })"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "window": "libraryWindow",
+          "why": "from SECURE_DEFAULTS (Object.freeze literal in main.js), merged by Object.assign and not overridden"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "window": "libraryWindow",
+          "why": "from SECURE_DEFAULTS, not overridden"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "window": "libraryWindow",
+          "why": "the last argument of Object.assign replaces SECURE_DEFAULTS' sandbox: true with false (the comment says the preload requires ./shared/channels.js)"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main.js",
+          "window": "libraryWindow",
+          "why": "from SECURE_DEFAULTS, not overridden"
+        },
+        {
+          "key": "preload",
+          "value": "preload-player.js",
+          "file": "main.js",
+          "window": "playerWindow",
+          "why": "createPlayerWindow: webPreferences: { ...SECURE_DEFAULTS, preload: path.join(__dirname, \"preload-player.js\") }"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "window": "playerWindow",
+          "why": "from SECURE_DEFAULTS through the spread"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "window": "playerWindow",
+          "why": "from SECURE_DEFAULTS through the spread"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "window": "playerWindow",
+          "why": "from SECURE_DEFAULTS through the spread, not overridden"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main.js",
+          "window": "playerWindow",
+          "why": "from SECURE_DEFAULTS through the spread"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "window": "helpWindow",
+          "why": "openHelp: a webPreferences literal in new BrowserWindow({...}), without preload"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "window": "helpWindow",
+          "why": "in the literal"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "window": "helpWindow",
+          "why": "in the literal"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main.js",
+          "window": "helpWindow",
+          "why": "in the literal, with a comment about the old online docs"
+        }
+      ],
+      "absent": [
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main.js",
+          "count": 3,
+          "why": "exactly two windows have sandbox: true, playerWindow (through SECURE_DEFAULTS) and helpWindow. SECURE_DEFAULTS itself also says sandbox: true; libraryWindow merges it and replaces it with false"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window has sandbox: false, libraryWindow"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main.js",
+          "count": 3,
+          "why": "exactly two windows have webSecurity: true, libraryWindow and playerWindow, both through SECURE_DEFAULTS; helpWindow has false"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window has webSecurity: false, helpWindow"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main.js",
+          "count": 4,
+          "why": "exactly three windows have it (two through SECURE_DEFAULTS, one in a literal)"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main.js",
+          "count": 4,
+          "why": "exactly three windows have it"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main.js",
+          "why": "no window has it. main.js store.delete(\"windows.nodeIntegration\") deletes a key of the app's electron-store (listed under storage); it is no window setting"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main.js",
+          "why": "no window has it"
+        },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main.js",
+          "count": 2,
+          "why": "exactly one window loads preload.js (libraryWindow); helpWindow has no preload and playerWindow loads preload-player.js"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "driftwood",
+          "member": "platform",
+          "channel": null,
+          "why": "preload.js: the object api is exposed as \"driftwood\" by exposeInMainWorld(\"driftwood\", Object.assign(api, episodesApi)); platform is process.platform, a value, no IPC"
+        },
+        {
+          "api": "driftwood",
+          "member": "formatDuration",
+          "channel": null,
+          "why": "a method of api that formats seconds; no IPC"
+        },
+        {
+          "api": "driftwood",
+          "member": "listShows",
+          "channel": "library:list",
+          "why": "call(Library.LIST)"
+        },
+        { "api": "driftwood", "member": "subscribe", "channel": "library:subscribe" },
+        { "api": "driftwood", "member": "unsubscribe", "channel": "library:unsubscribe" },
+        { "api": "driftwood", "member": "refreshAll", "channel": "library:refresh" },
+        {
+          "api": "driftwood",
+          "member": "onLibraryChanged",
+          "channel": "library:changed",
+          "why": "through listen()"
+        },
+        { "api": "driftwood", "member": "getSetting", "channel": "settings:get" },
+        { "api": "driftwood", "member": "setSetting", "channel": "settings:set" },
+        {
+          "api": "driftwood",
+          "member": "onAlert",
+          "channel": null,
+          "why": "listen(topics.alerts, listener): the channel name is received at run time and chosen at random by the main process (see the absent channel alerts.); the member exists, but no fixed channel can be named for it"
+        },
+        { "api": "driftwood", "member": "openHelp", "channel": "help:open" },
+        {
+          "api": "driftwood",
+          "member": "onMenuCommand",
+          "channel": "menu:command",
+          "why": "through listen()"
+        },
+        {
+          "api": "driftwood",
+          "member": "listEpisodes",
+          "channel": "episodes:list",
+          "why": "a member of episodesApi, copied into api by Object.assign(api, episodesApi) in the exposeInMainWorld call"
+        },
+        {
+          "api": "driftwood",
+          "member": "markPlayed",
+          "channel": "episodes:mark-played",
+          "why": "from episodesApi"
+        },
+        {
+          "api": "driftwood",
+          "member": "download",
+          "channel": "download:start",
+          "why": "from episodesApi"
+        },
+        {
+          "api": "driftwood",
+          "member": "cancelDownload",
+          "channel": "download:cancel",
+          "why": "from episodesApi; call(`${DOWNLOAD_PREFIX}cancel`)"
+        },
+        {
+          "api": "driftwood",
+          "member": "onDownloadProgress",
+          "channel": "download:progress",
+          "why": "from episodesApi, through listen()"
+        },
+        {
+          "api": "driftwood",
+          "member": "play",
+          "channel": "playback:play",
+          "why": "from episodesApi"
+        },
+        {
+          "api": "driftwood",
+          "member": "onPlaybackState",
+          "channel": "playback:state",
+          "why": "from episodesApi, through listen()"
+        },
+        {
+          "api": "player",
+          "member": "toggle",
+          "channel": "playback:toggle",
+          "why": "preload-player.js: exposeInMainWorld(\"player\", Object.freeze({ ... })), an object literal frozen inside the call"
+        },
+        { "api": "player", "member": "seek", "channel": "playback:seek" },
+        { "api": "player", "member": "ready", "channel": "player:hello" },
+        { "api": "player", "member": "close", "channel": "player:close" },
+        {
+          "api": "player",
+          "member": "nowPlaying",
+          "channel": "player:now-playing",
+          "why": "call(\"player:now-playing\")"
+        },
+        {
+          "api": "player",
+          "member": "artwork",
+          "channel": "player:artwork",
+          "why": "call(\"player:artwork\")"
+        },
+        {
+          "api": "player",
+          "member": "onState",
+          "channel": "playback:state",
+          "why": "a method that calls ipcRenderer.on directly"
+        }
+      ],
+      "absent": [
+        {
+          "api": "api",
+          "member": "listShows",
+          "why": "`api` is the name of the variable; the exposed name is \"driftwood\""
+        },
+        {
+          "api": "episodesApi",
+          "member": "listEpisodes",
+          "why": "episodesApi is a variable whose members are copied into the exposed object; it is not exposed under its own name"
+        },
+        {
+          "api": "driftwood",
+          "member": "episodesApi",
+          "why": "Object.assign copies the members of episodesApi; the object itself is no member"
+        },
+        {
+          "api": "driftwood",
+          "member": "listen",
+          "why": "listen() is a helper function of preload.js used to build members (so is call)"
+        },
+        {
+          "api": "driftwood",
+          "member": "topics",
+          "why": "topics is a variable of preload.js, read by onAlert; it is not exposed"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://api.driftwood.example/v1/directory/top",
+          "why": "main.js refreshDirectory: fetch(DIRECTORY_URL, { headers }) with the global fetch of the main process; DIRECTORY_URL is `${API_ROOT}/directory/top` in shared/endpoints.js, re-exported by shared/index.js"
+        },
+        {
+          "prefix": "https://img.driftwood.example/",
+          "why": "main.js player:artwork handler: fetch(`${ARTWORK_CDN}/${showId}/600.jpg`); showId comes from the page"
+        },
+        {
+          "prefix": "wss://push.driftwood.example/alerts",
+          "why": "main.js connectAlerts: new WebSocket(`${ALERTS_SOCKET}?client=${hashId(...)}`), the global WebSocket of the main process; the query is a run-time value"
+        },
+        {
+          "prefix": "https://api.driftwood.example/v1/search",
+          "why": "renderer.js searchDirectory: fetch(`${API}/search?${params}`), params being URLSearchParams with the search term"
+        },
+        {
+          "value": "https://api.driftwood.example/v1/trending",
+          "why": "renderer.js loadTrending: fetch with a literal and headers (no method stated)"
+        },
+        {
+          "value": "https://api.driftwood.example/v1/feedback",
+          "method": "POST",
+          "why": "renderer.js sendFeedback: fetch(`${API}/feedback`, { method: \"POST\", ... })"
+        },
+        {
+          "prefix": "https://api.driftwood.example/v1/episodes/",
+          "why": "renderer-player.js loadChapters: fetch(`${CHAPTERS_ROOT}/${encodeURIComponent(guid)}/chapters`), CHAPTERS_ROOT being a constant of that file"
+        }
+      ],
+      "unreadable": 2,
+      "unreadableWhy": "main.js has two request calls whose address is a run-time value everywhere: https.get(url, ...) inside the helper requestText, whose callers pass feed addresses the user subscribed to (FeedService.#load) or a redirect's Location header (requestText itself); and fetch(audioUrl, { signal }) in DownloadManager.#run, whose address is the enclosure URL of an episode read from a feed. A tool should show each call and say the URL is unknown",
+      "absent": [
+        {
+          "value": "https://status.driftwood.example",
+          "why": "STATUS_PAGE is only given to shell.openExternal from the Help menu; the same address is an href in the guide's HTML in renderer.js"
+        },
+        {
+          "value": "https://api.driftwood.example/v0",
+          "why": "LEGACY_API in shared/endpoints.js is a constant that nothing uses"
+        },
+        {
+          "value": "https://example.com/feed.xml",
+          "why": "renderer.js: part of the placeholder text of the search input"
+        },
+        {
+          "value": "index.html",
+          "why": "main.js: loadFile(\"index.html\") (also with { hash: \"help\" }) and loadFile(\"player.html\") load files of the package, not addresses"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "electron-store",
+          "value": "subscriptions",
+          "ops": ["read", "write"],
+          "why": "main.js FeedService: store.get(\"subscriptions\", []) in list, store.set(\"subscriptions\", ...) in subscribe, unsubscribe and refreshAll"
+        },
+        {
+          "kind": "electron-store",
+          "value": "settings",
+          "ops": ["read", "write"],
+          "why": "main.js routes: store.get(\"settings\")[key] for settings:get, store.set(\"settings\", { ...store.get(\"settings\"), [key]: value }) for settings:set"
+        },
+        {
+          "kind": "electron-store",
+          "value": "directory",
+          "ops": ["read", "write"],
+          "why": "main.js: store.get(\"directory\", []) for library:list, store.set(\"directory\", ...) in refreshDirectory"
+        },
+        {
+          "kind": "electron-store",
+          "value": "player.bounds",
+          "ops": ["read", "write"],
+          "why": "main.js createPlayerWindow: store.get(\"player.bounds\", {...}) and store.set(\"player.bounds\", ...) in the moved listener"
+        },
+        {
+          "kind": "electron-store",
+          "value": "windows.nodeIntegration",
+          "ops": ["delete"],
+          "why": "main.js: store.delete(\"windows.nodeIntegration\") at start, removing an option 1.x stored"
+        },
+        {
+          "kind": "localStorage",
+          "value": "driftwood:view",
+          "ops": ["read", "write"],
+          "why": "renderer.js: setItem(VIEW_KEY, view) in setView, getItem(VIEW_KEY) in restoreView; the key looks like a channel name"
+        },
+        {
+          "kind": "localStorage",
+          "value": "driftwood.lastSearch",
+          "ops": ["read", "write"],
+          "why": "renderer.js: getItem(LAST_SEARCH_KEY) in restoreSearch, setItem(LAST_SEARCH_KEY, term) in searchDirectory"
+        },
+        {
+          "kind": "localStorage",
+          "value": "player.volume",
+          "ops": ["read", "write"],
+          "why": "renderer-player.js: getItem(VOLUME_KEY) at start, setItem(VOLUME_KEY, ...) in the volumechange listener (the same text as the electron-store key player.bounds starts with, a different store)"
+        },
+        {
+          "kind": "indexedDB",
+          "value": "driftwood-episodes",
+          "why": "renderer.js openEpisodeDb: indexedDB.open(DB_NAME, DB_VERSION), constants of that file"
+        }
+      ],
+      "absent": [
+        {
+          "value": "speed",
+          "why": "renderer.js getSetting(\"speed\")/setSetting(\"speed\", ...): a field of the electron-store key settings, passed over IPC (so are skipSeconds and autoDownload in the store's defaults)"
+        },
+        {
+          "value": "driftwood-prefs",
+          "why": "main.js: the name option of new Store(...), the store's file name"
+        },
+        {
+          "value": "etag",
+          "why": "renderer.js loadTrending: res.headers.get(\"etag\"), a response header (so are content-length and content-type in main.js)"
+        },
+        {
+          "value": "episodes",
+          "why": "renderer.js: the object store inside the database driftwood-episodes (show is the name of its index)"
+        },
+        {
+          "value": "q",
+          "why": "renderer.js searchDirectory: a key of the URLSearchParams of a request address (so is media)"
+        }
+      ]
+    },
+    "interfaceLinks": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "driftwood",
+          "member": "platform",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 30,
+          "ends": [],
+          "resolvable": true,
+          "why": "no IPC"
+        },
+        {
+          "api": "driftwood",
+          "member": "formatDuration",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 31,
+          "ends": [],
+          "resolvable": true,
+          "why": "no IPC"
+        },
+        {
+          "api": "driftwood",
+          "member": "listShows",
+          "channel": "library:list",
+          "preload": "preload.js",
+          "memberLine": 37,
+          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 277 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "subscribe",
+          "channel": "library:subscribe",
+          "preload": "preload.js",
+          "memberLine": 38,
+          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 278 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "unsubscribe",
+          "channel": "library:unsubscribe",
+          "preload": "preload.js",
+          "memberLine": 39,
+          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 279 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "refreshAll",
+          "channel": "library:refresh",
+          "preload": "preload.js",
+          "memberLine": 40,
+          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 280 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "onLibraryChanged",
+          "channel": "library:changed",
+          "preload": "preload.js",
+          "memberLine": 41,
+          "ends": [{ "file": "main.js", "line": 146, "api": "webContents.send" }],
+          "resolvable": true,
+          "why": "FeedService.notify: this.#window.webContents.send(Library.CHANGED, ...)"
+        },
+        {
+          "api": "driftwood",
+          "member": "getSetting",
+          "channel": "settings:get",
+          "preload": "preload.js",
+          "memberLine": 42,
+          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 282 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "setSetting",
+          "channel": "settings:set",
+          "preload": "preload.js",
+          "memberLine": 43,
+          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 283 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "onAlert",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 44,
+          "ends": [{ "file": "main.js", "line": 378, "api": "webContents.send" }],
+          "resolvable": false,
+          "why": "the channel is topics.alerts on both sides: `alerts.${crypto.randomBytes(4).toString(\"hex\")}` in main.js, handed to the preload at run time through ipcRenderer.sendSync(App.TOPICS) (main.js line 297 answers with event.returnValue = topics). The one end, libraryWindow?.webContents.send(topics.alerts, alert) in connectAlerts, is known by reading the program, not from the channel text: no static reading of the source gives the name"
+        },
+        {
+          "api": "driftwood",
+          "member": "openHelp",
+          "channel": "help:open",
+          "preload": "preload.js",
+          "memberLine": 45,
+          "ends": [{ "file": "main.js", "line": 325, "api": "ipcMain.on" }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "onMenuCommand",
+          "channel": "menu:command",
+          "preload": "preload.js",
+          "memberLine": 46,
+          "ends": [{ "file": "main.js", "line": 338, "api": "webContents.send" }],
+          "resolvable": true,
+          "why": "sendCommand in buildMenu, the click of two menu items"
+        },
+        {
+          "api": "driftwood",
+          "member": "listEpisodes",
+          "channel": "episodes:list",
+          "preload": "preload.js",
+          "memberLine": 50,
+          "ends": [{ "file": "main.js", "line": 293, "api": "ipcMain.handle", "entryLine": 287 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "markPlayed",
+          "channel": "episodes:mark-played",
+          "preload": "preload.js",
+          "memberLine": 51,
+          "ends": [{ "file": "main.js", "line": 293, "api": "ipcMain.handle", "entryLine": 288 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "download",
+          "channel": "download:start",
+          "preload": "preload.js",
+          "memberLine": 52,
+          "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 281 }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "cancelDownload",
+          "channel": "download:cancel",
+          "preload": "preload.js",
+          "memberLine": 53,
+          "ends": [{ "file": "main.js", "line": 295, "api": "ipcMain.handle" }],
+          "resolvable": true,
+          "why": "a template on the constant prefix DOWNLOAD_PREFIX on both sides"
+        },
+        {
+          "api": "driftwood",
+          "member": "onDownloadProgress",
+          "channel": "download:progress",
+          "preload": "preload.js",
+          "memberLine": 54,
+          "ends": [{ "file": "main.js", "line": 188, "api": "webContents.send" }],
+          "resolvable": true,
+          "why": "DownloadManager.#report: sender.send(Downloads.PROGRESS, progress), sender being the event.sender WebContents of the download:start request"
+        },
+        {
+          "api": "driftwood",
+          "member": "play",
+          "channel": "playback:play",
+          "preload": "preload.js",
+          "memberLine": 55,
+          "ends": [{ "file": "main.js", "line": 301, "api": "ipcMain.on" }],
+          "resolvable": true
+        },
+        {
+          "api": "driftwood",
+          "member": "onPlaybackState",
+          "channel": "playback:state",
+          "preload": "preload.js",
+          "memberLine": 56,
+          "ends": [
+            { "file": "main.js", "line": 203, "api": "webContents.send" },
+            { "file": "main.js", "line": 310, "api": "event.reply" }
+          ],
+          "resolvable": true,
+          "why": "both main-process calls on playback:state. At run time PlaybackHub.broadcast (line 203) reaches the library window, while event.reply (line 310) answers player:hello and therefore reaches only the mini player"
+        },
+        {
+          "api": "player",
+          "member": "toggle",
+          "channel": "playback:toggle",
+          "preload": "preload-player.js",
+          "memberLine": 12,
+          "ends": [{ "file": "main.js", "line": 306, "api": "ipcMain.on" }],
+          "resolvable": true
+        },
+        {
+          "api": "player",
+          "member": "seek",
+          "channel": "playback:seek",
+          "preload": "preload-player.js",
+          "memberLine": 13,
+          "ends": [{ "file": "main.js", "line": 307, "api": "ipcMain.on" }],
+          "resolvable": true
+        },
+        {
+          "api": "player",
+          "member": "ready",
+          "channel": "player:hello",
+          "preload": "preload-player.js",
+          "memberLine": 14,
+          "ends": [{ "file": "main.js", "line": 309, "api": "ipcMain.on" }],
+          "resolvable": true
+        },
+        {
+          "api": "player",
+          "member": "close",
+          "channel": "player:close",
+          "preload": "preload-player.js",
+          "memberLine": 15,
+          "ends": [{ "file": "main.js", "line": 312, "api": "ipcMain.on" }],
+          "resolvable": true
+        },
+        {
+          "api": "player",
+          "member": "nowPlaying",
+          "channel": "player:now-playing",
+          "preload": "preload-player.js",
+          "memberLine": 16,
+          "ends": [{ "file": "main.js", "line": 314, "api": "ipcMain.handle" }],
+          "resolvable": true
+        },
+        {
+          "api": "player",
+          "member": "artwork",
+          "channel": "player:artwork",
+          "preload": "preload-player.js",
+          "memberLine": 17,
+          "ends": [{ "file": "main.js", "line": 315, "api": "ipcMain.handle" }],
+          "resolvable": true
+        },
+        {
+          "api": "player",
+          "member": "onState",
+          "channel": "playback:state",
+          "preload": "preload-player.js",
+          "memberLine": 18,
+          "ends": [
+            { "file": "main.js", "line": 203, "api": "webContents.send" },
+            { "file": "main.js", "line": 310, "api": "event.reply" }
+          ],
+          "resolvable": true,
+          "why": "both main-process calls on playback:state; at run time both reach the mini player"
+        }
+      ],
+      "absent": [
+        {
+          "api": null,
+          "member": null,
+          "file": "main.js",
+          "line": 323,
+          "why": "line 323 is a commented-out ipcMain.handle(Library.IMPORT_OPML, ...) (plain input only); it is the end of no member"
+        },
+        {
+          "api": "driftwood",
+          "member": "onAlert",
+          "file": "main.js",
+          "line": 297,
+          "why": "the app:topics listener hands the preload the name of the alert channel, but it is no end of onAlert: the preload calls it with sendSync at load time, not from a member"
+        }
+      ]
+    }
+  }
+}

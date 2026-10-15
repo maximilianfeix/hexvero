@@ -1,0 +1,15 @@
+{
+  "name": "driftwood",
+  "productName": "Driftwood",
+  "version": "1.4.0",
+  "description": "A desktop podcast player",
+  "main": "main.js",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "case": "podcast-player-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "a": "holdout3/podcast-player.plain.asar",
+  "b": "holdout3/podcast-player-v2.plain.asar",
+  "method": "v2 is built from v1 by the fifteen edits in changes.json; unlike the earlier sets, no comment lines are put in front of the files, so a fact keeps its line unless an edit above it in the same file adds or removes lines. The expected differences are the edits that change the program and nothing else. Edits 6 and 7 move the ipcMain.on(\"help:open\", ...) listener, unchanged, from the end of registerIpc (main.js line 325 in v1) to its start (line 292 in v2): same channel, same receiver, same handler, another line; it must not be reported as added, removed or changed, and the link of driftwood.openHelp is the same link with a new line. Edit 5 deletes the renderer's only call of the removed member driftwood.markPlayed (a page calling a bridge member is no channel, member, setting, request or storage access). Every other fact only moves by the lines the edits add or remove above it. The lists were written from changes.json; the edits were applied by a scratch script that does what derive() in corpus/build.mjs does (each edit must match exactly once; it did, all fifteen), and the derived main.js, preload.js, preload-player.js and renderer.js were checked with node --check and by reading the changed lines. No analysis tool was run. Strings follow the earlier sets: a channel name, api.member, \"key: old -> new\", an address (for a partly dynamic one its known leading part), \"kind key\" for storage. Two fields are added because the format had no place for them: webPreferences.windowChanges names the window (file and variable) of each changed setting and the direction of the change, and unchangedMoves lists facts that moved to another line only.",
+  "expect": {
+    "compare": {
+      "ipcChannels": {
+        "added": ["playback:skip"],
+        "removed": ["episodes:mark-played"],
+        "changed": [],
+        "unchangedMoves": [
+          {
+            "channel": "help:open",
+            "file": "main.js",
+            "api": "ipcMain.on",
+            "lineBefore": 325,
+            "lineAfter": 292,
+            "why": "edits 6 and 7 cut the listener from the end of registerIpc and paste it, byte for byte, at its start; the sender (openHelp in preload.js, line 45) is untouched"
+          }
+        ],
+        "why": "playback:skip: edit 1 adds ipcMain.on(\"playback:skip\", ...) after the playback:seek listener in main.js, and edit 2 adds the member skip to the mini player's API that sends on it. episodes:mark-played: edit 4 deletes its entry from the Map episodeHandlers, the only registration, and edit 3 deletes markPlayed, its only sender, so the channel is in v1 only. help:open only moves"
+      },
+      "contextBridge": {
+        "added": ["player.skip"],
+        "removed": ["driftwood.markPlayed"],
+        "changed": [],
+        "why": "skip is a new property of the frozen object literal exposed as \"player\" (preload-player.js, line 14 in v2); markPlayed is deleted from episodesApi in preload.js, whose members are copied into \"driftwood\" by Object.assign"
+      },
+      "interfaceLinks": {
+        "added": [
+          {
+            "api": "player",
+            "member": "skip",
+            "channel": "playback:skip",
+            "preload": "preload-player.js",
+            "memberLine": 14,
+            "ends": [{ "file": "main.js", "line": 316, "api": "ipcMain.on" }],
+            "resolvable": true
+          }
+        ],
+        "removed": [
+          {
+            "api": "driftwood",
+            "member": "markPlayed",
+            "channel": "episodes:mark-played",
+            "preload": "preload.js",
+            "memberLine": 51,
+            "ends": [{ "file": "main.js", "line": 293, "api": "ipcMain.handle", "entryLine": 288 }],
+            "resolvable": true,
+            "why": "the v1 link; v2 has neither the member nor the Map entry"
+          }
+        ],
+        "changed": [],
+        "unchangedMoves": [
+          {
+            "api": "driftwood",
+            "member": "openHelp",
+            "channel": "help:open",
+            "endBefore": { "file": "main.js", "line": 325 },
+            "endAfter": { "file": "main.js", "line": 292 },
+            "why": "the same link; only the line of its end differs. The ends of other links in main.js also shift (for example the routes loop from line 292 to 300) because lines were added or removed above them; none of those is a change either"
+          }
+        ]
+      },
+      "webPreferences": {
+        "added": [],
+        "removed": [],
+        "changed": ["sandbox: true -> false", "webSecurity: false -> true"],
+        "windowChanges": [
+          {
+            "window": { "file": "main.js", "variable": "playerWindow" },
+            "setting": "sandbox",
+            "before": true,
+            "after": false,
+            "direction": "more permissive",
+            "why": "edit 8 adds `sandbox: false` after the preload in the player window's webPreferences; before, sandbox: true came from the spread of SECURE_DEFAULTS, which stays and is now overridden"
+          },
+          {
+            "window": { "file": "main.js", "variable": "helpWindow" },
+            "setting": "webSecurity",
+            "before": false,
+            "after": true,
+            "direction": "more restrictive",
+            "why": "edit 9 replaces the help window's `webSecurity: false` (and its comment) by `webSecurity: true`"
+          }
+        ],
+        "why": "only these two settings change. SECURE_DEFAULTS is untouched, the library window keeps sandbox: false and webSecurity: true, and every other setting only moves"
+      },
+      "endpoints": {
+        "added": ["https://api.driftwood.example/v1/charts"],
+        "removed": [],
+        "changed": [],
+        "why": "edits 10 and 11 add loadCharts to renderer.js, fetch(`${API}/charts`) with API = \"https://api.driftwood.example/v1\" (GET), and call it at the end of start(). The other requests are untouched; the two unreadable requests of main.js stay"
+      },
+      "storage": {
+        "added": [],
+        "removed": ["localStorage driftwood.lastSearch"],
+        "changed": [],
+        "why": "edits 12 to 15 delete the constant LAST_SEARCH_KEY, the function restoreSearch (getItem), its call in start() and the setItem in searchDirectory; no access of the key is left. driftwood:view, player.volume, the electron-store keys and the database driftwood-episodes are untouched"
+      }
+    }
+  }
+}

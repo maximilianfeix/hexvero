@@ -410,6 +410,8 @@ export class Constants {
   /** `import { A as B } from "x"` and `const { A: B } = require("x")`: B is A of module x. */
   private readonly imported = new Map<string, { specifier: string; property: string }>();
   private readonly tableKeys = new Map<string, string[]>();
+  /** `const T = [[a, f], …]` and `const T = new Map([[a, f], …])`: where the list opens. */
+  private readonly pairLists = new Map<string, number>();
   /**
    * What other modules can refer to: `module.exports = { K: "v" }`, `exports.K = "v"`,
    * `export const K = "v"`, and for an exported table of strings one entry per `TABLE.KEY`.
@@ -604,6 +606,36 @@ export class Constants {
           this.reassigned.add(`${t.value}.${tokens[k + 2]!.value}`);
       }
       if (wrapper ? depth > wrapper.depth + 2 : depth !== 0) continue;
+      // `class Channels { static SAVE = "doc:save" }`: a table of its static string fields.
+      if (t.value === "class" && is(tokens[k + 1], "ident") && !is(tokens[k - 1], "punct", ".")) {
+        const name = tokens[k + 1]!.value;
+        let open = k + 2;
+        while (open < tokens.length && open < k + 50 && !is(tokens[open], "punct", "{")) open++;
+        const table = new Map<string, string>();
+        let d = 0;
+        for (let j = open; j < tokens.length; j++) {
+          const p = tokens[j]!;
+          if (p.type === "punct") {
+            if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+            else if (p.value === "}" || p.value === ")" || p.value === "]") {
+              d--;
+              if (d === 0) break;
+            }
+            continue;
+          }
+          if (d !== 1 || p.value !== "static" || !is(tokens[j + 1], "ident")) continue;
+          if (!is(tokens[j + 2], "punct", "=")) continue;
+          const v = text(tokens[j + 3]);
+          const end = tokens[j + 4];
+          if (v !== null && (!end || is(end, "punct", ";") || is(end, "punct", "}")))
+            table.set(tokens[j + 1]!.value, v);
+        }
+        if (table.size && !this.tables.has(name) && !this.strings.has(name)) {
+          this.tables.set(name, table);
+          if (is(tokens[k - 1], "ident", "export")) this.export(name);
+        }
+        continue;
+      }
       if (t.value === "export" && !wrapper) {
         if (is(tokens[k + 1], "punct", "*") && is(tokens[k + 2], "ident", "from")) {
           const specifier = text(tokens[k + 3]);
@@ -641,6 +673,7 @@ export class Constants {
           // `module.exports = { CHANNELS, API_ROOT }`: this file's own constants, by name
           for (const key of this.keys(at, true)) this.export(key);
           this.collectExportNames(at);
+          this.spreadExports(at);
         }
         continue;
       }
@@ -685,6 +718,19 @@ export class Constants {
         const keys = this.keys(at);
         if (keys.length) this.tableKeys.set(t.value, keys);
         if (exportedHere) this.export(t.value);
+      } else if (
+        declared &&
+        (is(value, "punct", "[") ||
+          (is(value, "ident", "new") &&
+            is(tokens[k + 3], "ident", "Map") &&
+            is(tokens[k + 4], "punct", "(") &&
+            is(tokens[k + 5], "punct", "[")))
+      ) {
+        // A second declaration of the name makes it ambiguous.
+        this.pairLists.set(
+          t.value,
+          this.pairLists.has(t.value) ? -1 : is(value, "punct", "[") ? k + 2 : k + 5,
+        );
       } else if (exportedHere && is(value, "ident") && !is(tokens[k + 3], "punct", "(")) {
         // `export const ConfigSync = Channel.ConfigGetSync`: settled with the export lists
         this.exportNames.push({ key: t.value, at: k + 2 });
@@ -973,6 +1019,7 @@ export class Constants {
       ...this.strings.keys(),
       ...this.tables.keys(),
       ...this.tableKeys.keys(),
+      ...this.pairLists.keys(),
       ...this.requires.keys(),
       ...this.imported.keys(),
     ];
@@ -1048,6 +1095,37 @@ export class Constants {
     return this.tables.get(name)?.get(property) ?? null;
   }
 
+  /**
+   * The first element of every pair in `const T = [[a, f], …]` or `new Map([[a, f], …])`, each
+   * resolved as an argument would be (null where it is not a literal or a constant). Empty when
+   * `name` is no such list here, or a list that is not made of pairs only.
+   */
+  pairFirsts(name: string, k?: number): Resolved[] {
+    const open = this.sees(k, name) ? (this.pairLists.get(name) ?? -1) : -1;
+    if (open < 0 || this.reassigned.has(name)) return [];
+    const tokens = this.tokens;
+    const out: Resolved[] = [];
+    let d = 0;
+    for (let j = open; j < tokens.length && j < open + 20_000; j++) {
+      const t = tokens[j]!;
+      if (t.type !== "punct") {
+        if (d === 1) return []; // an element that is not a pair
+        continue;
+      }
+      if (t.value === "{" || t.value === "(" || t.value === "[") {
+        d++;
+        if (d === 2 && t.value === "[") {
+          if (out.length >= 1000) return out;
+          out.push(this.resolve(j + 1));
+        } else if (d === 2) return [];
+      } else if (t.value === "}" || t.value === ")" || t.value === "]") {
+        d--;
+        if (d === 0) return out;
+      }
+    }
+    return [];
+  }
+
   /** The property names of an object literal declared under this name. */
   keysOf(name: string, k?: number): string[] {
     return this.sees(k, name) ? (this.tableKeys.get(name) ?? []) : [];
@@ -1087,6 +1165,35 @@ export class Constants {
    * Property names at the top level of the object literal that opens at `open`: those written
    * with a value (`key: …`, `key() {…}`), or with `shorthand` those written as a bare name.
    */
+  /**
+   * `module.exports = { ...channels, ...require("./endpoints") }` with `channels` required from a
+   * module: everything that module exports is exported here too, like `export * from`.
+   */
+  private spreadExports(open: number): void {
+    const tokens = this.tokens;
+    let d = 0;
+    for (let k = open; k < tokens.length && k < open + 4000; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "{" || t.value === "(" || t.value === "[") d++;
+      else if (t.value === "}" || t.value === ")" || t.value === "]") {
+        d--;
+        if (d === 0) break;
+      } else if (d === 1 && t.value === "...") {
+        const name = tokens[k + 1];
+        const end = (at: number): boolean =>
+          is(tokens[at], "punct", ",") || is(tokens[at], "punct", "}");
+        let specifier: string | null = null;
+        if (is(name, "ident", "require") && is(tokens[k + 2], "punct", "(") && end(k + 5))
+          specifier = text(tokens[k + 3]);
+        else if (is(name, "ident") && end(k + 2))
+          specifier = this.requires.get(name!.value) ?? null;
+        if (specifier !== null && !this.starExports.includes(specifier))
+          this.starExports.push(specifier);
+      }
+    }
+  }
+
   private keys(open: number, shorthand = false): string[] {
     const tokens = this.tokens;
     const out: string[] = [];

@@ -810,13 +810,73 @@ export function bridgeMembers(
       (simple ? textOf(keyToken) : null) ??
       apiName ??
       (simple && keyToken?.type === "ident" ? `[${keyToken.value}]` : "[computed]");
-    let open = -1;
-    if (simple) {
-      const value = tokens[at + 2];
-      if (is(at + 2, "{")) open = at + 2;
-      else if (value?.type === "ident" && is(at + 3, ")")) open = objectOf(value.value);
-    }
-    if (open < 0) {
+    /**
+     * The object literals the exposed value at `k` is made of, and the token after it: `{…}`, a
+     * name declared as `const x = {…}` in this file, `Object.freeze(…)` (also `seal`,
+     * `preventExtensions`) around one of those, or `Object.assign(a, b, …)` of them. Null when
+     * any part is something else, so nothing is claimed for a value that is not read whole.
+     */
+    const valueOpens = (k: number, level: number): { opens: number[]; next: number } | null => {
+      if (level > 3 || budget <= 0) return null;
+      const v = tokens[k];
+      if (is(k, "{")) {
+        let d = 0;
+        for (let e = k; e < tokens.length && budget > 0; e++, budget--) {
+          const p = tokens[e]!;
+          if (p.type !== "punct") continue;
+          if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+          else if (p.value === "}" || p.value === ")" || p.value === "]") {
+            d--;
+            if (d === 0) return { opens: [k], next: e + 1 };
+          }
+        }
+        // An object that never closes, or a walk that ran out of budget: what it holds so far is
+        // read, and the result says it was cut (`next` -1: nothing follows).
+        truncated = true;
+        return { opens: [k], next: -1 };
+      }
+      if (v?.type !== "ident") return null;
+      if (
+        v.value === "Object" &&
+        is(k + 1, ".") &&
+        tokens[k + 2]?.type === "ident" &&
+        is(k + 3, "(")
+      ) {
+        const method = tokens[k + 2]!.value;
+        if (method === "freeze" || method === "seal" || method === "preventExtensions") {
+          const inner = valueOpens(k + 4, level + 1);
+          if (inner?.next === -1) return inner;
+          return inner && is(inner.next, ")") ? { opens: inner.opens, next: inner.next + 1 } : null;
+        }
+        if (method === "assign") {
+          const opens: number[] = [];
+          let e = k + 4;
+          for (;;) {
+            const part = valueOpens(e, level + 1);
+            if (!part) return null;
+            opens.push(...part.opens);
+            if (part.next === -1) return { opens, next: -1 };
+            if (is(part.next, ")")) return { opens, next: part.next + 1 };
+            if (!is(part.next, ",")) return null;
+            e = part.next + 1;
+          }
+        }
+        return null;
+      }
+      if (is(k + 1, ")") || is(k + 1, ",")) {
+        const named = objectOf(v.value);
+        return named < 0 ? null : { opens: [named], next: k + 1 };
+      }
+      return null;
+    };
+    const value = simple ? valueOpens(at + 2, 0) : null;
+    // `exposeInMainWorld("api", value,)`: a trailing comma, as formatters write it.
+    const opens =
+      value &&
+      (value.next === -1 || is(value.next, ")") || (is(value.next, ",") && is(value.next + 1, ")")))
+        ? value.opens
+        : null;
+    if (!opens) {
       push(null, null, t.line);
       continue;
     }
@@ -914,7 +974,7 @@ export function bridgeMembers(
       }
       return false;
     };
-    if (!walk(open, 0)) truncated = true;
+    for (const open of opens) if (!walk(open, 0)) truncated = true;
     // An object put together in steps: `api.onChange = (fn) => …` after `const api = {…}`.
     const objectName =
       simple && tokens[at + 2]?.type === "ident" && is(at + 3, ")") ? tokens[at + 2]!.value : null;
