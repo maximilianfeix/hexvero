@@ -17,6 +17,10 @@ All notable changes to hexvero are listed here. The format follows
   no longer also reported as a row without a window. holdout4 window settings 36/48 (4 false)
   → 44/48 (0 false); 16/16 on the plain build. The channels built by `defineChannels(…)` (a
   loop with a regular-expression callback) are still not read. No real app changed.
+- `new URL(\`boards/${id}\`, BASE)`is read as`https://…/boards/${…}`when the gap lies in the
+  path; a gap before the first`/` (it may be a whole address) leaves the request unknown.
+  holdout4 endpoints 12/21 → 15/21, requests shown as unknown although their address is known
+  5 → 2. No real app changed.
 
 ### Fixed
 
