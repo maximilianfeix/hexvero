@@ -6,6 +6,21 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- Window bases another module exports (`import windowConfig from "./config/windows.js"` and
+  `webPreferences: Object.assign({ preload }, windowConfig.secureDefaults)` or
+  `...windowConfig.main`) are evaluated across modules and applied where they stand, so the
+  later of two writes in the same object wins. A base used as a webPreferences argument holds the
+  settings themselves; one spread into window options holds them under `webPreferences`. Where
+  a whole window can already be evaluated, that evaluation is kept; a base that cannot be read
+  whole still leaves the keys after its place unknown. ES default imports of a module count as
+  that module (`import x from` reads like `require`). holdout window settings 24/33 → 27/33,
+  holdout2 46/63 → 48/63, both with 0 false; holdout changes in webPreferences 1/2 → 2/2.
+- `compare` treats `definedIn.line` (where in another module a window's setting was read) as a
+  position: a base module whose lines shift no longer changes the window's settings.
+- No real application changed.
+
 ## [0.7.4] - 2026-10-15
 
 ### Accuracy

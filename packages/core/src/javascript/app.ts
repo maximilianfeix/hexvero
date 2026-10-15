@@ -381,6 +381,12 @@ interface ExternalBase {
   at: number;
   /** Source offset of the expression (`windowConfig.secureDefaults`), to evaluate it later. */
   expr: number;
+  /**
+   * `prefs`: the base is a webPreferences object (an argument of `webPreferences:
+   * Object.assign(…)`); `options`: it is laid over a window's options or an object whose level
+   * is decided where it is applied.
+   */
+  level: "options" | "prefs";
   specifier: string;
   property: string;
 }
@@ -405,9 +411,9 @@ function windowRanges(
   const hide = (window: number | null, upTo: number): void => {
     if (window === null) return;
     opaque.set(window, Math.max(opaque.get(window) ?? -1, upTo));
-    const list = hides.get(window) ?? [];
-    if (list.length < 200) list.push(upTo);
-    hides.set(window, list);
+    const places = hides.get(window) ?? [];
+    if (places.length < 200) places.push(upTo);
+    hides.set(window, places);
   };
   const externals: ExternalBase[] = [];
   /** `X.prop` at k, as a whole argument or spread operand: recorded instead of hidden. */
@@ -416,11 +422,12 @@ function windowRanges(
     window: number | null,
     at: number,
     given?: { specifier: string; property: string; expr: number },
+    level: ExternalBase["level"] = "options",
   ): boolean => {
     if (window === null) return false;
     const ref = given ?? (k >= 0 ? externalOf(k) : null);
     if (!ref || externals.length >= 200) return false;
-    externals.push({ window, at, expr: given ? given.expr : tokens[k]!.start, ...ref });
+    externals.push({ window, at, expr: given ? given.expr : tokens[k]!.start, level, ...ref });
     // Unread until every module is known: hidden like an unknown spread for now.
     hide(window, at);
     return true;
@@ -722,7 +729,7 @@ function windowRanges(
                   : step.at < tokens[literal.open]!.start
                     ? tokens[literal.open]!.start + 1
                     : tokens[close(literal.open)]!.start;
-                if (window === null || !external(-1, window, at ?? place, step.external))
+                if (window === null || !external(-1, window, at ?? place, step.external, "prefs"))
                   hide(window, at ?? place);
                 continue;
               }
@@ -2456,9 +2463,15 @@ export function analyzeJavaScriptTree(
         const at = tokenAtOffset(own.tokens, ext.expr);
         const { values, partial } =
           at === -1 ? { values: [], partial: true } : own.resolver.valuesAt(at);
-        const reads = values.map(optionSettings);
+        // A base applied inside a `webPreferences` object, or given there, holds the settings
+        // themselves; one laid over a window's options holds them under `webPreferences`.
+        const prefsLevel = ext.level === "prefs" || preferenceObjects.has(objectAt(ext.at));
+        const reads = values.map((v) =>
+          optionSettings(
+            prefsLevel && v ? { kind: "obj", props: new Map([["webPreferences", v]]) } : v,
+          ),
+        );
         const read = reads.length === 1 && !partial ? reads[0] : null;
-        if (process.env["HV_DEBUG_EXT"]) console.error("ext", ext.property, at, own.tokens.slice(at, at + 5).map((t) => t.value).join(" "), values.length, partial, JSON.stringify(values).slice(0, 300));
         if (!read || read.unknown.size) continue;
         // Read whole: this place no longer hides anything; the window stays hidden only up to
         // the last other place that does.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeJavaScriptTree, asarTree, bridgeMembers } from "../src/javascript/app.js";
+import { compareItems, positionalFields } from "../src/compare.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 /** Analysis of an app made of these files; `package.json` is added. */
@@ -50,6 +51,26 @@ const app = analyze({
     '  "player",',
     '  Object.freeze({ hello: () => ipcRenderer.send("player:hello") }),',
     ");",
+  ].join("\n"),
+});
+
+/** An app whose window takes its base from another module; `sandbox` is the override. */
+const externalBaseApp = (sandbox: string) => ({
+  "config/windows.js": [
+    "const secure = Object.freeze({ contextIsolation: true, nodeIntegration: false, sandbox: true });",
+    "const frame = { width: 800, webPreferences: { spellcheck: false } };",
+    "module.exports = { secure, frame };",
+  ].join("\n"),
+  "main.js": [
+    'import { BrowserWindow } from "electron";',
+    'import windowConfig from "./config/windows.js";',
+    "class Main {",
+    "  options = {",
+    "    ...windowConfig.frame,",
+    `    webPreferences: Object.assign({ preload: "p.js" }, windowConfig.secure, { sandbox: ${sandbox} }),`,
+    "  };",
+    "  open() { this.window = new BrowserWindow(this.options); }",
+    "}",
   ].join("\n"),
 });
 
@@ -206,5 +227,26 @@ describe("idioms of channel and bridge definitions", () => {
       "template https://sync.example/api/boards/${…}",
       "unknown null",
     ]);
+  });
+
+  it("applies a window base another module exports, at the level it is used", () => {
+    const info = analyze(externalBaseApp("false"));
+    const w = info.windows[0]!;
+    expect([w.nodeIntegration, w.contextIsolation, w.sandbox, w.preload]).toEqual([
+      false,
+      true,
+      false,
+      "p.js",
+    ]);
+    // Moving the base's lines in its own module is no change of the window.
+    const moved = analyze({
+      ...externalBaseApp("false"),
+      "config/windows.js": `// moved\n// down\n${externalBaseApp("false")["config/windows.js"]}`,
+    });
+    const diff = compareItems(info.webPreferences, moved.webPreferences, {
+      collection: "webPreferences",
+      positional: positionalFields("webPreferences", []),
+    });
+    expect([diff.added, diff.removed, diff.changed]).toEqual([[], [], []]);
   });
 });

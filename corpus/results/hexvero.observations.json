@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.7.3",
-  "commit": "ebf4a2a+uncommitted",
+  "version": "0.7.4",
+  "commit": "2fa9b6e+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -4558,8 +4558,7 @@
     "complete": true,
     "limitations": [
      "context_bridge_members_unreadable",
-     "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -4794,6 +4793,21 @@
      },
      {
       "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
       "value": true,
       "file": "main.js"
      }
@@ -6211,9 +6225,10 @@
      "added": [],
      "removed": [],
      "changed": [
-      "sandbox: false -> true"
+      "sandbox: false -> true",
+      "contextIsolation: true -> false"
      ],
-     "relocated": 7,
+     "relocated": 9,
      "unchanged": 0
     },
     "endpoints": {
@@ -6480,6 +6495,16 @@
      {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
       "file": "main.js"
      }
     ],
@@ -7656,7 +7681,7 @@
      "changed": [
       "sandbox: true -> false"
      ],
-     "relocated": 6,
+     "relocated": 8,
      "unchanged": 0
     },
     "endpoints": {
