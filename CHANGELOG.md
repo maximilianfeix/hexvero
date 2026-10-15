@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-15
+
 ### Performance
 
 - A JavaScript application with 1 MiB of JavaScript or more is stored even when one run read it
