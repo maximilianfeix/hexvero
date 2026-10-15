@@ -39,6 +39,14 @@ const content = (info: JsAppInfo) => ({
 const coverageOf = (analysis: Awaited<ReturnType<Session["analyze"]>>) =>
   analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null;
 
+/** The app with 600 calls in main.js on names it does not declare: more than are kept. */
+const capped = (): ReturnType<typeof asarTree> => {
+  const app = files();
+  app["main.js"] +=
+    `\n${Array.from({ length: 600 }, (_, i) => `bus${i}.send("c:${i}");`).join("\n")}`;
+  return asarTree(buildAsar(app), "app.asar");
+};
+
 describe("continued JavaScript scans", () => {
   it("reads a large app in batches without losing or repeating a file", () => {
     const whole = analyzeJavaScriptTree(tree());
@@ -93,6 +101,16 @@ describe("continued JavaScript scans", () => {
     const again = run({ maxJsFiles: 5 });
     expect(content(again)).toEqual(content(whole));
     expect(facts!.scanned).toHaveLength(13);
+  });
+
+  it("keeps a cap met in an earlier run in the limitations of the continued result", () => {
+    const whole = analyzeJavaScriptTree(capped());
+    expect(whole.limitations.map((l) => l.code)).toContain("ipc_open_calls_capped");
+    let facts: JsScanFacts | undefined;
+    analyzeJavaScriptTree(capped(), { maxJsFiles: 1, onFacts: (f) => (facts = clone(f)) });
+    const rest = analyzeJavaScriptTree(capped(), { all: true, resume: clone(facts!) });
+    expect(rest.coverage.complete).toBe(true);
+    expect(rest.limitations.map((l) => l.code)).toContain("ipc_open_calls_capped");
   });
 
   it("reads everything in one call with `all`, storing each batch on the way", () => {
@@ -212,5 +230,29 @@ describe("stored scan state", () => {
     expect(
       fresh.data.kind === "javascript-app" && fresh.data.app.ipcChannels.map((x) => x.channel),
     ).toContain("main:new");
+  });
+
+  it("stores a large app read whole in one run, and the next session reuses it unchanged", async () => {
+    const path = join(dir, "large.asar");
+    const app = files();
+    // 1.1 MiB of JavaScript in one file: over the size from which a whole scan is kept.
+    app["src/vendor.js"] = `// ${"x".repeat(1_150_000)}\nmodule.exports = 1;\n`;
+    writeFileSync(path, buildAsar(app));
+    const before = readdirSync(join(cache, "scans")).length;
+    const first = new Session();
+    const a = await first.analyze((await first.open(path)).id);
+    expect(coverageOf(a)).toMatchObject({ complete: true, resumed: false });
+    expect(readdirSync(join(cache, "scans")).length).toBe(before + 1);
+    const second = new Session();
+    const b = await second.analyze((await second.open(path)).id);
+    expect(coverageOf(b)).toMatchObject({ complete: true, resumed: true });
+    // Everything but the bookkeeping of how the scan was read is the same.
+    const facts = (x: typeof a) => {
+      if (x.data.kind !== "javascript-app") return null;
+      const { coverage: _c, ...rest } = x.data.app;
+      return JSON.stringify(rest);
+    };
+    expect(facts(b)).toBe(facts(a));
+    expect(b.limitations).toEqual(a.limitations);
   });
 });

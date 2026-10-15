@@ -1033,7 +1033,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 5;
+export const JS_SCAN_SCHEMA = 6;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -1086,6 +1086,8 @@ export interface JsScanFacts {
   prefsCapped: boolean;
   bridgeCapped: boolean;
   candidatesCapped: boolean;
+  /** A file had more calls on undeclared names than are kept for cross-file resolution. */
+  ambientCapped: boolean;
   /** Limitations that belong to single files (e.g. a token budget that ran out). */
   limitations: Limitation[];
 }
@@ -1114,6 +1116,7 @@ export function emptyJsScanFacts(): JsScanFacts {
     prefsCapped: false,
     bridgeCapped: false,
     candidatesCapped: false,
+    ambientCapped: false,
     limitations: [],
   };
 }
@@ -1775,7 +1778,8 @@ export function analyzeJavaScriptTree(
   /** Every webPreferences-style setting read from source, with the place it was read. */
   let prefsCapped = facts.prefsCapped;
   let bridgeCapped = facts.bridgeCapped;
-  let ambientCapped = false;
+  // Stored with the scan: a cap met in an earlier run still limits the result of a later one.
+  let ambientCapped = facts.ambientCapped;
   /** Writes the running counters back, so `facts` is a complete, storable state. */
   const sync = (): JsScanFacts => {
     facts.bytes = bytes;
@@ -1783,6 +1787,7 @@ export function analyzeJavaScriptTree(
     facts.electronSeen = electronSeen;
     facts.prefsCapped = prefsCapped;
     facts.bridgeCapped = bridgeCapped;
+    facts.ambientCapped = ambientCapped;
     facts.externals = Object.fromEntries(externals);
     facts.preloadScripts = [...preloadScripts];
     return facts;
