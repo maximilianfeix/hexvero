@@ -1,6 +1,6 @@
-# hexvero 0.7.1 on the hexvero corpus
+# hexvero 0.7.2 on the hexvero corpus
 
-Tool: name hexvero · version 0.7.1 · commit c01e8a0+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.7.2 · commit fb43fcd+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -82,7 +82,7 @@ Tool: name hexvero · version 0.7.1 · commit c01e8a0+uncommitted · node v25.2.
 | holdout2 | changes in storage | 1 | 1 | 0 | 0 |  |
 | holdout3 | IPC channels | 3 | 69 | 0 | 0 |  |
 | holdout3 | IPC senders and receivers | 3 | 138 | 3 | 0 |  |
-| holdout3 | window settings | 3 | 27 | 15 | 0 |  |
+| holdout3 | window settings | 3 | 33 | 9 | 0 |  |
 | holdout3 | bridge members | 3 | 78 | 0 | 0 |  |
 | holdout3 | bridge member channel | 3 | 78 | 0 | 0 |  |
 | holdout3 | endpoints | 3 | 18 | 3 | 0 |  |
@@ -324,7 +324,7 @@ Tool: name hexvero · version 0.7.1 · commit c01e8a0+uncommitted · node v25.2.
 | holdout2 | holdout2/music-player.minified.asar | storage read/write/delete | 10 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | IPC channels | 23 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | IPC senders and receivers | 46 | 1 | 0 | download:progress: sender main.js missed |
-| holdout3 | holdout3/podcast-player.plain.asar | window settings | 9 | 5 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js webSecurity=false; not scored: 2 row(s) with other keys |
+| holdout3 | holdout3/podcast-player.plain.asar | window settings | 11 | 3 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js webSecurity=false; not scored: 3 row(s) with other keys |
 | holdout3 | holdout3/podcast-player.plain.asar | bridge members | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | bridge member channel | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
@@ -334,7 +334,7 @@ Tool: name hexvero · version 0.7.1 · commit c01e8a0+uncommitted · node v25.2.
 | holdout3 | holdout3/podcast-player.plain.asar | storage read/write/delete | 8 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | IPC channels | 23 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | IPC senders and receivers | 46 | 1 | 0 | download:progress: sender main.js missed |
-| holdout3 | holdout3/podcast-player.bundled.asar | window settings | 9 | 5 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js webSecurity=false; not scored: 2 row(s) with other keys |
+| holdout3 | holdout3/podcast-player.bundled.asar | window settings | 11 | 3 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js webSecurity=false; not scored: 3 row(s) with other keys |
 | holdout3 | holdout3/podcast-player.bundled.asar | bridge members | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | bridge member channel | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
@@ -344,7 +344,7 @@ Tool: name hexvero · version 0.7.1 · commit c01e8a0+uncommitted · node v25.2.
 | holdout3 | holdout3/podcast-player.bundled.asar | storage read/write/delete | 8 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | IPC channels | 23 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | IPC senders and receivers | 46 | 1 | 0 | download:progress: sender main.js missed |
-| holdout3 | holdout3/podcast-player.minified.asar | window settings | 9 | 5 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js webSecurity=false; not scored: 2 row(s) with other keys |
+| holdout3 | holdout3/podcast-player.minified.asar | window settings | 11 | 3 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js webSecurity=false; not scored: 3 row(s) with other keys |
 | holdout3 | holdout3/podcast-player.minified.asar | bridge members | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | bridge member channel | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
