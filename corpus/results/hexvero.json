@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.7.3",
-  "commit": "514345e",
+  "commit": "666c9b1+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -842,9 +842,9 @@
   {
    "set": "holdout4",
    "class": "window settings",
-   "hit": 36,
-   "missed": 12,
-   "false": 4,
+   "hit": 44,
+   "missed": 4,
+   "false": 0,
    "hedged": 0,
    "inputs": 3
   },
@@ -3593,22 +3593,10 @@
    "set": "holdout4",
    "input": "holdout4/kanban-board.plain.asar",
    "class": "window settings",
-   "hit": 8,
-   "missed": 8,
-   "false": 4,
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
    "notes": [
-    "missed main.js nodeIntegration=false",
-    "missed main.js sandbox=false",
-    "missed main.js webSecurity=true",
-    "missed main.js contextIsolation=true",
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "missed main.js sandbox=true",
-    "missed main.js webSecurity=false",
-    "false window-factory.js contextIsolation=true",
-    "false window-factory.js nodeIntegration=false",
-    "false window-factory.js sandbox=true",
-    "false window-factory.js webSecurity=true",
     "not scored: 1 row(s) with a computed value"
    ]
   },

@@ -72,7 +72,13 @@ type Env = Map<string, Val>;
 type Param =
   | { kind: "name"; name: string; fallback?: [number, number] }
   /** property -> local name; `defaults`: `{ sandbox = true }`, the default's tokens per local */
-  | { kind: "object"; props: Map<string, string>; defaults?: Map<string, [number, number]> }
+  | {
+      kind: "object";
+      props: Map<string, string>;
+      defaults?: Map<string, [number, number]>;
+      /** `{ a, ...more }`: the local that receives every other property of the argument. */
+      rest?: string;
+    }
   | { kind: "array"; names: Array<string | null> };
 
 interface FnDef {
@@ -539,6 +545,22 @@ export class ExpressionResolver {
       (this.is(start, "ident") && this.punct(start + 1, "=>"))
     )
       return this.arrowAt(start, env);
+    // `a ?? b`: b when a is undefined, a when a is known to be something else
+    for (let j = start; j < end; j++) {
+      const t = this.tokens[j]!;
+      if (t.type !== "punct") continue;
+      if ((t.value === "(" || t.value === "[" || t.value === "{") && this.match[j]! !== -1) {
+        j = this.match[j]!;
+        continue;
+      }
+      if (t.value === "?" || t.value === "||" || t.value === "&&") break;
+      if (t.value === "??") {
+        // operands at the same depth, as the parts of a `+` are
+        const left = this.evalRange(start, j, env, depth);
+        if (left?.kind === "undef") return this.evalRange(j + 1, end, env, depth);
+        return left;
+      }
+    }
     // split at top-level `+`; any other top-level operator makes the value unknown
     const parts: Array<[number, number]> = [];
     let from = start;
@@ -1011,6 +1033,16 @@ export class ExpressionResolver {
             v = this.evalRange(fallback[0], fallback[1], new Map(env), 1);
           if (v) env.set(local, v);
         }
+        // `...more`: the argument's other properties; nothing passed gives an empty object
+        if (p.rest) {
+          if (!passed || a?.kind === "undef") env.set(p.rest, { kind: "obj", props: new Map() });
+          else if (a?.kind === "obj")
+            env.set(p.rest, {
+              kind: "obj",
+              props: new Map([...a.props].filter(([key]) => !p.props.has(key))),
+              ...(a.open ? { open: true } : {}),
+            });
+        }
       } else if (a?.kind === "arr") {
         const elems = a.elems;
         p.names.forEach((n, j) => {
@@ -1267,8 +1299,14 @@ export class ExpressionResolver {
       else if (t.type === "punct" && t.value === "{") {
         const props = new Map<string, string>();
         const defaults = new Map<string, [number, number]>();
+        let rest: string | undefined;
         const m = this.match[k]!;
         for (let j = k + 1; j < m; j++) {
+          if (this.punct(j, "...") && this.is(j + 1, "ident")) {
+            rest = this.tokens[j + 1]!.value;
+            j++;
+            continue;
+          }
           if (!this.is(j, "ident")) continue;
           let local: string | null = null;
           if (this.punct(j + 1, ":") && this.is(j + 2, "ident")) {
@@ -1286,9 +1324,12 @@ export class ExpressionResolver {
             j = until - 1;
           }
         }
-        params.push(
-          defaults.size ? { kind: "object", props, defaults } : { kind: "object", props },
-        );
+        params.push({
+          kind: "object",
+          props,
+          ...(defaults.size ? { defaults } : {}),
+          ...(rest ? { rest } : {}),
+        });
       } else if (t.type === "punct" && t.value === "[") {
         const names: Array<string | null> = [];
         const m = this.match[k]!;
