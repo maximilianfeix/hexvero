@@ -1,7 +1,7 @@
 {
   "name": "hexvero",
   "version": "0.6.2",
-  "description": "The first look at a binary or app bundle: static, execution-free analysis with evidence. CLI, MCP server and web UI.",
+  "description": "Evidence-first software intelligence: inspect binaries and app bundles, trace Electron interfaces, compare builds, without running them. CLI, MCP server and web UI.",
   "keywords": [
     "apk",
     "asar",

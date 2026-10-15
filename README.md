@@ -19,7 +19,7 @@
 
 ---
 
-**A fast, local, evidence-backed first look at software, for developers and AI agents.**
+**Evidence-first software intelligence: inspect artifacts, trace interfaces, compare builds. Locally, without running them.**
 
 hexvero reads executables, Electron apps, APKs, archives, databases and network captures **without running them**. It tells you what the software contains, what it exposes, where each fact was read, how sure it is, and what it could not establish. One CLI, one MCP server for coding agents, one local web UI. Nothing leaves your machine.
 
@@ -91,7 +91,7 @@ main
 
 ```text
 $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar
-12 shared collection(s), 10 with differences
+13 shared collection(s), 11 with differences
   collection      added  removed  changed  unchanged
   --------------  -----  -------  -------  ---------
   findings        4      6        0        1
@@ -100,7 +100,12 @@ $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar
   webPreferences  0      0        2        2
   windows         0      0        1        0
   contextBridge   1      1        0        5
+  interfaces      1      1        0        5
   …
+  window settings that changed what pages may do (to review):
+      main.js::win nodeIntegrationInEffect: on → off (less permissive)
+      main.js::win sandboxInEffect: off → on (less permissive)
+  details: hexvero compare <a> <b> interfaces
 
 $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar webPreferences
 webPreferences: 0 added, 0 removed, 2 changed, 2 unchanged · matched by file+windowName+key
@@ -117,7 +122,9 @@ contextBridge: 1 added, 1 removed, 0 changed, 5 unchanged · matched by api+memb
   - notesdesk::openInShell
 ```
 
-Nothing is ignored by default; code that only moved in a native binary is counted as `relocated`. Windows are matched by the variable they are assigned to (`win`), so adding a window does not mis-pair the others. An item found on one side only is `added` or `removed` only if the other side read the file it sits in; otherwise it is `unknown` (`?`).
+The `interfaces` list joins each preload member to the windows that load it and to the main-process handler on its channel, with file and line, and says how the link was made (`direct`, `resolved`, or `unresolved`/`unknown` with the reason). Walkthroughs: [Electron interface map](docs/use-cases/electron-interface-map.md), [release interface diff](docs/use-cases/release-interface-diff.md).
+
+Nothing is ignored by default; code that only moved in a native binary is counted as `relocated`. Windows are matched by the variable they are assigned to (`win`), so adding a window does not mis-pair the others. An item found on one side only is `added` or `removed` only if the other side read the file it sits in and compared its whole list; otherwise it is `unknown` (`?`), with the reason.
 
 **3. Let an AI agent investigate.** `npx hexvero setup --apply` registers the MCP server with the coding agents it finds (Claude Code, Codex, Cursor, VS Code, and 14 more), and `npx hexvero setup --skill --apply` installs a skill that teaches the investigation loop. The agent then opens a target, reads a small first answer with suggested next calls, pages only the lists it needs, and cites `file:line` for each claim. Text inside the target is treated as data, never as instructions; a test plants such text in a target to check it. See [For AI agents](#for-ai-agents).
 
