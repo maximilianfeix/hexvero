@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.7.2",
-  "commit": "fb43fcd+uncommitted",
+  "version": "0.7.3",
+  "commit": "514345e",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -10703,6 +10703,930 @@
      "changed": [],
      "relocated": 8,
      "unchanged": 6
+    }
+   }
+  },
+  "holdout4/kanban-board.plain.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved",
+     "webpreferences_computed"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "activity:clear",
+      "senders": [
+       "preload-activity.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "activity:push",
+      "senders": [],
+      "receivers": [
+       "preload-activity.js"
+      ]
+     },
+     {
+      "channel": "import:cards",
+      "senders": [
+       "renderer-import.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "import:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload-activity.js",
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "allowRunningInsecureContent",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "lib/window-factory.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "lib/window-factory.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "lib/window-factory.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": true,
+      "file": "lib/window-factory.js"
+     },
+     {
+      "key": "sandbox",
+      "value": null,
+      "file": "lib/window-factory.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "feed",
+      "member": "onPush",
+      "channel": "activity:push"
+     },
+     {
+      "api": "feed",
+      "member": "clear",
+      "channel": "activity:clear"
+     },
+     {
+      "api": "feed",
+      "member": "locale",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "version",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "listBoards",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "moveCard",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "archiveBoard",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "onBoardChanged",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "collapseLane",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "expandLane",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "reorderLanes",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "loadPrefs",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "savePrefs",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "signIn",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "signOut",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "openImporter",
+      "channel": "import:open"
+     },
+     {
+      "api": "lattice",
+      "member": "onZoom",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "setZoom",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "create",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "rename",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "remove",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "linkPreview",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://graph.lattice.example/graphql",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://sync.lattice.example/health",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://events.lattice.example/v1/stream?since=${…}",
+      "kind": "event-source",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "http://templates.lattice.example/samples/trello-export.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     }
+    ],
+    "endpointsUnreadable": 3,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "activity.collapsed",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "lattice-offline",
+      "ops": []
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "lattice.filter",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "lattice.scrollTop",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout4/kanban-board.bundled.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved",
+     "window_options_unresolved",
+     "webpreferences_computed"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "activity:clear",
+      "senders": [
+       "preload-activity.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "activity:push",
+      "senders": [],
+      "receivers": [
+       "preload-activity.js"
+      ]
+     },
+     {
+      "channel": "import:cards",
+      "senders": [
+       "renderer-import.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "import:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload-activity.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": null,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "allowRunningInsecureContent",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "feed",
+      "member": "onPush",
+      "channel": "activity:push"
+     },
+     {
+      "api": "feed",
+      "member": "clear",
+      "channel": "activity:clear"
+     },
+     {
+      "api": "feed",
+      "member": "locale",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "version",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "listBoards",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "moveCard",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "archiveBoard",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "onBoardChanged",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "collapseLane",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "expandLane",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "reorderLanes",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "loadPrefs",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "savePrefs",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "signIn",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "signOut",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "openImporter",
+      "channel": "import:open"
+     },
+     {
+      "api": "lattice",
+      "member": "onZoom",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "setZoom",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "create",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "rename",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "remove",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "linkPreview",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://graph.lattice.example/graphql",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://sync.lattice.example/health",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://events.lattice.example/v1/stream?since=${…}",
+      "kind": "event-source",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "http://templates.lattice.example/samples/trello-export.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     }
+    ],
+    "endpointsUnreadable": 3,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "activity.collapsed",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "lattice-offline",
+      "ops": []
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "lattice.filter",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "lattice.scrollTop",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout4/kanban-board.minified.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved",
+     "window_options_unresolved",
+     "webpreferences_computed"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "activity:clear",
+      "senders": [
+       "preload-activity.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "activity:push",
+      "senders": [],
+      "receivers": [
+       "preload-activity.js"
+      ]
+     },
+     {
+      "channel": "import:cards",
+      "senders": [
+       "renderer-import.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "import:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload-activity.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": null,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "allowRunningInsecureContent",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "feed",
+      "member": "onPush",
+      "channel": "activity:push"
+     },
+     {
+      "api": "feed",
+      "member": "clear",
+      "channel": "activity:clear"
+     },
+     {
+      "api": "feed",
+      "member": "locale",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "version",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "listBoards",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "moveCard",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "archiveBoard",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "onBoardChanged",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "collapseLane",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "expandLane",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "reorderLanes",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "loadPrefs",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "savePrefs",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "signIn",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "signOut",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "openImporter",
+      "channel": "import:open"
+     },
+     {
+      "api": "lattice",
+      "member": "onZoom",
+      "channel": null
+     },
+     {
+      "api": "lattice",
+      "member": "setZoom",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "create",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "rename",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "remove",
+      "channel": null
+     },
+     {
+      "api": "cards",
+      "member": "linkPreview",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://graph.lattice.example/graphql",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://sync.lattice.example/health",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://events.lattice.example/v1/stream?since=${…}",
+      "kind": "event-source",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "http://templates.lattice.example/samples/trello-export.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "activity.collapsed",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "lattice-offline",
+      "ops": []
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "lattice.filter",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "lattice.scrollTop",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "compare:holdout4/kanban-board.plain.asar|holdout4/kanban-board-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "key": "channel",
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 4
+    },
+    "contextBridge": {
+     "key": "api+member",
+     "added": [
+      "lattice.exportBoard"
+     ],
+     "removed": [
+      "lattice.archiveBoard"
+     ],
+     "changed": [],
+     "relocated": 8,
+     "unchanged": 13
+    },
+    "interfaceLinks": {
+     "key": null,
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 0
+    },
+    "webPreferences": {
+     "key": "file+windowName+key",
+     "added": [],
+     "removed": [],
+     "changed": [
+      "sandbox: true -> false",
+      "allowRunningInsecureContent: true -> false"
+     ],
+     "relocated": 6,
+     "unchanged": 5
+    },
+    "endpoints": {
+     "key": "file+kind+value",
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 2,
+     "unchanged": 5
+    },
+    "storage": {
+     "key": "file+kind+value+op",
+     "added": [],
+     "removed": [
+      "sessionStorage lattice.scrollTop",
+      "sessionStorage lattice.scrollTop"
+     ],
+     "changed": [],
+     "relocated": 3,
+     "unchanged": 2
     }
    }
   },

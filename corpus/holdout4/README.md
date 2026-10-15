@@ -35,10 +35,10 @@ License: MIT, written for this corpus. The code is original and copies no real p
 
 ## Cases
 
-| Case                               | Sources                                                        | Inputs (`corpus/built/holdout4/`, not built yet)                                          |
-| ---------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `kanban-board` (kind `electron`)   | `kanban-board/src/`                                            | `kanban-board.plain.asar`, `kanban-board.bundled.asar`, `kanban-board.minified.asar`      |
-| `kanban-board-v2` (kind `compare`) | `kanban-board-v2/changes.json`, applied to `kanban-board/src/` | `kanban-board-v2.plain.asar`                                                              |
+| Case                               | Sources                                                        | Inputs (`corpus/built/holdout4/`, not built yet)                                     |
+| ---------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `kanban-board` (kind `electron`)   | `kanban-board/src/`                                            | `kanban-board.plain.asar`, `kanban-board.bundled.asar`, `kanban-board.minified.asar` |
+| `kanban-board-v2` (kind `compare`) | `kanban-board-v2/changes.json`, applied to `kanban-board/src/` | `kanban-board-v2.plain.asar`                                                         |
 
 **kanban-board** is "Lattice", a kanban board with a board window (`boardWindow`, preload
 `preload.js`, page `renderer.js`), an activity feed docked in it as a `BrowserView`
@@ -183,3 +183,31 @@ as stated here only. The bundles were not built, so `renderer-import.js` (which 
 | Tool | Version                                             |
 | ---- | --------------------------------------------------- |
 | node | v25.2.1 (for `node --check` and the scratch checks) |
+
+## Blind result
+
+Measured once at 09:05 CEST on 2026-10-15, with `main` at `806a6b5` (the analysis of hexvero
+0.7.3; the only later analyzer change touched `compare`), after the expectations were committed
+(`514345e`) and before any change was made because of this set. Totals over the plain, bundled
+and minified builds:
+
+| Class                                | Hit | Missed | False |
+| ------------------------------------ | --- | ------ | ----- |
+| IPC channels                         | 12  | 45     | 0     |
+| IPC senders and receivers            | 18  | 6      | 0     |
+| window settings                      | 36  | 12     | 4     |
+| bridge members                       | 66  | 0      | 0     |
+| bridge member channel                | 21  | 45     | 0     |
+| endpoints                            | 12  | 9      | 0     |
+| requests with an unknown URL shown   | 3   | 0      | 5     |
+| storage keys                         | 12  | 6      | 0     |
+| changes in ipcChannels (plain v1→v2) | 0   | 2      | 0     |
+| changes in contextBridge             | 2   | 0      | 0     |
+| changes in webPreferences            | 2   | 0      | 0     |
+| changes in endpoints                 | 0   | 1      | 0     |
+| changes in storage                   | 1   | 0      | 0     |
+
+The four false window settings are the defaults object of `lib/window-factory.js`, reported in
+that file without a window instead of as settings of the windows `main.js` creates through the
+factory. Channels built by `defineChannels(...)` were not read, which is most of the missed IPC
+channels and bridge channels. From this point on the set counts as a development set.
