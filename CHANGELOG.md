@@ -6,6 +6,12 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `compare … ipc` on two single JavaScript files (rows without `module`) matches calls by
+  `api+channel` with the line as a position, so a call that only moved is relocated, not removed
+  and added.
+
 ## [0.7.3] - 2026-10-15
 
 ### Accuracy

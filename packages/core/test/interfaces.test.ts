@@ -119,6 +119,13 @@ const ipcRows = (shift: number) => [
   { module: "main.js", api: "ipcMain.handle", channel: "b", line: 5 + shift },
 ];
 
+/** IPC rows of a single file: no `module`. */
+const singleFileRows = (shift: number) => [
+  { api: "ipcMain.on", channel: "a", line: 1 + shift },
+  { api: "ipcMain.handle", channel: "b", line: 5 + shift },
+  { api: "ipcMain.handle", channel: null, line: 7 + shift },
+];
+
 describe("comparing interface rows", () => {
   const options = { collection: "interfaces", positional: positionalFields("interfaces", []) };
 
@@ -137,6 +144,16 @@ describe("comparing interface rows", () => {
     const diff = compareItems(before, interfaceMap(gone, []), options);
     expect(diff.changed.map((c) => c.key)).toEqual(["preload.js::docs::open"]);
     expect(diff.changed[0]?.fields.map((f) => f.field)).toContain("link");
+  });
+
+  it("matches a single file's IPC calls that only moved, whose rows have no module", () => {
+    const diff = compareItems(singleFileRows(0), singleFileRows(4), {
+      collection: "ipc",
+      positional: positionalFields("ipc", []),
+    });
+    expect(diff.key).toBe("api+channel");
+    expect([diff.added, diff.removed, diff.changed]).toEqual([[], [], []]);
+    expect(diff.relocated).toBe(3);
   });
 
   it("matches IPC calls that only moved instead of reporting them removed and added", () => {

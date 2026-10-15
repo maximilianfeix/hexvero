@@ -188,7 +188,11 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   columns: [["table", "name"]],
   // The same call may occur twice in a file; those repeats are matched as a multiset, and the
   // line is a position (below), so a call that only moved is not reported as removed and added.
-  ipc: [["module", "api", "channel"]],
+  // A single file's rows have no `module`: the API and the channel are the identity there.
+  ipc: [
+    ["module", "api", "channel"],
+    ["api", "channel"],
+  ],
   // A file may configure several windows. The variable a window is assigned to tells their
   // settings apart and stays the same when code moves or a window is added before it; the
   // window number is the fallback for an analysis without names.
