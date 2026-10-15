@@ -3,8 +3,8 @@
  * runs (and by several processes) without reading a file twice or losing one.
  *
  * The state is one JSON file per input, named after everything that decides what a scan reads:
- * the content of the input and the scanner's schema. A changed input therefore has a different
- * name and starts from nothing. The file is replaced atomically, so a run that is cancelled or
+ * the content of the input, the scanner's schema and the analyzer's version. A changed input, or
+ * another release of hexvero, therefore has a different name and starts from nothing. The file is replaced atomically, so a run that is cancelled or
  * crashes leaves the previous complete state behind, never half of a new one.
  */
 import { createHash } from "node:crypto";
@@ -12,13 +12,18 @@ import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:
 import { join } from "node:path";
 import { cacheRoot, ensurePrivateDir, pruneCacheSoon } from "../cache.js";
 import type { TargetInfo } from "../model.js";
+import { CORE_VERSION } from "../version.js";
 import { JS_SCAN_SCHEMA, type FileTree, type JsScanFacts } from "./app.js";
 
 const root = (): string => join(cacheRoot(), "scans");
 
 /** Identity of the input for scan purposes; null when it cannot be established. */
 export function scanKey(info: TargetInfo, tree: FileTree): string | null {
-  const digest = createHash("sha256").update(`scan\u0000${JS_SCAN_SCHEMA}\u0000`);
+  // The version is part of the name: a scan stored by another release of the analyzer was read
+  // by other code, so after an upgrade the input is read again instead of showing old results.
+  const digest = createHash("sha256").update(
+    `scan\u0000${JS_SCAN_SCHEMA}\u0000${CORE_VERSION}\u0000`,
+  );
   if (tree.kind === "asar") {
     if (!info.sha256) return null;
     digest.update(info.sha256);

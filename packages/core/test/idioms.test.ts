@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeJavaScriptTree, asarTree } from "../src/javascript/app.js";
+import { analyzeJavaScriptTree, asarTree, bridgeMembers } from "../src/javascript/app.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 /** Analysis of an app made of these files; `package.json` is added. */
@@ -115,5 +115,24 @@ describe("idioms of channel and bridge definitions", () => {
         "download:cancel",
       ]);
     }
+  });
+
+  it("does not take a loop variable or a reused short name for another object of the file", () => {
+    const loop = bridgeMembers(
+      'var n={__SENTRY__:{},sentry_key:"k"};function f(e,u){for(let[t,n]of Object.entries(u))e.contextBridge.exposeInMainWorld(t,n)}',
+      "p.js",
+    );
+    expect(loop.members.map((m) => `${m.api}.${m.member}`)).toEqual(["[t].null"]);
+    const reused = bridgeMembers(
+      'function a(){var c={x:1};return c}var c=compute(process.argv);contextBridge.exposeInMainWorld("flag",c);',
+      "p.js",
+    );
+    expect(reused.members.map((m) => `${m.api}.${m.member}`)).toEqual(["flag.null"]);
+    // Declared once, the object is still followed.
+    const once = bridgeMembers(
+      'const api={open(){}};contextBridge.exposeInMainWorld("app",api);',
+      "p.js",
+    );
+    expect(once.members.map((m) => `${m.api}.${m.member}`)).toEqual(["app.open"]);
   });
 });

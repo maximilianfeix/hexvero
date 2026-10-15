@@ -6,6 +6,19 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- False contextBridge members: an exposed value passed by name was followed to any object
+  declared under that name in the file. In minified code the name can be a loop variable
+  (`for (const [t, n] of Object.entries(u)) exposeInMainWorld(t, n)`) or a short name reused
+  in every function. Claude desktop showed 28 such members (Sentry fields such as `__SENTRY__`
+  and `sentry_key` under `[t]`). A name bound by the loop or function around the call, or declared
+  more than once in the file, is no longer followed; the row says the members could not be read.
+  No corpus row and no other real app changed.
+- A stored scan is named after the hexvero version too. Since 0.7.0 stores the whole scan of a
+  large app, an upgrade would otherwise have kept showing results read by the old version until
+  `--fresh`.
+
 ## [0.7.1] - 2026-10-15
 
 ### Accuracy

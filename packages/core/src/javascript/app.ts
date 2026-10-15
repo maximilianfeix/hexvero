@@ -748,7 +748,10 @@ export function bridgeMembers(
   const objectOf = (name: string): number => {
     if (!objects) {
       objects = new Map();
-      // `const api = {`, and in a declaration list (as minifiers write it) `, api = {`
+      // `const api = {`, and in a declaration list (as minifiers write it) `, api = {`. A name
+      // declared more than once in the file (any value; minifiers reuse short names in every
+      // function) is not followed: which of them the call sees is not decided here.
+      const declared = new Map<string, number>();
       for (let k = 0; k + 3 < tokens.length; k++) {
         const t = tokens[k]!;
         const declares =
@@ -756,11 +759,76 @@ export function bridgeMembers(
           (t.type === "punct" && t.value === ",");
         if (!declares) continue;
         const id = tokens[k + 1]!;
-        if (id.type === "ident" && is(k + 2, "=") && is(k + 3, "{") && !objects.has(id.value))
-          objects.set(id.value, k + 3);
+        if (id.type !== "ident" || !is(k + 2, "=")) continue;
+        declared.set(id.value, (declared.get(id.value) ?? 0) + 1);
+        if (is(k + 3, "{") && !objects.has(id.value)) objects.set(id.value, k + 3);
       }
+      for (const [id, count] of declared) if (count > 1) objects.delete(id);
     }
     return objects.get(name) ?? -1;
+  };
+  /** The opening bracket that matches the closing one at `close`, or -1. */
+  const openOf = (close: number): number => {
+    for (let d = 0, j = close; j >= 0 && j > close - 4000; j--) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === ")" || p.value === "]" || p.value === "}") d++;
+      else if (p.value === "(" || p.value === "[" || p.value === "{") {
+        d--;
+        if (d === 0) return j;
+      }
+    }
+    return -1;
+  };
+  const names = (from: number, to: number, name: string): boolean => {
+    for (let j = from; j < to; j++)
+      if (tokens[j]!.type === "ident" && tokens[j]!.value === name) return true;
+    return false;
+  };
+  /**
+   * Whether `name`, used by the call at token `call`, is bound by a loop or a function the call
+   * sits in: the header of a `for` right before the call's statement (`for (…) stmt`) or before a
+   * block around it, or the parameters of an enclosing function. Such a name is another binding
+   * than a declaration elsewhere in the file under the same name.
+   */
+  const boundLocally = (call: number, name: string): boolean => {
+    let sameStatement = true;
+    for (let j = call - 1; j >= 0 && j > call - 50_000; j--) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === ";") sameStatement = false;
+      else if (p.value === ")") {
+        const open = openOf(j);
+        if (open < 0) return false;
+        const before = tokens[open - 1];
+        if (
+          sameStatement &&
+          before?.type === "ident" &&
+          before.value === "for" &&
+          names(open, j, name)
+        )
+          return true;
+        j = open;
+      } else if (p.value === "]" || p.value === "}") {
+        const open = openOf(j);
+        if (open < 0) return false;
+        j = open;
+      } else if (p.value === "{") {
+        // The block around the call: a loop body or a function body when a header precedes it.
+        if (is(j - 1, "=>")) {
+          if (tokens[j - 2]?.type === "ident" && tokens[j - 2]!.value === name) return true;
+          if (is(j - 2, ")")) {
+            const open = openOf(j - 2);
+            if (open >= 0 && names(open, j - 2, name)) return true;
+          }
+        } else if (is(j - 1, ")")) {
+          const open = openOf(j - 1);
+          if (open >= 0 && names(open, j - 1, name)) return true;
+        }
+        sameStatement = false;
+      }
+    }
+    return false;
   };
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
@@ -864,6 +932,9 @@ export function bridgeMembers(
         return null;
       }
       if (is(k + 1, ")") || is(k + 1, ",")) {
+        // A loop variable or a parameter is not the object some other line declares under the
+        // same name: `for (const [t, n] of Object.entries(u)) exposeInMainWorld(t, n)`.
+        if (boundLocally(i, v.value)) return null;
         const named = objectOf(v.value);
         return named < 0 ? null : { opens: [named], next: k + 1 };
       }
