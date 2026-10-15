@@ -115,6 +115,39 @@ text, escape-heavy strings, long keys, thousands of fields and deep nesting
 - Engine-backed operations (call graphs, cross-references) are not in this table; their time is the
   engine's analysis time. On the example program, radare2 6.2 and rizin 0.9 answer in about 0.1 s.
 
+## Repeat runs on a large application (0.7.0)
+
+Measured 2026-10-15 on the same machine (Apple M2, Node 25.2.1) with an empty cache per run;
+wall times vary by about ±20 % between runs.
+
+| Command                                      | Wall time | Peak RSS |
+| -------------------------------------------- | --------- | -------- |
+| `analyze` Claude desktop `app.asar` (47 MiB) | 10.2 s    | 776 MB   |
+| the same again, 0.7.0 before the stored scan | 8.0 s     | 819 MB   |
+| the same again, with the stored scan (#115)  | 0.3–1.0 s | 179 MB   |
+| `compare` Claude vs Discord, overview        | 8.5 s     | 928 MB   |
+
+Cold and warm exports of six real Electron apps are byte-identical apart from timing fields.
+
+## Blind result on corpus/holdout3
+
+`corpus/holdout3` was written by an independent agent without access to hexvero's code or
+output. Its expectations were committed before any run, and hexvero 0.7.0 was scored once:
+
+| Class                 | 0.7.0, blind | 0.7.3 (holdout3 now a development set) |
+| --------------------- | ------------ | -------------------------------------- |
+| IPC channels          | 16 / 23      | 23 / 23                                |
+| senders and receivers | 24 / 33      | 46 / 47                                |
+| bridge members        | 0 / 26       | 26 / 26                                |
+| window settings       | 11 / 14 \*   | 14 / 14                                |
+| endpoints (false)     | 4 / 7 (2)    | 6 / 7 (0)                              |
+| storage keys          | 9 / 9        | 9 / 9                                  |
+| v1 → v2 changes       | 5 / 8        | 8 / 8                                  |
+
+\* Rescored with the corrected scorer; the scorer of that day reported 9 / 14 (see the set's
+README). The 0.7.3 column covers the plain, bundled and minified builds, which all score the
+same. The fixes came from this set, so the 0.7.3 column is not a blind number.
+
 ## Compared with REA 6.4.0
 
 The comparison is now run on the [corpus](../corpus/README.md), where the correct answers are
