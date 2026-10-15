@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https: wss:; img-src 'self' data:" />
+    <title>Driftwood</title>
+  </head>
+  <body>
+    <nav>
+      <button data-tab="shows">Shows</button>
+      <button data-tab="downloads">Downloads</button>
+      <button data-tab="discover">Discover</button>
+      <button id="help">Guide</button>
+    </nav>
+    <div id="alerts"></div>
+    <form id="search-form"><input id="search" /><button>Go</button></form>
+    <ul id="results"></ul>
+    <ul id="shows"></ul>
+    <button id="unsubscribe">Unsubscribe</button>
+    <ul id="episodes"></ul>
+    <ul id="downloads"></ul>
+    <ul id="directory"></ul>
+    <ul id="trending"></ul>
+    <label>Speed <select id="speed"><option>1</option><option>1.25</option><option>1.5</option><option>2</option></select></label>
+    <form id="feedback-form"><textarea id="feedback"></textarea><button>Send</button></form>
+    <footer id="now-playing">Nothing playing</footer>
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>

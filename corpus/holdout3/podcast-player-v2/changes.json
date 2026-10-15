@@ -1,0 +1,81 @@
+{
+  "from": "../podcast-player/src",
+  "why": "v2 is v1 with the fifteen listed edits; no comment lines are put in front of the files, so facts that no edit touches keep their lines unless an edit above them adds or removes lines. Edits 1 and 2 add the channel playback:skip (an ipcMain.on listener in main.js) and the mini player's bridge member skip. Edits 3 and 4 delete the member driftwood.markPlayed and the Map entry that registered episodes:mark-played; edit 5 deletes the page's only call of that member (a renderer change, not a difference). Edits 6 and 7 move the help:open listener from the end of registerIpc to its start, unchanged: the handler moves to another line only and must not be reported. Edit 8 turns the mini player's sandbox off (more permissive), edit 9 turns the help window's webSecurity on (more restrictive). Edits 10 and 11 add a GET request to the charts address of the API. Edits 12 to 15 delete every access of the localStorage key driftwood.lastSearch.",
+  "edits": [
+    {
+      "file": "main.js",
+      "find": "  ipcMain.on(\"playback:seek\", (_event, position) => playback.update({ position }));\n",
+      "replace": "  ipcMain.on(\"playback:seek\", (_event, position) => playback.update({ position }));\n  ipcMain.on(\"playback:skip\", (_event, seconds) =>\n    playback.update({ position: Math.max(0, playback.state.position + seconds) }),\n  );\n"
+    },
+    {
+      "file": "preload-player.js",
+      "find": "    seek: (position) => ipcRenderer.send(\"playback:seek\", position),\n",
+      "replace": "    seek: (position) => ipcRenderer.send(\"playback:seek\", position),\n    skip: (seconds) => ipcRenderer.send(\"playback:skip\", seconds),\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "  markPlayed: call(Episodes.MARK_PLAYED),\n",
+      "replace": ""
+    },
+    {
+      "file": "main.js",
+      "find": "  [Episodes.MARK_PLAYED, (_event, feedUrl, guid) => feeds.markPlayed(feedUrl, guid)],\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "  bridge.markPlayed(selectedShow, episode.guid);\n",
+      "replace": ""
+    },
+    {
+      "file": "main.js",
+      "find": "importOpml(file));\n\n  ipcMain.on(\"help:open\", () => {\n    try {\n      openHelp();\n    } catch (err) {\n      console.error(\"help:open failed\", err);\n    }\n  });\n}\n",
+      "replace": "importOpml(file));\n}\n"
+    },
+    {
+      "file": "main.js",
+      "find": "function registerIpc() {\n",
+      "replace": "function registerIpc() {\n  ipcMain.on(\"help:open\", () => {\n    try {\n      openHelp();\n    } catch (err) {\n      console.error(\"help:open failed\", err);\n    }\n  });\n\n"
+    },
+    {
+      "file": "main.js",
+      "find": "      preload: path.join(__dirname, \"preload-player.js\"),\n",
+      "replace": "      preload: path.join(__dirname, \"preload-player.js\"),\n      // The waveform view of 1.5 decodes audio with a Node module in the preload.\n      sandbox: false,\n"
+    },
+    {
+      "file": "main.js",
+      "find": "      // The guide still frames the old online docs, which send no CORS headers.\n      webSecurity: false,\n",
+      "replace": "      webSecurity: true,\n"
+    },
+    {
+      "file": "renderer.js",
+      "find": "async function sendFeedback(text) {\n",
+      "replace": "async function loadCharts() {\n  const res = await fetch(`${API}/charts`);\n  return res.ok ? (await res.json()).shows : [];\n}\n\nasync function sendFeedback(text) {\n"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  if (trending) $(\"#trending\").replaceChildren(...trending.map((s) => el(\"li\", { textContent: s.title })));\n",
+      "replace": "  if (trending) $(\"#trending\").replaceChildren(...trending.map((s) => el(\"li\", { textContent: s.title })));\n  const charts = await loadCharts();\n  $(\"#charts\")?.replaceChildren(...charts.map((s) => el(\"li\", { textContent: s.title })));\n"
+    },
+    {
+      "file": "renderer.js",
+      "find": "const LAST_SEARCH_KEY = \"driftwood.lastSearch\";\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "function restoreSearch() {\n  const last = localStorage.getItem(LAST_SEARCH_KEY);\n  if (last) $(\"#search\").value = last;\n}\n\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "  restoreSearch();\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "  localStorage.setItem(LAST_SEARCH_KEY, term);\n",
+      "replace": ""
+    }
+  ]
+}
