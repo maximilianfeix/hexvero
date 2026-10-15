@@ -108,3 +108,13 @@ text, if the owner wants to post it:
 
 The other five listings (doyensec #11, TensorBlock #3793, ReversingID #25, ccplugins #712,
 mcp.so #5400) were still PENDING at 07:45 with no comments. Stars: 3, forks: 0.
+| 08:15 | Release 0.7.1 | https://github.com/maximilianfeix/hexvero/releases/tag/v0.7.1 | holdout3 fixes, esbuild wrappers | PUBLISHED |
+| 08:31 | Release 0.7.2 | https://github.com/maximilianfeix/hexvero/releases/tag/v0.7.2 | false bridge members removed, stored scans keyed by version | PUBLISHED |
+| 08:49 | Release 0.7.3 | https://github.com/maximilianfeix/hexvero/releases/tag/v0.7.3 | window settings through Object.assign | PUBLISHED |
+| 09:26 | Release 0.7.4 | https://github.com/maximilianfeix/hexvero/releases/tag/v0.7.4 | factory windows, new URL templates | PUBLISHED |
+| 09:35 | Release 0.7.5 | https://github.com/maximilianfeix/hexvero/releases/tag/v0.7.5 | window bases from other modules | PUBLISHED |
+
+No X post for the patch releases: one post per release day, not one per patch. Listings at
+09:37: doyensec #11, TensorBlock #3793, ReversingID #25, ccplugins #712 and mcp.so #5400 still
+PENDING. sindresorhus/awesome-electron needs 100 stars and 30 days: NOT ATTEMPTED. Stars 3,
+forks 0. The npm downloads API still answers "package not found".

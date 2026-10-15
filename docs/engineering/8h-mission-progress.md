@@ -157,6 +157,42 @@ are unchanged, and holdout gained one correct sender.
   `llms.txt`.
 - An X post for 0.7.0 went out at 07:57: https://x.com/44errrr/status/2110610883516756308.
 
+## After 0.7.0 (07:58–09:36)
+
+Releases, all published to npm with provenance, as GitHub releases and to the MCP registry by
+the workflow:
+
+| Version | Time  | What                                                                                                                                                                 |
+| ------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.7.1   | 08:15 | holdout3 fixes (bridge `Object.freeze`/`Object.assign`, static class constants, spread re-exports, pair-list loops), esbuild wrappers and minified declaration lists |
+| 0.7.2   | 08:31 | 28 false bridge members on Claude removed (a loop variable and reused short names were followed to other objects); stored scans keyed by version                     |
+| 0.7.3   | 08:49 | `webPreferences: Object.assign(…)` and frozen bases; corpus scorer scores every key a case lists                                                                     |
+| 0.7.4   | 09:26 | windows from a factory of another module (rest parameters, `??`, no windowless duplicates); `new URL(template, base)`                                                |
+| 0.7.5   | 09:35 | window bases from other modules, applied at their level and place; `definedIn.line` is a position in `compare`                                                       |
+
+**Blind set holdout4** (kanban app; written by an independent agent; expectations committed at
+`514345e` before the run): scored once at 09:05 with the analysis of 0.7.3. Over the three builds:
+IPC channels 12/57, bridge member channels 21/66, window settings 36/48 with **4 false**, endpoints
+12/21, storage keys 12/18, bridge members 66/66; full table in `corpus/holdout4/README.md`.
+After 0.7.4 (now a development set): window settings 44/48 with 0 false, endpoints 15/21. Most of
+the missed channels come from `defineChannels("board", [...])`, a channel registry built by a
+loop with a regular-expression callback. hexvero does not evaluate that, and the channels stay
+unread without any false report.
+
+Current corpus totals (all development sets; false in parentheses):
+
+| Set      | IPC channels | Window settings | Bridge channels | Endpoints | Storage keys |
+| -------- | ------------ | --------------- | --------------- | --------- | ------------ |
+| holdout  | 64/72 (0)    | 27/33 (0)       | 40/60 (0)       | 36/42 (0) | 51/51 (0)    |
+| holdout2 | 118/126 (0)  | 48/63 (0)       | 113/129 (0)     | 54/57 (0) | 53/57 (0)    |
+| holdout3 | 69/69 (0)    | 42/42 (0)       | 78/78 (0)       | 18/21 (0) | 27/27 (0)    |
+| holdout4 | 12/57 (0)    | 44/48 (0)       | 21/66 (0)       | 15/21 (0) | 12/18 (0)    |
+
+Every change was checked against full exports of six real apps (Claude, Discord, Discord core,
+two Electron Fiddle builds, Electron API Demos). The only real-app changes in this phase were
+Claude's: 28 false bridge members removed, and 15 settings of two `WebContentsView`s read from
+the frozen base they come from (checked in the source).
+
 ## Scorecard
 
 | Area                    | Verdict | Evidence                                                                                                  |
@@ -171,9 +207,10 @@ are unchanged, and holdout gained one correct sender.
 
 ## Remaining
 
-1. A second independent blind set, now that holdout3 is a development set.
+1. A third independent blind set: holdout3 and holdout4 are development sets now.
 2. Static IPC through generated frameworks (Claude's `$eipc_message$_<uuid>_…`): read the
    generator's naming scheme where its parts are literals, or say clearly why a row is
    unresolved.
-3. The bundled and minified corpus builds should bundle every preload (`build.mjs` bundles only
-   `preload.js`). Without that, holdout3's second window is scored on the plain build only.
+3. Channel registries built by functions (`defineChannels(area, actions)`) and API clients whose
+   base URL comes from a factory closure (holdout4): evaluate pure helper functions with literal
+   arguments, bounded, or keep reporting them as unread.
