@@ -830,7 +830,10 @@ export function bridgeMembers(
             if (d === 0) return { opens: [k], next: e + 1 };
           }
         }
-        return null;
+        // An object that never closes, or a walk that ran out of budget: what it holds so far is
+        // read, and the result says it was cut (`next` -1: nothing follows).
+        truncated = true;
+        return { opens: [k], next: -1 };
       }
       if (v?.type !== "ident") return null;
       if (
@@ -842,6 +845,7 @@ export function bridgeMembers(
         const method = tokens[k + 2]!.value;
         if (method === "freeze" || method === "seal" || method === "preventExtensions") {
           const inner = valueOpens(k + 4, level + 1);
+          if (inner?.next === -1) return inner;
           return inner && is(inner.next, ")") ? { opens: inner.opens, next: inner.next + 1 } : null;
         }
         if (method === "assign") {
@@ -851,6 +855,7 @@ export function bridgeMembers(
             const part = valueOpens(e, level + 1);
             if (!part) return null;
             opens.push(...part.opens);
+            if (part.next === -1) return { opens, next: -1 };
             if (is(part.next, ")")) return { opens, next: part.next + 1 };
             if (!is(part.next, ",")) return null;
             e = part.next + 1;
@@ -867,7 +872,8 @@ export function bridgeMembers(
     const value = simple ? valueOpens(at + 2, 0) : null;
     // `exposeInMainWorld("api", value,)`: a trailing comma, as formatters write it.
     const opens =
-      value && (is(value.next, ")") || (is(value.next, ",") && is(value.next + 1, ")")))
+      value &&
+      (value.next === -1 || is(value.next, ")") || (is(value.next, ",") && is(value.next + 1, ")")))
         ? value.opens
         : null;
     if (!opens) {

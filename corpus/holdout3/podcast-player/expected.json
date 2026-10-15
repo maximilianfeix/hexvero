@@ -391,11 +391,21 @@
           "channel": null,
           "why": "a method of api that formats seconds; no IPC"
         },
-        { "api": "driftwood", "member": "listShows", "channel": "library:list", "why": "call(Library.LIST)" },
+        {
+          "api": "driftwood",
+          "member": "listShows",
+          "channel": "library:list",
+          "why": "call(Library.LIST)"
+        },
         { "api": "driftwood", "member": "subscribe", "channel": "library:subscribe" },
         { "api": "driftwood", "member": "unsubscribe", "channel": "library:unsubscribe" },
         { "api": "driftwood", "member": "refreshAll", "channel": "library:refresh" },
-        { "api": "driftwood", "member": "onLibraryChanged", "channel": "library:changed", "why": "through listen()" },
+        {
+          "api": "driftwood",
+          "member": "onLibraryChanged",
+          "channel": "library:changed",
+          "why": "through listen()"
+        },
         { "api": "driftwood", "member": "getSetting", "channel": "settings:get" },
         { "api": "driftwood", "member": "setSetting", "channel": "settings:set" },
         {
@@ -405,24 +415,54 @@
           "why": "listen(topics.alerts, listener): the channel name is received at run time and chosen at random by the main process (see the absent channel alerts.); the member exists, but no fixed channel can be named for it"
         },
         { "api": "driftwood", "member": "openHelp", "channel": "help:open" },
-        { "api": "driftwood", "member": "onMenuCommand", "channel": "menu:command", "why": "through listen()" },
+        {
+          "api": "driftwood",
+          "member": "onMenuCommand",
+          "channel": "menu:command",
+          "why": "through listen()"
+        },
         {
           "api": "driftwood",
           "member": "listEpisodes",
           "channel": "episodes:list",
           "why": "a member of episodesApi, copied into api by Object.assign(api, episodesApi) in the exposeInMainWorld call"
         },
-        { "api": "driftwood", "member": "markPlayed", "channel": "episodes:mark-played", "why": "from episodesApi" },
-        { "api": "driftwood", "member": "download", "channel": "download:start", "why": "from episodesApi" },
+        {
+          "api": "driftwood",
+          "member": "markPlayed",
+          "channel": "episodes:mark-played",
+          "why": "from episodesApi"
+        },
+        {
+          "api": "driftwood",
+          "member": "download",
+          "channel": "download:start",
+          "why": "from episodesApi"
+        },
         {
           "api": "driftwood",
           "member": "cancelDownload",
           "channel": "download:cancel",
           "why": "from episodesApi; call(`${DOWNLOAD_PREFIX}cancel`)"
         },
-        { "api": "driftwood", "member": "onDownloadProgress", "channel": "download:progress", "why": "from episodesApi, through listen()" },
-        { "api": "driftwood", "member": "play", "channel": "playback:play", "why": "from episodesApi" },
-        { "api": "driftwood", "member": "onPlaybackState", "channel": "playback:state", "why": "from episodesApi, through listen()" },
+        {
+          "api": "driftwood",
+          "member": "onDownloadProgress",
+          "channel": "download:progress",
+          "why": "from episodesApi, through listen()"
+        },
+        {
+          "api": "driftwood",
+          "member": "play",
+          "channel": "playback:play",
+          "why": "from episodesApi"
+        },
+        {
+          "api": "driftwood",
+          "member": "onPlaybackState",
+          "channel": "playback:state",
+          "why": "from episodesApi, through listen()"
+        },
         {
           "api": "player",
           "member": "toggle",
@@ -432,9 +472,24 @@
         { "api": "player", "member": "seek", "channel": "playback:seek" },
         { "api": "player", "member": "ready", "channel": "player:hello" },
         { "api": "player", "member": "close", "channel": "player:close" },
-        { "api": "player", "member": "nowPlaying", "channel": "player:now-playing", "why": "call(\"player:now-playing\")" },
-        { "api": "player", "member": "artwork", "channel": "player:artwork", "why": "call(\"player:artwork\")" },
-        { "api": "player", "member": "onState", "channel": "playback:state", "why": "a method that calls ipcRenderer.on directly" }
+        {
+          "api": "player",
+          "member": "nowPlaying",
+          "channel": "player:now-playing",
+          "why": "call(\"player:now-playing\")"
+        },
+        {
+          "api": "player",
+          "member": "artwork",
+          "channel": "player:artwork",
+          "why": "call(\"player:artwork\")"
+        },
+        {
+          "api": "player",
+          "member": "onState",
+          "channel": "playback:state",
+          "why": "a method that calls ipcRenderer.on directly"
+        }
       ],
       "absent": [
         {
@@ -601,95 +656,181 @@
     "interfaceLinks": {
       "exhaustive": true,
       "present": [
-        { "api": "driftwood", "member": "platform", "channel": null, "preload": "preload.js", "memberLine": 30, "ends": [], "resolvable": true, "why": "no IPC" },
-        { "api": "driftwood", "member": "formatDuration", "channel": null, "preload": "preload.js", "memberLine": 31, "ends": [], "resolvable": true, "why": "no IPC" },
         {
-          "api": "driftwood", "member": "listShows", "channel": "library:list", "preload": "preload.js", "memberLine": 37,
+          "api": "driftwood",
+          "member": "platform",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 30,
+          "ends": [],
+          "resolvable": true,
+          "why": "no IPC"
+        },
+        {
+          "api": "driftwood",
+          "member": "formatDuration",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 31,
+          "ends": [],
+          "resolvable": true,
+          "why": "no IPC"
+        },
+        {
+          "api": "driftwood",
+          "member": "listShows",
+          "channel": "library:list",
+          "preload": "preload.js",
+          "memberLine": 37,
           "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 277 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "subscribe", "channel": "library:subscribe", "preload": "preload.js", "memberLine": 38,
+          "api": "driftwood",
+          "member": "subscribe",
+          "channel": "library:subscribe",
+          "preload": "preload.js",
+          "memberLine": 38,
           "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 278 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "unsubscribe", "channel": "library:unsubscribe", "preload": "preload.js", "memberLine": 39,
+          "api": "driftwood",
+          "member": "unsubscribe",
+          "channel": "library:unsubscribe",
+          "preload": "preload.js",
+          "memberLine": 39,
           "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 279 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "refreshAll", "channel": "library:refresh", "preload": "preload.js", "memberLine": 40,
+          "api": "driftwood",
+          "member": "refreshAll",
+          "channel": "library:refresh",
+          "preload": "preload.js",
+          "memberLine": 40,
           "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 280 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "onLibraryChanged", "channel": "library:changed", "preload": "preload.js", "memberLine": 41,
+          "api": "driftwood",
+          "member": "onLibraryChanged",
+          "channel": "library:changed",
+          "preload": "preload.js",
+          "memberLine": 41,
           "ends": [{ "file": "main.js", "line": 146, "api": "webContents.send" }],
           "resolvable": true,
           "why": "FeedService.notify: this.#window.webContents.send(Library.CHANGED, ...)"
         },
         {
-          "api": "driftwood", "member": "getSetting", "channel": "settings:get", "preload": "preload.js", "memberLine": 42,
+          "api": "driftwood",
+          "member": "getSetting",
+          "channel": "settings:get",
+          "preload": "preload.js",
+          "memberLine": 42,
           "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 282 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "setSetting", "channel": "settings:set", "preload": "preload.js", "memberLine": 43,
+          "api": "driftwood",
+          "member": "setSetting",
+          "channel": "settings:set",
+          "preload": "preload.js",
+          "memberLine": 43,
           "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 283 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "onAlert", "channel": null, "preload": "preload.js", "memberLine": 44,
+          "api": "driftwood",
+          "member": "onAlert",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 44,
           "ends": [{ "file": "main.js", "line": 378, "api": "webContents.send" }],
           "resolvable": false,
           "why": "the channel is topics.alerts on both sides: `alerts.${crypto.randomBytes(4).toString(\"hex\")}` in main.js, handed to the preload at run time through ipcRenderer.sendSync(App.TOPICS) (main.js line 297 answers with event.returnValue = topics). The one end, libraryWindow?.webContents.send(topics.alerts, alert) in connectAlerts, is known by reading the program, not from the channel text: no static reading of the source gives the name"
         },
         {
-          "api": "driftwood", "member": "openHelp", "channel": "help:open", "preload": "preload.js", "memberLine": 45,
+          "api": "driftwood",
+          "member": "openHelp",
+          "channel": "help:open",
+          "preload": "preload.js",
+          "memberLine": 45,
           "ends": [{ "file": "main.js", "line": 325, "api": "ipcMain.on" }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "onMenuCommand", "channel": "menu:command", "preload": "preload.js", "memberLine": 46,
+          "api": "driftwood",
+          "member": "onMenuCommand",
+          "channel": "menu:command",
+          "preload": "preload.js",
+          "memberLine": 46,
           "ends": [{ "file": "main.js", "line": 338, "api": "webContents.send" }],
           "resolvable": true,
           "why": "sendCommand in buildMenu, the click of two menu items"
         },
         {
-          "api": "driftwood", "member": "listEpisodes", "channel": "episodes:list", "preload": "preload.js", "memberLine": 50,
+          "api": "driftwood",
+          "member": "listEpisodes",
+          "channel": "episodes:list",
+          "preload": "preload.js",
+          "memberLine": 50,
           "ends": [{ "file": "main.js", "line": 293, "api": "ipcMain.handle", "entryLine": 287 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "markPlayed", "channel": "episodes:mark-played", "preload": "preload.js", "memberLine": 51,
+          "api": "driftwood",
+          "member": "markPlayed",
+          "channel": "episodes:mark-played",
+          "preload": "preload.js",
+          "memberLine": 51,
           "ends": [{ "file": "main.js", "line": 293, "api": "ipcMain.handle", "entryLine": 288 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "download", "channel": "download:start", "preload": "preload.js", "memberLine": 52,
+          "api": "driftwood",
+          "member": "download",
+          "channel": "download:start",
+          "preload": "preload.js",
+          "memberLine": 52,
           "ends": [{ "file": "main.js", "line": 292, "api": "ipcMain.handle", "entryLine": 281 }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "cancelDownload", "channel": "download:cancel", "preload": "preload.js", "memberLine": 53,
+          "api": "driftwood",
+          "member": "cancelDownload",
+          "channel": "download:cancel",
+          "preload": "preload.js",
+          "memberLine": 53,
           "ends": [{ "file": "main.js", "line": 295, "api": "ipcMain.handle" }],
           "resolvable": true,
           "why": "a template on the constant prefix DOWNLOAD_PREFIX on both sides"
         },
         {
-          "api": "driftwood", "member": "onDownloadProgress", "channel": "download:progress", "preload": "preload.js", "memberLine": 54,
+          "api": "driftwood",
+          "member": "onDownloadProgress",
+          "channel": "download:progress",
+          "preload": "preload.js",
+          "memberLine": 54,
           "ends": [{ "file": "main.js", "line": 188, "api": "webContents.send" }],
           "resolvable": true,
           "why": "DownloadManager.#report: sender.send(Downloads.PROGRESS, progress), sender being the event.sender WebContents of the download:start request"
         },
         {
-          "api": "driftwood", "member": "play", "channel": "playback:play", "preload": "preload.js", "memberLine": 55,
+          "api": "driftwood",
+          "member": "play",
+          "channel": "playback:play",
+          "preload": "preload.js",
+          "memberLine": 55,
           "ends": [{ "file": "main.js", "line": 301, "api": "ipcMain.on" }],
           "resolvable": true
         },
         {
-          "api": "driftwood", "member": "onPlaybackState", "channel": "playback:state", "preload": "preload.js", "memberLine": 56,
+          "api": "driftwood",
+          "member": "onPlaybackState",
+          "channel": "playback:state",
+          "preload": "preload.js",
+          "memberLine": 56,
           "ends": [
             { "file": "main.js", "line": 203, "api": "webContents.send" },
             { "file": "main.js", "line": 310, "api": "event.reply" }
@@ -698,37 +839,65 @@
           "why": "both main-process calls on playback:state. At run time PlaybackHub.broadcast (line 203) reaches the library window, while event.reply (line 310) answers player:hello and therefore reaches only the mini player"
         },
         {
-          "api": "player", "member": "toggle", "channel": "playback:toggle", "preload": "preload-player.js", "memberLine": 12,
+          "api": "player",
+          "member": "toggle",
+          "channel": "playback:toggle",
+          "preload": "preload-player.js",
+          "memberLine": 12,
           "ends": [{ "file": "main.js", "line": 306, "api": "ipcMain.on" }],
           "resolvable": true
         },
         {
-          "api": "player", "member": "seek", "channel": "playback:seek", "preload": "preload-player.js", "memberLine": 13,
+          "api": "player",
+          "member": "seek",
+          "channel": "playback:seek",
+          "preload": "preload-player.js",
+          "memberLine": 13,
           "ends": [{ "file": "main.js", "line": 307, "api": "ipcMain.on" }],
           "resolvable": true
         },
         {
-          "api": "player", "member": "ready", "channel": "player:hello", "preload": "preload-player.js", "memberLine": 14,
+          "api": "player",
+          "member": "ready",
+          "channel": "player:hello",
+          "preload": "preload-player.js",
+          "memberLine": 14,
           "ends": [{ "file": "main.js", "line": 309, "api": "ipcMain.on" }],
           "resolvable": true
         },
         {
-          "api": "player", "member": "close", "channel": "player:close", "preload": "preload-player.js", "memberLine": 15,
+          "api": "player",
+          "member": "close",
+          "channel": "player:close",
+          "preload": "preload-player.js",
+          "memberLine": 15,
           "ends": [{ "file": "main.js", "line": 312, "api": "ipcMain.on" }],
           "resolvable": true
         },
         {
-          "api": "player", "member": "nowPlaying", "channel": "player:now-playing", "preload": "preload-player.js", "memberLine": 16,
+          "api": "player",
+          "member": "nowPlaying",
+          "channel": "player:now-playing",
+          "preload": "preload-player.js",
+          "memberLine": 16,
           "ends": [{ "file": "main.js", "line": 314, "api": "ipcMain.handle" }],
           "resolvable": true
         },
         {
-          "api": "player", "member": "artwork", "channel": "player:artwork", "preload": "preload-player.js", "memberLine": 17,
+          "api": "player",
+          "member": "artwork",
+          "channel": "player:artwork",
+          "preload": "preload-player.js",
+          "memberLine": 17,
           "ends": [{ "file": "main.js", "line": 315, "api": "ipcMain.handle" }],
           "resolvable": true
         },
         {
-          "api": "player", "member": "onState", "channel": "playback:state", "preload": "preload-player.js", "memberLine": 18,
+          "api": "player",
+          "member": "onState",
+          "channel": "playback:state",
+          "preload": "preload-player.js",
+          "memberLine": 18,
           "ends": [
             { "file": "main.js", "line": 203, "api": "webContents.send" },
             { "file": "main.js", "line": 310, "api": "event.reply" }
@@ -739,11 +908,17 @@
       ],
       "absent": [
         {
-          "api": null, "member": null, "file": "main.js", "line": 323,
+          "api": null,
+          "member": null,
+          "file": "main.js",
+          "line": 323,
           "why": "line 323 is a commented-out ipcMain.handle(Library.IMPORT_OPML, ...) (plain input only); it is the end of no member"
         },
         {
-          "api": "driftwood", "member": "onAlert", "file": "main.js", "line": 297,
+          "api": "driftwood",
+          "member": "onAlert",
+          "file": "main.js",
+          "line": 297,
           "why": "the app:topics listener hands the preload the name of the alert channel, but it is no end of onAlert: the preload calls it with sendSync at load time, not from a member"
         }
       ]

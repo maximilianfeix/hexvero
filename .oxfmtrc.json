@@ -15,6 +15,7 @@
     "corpus/holdout/verify/**",
     "corpus/holdout2/*/src/**",
     "corpus/holdout2/verify/**",
+    "corpus/holdout3/*/src/**",
     "corpus/compare/**"
   ]
 }
