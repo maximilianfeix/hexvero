@@ -245,4 +245,22 @@ describe("Session", () => {
     expect(doc.complete).toBe(false);
     expect(doc.incomplete).toEqual([...new Set(analysis.limitations.map((l) => l.code))]);
   });
+
+  it("lists window settings that changed what pages may do, with the direction of the change", async () => {
+    const examples = join(import.meta.dirname, "..", "..", "..", "examples");
+    const a = await session.open(join(examples, "notesdesk-1.4.0.asar"));
+    const b = await session.open(join(examples, "notesdesk-1.5.0.asar"));
+    const forward = await session.compareAll(a.id, b.id);
+    expect(forward.windowChanges).toContainEqual({
+      window: "main.js::win",
+      setting: "sandboxInEffect",
+      before: "off",
+      after: "on",
+      direction: "less permissive",
+    });
+    const back = await session.compareAll(b.id, a.id);
+    expect(back.windowChanges.map((w) => w.direction)).toEqual(
+      forward.windowChanges.map(() => "more permissive"),
+    );
+  });
 });

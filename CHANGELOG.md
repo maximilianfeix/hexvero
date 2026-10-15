@@ -18,6 +18,11 @@ All notable changes to hexvero are listed here. The format follows
   and handler are both read is linked to the right file. `compare` matches rows by
   `file+api+member` and treats lines, including the lines of the ends, as positions. Text tables
   show lists of places as `main.js:40 handle`.
+- The `compare` overview (CLI and MCP) lists window settings whose derived value changed what a
+  page may do: `nodeIntegrationInEffect`, `contextIsolationInEffect`, `sandboxInEffect` and
+  `pageRequire`, each marked more permissive, less permissive or unclear (`windowChanges`). They
+  are facts to review, not findings. The `details:` hint now points at `interfaces`,
+  `contextBridge`, `ipcChannels` or `windows` before other collections.
 
 - Exports state which analyzer produced them and whether they are whole: `generator`
   (`@hexvero/core` and its version), `complete` (false when the analysis recorded any limitation),

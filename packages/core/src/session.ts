@@ -62,7 +62,35 @@ export interface CompareAllResult {
   onlyB: string[];
   /** A JavaScript application read only in part: items in unread files are unknown, not gone. */
   partialScan: { a: boolean; b: boolean };
+  /**
+   * Windows present in both builds whose derived settings changed what their pages may do. A
+   * change here is a fact to review, not a finding: whether it matters depends on what the window
+   * loads.
+   */
+  windowChanges: WindowChange[];
 }
+
+export interface WindowChange {
+  /** `file::windowName`, as the windows comparison matches them. */
+  window: string;
+  setting:
+    | "nodeIntegrationInEffect"
+    | "contextIsolationInEffect"
+    | "sandboxInEffect"
+    | "pageRequire";
+  before: string;
+  after: string;
+  /** `unclear` when either side is unknown. */
+  direction: "more permissive" | "less permissive" | "unclear";
+}
+
+/** For each derived window setting, the values under which a page can do more. */
+const PERMISSIVE: Record<WindowChange["setting"], readonly string[]> = {
+  nodeIntegrationInEffect: ["on", "default on"],
+  contextIsolationInEffect: ["off", "default off"],
+  sandboxInEffect: ["off", "default off"],
+  pageRequire: ["yes", "yes by default"],
+};
 
 /** One collection of two targets compared, as `Session.compareCollection` returns it. */
 export interface CollectionDiff {
@@ -384,8 +412,34 @@ export class Session {
         ),
       });
     }
+    const windowChanges: WindowChange[] = [];
+    if (collections.some((c) => c.collection === "windows" && c.changed > 0)) {
+      const { diff } = await this.compareCollection(idA, idB, "windows");
+      for (const item of diff.changed)
+        for (const f of item.fields) {
+          if (!(f.field in PERMISSIVE)) continue;
+          const setting = f.field as WindowChange["setting"];
+          const [before, after] = [String(f.before), String(f.after)];
+          const open = (v: string): boolean => PERMISSIVE[setting].includes(v);
+          windowChanges.push({
+            window: item.key,
+            setting,
+            before,
+            after,
+            direction:
+              before === "unknown" || after === "unknown"
+                ? "unclear"
+                : open(after) && !open(before)
+                  ? "more permissive"
+                  : open(before) && !open(after)
+                    ? "less permissive"
+                    : "unclear",
+          });
+        }
+    }
     return {
       collections,
+      windowChanges,
       onlyA: Object.keys(countsA).filter((n) => hasItems(countsA, n) && !(n in countsB)),
       onlyB: Object.keys(countsB).filter((n) => hasItems(countsB, n) && !(n in countsA)),
       partialScan: { a: (await this.partial(idA)) !== null, b: (await this.partial(idB)) !== null },

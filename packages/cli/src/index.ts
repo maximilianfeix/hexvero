@@ -388,6 +388,15 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           io.out(row);
         if (all.onlyA.length) io.out(paint(io, "dim", `  only in a: ${all.onlyA.join(", ")}`));
         if (all.onlyB.length) io.out(paint(io, "dim", `  only in b: ${all.onlyB.join(", ")}`));
+        if (all.windowChanges.length) {
+          io.out(
+            paint(io, "bold", "  window settings that changed what pages may do (to review):"),
+          );
+          for (const w of all.windowChanges)
+            io.out(
+              `    ${w.direction === "more permissive" ? paint(io, "yellow", "!") : " "} ${w.window} ${w.setting}: ${w.before} → ${w.after}${paint(io, "dim", ` (${w.direction})`)}`,
+            );
+        }
         if (all.collections.some((c) => c.partial))
           io.out(
             paint(io, "yellow", "  ! partial: only the first 2,000 items of a side were compared"),
@@ -400,8 +409,13 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
               "  ! a JavaScript app was read only in part; run analyze --all on both first",
             ),
           );
-        if (differing[0])
-          io.out(paint(io, "dim", `  details: hexvero compare <a> <b> ${differing[0].collection}`));
+        // Point at the interface first: what pages can call, then channels and windows.
+        const first =
+          ["interfaces", "contextBridge", "ipcChannels", "windows"]
+            .map((n) => differing.find((c) => c.collection === n))
+            .find(Boolean) ?? differing[0];
+        if (first)
+          io.out(paint(io, "dim", `  details: hexvero compare <a> <b> ${first.collection}`));
         return 0;
       }
       const name = need(2, "collection");

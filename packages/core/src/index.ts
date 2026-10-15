@@ -77,6 +77,7 @@ export {
   type CollectionDiff,
   type CompareCollectionOptions,
   type CompareAllResult,
+  type WindowChange,
 } from "./session.js";
 export {
   DEFAULT_PAGE_BYTES,
