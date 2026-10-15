@@ -1,6 +1,6 @@
-# hexvero 0.6.1 on the hexvero corpus
+# hexvero 0.7.0 on the hexvero corpus
 
-Tool: name hexvero · version 0.6.1 · commit 016983b+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.7.0 · commit b58f97d · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -80,6 +80,22 @@ Tool: name hexvero · version 0.6.1 · commit 016983b+uncommitted · node v25.2.
 | holdout2 | changes in webPreferences | 1 | 1 | 0 | 0 |  |
 | holdout2 | changes in endpoints | 1 | 4 | 0 | 0 |  |
 | holdout2 | changes in storage | 1 | 1 | 0 | 0 |  |
+| holdout3 | IPC channels | 1 | 16 | 7 | 0 |  |
+| holdout3 | IPC senders and receivers | 1 | 24 | 9 | 0 |  |
+| holdout3 | window settings | 1 | 9 | 5 | 0 |  |
+| holdout3 | bridge members | 1 | 0 | 26 | 0 |  |
+| holdout3 | bridge member channel | 1 | 0 | 0 | 0 |  |
+| holdout3 | endpoints | 1 | 4 | 3 | 2 |  |
+| holdout3 | endpoint method | 1 | 1 | 0 | 0 |  |
+| holdout3 | requests with an unknown URL shown | 1 | 2 | 0 | 0 |  |
+| holdout3 | storage keys | 1 | 9 | 0 | 0 |  |
+| holdout3 | storage read/write/delete | 1 | 8 | 0 | 0 |  |
+| holdout3 | changes in ipcChannels | 1 | 1 | 1 | 0 |  |
+| holdout3 | changes in contextBridge | 1 | 0 | 2 | 0 |  |
+| holdout3 | changes in interfaceLinks | 1 | 0 | 2 | 0 |  |
+| holdout3 | changes in webPreferences | 1 | 2 | 0 | 0 |  |
+| holdout3 | changes in endpoints | 1 | 1 | 0 | 0 |  |
+| holdout3 | changes in storage | 1 | 1 | 0 | 0 |  |
 | damaged | damaged input | 6 | 6 | 0 | 0 |  |
 
 ## Per input
@@ -306,6 +322,22 @@ Tool: name hexvero · version 0.6.1 · commit 016983b+uncommitted · node v25.2.
 | holdout2 | holdout2/music-player.minified.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
 | holdout2 | holdout2/music-player.minified.asar | storage keys | 11 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.minified.asar | storage read/write/delete | 10 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | IPC channels | 16 | 7 | 0 | missed library:list; missed library:subscribe; missed library:unsubscribe; missed library:refresh; missed library:changed; missed episodes:list; missed episodes:mark-played |
+| holdout3 | holdout3/podcast-player.plain.asar | IPC senders and receivers | 24 | 9 | 0 | download:start: receiver main.js missed; download:cancel: receiver main.js missed; download:progress: sender main.js missed; settings:get: receiver main.js missed; settings:set: receiver main.js missed; app:topics: receiver main.js missed; menu:command: sender main.js missed; playback:play: receiver main.js missed; playback:state: sender main.js missed |
+| holdout3 | holdout3/podcast-player.plain.asar | window settings | 9 | 5 | 0 | missed main.js webSecurity=true; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js webSecurity=false; not scored: 2 row(s) with other keys |
+| holdout3 | holdout3/podcast-player.plain.asar | bridge members | 0 | 26 | 0 | missed driftwood.platform; missed driftwood.formatDuration; missed driftwood.listShows; missed driftwood.subscribe; missed driftwood.unsubscribe; missed driftwood.refreshAll; missed driftwood.onLibraryChanged; missed driftwood.getSetting; missed driftwood.setSetting; missed driftwood.onAlert; missed driftwood.openHelp; missed driftwood.onMenuCommand; missed driftwood.listEpisodes; missed driftwood.markPlayed; missed driftwood.download; missed driftwood.cancelDownload; missed driftwood.onDownloadProgress; missed driftwood.play; missed driftwood.onPlaybackState; missed player.toggle; missed player.seek; missed player.ready; missed player.close; missed player.nowPlaying; missed player.artwork; missed player.onState; 2 entries reported as unreadable |
+| holdout3 | holdout3/podcast-player.plain.asar | bridge member channel | 0 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | endpoints | 4 | 3 | 2 | missed https://api.driftwood.example/v1/directory/top; missed https://img.driftwood.example/…; missed wss://push.driftwood.example/alerts…; false ${…}/${…}/600.jpg; false ${…}?client=${…} |
+| holdout3 | holdout3/podcast-player.plain.asar | endpoint method | 1 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | requests with an unknown URL shown | 2 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | storage keys | 9 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar | storage read/write/delete | 8 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in ipcChannels | 1 | 1 | 0 | missed -episodes:mark-played |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in contextBridge | 0 | 2 | 0 | missed +player.skip; missed -driftwood.markPlayed |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in interfaceLinks | 0 | 2 | 0 | missed +[object Object]; missed -[object Object] |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in webPreferences | 2 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in endpoints | 1 | 0 | 0 |  |
+| holdout3 | holdout3/podcast-player.plain.asar → holdout3/podcast-player-v2.plain.asar | changes in storage | 1 | 0 | 0 |  |
 | damaged | damaged/empty.asar | damaged input | 1 | 0 | 0 | error malformed |
 | damaged | damaged/header-cut.asar | damaged input | 1 | 0 | 0 | error malformed |
 | damaged | damaged/header-length-lies.asar | damaged input | 1 | 0 | 0 | error malformed |

@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.6.1",
-  "commit": "016983b+uncommitted",
+  "version": "0.7.0",
+  "commit": "b58f97d",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -9047,6 +9047,385 @@
       ]
      }
     ]
+   }
+  },
+  "holdout3/podcast-player.plain.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "context_bridge_members_unreadable",
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "app:topics",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "download:cancel",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "download:progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "download:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "help:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:command",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "playback:play",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "playback:seek",
+      "senders": [
+       "preload-player.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "playback:state",
+      "senders": [],
+      "receivers": [
+       "preload-player.js",
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "playback:toggle",
+      "senders": [
+       "preload-player.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:artwork",
+      "senders": [
+       "preload-player.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:close",
+      "senders": [
+       "preload-player.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:hello",
+      "senders": [
+       "preload-player.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "player:now-playing",
+      "senders": [
+       "preload-player.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload-player.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": true,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "player",
+      "member": null,
+      "channel": null
+     },
+     {
+      "api": "driftwood",
+      "member": null,
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "${…}/${…}/600.jpg",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "${…}?client=${…}",
+      "kind": "websocket",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.driftwood.example/v1/episodes/${…}/chapters",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.driftwood.example/v1/search?${…}",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.driftwood.example/v1/trending",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "literal"
+     },
+     {
+      "value": "https://api.driftwood.example/v1/feedback",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "storage": [
+     {
+      "kind": "electron-store",
+      "value": "windows.nodeIntegration",
+      "ops": [
+       "delete"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "subscriptions",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "player.bounds",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "directory",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "electron-store",
+      "value": "settings",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "player.volume",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "driftwood:view",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "driftwood.lastSearch",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "indexedDB",
+      "value": "driftwood-episodes",
+      "ops": []
+     }
+    ]
+   }
+  },
+  "compare:holdout3/podcast-player.plain.asar|holdout3/podcast-player-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "key": "channel",
+     "added": [
+      "playback:skip"
+     ],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 16
+    },
+    "contextBridge": {
+     "key": null,
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 1,
+     "unchanged": 1
+    },
+    "interfaceLinks": {
+     "key": null,
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 0
+    },
+    "webPreferences": {
+     "key": "file+windowName+key",
+     "added": [],
+     "removed": [],
+     "changed": [
+      "webSecurity: false -> true",
+      "sandbox: true -> false"
+     ],
+     "relocated": 3,
+     "unchanged": 6
+    },
+    "endpoints": {
+     "key": "file+kind+value",
+     "added": [
+      "https://api.driftwood.example/v1/charts"
+     ],
+     "removed": [],
+     "changed": [],
+     "relocated": 6,
+     "unchanged": 2
+    },
+    "storage": {
+     "key": "file+kind+value+op",
+     "added": [],
+     "removed": [
+      "localStorage driftwood.lastSearch",
+      "localStorage driftwood.lastSearch"
+     ],
+     "changed": [],
+     "relocated": 8,
+     "unchanged": 6
+    }
    }
   },
   "robust:damaged/empty.asar": {

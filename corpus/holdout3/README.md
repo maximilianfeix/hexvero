@@ -170,6 +170,32 @@ gives to the new fields (`window`, `interfaceLinks`, `windowChanges`, `unchanged
 
 ## Toolchain
 
-| Tool | Version                                            |
-| ---- | -------------------------------------------------- |
+| Tool | Version                                             |
+| ---- | --------------------------------------------------- |
 | node | v25.2.1 (for `node --check` and the scratch checks) |
+
+## Blind result
+
+Measured once, with hexvero 0.7.0 (commit `5c14125`), after the expectations were committed
+(`b58f97d`) and before any change was made because of this set. From then on this set counts as
+a development set.
+
+| Class                              | Hit | Missed | False |
+| ---------------------------------- | --- | ------ | ----- |
+| IPC channels                       | 16  | 7      | 0     |
+| IPC senders and receivers          | 24  | 9      | 0     |
+| window settings                    | 9   | 5      | 0     |
+| bridge members                     | 0   | 26     | 0     |
+| endpoints                          | 4   | 3      | 2     |
+| requests with an unknown URL shown | 2   | 0      | 0     |
+| storage keys                       | 9   | 0      | 0     |
+| storage read/write/delete          | 8   | 0      | 0     |
+| changes in ipcChannels (v1 → v2)   | 1   | 1      | 0     |
+| changes in contextBridge           | 0   | 2      | 0     |
+| changes in webPreferences          | 2   | 0      | 0     |
+| changes in endpoints               | 1   | 0      | 0     |
+| changes in storage                 | 1   | 0      | 0     |
+
+Only `podcast-player.plain.asar` is scored. The bundled and minified builds leave out the second
+preload, because `build.mjs` bundles `preload.js` only. `interfaceLinks` is not scored by
+`corpus/score.mjs`. No member was read, so the interface map had nothing to link.
