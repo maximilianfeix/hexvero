@@ -426,8 +426,18 @@
           "channel": "card:create",
           "why": "preload.js: exposeInMainWorld(\"cards\", { create: cardRemote.create, ... }); reading cardRemote.create runs the Proxy's get trap at expose time, which returns a function invoking card[\"create\"]"
         },
-        { "api": "cards", "member": "rename", "channel": "card:rename", "why": "cardRemote.rename through the Proxy" },
-        { "api": "cards", "member": "remove", "channel": "card:remove", "why": "cardRemote.remove through the Proxy" },
+        {
+          "api": "cards",
+          "member": "rename",
+          "channel": "card:rename",
+          "why": "cardRemote.rename through the Proxy"
+        },
+        {
+          "api": "cards",
+          "member": "remove",
+          "channel": "card:remove",
+          "why": "cardRemote.remove through the Proxy"
+        },
         {
           "api": "cards",
           "member": "linkPreview",
