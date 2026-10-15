@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-15
+
 ### Accuracy
 
 - A new blind set, `corpus/holdout3` (a podcast app with two preloads in two windows, written
