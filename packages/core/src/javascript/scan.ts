@@ -542,6 +542,22 @@ export function scanJavaScript(
     }
     return [];
   };
+  /**
+   * For `for (const [name, …] of T)` shortly before token k: the first elements of the pairs of
+   * the list T, resolved. Empty when T is no list of pairs declared in this file.
+   */
+  const pairList = (k: number, name: string): ReturnType<Constants["pairFirsts"]> => {
+    for (let j = k - 1; j >= 4 && j > k - 40; j--)
+      if (
+        is(j, "ident") &&
+        is(j + 1, "punct", ")") &&
+        is(j - 1, "ident", "of") &&
+        is(j - 2, "punct", "]") &&
+        firstOfPattern(j - 2) === name
+      )
+        return constants.pairFirsts(at(j)!.value, j);
+    return [];
+  };
   /** The first name of the array pattern that closes at `close`: `[id, fn]` gives `id`. */
   const firstOfPattern = (close: number): string | null => {
     for (let j = close - 1; j >= 0 && j > close - 12; j--)
@@ -594,12 +610,17 @@ export function scanJavaScript(
         is(m + 5, "punct", "(");
       if (!direct && !viaSender) continue;
       const named = channelAt(m + (direct ? 4 : 6));
+      const api = direct ? "event.reply" : "event.sender.send";
       if (named && "value" in named)
         ipc.push({
-          api: direct ? "event.reply" : "event.sender.send",
+          api,
           channel: named.value,
           line: at(m)!.line,
+          ...(named.via === "constant" ? { via: "constant" as const } : {}),
         });
+      // A channel named by another module's constant, looked up once that module is read.
+      else if (named && "ref" in named)
+        ipc.push({ api, channel: null, line: at(m)!.line, channelRef: named.ref });
     }
   };
 
@@ -709,9 +730,20 @@ export function scanJavaScript(
           named === null && is(k + 4, "ident") && is(k + 5, "punct", ",")
             ? tableKeys(k, at(k + 4)!.value)
             : [];
+        const pairs =
+          named === null && keys.length === 0 && is(k + 4, "ident") && is(k + 5, "punct", ",")
+            ? pairList(k, at(k + 4)!.value)
+            : [];
         if (keys.length)
           for (const channel of keys) ipc.push({ api, channel, line: t.line, via: "table" });
-        else {
+        else if (pairs.some((p) => p !== null)) {
+          // One registration per pair; a pair whose name cannot be read stays a call without one.
+          for (const p of pairs)
+            if (p && "value" in p) ipc.push({ api, channel: p.value, line: t.line, via: "table" });
+            else if (p && "ref" in p)
+              ipc.push({ api, channel: null, line: t.line, via: "table", channelRef: p.ref });
+          if (pairs.includes(null)) ipc.push(usage);
+        } else {
           ipc.push(usage);
           if (named === null) open.push({ usage, at: k + 4 });
         }

@@ -6,6 +6,30 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- A new blind set, `corpus/holdout3` (a podcast app with two preloads in two windows, written
+  by an independent agent without access to hexvero's code or output), was scored once with
+  0.7.0 before any change: IPC channels 16/23, senders and receivers 24/33, window settings 9/14,
+  bridge members **0/26**, endpoints 4/7 with 2 false, storage 9/9; all of it is in
+  `corpus/holdout3/README.md`. The fixes below came from it, so holdout3 is now a development
+  set: channels 23/23, senders and receivers 46/47, bridge members 26/26 with every channel,
+  endpoints 6/7 with 0 false, v1 → v2 changes 8/8. 23 of 26 interface rows link to the exact
+  file and line, 1 is `unknown` (a sender passed in as a parameter), 2 that had one of two ends
+  now have both; no false end.
+- contextBridge values built as `Object.freeze({…})`, `Object.seal`, `Object.preventExtensions`
+  or `Object.assign(a, b, …)` of objects of the same file, and a trailing comma after the value.
+- Channel constants as static string fields of a class (`class Library { static LIST = "…" }`).
+- `module.exports = { ...channels }` and `{ ...require("./x") }` pass every export of that
+  module on, like `export * from`.
+- Handlers registered in a loop over a list of pairs or a `Map`
+  (`for (const [ch, fn] of routes) ipcMain.handle(ch, fn)`), also with channel names from
+  another module.
+- `event.reply(CONSTANT, …)` and `event.sender.send(…)` with a constant or another module's
+  constant. Holdout time-tracker: one more sender found (`sync:progress`).
+- Real applications (Claude, Discord, Discord core, two Electron Fiddle builds, Electron API
+  Demos) are unchanged.
+
 ## [0.7.0] - 2026-10-15
 
 ### Performance

@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.7.0",
-  "commit": "b58f97d",
+  "commit": "3057f4b+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -4671,7 +4671,9 @@
      },
      {
       "channel": "sync:progress",
-      "senders": [],
+      "senders": [
+       "main.js"
+      ],
       "receivers": [
        "preload.js"
       ]
@@ -9053,7 +9055,6 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
      "window_options_unresolved"
     ],
@@ -9063,14 +9064,18 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "download:cancel",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "download:progress",
@@ -9084,7 +9089,27 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "episodes:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "episodes:mark-played",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "help:open",
@@ -9096,8 +9121,55 @@
       ]
      },
      {
+      "channel": "library:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "library:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:refresh",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:subscribe",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:unsubscribe",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "menu:command",
-      "senders": [],
+      "senders": [
+       "main.js"
+      ],
       "receivers": [
        "preload.js"
       ]
@@ -9107,7 +9179,9 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "playback:seek",
@@ -9120,7 +9194,9 @@
      },
      {
       "channel": "playback:state",
-      "senders": [],
+      "senders": [
+       "main.js"
+      ],
       "receivers": [
        "preload-player.js",
        "preload.js"
@@ -9176,14 +9252,18 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:set",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      }
     ],
     "webPreferences": [
@@ -9246,24 +9326,144 @@
     "contextBridge": [
      {
       "api": "player",
-      "member": null,
+      "member": "toggle",
+      "channel": "playback:toggle"
+     },
+     {
+      "api": "player",
+      "member": "seek",
+      "channel": "playback:seek"
+     },
+     {
+      "api": "player",
+      "member": "ready",
+      "channel": "player:hello"
+     },
+     {
+      "api": "player",
+      "member": "close",
+      "channel": "player:close"
+     },
+     {
+      "api": "player",
+      "member": "nowPlaying",
+      "channel": "player:now-playing"
+     },
+     {
+      "api": "player",
+      "member": "artwork",
+      "channel": "player:artwork"
+     },
+     {
+      "api": "player",
+      "member": "onState",
+      "channel": "playback:state"
+     },
+     {
+      "api": "driftwood",
+      "member": "platform",
       "channel": null
      },
      {
       "api": "driftwood",
-      "member": null,
+      "member": "formatDuration",
       "channel": null
+     },
+     {
+      "api": "driftwood",
+      "member": "listShows",
+      "channel": "library:list"
+     },
+     {
+      "api": "driftwood",
+      "member": "subscribe",
+      "channel": "library:subscribe"
+     },
+     {
+      "api": "driftwood",
+      "member": "unsubscribe",
+      "channel": "library:unsubscribe"
+     },
+     {
+      "api": "driftwood",
+      "member": "refreshAll",
+      "channel": "library:refresh"
+     },
+     {
+      "api": "driftwood",
+      "member": "onLibraryChanged",
+      "channel": "library:changed"
+     },
+     {
+      "api": "driftwood",
+      "member": "getSetting",
+      "channel": "settings:get"
+     },
+     {
+      "api": "driftwood",
+      "member": "setSetting",
+      "channel": "settings:set"
+     },
+     {
+      "api": "driftwood",
+      "member": "onAlert",
+      "channel": null
+     },
+     {
+      "api": "driftwood",
+      "member": "openHelp",
+      "channel": "help:open"
+     },
+     {
+      "api": "driftwood",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "driftwood",
+      "member": "listEpisodes",
+      "channel": "episodes:list"
+     },
+     {
+      "api": "driftwood",
+      "member": "markPlayed",
+      "channel": "episodes:mark-played"
+     },
+     {
+      "api": "driftwood",
+      "member": "download",
+      "channel": "download:start"
+     },
+     {
+      "api": "driftwood",
+      "member": "cancelDownload",
+      "channel": "download:cancel"
+     },
+     {
+      "api": "driftwood",
+      "member": "onDownloadProgress",
+      "channel": "download:progress"
+     },
+     {
+      "api": "driftwood",
+      "member": "play",
+      "channel": "playback:play"
+     },
+     {
+      "api": "driftwood",
+      "member": "onPlaybackState",
+      "channel": "playback:state"
      }
     ],
     "endpoints": [
      {
-      "value": "${…}/${…}/600.jpg",
+      "value": "https://img.driftwood.example/${…}/600.jpg",
       "kind": "fetch",
       "method": null,
       "evidence": "template"
      },
      {
-      "value": "${…}?client=${…}",
+      "value": "wss://push.driftwood.example/alerts?client=${…}",
       "kind": "websocket",
       "method": null,
       "evidence": "template"
@@ -9373,18 +9573,24 @@
      "added": [
       "playback:skip"
      ],
-     "removed": [],
+     "removed": [
+      "episodes:mark-played"
+     ],
      "changed": [],
      "relocated": 0,
-     "unchanged": 16
+     "unchanged": 22
     },
     "contextBridge": {
-     "key": null,
-     "added": [],
-     "removed": [],
+     "key": "api+member",
+     "added": [
+      "player.skip"
+     ],
+     "removed": [
+      "driftwood.markPlayed"
+     ],
      "changed": [],
-     "relocated": 1,
-     "unchanged": 1
+     "relocated": 10,
+     "unchanged": 15
     },
     "interfaceLinks": {
      "key": null,
