@@ -895,7 +895,9 @@ export class ExpressionResolver {
       if (value.props.has(property)) return value.props.get(property) ?? null;
       return value.open ? null : { kind: "undef" };
     }
-    if (value.kind === "ns") return value.resolver.exportValue(property, MAX_DEPTH - 2);
+    // Room for the export's own name to be followed to its declaration and through a wrapper
+    // such as `Object.freeze(…)`: `module.exports = { secureDefaults }`.
+    if (value.kind === "ns") return value.resolver.exportValue(property, MAX_DEPTH - 4);
     if (value.kind === "nsref" && this.reference)
       return { kind: "str", values: [this.reference(value.specifier, property)] };
     if (value.kind === "cjs") return this.wrappedExport(value, property);

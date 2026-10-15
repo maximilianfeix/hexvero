@@ -357,6 +357,32 @@ interface WindowRanges {
    * the window may be replaced by it. A key the code writes after that place stands.
    */
   opaque: Map<number, number>;
+  /**
+   * Bases that are a member of another module (`windowConfig.secureDefaults` with
+   * `windowConfig = require("./config/windows")`), applied at a place of a window's options.
+   * They are looked up once every module is known; until then nothing is claimed for them.
+   */
+  externals: ExternalBase[];
+  /** Every place per window where something unreadable was applied (`opaque` is the last). */
+  hides: Map<number, number[]>;
+}
+
+/** One argument of `Object.assign(…)` as window options: an object of this file, or another module's. */
+interface PlanStep {
+  open: number;
+  at: number;
+  follow: string | null;
+  external?: { specifier: string; property: string; expr: number };
+}
+
+/** A window base exported by another module, applied at `at` (a source offset). */
+interface ExternalBase {
+  window: number;
+  at: number;
+  /** Source offset of the expression (`windowConfig.secureDefaults`), to evaluate it later. */
+  expr: number;
+  specifier: string;
+  property: string;
 }
 
 function windowRanges(
@@ -364,6 +390,8 @@ function windowRanges(
   aliases: Map<number, string>,
   /** Built on first use: reads a factory's parameter from the arguments at its call sites. */
   resolver: () => ExpressionResolver,
+  /** For `X.prop` at token k with `X = require("…")`: the module and the member; else null. */
+  externalOf: (k: number) => { specifier: string; property: string } | null = () => null,
 ): WindowRanges {
   const traced = new Set<string>();
   const viaName = new Set<number>();
@@ -372,8 +400,30 @@ function windowRanges(
     if (window !== null) viaName.add(window);
   };
   const opaque = new Map<number, number>();
+  /** Every place something unreadable was applied, per window; `opaque` holds the last one. */
+  const hides = new Map<number, number[]>();
   const hide = (window: number | null, upTo: number): void => {
-    if (window !== null) opaque.set(window, Math.max(opaque.get(window) ?? -1, upTo));
+    if (window === null) return;
+    opaque.set(window, Math.max(opaque.get(window) ?? -1, upTo));
+    const list = hides.get(window) ?? [];
+    if (list.length < 200) list.push(upTo);
+    hides.set(window, list);
+  };
+  const externals: ExternalBase[] = [];
+  /** `X.prop` at k, as a whole argument or spread operand: recorded instead of hidden. */
+  const external = (
+    k: number,
+    window: number | null,
+    at: number,
+    given?: { specifier: string; property: string; expr: number },
+  ): boolean => {
+    if (window === null) return false;
+    const ref = given ?? (k >= 0 ? externalOf(k) : null);
+    if (!ref || externals.length >= 200) return false;
+    externals.push({ window, at, expr: given ? given.expr : tokens[k]!.start, ...ref });
+    // Unread until every module is known: hidden like an unknown spread for now.
+    hide(window, at);
+    return true;
   };
   const ranges: WindowRange[] = [];
   const is = (i: number, value: string): boolean =>
@@ -436,6 +486,10 @@ function windowRanges(
     const plan = assignPlan(name, depth);
     if (!plan) return false;
     for (const step of plan) {
+      if (step.external) {
+        if (window === null || !external(-1, window, step.at, step.external)) hide(window, step.at);
+        continue;
+      }
       if (step.follow) follow(step.follow, window);
       add(step.open, window, true, depth + 1, step.at);
     }
@@ -443,24 +497,18 @@ function windowRanges(
     return true;
   };
   /** What `name = Object.assign(…)` applies, in order; null when an argument cannot be read. */
-  const assignPlan = (
-    name: string,
-    depth: number,
-  ): Array<{ open: number; at: number; follow: string | null }> | null => {
+  const assignPlan = (name: string, depth: number): PlanStep[] | null => {
     objectOf(name);
     const open = assigned?.get(name);
     if (open === undefined) return null;
     return planOfCall(open, depth);
   };
   /** The steps of the `Object.assign(…)` call whose `(` is at `open`; null when one is unreadable. */
-  const planOfCall = (
-    open: number,
-    depth: number,
-  ): Array<{ open: number; at: number; follow: string | null }> | null => {
+  const planOfCall = (open: number, depth: number): PlanStep[] | null => {
     if (depth > 3) return null;
     const end = close(open);
     if (end === -1) return null;
-    const plan: Array<{ open: number; at: number; follow: string | null }> = [];
+    const plan: PlanStep[] = [];
     let from = open + 1;
     while (from < end) {
       let to = from;
@@ -476,6 +524,19 @@ function windowRanges(
       // enclosing object or block, one after the other.
       const at = first.start - 1;
       if (is(from, "{") && close(from) === to - 1) plan.push({ open: from, at, follow: null });
+      else if (
+        first.type === "ident" &&
+        to === from + 3 &&
+        is(from + 1, ".") &&
+        tokens[from + 2]?.type === "ident" &&
+        externalOf(from)
+      )
+        plan.push({
+          open: -1,
+          at,
+          follow: null,
+          external: { ...externalOf(from)!, expr: first.start },
+        });
       else if (first.type === "ident" && to === from + 1) {
         const base = objectOf(first.value);
         if (base !== -1) plan.push({ open: base, at, follow: first.value });
@@ -600,7 +661,13 @@ function windowRanges(
           add(base, window, true, depth + 1, at ?? t.start);
         } else if (
           !(simple && !is(k + 2, "(") && assignedTo(next!.value, window, depth)) &&
-          !(simple && !is(k + 2, "(") && passedTo(k + 1, window, depth, at ?? t.start))
+          !(simple && !is(k + 2, "(") && passedTo(k + 1, window, depth, at ?? t.start)) &&
+          !(
+            next?.type === "ident" &&
+            is(k + 2, ".") &&
+            (is(k + 4, ",") || is(k + 4, "}")) &&
+            external(k + 1, window, at ?? t.start)
+          )
         )
           hide(window, at ?? t.start);
       } else if (
@@ -642,12 +709,23 @@ function windowRanges(
             // its own braces. The named bases are placed into those same braces, before the
             // literal's keys when they come before it in the call and after them otherwise, so
             // the later of two writes of a key wins, as in JavaScript.
-            const inside = (step: { open: number }): boolean => {
+            const inside = (step: PlanStep): boolean => {
+              if (step.external) return false;
               const start = tokens[step.open]!.start;
               return ranges.some((r) => r.window === window && start >= r.start && start < r.end);
             };
             const literal = plan.filter(inside).at(-1);
             for (const step of plan) {
+              if (step.external) {
+                const place = !literal
+                  ? step.at
+                  : step.at < tokens[literal.open]!.start
+                    ? tokens[literal.open]!.start + 1
+                    : tokens[close(literal.open)]!.start;
+                if (window === null || !external(-1, window, at ?? place, step.external))
+                  hide(window, at ?? place);
+                continue;
+              }
               if (step.follow) follow(step.follow, window);
               if (inside(step)) continue;
               const place = !literal
@@ -727,7 +805,7 @@ function windowRanges(
       if (!ranges.some((r) => start >= r.start && start < r.end)) add(k + 2, null);
     }
   }
-  return { ranges, traced, viaName, opaque };
+  return { ranges, traced, viaName, opaque, externals, hides };
 }
 
 /** One member a preload script exposes to the page through contextBridge. */
@@ -1719,6 +1797,14 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
           tokens,
           context.aliases,
           () => (resolver ??= new ExpressionResolver(tokens, context.constants)),
+          (k) => {
+            const name = tokens[k];
+            const member = tokens[k + 2];
+            if (name?.type !== "ident" || member?.type !== "ident") return null;
+            if (!(tokens[k + 1]?.type === "punct" && tokens[k + 1]!.value === ".")) return null;
+            const specifier = context.constants.requireOf(name.value, k);
+            return specifier ? { specifier, property: member.value } : null;
+          },
         );
         ranges = located.ranges;
         // `prefs.sandbox = false`, `prefs["sandbox"] = false`, `Object.assign(prefs, …)` on an
@@ -2354,6 +2440,56 @@ export function analyzeJavaScriptTree(
         evaluated.set(window, read.unknown);
         // still named as not followed when one of the calls could not be read
         if (!partial) opaque.delete(window);
+      }
+    }
+    // Bases another module exports (`Object.assign({}, windowConfig.secureDefaults, {…})`,
+    // `...windowConfig.secureDefaults`): evaluated across modules and applied where they stand,
+    // so the later of two writes of a key in the same object wins. A base that cannot be read
+    // whole may write any key from its place on, as an unknown spread does.
+    // Only for windows that are still not known once their whole options were evaluated above.
+    const externalBases = ((located as WindowRanges | null)?.externals ?? []).filter((e) =>
+      located!.opaque.has(e.window),
+    );
+    if (externalBases.length) {
+      const own = moduleResolver(file.path, source);
+      for (const ext of externalBases) {
+        const at = tokenAtOffset(own.tokens, ext.expr);
+        const { values, partial } =
+          at === -1 ? { values: [], partial: true } : own.resolver.valuesAt(at);
+        const reads = values.map(optionSettings);
+        const read = reads.length === 1 && !partial ? reads[0] : null;
+        if (process.env["HV_DEBUG_EXT"]) console.error("ext", ext.property, at, own.tokens.slice(at, at + 5).map((t) => t.value).join(" "), values.length, partial, JSON.stringify(values).slice(0, 300));
+        if (!read || read.unknown.size) continue;
+        // Read whole: this place no longer hides anything; the window stays hidden only up to
+        // the last other place that does.
+        const left = [...(located!.hides.get(ext.window) ?? [])];
+        const index = left.indexOf(ext.at);
+        if (index !== -1) left.splice(index, 1);
+        located!.hides.set(ext.window, left);
+        if (left.length) located!.opaque.set(ext.window, Math.max(...left));
+        else located!.opaque.delete(ext.window);
+        const name = ranges.find((r) => r.window === ext.window && !r.inherited)?.name ?? null;
+        const scope = objectAt(ext.at);
+        const groupKey = preferenceObjects.get(scope);
+        const line = lineAt(ext.at);
+        for (const { key, value, src } of read.settings)
+          if (
+            !record({
+              key: key as PreferenceKey,
+              value,
+              file: file.path,
+              line: src.file === file.path ? src.line : line,
+              ...(src.file === file.path ? {} : { definedIn: src }),
+              window: ext.window,
+              windowName: name,
+              inherited: true,
+              order: ext.at,
+              scope,
+              group: groupKey === undefined ? null : objectAt(groupKey),
+              groupOrder: groupKey ?? 0,
+            })
+          )
+            break;
       }
     }
     // A `webPreferences: {…}` that no window of this file takes (a table of refused settings, a

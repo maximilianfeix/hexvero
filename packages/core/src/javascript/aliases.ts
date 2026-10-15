@@ -639,6 +639,17 @@ export class Constants {
         is(tokens[k + 1], "punct", "{")
       )
         this.bindings(k + 1);
+      // `import config from "./config.js"`: the module's exports under one name, as `require`
+      // gives them for a CommonJS module.
+      if (
+        t.value === "import" &&
+        !wrapper &&
+        is(tokens[k + 1], "ident") &&
+        is(tokens[k + 2], "ident", "from") &&
+        text(tokens[k + 3]) !== null &&
+        !this.requires.has(tokens[k + 1]!.value)
+      )
+        this.requires.set(tokens[k + 1]!.value, text(tokens[k + 3])!);
       const eq = is(tokens[k + 1], "punct", "=");
       const value = tokens[k + 2];
       // `module.exports = Object.freeze({ … })`: the object is what counts
