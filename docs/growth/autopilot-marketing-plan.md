@@ -6,6 +6,7 @@ listing history in `overnight-log.md`. It is meant for an agent to execute on it
 **North star:** GitHub stars and real users other than the maintainer: an outside issue, an outside PR,
 MCP installs.
 Baseline on 2026-10-15:
+
 - 3 stars, 24 unique visitors in 14 days (referrers: GitHub, Reddit), v0.7.5.
 - Listings merged: morluto awesome-RE #10, doyensec #11, TensorBlock #3793.
 - Listings pending: ccplugins #712, mcp.so #5400.
@@ -74,10 +75,10 @@ AI attribution.
 Stars, forks, unique visitors and referrers (`gh api repos/maximilianfeix/hexvero/traffic/...`), npm downloads
 (the API still answers "package not found"; re-check), outside issues/PRs, surface-report page views.
 
-| Target | Date |
-|---|---|
-| Surface report live | 2026-10-22 |
-| 10 stars | 2026-10-29 |
+| Target                            | Date       |
+| --------------------------------- | ---------- |
+| Surface report live               | 2026-10-22 |
+| 10 stars                          | 2026-10-29 |
 | 50 stars and the first outside PR | 2026-11-30 |
 
 Drop a channel after two weeks without visitors.
