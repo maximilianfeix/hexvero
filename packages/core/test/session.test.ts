@@ -207,4 +207,42 @@ describe("Session", () => {
     const requests = all.collections.find((c) => c.collection === "requests");
     expect(requests).toMatchObject({ added: 0, removed: 0, unknown: 1000, partial: true });
   });
+
+  it("exports the same bytes for the same input, apart from the fields it names as volatile", async () => {
+    const path = join(dir, "stable.so");
+    writeFileSync(path, buildElf());
+    const read = async (out: string): Promise<Record<string, unknown>> => {
+      const fresh = new Session();
+      const record = await fresh.open(path);
+      await fresh.export(record.id, join(dir, out));
+      const doc = JSON.parse(readFileSync(join(dir, out), "utf8")) as Record<string, unknown>;
+      for (const field of doc["volatile"] as string[]) {
+        const parts = field.split(".");
+        let holder = doc as Record<string, unknown>;
+        for (const part of parts.slice(0, -1)) holder = holder[part] as Record<string, unknown>;
+        expect(holder).toHaveProperty(parts.at(-1)!);
+        delete holder[parts.at(-1)!];
+      }
+      return doc;
+    };
+    const first = await read("one.json");
+    expect(JSON.stringify(await read("two.json"))).toBe(JSON.stringify(first));
+    expect(first["generator"]).toMatchObject({ name: "@hexvero/core" });
+    expect(first).toMatchObject({ hexvero: 1, complete: true, incomplete: [] });
+  });
+
+  it("marks an export incomplete and names why when the analysis has limitations", async () => {
+    const path = join(dir, "dynamic.js");
+    writeFileSync(
+      path,
+      'const { ipcMain } = require("electron");\nipcMain.handle(process.env.CHANNEL, () => 1);\n',
+    );
+    const record = await session.open(path);
+    const analysis = await session.analyze(record.id);
+    await session.export(record.id, join(dir, "dynamic.json"));
+    const doc = JSON.parse(readFileSync(join(dir, "dynamic.json"), "utf8"));
+    expect(analysis.limitations.length).toBeGreaterThan(0);
+    expect(doc.complete).toBe(false);
+    expect(doc.incomplete).toEqual([...new Set(analysis.limitations.map((l) => l.code))]);
+  });
 });

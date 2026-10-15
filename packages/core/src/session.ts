@@ -24,6 +24,7 @@ import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
 import { AnalysisError, type TargetInfo } from "./model.js";
 import { loadTarget, type LoadedTarget } from "./target.js";
+import { CORE_VERSION } from "./version.js";
 
 export interface TargetRecord {
   id: string;
@@ -512,7 +513,15 @@ export class Session {
     const text = JSON.stringify(
       {
         hexvero: 1,
+        generator: { name: "@hexvero/core", version: CORE_VERSION },
         exportedAt: new Date().toISOString(),
+        // Analyses that stopped short (a size cap, a partial scan, an unreadable part) say so here,
+        // so a reader cannot take a short result for a whole one without reading `limitations`.
+        complete: analysis.limitations.length === 0,
+        incomplete: [...new Set(analysis.limitations.map((l) => l.code))],
+        // Fields that differ between two exports of the same input; everything else is the same
+        // byte for byte.
+        volatile: ["exportedAt", "target.openedAt", "analysis.durationMs"],
         target: this.get(id),
         analysis,
         unknowns: this.unknowns.list({ targetId: id, limit: 1000 }).items,

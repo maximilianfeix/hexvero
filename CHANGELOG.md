@@ -6,7 +6,20 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Exports state which analyzer produced them and whether they are whole: `generator`
+  (`@hexvero/core` and its version), `complete` (false when the analysis recorded any limitation),
+  `incomplete` (the limitation codes) and `volatile` (the fields that differ between two exports
+  of the same input; a test checks that everything else is byte-identical). The format stays
+  `hexvero: 1`; the fields are additions. `docs/cli.md` describes found, not found, not analyzed
+  and unresolved, and what `compare` promises for each.
+
 ### Fixed
+
+- A single JavaScript file whose IPC call passes a computed channel now reports
+  `ipc_channel_unresolved`, as an application directory already did. Before, the row had
+  `channel: null` and the analysis claimed no limitation.
 
 - `compare` no longer reports false additions and removals for collections longer than 2,000
   items. Each side is compared up to 2,000 items; an item found on one side only while the other

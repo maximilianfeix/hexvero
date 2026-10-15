@@ -186,3 +186,4 @@ export {
   type CacheEntry,
   type PruneResult,
 } from "./cache.js";
+export { CORE_VERSION } from "./version.js";

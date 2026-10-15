@@ -132,3 +132,32 @@ how to name one.
 - A read-only cache directory: analysis still works; a large JavaScript app reports
   `scan_state_not_saved` because its scan cannot be continued later. Set `HEXVERO_CACHE_DIR` to a
   writable directory to fix that.
+
+## What an export and a comparison promise
+
+`export` writes one JSON document. Besides the analysis itself it carries:
+
+| Field        | Meaning                                                                                                                                                                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hexvero`    | Format version of the document, `1`. A change that breaks readers raises it.                                                                                                                                                                              |
+| `generator`  | The package and version that produced the analysis.                                                                                                                                                                                                       |
+| `complete`   | `false` when the analysis recorded any limitation: it stopped at a size cap, read an application only in part, met something it could not follow, or could not establish a fact it looks for (an ELF without `PT_GNU_STACK` leaves the NX state unknown). |
+| `incomplete` | The codes of those limitations, once each. Their messages are in `analysis.limitations`.                                                                                                                                                                  |
+| `volatile`   | The fields that differ between two exports of the same input (`exportedAt`, `target.openedAt`, `analysis.durationMs`). Everything else is the same byte for byte.                                                                                         |
+
+Four states are kept apart:
+
+- **Found**: a row in a collection, with the file and line (or byte offset) it was read from.
+  `confidence: "confirmed"` means read as written; `"inferred"` means reached through a
+  constant, an alias or a shape, and says how.
+- **Not found**: no row, in an analysis that is `complete`. This says the analysis saw nothing,
+  not that the thing cannot happen at run time.
+- **Not analyzed**: a file that was skipped or read only in part is named in the limitations
+  (`scan_truncated`, `scan_partial`, `har_truncated` …). Nothing is claimed about it.
+- **Unresolved**: a row whose value could not be established, such as an IPC call whose channel
+  is a parameter. It is listed with `channel: null` and named in `ipc_channel_unresolved`.
+
+`compare` applies the same rules to two targets. An item on one side only is `added` or
+`removed` only when the other side read the file it is in and compared its whole list. When the
+other side skipped that file, read the application only in part, or was cut at 2,000 items, the
+item is `unknown` and the reason is given.
