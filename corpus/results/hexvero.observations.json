@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.7.3",
-  "commit": "514345e",
+  "commit": "666c9b1+uncommitted",
   "node": "v25.2.1",
   "platform": "darwin arm64",
   "engines": {
@@ -10789,24 +10789,44 @@
       "file": "main.js"
      },
      {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "lib/window-factory.js"
-     },
-     {
       "key": "nodeIntegration",
       "value": false,
-      "file": "lib/window-factory.js"
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
      },
      {
       "key": "sandbox",
-      "value": true,
-      "file": "lib/window-factory.js"
+      "value": false,
+      "file": "main.js"
      },
      {
       "key": "webSecurity",
       "value": true,
-      "file": "lib/window-factory.js"
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
      },
      {
       "key": "sandbox",
@@ -11606,8 +11626,8 @@
       "sandbox: true -> false",
       "allowRunningInsecureContent: true -> false"
      ],
-     "relocated": 6,
-     "unchanged": 5
+     "relocated": 14,
+     "unchanged": 1
     },
     "endpoints": {
      "key": "file+kind+value",

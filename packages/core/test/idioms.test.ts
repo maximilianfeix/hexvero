@@ -156,4 +156,39 @@ describe("idioms of channel and bridge definitions", () => {
     expect(summary("win")).toBe("true false -");
     expect(summary("later")).toBe("true true -");
   });
+
+  it("reads windows a factory of another module builds, with rest parameters and ??", () => {
+    const info = analyze({
+      "lib/factory.js": [
+        "const DEFAULTS = Object.freeze({ contextIsolation: true, sandbox: true, webSecurity: true });",
+        "function makeWindow({ preload, sandbox, ...more } = {}) {",
+        "  return { webPreferences: { ...DEFAULTS, ...more, preload, sandbox: sandbox ?? DEFAULTS.sandbox } };",
+        "}",
+        "module.exports = { makeWindow };",
+      ].join("\n"),
+      "main.js": [
+        'const { BrowserWindow } = require("electron");',
+        'const { makeWindow } = require("./lib/factory");',
+        "const print = new BrowserWindow(makeWindow({ webSecurity: false }));",
+        "const open = new BrowserWindow(makeWindow({ sandbox: false }));",
+      ].join("\n"),
+    });
+    const settings = (name: string) =>
+      info.webPreferences
+        .filter((p) => p.windowName === name)
+        .map((p) => `${p.key}=${p.value}`)
+        .toSorted();
+    expect(settings("print")).toEqual([
+      "contextIsolation=true",
+      "sandbox=true",
+      "webSecurity=false",
+    ]);
+    expect(settings("open")).toEqual([
+      "contextIsolation=true",
+      "sandbox=false",
+      "webSecurity=true",
+    ]);
+    // The factory's defaults are those windows' settings, not a second, windowless row.
+    expect(info.webPreferences.filter((p) => p.window === null && p.value !== null)).toEqual([]);
+  });
 });

@@ -2741,6 +2741,20 @@ export function analyzeJavaScriptTree(
         }
       : null;
 
+  // A setting a window was evaluated to take from another module (`definedIn`, a factory's
+  // defaults) is the same fact as the unattached row read at that place of that module: the row
+  // without a window is dropped, so the setting is not reported twice, once without its window.
+  const claimed = new Set(
+    webPreferences
+      .filter((p) => p.window !== null && p.definedIn)
+      .map((p) => `${p.definedIn!.file}\u0000${p.definedIn!.line}\u0000${p.key}`),
+  );
+  if (claimed.size)
+    for (let i = webPreferences.length - 1; i >= 0; i--) {
+      const p = webPreferences[i]!;
+      if (p.window === null && claimed.has(`${p.file}\u0000${p.line}\u0000${p.key}`))
+        webPreferences.splice(i, 1);
+    }
   // One row per window: what is written, and what follows from the settings together.
   const major = electronMajor(electronVersion);
   const windows: WindowSummary[] = (facts.windows ?? []).map((w) => {

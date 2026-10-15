@@ -6,6 +6,18 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Accuracy
+
+- A new blind set, `corpus/holdout4` (a kanban app; written by an independent agent, scored
+  once with the analysis of 0.7.3 before any change), found window settings 36/48 with 4 false,
+  IPC channels 12/57 and bridge channels 21/66; everything is in its README.
+- Windows built by a factory of another module (`new BrowserWindow(makeWindow({ … }))`) are
+  evaluated through rest elements in destructured parameters (`{ preload, ...more }`) and `??`,
+  so each window gets the factory's defaults with its own overrides. The factory's defaults are
+  no longer also reported as a row without a window. holdout4 window settings 36/48 (4 false)
+  → 44/48 (0 false); 16/16 on the plain build. The channels built by `defineChannels(…)` (a
+  loop with a regular-expression callback) are still not read. No real app changed.
+
 ### Fixed
 
 - `compare … ipc` on two single JavaScript files (rows without `module`) matches calls by
