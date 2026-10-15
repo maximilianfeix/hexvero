@@ -74,7 +74,10 @@ export {
   type CollectionPage,
   type StringsQuery,
   type CollectionComparison,
+  type CollectionDiff,
+  type CompareCollectionOptions,
   type CompareAllResult,
+  type WindowChange,
 } from "./session.js";
 export {
   DEFAULT_PAGE_BYTES,
@@ -184,3 +187,4 @@ export {
   type CacheEntry,
   type PruneResult,
 } from "./cache.js";
+export { CORE_VERSION } from "./version.js";

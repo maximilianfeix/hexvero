@@ -320,6 +320,19 @@ async function analyzeTargetUnsafe(
         limitations.push({ code: "scan_truncated", message: "Token budget exhausted." });
       const { limitations: bundleLimits, ...bundle } = analyzeBundle(text);
       limitations.push(...bundleLimits.filter((l) => l.code !== "scan_truncated"));
+      // As for an application: a channel that is a parameter or a computed value leaves the row
+      // without one, and the channel list is then not the whole picture.
+      const channelless = script.ipc.filter(
+        (u) => u.channel === null && !u.channelRef && !u.api.startsWith("contextBridge."),
+      );
+      if (channelless.length)
+        limitations.push({
+          code: "ipc_channel_unresolved",
+          message: `${channelless.length} IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ${channelless
+            .slice(0, 5)
+            .map((u) => `${u.api} at line ${u.line}`)
+            .join(", ")}${channelless.length > 5 ? ` … and ${channelless.length - 5} more` : ""}.`,
+        });
       if (bundle.bundler) {
         findings.push({
           kind: "js.bundle",

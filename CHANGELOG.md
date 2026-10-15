@@ -6,6 +6,48 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `interfaces` collection for Electron apps: one row per contextBridge member, joined to the
+  windows that load its preload and to the main-process ends of its channel (`ipcMain.handle`,
+  `webContents.send`, … with file and line). `link` says how the join holds: `direct`,
+  `resolved` (through a constant, alias or wrapper), `unresolved` (the member's channel is not
+  readable), `unknown` (no end found, while the analysis has blind spots it names) or `none` (no
+  end in an analysis that read everything). Rows are joined on exact names only. On the corpus's
+  15 Electron inputs (all development sets) it makes no false link; every member whose channel
+  and handler are both read is linked to the right file. `compare` matches rows by
+  `file+api+member` and treats lines, including the lines of the ends, as positions. Text tables
+  show lists of places as `main.js:40 handle`.
+- The `compare` overview (CLI and MCP) lists window settings whose derived value changed what a
+  page may do: `nodeIntegrationInEffect`, `contextIsolationInEffect`, `sandboxInEffect` and
+  `pageRequire`, each marked more permissive, less permissive or unclear (`windowChanges`). They
+  are facts to review, not findings. The `details:` hint now points at `interfaces`,
+  `contextBridge`, `ipcChannels` or `windows` before other collections.
+
+- Exports state which analyzer produced them and whether they are whole: `generator`
+  (`@hexvero/core` and its version), `complete` (false when the analysis recorded any limitation),
+  `incomplete` (the limitation codes) and `volatile` (the fields that differ between two exports
+  of the same input; a test checks that everything else is byte-identical). The format stays
+  `hexvero: 1`; the fields are additions. `docs/cli.md` describes found, not found, not analyzed
+  and unresolved, and what `compare` promises for each.
+
+### Fixed
+
+- `compare … ipc` no longer reports a call that only moved as removed and added: the identity is
+  `module+api+channel` and the line is a position. NotesDesk-style v1 → v2 (corpus `notes-app`):
+  14 added and 14 removed before, 2 and 2 now (the renamed channel), 12 relocated.
+
+- A single JavaScript file whose IPC call passes a computed channel now reports
+  `ipc_channel_unresolved`, as an application directory already did. Before, the row had
+  `channel: null` and the analysis claimed no limitation.
+
+- `compare` no longer reports false additions and removals for collections longer than 2,000
+  items. Each side is compared up to 2,000 items; an item found on one side only while the other
+  side was cut there is now `unknown` ("the other side was compared only in part"), not added or
+  removed. Two captures with the same 2,500 requests in opposite order used to show 500 removed
+  and 500 added; they now show 0 of each and 1,000 unknown. CLI, MCP and the `compare --all`
+  overview share one implementation (`Session.compareCollection`).
+
 ## [0.6.2] - 2026-10-14
 
 ### Accuracy

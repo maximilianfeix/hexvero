@@ -56,6 +56,7 @@ for (const dir of packages) {
 const constants = [
   ["packages/mcp/src/index.ts", /SERVER_VERSION = "[^"]+"/, `SERVER_VERSION = "${version}"`],
   ["packages/cli/src/index.ts", /VERSION = "[^"]+"/, `VERSION = "${version}"`],
+  ["packages/core/src/version.ts", /CORE_VERSION = "[^"]+"/, `CORE_VERSION = "${version}"`],
   ["server.json", /"version": "[^"]+"/g, `"version": "${version}"`],
   [".claude-plugin/plugin.json", /"version": "[^"]+"/, `"version": "${version}"`],
 ];

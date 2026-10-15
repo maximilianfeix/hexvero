@@ -8,6 +8,16 @@ import { openAsarFile } from "../src/formats/asar.js";
 import { buildElf } from "./fixtures/elf.js";
 import { buildAsar } from "./fixtures/asar.js";
 
+const har = (urls: string[]): string =>
+  JSON.stringify({
+    log: {
+      entries: urls.map((url) => ({
+        request: { method: "GET", url, headers: [] },
+        response: { status: 200, headers: [], content: { size: 0 } },
+      })),
+    },
+  });
+
 describe("Session", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-session-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -176,5 +186,81 @@ describe("Session", () => {
     const before = process.memoryUsage().arrayBuffers;
     expect(() => openAsarFile(path)).toThrow(/truncated/);
     expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(64 * 1024 * 1024);
+  });
+
+  it("never reports an item as added or removed when the other side was compared only in part", async () => {
+    // 2,500 requests in opposite orders: each side's first 2,000 rows hold different requests,
+    // although both captures contain exactly the same ones.
+    const urls = Array.from({ length: 2500 }, (_, i) => `https://api.example.test/v1/item/${i}`);
+    writeFileSync(join(dir, "a.har"), har(urls));
+    writeFileSync(join(dir, "b.har"), har(urls.toReversed()));
+    const a = await session.open(join(dir, "a.har"));
+    const b = await session.open(join(dir, "b.har"));
+    const { diff, left, right } = await session.compareCollection(a.id, b.id, "requests");
+    expect(left.truncated && right.truncated).toBe(true);
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual([]);
+    // First 2,000 of a: 0..1999; of b: 2499..500. Each side has 500 the other did not compare.
+    expect(diff.unknown.length).toBe(500 + 500);
+    expect(diff.unknown[0]?.reason).toBe("the other side was compared only in part");
+    const all = await session.compareAll(a.id, b.id);
+    const requests = all.collections.find((c) => c.collection === "requests");
+    expect(requests).toMatchObject({ added: 0, removed: 0, unknown: 1000, partial: true });
+  });
+
+  it("exports the same bytes for the same input, apart from the fields it names as volatile", async () => {
+    const path = join(dir, "stable.so");
+    writeFileSync(path, buildElf());
+    const read = async (out: string): Promise<Record<string, unknown>> => {
+      const fresh = new Session();
+      const record = await fresh.open(path);
+      await fresh.export(record.id, join(dir, out));
+      const doc = JSON.parse(readFileSync(join(dir, out), "utf8")) as Record<string, unknown>;
+      for (const field of doc["volatile"] as string[]) {
+        const parts = field.split(".");
+        let holder = doc as Record<string, unknown>;
+        for (const part of parts.slice(0, -1)) holder = holder[part] as Record<string, unknown>;
+        expect(holder).toHaveProperty(parts.at(-1)!);
+        delete holder[parts.at(-1)!];
+      }
+      return doc;
+    };
+    const first = await read("one.json");
+    expect(JSON.stringify(await read("two.json"))).toBe(JSON.stringify(first));
+    expect(first["generator"]).toMatchObject({ name: "@hexvero/core" });
+    expect(first).toMatchObject({ hexvero: 1, complete: true, incomplete: [] });
+  });
+
+  it("marks an export incomplete and names why when the analysis has limitations", async () => {
+    const path = join(dir, "dynamic.js");
+    writeFileSync(
+      path,
+      'const { ipcMain } = require("electron");\nipcMain.handle(process.env.CHANNEL, () => 1);\n',
+    );
+    const record = await session.open(path);
+    const analysis = await session.analyze(record.id);
+    await session.export(record.id, join(dir, "dynamic.json"));
+    const doc = JSON.parse(readFileSync(join(dir, "dynamic.json"), "utf8"));
+    expect(analysis.limitations.length).toBeGreaterThan(0);
+    expect(doc.complete).toBe(false);
+    expect(doc.incomplete).toEqual([...new Set(analysis.limitations.map((l) => l.code))]);
+  });
+
+  it("lists window settings that changed what pages may do, with the direction of the change", async () => {
+    const examples = join(import.meta.dirname, "..", "..", "..", "examples");
+    const a = await session.open(join(examples, "notesdesk-1.4.0.asar"));
+    const b = await session.open(join(examples, "notesdesk-1.5.0.asar"));
+    const forward = await session.compareAll(a.id, b.id);
+    expect(forward.windowChanges).toContainEqual({
+      window: "main.js::win",
+      setting: "sandboxInEffect",
+      before: "off",
+      after: "on",
+      direction: "less permissive",
+    });
+    const back = await session.compareAll(b.id, a.id);
+    expect(back.windowChanges.map((w) => w.direction)).toEqual(
+      forward.windowChanges.map(() => "more permissive"),
+    );
   });
 });

@@ -10,7 +10,12 @@ import {
 } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
 import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
-import { compareItems, positionalFields, type SideCoverage } from "./compare.js";
+import {
+  compareItems,
+  positionalFields,
+  type CompareResult,
+  type SideCoverage,
+} from "./compare.js";
 import { UnknownsLedger } from "./unknowns.js";
 import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
 
@@ -18,7 +23,9 @@ export type { CollectionPage, CollectionQuery } from "./paging.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
 import { AnalysisError, type TargetInfo } from "./model.js";
+import { interfaceMap } from "./javascript/interfaces.js";
 import { loadTarget, type LoadedTarget } from "./target.js";
+import { CORE_VERSION } from "./version.js";
 
 export interface TargetRecord {
   id: string;
@@ -55,6 +62,50 @@ export interface CompareAllResult {
   onlyB: string[];
   /** A JavaScript application read only in part: items in unread files are unknown, not gone. */
   partialScan: { a: boolean; b: boolean };
+  /**
+   * Windows present in both builds whose derived settings changed what their pages may do. A
+   * change here is a fact to review, not a finding: whether it matters depends on what the window
+   * loads.
+   */
+  windowChanges: WindowChange[];
+}
+
+export interface WindowChange {
+  /** `file::windowName`, as the windows comparison matches them. */
+  window: string;
+  setting:
+    | "nodeIntegrationInEffect"
+    | "contextIsolationInEffect"
+    | "sandboxInEffect"
+    | "pageRequire";
+  before: string;
+  after: string;
+  /** `unclear` when either side is unknown. */
+  direction: "more permissive" | "less permissive" | "unclear";
+}
+
+/** For each derived window setting, the values under which a page can do more. */
+const PERMISSIVE: Record<WindowChange["setting"], readonly string[]> = {
+  nodeIntegrationInEffect: ["on", "default on"],
+  contextIsolationInEffect: ["off", "default off"],
+  sandboxInEffect: ["off", "default off"],
+  pageRequire: ["yes", "yes by default"],
+};
+
+/** One collection of two targets compared, as `Session.compareCollection` returns it. */
+export interface CollectionDiff {
+  diff: CompareResult;
+  /** The pages that were compared: up to 2,000 items per side. */
+  left: CollectionPage;
+  right: CollectionPage;
+}
+
+export interface CompareCollectionOptions {
+  /** Identity field; undefined picks one (see `compareItems`). */
+  key?: string | undefined;
+  ignore?: readonly string[] | undefined;
+  /** Count differences in position fields (addresses, lines) as changes. */
+  strict?: boolean | undefined;
 }
 
 export interface StringsQuery extends CollectionQuery {
@@ -308,26 +359,44 @@ export class Session {
   }
 
   /**
+   * Diff of one collection of two targets. Each side is compared up to 2,000 items; an item found
+   * on one side only while the other side was cut there is `unknown`, not added or removed, and
+   * so is an item in a file the other side did not read.
+   */
+  async compareCollection(
+    idA: string,
+    idB: string,
+    name: string,
+    options: CompareCollectionOptions = {},
+  ): Promise<CollectionDiff> {
+    const [left, right] = await Promise.all([
+      this.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
+      this.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),
+    ]);
+    const diff = compareItems(left.items, right.items, {
+      key: options.key,
+      collection: name,
+      ignore: options.ignore ?? [],
+      positional: options.strict
+        ? []
+        : positionalFields(name, [this.get(idA).info.format, this.get(idB).info.format]),
+      coverage: { a: await this.coverage(idA), b: await this.coverage(idB) },
+      cut: { a: left.truncated, b: right.truncated },
+    });
+    return { diff, left, right };
+  }
+
+  /**
    * Counts of added, removed, changed, relocated and unchanged items for every collection the two
    * targets share: the overview before diffing one collection. Each side is compared up to 2,000
    * items per collection; a collection cut there says so with `partial`.
    */
   async compareAll(idA: string, idB: string): Promise<CompareAllResult> {
     const [countsA, countsB] = await Promise.all([this.collections(idA), this.collections(idB)]);
-    const formats = [this.get(idA).info.format, this.get(idB).info.format];
-    const coverage = { a: await this.coverage(idA), b: await this.coverage(idB) };
     const collections: CollectionComparison[] = [];
     for (const name of Object.keys(countsA)) {
       if (!(name in countsB) || (countsA[name] === 0 && countsB[name] === 0)) continue;
-      const [left, right] = await Promise.all([
-        this.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
-        this.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),
-      ]);
-      const diff = compareItems(left.items, right.items, {
-        collection: name,
-        positional: positionalFields(name, formats),
-        coverage,
-      });
+      const { diff, left, right } = await this.compareCollection(idA, idB, name);
       collections.push({
         collection: name,
         key: diff.key,
@@ -343,8 +412,34 @@ export class Session {
         ),
       });
     }
+    const windowChanges: WindowChange[] = [];
+    if (collections.some((c) => c.collection === "windows" && c.changed > 0)) {
+      const { diff } = await this.compareCollection(idA, idB, "windows");
+      for (const item of diff.changed)
+        for (const f of item.fields) {
+          if (!(f.field in PERMISSIVE)) continue;
+          const setting = f.field as WindowChange["setting"];
+          const [before, after] = [String(f.before), String(f.after)];
+          const open = (v: string): boolean => PERMISSIVE[setting].includes(v);
+          windowChanges.push({
+            window: item.key,
+            setting,
+            before,
+            after,
+            direction:
+              before === "unknown" || after === "unknown"
+                ? "unclear"
+                : open(after) && !open(before)
+                  ? "more permissive"
+                  : open(before) && !open(after)
+                    ? "less permissive"
+                    : "unclear",
+          });
+        }
+    }
     return {
       collections,
+      windowChanges,
       onlyA: Object.keys(countsA).filter((n) => hasItems(countsA, n) && !(n in countsB)),
       onlyB: Object.keys(countsB).filter((n) => hasItems(countsB, n) && !(n in countsA)),
       partialScan: { a: (await this.partial(idA)) !== null, b: (await this.partial(idB)) !== null },
@@ -473,7 +568,15 @@ export class Session {
     const text = JSON.stringify(
       {
         hexvero: 1,
+        generator: { name: "@hexvero/core", version: CORE_VERSION },
         exportedAt: new Date().toISOString(),
+        // Analyses that stopped short (a size cap, a partial scan, an unreadable part) say so here,
+        // so a reader cannot take a short result for a whole one without reading `limitations`.
+        complete: analysis.limitations.length === 0,
+        incomplete: [...new Set(analysis.limitations.map((l) => l.code))],
+        // Fields that differ between two exports of the same input; everything else is the same
+        // byte for byte.
+        volatile: ["exportedAt", "target.openedAt", "analysis.durationMs"],
         target: this.get(id),
         analysis,
         unknowns: this.unknowns.list({ targetId: id, limit: 1000 }).items,
@@ -768,6 +871,7 @@ export function collectionsOf(
       if (d.app.webPreferences.length) out["webPreferences"] = d.app.webPreferences;
       if (d.app.windows?.length) out["windows"] = d.app.windows;
       if (d.app.contextBridge.length) out["contextBridge"] = d.app.contextBridge;
+      if (d.app.contextBridge.length) out["interfaces"] = interfaceMap(d.app, analysis.limitations);
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
       if (d.app.storage.length) out["storage"] = d.app.storage;

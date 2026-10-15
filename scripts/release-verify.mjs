@@ -30,6 +30,7 @@ const constant = (file, pattern, label) => {
 };
 constant("packages/cli/src/index.ts", /export const VERSION = "([^"]+)"/, "VERSION");
 constant("packages/mcp/src/index.ts", /export const SERVER_VERSION = "([^"]+)"/, "SERVER_VERSION");
+constant("packages/core/src/version.ts", /export const CORE_VERSION = "([^"]+)"/, "CORE_VERSION");
 const manifest = JSON.parse(read("server.json"));
 if (manifest.version !== version) problems.push(`server.json version is ${manifest.version}`);
 for (const p of manifest.packages ?? [])
