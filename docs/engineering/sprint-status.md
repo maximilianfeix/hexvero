@@ -15,15 +15,22 @@ any interruption or context compaction.
 
 ## Time log
 
-| Period (UTC) | Active work                    | Notes |
-| ------------ | ------------------------------ | ----- |
-| 22:44–       | inventory, baseline, contracts |       |
+| Period (UTC) | Active work                                                          | Notes |
+| ------------ | -------------------------------------------------------------------- | ----- |
+| 22:44–23:05  | inventory, baseline, contracts, agent launch, market matrix, metrics | lead  |
 
 ## Agents and branches
 
-| Role              | Branch / worktree | Status |
-| ----------------- | ----------------- | ------ |
-| Lead / integrator | `sprint/10h`      | active |
+| Role                              | Branch / worktree                              | Status                            |
+| --------------------------------- | ---------------------------------------------- | --------------------------------- |
+| Lead / integrator                 | `sprint/10h`                                   | active                            |
+| A analyzer (resolver, C4)         | `sprint/a-analyzer` `~/hexvero-10h-a-analyzer` | running since 22:58Z              |
+| B compare (C1–C3)                 | `sprint/b-compare`                             | running since 22:58Z              |
+| P policy (C5, C6, SARIF, CI)      | `sprint/p-policy`                              | running since 22:58Z              |
+| C web + server (C7)               | `sprint/c-web`                                 | running since 22:58Z              |
+| M map + skills                    | `sprint/m-map`                                 | running since 22:58Z              |
+| E independent fixtures (holdout5) | `sprint/e-fixtures`, access-restricted         | running since 22:58Z              |
+| F launch / market                 | lead                                           | matrix, status.json, metrics done |
 
 ## Contracts (frozen before parallel work)
 
@@ -31,18 +38,22 @@ See [contracts.md](contracts.md).
 
 ## Acceptance (from the brief)
 
-| Item                             | Status  |
-| -------------------------------- | ------- |
-| Baseline measured at base commit | running |
+| Item                                           | Status                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------ |
+| Baseline measured at base commit               | PASS: check 405 tests, e2e 11, corpus 298 rows, bench (Node 22.17.1, M2) |
+| C4 interface ends truncation confirmed in code | confirmed (direction/link computed after slice)                          |
 
 ## Tests
 
-| Gate             | Base    | Final |
-| ---------------- | ------- | ----- |
-| `npm run check`  | running |       |
-| `npm run e2e`    | running |       |
-| `npm run corpus` | running |       |
+| Gate             | Base                                             | Final |
+| ---------------- | ------------------------------------------------ | ----- |
+| `npm run check`  | PASS (after excluding published text from oxfmt) |       |
+| `npm run e2e`    | PASS 11/11                                       |       |
+| `npm run corpus` | PASS 298 rows                                    |       |
 
 ## Open risks
+
+- REA documents `compare_application_versions`; release comparison alone is not a differentiator (docs/competitive/matrix-2026-10-17.md).
+- npm download statistics unavailable for hexvero (API lag).
 
 ## Next steps / resume instructions
