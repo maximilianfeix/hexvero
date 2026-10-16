@@ -16,14 +16,48 @@ export function parseRoute(): Route {
   return { targetId: null, tab: "overview", query };
 }
 
-/** The comparison of two open targets: /compare?a=…&b=… */
-export function navigateCompare(a?: string, b?: string, replace = false): void {
+/*
+ * URLs written here never carry the location hash: the session token arrives there once and is
+ * removed on load (lib/api.ts), and no link may copy it along.
+ */
+
+/** The comparison of two open targets: /compare?a=…&b=… (filters in the query, see lib/compare). */
+export function navigateCompare(
+  a?: string,
+  b?: string,
+  replace = false,
+  rest?: Record<string, string | undefined>,
+): void {
   const q = new URLSearchParams();
   if (a) q.set("a", a);
   if (b) q.set("b", b);
-  const url = `/compare${q.size ? `?${q}` : ""}${window.location.hash}`;
-  if (replace) window.history.replaceState(null, "", url);
-  else window.history.pushState(null, "", url);
+  for (const [k, v] of Object.entries(rest ?? {})) if (v) q.set(k, v);
+  go(`/compare${q.size ? `?${q}` : ""}`, replace);
+}
+
+/**
+ * Changes some query keys of the current page and keeps the rest; `undefined` or `""` removes a
+ * key. A pushed entry makes Back restore the previous state; `state` marks the entry.
+ */
+export function updateQuery(
+  patch: Record<string, string | undefined>,
+  options: { replace?: boolean; state?: Record<string, unknown> } = {},
+): void {
+  const q = new URLSearchParams(window.location.search);
+  for (const [k, v] of Object.entries(patch)) {
+    if (v) q.set(k, v);
+    else q.delete(k);
+  }
+  go(
+    `${window.location.pathname}${q.size ? `?${q}` : ""}`,
+    options.replace ?? false,
+    options.state,
+  );
+}
+
+function go(url: string, replace: boolean, state: Record<string, unknown> | null = null): void {
+  if (replace) window.history.replaceState(state, "", url);
+  else window.history.pushState(state, "", url);
   window.dispatchEvent(new Event("hexvero:navigate"));
 }
 
@@ -36,10 +70,7 @@ export function navigate(
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(query ?? {})) if (v) q.set(k, v);
   const path = targetId ? `/targets/${targetId}/${tab}` : "/";
-  const url = `${path}${q.size ? `?${q}` : ""}${window.location.hash}`;
-  if (replace) window.history.replaceState(null, "", url);
-  else window.history.pushState(null, "", url);
-  window.dispatchEvent(new Event("hexvero:navigate"));
+  go(`${path}${q.size ? `?${q}` : ""}`, replace);
 }
 
 export function useRoute(): Route {

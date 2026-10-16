@@ -1,6 +1,7 @@
-import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { join, posix, relative, sep } from "node:path";
-import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
+import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join, posix, relative, sep } from "node:path";
+import { readRegularFile } from "../binary/file.js";
+import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
@@ -9,6 +10,7 @@ import { findCandidates, resolvePending, type Candidate } from "./candidates.js"
 import { ExpressionResolver, type ModuleHost, type Val } from "./resolve.js";
 import {
   ALIAS_TARGETS,
+  evaluatorFor,
   scanJavaScript,
   tokenize,
   type ScanContext,
@@ -23,7 +25,8 @@ import { summarizeSourceMap } from "./sourcemap.js";
 export interface FileTree {
   kind: "directory" | "asar";
   root: string;
-  files: Array<{ path: string; size: number }>;
+  /** `unpacked`: an ASAR entry stored in `<archive>.unpacked/` beside the archive. */
+  files: Array<{ path: string; size: number; unpacked?: boolean }>;
   read(path: string, maxBytes?: number): Uint8Array;
   /** Symbolic links that pointed outside the root and were therefore not followed. */
   skippedLinks?: string[];
@@ -47,6 +50,10 @@ export interface JsModule {
   /** Names the file passes on from other modules, and `export *` sources (see aliases.ts). */
   reexports?: Record<string, { specifier: string; property: string }>;
   starExports?: string[];
+  /** Keys of `constants` whose values were read by evaluating the file's code (resolve.ts). */
+  evaluated?: string[];
+  /** Exported names an evaluation of the file's code could not read, with the reason. */
+  unevaluated?: Record<string, string>;
   /**
    * IPC names the file defines for other files, and its calls on names it does not bind that are
    * still waiting for a definition (see `ambient.ts`).
@@ -868,11 +875,19 @@ export function bridgeMembers(
   const context: ScanContext =
     typeof source !== "string" && source.context
       ? source.context
-      : {
-          aliases: resolveAliases(tokens, ALIAS_TARGETS),
-          constants: new Constants(tokens),
-          wrappers: new Map(),
-        };
+      : (() => {
+          const constants = new Constants(tokens);
+          let resolver: ExpressionResolver | null = null;
+          constants.useEvaluator(
+            evaluatorFor(
+              tokens,
+              constants,
+              () => resolver,
+              (r) => (resolver = r),
+            ),
+          );
+          return { aliases: resolveAliases(tokens, ALIAS_TARGETS), constants, wrappers: new Map() };
+        })();
   const members: BridgeMember[] = [];
   let truncated = cut;
   let budget = BRIDGE_WALK_BUDGET;
@@ -880,6 +895,24 @@ export function bridgeMembers(
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
   /** Named objects whose later `name.member = …` assignments were already collected. */
   const stepwise = new Set<string>();
+  let resolver: ExpressionResolver | null = null;
+  /**
+   * The channel a plain name or table entry (`BOARD.list`) at k stands for when the file's
+   * constants cannot say, read by the bounded resolver: a table a bundled module exports, or one a
+   * registry function builds. One value or nothing; parameters and other expressions are not read.
+   */
+  const nameValue = (k: number): { value: string; via: "evaluated" } | null => {
+    let end = k;
+    if (tokens[end]?.type !== "ident") return null;
+    while (is(end + 1, ".") && tokens[end + 2]?.type === "ident" && end < k + 8) end += 2;
+    if (!is(end + 1, ",") && !is(end + 1, ")")) return null;
+    if (budget <= 0) return null;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const found = resolver.resolveArgument(k);
+    if (!found || found.partial || found.values.length !== 1) return null;
+    if (found.method === "parameter" || found.method === "element") return null;
+    return { value: found.values[0]!, via: "evaluated" };
+  };
   let objects: Map<string, number> | null = null;
   const objectOf = (name: string): number => {
     if (!objects) {
@@ -1134,7 +1167,7 @@ export function bridgeMembers(
           CHANNEL_CALLS.has(callee.value) &&
           is(j + 3, "(")
         ) {
-          const channelName = context.constants.resolveArg(j + 4);
+          const channelName = context.constants.resolveArg(j + 4) ?? nameValue(j + 4);
           if (channelName && "value" in channelName) channels.add(channelName.value);
           else if (channelName && "ref" in channelName) addRef(channelName.ref);
         } else if (
@@ -1144,7 +1177,7 @@ export function bridgeMembers(
           context.wrappers.get(tokens[j]!.value)?.startsWith("ipcRenderer.")
         ) {
           // a helper of the file that forwards its first argument as the channel
-          const channelName = context.constants.resolveArg(j + 2);
+          const channelName = context.constants.resolveArg(j + 2) ?? nameValue(j + 2);
           if (channelName && "value" in channelName) channels.add(channelName.value);
           else if (channelName && "ref" in channelName) addRef(channelName.ref);
         }
@@ -1539,9 +1572,8 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
           "invalid_input",
           `${path} resolves outside the root and is not read`,
         );
-      const size = statSync(real).size;
-      if (size > maxBytes) throw new AnalysisError("too_large", `${path} is ${size} bytes`);
-      return new Uint8Array(readFileSync(full));
+      // The resolved file is the one read, through one descriptor that refuses non-files.
+      return readRegularFile(real, maxBytes, path);
     },
   };
 }
@@ -1555,13 +1587,27 @@ export function asarTreeFromFile(path: string): FileTree {
 }
 
 function archiveTree(archive: AsarArchive, name: string): FileTree {
+  // Electron keeps files marked unpacked in `<archive>.unpacked/` beside the archive; an archive
+  // known only by a name (an upload) has no such directory, and those files stay unread.
+  const onDisk = isAbsolute(name);
   return {
     kind: "asar",
     root: name,
-    files: archive.files.map((f) => ({ path: f.path, size: f.size })),
-    read: (path, maxBytes) => {
+    files: archive.files.map((f) => ({
+      path: f.path,
+      size: f.size,
+      ...(f.unpacked ? { unpacked: true } : {}),
+    })),
+    read: (path, maxBytes = 64 << 20) => {
       const file = archive.find(path);
       if (!file) throw new AnalysisError("not_found", `${path} not in archive`);
+      if (file.unpacked) {
+        if (!onDisk)
+          throw new AnalysisError("not_found", `${path} is stored outside the archive (unpacked)`, {
+            unpacked: true,
+          });
+        return readUnpacked(name, file, maxBytes);
+      }
       return archive.read(file, maxBytes);
     },
   };
@@ -2611,6 +2657,8 @@ export function analyzeJavaScriptTree(
       ...(scan.constants ? { constants: scan.constants } : {}),
       ...(scan.reexports ? { reexports: scan.reexports } : {}),
       ...(scan.starExports ? { starExports: scan.starExports } : {}),
+      ...(scan.evaluated ? { evaluated: scan.evaluated } : {}),
+      ...(scan.unevaluated ? { unevaluated: scan.unevaluated } : {}),
       ...(open && (open.facts.defines || open.facts.calls || open.facts.replies)
         ? { ambient: open.facts }
         : {}),
@@ -2699,28 +2747,59 @@ export function analyzeJavaScriptTree(
       code: "web_preferences_truncated",
       message: `More BrowserWindow settings exist than the ${MAX_PREFS_PER_FILE} per file / ${MAX_PREFS} in total that are recorded.`,
     });
-  if (skipped)
+  if (skipped) {
+    // Name the reason: an unpacked entry whose `.unpacked` directory is missing is not "too large".
+    const unpacked = new Set(tree.files.filter((f) => f.unpacked).map((f) => f.path));
+    const outside = facts.skippedFiles.filter((f) => unpacked.has(f));
+    const other = facts.skippedFiles.filter((f) => !unpacked.has(f));
+    const parts: string[] = [];
+    if (other.length || outside.length < skipped)
+      parts.push(
+        `${skipped - outside.length} exceed the per-file size limit or could not be decoded${other.length ? ` (e.g. ${other.slice(0, 3).join(", ")})` : ""}`,
+      );
+    if (outside.length)
+      parts.push(
+        `${outside.length} are stored outside the archive in its .unpacked directory, which was not found next to it (e.g. ${outside.slice(0, 3).join(", ")})`,
+      );
     limitations.push({
       code: "js_files_skipped",
-      message: `${skipped} files were not read because they exceed the per-file size limit or could not be decoded (e.g. ${facts.skippedFiles.slice(0, 3).join(", ")}).`,
+      message: `${skipped} files were not read: ${parts.join("; ")}.`,
     });
+  }
 
   // Channel names that are constants of another module: looked up now that modules are known.
   // A reference stays in place while its module is unread, so a continued scan resolves it later.
   const moduleById = new Map(modules.map((m) => [m.id, m]));
   // A name may be passed on through index modules (`export { A as B } from`, `module.exports =
   // { B: x.A }`, `export *`): followed a few modules deep, never in a circle.
+  /** Set by `lookUp` when the value it found was read by evaluating the other module's code. */
+  let lookedUpEvaluated = false;
+  /** Why the other module could not read the name a reference points to, when it said. */
+  const whyUnread = (
+    from: string,
+    ref: { specifier: string; property: string },
+  ): { file: string; reason: string } | null => {
+    const target = resolveSpecifier(from, ref.specifier, known);
+    const m = target ? moduleById.get(target) : undefined;
+    const head = ref.property.split(".")[0]!;
+    const reason = m?.unevaluated?.[ref.property] ?? m?.unevaluated?.[head];
+    return m && reason ? { file: m.id, reason } : null;
+  };
   const lookUp = (
     from: string,
     ref: { specifier: string; property: string },
     depth = 0,
   ): string | null => {
     if (depth > 5) return null;
+    if (depth === 0) lookedUpEvaluated = false;
     const target = resolveSpecifier(from, ref.specifier, known);
     const m = target ? moduleById.get(target) : undefined;
     if (!m) return null;
     const own = m.constants?.[ref.property];
-    if (own !== undefined) return own;
+    if (own !== undefined) {
+      if (m.evaluated?.includes(ref.property)) lookedUpEvaluated = true;
+      return own;
+    }
     // `TABLE.KEY` where TABLE itself is passed on
     const dot = ref.property.indexOf(".");
     const head = dot === -1 ? ref.property : ref.property.slice(0, dot);
@@ -2743,9 +2822,16 @@ export function analyzeJavaScriptTree(
     for (const u of m.ipc) {
       if (u.channel !== null || !u.channelRef) continue;
       const found = lookUp(m.id, u.channelRef);
-      if (found === null) continue;
+      if (found === null) {
+        const why = whyUnread(m.id, u.channelRef);
+        if (why) u.reason = `evaluation stopped in ${why.file}: ${why.reason}`;
+        continue;
+      }
       u.channel = `${u.channelRef.before ?? ""}${found}${u.channelRef.after ?? ""}`;
-      u.via = "constant";
+      if (lookedUpEvaluated) {
+        u.via = "resolved";
+        u.resolution = { method: "evaluated", lines: [] };
+      } else u.via = "constant";
       delete u.channelRef;
     }
   for (const b of contextBridge) {
@@ -2801,8 +2887,13 @@ export function analyzeJavaScriptTree(
   // channel, and said so, because the channel list is then not the whole picture.
   const channelless = modules.flatMap((m) =>
     m.ipc
-      .filter((u) => u.channel === null && !u.channelRef && !u.api.startsWith("contextBridge."))
-      .map((u) => `${u.api} at ${m.id}:${u.line}`),
+      // a reference to another module stays open while that module may still be read, unless
+      // the module was read and said why it could not read the name
+      .filter(
+        (u) =>
+          u.channel === null && (!u.channelRef || u.reason) && !u.api.startsWith("contextBridge."),
+      )
+      .map((u) => `${u.api} at ${m.id}:${u.line}${u.reason ? ` (${u.reason})` : ""}`),
   );
   if (channelless.length)
     limitations.push({

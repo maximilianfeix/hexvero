@@ -69,6 +69,8 @@ export type { AppCandidate, JsCoverage, JsScanFacts } from "./javascript/app.js"
 export {
   Session,
   collectionsOf,
+  COMPARE_BUDGET,
+  type CompareBudget,
   type TargetRecord,
   type CollectionQuery,
   type CollectionPage,
@@ -88,6 +90,14 @@ export {
   reduceItem,
 } from "./paging.js";
 export {
+  collectReleaseSources,
+  escapeHtml,
+  MAX_HTML_EXCERPTS,
+  MAX_HTML_EXCERPT_CHARS,
+  placeKey,
+  renderReleaseReportHtml,
+} from "./htmlReport.js";
+export {
   compareReleases,
   renderReleaseReport,
   type ChangeRow,
@@ -101,12 +111,16 @@ export {
   compareItems,
   detectKey,
   positionalFields,
+  COLLECTION_FAMILY,
+  COMPLETENESS_GAPS,
   type ChangedItem,
+  type CompareCompleteness,
   type CompareOptions,
   type CompareResult,
   type FieldChange,
   type SideCoverage,
   type UnknownItem,
+  type UnresolvedFamily,
 } from "./compare.js";
 export { brief, compact, type CompactOptions } from "./compact.js";
 export { detectProviders, PROVIDER_OPERATIONS, type ProviderStatus } from "./providers/index.js";

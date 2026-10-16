@@ -66,8 +66,11 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
     if (row.collection !== current) {
       current = row.collection;
       shown = 0;
-      const total = r.changes.filter((c) => c.collection === current).length;
-      out.push(`  ${paint(io, "bold", current)}${paint(io, "dim", ` (${total})`)}`);
+      const here = r.changes.filter((c) => c.collection === current).length;
+      const all = r.cut.find((c) => c.collection === current)?.total ?? here;
+      out.push(
+        `  ${paint(io, "bold", current)}${paint(io, "dim", ` (${here === all ? all : `${here} of ${all} on this page`})`)}`,
+      );
     }
     if (shown++ >= maxPerCollection) {
       if (shown === maxPerCollection + 1)
@@ -93,6 +96,14 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
     if (fields) out.push(paint(io, "dim", `        ${fields}`));
     if (row.reason) out.push(paint(io, "dim", `        ${row.reason}`));
   }
+  if (r.page.next !== null)
+    out.push(
+      paint(
+        io,
+        "dim",
+        `  ${r.changes.length} of ${r.page.total} rows; the rest: --report <file> --offset ${r.page.next}`,
+      ),
+    );
   return out;
 }
 

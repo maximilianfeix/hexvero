@@ -76,7 +76,7 @@ describe("hexvero check", () => {
     expect(text).toContain("new-interface-member  notesdesk.checkUpdate");
     expect(text).toContain("new-external-host  updates.notesdesk.example");
     expect(text).toContain("@ b: main.js:30");
-    expect(text).toContain("new-interface-member on interfaces: values_unresolved");
+    expect(text).not.toContain("Not decidable");
   });
 
   it("prints the same result as JSON, Markdown and SARIF", async () => {
@@ -117,7 +117,7 @@ describe("hexvero check", () => {
     expect(readFileSync(out, "utf8")).not.toContain("\u001b");
   });
 
-  it("accepts findings only with --update-baseline; the unresolved channel then leaves exit 4", async () => {
+  it("accepts findings only with --update-baseline; the accepted builds then pass", async () => {
     const baseline = join(dir, "baseline.json");
     const missing = await check(a, b, "--policy", examplePolicy, "--baseline", baseline);
     expect(missing.code).toBe(2);
@@ -138,8 +138,8 @@ describe("hexvero check", () => {
       "updates.notesdesk.example",
       "notesdesk.checkUpdate",
     ]);
-    // findings accepted; the unresolved IPC channel still makes the check undecidable
-    expect(update.code).toBe(4);
+    // findings accepted; nothing new and nothing undecidable is left
+    expect(update.code).toBe(0);
     const again = await check(
       a,
       b,
@@ -150,16 +150,15 @@ describe("hexvero check", () => {
       "--format",
       "json",
     );
-    expect(again.code).toBe(4);
+    expect(again.code).toBe(0);
     const result = JSON.parse(again.io.stdout.join("\n"));
-    expect(result.status).toBe("incomplete");
+    expect(result.status).toBe("pass");
     expect(result.baseline.matched).toBe(2);
     expect(result.findings.every((f: { state: string }) => f.state === "baselined")).toBe(true);
     // with unknown: warn the same run passes, and the gap stays listed
     const warn = policyWith({ unknown: "warn" }, "warn.json");
     const passed = await check(a, b, "--policy", warn, "--baseline", baseline);
     expect(passed.code).toBe(0);
-    expect(passed.io.text()).toContain("values_unresolved");
     // the baseline file was not touched by the normal runs
     expect(JSON.parse(readFileSync(baseline, "utf8"))).toEqual(written);
   });

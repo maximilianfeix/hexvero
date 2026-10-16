@@ -400,6 +400,11 @@ const LIMITATION_GAPS: Record<string, { gap: string; collections: readonly strin
   },
   webpreferences_computed: { gap: "values_unresolved", collections: ["windows", "webPreferences"] },
   web_preferences_truncated: { gap: "item_truncated", collections: ["windows", "webPreferences"] },
+  context_bridge_truncated: { gap: "item_truncated", collections: ["contextBridge", "interfaces"] },
+  context_bridge_members_unreadable: {
+    gap: "values_unresolved",
+    collections: ["contextBridge", "interfaces"],
+  },
 };
 
 /**
@@ -500,17 +505,23 @@ export type HostReading =
  */
 export function hostOf(value: string): HostReading {
   const v = value.trim();
-  let authority: string;
-  let scheme: string;
-  const m = /^([a-z][a-z0-9+.-]*:)?\/\/([^/?#]*)/i.exec(v);
-  if (m) {
-    scheme = (m[1] ?? "https:").toLowerCase();
-    authority = m[2]!;
-  } else if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return { kind: "none" };
-  else if (v.startsWith("${") || v.startsWith("`"))
+  if (v.startsWith("${") || v.startsWith("`"))
     return { kind: "unknown", why: "the start of the URL is computed at run time" };
-  else return { kind: "none" };
-  if (!NETWORK_SCHEMES.has(scheme)) return { kind: "none" };
+  // Read the authority the way a WHATWG URL parser does for special schemes: any run of slashes
+  // or backslashes after the scheme, or none at all (`http:evil.com` is evil.com), so a value a
+  // browser or fetch would send to a host is never mistaken for one that reaches none.
+  let scheme: string;
+  let rest: string;
+  const sm = /^([a-z][a-z0-9+.-]*):/i.exec(v);
+  if (sm) {
+    scheme = `${sm[1]!.toLowerCase()}:`;
+    if (!NETWORK_SCHEMES.has(scheme)) return { kind: "none" };
+    rest = v.slice(sm[0].length);
+  } else if (/^[/\\]{2}/.test(v)) {
+    scheme = "https:"; // protocol-relative: the page's scheme, a network one for a web page
+    rest = v;
+  } else return { kind: "none" };
+  const authority = rest.replace(/^[/\\]*/, "").split(/[/\\?#]/)[0] ?? "";
   if (/\$\{|[`{}]/.test(authority) || authority === "")
     return { kind: "unknown", why: "the host is computed at run time" };
   let host: string;
@@ -592,6 +603,26 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   },
   "new-external-host": () => ["endpoints", "urls"],
   "window-more-permissive": () => ["windows"],
+};
+
+/**
+ * Lists whose completeness decides a rule besides the ones its findings come from. Which members
+ * a preload exposes is read from the bridge itself, so the bridge decides "new interface member".
+ */
+const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = {
+  "new-interface-member": () => ["contextBridge"],
+  "new-external-host": () => [],
+  "window-more-permissive": () => [],
+};
+
+/**
+ * Gaps that do not bear on a rule in a list it reads. For the interface rule, a value hexvero
+ * could not resolve in `interfaces` is a channel name: it decides which handler a member reaches,
+ * not whether the member exists (an unreadable bridge member is a gap of `contextBridge` itself).
+ * Every other gap of `interfaces` (budget, unread files, truncation) still counts.
+ */
+const IRRELEVANT_GAPS: Partial<Record<PolicyRuleId, Record<string, readonly string[]>>> = {
+  "new-interface-member": { interfaces: ["values_unresolved"] },
 };
 
 function mergePlaces(into: Place[], more: readonly Place[]): void {
@@ -686,7 +717,14 @@ function windowDrafts(r: ReleaseComparison): Draft[] {
     if (w.direction === "less permissive") continue;
     const row: ChangeRow = r.changes.find(
       (c) => c.collection === "windows" && c.key === w.window,
-    ) ?? { collection: "windows", change: "changed", key: w.window, where: [] };
+    ) ?? {
+      // the same id the report gives a row (C3): an empty id makes rowId derive it
+      id: rowId({ id: "", collection: "windows", change: "changed", key: w.window, where: [] }),
+      collection: "windows",
+      change: "changed",
+      key: w.window,
+      where: [],
+    };
     const unknown = w.direction === "unclear";
     out.push({
       rule: "window-more-permissive",
@@ -732,9 +770,10 @@ export function evaluatePolicy(
     const cfg = policy.rules[rule];
     if (cfg.level === "off") continue;
     const collections = RULE_COLLECTIONS[rule](r);
-    for (const collection of collections) {
-      const c = completenessOf(r, collection);
-      if (!c.complete) incomplete.push({ rule, collection, gaps: c.gaps });
+    for (const collection of new Set([...collections, ...RULE_COVERAGE[rule](r)])) {
+      const ignore = IRRELEVANT_GAPS[rule]?.[collection] ?? [];
+      const gaps = completenessOf(r, collection).gaps.filter((g) => !ignore.includes(g));
+      if (gaps.length) incomplete.push({ rule, collection, gaps });
     }
     if (rule === "new-interface-member") drafts.push(...interfaceDrafts(r, collections[0]!));
     if (rule === "new-external-host") drafts.push(...hostDrafts(r, cfg.allow ?? []));
@@ -811,18 +850,37 @@ export function evaluatePolicy(
 
 /** Rows a check reads at most; past this the collection is reported as not decidable. */
 export const CHECK_MAX_ROWS = 100_000;
+/** The core's largest page of rows. */
+const CHECK_PAGE_ROWS = 5000;
 
 /**
- * The whole comparison a check needs: every row, not the first page a reader is shown.
- * TODO(C3): once `compareReleases` pages its rows (`{ offset, limit }` and `page.next`), this
- * loops over the pages up to CHECK_MAX_ROWS instead of asking for one large page.
+ * The whole comparison a check needs: every row, not the first page a reader is shown. Pages of
+ * the core's largest size are read until `page.next` is null; past CHECK_MAX_ROWS rows the
+ * remaining ones are not read and every rule is reported as undecidable ("budget"), never as
+ * passed.
  */
 export async function comparisonForCheck(
   session: Session,
   idA: string,
   idB: string,
 ): Promise<ReleaseComparison> {
-  return compareReleases(session, idA, idB, { maxRows: CHECK_MAX_ROWS });
+  const first = await compareReleases(session, idA, idB, { offset: 0, limit: CHECK_PAGE_ROWS });
+  const changes = [...first.changes];
+  let next = first.page.next;
+  while (next !== null && changes.length < CHECK_MAX_ROWS) {
+    const more = await compareReleases(session, idA, idB, { offset: next, limit: CHECK_PAGE_ROWS });
+    changes.push(...more.changes);
+    next = more.page.next;
+  }
+  if (next === null) return { ...first, changes, page: { ...first.page, offset: 0, next: null } };
+  // Rows left unread: mark every collection incomplete so no rule can pass on a part.
+  const completeness = Object.fromEntries(
+    Object.entries(first.completeness).map(([name, c]) => [
+      name,
+      { ...c, complete: false, gaps: [...new Set([...c.gaps, "budget"])].toSorted() },
+    ]),
+  );
+  return { ...first, changes, completeness, page: { ...first.page, offset: 0, next } };
 }
 
 /** Compares two opened targets and applies the policy: `hexvero check` without the printing. */

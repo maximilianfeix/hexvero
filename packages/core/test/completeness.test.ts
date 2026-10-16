@@ -230,11 +230,18 @@ describe("a guess is not reported as a fact", () => {
         'const CH = { SAVE: "doc:save" };\nfor (const k of Object.keys(CH)) { ipcMain.on(CH[k], f); }',
       ),
     ).toEqual([]);
+    // A string method outside the evaluation subset is not read …
+    expect(
+      ipc(
+        'const H = { a: f };\nfor (const [id, fn] of Object.entries(H)) ipcMain.handle(id.normalize("NFC"), fn);',
+      ),
+    ).toEqual([]);
+    // … one inside it is (resolve.ts lists them): the loop registers exactly "A".
     expect(
       ipc(
         "const H = { a: f };\nfor (const [id, fn] of Object.entries(H)) ipcMain.handle(id.toUpperCase(), fn);",
       ),
-    ).toEqual([]);
+    ).toEqual(["ipcMain.handle A"]);
     expect(
       ipc(
         "const opts = { a: 1, b: 2 };\nObject.keys(opts).forEach((k) => use(k));\nipcMain.on(k, f);",

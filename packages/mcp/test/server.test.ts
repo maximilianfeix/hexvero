@@ -53,7 +53,7 @@ describe("hexvero MCP server", () => {
 
   it("advertises a compact catalog", async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toHaveLength(15);
+    expect(tools.map((t) => t.name)).toHaveLength(16);
     const bytes = Buffer.byteLength(JSON.stringify(tools));
     expect(bytes).toBeLessThan(32 * 1024);
     expect(tools.every((t) => t.description && t.description.length > 20)).toBe(true);

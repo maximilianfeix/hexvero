@@ -1,0 +1,782 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.8.0",
+  "commit": "841b6db",
+  "node": "v22.17.1",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  }
+ },
+ "totals": [
+  {
+   "set": "holdout5",
+   "class": "IPC channels",
+   "hit": 61,
+   "missed": 11,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "IPC senders and receivers",
+   "hit": 79,
+   "missed": 43,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "window settings",
+   "hit": 17,
+   "missed": 35,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "bridge members",
+   "hit": 76,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "bridge member channel",
+   "hit": 67,
+   "missed": 9,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "endpoints",
+   "hit": 21,
+   "missed": 4,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "endpoint method",
+   "hit": 5,
+   "missed": 16,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "requests with an unknown URL shown",
+   "hit": 4,
+   "missed": 0,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "storage keys",
+   "hit": 7,
+   "missed": 17,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "storage read/write/delete",
+   "hit": 7,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in contextBridge",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  }
+ ],
+ "rows": [
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "IPC channels",
+   "hit": 15,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed export:markdown",
+    "missed export:html",
+    "missed export:json"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 20,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "releases:list: receiver handlers.js missed",
+    "release:load: receiver handlers.js missed",
+    "release:save: receiver handlers.js missed",
+    "release:delete: receiver handlers.js missed",
+    "settings:get: receiver handlers.js missed",
+    "settings:set: receiver handlers.js missed",
+    "publish:start: receiver handlers.js missed",
+    "publish:progress: sender publish.js missed",
+    "editor:dirty: receiver handlers.js missed",
+    "preview:update: receiver handlers.js missed"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "6 call(s) without a channel: ipcRenderer.invoke at undefined:9, ipcRenderer.invoke at undefined:22, ipcRenderer.invoke at undefined:23, ipcRenderer.send at undefined:37, ipcMain.handle at undefined:16, ipcMain.on at undefined:28"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "window settings",
+   "hit": 3,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed windows.js preload=preload.js",
+    "missed windows.js sandbox=false",
+    "missed windows.js webSecurity=false",
+    "missed windows.js preload=preload-preview.js",
+    "missed windows.js contextIsolation=true",
+    "missed windows.js nodeIntegration=false",
+    "missed windows.js webSecurity=true",
+    "missed windows.js contextIsolation=true",
+    "missed windows.js nodeIntegration=false",
+    "missed windows.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "bridge members",
+   "hit": 19,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "bridge member channel",
+   "hit": 17,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "tidemark.exportMarkdown: expected export:markdown, got null",
+    "tidemark.exportHtml: expected export:html, got null"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://telemetry.tidemark.example/v1/events"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "https://updates.tidemark.example/desktop/latest.json: expected GET",
+    "https://api.tidemark.example/v2/projects/…: expected GET",
+    "https://code.tidemark.example/api/v1/repos/…: expected GET",
+    "https://cdn.tidemark.example/preview/themes/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "storage keys",
+   "hit": 1,
+   "missed": 5,
+   "false": 2,
+   "notes": [
+    "missed file tidemark-settings.json",
+    "missed file tidemark-drafts.json",
+    "missed localStorage tidemark.lastProject",
+    "missed localStorage tidemark.fontSize",
+    "missed sessionStorage tidemark.cursor",
+    "false localStorage tidemark.${…}",
+    "false sessionStorage tidemark.${…}"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "IPC channels",
+   "hit": 17,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed export:json"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 13,
+   "false": 0,
+   "notes": [
+    "releases:list: receiver main.js missed",
+    "release:load: receiver main.js missed",
+    "release:save: receiver main.js missed",
+    "release:delete: receiver main.js missed",
+    "settings:get: receiver main.js missed",
+    "settings:set: receiver main.js missed",
+    "export:markdown: receiver main.js missed",
+    "export:html: receiver main.js missed",
+    "publish:start: receiver main.js missed",
+    "publish:progress: sender main.js missed",
+    "editor:dirty: receiver main.js missed",
+    "preview:update: receiver main.js missed",
+    "preview:render: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "6 call(s) without a channel: ipcMain.handle at undefined:48, ipcMain.on at undefined:59, webContents.send at undefined:278, ipcRenderer.invoke at undefined:52, ipcRenderer.invoke at undefined:53, ipcRenderer.send at undefined:66"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "window settings",
+   "hit": 3,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js sandbox=false",
+    "missed main.js webSecurity=false",
+    "missed main.js preload=preload-preview.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js webSecurity=true",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "bridge members",
+   "hit": 19,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 17,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "tidemark.exportMarkdown: expected export:markdown, got null",
+    "tidemark.exportHtml: expected export:html, got null"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://telemetry.tidemark.example/v1/events"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "https://updates.tidemark.example/desktop/latest.json: expected GET",
+    "https://api.tidemark.example/v2/projects/…: expected GET",
+    "https://code.tidemark.example/api/v1/repos/…: expected GET",
+    "https://cdn.tidemark.example/preview/themes/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file tidemark-settings.json",
+    "missed file tidemark-drafts.json"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "IPC channels",
+   "hit": 15,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed export:markdown",
+    "missed export:html",
+    "missed export:json"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 19,
+   "missed": 11,
+   "false": 0,
+   "notes": [
+    "releases:list: receiver main.js missed",
+    "release:load: receiver main.js missed",
+    "release:save: receiver main.js missed",
+    "release:delete: receiver main.js missed",
+    "settings:get: receiver main.js missed",
+    "settings:set: receiver main.js missed",
+    "publish:start: receiver main.js missed",
+    "publish:progress: sender main.js missed",
+    "editor:dirty: receiver main.js missed",
+    "preview:update: receiver main.js missed",
+    "preview:render: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "7 call(s) without a channel: ipcMain.handle at undefined:1, ipcMain.on at undefined:1, webContents.send at undefined:3, ipcRenderer.invoke at undefined:1, ipcRenderer.invoke at undefined:1, ipcRenderer.invoke at undefined:1, ipcRenderer.send at undefined:1"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload-preview.js",
+    "missed main.js webSecurity=true",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "bridge members",
+   "hit": 19,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "bridge member channel",
+   "hit": 17,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "tidemark.exportMarkdown: expected export:markdown, got null",
+    "tidemark.exportHtml: expected export:html, got null"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://telemetry.tidemark.example/v1/events"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "https://updates.tidemark.example/desktop/latest.json: expected GET",
+    "https://api.tidemark.example/v2/projects/…: expected GET",
+    "https://code.tidemark.example/api/v1/repos/…: expected GET",
+    "https://cdn.tidemark.example/preview/themes/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "storage keys",
+   "hit": 1,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed file tidemark-settings.json",
+    "missed file tidemark-drafts.json",
+    "missed localStorage tidemark.lastProject",
+    "missed localStorage tidemark.fontSize",
+    "missed sessionStorage tidemark.cursor"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "IPC channels",
+   "hit": 14,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed export:markdown",
+    "missed export:html",
+    "missed export:json",
+    "missed export:text"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 19,
+   "missed": 9,
+   "false": 0,
+   "notes": [
+    "releases:list: receiver handlers.js missed",
+    "release:load: receiver handlers.js missed",
+    "release:save: receiver handlers.js missed",
+    "release:duplicate: receiver handlers.js missed",
+    "settings:get: receiver handlers.js missed",
+    "settings:set: receiver handlers.js missed",
+    "publish:start: receiver handlers.js missed",
+    "publish:progress: sender publish.js missed",
+    "preview:update: receiver handlers.js missed"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "7 call(s) without a channel: ipcRenderer.invoke at undefined:9, ipcRenderer.invoke at undefined:21, ipcRenderer.invoke at undefined:22, ipcRenderer.invoke at undefined:23, ipcRenderer.send at undefined:36, ipcMain.handle at undefined:16, ipcMain.on at undefined:28"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "window settings",
+   "hit": 3,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed windows.js preload=preload.js",
+    "missed windows.js sandbox=false",
+    "missed windows.js webSecurity=true",
+    "missed windows.js preload=preload-preview.js",
+    "missed windows.js contextIsolation=true",
+    "missed windows.js nodeIntegration=false",
+    "missed windows.js sandbox=false",
+    "missed windows.js webSecurity=true",
+    "missed windows.js contextIsolation=true",
+    "missed windows.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "bridge members",
+   "hit": 19,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "bridge member channel",
+   "hit": 16,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "tidemark.exportMarkdown: expected export:markdown, got null",
+    "tidemark.exportHtml: expected export:html, got null",
+    "tidemark.exportText: expected export:text, got null"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://telemetry.tidemark.example/v1/events"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "https://updates.tidemark.example/desktop/latest.json: expected GET",
+    "https://api.tidemark.example/v2/projects/…: expected GET",
+    "https://code.tidemark.example/api/v1/repos/…: expected GET",
+    "https://cdn.tidemark.example/preview/themes/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "storage keys",
+   "hit": 1,
+   "missed": 5,
+   "false": 2,
+   "notes": [
+    "missed file tidemark-settings.json",
+    "missed file tidemark-drafts.json",
+    "missed localStorage tidemark.lastProject",
+    "missed localStorage tidemark.fontSize",
+    "missed sessionStorage tidemark.cursor",
+    "false localStorage tidemark.${…}",
+    "false sessionStorage tidemark.${…}"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed +export:text"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed ~webSecurity: false -> true",
+    "missed ~sandbox: true -> false"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  }
+ ]
+}

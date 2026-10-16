@@ -12,6 +12,7 @@
  * that declares its own `n`. Where the tracking is unsure it declares a name too often, which
  * loses an alias and never invents one.
  */
+import type { Val } from "./resolve.js";
 import type { Token } from "./scan.js";
 
 const is = (t: Token | undefined, type: Token["type"], value?: string): boolean =>
@@ -397,10 +398,47 @@ export function resolveAliases(
 
 /** A string value reached by name, or where to look for it in another module. */
 export type Resolved =
-  | { value: string; via: "literal" | "constant" }
+  /** `evaluated`: a value of a declaration only an evaluation reads, declared at `line`. */
+  | { value: string; via: "literal" | "constant" | "evaluated"; line?: number }
   /** Another module's constant; `before` and `after`: text a template puts around it. */
   | { ref: { specifier: string; property: string; before?: string; after?: string } }
   | null;
+
+/**
+ * Reads the value of a declaration that only an evaluation can (see resolve.ts), with the reason
+ * when it cannot. Constants never evaluates anything itself.
+ */
+export interface Evaluator {
+  /** The value of a top-level name whose initializer starts at token `at`. */
+  name(name: string, at: number): { value: Val | null; reason: string | null };
+  /** The value of the expression that starts at token `at`. */
+  at(at: number): { value: Val | null; reason: string | null };
+}
+
+/** What an evaluated value gives a table: its single-valued string entries, nested as `a.b`. */
+interface Flat {
+  table: Map<string, string>;
+  value: string | null;
+}
+
+function one(v: Val | null | undefined): string | null {
+  return v?.kind === "str" && !v.ref && v.values.length === 1 && !v.values[0]!.includes("${…}")
+    ? v.values[0]!
+    : null;
+}
+
+function flatten(v: Val | null): Flat {
+  const table = new Map<string, string>();
+  const walk = (o: Extract<Val, { kind: "obj" }>, prefix: string, depth: number): void => {
+    for (const [key, p] of o.props) {
+      const entry = one(p);
+      if (entry !== null) table.set(`${prefix}${key}`, entry);
+      else if (p?.kind === "obj" && depth < 3) walk(p, `${prefix}${key}.`, depth + 1);
+    }
+  };
+  if (v?.kind === "obj") walk(v, "", 0);
+  return { table, value: one(v) };
+}
 
 /** String constants and tables of string constants declared in one file. */
 export class Constants {
@@ -432,6 +470,23 @@ export class Constants {
   readonly starExports: string[] = [];
   /** Export entries whose value is a name, settled once the whole file is read. */
   private readonly exportNames: Array<{ key: string; at: number }> = [];
+  /**
+   * Names declared at the top whose value only an evaluation reads (`const B = make(…)`,
+   * `Object.fromEntries(…)`): where the initializer starts; null when declared twice.
+   */
+  private readonly computedAt = new Map<string, number | null>();
+  private evaluator: Evaluator | null = null;
+  private readonly computedCache = new Map<string, (Flat & { line: number }) | null>();
+  private readonly computedReasons = new Map<string, string>();
+  /** Exports of names, and of calls, that only an evaluation reads; settled by `useEvaluator`. */
+  private readonly exportRequests: Array<{ key: string; name: string }> = [];
+  private readonly exportCalls: Array<{ key: string; at: number }> = [];
+  /** `module.exports = make(…)`: where the call starts. */
+  private wholeExportCall = -1;
+  /** Exported keys whose values an evaluation read. */
+  readonly evaluated: string[] = [];
+  /** Exported names an evaluation could not read, with the reason. */
+  readonly unevaluated: Record<string, string> = {};
   /**
    * Token indexes at which a name means its top-level declaration (the result of
    * `resolveAliases` with `names()` as the file's own names). While it is null, every use counts.
@@ -697,6 +752,18 @@ export class Constants {
         }
         continue;
       }
+      // `module.exports = make(…)`: read once an evaluator is known
+      if (
+        eq &&
+        !wrapper &&
+        t.value === "exports" &&
+        is(tokens[k - 1], "punct", ".") &&
+        is(tokens[k - 2], "ident", "module") &&
+        is(value, "ident") &&
+        value!.value !== "require" &&
+        (is(tokens[k + 3], "punct", "(") || is(tokens[k + 3], "punct", "."))
+      )
+        this.wholeExportCall = k + 2;
       if (
         t.value === "exports" &&
         is(tokens[k + 1], "punct", ".") &&
@@ -718,6 +785,19 @@ export class Constants {
       const listed = is(tokens[k - 1], "punct", ",");
       if (!declared && !listed) continue;
       const exportedHere = declared && is(tokens[k - 2], "ident", "export");
+      // `const B = make(…)`, `var a = 1, B = Object.fromEntries(…)`: read by an evaluation
+      if (
+        !wrapper &&
+        depth === 0 &&
+        ((is(value, "ident") &&
+          !/^(require|class|new|function|async|await|typeof|void|import)$/.test(value!.value) &&
+          (is(tokens[k + 3], "punct", "(") || is(tokens[k + 3], "punct", "."))) ||
+          // `(() => { … })()`, `(function () { … })()`
+          is(value, "punct", "("))
+      ) {
+        this.computedAt.set(t.value, this.computedAt.has(t.value) ? null : k + 2);
+        if (exportedHere) this.exportRequests.push({ key: t.value, name: t.value });
+      }
       const literal = text(value);
       const after = tokens[k + 3];
       if (
@@ -1016,12 +1096,19 @@ export class Constants {
         !is(end, "punct", "}") &&
         !is(end, "punct", ";") &&
         end.line === tokens[at]!.line
-      )
+      ) {
+        // `exports.B = make(…)`, `{ B: Object.fromEntries(…) }`: read by an evaluation
+        if (is(end, "punct", "(") || is(tokens[at + 1], "punct", "."))
+          this.exportCalls.push({ key, at });
         continue;
+      }
       if (member === null) {
         const value = this.reassigned.has(name) ? null : this.strings.get(name);
         if (value) this.exported[key] = value;
         else if (this.imported.has(name)) this.reexported[key] = this.imported.get(name)!;
+        else if (this.tables.has(name) && !this.reassigned.has(name))
+          for (const [entry, v] of this.tables.get(name)!) this.exported[`${key}.${entry}`] = v;
+        else this.exportRequests.push({ key, name });
         continue;
       }
       const local = this.tables.get(name)?.get(member);
@@ -1047,7 +1134,73 @@ export class Constants {
       ...this.pairLists.keys(),
       ...this.requires.keys(),
       ...this.imported.keys(),
+      ...[...this.computedAt].filter(([, at]) => at !== null).map(([name]) => name),
     ];
+  }
+
+  /**
+   * Lets the file's names whose value only an evaluation reads be read through `evaluator`, and
+   * settles the exports of such names. Called once, right after construction.
+   */
+  useEvaluator(evaluator: Evaluator): void {
+    this.evaluator = evaluator;
+    this.computedCache.clear();
+    const put = (key: string, flat: Flat): void => {
+      const entries: Array<[string, string]> = [...flat.table].map(([sub, v]) => [
+        `${key}.${sub}`,
+        v,
+      ]);
+      if (flat.value !== null) entries.push([key, flat.value]);
+      for (const [full, v] of entries) {
+        if (full in this.exported) continue;
+        this.exported[full] = v;
+        this.evaluated.push(full);
+      }
+    };
+    for (const { key, name } of this.exportRequests) {
+      if (!this.computedAt.get(name)) continue;
+      const found = this.computed(name);
+      if (found) put(key, found);
+      else if (this.computedReasons.has(name))
+        this.unevaluated[key] = this.computedReasons.get(name)!;
+    }
+    for (const { key, at } of this.exportCalls) {
+      const { value, reason } = evaluator.at(at);
+      const flat = flatten(value);
+      if (flat.table.size || flat.value !== null) put(key, flat);
+      else if (reason) this.unevaluated[key] = reason;
+    }
+    if (this.wholeExportCall >= 0) {
+      const flat = flatten(evaluator.at(this.wholeExportCall).value);
+      for (const [key, v] of flat.table)
+        if (!(key in this.exported)) {
+          this.exported[key] = v;
+          this.evaluated.push(key);
+        }
+    }
+  }
+
+  /** The table or string an evaluation reads for a computed top-level name; cached. */
+  private computed(name: string): (Flat & { line: number }) | null {
+    const cached = this.computedCache.get(name);
+    if (cached !== undefined) return cached;
+    const at = this.computedAt.get(name);
+    let out: (Flat & { line: number }) | null = null;
+    if (
+      this.evaluator &&
+      at !== undefined &&
+      at !== null &&
+      !this.reassigned.has(name) &&
+      !this.strings.has(name) &&
+      !this.tables.has(name)
+    ) {
+      const { value, reason } = this.evaluator.name(name, at);
+      const flat = flatten(value);
+      if (flat.table.size || flat.value !== null) out = { ...flat, line: this.tokens[at]!.line };
+      else if (reason) this.computedReasons.set(name, reason);
+    }
+    this.computedCache.set(name, out);
+    return out;
   }
 
   private sees(k: number | undefined, name: string): boolean {
@@ -1059,6 +1212,7 @@ export class Constants {
     const value = this.strings.get(name);
     if (value) this.exported[name] = value;
     for (const [key, v] of this.tables.get(name) ?? []) this.exported[`${name}.${key}`] = v;
+    if (!value && !this.tables.has(name)) this.exportRequests.push({ key: name, name });
   }
 
   /** A destructuring pattern at `open`, if it takes names from another module. */
@@ -1380,7 +1534,11 @@ export class Constants {
     const inner = this.resolve(k + 1, end);
     if (inner === null) return null;
     return "value" in inner
-      ? { value: `${before}${inner.value}${tail.value}`, via: "constant" }
+      ? {
+          value: `${before}${inner.value}${tail.value}`,
+          via: inner.via === "evaluated" ? "evaluated" : "constant",
+          ...(inner.line === undefined ? {} : { line: inner.line }),
+        }
       : { ref: { ...inner.ref, before, after: tail.value } };
   }
 
@@ -1411,6 +1569,9 @@ export class Constants {
         return null;
       const value = this.tables.get(t.value)?.get(property);
       if (value !== undefined) return { value, via: "constant" };
+      const computed = this.computed(t.value);
+      const read = computed?.table.get(property);
+      if (read !== undefined) return { value: read, via: "evaluated", line: computed!.line };
       const specifier = this.requires.get(t.value);
       if (specifier) return { ref: { specifier, property } };
       // a table imported by name: `const { CHANNELS } = require("./names")`, then CHANNELS.SAVE
@@ -1423,6 +1584,8 @@ export class Constants {
     if (this.reassigned.has(t.value)) return null;
     const value = this.strings.get(t.value);
     if (value) return { value, via: "constant" };
+    const computed = this.computed(t.value);
+    if (computed?.value) return { value: computed.value, via: "evaluated", line: computed.line };
     const ref = this.imported.get(t.value);
     return ref ? { ref } : null;
   }

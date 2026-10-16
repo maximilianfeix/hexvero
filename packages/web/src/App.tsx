@@ -313,16 +313,12 @@ export function App(): ReactElement {
               demoBusy={demoBusy}
             />
           ) : (
-            <section className="welcome" aria-busy="true">
-              <p>Loading targets…</p>
-            </section>
+            <TargetsLoading error={error} onRetry={() => void refresh()} />
           )
         ) : current ? (
           <Workspace key={current.id} target={current} tab={route.tab} query={route.query} />
         ) : route.targetId && !targetsLoaded ? (
-          <section className="welcome" aria-busy="true">
-            <p>Loading targets…</p>
-          </section>
+          <TargetsLoading error={error} onRetry={() => void refresh()} />
         ) : route.targetId ? (
           <section className="welcome">
             <h1>This target is no longer open.</h1>
@@ -402,5 +398,32 @@ export function App(): ReactElement {
         )}
       </main>
     </div>
+  );
+}
+
+/** Before the list of open targets arrives; a failed request says so instead of waiting on. */
+function TargetsLoading({
+  error,
+  onRetry,
+}: {
+  error: string | null;
+  onRetry: () => void;
+}): ReactElement {
+  if (!error)
+    return (
+      <section className="welcome" aria-busy="true">
+        <p>Loading targets…</p>
+      </section>
+    );
+  return (
+    <section className="welcome">
+      <h1>The open targets could not be loaded.</h1>
+      <p>The error is shown above.</p>
+      <p>
+        <button type="button" className="btn primary" onClick={onRetry}>
+          Retry
+        </button>
+      </p>
+    </section>
   );
 }

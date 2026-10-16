@@ -77,11 +77,15 @@ export function Toolbar({
   onText,
   status,
   children,
+  placeholder = "Filter…",
+  label = "Filter rows",
 }: {
   text: string;
   onText: (q: string) => void;
   status: string;
   children?: React.ReactNode;
+  placeholder?: string;
+  label?: string;
 }): ReactElement {
   const [draft, setDraft] = useState(text);
   useEffect(() => setDraft(text), [text]);
@@ -94,10 +98,10 @@ export function Toolbar({
       <input
         className="input"
         type="search"
-        placeholder="Filter…"
+        placeholder={placeholder}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        aria-label="Filter rows"
+        aria-label={label}
       />
       {children}
       <span className="status" aria-live="polite">

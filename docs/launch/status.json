@@ -1,0 +1,85 @@
+{
+  "updated": "2026-10-17",
+  "items": [
+    {
+      "channel": "npm",
+      "item": "hexvero 0.8.0",
+      "status": "published",
+      "url": "https://www.npmjs.com/package/hexvero",
+      "date": "2026-10-16",
+      "evidence": "Release workflow run 38963762429 green; npx hexvero@0.8.0 demo from an empty cache"
+    },
+    {
+      "channel": "GitHub release",
+      "item": "v0.8.0",
+      "status": "published",
+      "url": "https://github.com/maximilianfeix/hexvero/releases/tag/v0.8.0",
+      "date": "2026-10-16",
+      "evidence": "gh release view v0.8.0: draft=false"
+    },
+    {
+      "channel": "Website",
+      "item": "landing page and example report",
+      "status": "published",
+      "url": "https://maximilianfeix.github.io/hexvero/",
+      "date": "2026-10-16",
+      "evidence": "Pages workflow green; /demo/report.md names hexvero 0.8.0"
+    },
+    {
+      "channel": "DEV",
+      "item": "What changed in this Electron update? Diffing two app.asar builds without running either",
+      "status": "published",
+      "url": "https://dev.to/taventix/what-changed-in-this-electron-update-diffing-two-appasar-builds-without-running-either-422d",
+      "date": "2026-10-16",
+      "evidence": "docs/launch/published/devto.md is the published text; AI disclosure: Fully Autonomous. Do not post a second DEV article on the same topic."
+    },
+    {
+      "channel": "X",
+      "item": "launch post with the 23 s terminal video",
+      "status": "ready",
+      "url": null,
+      "date": "2026-10-16",
+      "evidence": "Composer was prefilled for @44errrr; publishing is the maintainer's click. GitHub traffic shows 4 referrals from t.co by 2026-10-17; whether the post went out is not verified here."
+    },
+    {
+      "channel": "Reddit",
+      "item": "r/electronjs post",
+      "status": "blocked",
+      "url": null,
+      "date": "2026-10-16",
+      "evidence": "Chrome extension blocks reddit.com for automation. GitHub traffic shows 12 referrals from reddit.com (source not identified)."
+    },
+    {
+      "channel": "Hacker News",
+      "item": "Show HN fact brief",
+      "status": "draft",
+      "url": null,
+      "date": "2026-10-17",
+      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md)."
+    },
+    {
+      "channel": "punkpeye/awesome-mcp-servers",
+      "item": "list entry",
+      "status": "blocked",
+      "url": null,
+      "date": "2026-10-16",
+      "evidence": "Requires a Glama score badge; glama.ai/mcp/servers/maximilianfeix/hexvero returned 404."
+    },
+    {
+      "channel": "sindresorhus/awesome-electron",
+      "item": "list entry",
+      "status": "blocked",
+      "url": null,
+      "date": "2026-10-16",
+      "evidence": "contributing.md: wait at least 30 days after creation; eligible from 2026-11-11."
+    },
+    {
+      "channel": "doyensec/awesome-electronjs-hacking",
+      "item": "list entry",
+      "status": "published",
+      "url": "https://github.com/doyensec/awesome-electronjs-hacking",
+      "date": "2026-10-14",
+      "evidence": "PR merged 2026-10-14; README lists hexvero under Open-Source & Commercial Tools"
+    }
+  ]
+}

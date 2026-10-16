@@ -330,6 +330,22 @@ describe("policy files", () => {
 });
 
 describe("hosts", () => {
+  it("reads hosts the way a WHATWG URL parser does, without the two slashes", () => {
+    // fetch("http:evil.com") requests evil.com; a check that wanted "//" would wave it through
+    for (const v of [
+      "http:evil.com/x",
+      "https:/evil.com",
+      "https:\\\\evil.com\\path",
+      "https:///evil.com",
+      "ws:evil.com",
+    ]) {
+      expect(hostOf(v), v).toEqual({ kind: "host", host: new URL(v).hostname });
+      expect(new URL(v).hostname, v).toBe("evil.com");
+    }
+    expect(hostOf("http:${host}/x")).toMatchObject({ kind: "unknown" });
+    expect(hostOf("mailto:a@evil.com")).toEqual({ kind: "none" });
+    expect(hostOf("C:\\Users\\app")).toEqual({ kind: "none" });
+  });
   it("reads the host of a request target, and refuses to guess a computed one", () => {
     expect(hostOf("https://Updates.Example.com:8443/latest.json")).toEqual({
       kind: "host",
@@ -358,7 +374,9 @@ describe("hosts", () => {
       expect(hostOf(local).kind, local).toBe("none");
     expect(hostOf("https://${region}.api.example.com/v1")).toMatchObject({ kind: "unknown" });
     expect(hostOf("${BASE_URL}/v1/notes")).toMatchObject({ kind: "unknown" });
-    expect(hostOf("https:///nohost")).toMatchObject({ kind: "unknown" });
+    // a WHATWG parser skips any number of slashes: fetch("https:///nohost") goes to "nohost"
+    expect(hostOf("https:///nohost")).toEqual({ kind: "host", host: "nohost" });
+    expect(hostOf("https://")).toMatchObject({ kind: "unknown" });
   });
 
   it("matches allow entries exactly or as *.domain, never by substring", () => {
@@ -605,12 +623,15 @@ describe("evaluating a policy", () => {
     it("coverage gaps make a rule undecidable: incomplete under fail, listed under warn", () => {
       const c = comparison({
         partial: ["endpoints"],
-        limitations: { a: [], b: [{ code: "ipc_channel_unresolved", message: "1 IPC call" }] },
+        limitations: {
+          a: [],
+          b: [{ code: "context_bridge_members_unreadable", message: "members not readable" }],
+        },
       });
       const r = evaluatePolicy(c, policy());
       expect(r.status).toBe("incomplete");
       expect(r.incomplete).toEqual([
-        { rule: "new-interface-member", collection: "interfaces", gaps: ["values_unresolved"] },
+        { rule: "new-interface-member", collection: "contextBridge", gaps: ["values_unresolved"] },
         { rule: "new-external-host", collection: "endpoints", gaps: ["budget"] },
       ]);
       expect(evaluatePolicy(c, policy({ unknown: "warn" }))).toMatchObject({
@@ -630,11 +651,29 @@ describe("evaluating a policy", () => {
         ).status,
       ).toBe("pass");
     });
+    it("an unresolved IPC channel does not make the bridge rule undecidable", () => {
+      // which members a preload exposes is read from the bridge, not from channel names
+      const r = evaluatePolicy(
+        comparison({
+          limitations: { a: [], b: [{ code: "ipc_channel_unresolved", message: "1 IPC call" }] },
+        }),
+        policy(),
+      );
+      expect(r.incomplete).toEqual([]);
+      expect(r.status).toBe("pass");
+      // any other gap of the interfaces list still decides the rule
+      const cut = evaluatePolicy(comparison({ partial: ["interfaces"] }), policy());
+      expect(cut.status).toBe("incomplete");
+      expect(cut.incomplete).toEqual([
+        { rule: "new-interface-member", collection: "interfaces", gaps: ["budget"] },
+      ]);
+    });
     it("a partly read app leaves every rule undecidable", () => {
       const r = evaluatePolicy(comparison({ partialScan: { a: false, b: true } }), policy());
       expect(r.status).toBe("incomplete");
       expect(r.incomplete.map((i) => i.collection)).toEqual([
         "interfaces",
+        "contextBridge",
         "endpoints",
         "urls",
         "windows",
@@ -863,13 +902,10 @@ describe("the example builds", () => {
       ["new-external-host", "updates.notesdesk.example", "new"],
     ]);
     expect(r.findings[1]!.where).toEqual([{ side: "b", file: "main.js", line: 30 }]);
-    expect(r.incomplete).toEqual([
-      { rule: "new-interface-member", collection: "interfaces", gaps: ["values_unresolved"] },
-    ]);
-    // accepted in a baseline, the unresolved channel still leaves the check undecided
+    // the unresolved IPC channel at main.js:33 hides no bridge member, endpoint or window
+    expect(r.incomplete).toEqual([]);
+    // accepted in a baseline, the same builds pass
     const baseline = parseBaseline(JSON.stringify(createBaseline(r)), "b.json");
-    expect((await checkRelease(session, a.id, b.id, loaded, { baseline })).status).toBe(
-      "incomplete",
-    );
+    expect((await checkRelease(session, a.id, b.id, loaded, { baseline })).status).toBe("pass");
   });
 });
