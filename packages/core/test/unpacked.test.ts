@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { Session, targetFromBytes } from "../src/index.js";
+import { readRegularFile } from "../src/binary/file.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 const dir = mkdtempSync(join(tmpdir(), "hexvero-unpacked-"));
@@ -131,5 +132,16 @@ describe("unpacked ASAR entries", () => {
       (l) => l.code === "js_files_skipped",
     );
     expect(skipped?.message).toContain("stored outside the archive");
+  });
+
+  it("reads only the resolved file it was given, never a link in its place", () => {
+    const real = join(dir, "plain.js");
+    writeFileSync(real, "x");
+    const link = join(dir, "link.js");
+    symlinkSync(real, link);
+    const resolved = realpathSync(real);
+    expect(new TextDecoder().decode(readRegularFile(resolved, 10))).toBe("x");
+    // a path that is (or became) a symbolic link is refused: callers pass realpath results
+    expect(() => readRegularFile(link, 10)).toThrow();
   });
 });
