@@ -31,7 +31,7 @@ const arg = (name) => {
 const { tool, observations } = JSON.parse(readFileSync(file, "utf8"));
 const sets = arg("set")
   ? [arg("set")]
-  : ["dev", "validation", "holdout", "holdout2", "holdout3", "holdout4", "damaged"];
+  : ["dev", "validation", "holdout", "holdout2", "holdout3", "holdout4", "holdout5", "damaged"];
 
 const rows = [];
 const add = (set, input, klass, counts, notes = []) =>
@@ -58,9 +58,27 @@ const bare = (name) =>
     .replace(/^(sym\.imp\.|sym\.|imp\.)/, "")
     .replace(/^_+/, "");
 
+/**
+ * A case may attribute facts to source modules that a bundler merges into an entry file. Its
+ * `bundledFiles` maps each module to that file (holdout5); for an input that is not the plain
+ * build, expected file names are mapped through it before they are compared. A module merged
+ * into more than one entry file keeps its own name (no scored fact names one).
+ */
+function fileMap(c, input) {
+  if (!c.bundledFiles || /\.plain\.asar$/.test(input)) return (f) => f;
+  const map = new Map(
+    Object.entries(c.bundledFiles).flatMap(([module, entry]) => {
+      const entries = String(entry).match(/[\w./-]+\.js\b/g) ?? [];
+      return entries.length === 1 ? [[module, entries[0]]] : [];
+    }),
+  );
+  return (f) => map.get(f) ?? f;
+}
+
 function scoreElectron(c, input, o) {
   const e = c.expect;
   const where = [c.set, input];
+  const mapFile = fileMap(c, input);
   if (e.ipcChannels) {
     const got = new Map(o.ipcChannels.map((x) => [x.channel, x]));
     const s = sets3(
@@ -84,7 +102,12 @@ function scoreElectron(c, input, o) {
       const g = got.get(p.channel);
       if (!g) continue;
       for (const role of ["senders", "receivers"]) {
-        const s2 = sets3(p[role].map(fileName), [], (g[role] ?? []).map(fileName), true);
+        const s2 = sets3(
+          [...new Set(p[role].map((f) => fileName(mapFile(f))))],
+          [],
+          (g[role] ?? []).map(fileName),
+          true,
+        );
         right += s2.hit.length;
         lost += s2.missed.length;
         extra += s2.wrong.length;
@@ -93,12 +116,30 @@ function scoreElectron(c, input, o) {
       }
     }
     add(...where, "IPC senders and receivers", { hit: right, missed: lost, false: extra }, notes);
+    // A channel whose name only exists at run time (holdout5: `unknown`, a number of channels).
+    // A tool shows it by listing IPC calls without a channel; such calls cannot be grouped into
+    // channels, so the row asks only whether any is shown: all `unknown` hit if at least one
+    // call is, all missed if none is; one false if the case has none and the tool shows some.
+    if (e.ipcChannels.unknown !== undefined) {
+      const shown = o.ipcUnreadable?.length ?? 0;
+      const want = e.ipcChannels.unknown;
+      add(
+        ...where,
+        "IPC channels with an unknown name shown",
+        {
+          hit: want && shown ? want : 0,
+          missed: want && !shown ? want : 0,
+          false: !want && shown ? 1 : 0,
+        },
+        shown ? [`${shown} call(s) without a channel: ${o.ipcUnreadable.join(", ")}`] : [],
+      );
+    }
   }
   if (e.webPreferences) {
     // A multiset: the same key and value may be set for two windows.
     const key = (w) =>
       `${fileName(w.file)} ${w.key}=${w.key === "preload" ? fileName(w.value) : w.value}`;
-    const want = e.webPreferences.present.map(key);
+    const want = e.webPreferences.present.map((w) => key({ ...w, file: mapFile(w.file) }));
     // Scored: a literal value for one of the keys the case lists (at least the four every
     // expected.json lists). A row with
     // another key has no written-down result to be checked against, and a row whose value is
@@ -368,6 +409,14 @@ function scoreNative(c, input, engine, o) {
 }
 
 for (const c of loadCases(sets)) {
+  // A comparison case that also lists the single-build facts of its later input (holdout5) has
+  // that input scored like an Electron case.
+  if (c.kind === "compare" && c.inputs && c.expect.ipcChannels)
+    for (const input of c.inputs) {
+      const o = observations[input]?.electron;
+      if (o) scoreElectron(c, input, o);
+      else add(c.set, input, "electron analysis", {}, ["NOT RUN: no observation"]);
+    }
   if (c.kind === "electron")
     for (const input of c.inputs) {
       const o = observations[input]?.electron;

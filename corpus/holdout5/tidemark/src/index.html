@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src *" />
+    <title>Tidemark</title>
+  </head>
+  <body>
+    <aside>
+      <label>Project <input id="project" placeholder="acme/widgets" /></label>
+      <ul id="releases"></ul>
+      <button id="about-open">About</button>
+    </aside>
+    <main>
+      <input id="version" placeholder="2.4.0" />
+      <input id="title" placeholder="Title (optional)" />
+      <section id="entries"></section>
+      <form id="add-entry">
+        <select id="entry-section">
+          <option>Added</option>
+          <option>Changed</option>
+          <option>Fixed</option>
+          <option>Removed</option>
+          <option>Security</option>
+        </select>
+        <textarea id="entry-text" placeholder="Fixed the crash on start (https://code.example/acme/widgets/pull/123)"></textarea>
+        <button type="submit">Add</button>
+      </form>
+      <p id="contributors"></p>
+      <footer>
+        <button id="save">Save</button>
+        <button id="delete">Delete</button>
+        <button id="export-md">Markdown</button>
+        <button id="export-html">HTML</button>
+        <button id="preview">Preview</button>
+        <button id="publish">Publish</button>
+        <label>Font <input id="font-size" type="number" min="11" max="24" /></label>
+        <button id="font-reset">Reset</button>
+        <progress id="progress" max="100" value="0"></progress>
+        <span id="status"></span>
+      </footer>
+    </main>
+    <dialog id="about">
+      <p id="about-version"></p>
+      <ul id="about-hardening"></ul>
+      <p id="api-hint"></p>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>
