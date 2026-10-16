@@ -51,10 +51,10 @@ the way `corpus/holdout4/README.md` describes: `"holdout5"` was added to the lis
 
 ## Cases
 
-| Case                             | Sources                                                | Inputs (`corpus/built/holdout5/`, not built yet)                         |
-| -------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `tidemark` (kind `electron`)     | `tidemark/src/`                                        | `tidemark.plain.asar`, `tidemark.bundled.asar`, `tidemark.minified.asar` |
-| `tidemark-v2` (kind `compare`)   | `tidemark-v2/changes.json`, applied to `tidemark/src/` | `tidemark-v2.plain.asar`                                                 |
+| Case                           | Sources                                                | Inputs (`corpus/built/holdout5/`, not built yet)                         |
+| ------------------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `tidemark` (kind `electron`)   | `tidemark/src/`                                        | `tidemark.plain.asar`, `tidemark.bundled.asar`, `tidemark.minified.asar` |
+| `tidemark-v2` (kind `compare`) | `tidemark-v2/changes.json`, applied to `tidemark/src/` | `tidemark-v2.plain.asar`                                                 |
 
 **tidemark** is "Tidemark", an editor for release notes. You keep drafts locally, preview them,
 export them, and publish them to a hosted service. It has three windows, all created in
@@ -85,24 +85,24 @@ way a bundle's sources would be: `renderer.js` imports `renderer/state.js`,
 The case has 20 files with 930 lines: 15 JavaScript files with 834 lines, plus `package.json`,
 `index.html`, `preview.html` and `help.html`. By file:
 
-| File                     | Lines |
-| ------------------------ | ----- |
-| `renderer.js`            | 234   |
-| `main/windows.js`        | 96    |
-| `main.js`                | 73    |
-| `main/handlers.js`       | 68    |
-| `main/store.js`          | 51    |
-| `main/format.js`         | 46    |
-| `main/remote.js`         | 41    |
-| `preload.js`             | 41    |
-| `main/ipc-router.js`     | 40    |
-| `renderer-preview.js`    | 31    |
-| `shared/channels.js`     | 27    |
-| `main/publish.js`        | 25    |
-| `renderer/state.js`      | 25    |
-| `renderer/web-store.js`  | 15    |
-| `renderer/contributors.js` | 12  |
-| `preload-preview.js`     | 9     |
+| File                       | Lines |
+| -------------------------- | ----- |
+| `renderer.js`              | 234   |
+| `main/windows.js`          | 96    |
+| `main.js`                  | 73    |
+| `main/handlers.js`         | 68    |
+| `main/store.js`            | 51    |
+| `main/format.js`           | 46    |
+| `main/remote.js`           | 41    |
+| `preload.js`               | 41    |
+| `main/ipc-router.js`       | 40    |
+| `renderer-preview.js`      | 31    |
+| `shared/channels.js`       | 27    |
+| `main/publish.js`          | 25    |
+| `renderer/state.js`        | 25    |
+| `renderer/web-store.js`    | 15    |
+| `renderer/contributors.js` | 12    |
+| `preload-preview.js`       | 9     |
 
 **tidemark-v2** is tidemark after 30 listed edits, without prepended comment lines. The expected
 differences are:
@@ -240,6 +240,7 @@ Storage
   The bundled and minified inputs merge these modules into their entry file, so each
   `expected.json` has a top-level `bundledFiles` map from module to entry file. Before scoring
   those two inputs, a scorer must apply this map; line numbers apply only to the plain inputs.
+
 - **The run-time channel.** The holdout4 format lists such a channel as an absent entry under a
   fixed prefix (`zoom:`). Here no fixed part exists. `ipcChannels` therefore gets a field
   `unknown: 1` with `unknownWhy`, modelled on `endpoints.unreadable`. The environment variable's
@@ -262,6 +263,7 @@ Storage
 
   I designed this structure from the holdout4 README's description, not from its file. If
   holdout4's v2 file uses other field names, the content maps one to one.
+
 - These fields are new: `ipcChannels.unknown` / `unknownWhy`, `ends[].entryFile`, and top-level
   `bundledFiles`. A scorer that does not know them should ignore them, rather than count the
   run-time channel as missed.
@@ -279,3 +281,51 @@ derived from `changes.json` and packed plain. None of this has been run.
 | Tool | Version                                             |
 | ---- | --------------------------------------------------- |
 | node | v25.2.1 (for `node --check` and the scratch checks) |
+
+## Scoring
+
+Added by the evaluator (agent H of the 10-hour sprint, 2026-10-17) before the first measurement
+and without looking at any tool output on this set. The scorer was then frozen; the measurement
+is in `corpus/results/round4/`. Every change is generic (no case, channel or file name of this set
+appears in the code) and leaves the rows of all other sets unchanged: rescoring the committed
+`corpus/results/hexvero.observations.json` gives the committed `hexvero.json` rows byte for byte.
+
+- **`base` and `inputs` of the comparison case** (`corpus/cases.mjs`). A `compare` case without
+  `a`/`b` takes `a` from `base` and `b` from its single input.
+- **`changes`** (`corpus/cases.mjs`). Turned into the `expect.compare` strings the scorer already
+  uses: a channel, `api.member`, `key: from -> to` for a changed window setting (the window and
+  `direction` are not compared, as in holdout4, because the observation names only the key and
+  the two values), the address or its `prefix` (a reported address that starts with it counts),
+  `kind value` for storage. `changes.*.absent` needs no rule: the change lists are scored
+  exhaustively, so every reported change beyond the expected ones is false, the absent entries
+  among them.
+- **`unchangedMoves`** is not read by the scorer. Its entries are prose (`what`) and cannot be
+  matched to a reported change mechanically; exhaustive scoring of the change lists already
+  counts a move reported as a change as false. Which false change (if any) belongs to which move
+  is read by hand in `corpus/results/round4/README.md`.
+- **The v2 single-build facts** (`corpus/score.mjs`, `corpus/observe-hexvero.mjs`). A `compare`
+  case that also lists single-build classes has its `inputs` observed and scored like an Electron
+  case, so `tidemark-v2.plain.asar` gets the same rows as the v1 inputs.
+- **`bundledFiles`** (`corpus/score.mjs`). For an input that is not the plain build, the file of
+  an expected sender, receiver or window setting is mapped through it before comparison. The
+  entry of `shared/channels.js` names several files (`"main.js, preload.js (and
+  preload-preview.js in v2)"`); a module merged into more than one entry file keeps its own name.
+  No scored fact names `shared/channels.js`, so this has no effect here. Line numbers are not
+  scored in any class.
+- **`ipcChannels.unknown`** (`corpus/score.mjs`, `corpus/observe-hexvero.mjs`). The observer now
+  also records IPC calls the tool lists without a channel (`ipcUnreadable`, with their places).
+  A new row, _IPC channels with an unknown name shown_, counts all `unknown` channels as hit when
+  the tool shows at least one such call and as missed when it shows none (one false when a case
+  has `unknown: 0` and the tool shows some). Calls cannot be grouped into channels without
+  knowing the name, so the row asks only whether the tool says that a channel it cannot name
+  exists; the number and places of the calls are in the notes. The channel list itself is scored
+  as before: a name the tool invents for this channel (the environment variable's name) is false.
+- **`ends[].entryFile`** is not read: `interfaceLinks` is not a scored class in any set (holdout3
+  and holdout4 included), and adding it would be a new class rather than a reading of this one.
+- **Window settings** need no change: the scorer already scores every key a case lists, which
+  here includes `webSecurity` and `allowRunningInsecureContent`. `count` in absent entries is not
+  read (as for holdout4); every reported value beyond the expected multiset is false.
+- **`holdout5` in the scorer's default sets**, matching `loadCases()`.
+
+The observer also gained `--core <dir>`, which loads `dist/` of another `packages/core` (an older
+commit in its own worktree) and reads the version and commit from there.
