@@ -21,6 +21,10 @@ Inspect Electron apps and binaries, trace findings to their source, and compare 
 
 <sub>The local web UI comparing two builds of the example app in [`examples/`](examples/). Real output; the terminal version is [docs/demo/compare.gif](docs/demo/compare.gif).</sub>
 
+https://github.com/user-attachments/assets/f1f2f5d0-4deb-4d1f-9f12-0e231d3cad3c
+
+<sub>22-second video: inspect, trace and compare on the same example app · real hexvero 0.7.5 output · [mp4](docs/video/hexvero.mp4)</sub>
+
 <a id="try-it"></a>
 
 ## Try it
