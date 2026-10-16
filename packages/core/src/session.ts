@@ -250,7 +250,7 @@ export class Session {
     const e = this.entry(id);
     if (e.analysis) return e.analysis;
     if (signal?.aborted)
-      throw new AnalysisError("invalid_input", "Analysis cancelled by the caller", {
+      throw new AnalysisError("cancelled", "Analysis cancelled by the caller", {
         path: e.loaded.info.path,
       });
     if (!e.pending) {
@@ -298,7 +298,7 @@ export class Session {
       const onAbort = (): void => {
         release();
         reject(
-          new AnalysisError("invalid_input", "Analysis cancelled by the caller", {
+          new AnalysisError("cancelled", "Analysis cancelled by the caller", {
             path: e.loaded.info.path,
           }),
         );
