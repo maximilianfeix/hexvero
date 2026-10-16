@@ -1,7 +1,8 @@
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { api, formatBytes, type TargetRecord } from "./lib/api.js";
-import { navigate, useRoute } from "./lib/route.js";
+import { navigate, navigateCompare, useRoute } from "./lib/route.js";
+import { CompareView } from "./views/CompareView.js";
 import { Workspace } from "./views/Workspace.js";
 
 const THEME_KEY = "hexvero.theme";
@@ -142,6 +143,22 @@ export function App(): ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const [demoBusy, setDemoBusy] = useState(false);
+  const openDemo = async (): Promise<void> => {
+    setDemoBusy(true);
+    setBusy("Opening the example builds…");
+    try {
+      const { a, b } = await api.demo();
+      setTargets((list) => [...list, ...[a, b].filter((t) => !list.some((x) => x.id === t.id))]);
+      setError(null);
+      navigateCompare(a.id, b.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    setBusy(null);
+    setDemoBusy(false);
+  };
+
   const current = targets.find((t) => t.id === route.targetId) ?? null;
 
   return (
@@ -208,6 +225,17 @@ export function App(): ReactElement {
           tabIndex={-1}
           onChange={(e) => e.target.files && void openFiles(e.target.files)}
         />
+        <button
+          type="button"
+          className="btn"
+          aria-current={route.tab === "compare" && !route.targetId ? "page" : undefined}
+          onClick={() => {
+            const [a, b] = targets.slice(-2).map((t) => t.id);
+            navigateCompare(a, b);
+          }}
+        >
+          Compare
+        </button>
         <span className="status" aria-live="polite">
           {busy ?? ""}
         </span>
@@ -276,7 +304,20 @@ export function App(): ReactElement {
             </button>
           </div>
         )}
-        {current ? (
+        {route.tab === "compare" && !route.targetId ? (
+          targetsLoaded ? (
+            <CompareView
+              targets={targets}
+              query={route.query}
+              onDemo={() => void openDemo()}
+              demoBusy={demoBusy}
+            />
+          ) : (
+            <section className="welcome" aria-busy="true">
+              <p>Loading targets…</p>
+            </section>
+          )
+        ) : current ? (
           <Workspace key={current.id} target={current} tab={route.tab} query={route.query} />
         ) : route.targetId && !targetsLoaded ? (
           <section className="welcome" aria-busy="true">
@@ -303,20 +344,59 @@ export function App(): ReactElement {
           </section>
         ) : (
           <section className="welcome">
-            <h1>See what a file is before you trust it, run it or rebuild it.</h1>
+            <h1>Know what changed inside your app.</h1>
             <p>
-              hexvero reads executables, app bundles, databases and captures on this machine without
-              executing them, and tells you what it found, how sure it is, and what it could not
-              establish.
+              Inspect an Electron app or a binary, trace each finding to its file and line, and
+              compare two releases. Everything is read on this machine; the target is never run.
             </p>
+            <div className="welcome-actions">
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => void openDemo()}
+                disabled={demoBusy}
+              >
+                {demoBusy ? "Opening…" : "Try the example: two builds of an Electron app"}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => fileInput.current?.click()}
+                disabled={busy !== null}
+              >
+                Open a file
+              </button>
+            </div>
+            <ol className="steps">
+              <li>
+                <span>
+                  <strong>Inspect.</strong> Open a build: findings, IPC channels, preload members,
+                  window settings, endpoints. A filled dot is read from the file, a hollow one
+                  inferred from a pattern.
+                </span>
+              </li>
+              <li>
+                <span>
+                  <strong>Compare.</strong> Open the next build and press Compare: what was added,
+                  removed or changed, list by list.
+                </span>
+              </li>
+              <li>
+                <span>
+                  <strong>Verify.</strong> Every change links to the line it was read from. What
+                  could not be established is listed, not hidden.
+                </span>
+              </li>
+            </ol>
+            <p className="formats-label">Also reads</p>
             <ul className="formats">
               {FORMATS.map((f) => (
                 <li key={f}>{f}</li>
               ))}
             </ul>
             <p style={{ marginTop: 24 }}>
-              Drop a file anywhere, open a path above, or run{" "}
-              <code>hexvero analyze &lt;path&gt;</code> in your terminal.
+              Drop files anywhere, open a path above, or run <code>npx hexvero demo</code> in a
+              terminal.
             </p>
           </section>
         )}

@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { AnalysisResponse } from "../lib/api.js";
+import { PlaceLink } from "./CompareView.js";
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj | null =>
@@ -67,7 +68,7 @@ export function Overview({
                     {f.detail && <div className="detail">{f.detail}</div>}
                     {f.location && (
                       <div className="detail">
-                        <code className="location">{f.location}</code>
+                        <Location analysis={analysis} location={f.location} />
                       </div>
                     )}
                   </div>
@@ -93,6 +94,25 @@ export function Overview({
         </div>
       )}
     </div>
+  );
+}
+
+/** A finding's `file:line`; in a JavaScript application it opens the lines around it. */
+function Location({
+  analysis,
+  location,
+}: {
+  analysis: AnalysisResponse;
+  location: string;
+}): ReactElement {
+  const m = /^(.+?):(\d+)$/.exec(location);
+  if (analysis.data.kind !== "javascript-app" || !m)
+    return <code className="location">{location}</code>;
+  return (
+    <PlaceLink
+      place={{ side: "a", file: m[1]!, line: Number(m[2]) }}
+      targetId={analysis.target.id}
+    />
   );
 }
 

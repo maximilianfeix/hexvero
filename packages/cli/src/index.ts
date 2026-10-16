@@ -1,8 +1,11 @@
+import { writeFile } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import {
   AnalysisError,
   Session,
   compact,
+  compareReleases,
+  renderReleaseReport,
   loadCallGraph,
   MAX_PAGE_BYTES,
   neighborhood,
@@ -28,13 +31,15 @@ import {
   type Io,
 } from "./format.js";
 
-export const VERSION = "0.7.5";
+export const VERSION = "0.8.0";
 
 const HELP = `hexvero ${VERSION} — the first look at a binary or app bundle, locally.
 
 Usage: hexvero <command> [options]
 
 Commands
+  demo [dir]                                    Copy two builds of an example Electron app into dir
+                                                (default ./hexvero-demo) and show what changed
   analyze <path> [--json] [--out file.json]     Summary, findings, limitations and overview
           [--continue | --all | --include p,q]  Large JavaScript apps are read in batches: read the
           [--batch n] [--fresh]                 next one, all that remain, or only files under the
@@ -46,6 +51,8 @@ Commands
   compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
                                                 Added, removed and changed items between two builds;
                                                 without a collection, counts for every shared one
+  compare <a> <b> --report file.md [--force]    Write a Markdown report: summary, changes with
+                                                file:line, what could not be established
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -57,7 +64,8 @@ Commands
                                                 Bounded call-graph neighborhood, or the shortest
                                                 call path from root to goal
   mcp                                           Serve the Model Context Protocol over stdio
-  ui [--port n] [--host h] [--open]             Start the local web UI (loopback by default)
+  ui [--port n] [--host h] [--open] [--demo]    Start the local web UI (loopback by default);
+                                                --demo opens the example builds side by side
   doctor                                        Check the runtime and optional engines
   cache [--prune] [--clear [--apply]]           Show the cache (stored scans, call graphs, Ghidra
                                                 projects); prune it to its limits or clear it
@@ -354,9 +362,43 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         );
       return 0;
     }
+    case "demo": {
+      const { formatDemo, writeDemoFiles } = await import("./demo.js");
+      const [pathA, pathB] = writeDemoFiles(args.positionals[0] ?? "hexvero-demo");
+      const a = await session.open(pathA);
+      const b = await session.open(pathB);
+      const comparison = await compareReleases(session, a.id, b.id);
+      io.out(
+        json
+          ? toJson(comparison)
+          : formatDemo(io, comparison, displayPath(pathA), displayPath(pathB)),
+      );
+      return 0;
+    }
     case "compare": {
       const a = await session.open(need(0, "a"));
       const b = await session.open(need(1, "b"));
+      const report = flagString(args.flags, "report");
+      if (report !== undefined) {
+        if (args.positionals[2] !== undefined)
+          throw new UsageError("--report covers every collection; leave out the collection name");
+        const comparison = await compareReleases(session, a.id, b.id);
+        const text = renderReleaseReport(comparison);
+        try {
+          await writeFile(report, text, { flag: args.flags["force"] ? "w" : "wx" });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "EEXIST")
+            throw new UsageError(`${report} exists; pass --force to replace it`);
+          throw error;
+        }
+        if (json) io.out(toJson({ report, bytes: Buffer.byteLength(text), ...comparison }));
+        else {
+          const { formatChanges } = await import("./demo.js");
+          io.out(formatChanges(io, comparison).join("\n"));
+          io.out(`${paint(io, "green", "✓")} ${report} (${Buffer.byteLength(text)} bytes)`);
+        }
+        return 0;
+      }
       // without a collection (or with --all): one line per collection both targets share
       if (args.positionals[2] === undefined || args.flags["all"]) {
         const all = await session.compareAll(a.id, b.id);
@@ -735,6 +777,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         {
           port: flagNumber(args.flags, "port") ?? 7331,
           open: Boolean(args.flags["open"]),
+          demo: Boolean(args.flags["demo"]),
           ...(host ? { host } : {}),
         },
         io,

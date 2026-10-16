@@ -2,8 +2,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildAsar } from "../../core/test/fixtures/asar.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
 import { startServer, type RunningServer } from "../src/index.js";
+
+const appFiles = (v: string): Record<string, string> => ({
+  "package.json": JSON.stringify({ name: "x", version: v, main: "main.js" }),
+  "main.js": `require("electron").ipcMain.handle("${v === "1" ? "old" : "new"}:ping", () => 1);\n`,
+});
 
 describe("hexvero HTTP API", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-http-"));
@@ -121,6 +127,52 @@ describe("hexvero HTTP API", () => {
     expect(await deep.text()).toContain("<title>ui</title>");
     const traversal = await fetch(`${running.url}/../../etc/passwd`);
     expect(await traversal.text()).toContain("<title>ui</title>");
+  });
+
+  it("compares two targets, writes the report and opens only read source files", async () => {
+    writeFileSync(join(dir, "a.asar"), buildAsar(appFiles("1")));
+    writeFileSync(join(dir, "b.asar"), buildAsar(appFiles("2")));
+    const demo = await startServer({
+      staticDir: dir,
+      demoFiles: [join(dir, "a.asar"), join(dir, "b.asar")],
+    });
+    try {
+      const call = (path: string, init: RequestInit = {}): Promise<Response> =>
+        fetch(`${demo.url}/api${path}`, {
+          ...init,
+          headers: { authorization: `Bearer ${demo.token}` },
+        });
+      expect((await call("/demo")).status).toBe(404); // GET is not a route
+      const opened = (await (await call("/demo", { method: "POST" })).json()) as {
+        a: { id: string };
+        b: { id: string };
+      };
+      const { a, b } = { a: opened.a.id, b: opened.b.id };
+      expect((await call(`/compare?a=${a}`)).status).toBe(400);
+      expect((await call(`/compare?a=${a}&b=${a}`)).status).toBe(400);
+      const comparison = (await (await call(`/compare?a=${a}&b=${b}`)).json()) as {
+        changes: Array<{ change: string; key: string }>;
+      };
+      expect(comparison.changes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ change: "added", key: "new:ping" }),
+          expect.objectContaining({ change: "removed", key: "old:ping" }),
+        ]),
+      );
+      const report = await call(`/compare/report?a=${a}&b=${b}`);
+      expect(report.headers.get("content-type")).toContain("text/markdown");
+      expect(report.headers.get("content-disposition")).toContain('filename="a-to-b.md"');
+      expect(await report.text()).toContain("# What changed: a.asar → b.asar");
+      const source = (await (await call(`/targets/${b}/source?file=main.js&line=1`)).json()) as {
+        lines: string[];
+      };
+      expect(source.lines[0]).toContain("new:ping");
+      expect((await call(`/targets/${b}/source?file=package.json&line=1`)).status).toBe(404);
+      expect((await fetch(`${demo.url}/api/compare?a=${a}&b=${b}`)).status).toBe(401);
+    } finally {
+      await demo.close();
+    }
+    expect((await api("/demo", { method: "POST" })).status).toBe(404);
   });
 
   it("accepts the configured bind host and the loopback names", async () => {

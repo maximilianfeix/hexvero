@@ -5,6 +5,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Session } from "@hexvero/core";
 import { startServer } from "@hexvero/server";
+import { UsageError } from "./args.js";
+import { DEMO_FILES, examplesDirectory } from "./demo.js";
 import { heading, paint, type Io } from "./format.js";
 
 /** The built web UI ships inside the CLI package under ./ui. */
@@ -18,9 +20,19 @@ export function uiDirectory(): string | null {
 
 export async function startUi(
   session: Session,
-  options: { port: number; open: boolean; host?: string },
+  options: { port: number; open: boolean; host?: string; demo?: boolean },
   io: Io,
 ): Promise<number> {
+  const examples = examplesDirectory();
+  const demoFiles = examples
+    ? ([join(examples, DEMO_FILES[0]), join(examples, DEMO_FILES[1])] as [string, string])
+    : undefined;
+  let start = "/";
+  if (options.demo) {
+    if (!demoFiles) throw new UsageError("the example builds are missing from this installation");
+    const [a, b] = [await session.open(demoFiles[0]), await session.open(demoFiles[1])];
+    start = `/compare?a=${a.id}&b=${b.id}`;
+  }
   const staticDir = uiDirectory();
   if (!staticDir)
     io.err(
@@ -32,8 +44,9 @@ export async function startUi(
   };
   if (staticDir) serverOptions.staticDir = staticDir;
   if (options.host) serverOptions.host = options.host;
+  if (demoFiles) serverOptions.demoFiles = demoFiles;
   const running = await startServer(serverOptions);
-  const url = `${running.url}/#token=${running.token}`;
+  const url = `${running.url}${start}#token=${running.token}`;
   io.out(
     `${heading(io, "hexvero ui")} ${paint(io, "dim", "local only, nothing leaves this machine")}\n\n  ${paint(io, "cyan", url)}\n\n${paint(io, "dim", "The link carries this session's token. Press Ctrl+C to stop.")}`,
   );
