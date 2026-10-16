@@ -5,7 +5,15 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, extname, join, normalize, sep } from "node:path";
-import { AnalysisError, compact, detectProviders, Session, targetFromBytes } from "@hexvero/core";
+import {
+  AnalysisError,
+  compact,
+  compareReleases,
+  detectProviders,
+  renderReleaseReport,
+  Session,
+  targetFromBytes,
+} from "@hexvero/core";
 
 export interface ServerOptions {
   port?: number;
@@ -16,6 +24,8 @@ export interface ServerOptions {
   /** Pre-shared token; generated when omitted. Sent as `Authorization: Bearer`. */
   token?: string;
   maxUploadBytes?: number;
+  /** The two example builds `POST /api/demo` opens; the route answers 404 without them. */
+  demoFiles?: [string, string];
 }
 
 export interface RunningServer {
@@ -49,6 +59,12 @@ const MIME: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".webmanifest": "application/manifest+json",
 };
+
+/** A file name without directory and extension, safe inside a Content-Disposition header. */
+const stem = (path: string): string =>
+  basename(path)
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/\.[^.]*$/, "");
 
 const json = (res: ServerResponse, status: number, body: unknown): void => {
   const text = JSON.stringify(body, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
@@ -200,6 +216,31 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       if (!body.path) throw new AnalysisError("invalid_input", "body.path is required");
       return json(res, 201, await session.open(body.path));
     }
+    if (req.method === "POST" && parts[0] === "demo" && parts.length === 1) {
+      if (!options.demoFiles)
+        return json(res, 404, {
+          error: { code: "not_found", message: "this server was started without the examples" },
+        });
+      const a = await session.open(options.demoFiles[0]);
+      const b = await session.open(options.demoFiles[1]);
+      return json(res, 201, { a, b });
+    }
+    if (req.method === "GET" && parts[0] === "compare") {
+      const [a, b] = [q.get("a"), q.get("b")];
+      if (!a || !b) throw new AnalysisError("invalid_input", "a and b (target ids) are required");
+      if (a === b) throw new AnalysisError("invalid_input", "pick two different targets");
+      const comparison = await compareReleases(session, a, b, { maxRows: 500 });
+      if (parts[1] === "report" && parts.length === 2) {
+        res.writeHead(200, {
+          "content-type": "text/markdown; charset=utf-8",
+          "cache-control": "no-store",
+          "content-disposition": `attachment; filename="${stem(comparison.a.info.path)}-to-${stem(comparison.b.info.path)}.md"`,
+        });
+        res.end(renderReleaseReport(comparison));
+        return;
+      }
+      if (parts.length === 1) return json(res, 200, comparison);
+    }
     if (req.method === "POST" && parts[0] === "uploads") {
       const name = (q.get("name") ?? "upload.bin").replace(/[^\w.@()-]+/g, "_");
       const bytes = await readBody(req, maxUpload);
@@ -275,6 +316,13 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         if (q.get("utf16") === "1") query.utf16 = true;
         if (q.get("tag")) query.tag = q.get("tag")!;
         return json(res, 200, session.strings(id, query));
+      }
+      if (sub === "source") {
+        const file = q.get("file");
+        const line = num("line");
+        if (!file || line === undefined)
+          throw new AnalysisError("invalid_input", "file and line are required");
+        return json(res, 200, await session.source(id, file, line, num("context")));
       }
       if (sub === "bytes")
         return json(res, 200, session.bytes(id, num("offset") ?? 0, num("length") ?? 4096));
