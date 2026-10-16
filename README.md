@@ -23,6 +23,10 @@
 
 hexvero reads executables, Electron apps, APKs, archives, databases and network captures **without running them**. It tells you what the software contains, what it exposes, where each fact was read, how sure it is, and what it could not establish. One CLI, one MCP server for coding agents, one local web UI. Nothing leaves your machine.
 
+https://github.com/user-attachments/assets/f1f2f5d0-4deb-4d1f-9f12-0e231d3cad3c
+
+<sub>22 seconds · inspect, trace, compare on the example app in `examples/` · real hexvero 0.7.5 output · [mp4](docs/video/hexvero.mp4)</sub>
+
 ![hexvero mapping an Electron app without running it: findings with file and line, every IPC channel with its senders and handlers, the preload's contextBridge members with their channels, and what changed in the next version](docs/demo/demo.gif)
 
 <sub>25 seconds of real output on the example app in `examples/` · [step by step](docs/demo/electron-ipc.md)</sub>
