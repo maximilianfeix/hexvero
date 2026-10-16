@@ -20,6 +20,7 @@
     "corpus/compare/**",
     "site/demo/**",
     "docs/launch/published/**",
-    "packages/core/test/fixtures/sarif-schema-2.1.0.json"
+    "packages/core/test/fixtures/sarif-schema-2.1.0.json",
+    "docs/case-studies/*.report.md"
   ]
 }
