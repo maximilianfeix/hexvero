@@ -61,6 +61,27 @@ describe("unpacked ASAR entries", () => {
     expect(skipped?.message).not.toContain("exceed the per-file size limit");
   });
 
+  it("reads them once the .unpacked directory appears, although the archive bytes are the same", async () => {
+    // the stored scan of an archive must not hide files that arrived in .unpacked later
+    const asar = place("later", false);
+    const first = new Session();
+    const t1 = await first.open(asar);
+    expect((await first.analyze(t1.id)).limitations.map((l) => l.code)).toContain(
+      "js_files_skipped",
+    );
+    mkdirSync(join(dir, "later", "app.asar.unpacked", "worker"), { recursive: true });
+    writeFileSync(
+      join(dir, "later", "app.asar.unpacked", "worker", "run.js"),
+      files["worker/run.js"],
+    );
+    const second = new Session();
+    const t2 = await second.open(asar);
+    await second.analyze(t2.id);
+    expect((await second.collection(t2.id, "ipcChannels")).items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ channel: "worker:run" })]),
+    );
+  });
+
   it("never follows a link out of the .unpacked directory", async () => {
     const asar = place("link", false);
     writeFileSync(
