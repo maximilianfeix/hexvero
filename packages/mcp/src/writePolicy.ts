@@ -61,3 +61,38 @@ export function checkWritePath(target: string, kind: "export" | "recover"): stri
     refuse("an export must end in .json");
   return absolute;
 }
+
+/**
+ * Where the MCP server may read a policy or baseline (`hexvero_check`). The same roots as for
+ * writes, plus the directories of the targets opened in the session (a policy usually sits next
+ * to the builds it checks). Only `.json` files are read; a symlink that leads out of the roots is
+ * refused, because the real path is what is checked. Hidden directories are allowed here
+ * (`.github/hexvero-policy.json`), unlike for writes.
+ */
+export function checkReadPath(
+  target: string,
+  kind: "policy" | "baseline",
+  extraDirs: readonly string[] = [],
+): string {
+  const absolute = resolve(target);
+  const real = realLocation(absolute);
+  const extra = extraDirs.flatMap((p) => {
+    try {
+      return [realpathSync(p)];
+    } catch {
+      return [];
+    }
+  });
+  const allowed = [...new Set([...roots(), ...extra])];
+  const refuse = (why: string): never => {
+    throw new AnalysisError(
+      "invalid_input",
+      `${kind} refused for ${absolute}: ${why}. Allowed: ${allowed.join(", ")} (the write roots and the directories of opened targets); set HEXVERO_WRITE_ROOTS to change the roots, or use the CLI.`,
+      { path: absolute },
+    );
+  };
+  if (!allowed.some((r) => real === r || real.startsWith(r.endsWith(sep) ? r : r + sep)))
+    refuse("the path is outside the allowed directories");
+  if (!real.toLowerCase().endsWith(".json")) refuse(`a ${kind} file must end in .json`);
+  return real;
+}
