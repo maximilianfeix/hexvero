@@ -71,10 +71,10 @@
             <div class="places"><span class="side">in 1.5.0</span> <details class="place"><summary><span class="role">receiver</span> <code>main.js:30</code></summary><pre class="src"><span class="ln"><i>27</i>ipcMain.handle(&quot;notes:list&quot;, () =&gt; store.get(&quot;notes&quot;) ?? []);</span><span class="ln"><i>28</i>ipcMain.handle(&quot;notes:save&quot;, (_e, note) =&gt; store.push(&quot;notes&quot;, note));</span><span class="ln"><i>29</i>ipcMain.on(&quot;app:quit&quot;, () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.handle(&quot;update:check&quot;, async () =&gt; fetch(&quot;https://updates.notesdesk.example/latest.json&quot;).then((r) =&gt; r.json()));</span><span class="ln"><i>31</i>// The channel name comes from the environment at run time, so no static reading can name it.</span><span class="ln"><i>32</i>for (const plugin of (process.env.NOTESDESK_PLUGINS ?? &quot;&quot;).split(&quot;,&quot;).filter(Boolean))</span><span class="ln"><i>33</i>  ipcMain.handle(`plugin:${plugin}`, () =&gt; store.get(`plugins.${plugin}`));</span></pre></details> <details class="place"><summary><span class="role">sender</span> <code>preload.js:9</code></summary><pre class="src"><span class="ln"><i>6</i>  listNotes: () =&gt; ipcRenderer.invoke(&quot;notes:list&quot;),</span><span class="ln"><i>7</i>  saveNote: (note) =&gt; ipcRenderer.invoke(&quot;notes:save&quot;, note),</span><span class="ln"><i>8</i>  quit: () =&gt; ipcRenderer.send(&quot;app:quit&quot;),</span><span class="ln hit"><i>9</i>  checkUpdate: () =&gt; ipcRenderer.invoke(&quot;update:check&quot;),</span><span class="ln"><i>10</i>});</span><span class="ln"><i>11</i> </span></pre></details></div>
           </div>
         </li>
-        <li class="change removed">
-          <span class="sign" aria-hidden="true">−</span>
+        <li class="change unknown">
+          <span class="sign" aria-hidden="true">?</span>
           <div>
-            <div><span class="word">removed</span> <code class="key">shell:open</code></div>
+            <div><span class="word">unknown</span> <code class="key">shell:open</code></div>
             <div class="places"><span class="side">in 1.4.0</span> <details class="place"><summary><span class="role">receiver</span> <code>main.js:30</code></summary><pre class="src"><span class="ln"><i>27</i>ipcMain.handle(&quot;notes:list&quot;, () =&gt; store.get(&quot;notes&quot;) ?? []);</span><span class="ln"><i>28</i>ipcMain.handle(&quot;notes:save&quot;, (_e, note) =&gt; store.push(&quot;notes&quot;, note));</span><span class="ln"><i>29</i>ipcMain.on(&quot;app:quit&quot;, () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.on(&quot;shell:open&quot;, (_e, target) =&gt; shell.openPath(target));</span><span class="ln"><i>31</i> </span><span class="ln"><i>32</i>app.whenReady().then(createWindow);</span><span class="ln"><i>33</i>app.on(&quot;window-all-closed&quot;, () =&gt; app.quit());</span></pre></details> <details class="place"><summary><span class="role">sender</span> <code>preload.js:9</code></summary><pre class="src"><span class="ln"><i>6</i>  listNotes: () =&gt; ipcRenderer.invoke(&quot;notes:list&quot;),</span><span class="ln"><i>7</i>  saveNote: (note) =&gt; ipcRenderer.invoke(&quot;notes:save&quot;, note),</span><span class="ln"><i>8</i>  quit: () =&gt; ipcRenderer.send(&quot;app:quit&quot;),</span><span class="ln hit"><i>9</i>  openInShell: (target) =&gt; ipcRenderer.send(&quot;shell:open&quot;, target),</span><span class="ln"><i>10</i>});</span><span class="ln"><i>11</i> </span></pre></details></div>
           </div>
         </li>
@@ -139,7 +139,7 @@
       </section>
       <section>
         <h2>Not established</h2>
-        <ul class="plain"><li>1.5.0: 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ipcMain.handle at main.js:33. <code>ipc_channel_unresolved</code></li>
+        <ul class="plain"><li>1.5.0: 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ipcMain.handle at main.js:33 (evaluation stopped: runtime value: process). <code>ipc_channel_unresolved</code></li>
           <li>Absence from a list means hexvero did not find it in the files it read, not that the app cannot do it. Nothing here was observed running.</li>
         </ul>
       </section>
