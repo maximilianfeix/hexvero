@@ -12,10 +12,16 @@ large sentence per target that says what the file is. Everything else is quiet, 
 | `--line`       | `#31353d` | `#dcdfe4` | hairlines, table rules                     |
 | `--ink`        | `#e8e6e1` | `#1d2026` | primary text (warm off-white, not pure)    |
 | `--ink-2`      | `#9a9ea7` | `#5c616b` | secondary text                             |
-| `--amber`      | `#f2b84b` | `#9a6a06` | the one accent: evidence, selection, focus |
+| `--ink-3`      | `#8e939d` | `#676c76` | tertiary text, notes (AA on bg and panel)  |
+| `--amber`      | `#f2b84b` | `#8a5e04` | the one accent: evidence, selection, focus |
+| `--focus`      | `#f2b84b` | `#8a5e04` | focus ring (≥ 3:1 on every surface)        |
 | `--amber-soft` | `#3a2f17` | `#fbefcf` | selected rows, highlighted bytes           |
 | `--alert`      | `#e5736f` | `#b3261e` | hardening off, dangerous permissions       |
-| `--ok`         | `#8fc98a` | `#2e7d32` | mitigation on, verified                    |
+| `--ok`         | `#8fc98a` | `#2a752e` | mitigation on, verified                    |
+
+Text tokens reach WCAG AA (4.5:1) on the surfaces they are used on; `packages/web/src/lib/contrast.test.ts`
+checks the values in `styles.css`. In the light theme the amber column above is the text/ring amber
+(`--amber-ink`, `--focus`); the pale `#f2b84b` stays a fill only (primary button, selection marks).
 
 Amber is spent on evidence only: confirmed findings, selected bytes, the active tab mark, focus rings.
 Red and green appear as small marks in fact tables, never as washes.

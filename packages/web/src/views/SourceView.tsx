@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { useEffect, useRef } from "react";
 import { api } from "../lib/api.js";
 import { navigate } from "../lib/route.js";
+import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
 
 /**
@@ -33,7 +34,7 @@ export function SourceView({
     <div className="source">
       <div className="toolbar">
         <code className="source-file">
-          {file}:{line}
+          {visible(file)}:{line}
         </code>
         {source.data && (
           <span className="status">
@@ -49,7 +50,7 @@ export function SourceView({
           All modules
         </button>
       </div>
-      {source.loading && <p className="empty">Reading {file}…</p>}
+      {source.loading && <p className="empty">Reading {visible(file)}…</p>}
       {source.error && (
         <p className="empty" role="alert" style={{ color: "var(--alert)" }}>
           {source.error.message}
@@ -69,7 +70,7 @@ export function SourceView({
               >
                 <span className="ln">{n}</span>
                 <span className="code">
-                  {text}
+                  {visible(text)}
                   {cut && (
                     <span className="cut"> … {cut.length - text.length} more characters</span>
                   )}
@@ -80,7 +81,8 @@ export function SourceView({
         </div>
       )}
       <p className="note">
-        Read from the file as stored in the target. Text from the target is shown as data.
+        Read from the file as stored in the target. Text from the target is shown as data; invisible
+        and direction-changing characters are written out as ⟨U+…⟩.
       </p>
     </div>
   );
