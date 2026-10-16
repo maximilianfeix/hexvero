@@ -119,6 +119,41 @@ async function readBody(req: IncomingMessage, max: number): Promise<Uint8Array> 
   return new Uint8Array(Buffer.concat(chunks));
 }
 
+/** Rows per comparison response at most (contract C3: the server pages at 500). */
+const COMPARE_MAX_ROWS = 500;
+
+type ComparisonPage = { offset: number; limit: number; total: number; next: number | null };
+
+/**
+ * One page of the comparison (contract C3/C7). `offset` and `limit` go to the core; a core that
+ * does not page yet (no `page` in its result) returns every row, and the page is cut here, so the
+ * client sees the same shape either way.
+ */
+async function comparePage(
+  session: Session,
+  a: string,
+  b: string,
+  offset: number,
+  limit: number,
+): Promise<Awaited<ReturnType<typeof compareReleases>> & { page: ComparisonPage }> {
+  const options: Parameters<typeof compareReleases>[3] & { offset?: number; limit?: number } = {
+    maxRows: COMPARE_MAX_ROWS,
+    offset,
+    limit,
+  };
+  const result = (await compareReleases(session, a, b, options)) as Awaited<
+    ReturnType<typeof compareReleases>
+  > & { page?: ComparisonPage };
+  if (result.page) return result as typeof result & { page: ComparisonPage };
+  const total = result.changes.length;
+  const end = Math.min(total, offset + limit);
+  return {
+    ...result,
+    changes: result.changes.slice(offset, end),
+    page: { offset, limit, total, next: end < total ? end : null },
+  };
+}
+
 /**
  * Starts the loopback server. Every /api route requires the session token;
  * the UI receives it through the page URL hash so it never hits the server log.
@@ -188,6 +223,12 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         throw new AnalysisError("invalid_input", `${key} must be a non-negative number`);
       return value;
     };
+    const whole = (key: string): number | undefined => {
+      const value = num(key);
+      if (value !== undefined && !Number.isSafeInteger(value))
+        throw new AnalysisError("invalid_input", `${key} must be a whole number`);
+      return value;
+    };
     const paging = (): { offset?: number; limit?: number; text?: string; maxBytes?: number } => {
       const out: { offset?: number; limit?: number; text?: string; maxBytes?: number } = {};
       const maxBytes = num("maxBytes");
@@ -229,8 +270,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       const [a, b] = [q.get("a"), q.get("b")];
       if (!a || !b) throw new AnalysisError("invalid_input", "a and b (target ids) are required");
       if (a === b) throw new AnalysisError("invalid_input", "pick two different targets");
-      const comparison = await compareReleases(session, a, b, { maxRows: 500 });
       if (parts[1] === "report" && parts.length === 2) {
+        // The report is the whole review: no client paging, the core's own row limit.
+        const comparison = await compareReleases(session, a, b, { maxRows: COMPARE_MAX_ROWS });
         res.writeHead(200, {
           "content-type": "text/markdown; charset=utf-8",
           "cache-control": "no-store",
@@ -239,7 +281,12 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         res.end(renderReleaseReport(comparison));
         return;
       }
-      if (parts.length === 1) return json(res, 200, comparison);
+      if (parts.length === 1) {
+        const offset = whole("offset") ?? 0;
+        const limit = Math.min(whole("limit") ?? COMPARE_MAX_ROWS, COMPARE_MAX_ROWS);
+        if (limit < 1) throw new AnalysisError("invalid_input", "limit must be at least 1");
+        return json(res, 200, await comparePage(session, a, b, offset, limit));
+      }
     }
     if (req.method === "POST" && parts[0] === "uploads") {
       const name = (q.get("name") ?? "upload.bin").replace(/[^\w.@()-]+/g, "_");
