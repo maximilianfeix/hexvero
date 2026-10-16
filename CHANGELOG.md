@@ -41,6 +41,10 @@ All notable changes to hexvero are listed here. The format follows
   cycle, a value known only at run time) the call keeps no channel, carries a `reason`, and
   `ipc_channel_unresolved` names it, also for a channel named through another module's table
   that the module could not read (before, those were dropped from the limitation silently).
+  A registry function imported from a third module (unbundled) is not followed yet; such calls
+  are named with that reason. The evaluation is bounded on hostile input: regular expressions
+  with at most one quantified atom, strings of at most 1,000 characters, at most 64 nested
+  blocks, and an exception inside it ends that question with a reason, not the analysis.
 - Interface rows (C4) compute `direction` and `link` from every matching end and say how many
   there are: `endsTotal`, `endsTruncated`; `ends` keeps the first 20 as evidence.
 - Hold-out results improved with no new false report: window settings read through bundled
