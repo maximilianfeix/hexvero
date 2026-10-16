@@ -21,6 +21,7 @@
     "site/demo/**",
     "docs/launch/published/**",
     "packages/core/test/fixtures/sarif-schema-2.1.0.json",
-    "docs/case-studies/*.report.md"
+    "docs/case-studies/*.report.md",
+    "corpus/holdout5/*/src/**"
   ]
 }

@@ -2,9 +2,7 @@
   "case": "tidemark-v2",
   "kind": "compare",
   "license": "MIT, written for this corpus",
-  "inputs": [
-    "holdout5/tidemark-v2.plain.asar"
-  ],
+  "inputs": ["holdout5/tidemark-v2.plain.asar"],
   "base": "holdout5/tidemark.plain.asar",
   "method": "Every expectation was written from the sources by reading them (for this case: tidemark/src with changes.json applied the way derive() in corpus/build.mjs applies it). No analysis tool was run on them, and no tool's detectors, source code or output were looked at. Line numbers were looked up by a scratch script that finds the line of a given piece of text and fails unless it occurs exactly once. A second scratch script ran main.js and both preloads in Node against a stand-in for the electron module and printed every ipcMain registration and webContents.send with its stack of file:line, every window's merged webPreferences, and the channel each exposed member invokes, sends on or listens to; its output agreed with the expectations. main.js, both preloads and the modules in main/ and shared/ are CommonJS; renderer.js and renderer-preview.js are ES modules that import from renderer/. FILE ATTRIBUTION: facts are attributed to the source file a reader sees them in, also when that is not an entry file: the IpcRouter class in main/ipc-router.js holds the ipcMain.handle / ipcMain.on calls, the channels are attached in main/handlers.js (receivers name main/handlers.js, the file where a reader sees which channel is received), every window is created in main/windows.js, publish:progress is sent from main/publish.js. In the bundled and minified inputs these modules are bundled into their entry file; bundledFiles maps each module to the file it ends up in, and a scorer should apply that map for those two inputs (line numbers then do not apply). Channel names come from the frozen CHANNELS object and from exportChannel(format) = `export:${format}` applied in a loop over the literal array EXPORT_FORMATS; both are resolvable by evaluating the source. One channel name comes from the environment (ipcChannels.unknown). webPreferences lists the keys preload, contextIsolation, nodeIntegration, sandbox, webSecurity, allowRunningInsecureContent, one entry per window and key the code writes (also through BASE_PREFS); count in an absent entry is one more than the number of windows that have that value, as in holdout4. interfaceLinks: a receiver reached through the IpcRouter wrapper has the line of the ipcMain call inside the wrapper as line, and entryFile/entryLine where the channel is handed to the wrapper. changes lists what differs from tidemark (plain); unchangedMoves lists facts that only moved to another line and must not be reported as changes.",
   "bundledFiles": {
@@ -26,180 +24,110 @@
       "present": [
         {
           "channel": "releases:list",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "CHANNELS.RELEASES_LIST in shared/channels.js. main/handlers.js router.handle(CHANNELS.RELEASES_LIST, ...), router being new IpcRouter(\"editor\") from main.js; registered in main/handlers.js through IpcRouter.handle (main/ipc-router.js), whose body calls ipcMain.handle(channel, ...); the preload member is call(CHANNELS.X), call being a preload helper that returns (...args) => ipcRenderer.invoke(channel, ...args). preload.js listReleases"
         },
         {
           "channel": "release:load",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "router.handle(CHANNELS.RELEASE_LOAD, ...); preload.js loadRelease: call(CHANNELS.RELEASE_LOAD)"
         },
         {
           "channel": "release:save",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "router.handle(CHANNELS.RELEASE_SAVE, ...); preload.js saveRelease"
         },
         {
           "channel": "release:duplicate",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "new in v2: router.handle(CHANNELS.RELEASE_DUPLICATE, ...); preload.js duplicateRelease"
         },
         {
           "channel": "settings:get",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "router.handle(CHANNELS.SETTINGS_GET, ...); preload.js getSettings"
         },
         {
           "channel": "settings:set",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "router.handle(CHANNELS.SETTINGS_SET, ...); preload.js setSettings"
         },
         {
           "channel": "export:markdown",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "main/handlers.js: for (const format of EXPORT_FORMATS) router.handle(exportChannel(format), ...), with EXPORT_FORMATS = [\"markdown\", \"html\", \"json\", \"text\"] and exportChannel = (format) => `export:${format}` from shared/channels.js. One call site registers every export channel. preload.js exportMarkdown: call(exportChannel(\"markdown\"))"
         },
         {
           "channel": "export:html",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "the export loop; preload.js exportHtml: call(exportChannel(\"html\"))"
         },
         {
           "channel": "export:json",
-          "receivers": [
-            "main/handlers.js"
-          ],
+          "receivers": ["main/handlers.js"],
           "senders": [],
           "why": "the export loop registers it, but no preload member or page sends on it: the program has a receiver without a sender"
         },
         {
           "channel": "export:text",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "new in v2: \"text\" added to EXPORT_FORMATS, so the loop registers export:text; preload.js exportText: call(exportChannel(\"text\"))"
         },
         {
           "channel": "publish:start",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "router.handle(CHANNELS.PUBLISH_START, ...); preload.js publish: call(CHANNELS.PUBLISH_START)"
         },
         {
           "channel": "publish:progress",
-          "receivers": [
-            "preload.js"
-          ],
-          "senders": [
-            "main/publish.js"
-          ],
+          "receivers": ["preload.js"],
+          "senders": ["main/publish.js"],
           "why": "main/publish.js publishRelease: report() calls contents.send(CHANNELS.PUBLISH_PROGRESS, ...), contents being windows.editor().webContents handed in by the publish:start handler. preload.js onPublishProgress: ipcRenderer.on(CHANNELS.PUBLISH_PROGRESS, wrapped) (and removeListener on the same channel)"
         },
         {
           "channel": "preview:open",
-          "receivers": [
-            "main.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
           "why": "main.js ipcMain.on(CHANNELS.PREVIEW_OPEN, ...) directly, not through the router; preload.js openPreview: ipcRenderer.send(CHANNELS.PREVIEW_OPEN)"
         },
         {
           "channel": "preview:update",
-          "receivers": [
-            "main/handlers.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
           "why": "main/handlers.js router.on(CHANNELS.PREVIEW_UPDATE, ...); preload.js updatePreview: ipcRenderer.send(CHANNELS.PREVIEW_UPDATE, release)"
         },
         {
           "channel": "preview:render",
-          "receivers": [
-            "preload-preview.js"
-          ],
-          "senders": [
-            "main/handlers.js"
-          ],
+          "receivers": ["preload-preview.js"],
+          "senders": ["main/handlers.js"],
           "why": "main/handlers.js, inside the preview:update listener: preview.webContents.send(CHANNELS.PREVIEW_RENDER, toHtml(release)), preview being the preview window. preload-preview.js onRender: ipcRenderer.on(CHANNELS.PREVIEW_RENDER, ...) (v2 requires shared/channels.js there)"
         },
         {
           "channel": "preview:ping",
-          "receivers": [
-            "main.js"
-          ],
-          "senders": [
-            "preload-preview.js"
-          ],
+          "receivers": ["main.js"],
+          "senders": ["preload-preview.js"],
           "why": "main.js ipcMain.on(\"preview:ping\", ...) with the literal; preload-preview.js ping: ipcRenderer.send(\"preview:ping\")"
         },
         {
           "channel": "preview:pong",
-          "receivers": [
-            "preload-preview.js"
-          ],
-          "senders": [
-            "main.js"
-          ],
+          "receivers": ["preload-preview.js"],
+          "senders": ["main.js"],
           "why": "main.js: event.reply(\"preview:pong\", ...) inside the preview:ping listener, which answers on the sender's webContents; preload-preview.js onPong: ipcRenderer.once(\"preview:pong\", ...)"
         },
         {
           "channel": "app:info",
-          "receivers": [
-            "main.js"
-          ],
-          "senders": [
-            "preload.js"
-          ],
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
           "why": "main.js ipcMain.handle(\"app:info\", ...) with the literal; preload.js appInfo: ipcRenderer.invoke(\"app:info\") directly (not through call(), since this handler does not wrap its answer)"
         }
       ],
@@ -677,56 +605,37 @@
         {
           "kind": "file",
           "value": "tidemark-settings.json",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "main/store.js settings.read / settings.write: fs.readFileSync / fs.writeFileSync of the whole JSON at path.join(app.getPath(\"userData\"), SETTINGS_FILE); used by the settings, releases:list and publish:start handlers. Kind file as in holdout4"
         },
         {
           "kind": "file",
           "value": "tidemark-drafts.json",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "main/store.js drafts: every draft by id in one JSON file, read by all/get and rewritten whole by put"
         },
         {
           "kind": "localStorage",
           "value": "tidemark.lastProject",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer.js local.get(LAST_PROJECT) in start, local.set(LAST_PROJECT, ...) on the project field; local from renderer/web-store.js builds the key as `${PREFIX}${name}` with PREFIX = \"tidemark.\" and LAST_PROJECT = \"lastProject\""
         },
         {
           "kind": "localStorage",
           "value": "tidemark.fontSize",
-          "ops": [
-            "read",
-            "write",
-            "delete"
-          ],
+          "ops": ["read", "write", "delete"],
           "why": "renderer.js local.get(FONT_SIZE), local.set(FONT_SIZE, ...) on the font field, local.remove(FONT_SIZE) on the reset button (localStorage.removeItem)"
         },
         {
           "kind": "sessionStorage",
           "value": "tidemark.cursor",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer.js session.get(CURSOR) in start, session.set(CURSOR, ...) in open and on keyup"
         },
         {
           "kind": "localStorage",
           "value": "preview.theme",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer-preview.js: localStorage.getItem(THEME_KEY) at start, setItem(THEME_KEY, theme) in applyTheme"
         }
       ],
