@@ -1,3 +1,4 @@
+import { runCheckTool } from "./check.js";
 import { checkWritePath } from "./writePolicy.js";
 import {
   brief,
@@ -14,7 +15,7 @@ import {
 import { z } from "zod";
 
 /**
- * Tool catalog. Kept deliberately small: fifteen tools whose combined
+ * Tool catalog. Kept deliberately small: sixteen tools whose combined
  * discovery payload stays under 32 KiB so that constrained MCP clients keep
  * working. Lists come back paged; anything bigger goes to a file.
  */
@@ -155,7 +156,7 @@ export const toolSchemas = {
   hexvero_compare: {
     title: "Compare collections",
     description:
-      "Diff one collection between two targets: added, removed, changed (with the fields that differ) and unchanged items, matched by key (auto-detected: name, channel, id, path, url, type+name … or pass key, a+b for composites). States when the comparison is partial. Without collection: counts per shared collection, to pick one.",
+      "Diff one collection between two targets: added, removed, changed (with the fields that differ) and unchanged items, matched by key (auto-detected: name, channel, id, path, url, type+name … or pass key, a+b for composites). States completeness; unknown items are neither added nor removed. Each list pages on its own (list + offset). Without collection: counts per shared collection, to pick one.",
     input: {
       targetA: targetId,
       targetB: targetId,
@@ -165,12 +166,11 @@ export const toolSchemas = {
         .array(z.string())
         .optional()
         .describe("Fields to exclude from change detection, in addition to the position rule"),
-      offset: z
-        .number()
-        .int()
-        .min(0)
+      list: z
+        .enum(["added", "removed", "changed", "unknown"])
         .optional()
-        .describe("Skip this many added, removed and changed items (for the next page)"),
+        .describe("Page only this list; offset applies to it (each list has its own next)"),
+      offset: z.number().int().min(0).optional().describe("With list: that list's next"),
       limit: z
         .number()
         .int()
@@ -184,6 +184,21 @@ export const toolSchemas = {
         .describe(
           "Count every difference. Default false: address fields of native symbols/sections that only moved are reported as relocated, with samples",
         ),
+    },
+  },
+  hexvero_check: {
+    title: "Check release policy",
+    description:
+      "Apply a release policy (inline JSON or file) to two builds, as `hexvero check`: status pass, fail or incomplete, and findings paged by offset. Reads a baseline, never writes one.",
+    input: {
+      targetA: targetId,
+      targetB: targetId,
+      policy: z.record(z.string(), z.unknown()).optional().describe("Policy JSON object"),
+      policyPath: z.string().optional().describe("Or: absolute path of a policy file"),
+      baselinePath: z.string().optional().describe("Absolute path of a baseline file"),
+      format: z.enum(["json", "markdown", "sarif"]).optional().describe("Default json"),
+      offset: z.number().int().min(0).optional().describe("First finding (default 0)"),
+      limit: z.number().int().min(1).max(500).optional().describe("Findings (default 100)"),
     },
   },
   hexvero_sourcemap: {
@@ -395,17 +410,28 @@ export function createHandlers(
       if (a["status"] === "open" || a["status"] === "resolved") filter.status = a["status"];
       return session.unknowns.list(filter);
     },
+    hexvero_check: async (a) => runCheckTool(session, a),
     hexvero_compare: async (a) => {
+      // Each list pages on its own: an offset belongs to the one list it was read from.
+      const list = typeof a["list"] === "string" ? a["list"] : undefined;
+      if (num(a["offset"]) !== undefined && list === undefined)
+        throw new AnalysisError(
+          "invalid_input",
+          "offset needs list (added, removed, changed or unknown): each list has its own next",
+        );
       const from = num(a["offset"]) ?? 0;
       const per = num(a["limit"]);
-      const window = <T>(items: T[], fallback: number) => {
+      const shown: string[] = [];
+      const window = <T>(name: string, items: T[], fallback: number) => {
+        if (list !== undefined && list !== name) return { count: items.length };
         const size = per ?? fallback;
         const sample = items.slice(from, from + size);
-        return {
-          count: items.length,
-          sample,
-          ...(from + sample.length < items.length ? { next: from + sample.length } : {}),
-        };
+        const next = from + sample.length < items.length ? from + sample.length : undefined;
+        if (items.length)
+          shown.push(
+            `${name} ${from ? `${from + 1}-${from + sample.length}` : sample.length} of ${items.length}${next === undefined ? "" : ` (next: list "${name}", offset ${next})`}`,
+          );
+        return { count: items.length, sample, ...(next === undefined ? {} : { next }) };
       };
       const idA = str(a["targetA"]);
       const idB = str(a["targetB"]);
@@ -463,12 +489,14 @@ export function createHandlers(
         complete:
           completeness.complete && limitsA === 0 && limitsB === 0 && diff.ignored.length === 0,
         unchanged: diff.unchanged,
-        // Lists are paged like collections: `next` is the offset of the following page.
-        added: window(diff.added, 50),
-        removed: window(diff.removed, 50),
+        // Each list is paged on its own: `next` is the offset of its following page, passed
+        // together with list.
+        added: window("added", diff.added, 50),
+        removed: window("removed", diff.removed, 50),
         // Found on one side, in a file the other side did not read: neither added nor removed.
-        unknown: window(diff.unknown, 50),
-        changed: window(diff.changed.map(fieldsOf), 25),
+        unknown: window("unknown", diff.unknown, 50),
+        changed: window("changed", diff.changed.map(fieldsOf), 25),
+        shown: shown.length ? shown.join("; ") : "no added, removed, changed or unknown items",
         relocated: {
           count: diff.relocated,
           sample: diff.relocatedSample.slice(0, 5).map(fieldsOf),

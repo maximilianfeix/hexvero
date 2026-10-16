@@ -22,7 +22,7 @@ and an inventory of every tracked file with its owner and whether it was read.
   `packages/core/test/fixtures/` and a test (enforced by `scripts/check-shape.mjs`).
 - `packages/core/src/compare.ts`, `report.ts`, `source.ts`, `paging.ts`: comparison, release report,
   source windows, byte-budgeted pages.
-- `packages/cli/src/index.ts` (commands), `packages/mcp/src/tools.ts` (15 tools, limit 16),
+- `packages/cli/src/index.ts` (commands), `packages/mcp/src/tools.ts` (16 tools, limit 16),
   `packages/server/src/index.ts` (loopback API), `packages/web/src/` (React UI built into
   `packages/cli/ui`).
 - `corpus/`, `e2e/`, `scripts/`: measurement, end-to-end flows, release and site generators.

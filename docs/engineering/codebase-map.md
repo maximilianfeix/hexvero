@@ -195,7 +195,7 @@ limit?, text?, maxBytes?}`.
 
 1. `cli/src/index.ts:758-761` → `serveStdio(new Session({ worker: true }))`
    (`mcp/src/index.ts:241`); SIGINT/SIGTERM kill engines first (`index.ts:244-249`).
-2. `createHexveroServer` (`mcp/src/index.ts:155`) registers each of the 15 `toolSchemas`
+2. `createHexveroServer` (`mcp/src/index.ts:155`) registers each of the 16 `toolSchemas`
    (`mcp/src/tools.ts:38-251`) with zod input schemas and `TOOL_ANNOTATIONS` (`index.ts:52-146`).
 3. The registered callback (`index.ts:178-208`) runs `handlers[name](args, extra.signal)`;
    `hexvero_collection` (`tools.ts:339-346`) → `session.collection` (`session.ts:465`) →
