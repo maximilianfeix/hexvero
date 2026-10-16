@@ -1,0 +1,75 @@
+# Posts (drafts, not posted)
+
+Rules for all of them: post as the maintainer, from your own account, in your own words. Hacker
+News forbids generated or AI-edited text and automated posting
+(https://news.ycombinator.com/newsguidelines.html, checked 2026-10-16), so treat everything below
+as an outline of facts and order, not as text to paste there. One channel, one story; no
+identical cross-posts, no vote requests.
+
+## X: main post
+
+> Know what changed inside your app.
+>
+> hexvero compares two builds of an Electron app (or a binary) without running either: new IPC
+> channels, preload members, window settings, endpoints, each with the file and line it was read
+> from, and a list of what it could not establish.
+>
+> npx hexvero demo
+>
+> github.com/maximilianfeix/hexvero
+
+Attach `docs/demo/compare.mp4` (or the GIF).
+
+## X: thread (4 posts)
+
+1. The example: 1.5.0 removes `openInShell` from the preload and adds `checkUpdate`, whose handler
+   fetches an update URL. Both show up with `preload.js:9` and the handler `main.js:30`.
+   [screenshot: docs/screenshots/ui-compare.png]
+2. Window settings are reported as written, never assumed: `sandbox: false → true`,
+   `nodeIntegration: true → false`. Where a value rests on Electron's default, it says so.
+3. What it cannot read, it names: 1.5.0 builds channel names from an env var, so the report lists
+   `ipc_channel_unresolved` at `main.js:33` instead of guessing. On my newest blind test set it
+   found 12 of 57 channels; the misses are listed in the repo.
+4. CLI, a local web UI where every file:line opens the code, a Markdown report, and an MCP server
+   so a coding agent can do the same with small answers. MIT, Node 22+. Bug reports with a wrong
+   fact are the most useful feedback.
+
+## Show HN
+
+**Title:** Show HN: Hexvero – compare two builds of an Electron app without running them
+
+**URL:** https://github.com/maximilianfeix/hexvero
+
+**First comment, outline (write it yourself):**
+
+- Why: you kept asking what an Electron update changed (IPC a page can reach, window settings,
+  new endpoints) and a diff of minified bundles did not answer it.
+- What it does, with the demo output (three lines from `npx hexvero demo`).
+- How it keeps facts apart: `●` read / `○` inferred, `literal` / `inferred`, unknown rows, the
+  "Not established" section.
+- Honest numbers: newest blind set 12 of 57 IPC channels, 5 of 8 version changes; why it missed
+  them (registry function not evaluated). Link `corpus/holdout4/README.md`.
+- What it is not: no dynamic analysis, no verdicts, not a safety guarantee for hostile files.
+- Ask: "where was the first answer wrong or missing something obvious?"
+
+## Community post A: r/electronjs (Electron developers)
+
+**Title:** I built a tool that tells you what changed between two builds of your Electron app
+(IPC, preload, webPreferences) with file:line
+
+**Body outline:** you as the developer; the problem of reviewing your own release (did a
+refactor expose a new channel to the renderer, did a window lose `sandbox`); `npx hexvero demo`
+output; `compare --report` for a PR or release review; what it cannot see (computed channel
+names, run-time behavior); ask for a build where it got something wrong. Check the sidebar rules
+for self-promotion before posting.
+
+## Community post B: r/ReverseEngineering or r/netsec (security reviewers)
+
+**Title:** Static diff of Electron app updates: IPC surface, preload bridge and window settings
+between two asar builds
+
+**Body outline:** methodology first: tokenizer-based scan, bounded resolver for channel names,
+`interfaces` join (bridge member → channel → handler), how unknown differs from removed, the blind
+corpus and its misses (12/57 on holdout4) with the reason. Then the tool link. No vulnerability
+claims; the example app is synthetic. These subreddits expect technical substance; if the
+self-promotion rules do not allow a tool post, skip the channel.
