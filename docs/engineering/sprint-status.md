@@ -63,6 +63,19 @@ timeout, check reads every page. Gates at `aa88007`: check 539 passed, e2e 13, c
 Running: A2 (IPC wrapper classes, Fiddle + holdout5 dev), I (offline HTML report), J (interface
 graph), R (independent review of 841b6db..HEAD).
 
+## Independent review (agent R, 2026-10-17, 841b6db..f8ffe2d)
+
+4 high, 6 medium, 11 low; 16 confirmed with scripts (scratchpad/review/). Assigned:
+
+- A (resolver): H1 ReDoS bypass in simpleRegex, H2 effects in unread initializers → wrong
+  channels, M1 `var` in blocks, M2 block const leak, M3 key order, M6 async/generator, L1, L3.
+- P (policy): H3 renamed/new permissive window passes, H4 wrong target kind passes, M4 renamed
+  file makes old host/member "new", M5 SARIF URIs may land on repo files, L2, L5–L7, L9, L11.
+- D2 (MCP): L8 policyPath reads any path and echoes content.
+- B (report): L4 duplicate row ids.
+- Lead: L10 symlink race (fixed, `db4f0d9`). Not built: C7 `POST /api/check` (UI policy check);
+  `item_truncated` gap is never produced (documented in contracts).
+
 ## Measurements
 
 - Blind holdout5 (round 4, scorer blobs in corpus/results/round4/README.md), totals over three
