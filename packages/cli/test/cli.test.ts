@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -23,6 +23,38 @@ describe("hexvero CLI", () => {
   const so = join(dir, "lib.so");
   writeFileSync(so, buildElf());
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("copies the example builds for the demo and never replaces a different file", async () => {
+    const target = join(dir, "demo");
+    const first = capture();
+    expect(await main(["demo", target], first)).toBe(0);
+    const text = first.stdout.join("\n");
+    expect(text).toContain("+ notesdesk::checkUpdate");
+    expect(text).toContain("ipc_channel_unresolved");
+    expect(text).toContain(`--report report.md`);
+    // a second run with the same files is fine; a different file under that name is kept
+    expect(await main(["demo", target], capture())).toBe(0);
+    writeFileSync(join(target, "notesdesk-1.5.0.asar"), "mine");
+    const refused = capture();
+    expect(await main(["demo", target], refused)).toBe(2);
+    expect(refused.stderr.join("\n")).toContain("exists with other content");
+  });
+
+  it("writes a compare report and refuses to overwrite it without --force", async () => {
+    const a = join(dir, "demo-r", "notesdesk-1.4.0.asar");
+    const b = join(dir, "demo-r", "notesdesk-1.5.0.asar");
+    expect(await main(["demo", join(dir, "demo-r")], capture())).toBe(0);
+    const out = join(dir, "report.md");
+    expect(await main(["compare", a, b, "--report", out], capture())).toBe(0);
+    expect(readFileSync(out, "utf8")).toContain("## Not established");
+    writeFileSync(out, "keep me");
+    const refused = capture();
+    expect(await main(["compare", a, b, "--report", out], refused)).toBe(2);
+    expect(readFileSync(out, "utf8")).toBe("keep me");
+    expect(await main(["compare", a, b, "--report", out, "--force"], capture())).toBe(0);
+    expect(readFileSync(out, "utf8")).toContain("# What changed");
+    expect(await main(["compare", a, b, "ipc", "--report", out], capture())).toBe(2);
+  });
 
   it("shows the cache and clears it only with --apply", async () => {
     const root = join(dir, "cache");

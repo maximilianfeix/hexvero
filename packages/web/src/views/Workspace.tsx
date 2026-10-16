@@ -1,12 +1,13 @@
 import type { KeyboardEvent, ReactElement } from "react";
 import { useState } from "react";
 import { api, formatBytes, formatCount, type TargetRecord } from "../lib/api.js";
-import { navigate } from "../lib/route.js";
+import { navigate, navigateCompare } from "../lib/route.js";
 import { useAsync } from "../lib/useAsync.js";
 import { CollectionView } from "./CollectionView.js";
 import { GraphView } from "./GraphView.js";
 import { HexView } from "./HexView.js";
 import { Overview } from "./Overview.js";
+import { SourceView } from "./SourceView.js";
 import { StringsView } from "./StringsView.js";
 
 const FIXED_FIRST = ["overview", "findings"];
@@ -71,6 +72,7 @@ export function Workspace({
     ...dynamic,
     ...(isDirectory ? [] : ["strings", "hex"]),
     ...(analysis.data?.data["kind"] === "javascript-app" ? ["graph"] : []),
+    ...(tab === "source" ? ["source"] : []),
   ];
 
   return (
@@ -97,6 +99,13 @@ export function Workspace({
             }}
           >
             Export JSON
+          </button>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => navigateCompare(target.id, undefined)}
+          >
+            Compare with another build
           </button>
           {exportError && (
             <span role="alert" style={{ color: "var(--alert)" }}>
@@ -191,6 +200,7 @@ export function Workspace({
         {tab === "strings" && <StringsView targetId={target.id} query={query} />}
         {tab === "hex" && <HexView targetId={target.id} size={target.info.size} query={query} />}
         {analysis.data && tab === "graph" && <GraphView targetId={target.id} />}
+        {tab === "source" && <SourceView targetId={target.id} query={query} />}
       </section>
     </>
   );

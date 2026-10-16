@@ -18,9 +18,14 @@
 
 ---
 
-**Der erste Blick auf eine Binärdatei oder ein App-Bundle: statische Fakten mit dem Beleg daneben, nur mit Node.** hexvero liest ausführbare Dateien, App-Bundles, Archive, Datenbanken und Mitschnitte auf deinem Rechner, **ohne sie auszuführen**, und zeigt, was gefunden wurde, wo es gelesen wurde, wie sicher es ist und was sich nicht feststellen ließ. Eine CLI, ein MCP-Server mit 15 Tools für Coding-Agenten und eine lokale Weboberfläche. Engines sind optional.
+**Wissen, was sich in deiner App geändert hat.** Electron-Apps und Binärdateien untersuchen, Befunde bis zur Quelle zurückverfolgen und Releases vergleichen. Lokal, ohne das Ziel auszuführen. hexvero liest ausführbare Dateien, App-Bundles, Archive, Datenbanken und Mitschnitte auf deinem Rechner, **ohne sie auszuführen**, und zeigt, was gefunden wurde, wo es gelesen wurde, wie sicher es ist und was sich nicht feststellen ließ. Eine CLI, ein MCP-Server mit 15 Tools für Coding-Agenten und eine lokale Weboberfläche. Engines sind optional.
 
-![hexvero analysiert eine Electron-App im Terminal](docs/demo/demo.gif)
+![hexvero vergleicht zwei Builds einer Electron-App: jede Änderung mit Datei und Zeile](docs/screenshots/ui-compare.png)
+
+```bash
+npx hexvero demo                 # zwei Builds einer Beispiel-App vergleichen
+npx hexvero ui --demo --open     # derselbe Vergleich in der lokalen Weboberfläche
+```
 
 ## Installation
 
@@ -37,6 +42,7 @@ npx hexvero analyze ./app.asar                # Zusammenfassung, Befunde mit Dat
 npx hexvero collection ./app.asar ipc         # eine Liste seitenweise lesen
 npx hexvero strings ./program --tag url       # Strings mit Tags
 npx hexvero compare ./alt ./neu symbols       # hinzugekommen, entfernt, geändert, nur verschoben
+npx hexvero compare ./alt ./neu --report r.md # Bericht mit Datei:Zeile und dem, was offen blieb
 npx hexvero recover ./bundle.js ./out         # ein Bundle in Moduldateien zerlegen
 npx hexvero calls ./program radare2 main      # begrenzter Callgraph (radare2, rizin oder Ghidra)
 npx hexvero ui --open                         # lokale Weboberfläche
