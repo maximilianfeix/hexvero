@@ -13,8 +13,10 @@ import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascri
 import {
   compareItems,
   positionalFields,
+  type CompareCompleteness,
   type CompareResult,
   type SideCoverage,
+  type UnresolvedFamily,
 } from "./compare.js";
 import { UnknownsLedger } from "./unknowns.js";
 import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
@@ -22,7 +24,7 @@ import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
 export type { CollectionPage, CollectionQuery } from "./paging.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
-import { AnalysisError, type TargetInfo } from "./model.js";
+import { AnalysisError, type Limitation, type TargetInfo } from "./model.js";
 import { interfaceMap } from "./javascript/interfaces.js";
 import { loadTarget, type LoadedTarget } from "./target.js";
 import { CORE_VERSION } from "./version.js";
@@ -51,8 +53,10 @@ export interface CollectionComparison {
   unknown: number;
   unchanged: number;
   totals: { a: number; b: number };
-  /** Only the first items (or shortened items) of a side were compared. */
+  /** True iff `!completeness.complete`: kept for callers that read only this flag. */
   partial: boolean;
+  /** How much of both sides was compared and what keeps the result from being whole. */
+  completeness: CompareCompleteness;
 }
 
 export interface CompareAllResult {
@@ -96,10 +100,36 @@ const PERMISSIVE: Record<WindowChange["setting"], readonly string[]> = {
 /** One collection of two targets compared, as `Session.compareCollection` returns it. */
 export interface CollectionDiff {
   diff: CompareResult;
-  /** The pages that were compared: up to 2,000 items per side. */
+  /**
+   * A bounded preview of each side (its first 2,000 items) for callers that print items. The
+   * comparison itself covers every item within `COMPARE_BUDGET`; see `diff.completeness`.
+   */
   left: CollectionPage;
   right: CollectionPage;
 }
+
+/** What `compareCollection` compares per side at most; beyond it the result says `budget`. */
+export interface CompareBudget {
+  items: number;
+  /** UTF-8 bytes of the items serialized as JSON. */
+  bytes: number;
+}
+
+export const COMPARE_BUDGET: Readonly<CompareBudget> = { items: 200_000, bytes: 256 << 20 };
+
+/** The first items of `items` that fit `budget`. */
+function withinBudget(items: readonly unknown[], budget: CompareBudget): readonly unknown[] {
+  const limit = Math.min(items.length, Math.max(0, budget.items));
+  let bytes = 0;
+  for (let i = 0; i < limit; i++) {
+    bytes += Buffer.byteLength(JSON.stringify(items[i], jsonReplacer) ?? "null");
+    if (bytes > budget.bytes) return items.slice(0, i);
+  }
+  return limit === items.length ? items : items.slice(0, limit);
+}
+
+const jsonReplacer = (_key: string, value: unknown): unknown =>
+  typeof value === "bigint" ? value.toString() : value;
 
 export interface CompareCollectionOptions {
   /** Identity field; undefined picks one (see `compareItems`). */
@@ -107,6 +137,8 @@ export interface CompareCollectionOptions {
   ignore?: readonly string[] | undefined;
   /** Count differences in position fields (addresses, lines) as changes. */
   strict?: boolean | undefined;
+  /** Resource limit per side (default `COMPARE_BUDGET`); for tests and callers with less room. */
+  budget?: CompareBudget | undefined;
 }
 
 export interface StringsQuery extends CollectionQuery {
@@ -332,8 +364,41 @@ export class Session {
    */
   async coverage(id: string): Promise<SideCoverage | null> {
     const analysis = await this.analyze(id);
+    if (analysis.data.kind === "javascript") {
+      // One script: nothing to place by file, but a value it could not resolve may be any item.
+      const unresolved = new Unresolved();
+      const { script, bundle } = analysis.data;
+      for (const u of script.ipc)
+        if (u.channel === null)
+          unresolved.add(u.api.startsWith("contextBridge.") ? "bridge" : "ipc", "*");
+      for (const row of [...bundle.endpoints, ...bundle.urls])
+        if (computedValue(row.value)) unresolved.add("endpoint", "*");
+      for (const row of bundle.storage)
+        if (computedValue(row.value)) unresolved.add("storage", "*");
+      unresolved.fromLimitations(analysis.limitations);
+      return { complete: true, read: new Set(), unreadable: new Set(), unresolved: unresolved.map };
+    }
     if (analysis.data.kind !== "javascript-app") return null;
     const { app } = analysis.data;
+    const unresolved = new Unresolved();
+    for (const m of app.modules)
+      for (const u of m.ipc)
+        if (u.channel === null)
+          unresolved.add(u.api.startsWith("contextBridge.") ? "bridge" : "ipc", m.id);
+    // A member whose object could not be read, or whose channel is a constant never found. A
+    // member that simply forwards no literal channel is itself known and hides no other member.
+    for (const b of app.contextBridge)
+      if (b.member === null || (b.channel === null && b.channelRef))
+        unresolved.add("bridge", b.file);
+    for (const w of app.webPreferences) if (w.value === null) unresolved.add("window", w.file);
+    for (const w of app.windows ?? [])
+      if ([w.nodeIntegration, w.contextIsolation, w.sandbox].includes("computed"))
+        unresolved.add("window", w.file);
+    for (const row of [...app.endpoints, ...app.urls])
+      if (computedValue(row.value)) unresolved.add("endpoint", row.file);
+    for (const row of app.storage)
+      if (computedValue(row.value)) unresolved.add("storage", row.file);
+    unresolved.fromLimitations(analysis.limitations);
     return {
       complete: app.coverage.complete,
       read: new Set(app.modules.map((m) => m.id)),
@@ -341,7 +406,24 @@ export class Session {
         ...(app.coverage.skippedFiles ?? []),
         ...(app.coverage.partialFiles ?? []),
       ]),
+      unresolved: unresolved.map,
     };
+  }
+
+  /**
+   * Every item of a collection, for comparisons inside core (`compareCollection`, the release
+   * report). Adapters page with `collection` instead; this list is not bounded.
+   */
+  async items(id: string, name: string): Promise<readonly unknown[]> {
+    const all = await this.collectionTable(id);
+    const items = all[name];
+    if (!items)
+      throw new AnalysisError(
+        "invalid_input",
+        `Unknown collection "${name}"; available: ${Object.keys(all).join(", ")}`,
+        { available: Object.keys(all) },
+      );
+    return items;
   }
 
   /** Names of the list-like collections available for this target after analysis. */
@@ -360,9 +442,11 @@ export class Session {
   }
 
   /**
-   * Diff of one collection of two targets. Each side is compared up to 2,000 items; an item found
-   * on one side only while the other side was cut there is `unknown`, not added or removed, and
-   * so is an item in a file the other side did not read.
+   * Diff of one collection of two targets. Every item of both sides is compared, up to
+   * `COMPARE_BUDGET` per side; past it the result says `budget` in `diff.completeness`, and an
+   * item found on one side only while the other side was cut is `unknown`, not added or removed.
+   * So is an item in a file the other side did not read, or in a file where the other side has
+   * a value of the same kind it could not resolve. `left`/`right` are a bounded preview.
    */
   async compareCollection(
     idA: string,
@@ -374,7 +458,10 @@ export class Session {
       this.collection(idA, name, { limit: 2000, maxBytes: 64 << 20 }),
       this.collection(idB, name, { limit: 2000, maxBytes: 64 << 20 }),
     ]);
-    const diff = compareItems(left.items, right.items, {
+    const [allA, allB] = await Promise.all([this.items(idA, name), this.items(idB, name)]);
+    const budget = options.budget ?? COMPARE_BUDGET;
+    const [partA, partB] = [withinBudget(allA, budget), withinBudget(allB, budget)];
+    const diff = compareItems(partA, partB, {
       key: options.key,
       collection: name,
       ignore: options.ignore ?? [],
@@ -382,22 +469,23 @@ export class Session {
         ? []
         : positionalFields(name, [this.get(idA).info.format, this.get(idB).info.format]),
       coverage: { a: await this.coverage(idA), b: await this.coverage(idB) },
-      cut: { a: left.truncated, b: right.truncated },
+      cut: { a: partA.length < allA.length, b: partB.length < allB.length },
+      total: { a: allA.length, b: allB.length },
     });
     return { diff, left, right };
   }
 
   /**
    * Counts of added, removed, changed, relocated and unchanged items for every collection the two
-   * targets share: the overview before diffing one collection. Each side is compared up to 2,000
-   * items per collection; a collection cut there says so with `partial`.
+   * targets share: the overview before diffing one collection. Every item is compared within
+   * `COMPARE_BUDGET`; `completeness` says what was compared and why a result is not whole.
    */
   async compareAll(idA: string, idB: string): Promise<CompareAllResult> {
     const [countsA, countsB] = await Promise.all([this.collections(idA), this.collections(idB)]);
     const collections: CollectionComparison[] = [];
     for (const name of Object.keys(countsA)) {
       if (!(name in countsB) || (countsA[name] === 0 && countsB[name] === 0)) continue;
-      const { diff, left, right } = await this.compareCollection(idA, idB, name);
+      const { diff } = await this.compareCollection(idA, idB, name);
       collections.push({
         collection: name,
         key: diff.key,
@@ -407,10 +495,9 @@ export class Session {
         relocated: diff.relocated,
         unknown: diff.unknown.length,
         unchanged: diff.unchanged,
-        totals: { a: left.total, b: right.total },
-        partial: Boolean(
-          left.truncated || right.truncated || left.itemTruncated || right.itemTruncated,
-        ),
+        totals: { ...diff.completeness.total },
+        partial: !diff.completeness.complete,
+        completeness: diff.completeness,
       });
     }
     const windowChanges: WindowChange[] = [];
@@ -913,4 +1000,43 @@ export function collectionsOf(
       break;
   }
   return out;
+}
+
+/** A value read only in part: unknown, or built at run time (`${…}`). */
+const computedValue = (value: string | null): boolean => value === null || value.includes("${");
+
+/** Limitations that say values of a family exist somewhere that are not in its list. */
+const UNRESOLVED_LIMITATIONS: Record<string, UnresolvedFamily> = {
+  ipc_receiver_unresolved: "ipc",
+  ipc_open_calls_capped: "ipc",
+  context_bridge_truncated: "bridge",
+  context_bridge_members_unreadable: "bridge",
+  web_preferences_truncated: "window",
+  candidates_truncated: "endpoint",
+};
+
+/** The files per family where a value could not be resolved (`SideCoverage.unresolved`). */
+class Unresolved {
+  readonly map = new Map<UnresolvedFamily, Set<string>>();
+
+  add(family: UnresolvedFamily, file: string): void {
+    const files = this.map.get(family);
+    if (files) files.add(file);
+    else this.map.set(family, new Set([file]));
+  }
+
+  /**
+   * Families a limitation names. Its message lists the first places as `at file:line`; when it
+   * lists only some (`… and N more`) or none, the rest may be anywhere: `*`.
+   */
+  fromLimitations(limitations: readonly Limitation[]): void {
+    for (const l of limitations) {
+      const family = UNRESOLVED_LIMITATIONS[l.code];
+      if (!family) continue;
+      if (l.code === "candidates_truncated") this.add("storage", "*");
+      const files = [...l.message.matchAll(/ at (.+?):\d+(?=, | …|\.$|$)/g)].map((m) => m[1]!);
+      for (const f of files) this.add(family, f);
+      if (files.length === 0 || / … and \d+ more/.test(l.message)) this.add(family, "*");
+    }
+  }
 }

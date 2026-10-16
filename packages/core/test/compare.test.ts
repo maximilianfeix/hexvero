@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { canonical, compareItems, detectKey, positionalFields } from "../src/compare.js";
+import {
+  canonical,
+  compareItems,
+  detectKey,
+  positionalFields,
+  type SideCoverage,
+  type UnresolvedFamily,
+} from "../src/compare.js";
 
 const dotnetMethods = (shift: number, extra: object[] = []): object[] => [
   { type: "A", name: ".ctor", rva: `0x${(0x2000 + shift).toString(16)}`, flags: ["public"] },
@@ -58,10 +65,16 @@ const ipcRow = (file: string, channel: string): Record<string, unknown> => ({
   line: 1,
 });
 
-const wholeSide = (...files: string[]) => ({
+const wholeSide = (...files: string[]): SideCoverage => ({
   complete: true,
   read: new Set(files),
   unreadable: new Set<string>(),
+  unresolved: new Map(),
+});
+
+const unresolvedIn = (family: UnresolvedFamily, ...files: string[]): SideCoverage => ({
+  ...wholeSide("main.js", "extra.js"),
+  unresolved: new Map([[family, new Set(files)]]),
 });
 
 const filePref = (file: string, windowName: string, value: boolean) => ({
@@ -456,7 +469,12 @@ describe("items on one side only", () => {
 
   it("calls an item unknown when the other side did not read its file", () => {
     // the right side stopped before extra.js; main.js was read on both
-    const partial = { complete: false, read: new Set(["main.js"]), unreadable: new Set<string>() };
+    const partial: SideCoverage = {
+      complete: false,
+      read: new Set(["main.js"]),
+      unreadable: new Set<string>(),
+      unresolved: new Map(),
+    };
     const diff = compareItems(old, next, {
       ...options,
       coverage: { a: wholeSide("main.js", "extra.js"), b: partial },
@@ -483,7 +501,12 @@ describe("items on one side only", () => {
       ...options,
       coverage: {
         a: wholeSide("main.js", "extra.js"),
-        b: { complete: false, read: new Set(["main.js"]), unreadable: new Set(["extra.js"]) },
+        b: {
+          complete: false,
+          read: new Set(["main.js"]),
+          unreadable: new Set(["extra.js"]),
+          unresolved: new Map(),
+        },
       },
     });
     expect(diff.unknown).toEqual([
@@ -526,10 +549,11 @@ describe("items on one side only", () => {
   });
 
   it("places a summary row by every file it names, and one that names none by the side's coverage", () => {
-    const partial = {
+    const partial: SideCoverage = {
       complete: false,
       read: new Set(["main.js"]),
       unreadable: new Set(["big.js"]),
+      unresolved: new Map(),
     };
     const diff = compareItems(
       [
@@ -578,5 +602,110 @@ describe("items on one side only", () => {
       windowOptions,
     );
     expect(diff.changed.map((c) => c.fields.map((f) => f.field))).toEqual([["computed"]]);
+  });
+
+  describe("completeness (C1)", () => {
+    it("is complete when both sides were compared whole and no gap applies", () => {
+      const diff = compareItems(old, next, {
+        ...options,
+        coverage: { a: wholeSide("main.js", "extra.js"), b: wholeSide("main.js") },
+      });
+      expect(diff.completeness).toEqual({
+        compared: { a: 3, b: 2 },
+        total: { a: 3, b: 2 },
+        complete: true,
+        gaps: [],
+      });
+    });
+
+    it("names every gap that applies: a part of a side, unread and partly read files", () => {
+      const cut = compareItems(old, next, { ...options, cut: { b: true }, total: { a: 3, b: 9 } });
+      expect(cut.completeness).toMatchObject({
+        compared: { a: 3, b: 2 },
+        total: { a: 3, b: 9 },
+        complete: false,
+        gaps: ["budget"],
+      });
+      const partlyRead: SideCoverage = {
+        complete: false,
+        read: new Set(["main.js", "extra.js"]),
+        unreadable: new Set(["extra.js"]),
+        unresolved: new Map(),
+      };
+      const diff = compareItems(old, next, {
+        ...options,
+        coverage: { a: wholeSide("main.js", "extra.js"), b: partlyRead },
+      });
+      expect(diff.unknown.map((u) => u.reason)).toEqual([
+        "file could not be read on the other side",
+      ]);
+      expect(diff.completeness.complete).toBe(false);
+      expect(diff.completeness.gaps).toEqual(["scan_partial", "files_unreadable"]);
+      const unread = compareItems(old, next, {
+        ...options,
+        coverage: {
+          a: wholeSide("main.js", "extra.js"),
+          b: { ...wholeSide("main.js"), complete: false },
+        },
+      });
+      expect(unread.completeness.gaps).toEqual(["scan_partial", "files_unread"]);
+    });
+  });
+
+  describe("values that could not be resolved (C2)", () => {
+    const before = [ipcRow("main.js", "a:b"), ipcRow("extra.js", "debug")];
+    const after = [{ ...ipcRow("main.js", "a:b"), channel: null }];
+    const reason = "the other side has values there that could not be resolved";
+
+    it("calls an item unknown, not removed, when the other side has an unresolved value in its file", () => {
+      const diff = compareItems(before, after, {
+        collection: "ipc",
+        coverage: { a: wholeSide("main.js", "extra.js"), b: unresolvedIn("ipc", "main.js") },
+      });
+      expect(diff.unknown).toEqual([
+        { key: "main.js::ipcMain.on::a:b", side: "a", file: "main.js", reason },
+      ]);
+      // a proven deletion: extra.js was read on the other side and holds no unresolved value
+      expect(diff.removed).toEqual(["extra.js::ipcMain.on::debug"]);
+      expect(diff.completeness.gaps).toEqual(["values_unresolved"]);
+      expect(diff.completeness.complete).toBe(false);
+      // and in the other direction it is not "added" either
+      const back = compareItems(after, before, {
+        collection: "ipc",
+        coverage: { a: unresolvedIn("ipc", "main.js"), b: wholeSide("main.js", "extra.js") },
+      });
+      expect(back.unknown).toEqual([
+        { key: "main.js::ipcMain.on::a:b", side: "b", file: "main.js", reason },
+      ]);
+      expect(back.added).toEqual(["extra.js::ipcMain.on::debug"]);
+    });
+
+    it("applies an unresolved value of an unknown file to every file, and only to its own family", () => {
+      const anywhere = compareItems(before, after, {
+        collection: "ipc",
+        coverage: { a: wholeSide("main.js", "extra.js"), b: unresolvedIn("ipc", "*") },
+      });
+      expect(anywhere.removed).toEqual([]);
+      expect(anywhere.unknown.map((u) => u.key).toSorted()).toEqual([
+        "extra.js::ipcMain.on::debug",
+        "main.js::ipcMain.on::a:b",
+      ]);
+      // an unresolved endpoint says nothing about IPC channels
+      const other = compareItems(before, after, {
+        collection: "ipc",
+        coverage: { a: wholeSide("main.js", "extra.js"), b: unresolvedIn("endpoint", "main.js") },
+      });
+      expect(other.removed.toSorted()).toEqual([
+        "extra.js::ipcMain.on::debug",
+        "main.js::ipcMain.on::a:b",
+      ]);
+      expect(other.completeness.complete).toBe(true);
+      // channel summaries and interface rows belong to the IPC family too
+      const channels = compareItems([{ channel: "a:b", senders: [], receivers: ["main.js"] }], [], {
+        collection: "ipcChannels",
+        coverage: { a: wholeSide("main.js"), b: unresolvedIn("ipc", "main.js") },
+      });
+      expect(channels.unknown.map((u) => u.reason)).toEqual([reason]);
+    });
   });
 });

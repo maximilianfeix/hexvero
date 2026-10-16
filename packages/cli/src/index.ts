@@ -439,9 +439,13 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
               `    ${w.direction === "more permissive" ? paint(io, "yellow", "!") : " "} ${w.window} ${w.setting}: ${w.before} → ${w.after}${paint(io, "dim", ` (${w.direction})`)}`,
             );
         }
-        if (all.collections.some((c) => c.partial))
+        for (const c of all.collections.filter((x) => x.partial))
           io.out(
-            paint(io, "yellow", "  ! partial: only the first 2,000 items of a side were compared"),
+            paint(
+              io,
+              "yellow",
+              `  ! ${c.collection} partial: ${c.completeness.gaps.join(", ")} (compared ${c.completeness.compared.a} of ${c.completeness.total.a} (a), ${c.completeness.compared.b} of ${c.completeness.total.b} (b))`,
+            ),
           );
         if (all.partialScan.a || all.partialScan.b)
           io.out(
@@ -493,7 +497,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         session.analyze(b.id).then((x) => x.limitations.length),
       ]);
       const partial = { a: await session.partial(a.id), b: await session.partial(b.id) };
-      const truncated = left.truncated || right.truncated;
+      const { completeness } = diff;
+      // compared only in part: a side exceeded the comparison budget
+      const truncated = completeness.gaps.includes("budget");
       if (json) {
         io.out(
           toJson({
@@ -501,17 +507,12 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             ...diff,
             changed: diff.changed.map((c) => ({ key: c.key, fields: c.fields })),
             relocatedSample: diff.relocatedSample.map((c) => ({ key: c.key, fields: c.fields })),
-            totals: { a: left.total, b: right.total },
+            totals: { ...completeness.total },
             truncated,
             limitations: { a: limitsA, b: limitsB },
             ...(partial.a || partial.b ? { partialScan: partial } : {}),
             complete:
-              !truncated &&
-              !left.itemTruncated &&
-              !right.itemTruncated &&
-              limitsA === 0 &&
-              limitsB === 0 &&
-              diff.ignored.length === 0,
+              completeness.complete && limitsA === 0 && limitsB === 0 && diff.ignored.length === 0,
           }),
         );
         return 0;
@@ -587,7 +588,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           paint(
             io,
             "yellow",
-            `  ! compared only the first ${left.items.length} of ${left.total} (a) and ${right.items.length} of ${right.total} (b) items; the result is partial`,
+            `  ! compared only the first ${completeness.compared.a} of ${completeness.total.a} (a) and ${completeness.compared.b} of ${completeness.total.b} (b) items; the result is partial`,
           ),
         );
       for (const [side, p] of Object.entries(partial))
