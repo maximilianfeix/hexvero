@@ -49,7 +49,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "prepack": "node -e \"const fs=require('node:fs');fs.cpSync('../../skills','./skills',{recursive:true});fs.mkdirSync('./examples',{recursive:true});for(const v of ['1.4.0','1.5.0'])fs.copyFileSync('../../examples/notesdesk-'+v+'.asar','./examples/notesdesk-'+v+'.asar')\""
+    "prepack": "node -e \"const fs=require('node:fs');fs.cpSync('../../skills','./skills',{recursive:true});fs.mkdirSync('./examples',{recursive:true});for(const v of ['1.4.0','1.5.0'])fs.copyFileSync('../../examples/notesdesk-'+v+'.asar','./examples/notesdesk-'+v+'.asar');fs.copyFileSync('../../examples/policy.json','./examples/policy.json')\""
   },
   "dependencies": {
     "@hexvero/core": "0.8.0",

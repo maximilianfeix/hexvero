@@ -19,6 +19,7 @@
     "corpus/holdout4/*/src/**",
     "corpus/compare/**",
     "site/demo/**",
-    "docs/launch/published/**"
+    "docs/launch/published/**",
+    "packages/core/test/fixtures/sarif-schema-2.1.0.json"
   ]
 }

@@ -197,3 +197,28 @@ export {
   type PruneResult,
 } from "./cache.js";
 export { CORE_VERSION } from "./version.js";
+export {
+  CHECK_EXIT,
+  CHECK_MAX_ROWS,
+  POLICY_RULES,
+  PolicyError,
+  checkRelease,
+  comparisonForCheck,
+  createBaseline,
+  evaluatePolicy,
+  fingerprintOf,
+  hostAllowed,
+  hostOf,
+  parseBaseline,
+  parsePolicy,
+  renderPolicyMarkdown,
+  STATUS_TEXT,
+  type BaselineFile,
+  type LoadedBaseline,
+  type LoadedPolicy,
+  type Policy,
+  type PolicyFinding,
+  type PolicyResult,
+  type PolicyRuleId,
+} from "./policy.js";
+export { SARIF_BASE, SARIF_SCHEMA, toSarif, type SarifOptions } from "./sarif.js";
