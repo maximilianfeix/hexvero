@@ -293,9 +293,9 @@ batch" / "Read all remaining files" (`web/src/views/Workspace.tsx:29-42,148-172`
 2. `Session.analyze` (`session.ts:217-292`): one pending run per target shared by all waiters;
    a waiter's abort releases only its wait, the run is aborted when no waiter is left
    (`session.ts:254-257`). With a worker: `analyzeInWorker` (`analyzers/worker.ts:34`) copies the
-   bytes, transfers them (`worker.ts:57-70`), and settles on message, timeout (`too_large`,
-   `worker.ts:81-92`), abort (`invalid_input` "cancelled", `:93-101`), worker error (OOM →
-   `too_large`, `:115-128`) or a non-zero exit (`malformed`, `:129-138`), then terminates the
+   bytes, transfers them (`worker.ts:57-70`), and settles on message, timeout (`too_large`
+   with `details.reason: "timeout"`), abort (`cancelled`), worker error (OOM → `too_large` with
+   `details.reason: "memory"`) or a non-zero exit (`malformed`, `:129-138`), then terminates the
    worker. Without a worker (CLI) the scan runs to its end on the caller's thread.
 3. `scanApplication` (`dispatch.ts:86-164`): `scanKey` (`javascript/scanState.ts:21`: sha256 of
    `scan\0<JS_SCAN_SCHEMA>\0<CORE_VERSION>\0` + the ASAR sha256, or for a directory every file's
@@ -334,7 +334,8 @@ complete state stays because the replace is atomic. A worker timeout (120 s defa
 are listed up to 200 each (`app.ts:2161`, `2212`).
 
 **Errors.** Corrupt or foreign state is ignored silently (`loadScan` returns null); timeouts and OOM
-surface as `too_large`, cancellation as `invalid_input` (see open questions).
+surface as `too_large` with `details.reason` `"timeout"` / `"memory"`; worker cancellation is
+`cancelled`, `Session.analyze` cancellation still `invalid_input` (see open questions).
 
 **Tests.** `core/test/resume.test.ts:51-151` (batches never repeat or lose a file, `all`,
 `include`, byte budget), `:170` (key by content, damaged or foreign state ignored, atomic write),
@@ -444,9 +445,13 @@ Found while reading; each names where. None is a verified bug.
 2. **Cancellation code.** Analyses cancelled by the caller reject with `invalid_input`
    (`session.ts:221,269`; `worker.ts:40,96`), while `AnalysisError` has a `cancelled` code
    (`model.ts:87`), providers use it (`providers/run.ts:113,160,419,422`) and the server maps it to 499
-   (`server/src/index.ts:85`). Should analysis cancellation use `cancelled`?
+   (`server/src/index.ts:85`). Should analysis cancellation use `cancelled`? Decided: yes;
+   `worker.ts` uses `cancelled`, `session.ts` still has to follow.
 3. **Timeout reported as `too_large`.** An analysis timeout is `too_large` (`worker.ts:85`), which the
-   HTTP server returns as 413 (`server/src/index.ts:83`). Intended?
+   HTTP server returns as 413 (`server/src/index.ts:83`). Intended? Decided: the code stays
+   `too_large` (no new union member, so no client's code list breaks); `details.reason` is
+   `"timeout"` or `"memory"`, and engine timeouts carry the same `reason`. Mapping
+   `reason: "timeout"` to a different HTTP status is left to the server owner.
 4. **Two export shapes.** `Session.export` writes `generator`, `complete`, `incomplete`, `volatile`,
    `unknowns` (`session.ts:584-602`); the HTTP export route writes only `{hexvero:1, target,
    analysis}` (`server/src/index.ts:329-343`).
@@ -457,16 +462,16 @@ Found while reading; each names where. None is a verified bug.
 7. **Site demo freshness is not gated in CI.** `build-site-demo.mjs --check` runs only in
    `npm run release:check` (`package.json:27`); `ci.yml` and `release.yml` do not run it, so report
    format changes on main can leave `site/demo` stale until the next release regenerates it
-   (`release.mjs:100`).
+   (`release.mjs:100`). Resolved: the CI `e2e` job now runs `build-site-demo.mjs --check`.
 8. **Version checks.** `release.mjs` bumps `packages/web/package.json` and
    `.claude-plugin/plugin.json` (`release.mjs:41-61`); `release-verify.mjs` checks neither
-   (`release-verify.mjs:13-39`).
+   (`release-verify.mjs:13-39`). Resolved: `release-verify.mjs` checks both.
 9. **Corpus baseline provenance.** `corpus/results/hexvero.json` records `tool.version` 0.7.4 and
    `commit` `2fa9b6e+uncommitted`; packages are 0.8.0. The gate still compares current code with it
    (`gate.mjs:30-58`), but the baseline's commit cannot be checked out as recorded.
 10. **Stale docs.** `corpus/README.md:12-17` lists the sets dev, validation, holdout, damaged, while
     `cases.mjs:19` and `score.mjs` also load holdout2–holdout4; `docs/release-checklist.md` is the
-    0.4.0 checklist.
+    0.4.0 checklist. Resolved: both updated.
 11. **UI token persistence.** The web client stores the session token in `localStorage`
     (`api.ts:155-160`) and falls back to it when the URL has none (`api.ts:146-154`); a restarted
     server issues a new token, so the stored one then yields 401. Intended convenience?
