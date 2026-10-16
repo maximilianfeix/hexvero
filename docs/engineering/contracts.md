@@ -65,7 +65,12 @@ whose source position is unknown has `where: []` (never an invented line).
 
 ```ts
 /** Rows are paged per comparison: `changes` holds rows [offset, offset + limit). */
-page: { offset: number; limit: number; total: number; next: number | null };
+page: {
+  offset: number;
+  limit: number;
+  total: number;
+  next: number | null;
+}
 ```
 
 `compareReleases(session, a, b, { offset?, limit? })` (default limit 200; server 500). Text in
@@ -82,10 +87,11 @@ Policy file (JSON, no code), validated against `docs/policy.schema.json`:
 
 ```json
 {
-  "hexvero": "policy", "version": 1,
+  "hexvero": "policy",
+  "version": 1,
   "rules": {
     "new-interface-member": { "level": "fail" },
-    "new-external-host":    { "level": "fail", "allow": ["api.example.com", "*.example.com"] },
+    "new-external-host": { "level": "fail", "allow": ["api.example.com", "*.example.com"] },
     "window-more-permissive": { "level": "fail" }
   },
   "unknown": "fail",
@@ -105,21 +111,25 @@ interface PolicyFinding {
   level: "fail" | "warn";
   state: "new" | "baselined" | "suppressed" | "suppression-expired";
   /** The change it is about; `row` is the ChangeRow id (C3). */
-  row: string; collection: string; key: string;
+  row: string;
+  collection: string;
+  key: string;
   message: string;
   where: Place[];
   /** True when the finding rests on an unknown/incomplete comparison. */
   unknown: boolean;
 }
 interface PolicyResult {
-  hexvero: "check"; version: 1;
+  hexvero: "check";
+  version: 1;
   status: "pass" | "fail" | "incomplete" | "error";
   findings: PolicyFinding[];
   /** Coverage gaps that made the check undecidable for a rule. */
   incomplete: Array<{ rule: string; collection: string; gaps: string[] }>;
   baseline?: { file: string; created: string; matched: number };
   policy: { file: string; sha256: string };
-  a: TargetRecord["info"]; b: TargetRecord["info"];
+  a: TargetRecord["info"];
+  b: TargetRecord["info"];
 }
 ```
 

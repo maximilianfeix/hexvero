@@ -18,6 +18,7 @@
     "corpus/holdout3/*/src/**",
     "corpus/holdout4/*/src/**",
     "corpus/compare/**",
-    "site/demo/**"
+    "site/demo/**",
+    "docs/launch/published/**"
   ]
 }
