@@ -203,6 +203,9 @@ const NESTED_LINE_FIELDS: Record<string, ReadonlyArray<readonly [string, string]
  */
 const DERIVED_FIELDS: Record<string, readonly string[]> = {
   windows: ["basis"],
+  // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
+  // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
+  interfaces: ["reason"],
 };
 
 /**

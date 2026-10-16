@@ -708,4 +708,29 @@ describe("items on one side only", () => {
       expect(channels.unknown.map((u) => u.reason)).toEqual([reason]);
     });
   });
+
+  it("does not call an interface row changed when only the explanation of its link differs", () => {
+    const row = (link: string, reason: string) => ({
+      file: "preload.js",
+      api: "api",
+      member: "go",
+      channel: "a:b",
+      direction: null,
+      ends: [],
+      link,
+      reason,
+      line: 2,
+    });
+    const options = { collection: "interfaces", positional: ["line"] };
+    const blind = "no main-process end found, but the analysis has blind spots";
+    const same = compareItems(
+      [row("unknown", `${blind} (ipc_channel_unresolved)`)],
+      [row("unknown", `${blind} (ipc_channel_unresolved, ipc_open_calls_capped)`)],
+      options,
+    );
+    expect([same.changed, same.unchanged]).toEqual([[], 1]);
+    // a different link is a change, and the reason travels with it
+    const moved = compareItems([row("direct", "")], [row("unknown", blind)], options);
+    expect(moved.changed.map((c) => c.fields.map((f) => f.field))).toEqual([["link"]]);
+  });
 });
