@@ -229,7 +229,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       const [a, b] = [q.get("a"), q.get("b")];
       if (!a || !b) throw new AnalysisError("invalid_input", "a and b (target ids) are required");
       if (a === b) throw new AnalysisError("invalid_input", "pick two different targets");
-      const comparison = await compareReleases(session, a, b, { maxRows: 500 });
+      const comparison = await compareReleases(session, a, b, {
+        offset: num("offset"),
+        limit: num("limit", 500),
+      });
       if (parts[1] === "report" && parts.length === 2) {
         res.writeHead(200, {
           "content-type": "text/markdown; charset=utf-8",

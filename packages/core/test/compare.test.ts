@@ -77,6 +77,25 @@ const unresolvedIn = (family: UnresolvedFamily, ...files: string[]): SideCoverag
   unresolved: new Map([[family, new Set(files)]]),
 });
 
+const interfaceRow = (link: string, reason: string) => ({
+  file: "preload.js",
+  api: "api",
+  member: "go",
+  channel: "a:b",
+  direction: null,
+  ends: [],
+  link,
+  reason,
+  line: 2,
+});
+
+const finding = (kind: string, title: string, location?: string) => ({
+  kind,
+  title,
+  confidence: "confirmed",
+  ...(location ? { location } : {}),
+});
+
 const filePref = (file: string, windowName: string, value: boolean) => ({
   key: "sandbox",
   value,
@@ -710,37 +729,24 @@ describe("items on one side only", () => {
   });
 
   it("does not call an interface row changed when only the explanation of its link differs", () => {
-    const row = (link: string, reason: string) => ({
-      file: "preload.js",
-      api: "api",
-      member: "go",
-      channel: "a:b",
-      direction: null,
-      ends: [],
-      link,
-      reason,
-      line: 2,
-    });
-    const options = { collection: "interfaces", positional: ["line"] };
+    const lineRule = { collection: "interfaces", positional: ["line"] };
     const blind = "no main-process end found, but the analysis has blind spots";
     const same = compareItems(
-      [row("unknown", `${blind} (ipc_channel_unresolved)`)],
-      [row("unknown", `${blind} (ipc_channel_unresolved, ipc_open_calls_capped)`)],
-      options,
+      [interfaceRow("unknown", `${blind} (ipc_channel_unresolved)`)],
+      [interfaceRow("unknown", `${blind} (ipc_channel_unresolved, ipc_open_calls_capped)`)],
+      lineRule,
     );
     expect([same.changed, same.unchanged]).toEqual([[], 1]);
     // a different link is a change, and the reason travels with it
-    const moved = compareItems([row("direct", "")], [row("unknown", blind)], options);
+    const moved = compareItems(
+      [interfaceRow("direct", "")],
+      [interfaceRow("unknown", blind)],
+      lineRule,
+    );
     expect(moved.changed.map((c) => c.fields.map((f) => f.field))).toEqual([["link"]]);
   });
 
   it("matches findings by kind and location, so a reworded title is a change, not a new finding", () => {
-    const finding = (kind: string, title: string, location?: string) => ({
-      kind,
-      title,
-      confidence: "confirmed",
-      ...(location ? { location } : {}),
-    });
     const diff = compareItems(
       [finding("electron.ipc", "3 IPC channels"), finding("elf.nx", "NX off", "0x40")],
       [
@@ -756,4 +762,3 @@ describe("items on one side only", () => {
     ]);
   });
 });
-

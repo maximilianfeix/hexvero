@@ -51,8 +51,10 @@ Commands
   compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
                                                 Added, removed and changed items between two builds;
                                                 without a collection, counts for every shared one
-  compare <a> <b> --report file.md [--force]    Write a Markdown report: summary, changes with
-                                                file:line, what could not be established
+  compare <a> <b> --report file.md [--force] [--offset n] [--limit n]
+                                                Write a Markdown report: summary, changes with
+                                                file:line (200 rows per page), what could not be
+                                                established
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -382,7 +384,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       if (report !== undefined) {
         if (args.positionals[2] !== undefined)
           throw new UsageError("--report covers every collection; leave out the collection name");
-        const comparison = await compareReleases(session, a.id, b.id);
+        const comparison = await compareReleases(session, a.id, b.id, {
+          offset: flagNumber(args.flags, "offset"),
+          limit: flagNumber(args.flags, "limit"),
+        });
         const text = renderReleaseReport(comparison);
         try {
           await writeFile(report, text, { flag: args.flags["force"] ? "w" : "wx" });
@@ -406,13 +411,20 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           io.out(toJson(all));
           return 0;
         }
-        const differing = all.collections.filter(
-          (c) => c.added || c.removed || c.changed || c.unknown,
-        );
+        const differs = (c: (typeof all.collections)[number]): boolean =>
+          Boolean(c.added || c.removed || c.changed || c.unknown);
+        // hexvero's own findings and limitations describe the reading, not the app
+        const own = new Set(["findings", "limitations"]);
+        const differing = all.collections.filter((c) => differs(c) && !own.has(c.collection));
+        const ownDiffering = all.collections.filter((c) => differs(c) && own.has(c.collection));
         io.out(
           heading(
             io,
-            `${all.collections.length} shared collection(s), ${differing.length} with differences`,
+            `${all.collections.length} shared collection(s), ${differing.length} with differences in the app${
+              ownDiffering.length
+                ? ` (plus hexvero's own ${ownDiffering.map((c) => c.collection).join(" and ")})`
+                : ""
+            }`,
           ),
         );
         for (const row of table(

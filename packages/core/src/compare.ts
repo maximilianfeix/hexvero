@@ -363,11 +363,13 @@ function keyValue(item: unknown, key: string): string | undefined {
 
 /** The same key as people read it: `Type::name`. */
 function keyLabel(item: unknown, key: string): string {
-  return key
-    .split("+")
-    // an absent part and a null one are the same identity (see keyValue), and read the same
-    .map((part) => String((item as Record<string, unknown>)[part] ?? null))
-    .join("::");
+  return (
+    key
+      .split("+")
+      // an absent part and a null one are the same identity (see keyValue), and read the same
+      .map((part) => String((item as Record<string, unknown>)[part] ?? null))
+      .join("::")
+  );
 }
 
 /**
