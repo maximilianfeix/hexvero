@@ -822,6 +822,19 @@ function ChangeItem({
           </ul>
         )}
         {row.reason && <div className="note">{visible(row.reason)}</div>}
+        {row.collection === "interfaces" && row.change !== "removed" && (
+          <a
+            className="imap-link"
+            href={`/targets/${r.b.id}/interface-map?sel=${encodeURIComponent(`m:${row.key}`)}`}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+              e.preventDefault();
+              navigate(r.b.id, "interface-map", { sel: `m:${row.key}` });
+            }}
+          >
+            show in interface map
+          </a>
+        )}
         {places.length > 0 ? (
           <div className="places">
             {(["a", "b"] as const).map((side) => {

@@ -23,7 +23,11 @@ export function SourceView({
     valid ? api.source(targetId, file, line) : Promise.reject(new Error("No file:line given.")),
   );
   const marked = useRef<HTMLDivElement>(null);
-  useEffect(() => marked.current?.scrollIntoView({ block: "center" }), [source.data]);
+  // a block body: browsers that return a promise from scrollIntoView would hand React a
+  // non-function as the effect's cleanup and crash the page on the next navigation
+  useEffect(() => {
+    marked.current?.scrollIntoView({ block: "center" });
+  }, [source.data]);
   if (!valid)
     return (
       <p className="empty">

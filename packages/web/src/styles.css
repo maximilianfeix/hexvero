@@ -939,6 +939,221 @@ code,
   flex-wrap: wrap;
 }
 
+/* ---------- interface map ---------- */
+
+.imap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.imap-legend {
+  align-items: center;
+}
+
+.imap-legend svg {
+  vertical-align: middle;
+}
+
+.key-line {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+
+.key-line.dashed {
+  stroke-dasharray: 4 3;
+}
+
+.key-mark {
+  fill: var(--panel);
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+
+.imap-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.imap-graph .imap-edge .edge {
+  stroke: var(--ink-2);
+  opacity: 0.7;
+}
+
+.imap-graph .imap-edge.window .edge {
+  stroke: var(--ink-3);
+  opacity: 0.5;
+}
+
+.imap-graph .imap-edge.unresolved .edge,
+.imap-graph .imap-edge.unknown .edge {
+  stroke-dasharray: 4 3;
+}
+
+.imap-graph .imap-edge.hot .edge {
+  stroke: var(--amber-ink);
+  stroke-width: 1.5;
+  opacity: 1;
+}
+
+.imap-graph .edge-mark {
+  fill: var(--panel);
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+
+.imap-graph .imap-edge.hot .edge-mark {
+  stroke: var(--amber-ink);
+}
+
+.imap-graph .edge-word {
+  fill: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 10.5px;
+}
+
+.imap-graph .edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 10;
+  cursor: pointer;
+}
+
+.imap-graph .edge-hit:focus {
+  outline: none;
+}
+
+.imap-graph .edge-hit:focus-visible {
+  stroke: var(--focus);
+  stroke-width: 3;
+  stroke-opacity: 0.6;
+}
+
+.imap-graph .imap-node {
+  cursor: pointer;
+}
+
+.imap-graph .imap-node.selected rect {
+  stroke: var(--amber-ink);
+}
+
+.imap-graph .imap-node.placeholder rect {
+  fill: var(--panel);
+  stroke-dasharray: 4 3;
+}
+
+.imap-graph .imap-node.orphan rect {
+  stroke-dasharray: 2 2;
+}
+
+.imap-graph .column-empty {
+  fill: var(--ink-3);
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
+.counts.imap-table th,
+.counts.imap-table td {
+  text-align: left;
+  vertical-align: top;
+}
+
+.imap-table tr.selected th,
+.imap-table tr.selected td {
+  background: var(--amber-soft);
+}
+
+.imap-table .row-open {
+  font: inherit;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.imap-table .row-open:hover code {
+  text-decoration: underline;
+}
+
+.tag.link,
+.counts .tag.link {
+  margin-left: 0;
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.tag.link.unresolved,
+.tag.link.unknown,
+.tag.link.none {
+  border-style: dashed;
+}
+
+.imap-rows {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.imap-rows > li {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.imap-row-head {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.imap-ends {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+.imap-link {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+
+/* side by side only where all four columns still fit beside the panel; below, it follows the map */
+@media (min-width: 1600px) {
+  .imap-layout.with-evidence {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
+  }
+
+  .imap-layout.with-evidence .evidence {
+    max-height: calc(100vh - 220px);
+    overflow: auto;
+  }
+}
+
+.imap-layout .graph {
+  min-height: 280px;
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 820px) {
