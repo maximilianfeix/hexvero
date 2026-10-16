@@ -733,4 +733,27 @@ describe("items on one side only", () => {
     const moved = compareItems([row("direct", "")], [row("unknown", blind)], options);
     expect(moved.changed.map((c) => c.fields.map((f) => f.field))).toEqual([["link"]]);
   });
+
+  it("matches findings by kind and location, so a reworded title is a change, not a new finding", () => {
+    const finding = (kind: string, title: string, location?: string) => ({
+      kind,
+      title,
+      confidence: "confirmed",
+      ...(location ? { location } : {}),
+    });
+    const diff = compareItems(
+      [finding("electron.ipc", "3 IPC channels"), finding("elf.nx", "NX off", "0x40")],
+      [
+        finding("electron.ipc", "3 IPC channels in the scanned part (2 of 4 files)"),
+        finding("elf.nx", "NX off", "0x40"),
+      ],
+      { collection: "findings" },
+    );
+    expect(diff.key).toBe("kind+location");
+    expect([diff.added, diff.removed]).toEqual([[], []]);
+    expect(diff.changed.map((c) => [c.key, c.fields.map((f) => f.field)])).toEqual([
+      ["electron.ipc::null", ["title"]],
+    ]);
+  });
 });
+

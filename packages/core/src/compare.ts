@@ -276,6 +276,9 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
     ["kind", "value"],
   ],
   urls: [["file", "value"], ["value"]],
+  // hexvero's own findings: what it found and where, not how the title words it ("… in the
+  // scanned part" is added when a scan is partial), so a reworded title is a change
+  findings: [["kind", "location"], ["kind"]],
 };
 
 /** Paths (dotted, up to three levels) at which two values differ. */
@@ -362,7 +365,8 @@ function keyValue(item: unknown, key: string): string | undefined {
 function keyLabel(item: unknown, key: string): string {
   return key
     .split("+")
-    .map((part) => String((item as Record<string, unknown>)[part]))
+    // an absent part and a null one are the same identity (see keyValue), and read the same
+    .map((part) => String((item as Record<string, unknown>)[part] ?? null))
     .join("::");
 }
 
