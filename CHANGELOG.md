@@ -6,6 +6,28 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Release policies
+
+- `hexvero check <before> <after> --policy <file>` applies a JSON release policy to the
+  comparison of two builds: `new-interface-member` (a member pages can call that is new),
+  `new-external-host` (a new host outside the `allow` list; exact names and `*.domain`), and
+  `window-more-permissive`. Exit codes: `0` pass, `1` technical error, `2` usage error or invalid
+  policy, `3` policy violated, `4` not decidable under `unknown: fail`.
+- Policies are data only, validated with a message per problem and described by
+  `docs/policy.schema.json` (JSON Schema 2020-12). Unknowns (a host computed at run time, an
+  unresolved IPC channel, a file not read) are never a pass: `unknown: fail` makes the check
+  incomplete, `warn` and `allow` let it pass and keep them listed.
+- Findings carry fingerprints made from what they are about (member, host, window setting), not
+  lines, so `--baseline file --update-baseline` accepts the current findings once and later runs
+  only fail on new ones. Suppressions take a reason and an optional `expires` date; an expired
+  one counts as new again.
+- Output as text, JSON, Markdown or SARIF 2.1.0 from the same result; `--out` never replaces a
+  file without `--force`. SARIF locations are paths inside the analyzed build
+  (`uriBaseId: HEXVERO_TARGET_B`), never mapped onto repository files.
+- `hexvero demo` also copies the example policy (`policy.json`) and prints the `check` command;
+  `docs/ci.md` and `.github/workflows/check-example.yml` show the check in GitHub Actions with
+  an optional, least-privilege code-scanning upload.
+
 ## [0.8.0] - 2026-10-16
 
 ### Compare releases

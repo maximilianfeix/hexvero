@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/maximilianfeix/hexvero/main/docs/policy.schema.json",
+  "title": "hexvero release policy",
+  "description": "Policy for `hexvero check <before> <after> --policy <file>`. Data only: no code, no regular expressions. Kept in sync with parsePolicy in packages/core/src/policy.ts (tested).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hexvero", "version", "rules"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "hexvero": { "const": "policy" },
+    "version": {
+      "const": 1,
+      "description": "Policy format version. Fingerprints are defined for version 1."
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One entry per rule. A rule that is not listed runs at level fail.",
+      "properties": {
+        "new-interface-member": { "$ref": "#/$defs/rule" },
+        "new-external-host": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level"],
+          "properties": {
+            "level": { "$ref": "#/$defs/level" },
+            "allow": {
+              "type": "array",
+              "description": "Hosts that may appear: an exact host name, *.domain for every subdomain of domain (not domain itself), an IPv4 address or a bracketed IPv6 address. Lower case, no scheme, port or path.",
+              "items": { "$ref": "#/$defs/allowEntry" }
+            }
+          }
+        },
+        "window-more-permissive": { "$ref": "#/$defs/rule" }
+      }
+    },
+    "unknown": {
+      "enum": ["fail", "warn", "allow"],
+      "default": "fail",
+      "description": "What an undecidable rule means: fail (status incomplete, exit 4), warn (listed as warning), allow (listed, does not change the status)."
+    },
+    "suppressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule", "fingerprint", "reason"],
+        "properties": {
+          "rule": {
+            "enum": ["new-interface-member", "new-external-host", "window-more-permissive"]
+          },
+          "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "\\S" },
+          "expires": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day (UTC) the suppression applies. After it the finding is reported with state suppression-expired and counts as new."
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "level": { "enum": ["fail", "warn", "off"] },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level"],
+      "properties": { "level": { "$ref": "#/$defs/level" } }
+    },
+    "allowEntry": {
+      "type": "string",
+      "maxLength": 253,
+      "anyOf": [
+        { "pattern": "^\\[[0-9a-f:.]+\\]$" },
+        {
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
+        },
+        {
+          "pattern": "^\\*\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$"
+        }
+      ]
+    }
+  }
+}

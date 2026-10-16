@@ -53,6 +53,10 @@ Commands
                                                 without a collection, counts for every shared one
   compare <a> <b> --report file.md [--force]    Write a Markdown report: summary, changes with
                                                 file:line, what could not be established
+  check <before> <after> --policy <file>        Apply a release policy (new interface members, new
+        [--baseline file] [--update-baseline]   external hosts, more permissive windows); exit 0
+        [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
+        [--out file] [--force]                  the result (never over a file without --force)
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -79,7 +83,8 @@ Options
   -h, --help  Show help
   -v, --version
 
-Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces`;
+Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces
+            check also: 2 invalid policy · 3 policy violated · 4 incomplete (unknown: fail)`;
 
 export async function main(argv: string[], io: Io = defaultIo()): Promise<number> {
   let args: ParsedArgs;
@@ -604,6 +609,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           ),
         );
       return 0;
+    }
+    case "check": {
+      const { runCheck } = await import("./check.js");
+      return runCheck(args, io, session);
     }
     case "export": {
       const target = await session.open(need(0, "path"));
