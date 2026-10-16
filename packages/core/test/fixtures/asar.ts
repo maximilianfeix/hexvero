@@ -1,6 +1,10 @@
 import { Builder } from "./builder.js";
 
-export function buildAsar(files: Record<string, string>): Uint8Array {
+/** `unpacked` lists paths recorded as stored in `<archive>.unpacked/` (no bytes in the archive). */
+export function buildAsar(
+  files: Record<string, string>,
+  unpacked: readonly string[] = [],
+): Uint8Array {
   const tree: { files: Record<string, unknown> } = { files: {} };
   const blobs: Uint8Array[] = [];
   let offset = 0;
@@ -11,6 +15,10 @@ export function buildAsar(files: Record<string, string>): Uint8Array {
     for (const part of parts.slice(0, -1)) {
       node.files[part] ??= { files: {} };
       node = node.files[part] as typeof tree;
+    }
+    if (unpacked.includes(path)) {
+      node.files[parts[parts.length - 1]!] = { size: data.length, unpacked: true };
+      continue;
     }
     node.files[parts[parts.length - 1]!] = {
       size: data.length,

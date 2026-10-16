@@ -1,6 +1,6 @@
 import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { join, posix, relative, sep } from "node:path";
-import { openAsar, openAsarFile, type AsarArchive } from "../formats/asar.js";
+import { isAbsolute, join, posix, relative, sep } from "node:path";
+import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
@@ -23,7 +23,8 @@ import { summarizeSourceMap } from "./sourcemap.js";
 export interface FileTree {
   kind: "directory" | "asar";
   root: string;
-  files: Array<{ path: string; size: number }>;
+  /** `unpacked`: an ASAR entry stored in `<archive>.unpacked/` beside the archive. */
+  files: Array<{ path: string; size: number; unpacked?: boolean }>;
   read(path: string, maxBytes?: number): Uint8Array;
   /** Symbolic links that pointed outside the root and were therefore not followed. */
   skippedLinks?: string[];
@@ -1555,13 +1556,27 @@ export function asarTreeFromFile(path: string): FileTree {
 }
 
 function archiveTree(archive: AsarArchive, name: string): FileTree {
+  // Electron keeps files marked unpacked in `<archive>.unpacked/` beside the archive; an archive
+  // known only by a name (an upload) has no such directory, and those files stay unread.
+  const onDisk = isAbsolute(name);
   return {
     kind: "asar",
     root: name,
-    files: archive.files.map((f) => ({ path: f.path, size: f.size })),
-    read: (path, maxBytes) => {
+    files: archive.files.map((f) => ({
+      path: f.path,
+      size: f.size,
+      ...(f.unpacked ? { unpacked: true } : {}),
+    })),
+    read: (path, maxBytes = 64 << 20) => {
       const file = archive.find(path);
       if (!file) throw new AnalysisError("not_found", `${path} not in archive`);
+      if (file.unpacked) {
+        if (!onDisk)
+          throw new AnalysisError("not_found", `${path} is stored outside the archive (unpacked)`, {
+            unpacked: true,
+          });
+        return readUnpacked(name, file, maxBytes);
+      }
       return archive.read(file, maxBytes);
     },
   };
@@ -2699,11 +2714,25 @@ export function analyzeJavaScriptTree(
       code: "web_preferences_truncated",
       message: `More BrowserWindow settings exist than the ${MAX_PREFS_PER_FILE} per file / ${MAX_PREFS} in total that are recorded.`,
     });
-  if (skipped)
+  if (skipped) {
+    // Name the reason: an unpacked entry whose `.unpacked` directory is missing is not "too large".
+    const unpacked = new Set(tree.files.filter((f) => f.unpacked).map((f) => f.path));
+    const outside = facts.skippedFiles.filter((f) => unpacked.has(f));
+    const other = facts.skippedFiles.filter((f) => !unpacked.has(f));
+    const parts: string[] = [];
+    if (other.length || outside.length < skipped)
+      parts.push(
+        `${skipped - outside.length} exceed the per-file size limit or could not be decoded${other.length ? ` (e.g. ${other.slice(0, 3).join(", ")})` : ""}`,
+      );
+    if (outside.length)
+      parts.push(
+        `${outside.length} are stored outside the archive in its .unpacked directory, which was not found next to it (e.g. ${outside.slice(0, 3).join(", ")})`,
+      );
     limitations.push({
       code: "js_files_skipped",
-      message: `${skipped} files were not read because they exceed the per-file size limit or could not be decoded (e.g. ${facts.skippedFiles.slice(0, 3).join(", ")}).`,
+      message: `${skipped} files were not read: ${parts.join("; ")}.`,
     });
+  }
 
   // Channel names that are constants of another module: looked up now that modules are known.
   // A reference stays in place while its module is unread, so a continued scan resolves it later.
