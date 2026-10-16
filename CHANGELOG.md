@@ -6,6 +6,36 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Compare releases
+
+- `hexvero demo [dir]` copies two builds of the example Electron app (now shipped in the npm
+  package, 12 KB) into `./hexvero-demo` and shows what changed: each change with the file and line
+  it was read from on its side, how it was read (`literal`, `inferred`, `link direct`), the window
+  settings to review, and what was not established. A file of the same name with other content
+  is never replaced.
+- `hexvero compare <a> <b> --report report.md` writes the comparison as Markdown: summary,
+  changes with places, a section for what could not be established, and the command to
+  reproduce it. Deterministic (no dates, no directories); text from the targets is quoted so it
+  cannot add links, HTML or a shell command of its own. Refuses to overwrite without `--force`.
+- A list one build does not have at all (the first endpoint, the first storage key) is now
+  reported row by row as added or removed, or as unknown when the other build was read only in
+  part. Before, the comparison only said "only in b: endpoints".
+- Web UI: a **Compare** view for two open builds, with links from every change and every
+  finding location of a JavaScript app to the source lines around it (`/api/targets/:id/source`,
+  only files the analysis read, only inside the target), a filter, the counts of every list and a
+  report download. The start screen leads with the example builds; `hexvero ui --demo` starts
+  on their comparison. No horizontal scrolling at phone width.
+- Example 1.5.0 registers IPC channels whose names come from an environment variable, so the
+  demo also shows an honest unknown (`ipc_channel_unresolved` at `main.js:33`).
+
+### Website and docs
+
+- New landing page and a static example report generated from a real run
+  (`scripts/build-site-demo.mjs`, checked by `release:check`). Site URLs point at GitHub Pages;
+  `hexvero.dev` does not serve this site.
+- README leads with the comparison, the verified `npx hexvero demo` start, three questions and
+  the most important limits; the limits now quote the newest blind set (holdout4).
+
 ## [0.7.5] - 2026-10-15
 
 ### Accuracy

@@ -1,7 +1,7 @@
 {
   "name": "hexvero",
   "version": "0.7.5",
-  "description": "Evidence-first software intelligence: inspect binaries and app bundles, trace Electron interfaces, compare builds, without running them. CLI, MCP server and web UI.",
+  "description": "Know what changed inside your app: inspect Electron apps and binaries, trace findings to file and line, compare releases. Locally, without running the target. CLI, MCP server and web UI.",
   "keywords": [
     "apk",
     "asar",

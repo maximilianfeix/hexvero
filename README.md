@@ -1,41 +1,85 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/banner-light.svg">
-  <img src="docs/banner-dark.svg" alt="hexvero – the first look at a binary or app bundle. Static facts with evidence, from Node alone." width="100%">
-</picture>
+<h1><img src="docs/logo-mark.svg" width="34" height="34" alt="" align="top"> hexvero</h1>
+
+**Know what changed inside your app.**
+
+Inspect Electron apps and binaries, trace findings to their source, and compare releases.<br>Locally, without executing the target.
 
 [![CI](https://github.com/maximilianfeix/hexvero/actions/workflows/ci.yml/badge.svg)](https://github.com/maximilianfeix/hexvero/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/hexvero?style=flat-square&color=F2B84B&labelColor=1B1D21)](https://www.npmjs.com/package/hexvero)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.12-F2B84B?style=flat-square&labelColor=1B1D21)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-F2B84B?style=flat-square&labelColor=1B1D21)](LICENSE)
 
-**English** · [Deutsch](README.de.md) · [Español](README.es.md) · [Français](README.fr.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md) · [中文](README.zh.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
+[Website and example report](https://maximilianfeix.github.io/hexvero/) · [Try it](#try-it) · [Use cases](#use-cases) · [Install](#install) · [What it reads](#what-it-reads) · [CLI](#cli) · [Web UI](#web-ui) · [For AI agents](#for-ai-agents) · [Limits](#limits) · [FAQ](#faq)
 
-[Try it](#try-it) · [Use cases](#use-cases) · [Install](#install) · [What it reads](#what-it-reads) · [CLI](#cli) · [Web UI](#web-ui) · [For AI agents](#for-ai-agents) · [Engines](#optional-engines) · [Limits](#limits) · [Compared with REA](#compared-with-rea) · [How it works](#how-it-works) · [Contributing](#contributing) · [FAQ](#faq)
+**English** · [Deutsch](README.de.md) · [Español](README.es.md) · [Français](README.fr.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md) · [中文](README.zh.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 </div>
 
----
+![hexvero comparing two builds of an Electron app: window settings that changed, a preload member and an IPC channel added and removed, each linked to the file and line it was read from](docs/screenshots/ui-compare.png)
 
-**Evidence-first software intelligence: inspect artifacts, trace interfaces, compare builds. Locally, without running them.**
-
-hexvero reads executables, Electron apps, APKs, archives, databases and network captures **without running them**. It tells you what the software contains, what it exposes, where each fact was read, how sure it is, and what it could not establish. One CLI, one MCP server for coding agents, one local web UI. Nothing leaves your machine.
-
-![hexvero mapping an Electron app without running it: findings with file and line, every IPC channel with its senders and handlers, the preload's contextBridge members with their channels, and what changed in the next version](docs/demo/demo.gif)
-
-<sub>25 seconds of real output on the example app in `examples/` · [step by step](docs/demo/electron-ipc.md)</sub>
+<sub>The local web UI comparing two builds of the example app in [`examples/`](examples/). Real output; the terminal version is [docs/demo/compare.gif](docs/demo/compare.gif).</sub>
 
 <a id="try-it"></a>
 
 ## Try it
 
 ```bash
-npx hexvero analyze ./MyApp.app/Contents/Resources/app.asar
+npx hexvero demo
 ```
 
-Node.js 22.12 or newer is all it needs. From an empty npm cache the first result took one command and about nine seconds on a laptop, download included. A real run on the small Electron app in [`examples/`](examples/):
+Node.js 22.12 or newer is all it needs. `demo` copies two builds of a small example Electron app into `./hexvero-demo` and shows what changed between them, with the place each change was read from:
+
+```text
+$ npx hexvero demo
+What changed between notesdesk-1.4.0.asar and notesdesk-1.5.0.asar
+  Two builds of a small example Electron app, read statically. Nothing was executed.
+
+  interfaces (2)
+    + preload.js::notesdesk::checkUpdate  @ b: preload.js:9, handler main.js:30 · link direct
+    - preload.js::notesdesk::openInShell  @ a: preload.js:9, handler main.js:30 · link direct
+  ipcChannels (2)
+    + update:check  @ b: receiver main.js:30, sender preload.js:9
+    - shell:open  @ a: receiver main.js:30, sender preload.js:9
+  windows (1)
+    ~ main.js::win  @ b: main.js:8
+        nodeIntegration: true → false, nodeIntegrationInEffect: "on" → "off", sandbox: false → true
+  endpoints (1)
+    + main.js::fetch::https://updates.notesdesk.example/latest.json  @ b: main.js:30 · literal
+  … (contextBridge, webPreferences, storage, urls)
+
+  Not established
+    ! b: 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed
+      (a parameter, a computed value). … ipcMain.handle at main.js:33. (ipc_channel_unresolved)
+```
+
+Then the same comparison in the browser, where every `file:line` opens the lines around it, and as a Markdown report you can attach to a review:
+
+```bash
+npx hexvero ui --demo --open
+npx hexvero compare hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --report report.md
+```
+
+On your own app: `npx hexvero compare old/app.asar new/app.asar --report report.md`, or `npx hexvero analyze ./MyApp.app/Contents/Resources/app.asar` for one build. An example report is on the [website](https://maximilianfeix.github.io/hexvero/demo/).
+
+### Three questions it answers
+
+1. **What can a page in this Electron app reach?** Preload members, the IPC channel behind each, the main-process handler with file and line, and the window settings (`nodeIntegration`, `contextIsolation`, `sandbox`) as written.
+2. **What did this update change?** IPC channels, preload members, window settings, endpoints and storage keys added, removed or changed between two builds; for native binaries, imports, libraries and symbols.
+3. **How sure is that?** A filled dot (`●`) is read from the file, a hollow one (`○`) inferred from a pattern; endpoints say `literal` or `inferred`; what could not be read is listed with its file and line, and an item in a file the other build did not read is `unknown`, not removed.
+
+### What it cannot tell you
+
+- It reads files and never runs the program, so a finding is what the code contains, not what it does at run time, and not whether anything is exploitable.
+- It misses things, especially on code it was not tuned on: on the newest blind set it found 12 of 57 IPC channels and 5 of 8 version changes ([holdout4](corpus/holdout4/README.md)). Absence from a list is weaker evidence than presence.
+- Not executing the target is not a safety guarantee: parsing a hostile file still processes attacker-controlled bytes, within size, depth and time limits. Full list: [Limits](#limits).
+
+**Docs:** [CLI reference](docs/cli.md) · [MCP reference](docs/mcp.md) · [Electron rules](docs/electron-findings.md) · [Benchmarks](docs/benchmarks.md) · [Accuracy corpus](corpus/README.md) · [Changelog](CHANGELOG.md)
+
+### A single build in detail
+
+A real run on one build of the example app:
 
 ```text
 $ hexvero analyze examples/notesdesk-1.4.0.asar
@@ -91,10 +135,11 @@ main
 
 ```text
 $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar
-13 shared collection(s), 11 with differences
+14 shared collection(s), 12 with differences
   collection      added  removed  changed  unchanged
   --------------  -----  -------  -------  ---------
   findings        4      6        0        1
+  limitations     1      0        0        0
   modules         0      0        3        1
   …
   webPreferences  0      0        2        2
@@ -111,15 +156,18 @@ $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar we
 webPreferences: 0 added, 0 removed, 2 changed, 2 unchanged · matched by file+windowName+key
   ~ main.js::win::nodeIntegration  value: true → false
   ~ main.js::win::sandbox  value: false → true
+  analysis limitations apply (a: 0, b: 1); see "hexvero collection <path> limitations" before reading this as complete
 
 $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar windows
 windows: 0 added, 0 removed, 1 changed, 0 unchanged · matched by file+windowName
   ~ main.js::win  nodeIntegration: true → false, nodeIntegrationInEffect: "on" → "off", sandbox: false → true, sandboxInEffect: "off" → "on"
+  analysis limitations apply (a: 0, b: 1); see "hexvero collection <path> limitations" before reading this as complete
 
 $ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar contextBridge
 contextBridge: 1 added, 1 removed, 0 changed, 5 unchanged · matched by api+member
   + notesdesk::checkUpdate
   - notesdesk::openInShell
+  analysis limitations apply (a: 0, b: 1); see "hexvero collection <path> limitations" before reading this as complete
 ```
 
 The `interfaces` list joins each preload member to the windows that load it and to the main-process handler on its channel, with file and line, and says how the link was made (`direct`, `resolved`, or `unresolved`/`unknown` with the reason). Walkthroughs: [Electron interface map](docs/use-cases/electron-interface-map.md), [release interface diff](docs/use-cases/release-interface-diff.md).
@@ -187,16 +235,19 @@ hexvero analyze <path> [--json] [--out file.json]     summary, findings, limitat
 hexvero collection <path> <name> [--text s] [--limit n] [--offset n] [--max-bytes n]
 hexvero strings <path> [--min n] [--utf16] [--tag url|path|email|ip|format|secret-ish|base64-ish]
 hexvero bytes <path> <offset> [length]                hex dump (64 KiB per call)
+hexvero demo [dir]                                    copy two example builds into dir and show what changed
 hexvero compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
                                                       added, removed, changed and relocated items between two builds;
                                                       without a collection: counts for every shared one
+hexvero compare <a> <b> --report report.md [--force]  Markdown report: summary, changes with file:line, what was
+                                                      not established; never overwrites without --force
 hexvero export <path> <out.json>                      the complete analysis
 hexvero recover <bundle.js|map> <outdir>              split one JS bundle into module files, or write a source map's originals
 hexvero provider <path> radare2|rizin|ghidra <op> [--address a] [--text s]
                                                       functions, disassemble, decompile, strings, imports,
                                                       xrefs, callers, callees, callgraph, search
 hexvero calls <path> <engine> <root> [--direction callers|callees|both] [--depth n] [--goal g]
-hexvero mcp · hexvero ui [--port n] [--open] · hexvero doctor · hexvero setup [--client c] [--apply] [--all]
+hexvero mcp · hexvero ui [--port n] [--open] [--demo] · hexvero doctor · hexvero setup [--client c] [--apply] [--all]
 ```
 
 Analysis commands take `--json`. Exit codes: `0` ok (including `--help`), `1` analysis failed (with a structured error), `2` usage. See [docs/cli.md](docs/cli.md).
@@ -211,9 +262,11 @@ hexvero ui --open
 
 ![hexvero UI: the overview of an Electron app, each finding with its confidence and source line](docs/screenshots/ui-overview.png)
 
+![hexvero UI: the source lines around a change, the line it was read from highlighted](docs/screenshots/ui-source.png)
+
 ![hexvero UI: findings with their source lines, and the hex viewer decoding a selected byte](docs/screenshots/ui-hex.png)
 
-Starts a loopback server with a per-session token and opens the browser. Drop a file anywhere, or type a path on your machine. Each target gets a verdict line, a fact sheet, findings with confidence, the limitations, and one tab per collection that actually exists. The hex viewer loads windows on demand, decodes the selected bytes as u8…u64/f32/f64 in both byte orders and follows the arrow keys. Electron apps get a layered module graph. Dark and light themes, keyboard navigation throughout (`⌘O`/`Ctrl+O` open, `/` filter, arrow keys on tabs, hex and graph), phone layout.
+Starts a loopback server with a per-session token and opens the browser. **Compare** puts two open builds side by side: the window settings to review, every change per list with the file and line it was read from (each opens the source lines around it), a filter, the counts of every list, what was not established, and a Markdown report download. `hexvero ui --demo --open` starts with the example builds; the start screen offers them too. Drop a file anywhere, or type a path on your machine. Each target gets a verdict line, a fact sheet, findings with confidence, the limitations, and one tab per collection that actually exists. The hex viewer loads windows on demand, decodes the selected bytes as u8…u64/f32/f64 in both byte orders and follows the arrow keys. Electron apps get a layered module graph. Dark and light themes, keyboard navigation throughout (`⌘O`/`Ctrl+O` open, `/` filter, arrow keys on tabs, hex and graph), phone layout.
 
 <a id="for-ai-agents"></a>
 
@@ -288,7 +341,7 @@ Call graphs include tail calls through both radare2 (from its jump references) a
 ## Limits
 
 - hexvero is static. It reads files and never observes a running program: a finding is what the code contains, not what it does at run time.
-- On code it was not tuned on, it still misses things. On the newest blind set (two applications written without access to hexvero, measured once before any change for it) the build before this round found 90 of 126 IPC channels and 42 of 63 window settings, with 6 wrong settings ([corpus/results/round3](corpus/results/round3/README.md)). Absence from a list is weaker evidence than presence. What it saw but could not read is named in the limitations with file and line (`ipc_receiver_unresolved`, `ipc_channel_unresolved`, `webpreferences_computed`, `window_options_unresolved`).
+- On code it was not tuned on, it still misses things. On the newest blind set (a kanban app in three builds, written without access to hexvero and measured once with 0.7.3) it found 12 of 57 IPC channels, 36 of 48 window settings with 4 wrong, and 5 of 8 changes between two versions; most missed channels come from a registry function it does not evaluate ([corpus/holdout4](corpus/holdout4/README.md)). The set before it (`holdout2`) gave 90 of 126 channels and 42 of 63 settings with 6 wrong ([round3](corpus/results/round3/README.md)). Absence from a list is weaker evidence than presence. What it saw but could not read is named in the limitations with file and line (`ipc_receiver_unresolved`, `ipc_channel_unresolved`, `webpreferences_computed`, `window_options_unresolved`).
 - IPC channels are read from literals and constants, and, where those do not reach, by a bounded resolver: concatenation and templates, helper functions and class methods whose channel is bound at every readable call site, routers that build names from a constructor argument, arrays, `Map`s and objects registered in loops or `forEach`, re-exports through index modules. A value it cannot write down exactly is left out, never guessed. Not followed: names defined in files that were not read, and values computed at run time.
 - Window settings: ten `webPreferences` keys, where they are written, spread in, returned by a helper, merged with `Object.assign`, or taken from defaults and option factories in other modules (then `definedIn` names where). Electron fuses, CSP, navigation and permission handlers are not checked, and nothing is rated by severity. The derived `windows` columns do not know the Electron version actually shipped or run-time changes.
 - A JavaScript app is read 5,000 files at a time; until `--all` has run, every list covers the scanned part and says so.
