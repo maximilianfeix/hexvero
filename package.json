@@ -24,7 +24,8 @@
     "corpus": "npm run build && node corpus/build.mjs --check && node corpus/gate.mjs",
     "corpus:accept": "npm run build && node corpus/observe-hexvero.mjs && node corpus/score.mjs corpus/results/hexvero.observations.json --markdown corpus/results/hexvero.md --json corpus/results/hexvero.json",
     "release": "node scripts/release.mjs",
-    "release:check": "npm run check && npm run build && node scripts/release-verify.mjs && node scripts/smoke-tarballs.mjs"
+    "release:check": "npm run check && npm run build && node scripts/build-site-demo.mjs --check && node scripts/release-verify.mjs && node scripts/smoke-tarballs.mjs",
+    "site:demo": "npm run build && node scripts/build-site-demo.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.3.1",
