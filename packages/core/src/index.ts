@@ -88,7 +88,16 @@ export {
   reduceItem,
 } from "./paging.js";
 export {
+  compareReleases,
+  renderReleaseReport,
+  type ChangeRow,
+  type Place,
+  type ReleaseComparison,
+} from "./report.js";
+export { sourceWindow, MAX_SOURCE_BYTES, type SourceWindow } from "./source.js";
+export {
   canonical,
+  itemLabel,
   compareItems,
   detectKey,
   positionalFields,

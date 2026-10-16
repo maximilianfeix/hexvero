@@ -310,6 +310,14 @@ function keyLabel(item: unknown, key: string): string {
 }
 
 /**
+ * The label `compareItems` reports an item under (in `added`, `removed`, `changed[].key`) when it
+ * matched by `key`, so a caller can find the item behind a reported key again.
+ */
+export function itemLabel(item: unknown, key: string | null): string {
+  return key !== null && keyValue(item, key) !== undefined ? keyLabel(item, key) : canonical(item);
+}
+
+/**
  * A key qualifies when it is present on ≥90% of the items of each side and distinct on ≥90%.
  * Some repetition is normal for a real identity (every gcc ELF lists `crtstuff.c` twice and has
  * a few names in both symbol tables; `.ctor` repeats across types) and is handled by multiset

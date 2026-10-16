@@ -26,6 +26,7 @@ import { AnalysisError, type TargetInfo } from "./model.js";
 import { interfaceMap } from "./javascript/interfaces.js";
 import { loadTarget, type LoadedTarget } from "./target.js";
 import { CORE_VERSION } from "./version.js";
+import { sourceWindow, type SourceWindow } from "./source.js";
 
 export interface TargetRecord {
   id: string;
@@ -444,6 +445,21 @@ export class Session {
       onlyB: Object.keys(countsB).filter((n) => hasItems(countsB, n) && !(n in countsA)),
       partialScan: { a: (await this.partial(idA)) !== null, b: (await this.partial(idB)) !== null },
     };
+  }
+
+  /**
+   * Lines around `line` of a file a JavaScript application's analysis read, so a fact's
+   * `file:line` can be opened. Other files and other targets are refused.
+   */
+  async source(id: string, file: string, line: number, context?: number): Promise<SourceWindow> {
+    const analysis = await this.analyze(id);
+    if (analysis.data.kind !== "javascript-app")
+      throw new AnalysisError(
+        "invalid_input",
+        "Source lines are available for Electron archives and application directories",
+      );
+    const read = new Set(analysis.data.app.modules.map((m) => m.id));
+    return sourceWindow(this.entry(id).loaded, read, file, line, context);
   }
 
   async collection(id: string, name: string, query: CollectionQuery = {}): Promise<CollectionPage> {
