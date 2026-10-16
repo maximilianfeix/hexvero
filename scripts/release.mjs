@@ -96,6 +96,8 @@ try {
   gate("npm install --no-audit --no-fund");
   gate("npm run check");
   gate("npm run build");
+  // The website's example report names the version that produced it.
+  gate("node scripts/build-site-demo.mjs");
   gate(`node scripts/release-verify.mjs v${version}`);
   gate("node scripts/smoke-tarballs.mjs");
 } catch {
