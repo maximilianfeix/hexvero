@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { readRegularFile } from "../binary/file.js";
 import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "../formats/asar.js";
