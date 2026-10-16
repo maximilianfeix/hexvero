@@ -606,14 +606,23 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
 };
 
 /**
- * The lists whose completeness decides a rule. Which members a preload exposes is read from the
- * bridge itself, so a channel name hexvero could not read (an IPC gap) does not make "new
- * interface member" undecidable; an unreadable or truncated bridge does.
+ * Lists whose completeness decides a rule besides the ones its findings come from. Which members
+ * a preload exposes is read from the bridge itself, so the bridge decides "new interface member".
  */
 const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = {
   "new-interface-member": () => ["contextBridge"],
-  "new-external-host": () => ["endpoints", "urls"],
-  "window-more-permissive": () => ["windows"],
+  "new-external-host": () => [],
+  "window-more-permissive": () => [],
+};
+
+/**
+ * Gaps that do not bear on a rule in a list it reads. For the interface rule, a value hexvero
+ * could not resolve in `interfaces` is a channel name: it decides which handler a member reaches,
+ * not whether the member exists (an unreadable bridge member is a gap of `contextBridge` itself).
+ * Every other gap of `interfaces` (budget, unread files, truncation) still counts.
+ */
+const IRRELEVANT_GAPS: Partial<Record<PolicyRuleId, Record<string, readonly string[]>>> = {
+  "new-interface-member": { interfaces: ["values_unresolved"] },
 };
 
 function mergePlaces(into: Place[], more: readonly Place[]): void {
@@ -754,9 +763,10 @@ export function evaluatePolicy(
     const cfg = policy.rules[rule];
     if (cfg.level === "off") continue;
     const collections = RULE_COLLECTIONS[rule](r);
-    for (const collection of RULE_COVERAGE[rule](r)) {
-      const c = completenessOf(r, collection);
-      if (!c.complete) incomplete.push({ rule, collection, gaps: c.gaps });
+    for (const collection of new Set([...collections, ...RULE_COVERAGE[rule](r)])) {
+      const ignore = IRRELEVANT_GAPS[rule]?.[collection] ?? [];
+      const gaps = completenessOf(r, collection).gaps.filter((g) => !ignore.includes(g));
+      if (gaps.length) incomplete.push({ rule, collection, gaps });
     }
     if (rule === "new-interface-member") drafts.push(...interfaceDrafts(r, collections[0]!));
     if (rule === "new-external-host") drafts.push(...hostDrafts(r, cfg.allow ?? []));

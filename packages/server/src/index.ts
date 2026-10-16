@@ -81,7 +81,9 @@ const fail = (res: ServerResponse, error: unknown): void => {
       error.code === "not_found"
         ? 404
         : error.code === "too_large"
-          ? 413
+          ? (error.details as { reason?: unknown } | undefined)?.reason === "timeout"
+            ? 503 // the analysis ran out of time; the input is not necessarily too big
+            : 413
           : error.code === "cancelled"
             ? 499
             : error.code === "provider_unavailable"

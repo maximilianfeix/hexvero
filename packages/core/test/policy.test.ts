@@ -661,11 +661,18 @@ describe("evaluating a policy", () => {
       );
       expect(r.incomplete).toEqual([]);
       expect(r.status).toBe("pass");
+      // any other gap of the interfaces list still decides the rule
+      const cut = evaluatePolicy(comparison({ partial: ["interfaces"] }), policy());
+      expect(cut.status).toBe("incomplete");
+      expect(cut.incomplete).toEqual([
+        { rule: "new-interface-member", collection: "interfaces", gaps: ["budget"] },
+      ]);
     });
     it("a partly read app leaves every rule undecidable", () => {
       const r = evaluatePolicy(comparison({ partialScan: { a: false, b: true } }), policy());
       expect(r.status).toBe("incomplete");
       expect(r.incomplete.map((i) => i.collection)).toEqual([
+        "interfaces",
         "contextBridge",
         "endpoints",
         "urls",
