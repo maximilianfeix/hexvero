@@ -74,6 +74,15 @@ All notable changes to hexvero are listed here. The format follows
   changes with places, a section for what could not be established, and the command to
   reproduce it. Deterministic (no dates, no directories); text from the targets is quoted so it
   cannot add links, HTML or a shell command of its own. Refuses to overwrite without `--force`.
+- `hexvero compare <a> <b> --report report.html` (or `.htm`) writes the same comparison as one
+  self-contained, offline HTML page: summary, window settings to review, changes per list with
+  sign and word, before/after places with the seven source lines around each (at most 200
+  excerpts and 250,000 characters, said when cut), completeness gaps, "Not established", "N of M
+  rows shown" and the reproduce command. Filters by kind, list and text run in one inline script
+  allowed by its sha256 in a strict Content-Security-Policy (`default-src 'none'`); the page reads
+  the same with JavaScript off, loads nothing and links nothing from target text. Target text is
+  escaped, and bidi, zero-width and control characters show as `⟨U+202E⟩`. Other extensions
+  still write Markdown; `--force`, `--offset` and `--limit` apply to both.
 - A list one build does not have at all (the first endpoint, the first storage key) is now
   reported row by row as added or removed, or as unknown when the other build was read only in
   part. Before, the comparison only said "only in b: endpoints".

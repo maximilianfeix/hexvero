@@ -5,7 +5,9 @@ import {
   Session,
   compact,
   compareReleases,
+  collectReleaseSources,
   renderReleaseReport,
+  renderReleaseReportHtml,
   loadCallGraph,
   MAX_PAGE_BYTES,
   neighborhood,
@@ -51,10 +53,11 @@ Commands
   compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
                                                 Added, removed and changed items between two builds;
                                                 without a collection, counts for every shared one
-  compare <a> <b> --report file.md [--force] [--offset n] [--limit n]
-                                                Write a Markdown report: summary, changes with
-                                                file:line (200 rows per page), what could not be
-                                                established
+  compare <a> <b> --report file.md|file.html [--force] [--offset n] [--limit n]
+                                                Write a report: summary, changes with file:line
+                                                (200 rows per page), what could not be established;
+                                                .html/.htm writes one offline page with source
+                                                excerpts and filters, anything else Markdown
   check <before> <after> --policy <file>        Apply a release policy (new interface members, new
         [--baseline file] [--update-baseline]   external hosts, more permissive windows); exit 0
         [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
@@ -393,7 +396,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           offset: flagNumber(args.flags, "offset"),
           limit: flagNumber(args.flags, "limit"),
         });
-        const text = renderReleaseReport(comparison);
+        // .html/.htm: the self-contained page with source excerpts; anything else: Markdown
+        const text = /\.html?$/i.test(report)
+          ? renderReleaseReportHtml(comparison, await collectReleaseSources(session, comparison))
+          : renderReleaseReport(comparison);
         try {
           await writeFile(report, text, { flag: args.flags["force"] ? "w" : "wx" });
         } catch (error) {
