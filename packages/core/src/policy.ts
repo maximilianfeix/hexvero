@@ -400,6 +400,11 @@ const LIMITATION_GAPS: Record<string, { gap: string; collections: readonly strin
   },
   webpreferences_computed: { gap: "values_unresolved", collections: ["windows", "webPreferences"] },
   web_preferences_truncated: { gap: "item_truncated", collections: ["windows", "webPreferences"] },
+  context_bridge_truncated: { gap: "item_truncated", collections: ["contextBridge", "interfaces"] },
+  context_bridge_members_unreadable: {
+    gap: "values_unresolved",
+    collections: ["contextBridge", "interfaces"],
+  },
 };
 
 /**
@@ -500,17 +505,23 @@ export type HostReading =
  */
 export function hostOf(value: string): HostReading {
   const v = value.trim();
-  let authority: string;
-  let scheme: string;
-  const m = /^([a-z][a-z0-9+.-]*:)?\/\/([^/?#]*)/i.exec(v);
-  if (m) {
-    scheme = (m[1] ?? "https:").toLowerCase();
-    authority = m[2]!;
-  } else if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return { kind: "none" };
-  else if (v.startsWith("${") || v.startsWith("`"))
+  if (v.startsWith("${") || v.startsWith("`"))
     return { kind: "unknown", why: "the start of the URL is computed at run time" };
-  else return { kind: "none" };
-  if (!NETWORK_SCHEMES.has(scheme)) return { kind: "none" };
+  // Read the authority the way a WHATWG URL parser does for special schemes: any run of slashes
+  // or backslashes after the scheme, or none at all (`http:evil.com` is evil.com), so a value a
+  // browser or fetch would send to a host is never mistaken for one that reaches none.
+  let scheme: string;
+  let rest: string;
+  const sm = /^([a-z][a-z0-9+.-]*):/i.exec(v);
+  if (sm) {
+    scheme = `${sm[1]!.toLowerCase()}:`;
+    if (!NETWORK_SCHEMES.has(scheme)) return { kind: "none" };
+    rest = v.slice(sm[0].length);
+  } else if (/^[/\\]{2}/.test(v)) {
+    scheme = "https:"; // protocol-relative: the page's scheme, a network one for a web page
+    rest = v;
+  } else return { kind: "none" };
+  const authority = rest.replace(/^[/\\]*/, "").split(/[/\\?#]/)[0] ?? "";
   if (/\$\{|[`{}]/.test(authority) || authority === "")
     return { kind: "unknown", why: "the host is computed at run time" };
   let host: string;
@@ -590,6 +601,17 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
       ? ["interfaces"]
       : ["contextBridge"];
   },
+  "new-external-host": () => ["endpoints", "urls"],
+  "window-more-permissive": () => ["windows"],
+};
+
+/**
+ * The lists whose completeness decides a rule. Which members a preload exposes is read from the
+ * bridge itself, so a channel name hexvero could not read (an IPC gap) does not make "new
+ * interface member" undecidable; an unreadable or truncated bridge does.
+ */
+const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = {
+  "new-interface-member": () => ["contextBridge"],
   "new-external-host": () => ["endpoints", "urls"],
   "window-more-permissive": () => ["windows"],
 };
@@ -732,7 +754,7 @@ export function evaluatePolicy(
     const cfg = policy.rules[rule];
     if (cfg.level === "off") continue;
     const collections = RULE_COLLECTIONS[rule](r);
-    for (const collection of collections) {
+    for (const collection of RULE_COVERAGE[rule](r)) {
       const c = completenessOf(r, collection);
       if (!c.complete) incomplete.push({ rule, collection, gaps: c.gaps });
     }

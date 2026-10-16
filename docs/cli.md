@@ -111,13 +111,14 @@ hexvero check fail: the policy is violated
       New external host updates.notesdesk.example, not in the allow list (https://updates.notesdesk.example/latest.json).
       @ b: main.js:30 · literal · fingerprint 68312dcec55422c3b8affec165b21b83
 
-  Not decidable
-    ! new-interface-member on interfaces: values_unresolved
+  Accept what is there now: add --baseline <file> --update-baseline, or a suppression with the fingerprint and a reason in the policy.
 ```
 
-Exit `3`. The unresolved IPC channel at `main.js:33` leaves `new-interface-member` undecidable,
-so after the two findings are accepted with `--update-baseline` the same run exits `4`, and `0`
-with `"unknown": "warn"`.
+Exit `3`. After the two findings are accepted with `--update-baseline`, the same run exits `0`.
+The unresolved IPC channel at `main.js:33` does not make `new-interface-member` undecidable:
+which members a preload exposes is read from the bridge itself. An unreadable or truncated bridge,
+a host built at run time, a window setting whose direction is unclear, or a partly read app does
+(exit `4` under `"unknown": "fail"`).
 
 ## Collections by format
 

@@ -126,8 +126,9 @@ SARIF 2.1.0 schema.
 
 - **Fail on a host you expect**: add it to `allow`, or, for a one-off, a suppression with the
   fingerprint from the output, a reason and an `expires` date.
-- **Exit 4**: hexvero could not decide a rule, for example because an IPC channel name is
-  computed at run time. The text output lists the gaps under "Not decidable". Fix the cause
+- **Exit 4**: hexvero could not decide a rule, for example because a host is built at run time
+  (`https://${region}.example.com`), the preload bridge could not be read, or the app was read
+  only in part. The text output lists the gaps under "Not decidable". Fix the cause
   (`hexvero analyze <path> --all` for a large app read in part), or set `"unknown": "warn"` when
   you accept that the rule cannot be decided for this app. The gaps stay listed either way.
 - A pass means hexvero found nothing new against the policy in what it read. It is not a proof
