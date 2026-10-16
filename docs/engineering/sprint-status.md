@@ -29,7 +29,7 @@ any interruption or context compaction.
 | P policy (C5, C6, SARIF, CI)      | `sprint/p-policy`                              | running since 22:58Z              |
 | C web + server (C7)               | `sprint/c-web`                                 | running since 22:58Z              |
 | M map + skills                    | `sprint/m-map`                                 | running since 22:58Z              |
-| E independent fixtures (holdout5) | `sprint/e-fixtures`, access-restricted         | running since 22:58Z              |
+| E independent fixtures (holdout5) | `sprint/e-fixtures` `f537d27` | DONE 23:11Z: Tidemark app, 2 versions, own v2 format (`changes`, `unchangedMoves`, `bundledFiles`); not built or scored. Kept out of A's worktree until A freezes; then base and final are scored with the same scorer revision. |
 | F launch / market                 | lead                                           | matrix, status.json, metrics done |
 
 ## Contracts (frozen before parallel work)
