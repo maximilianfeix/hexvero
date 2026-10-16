@@ -19,6 +19,7 @@ configuration manually:
 
 Results are JSON in a single text content block. Errors come back as `{ "error": { "code", "message", "details" } }` with `isError: true`.
 Codes: `not_found`, `invalid_input`, `unsupported_format`, `malformed`, `too_large`, `provider_unavailable`, `cancelled`.
+A request the caller cancels fails with `cancelled`. A limit that was exceeded is `too_large`; when the limit was time or memory rather than size, `details.reason` says so (`"timeout"` with `details.timeoutMs`, or `"memory"`). An engine run that times out is `provider_unavailable` with `details.reason: "timeout"`.
 
 ## Paths and writes
 
