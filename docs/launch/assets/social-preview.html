@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        background: #1b1d21;
+        color: #e8e6e1;
+        font-family:
+          "IBM Plex Sans",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        overflow: hidden;
+      }
+      .l {
+        position: absolute;
+        left: 64px;
+        top: 70px;
+        width: 520px;
+      }
+      .mark {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-weight: 600;
+        font-size: 30px;
+        letter-spacing: -0.01em;
+      }
+      h1 {
+        font-size: 60px;
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+        margin: 46px 0 22px;
+      }
+      p {
+        font-size: 23px;
+        line-height: 1.45;
+        color: #9a9ea7;
+        margin: 0;
+      }
+      .cmd {
+        margin-top: 34px;
+        display: inline-block;
+        font:
+          500 22px "IBM Plex Mono",
+          ui-monospace,
+          Menlo,
+          monospace;
+        background: #23262c;
+        border: 1px solid #31353d;
+        border-radius: 10px;
+        padding: 12px 18px;
+      }
+      .cmd b {
+        color: #6c707a;
+        font-weight: 400;
+      }
+      .shot {
+        position: absolute;
+        left: 640px;
+        top: 60px;
+        width: 760px;
+        height: 620px;
+        border: 1px solid #31353d;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 30px 80px -30px #000;
+      }
+      .shot img {
+        width: 1250px;
+        margin: -205px 0 0 -222px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="l">
+      <div class="mark">
+        <svg width="40" height="40" viewBox="0 0 32 32">
+          <rect width="32" height="32" rx="7" fill="#2a2e35" />
+          <path
+            d="M9 8v16M23 8v16M9 16h14"
+            stroke="#f2b84b"
+            stroke-width="3.2"
+            stroke-linecap="round"
+          /></svg
+        >hexvero
+      </div>
+      <h1>Know what changed inside your app.</h1>
+      <p>
+        Inspect Electron apps and binaries, trace findings to their source, compare releases.
+        Locally, without executing the target.
+      </p>
+      <div class="cmd"><b>$ </b>npx hexvero demo</div>
+    </div>
+    <div class="shot"><img src="../../screenshots/ui-compare.png" /></div>
+  </body>
+</html>
