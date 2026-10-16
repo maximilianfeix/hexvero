@@ -1,5 +1,6 @@
 import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, posix, relative, sep } from "node:path";
+import { readRegularFile } from "../binary/file.js";
 import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
@@ -1540,9 +1541,8 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
           "invalid_input",
           `${path} resolves outside the root and is not read`,
         );
-      const size = statSync(real).size;
-      if (size > maxBytes) throw new AnalysisError("too_large", `${path} is ${size} bytes`);
-      return new Uint8Array(readFileSync(full));
+      // The resolved file is the one read, through one descriptor that refuses non-files.
+      return readRegularFile(real, maxBytes, path);
     },
   };
 }

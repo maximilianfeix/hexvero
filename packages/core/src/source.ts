@@ -1,4 +1,5 @@
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { realpathSync } from "node:fs";
+import { readRegularFile } from "./binary/file.js";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { openAsar, openAsarFile, readUnpacked } from "./formats/asar.js";
 import { AnalysisError } from "./model.js";
@@ -78,10 +79,7 @@ function readTargetFile(loaded: LoadedTarget, file: string): Uint8Array {
     const real = realpathSync(full);
     if (real !== root && !real.startsWith(root + sep))
       throw new AnalysisError("invalid_input", `${file} resolves outside the target`);
-    const size = statSync(real).size;
-    if (size > MAX_SOURCE_BYTES)
-      throw new AnalysisError("too_large", `${file} is ${size} bytes; not shown`);
-    return new Uint8Array(readFileSync(real));
+    return readRegularFile(real, MAX_SOURCE_BYTES, file);
   }
   throw new AnalysisError(
     "invalid_input",

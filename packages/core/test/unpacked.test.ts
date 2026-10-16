@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -81,6 +82,30 @@ describe("unpacked ASAR entries", () => {
       expect.arrayContaining([expect.objectContaining({ channel: "worker:run" })]),
     );
   });
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a FIFO in place of a file instead of blocking on it",
+    async () => {
+      // an archive layout may put a named pipe where an unpacked module or app file should be
+      const asar = place("fifo", false);
+      mkdirSync(join(dir, "fifo", "app.asar.unpacked", "worker"), { recursive: true });
+      execFileSync("mkfifo", [join(dir, "fifo", "app.asar.unpacked", "worker", "run.js")]);
+      const session = new Session();
+      const t = await session.open(asar);
+      const skipped = (await session.analyze(t.id)).limitations.find(
+        (l) => l.code === "js_files_skipped",
+      );
+      expect(skipped?.message).toContain("worker/run.js");
+      // the same for an application folder
+      const folder = join(dir, "fifo-dir");
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, "package.json"), JSON.stringify({ main: "main.js" }));
+      execFileSync("mkfifo", [join(folder, "main.js")]);
+      const d = await session.open(folder);
+      await expect(session.analyze(d.id)).resolves.toBeTruthy();
+    },
+    10_000,
+  );
 
   it("never follows a link out of the .unpacked directory", async () => {
     const asar = place("link", false);

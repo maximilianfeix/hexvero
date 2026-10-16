@@ -1,13 +1,6 @@
-import {
-  closeSync,
-  fstatSync,
-  openSync,
-  readFileSync,
-  readSync,
-  realpathSync,
-  statSync,
-} from "node:fs";
+import { closeSync, fstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { basename, join, sep } from "node:path";
+import { readRegularFile } from "../binary/file.js";
 import { ByteReader, utf8String } from "../binary/reader.js";
 import { AnalysisError } from "../model.js";
 
@@ -129,10 +122,7 @@ export function readUnpacked(archivePath: string, file: AsarFile, maxBytes: numb
   }
   if (real !== root && !real.startsWith(root + sep))
     throw new AnalysisError("invalid_input", `${file.path} resolves outside ${basename(dir)}`);
-  const size = statSync(real).size;
-  if (size > maxBytes)
-    throw new AnalysisError("too_large", `${file.path} is ${size} bytes (limit ${maxBytes})`);
-  return new Uint8Array(readFileSync(real));
+  return readRegularFile(real, maxBytes, file.path);
 }
 
 function checkReadable(file: AsarFile, maxBytes: number): void {
