@@ -48,6 +48,46 @@ export interface CompareOptions {
    * `unknown`, never `added` or `removed`.
    */
   cut?: { a?: boolean; b?: boolean } | undefined;
+  /** Items that exist per side when `left`/`right` are only a part (see `cut`); default: their lengths. */
+  total?: { a: number; b: number } | undefined;
+}
+
+/** A collection family whose values can be unresolved in a file (see `SideCoverage.unresolved`). */
+export type UnresolvedFamily = "ipc" | "bridge" | "window" | "endpoint" | "storage";
+
+/** The family of each collection whose one-sided items an unresolved value can explain. */
+export const COLLECTION_FAMILY: Readonly<Record<string, UnresolvedFamily>> = {
+  ipcChannels: "ipc",
+  ipc: "ipc",
+  interfaces: "ipc",
+  contextBridge: "bridge",
+  windows: "window",
+  webPreferences: "window",
+  endpoints: "endpoint",
+  urls: "endpoint",
+  storage: "storage",
+};
+
+/** Machine codes of `CompareCompleteness.gaps`, in the order they are listed. */
+export const COMPLETENESS_GAPS = [
+  "budget",
+  "scan_partial",
+  "files_unread",
+  "files_unreadable",
+  "values_unresolved",
+  "item_truncated",
+] as const;
+
+/** How much of both sides a comparison covers, and what keeps it from being whole. */
+export interface CompareCompleteness {
+  /** Items compared per side and items that exist per side. */
+  compared: { a: number; b: number };
+  total: { a: number; b: number };
+  /** True only when both sides were compared whole AND no coverage gap applies to the result. */
+  complete: boolean;
+  /** Machine codes, stable: "budget" | "scan_partial" | "files_unread" | "files_unreadable"
+   *  | "values_unresolved" | "item_truncated". Empty when complete. */
+  gaps: string[];
 }
 
 /** Which files an analysis read. */
@@ -57,6 +97,9 @@ export interface SideCoverage {
   read: ReadonlySet<string>;
   /** Files that exist but were passed over (too large, not decodable) or read only in part. */
   unreadable: ReadonlySet<string>;
+  /** Files (module ids) where a value of this collection family could not be resolved,
+   *  e.g. an IPC call whose channel is not a literal. "*" = somewhere, file unknown. */
+  unresolved: ReadonlyMap<UnresolvedFamily, ReadonlySet<string>>;
 }
 
 /** An item present on one side whose file the other side did not read. */
@@ -69,7 +112,8 @@ export interface UnknownItem {
     | "file not read on the other side"
     | "file could not be read on the other side"
     | "the other side was read only in part"
-    | "the other side was compared only in part";
+    | "the other side was compared only in part"
+    | "the other side has values there that could not be resolved";
 }
 
 export interface CompareResult {
@@ -103,6 +147,8 @@ export interface CompareResult {
    */
   matchedByPosition: number;
   compared: { a: number; b: number };
+  /** Whether both sides were compared whole and nothing the coverage says leaves room for doubt. */
+  completeness: CompareCompleteness;
 }
 
 /** Formats whose collections carry file positions (addresses, offsets) next to content. */
@@ -157,12 +203,23 @@ const NESTED_LINE_FIELDS: Record<string, ReadonlyArray<readonly [string, string]
  */
 const DERIVED_FIELDS: Record<string, readonly string[]> = {
   windows: ["basis"],
+  // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
+  // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
+  interfaces: ["reason"],
+};
+
+/**
+ * Positions in a capture: a HAR request's `index` is where it sits in the log, so two captures
+ * of the same requests in another order differ there only. Only HAR targets have `requests`.
+ */
+const CAPTURE_POSITION_FIELDS: Record<string, readonly string[]> = {
+  requests: ["index"],
 };
 
 export function positionalFields(collection: string, formats: readonly string[]): string[] {
   // `endpoints` also exists for HAR captures; their rows have no line or column, so the rule
   // has nothing to act on there.
-  const lines = SOURCE_LINE_FIELDS[collection];
+  const lines = SOURCE_LINE_FIELDS[collection] ?? CAPTURE_POSITION_FIELDS[collection];
   if (lines) return [...lines];
   if (formats.length === 0 || !formats.every((f) => NATIVE_FORMATS.has(f))) return [];
   return [...(POSITION_FIELDS[collection] ?? [])];
@@ -219,6 +276,9 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
     ["kind", "value"],
   ],
   urls: [["file", "value"], ["value"]],
+  // hexvero's own findings: what it found and where, not how the title words it ("… in the
+  // scanned part" is added when a scan is partial), so a reworded title is a change
+  findings: [["kind", "location"], ["kind"]],
 };
 
 /** Paths (dotted, up to three levels) at which two values differ. */
@@ -303,10 +363,13 @@ function keyValue(item: unknown, key: string): string | undefined {
 
 /** The same key as people read it: `Type::name`. */
 function keyLabel(item: unknown, key: string): string {
-  return key
-    .split("+")
-    .map((part) => String((item as Record<string, unknown>)[part]))
-    .join("::");
+  return (
+    key
+      .split("+")
+      // an absent part and a null one are the same identity (see keyValue), and read the same
+      .map((part) => String((item as Record<string, unknown>)[part] ?? null))
+      .join("::")
+  );
 }
 
 /**
@@ -502,6 +565,8 @@ export function compareItems(
   const added: string[] = [];
   const removed: string[] = [];
   const unknown: UnknownItem[] = [];
+  const family =
+    options.collection === undefined ? undefined : COLLECTION_FAMILY[options.collection];
   /** Records an item found on `side` only: removed/added when the other side read its file. */
   const oneSided = (item: unknown, shown: string, side: "a" | "b"): void => {
     if (side === "a" ? options.cut?.b : options.cut?.a) {
@@ -539,6 +604,21 @@ export function compareItems(
               unread === undefined
                 ? "the other side was read only in part"
                 : "file not read on the other side",
+          });
+          return;
+        }
+      }
+      // The other side read the file, but a value of this family there could not be resolved
+      // (an IPC channel built at run time): the item may well be that value.
+      const hidden = family === undefined ? undefined : other.unresolved.get(family);
+      if (hidden && hidden.size > 0) {
+        const there = hidden.has("*") ? (files[0] ?? "") : files.find((f) => hidden.has(f));
+        if (there !== undefined) {
+          unknown.push({
+            key: shown,
+            side,
+            file: there,
+            reason: "the other side has values there that could not be resolved",
           });
           return;
         }
@@ -619,5 +699,35 @@ export function compareItems(
         ).length
       : 0,
     compared: { a: left.length, b: right.length },
+    completeness: completenessOf(left.length, right.length, options, family, unknown),
   };
+}
+
+function completenessOf(
+  a: number,
+  b: number,
+  options: CompareOptions,
+  family: UnresolvedFamily | undefined,
+  unknown: readonly UnknownItem[],
+): CompareCompleteness {
+  const total = options.total ?? { a, b };
+  const sides = [options.coverage?.a, options.coverage?.b].filter(
+    (c): c is SideCoverage => c !== null && c !== undefined,
+  );
+  const found = new Set<string>();
+  if (options.cut?.a || options.cut?.b || a < total.a || b < total.b) found.add("budget");
+  if (sides.some((c) => !c.complete)) found.add("scan_partial");
+  if (
+    unknown.some(
+      (u) =>
+        u.reason === "file not read on the other side" ||
+        u.reason === "the other side was read only in part",
+    )
+  )
+    found.add("files_unread");
+  if (sides.some((c) => c.unreadable.size > 0)) found.add("files_unreadable");
+  if (family !== undefined && sides.some((c) => (c.unresolved.get(family)?.size ?? 0) > 0))
+    found.add("values_unresolved");
+  const gaps = COMPLETENESS_GAPS.filter((g) => found.has(g));
+  return { compared: { a, b }, total, complete: gaps.length === 0, gaps };
 }

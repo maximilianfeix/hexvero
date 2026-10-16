@@ -1,0 +1,9 @@
+{
+  "name": "tidemark",
+  "productName": "Tidemark",
+  "version": "2.2.0",
+  "description": "Write, preview and publish release notes",
+  "main": "main.js",
+  "license": "MIT",
+  "private": true
+}

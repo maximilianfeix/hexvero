@@ -17,12 +17,24 @@ describe("analyzeInWorker", () => {
     controller.abort();
     await expect(
       analyzeInWorker(targetFromBytes(buildElf(), "lib.so"), { signal: controller.signal }),
-    ).rejects.toThrow(/cancelled/);
+    ).rejects.toMatchObject({ code: "cancelled", message: expect.stringMatching(/cancelled/) });
   });
-  it("stops on timeout with a structured error", async () => {
+  it("rejects with cancelled when the caller aborts a running analysis", async () => {
+    const controller = new AbortController();
+    const run = analyzeInWorker(targetFromBytes(buildElf(), "lib.so"), {
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(run).rejects.toMatchObject({
+      code: "cancelled",
+      details: { path: "lib.so" },
+    });
+  });
+  it("stops on timeout with a structured error that names the reason", async () => {
+    // too_large stays the code (a resource budget was exceeded); details.reason tells a timeout apart
     await expect(
       analyzeInWorker(targetFromBytes(buildElf(), "lib.so"), { timeoutMs: 1 }),
-    ).rejects.toMatchObject({ code: "too_large" });
+    ).rejects.toMatchObject({ code: "too_large", details: { reason: "timeout", timeoutMs: 1 } });
   });
   it("lets one waiter cancel without affecting the other", async () => {
     const session = new Session({ worker: true });
@@ -32,6 +44,8 @@ describe("analyzeInWorker", () => {
     const second = session.analyze(record.id);
     a.abort();
     await expect(first).rejects.toThrow(/cancelled/);
+    // the waiter that left is rejected by the session, with the code for a cancellation
+    await expect(first).rejects.toMatchObject({ code: "cancelled" });
     expect((await second).data.kind).toBe("binary");
     const third = await session.analyze(record.id);
     expect(third).toBe(await second);

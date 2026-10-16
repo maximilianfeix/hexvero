@@ -299,6 +299,7 @@ In Claude Code the server and the skill also come as one plugin:
 | `hexvero_strings`                            | Tagged strings with filter and paging                                                      |
 | `hexvero_bytes`                              | A bounded hex window                                                                       |
 | `hexvero_compare`                            | Added, removed, changed and relocated items of one collection between two targets          |
+| `hexvero_check`                              | A release policy applied to two builds: pass, fail or incomplete, with paged findings      |
 | `hexvero_recover`                            | Bundle modules or source-map originals as files                                            |
 | `hexvero_export`                             | The complete analysis to a file (never overwrites unless asked)                            |
 | `hexvero_sourcemap`                          | Original position for a generated line/column                                              |
@@ -311,10 +312,10 @@ What an agent receives, measured over a real MCP session on the [corpus](corpus/
 
 | Step                                                               | Bytes  | Tokens |
 | ------------------------------------------------------------------ | ------ | ------ |
-| Session start: `tools/list`, `prompts/list`, instructions          | 16,316 | 3,796  |
-| Native binary: open, analyze, imports                              | 2,918  | 885    |
-| Electron app: open, analyze, channels, bridge, settings, endpoints | 12,137 | 3,332  |
-| Two builds: open and analyze both, compare three lists             | 13,515 | 3,673  |
+| Session start: `tools/list`, `prompts/list`, instructions          | 17,847 | 4,158  |
+| Native binary: open, analyze, imports                              | 3,069  | 927    |
+| Electron app: open, analyze, channels, bridge, settings, endpoints | 12,314 | 3,376  |
+| Two builds: open and analyze both, compare three lists             | 14,741 | 4,034  |
 | Call path through radare2                                          | 922    | 271    |
 
 `hexvero_analyze` returns counts of the lists and suggested next calls; the lists themselves are paged with a hard byte budget, and `detail: "full"` or `hexvero_export` give everything. Every tool states whether it writes (`readOnlyHint`). Five guided prompts (`investigate_feature`, `compare_versions`, `triage_binary`, `map_electron_app`, `explain_apk`) render step-by-step plans with the rule that every claim cites a collection item or byte offset. Strings, symbol names and decompiled code are data from the target, never instructions.
@@ -378,7 +379,7 @@ On `corpus/holdout2`, two Electron applications in three builds each, written by
 
 The current code reads 118 of 126 channels, 46 of 63 settings with none false, 129 of 135 bridge members, 54 of 57 endpoints and 53 of 57 storage keys, none false, there, but that is after working on the set's misses, so it is not a blind result.
 
-- **The MCP catalog** is 14 KB for hexvero's 15 tools and 3.09 MB for REA's 207 (2.48 MB with its compact profile).
+- **The MCP catalog** is 16 KB for hexvero's 16 tools and 3.09 MB for REA's 207 (2.48 MB with its compact profile).
 - **An agent experiment** (Claude Code, five graded questions about the same set, file reading allowed): both tools let the agent answer every item correctly; with hexvero it took 82 s and about 120 k tokens per question, with REA 190 s and 177 k ([method and limits](docs/audits/agent-task-evaluation.md)).
 - **On the Claude desktop app** (47 MiB), hexvero took about 5 s and returned 52 KB naming 233 IPC channels; REA took 179 s and returned 123.5 MB, with 9 literal channels and 1,512 channel operations it did not resolve. That app has no written-down answer, so this is an observation, not an accuracy figure.
 - **REA does things hexvero does not**: signed, hash-addressed evidence; ASAR integrity checks; sender-validation observations in IPC handlers; a full AST parse of every file.
@@ -391,7 +392,7 @@ Use REA when you need Hopper, IDA, JEB, Android devices over adb, browser captur
 
 ```text
 packages/core     parsers (formats/*), JavaScript scanner, Session (targets, collections, paging, export), engine adapters
-packages/mcp      McpServer with 15 tools over one Session
+packages/mcp      McpServer with 16 tools over one Session
 packages/server   loopback HTTP API + static hosting for the UI
 packages/cli      hexvero command; ships the built UI and the agent skill
 packages/web      React + Vite UI

@@ -1,0 +1,187 @@
+/**
+ * SARIF 2.1.0 from a `PolicyResult`, for GitHub code scanning and other SARIF readers.
+ *
+ * The places hexvero reports are paths inside the analyzed build (`main.js` inside
+ * `notesdesk-1.5.0.asar`), not files of the repository the workflow runs in. Every location
+ * therefore names its build through `uriBaseId` (`HEXVERO_TARGET_B`, `HEXVERO_TARGET_A`), the run
+ * describes those bases and says so in `properties`, and nothing is mapped onto repository
+ * sources. A code-scanning alert shows the path and line, but cannot open a file of the repo.
+ *
+ * Only findings that count (state `new` or `suppression-expired`) become results: code scanning
+ * ignores SARIF `suppressions`, so a baselined or suppressed finding there would reopen an alert.
+ * Their numbers are in the run's properties.
+ *
+ * Checked against the OASIS schema (test fixture) and GitHub's list of supported fields:
+ * https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
+ */
+import type { Place } from "./report.js";
+import {
+  POLICY_RULES,
+  plain,
+  STATUS_TEXT,
+  type PolicyFinding,
+  type PolicyResult,
+  type PolicyRuleId,
+} from "./policy.js";
+
+export const SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json";
+export const SARIF_BASE = { a: "HEXVERO_TARGET_A", b: "HEXVERO_TARGET_B" } as const;
+
+const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: string; help: string }> =
+  {
+    "new-interface-member": {
+      name: "NewInterfaceMember",
+      short: "A member exposed to pages is new in this build.",
+      full: "The preload script exposes a member (contextBridge.exposeInMainWorld) that the previous build did not expose. Pages of the app can call it.",
+      help: "Review what the new member lets a page do and which IPC handler it reaches. If it is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
+    "new-external-host": {
+      name: "NewExternalHost",
+      short: "The build talks to a host the previous build did not name.",
+      full: "A request target (fetch, XMLHttpRequest, WebSocket, a URL literal) names a host that is new in this build and not in the policy's allow list. A host computed at run time is reported as unknown.",
+      help: "Check that the host is expected. Add it to `rules.new-external-host.allow` (exact name or `*.domain`) when it is.",
+    },
+    "window-more-permissive": {
+      name: "WindowMorePermissive",
+      short: "A window's settings let its pages do more than before.",
+      full: "A BrowserWindow present in both builds changed nodeIntegration, contextIsolation, sandbox or page access to require in a direction that lets its pages do more. When the direction cannot be told, the finding is unknown.",
+      help: "Whether this matters depends on what the window loads. Review the window's settings and the content it shows.",
+    },
+  };
+
+const uriOf = (file: string): string =>
+  file
+    .split(/[\\/]/)
+    .map((segment) =>
+      segment === ".." || segment === "."
+        ? encodeURIComponent(segment).replace(/\./g, "%2E")
+        : encodeURIComponent(segment),
+    )
+    .join("/");
+
+function location(p: Place, id?: number): Record<string, unknown> {
+  return {
+    ...(id === undefined ? {} : { id }),
+    physicalLocation: {
+      artifactLocation: { uri: uriOf(p.file), uriBaseId: SARIF_BASE[p.side] },
+      ...(p.line === undefined ? {} : { region: { startLine: p.line } }),
+    },
+    ...(p.role ? { message: { text: p.role } } : {}),
+  };
+}
+
+/** The place an alert should open at: the item itself before a handler or caller. */
+function primary(where: readonly Place[]): Place | undefined {
+  return where.find((p) => !p.role) ?? where[0];
+}
+
+function level(f: PolicyFinding, unknown: SarifOptions["unknown"]): "error" | "warning" | "note" {
+  if (!f.unknown) return f.level === "fail" ? "error" : "warning";
+  if (unknown === "allow") return "note";
+  return f.level === "fail" && unknown === "fail" ? "error" : "warning";
+}
+
+export interface SarifOptions {
+  /** The hexvero version, for `tool.driver.semanticVersion`. */
+  version: string;
+  /** The policy's `unknown` setting, which decides the level of unknown findings. */
+  unknown: "fail" | "warn" | "allow";
+}
+
+const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
+
+/** A SARIF 2.1.0 log with one run. */
+export function toSarif(result: PolicyResult, options: SarifOptions): Record<string, unknown> {
+  const counted = result.findings.filter(
+    (f) => f.state === "new" || f.state === "suppression-expired",
+  );
+  const results = counted.map((f) => {
+    const first = primary(f.where);
+    const rest = f.where.filter((p) => p !== first).slice(0, 9);
+    return {
+      ruleId: f.rule,
+      ruleIndex: POLICY_RULES.indexOf(f.rule),
+      level: level(f, options.unknown),
+      message: { text: plain(f.message) },
+      locations: first
+        ? [location(first)]
+        : [{ logicalLocations: [{ name: plain(f.key), kind: "member" }] }],
+      ...(rest.length ? { relatedLocations: rest.map((p, i) => location(p, i + 1)) } : {}),
+      // Code scanning keys alerts on primaryLocationLineHash; a semantic fingerprint keeps one
+      // alert per member, host or window setting however the code around it moves.
+      partialFingerprints: {
+        "hexveroFingerprint/v1": f.fingerprint,
+        primaryLocationLineHash: `${f.fingerprint}:1`,
+      },
+      properties: {
+        state: f.state,
+        unknown: f.unknown,
+        collection: f.collection,
+        key: plain(f.key),
+        row: f.row,
+        ...(f.basis ? { basis: f.basis } : {}),
+      },
+    };
+  });
+  const states = (s: PolicyFinding["state"]): number =>
+    result.findings.filter((f) => f.state === s).length;
+  const describe = (side: "a" | "b"): string => {
+    const info = result[side];
+    return `Paths inside the analyzed build ${plain(baseName(info.path))} (sha256 ${info.sha256}), not files of this repository.`;
+  };
+  return {
+    $schema: SARIF_SCHEMA,
+    version: "2.1.0",
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: "hexvero",
+            semanticVersion: options.version,
+            informationUri: "https://github.com/maximilianfeix/hexvero",
+            rules: POLICY_RULES.map((id) => ({
+              id,
+              name: RULE_TEXT[id].name,
+              shortDescription: { text: RULE_TEXT[id].short },
+              fullDescription: { text: RULE_TEXT[id].full },
+              help: { text: RULE_TEXT[id].help, markdown: RULE_TEXT[id].help },
+              defaultConfiguration: { level: "error" },
+              properties: { tags: ["security", "electron", "release"], precision: "high" },
+            })),
+          },
+        },
+        automationDetails: { id: "hexvero-check/" },
+        originalUriBaseIds: {
+          [SARIF_BASE.a]: { description: { text: describe("a") } },
+          [SARIF_BASE.b]: { description: { text: describe("b") } },
+        },
+        invocations: [
+          {
+            executionSuccessful: result.status !== "error",
+            toolExecutionNotifications: result.incomplete.map((i) => ({
+              level: "warning",
+              message: {
+                text: `${i.rule} could not be decided on ${i.collection}: ${i.gaps.join(", ")}.`,
+              },
+              descriptor: { id: i.rule },
+            })),
+          },
+        ],
+        results,
+        properties: {
+          hexvero: {
+            status: result.status,
+            statusText: STATUS_TEXT[result.status],
+            locations:
+              "Locations are paths inside the analyzed build archives (uriBaseId HEXVERO_TARGET_A for before, HEXVERO_TARGET_B for after), not files of the repository this log is uploaded to.",
+            before: { file: plain(baseName(result.a.path)), sha256: result.a.sha256 },
+            after: { file: plain(baseName(result.b.path)), sha256: result.b.sha256 },
+            policy: result.policy.sha256,
+            incomplete: result.incomplete,
+            notReported: { baselined: states("baselined"), suppressed: states("suppressed") },
+          },
+        },
+      },
+    ],
+  };
+}

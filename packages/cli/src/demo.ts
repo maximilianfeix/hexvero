@@ -23,9 +23,13 @@ export function demoPaths(): [string, string] {
   return [join(source, DEMO_FILES[0]), join(source, DEMO_FILES[1])];
 }
 
+/** The example release policy that ships next to the builds (`examples/policy.json`). */
+export const DEMO_POLICY = "policy.json";
+
 /**
  * Copies the example builds into `dir` so the commands printed afterwards work as typed. A file
  * that already exists with the same bytes is kept; one with different bytes is never replaced.
+ * The example policy is copied too when it ships and `dir` has none (an edited one is kept).
  */
 export function writeDemoFiles(dir: string): [string, string] {
   const sources = demoPaths();
@@ -39,6 +43,10 @@ export function writeDemoFiles(dir: string): [string, string] {
     } else writeFileSync(target, bytes, { flag: "wx" });
     return target;
   });
+  const policy = join(dirname(sources[0]), DEMO_POLICY);
+  const policyTarget = join(dir, DEMO_POLICY);
+  if (existsSync(policy) && !existsSync(policyTarget))
+    writeFileSync(policyTarget, readFileSync(policy), { flag: "wx" });
   return [paths[0]!, paths[1]!];
 }
 
@@ -58,8 +66,11 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
     if (row.collection !== current) {
       current = row.collection;
       shown = 0;
-      const total = r.changes.filter((c) => c.collection === current).length;
-      out.push(`  ${paint(io, "bold", current)}${paint(io, "dim", ` (${total})`)}`);
+      const here = r.changes.filter((c) => c.collection === current).length;
+      const all = r.cut.find((c) => c.collection === current)?.total ?? here;
+      out.push(
+        `  ${paint(io, "bold", current)}${paint(io, "dim", ` (${here === all ? all : `${here} of ${all} on this page`})`)}`,
+      );
     }
     if (shown++ >= maxPerCollection) {
       if (shown === maxPerCollection + 1)
@@ -85,6 +96,14 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
     if (fields) out.push(paint(io, "dim", `        ${fields}`));
     if (row.reason) out.push(paint(io, "dim", `        ${row.reason}`));
   }
+  if (r.page.next !== null)
+    out.push(
+      paint(
+        io,
+        "dim",
+        `  ${r.changes.length} of ${r.page.total} rows; the rest: --report <file> --offset ${r.page.next}`,
+      ),
+    );
   return out;
 }
 
@@ -124,6 +143,7 @@ export function formatDemo(io: Io, r: ReleaseComparison, a: string, b: string): 
     paint(io, "bold", "  Next"),
     `    hexvero compare ${q(a)} ${q(b)} interfaces`,
     `    hexvero compare ${q(a)} ${q(b)} --report report.md`,
+    `    hexvero check ${q(a)} ${q(b)} --policy ${q(join(dirname(a), DEMO_POLICY))}`,
     `    hexvero ui --demo --open`,
   );
   return lines.join("\n");

@@ -29,7 +29,9 @@ interface WorkerMessage {
  * Runs analyzeTarget in a dedicated worker so a 500 MB bundle never blocks
  * the MCP or HTTP event loop. Bytes are transferred, not copied, when the
  * caller allows it. Timeout and abort terminate the worker and surface a
- * structured error; the main process keeps serving.
+ * structured error; the main process keeps serving. Abort is `cancelled`;
+ * a timeout or heap exhaustion is `too_large` (a resource budget was
+ * exceeded) with `details.reason` `"timeout"` or `"memory"`.
  */
 export function analyzeInWorker(
   target: LoadedTarget,
@@ -37,7 +39,7 @@ export function analyzeInWorker(
 ): Promise<AnyAnalysis> {
   if (options.signal?.aborted) {
     return Promise.reject(
-      new AnalysisError("invalid_input", "Analysis cancelled by the caller", {
+      new AnalysisError("cancelled", "Analysis cancelled by the caller", {
         path: target.info.path,
       }),
     );
@@ -83,6 +85,7 @@ export function analyzeInWorker(
         finish(() =>
           reject(
             new AnalysisError("too_large", `Analysis exceeded ${timeoutMs} ms and was stopped`, {
+              reason: "timeout",
               timeoutMs,
               path: target.info.path,
             }),
@@ -93,7 +96,7 @@ export function analyzeInWorker(
     const onAbort = (): void =>
       finish(() =>
         reject(
-          new AnalysisError("invalid_input", "Analysis cancelled by the caller", {
+          new AnalysisError("cancelled", "Analysis cancelled by the caller", {
             path: target.info.path,
           }),
         ),
@@ -119,9 +122,7 @@ export function analyzeInWorker(
           new AnalysisError(
             oom ? "too_large" : "malformed",
             `${oom ? "Analysis ran out of memory" : "Analysis failed"}: ${error.message}`,
-            {
-              path: target.info.path,
-            },
+            oom ? { reason: "memory", path: target.info.path } : { path: target.info.path },
           ),
         ),
       );
