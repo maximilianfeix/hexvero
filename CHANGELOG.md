@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-16
+
 ### Compare releases
 
 - `hexvero demo [dir]` copies two builds of the example Electron app (now shipped in the npm
