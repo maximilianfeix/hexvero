@@ -483,3 +483,62 @@ ipcMain.on(T.x, g);`);
       expect(simpleRegex(bad)).toBeNull();
   });
 });
+
+/** The first IPC row of a file that declares `T` and registers `T.x`. */
+const scan = (body: string) =>
+  scanJavaScript(`const { ipcMain } = require("electron");\n${body}\nipcMain.on(T.x, g);`).ipc[0]!;
+
+describe("the evaluation is bounded on hostile input", () => {
+  it("never builds a regular expression that can backtrack badly", { timeout: 3000 }, () => {
+    const many = `/${"a*".repeat(16)}b/g`;
+    expect(simpleRegex(many)).toBeNull();
+    expect(simpleRegex("/a+b*/g")).toBeNull(); // two quantified atoms
+    expect(simpleRegex("/[^a-z0-9]+/gi")).not.toBeNull(); // one is fine
+    const row = scan(
+      `function f() { const o = {}; o.x = "${"a".repeat(900)}".replace(${many}, "x"); return o; }\nconst T = f();`,
+    );
+    expect(row.channel).toBeNull();
+    expect(row.reason).toContain("unsupported regular expression");
+  });
+
+  it("stops strings that grow in a loop or by +=", { timeout: 3000 }, () => {
+    const doubling = Array.from({ length: 60 }, (_, i) => `"${i}"`).join(", ");
+    const loop = scan(
+      `function f(L) { const o = { x: "ab" }; for (const i of L) o.x = o.x + o.x; return o; }\nconst T = f([${doubling}]);`,
+    );
+    expect(loop.channel).toBeNull();
+    expect(loop.reason).toContain("too many values");
+    const plus = scan(
+      `function f() { const o = {}; let s = "ab"; ${"s += s; ".repeat(60)}o.x = s; return o; }\nconst T = f();`,
+    );
+    expect(plus.channel).toBeNull();
+    expect(plus.reason).toContain("too many values");
+  });
+
+  it("stops at deeply nested blocks instead of overflowing the stack", { timeout: 5000 }, () => {
+    const row = scan(
+      `function f() { const o = {}; ${"{".repeat(20_000)} o.x = "a:x"; ${"}".repeat(20_000)} return o; }\nconst T = f();`,
+    );
+    expect(row.channel).toBeNull();
+    expect(row.reason).toContain("depth limit");
+    // and parentheses deep enough to overflow a recursive reader
+    const parens = scan(`const T = { x: ${"(".repeat(50_000)}"a:x"${")".repeat(50_000)} };`);
+    expect(parens.channel === null || parens.channel === "a:x").toBe(true);
+  });
+});
+
+describe("a registry function of another module, without bundling", () => {
+  it("is not silent: the call is named in ipc_channel_unresolved with the reason", () => {
+    const info = analyze({
+      "util.js":
+        'function defineChannels(prefix, names) { const out = {}; for (const n of names) out[n] = prefix + ":" + n; return out; }\nmodule.exports = { defineChannels };',
+      "channels.js":
+        'const { defineChannels } = require("./util");\nconst BOARD = defineChannels("board", ["list"]);\nmodule.exports = { BOARD };',
+      "main.js":
+        'const { ipcMain } = require("electron");\nconst { BOARD } = require("./channels");\nipcMain.handle(BOARD.list, () => []);',
+    });
+    const message = info.limitations.find((l) => l.code === "ipc_channel_unresolved")?.message;
+    expect(message).toContain("ipcMain.handle at main.js:3");
+    expect(message).toContain("another module");
+  });
+});

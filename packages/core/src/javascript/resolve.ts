@@ -140,8 +140,10 @@ const MAX_SITES = 64;
 const MAX_ITERATIONS = 256;
 /** Statements one evaluated body may run, loops counted per round. */
 const MAX_STATEMENTS = 4000;
-/** Longest string a string operation is applied to. */
+/** Longest string a string operation is applied to or builds. */
 const MAX_STRING = 1000;
+/** Blocks, loop bodies and callbacks one evaluation may be inside at once. */
+const MAX_NESTING = 64;
 const UNKNOWN: Val = { kind: "unknown" };
 /** Methods that change the list or map they are called on. */
 const MUTATORS = /^(push|unshift|splice|set|delete|clear|fill|copyWithin|sort|reverse)$/;
@@ -182,8 +184,8 @@ const STATEMENT_WORDS = new Set([
 
 /**
  * A regular expression literal of the simple form the evaluation applies: characters, escapes
- * and character classes, each with at most one `?`, `*` or `+`, optionally anchored, flags `g`
- * and `i` only. Null for anything else (groups, alternatives, backreferences, lookarounds), so no
+ * and character classes, at most one of them with a `?`, `*` or `+`, optionally anchored, flags
+ * `g` and `i` only. Null for anything else (groups, alternatives, backreferences, lookarounds), so no
  * pattern that can backtrack badly is ever built.
  */
 export function simpleRegex(literal: string): RegExp | null {
@@ -196,9 +198,13 @@ export function simpleRegex(literal: string): RegExp | null {
   let rest = body;
   if (rest.startsWith("^")) rest = rest.slice(1);
   if (rest.endsWith("$") && !rest.endsWith("\\$")) rest = rest.slice(0, -1);
+  // At most one quantified atom: without groups, that keeps a match linear per start position,
+  // so a replace is at most quadratic in the (bounded) string. `a*a*…b` is refused.
+  let quantified = 0;
   for (let atoms = 0; rest.length; atoms++) {
     const a = ATOM.exec(rest);
     if (!a || atoms >= 32) return null;
+    if (/[*+?]$/.test(a[0]) && !a[0].endsWith("\\?") && ++quantified > 1) return null;
     rest = rest.slice(a[0].length);
   }
   try {
@@ -208,11 +214,19 @@ export function simpleRegex(literal: string): RegExp | null {
   }
 }
 
+/**
+ * Every concatenation of one string of each part, or null when there would be more than
+ * MAX_VALUES of them or one longer than MAX_STRING (callers say "too many values").
+ */
 const product = (parts: string[][]): string[] | null => {
   let out = [""];
   for (const part of parts) {
     const next: string[] = [];
-    for (const a of out) for (const b of part) next.push(a + b);
+    for (const a of out)
+      for (const b of part) {
+        if (a.length + b.length > MAX_STRING) return null;
+        next.push(a + b);
+      }
     if (next.length > MAX_VALUES) return null;
     out = next;
   }
@@ -411,6 +425,26 @@ export class ExpressionResolver {
    * top-level `,` or `)`.
    */
   resolveArgument(k: number): ResolvedValues | null {
+    return this.guarded(null, () => this.resolveArgumentIn(k));
+  }
+
+  /**
+   * Runs one question; an exception inside the evaluation (a stack overflow on input deeper than
+   * the limits foresee, a string too long) ends the question with that reason instead of ending
+   * the analysis of the file.
+   */
+  private guarded<T>(fallback: T, question: () => T): T {
+    try {
+      return question();
+    } catch (error) {
+      this.why = `evaluation failed: ${error instanceof Error ? error.name : "error"}`;
+      this.inBody = 0;
+      this.active.clear();
+      return fallback;
+    }
+  }
+
+  private resolveArgumentIn(k: number): ResolvedValues | null {
     if (this.work <= 0) return null;
     this.method = "concatenation";
     this.lines = new Set();
@@ -523,7 +557,7 @@ export class ExpressionResolver {
   /** What the expression starting at token k is, as far as it can be read; null if not at all. */
   valueAt(k: number): Val | null {
     this.begin(20_000);
-    return this.evalRange(k, this.exprEnd(k), new Map(), 0);
+    return this.guarded(null, () => this.evalRange(k, this.exprEnd(k), new Map(), 0));
   }
 
   /**
@@ -533,6 +567,10 @@ export class ExpressionResolver {
   topValue(name: string, at?: number): Val | null {
     if (this.work <= 0) return null;
     this.begin(20_000);
+    return this.guarded(null, () => this.topValueIn(name, at));
+  }
+
+  private topValueIn(name: string, at?: number): Val | null {
     const decl = this.topDeclarations().get(name);
     if (decl === null) return null;
     if (decl) return this.evalRange(decl[0], decl[1], new Map(), 0);
@@ -571,6 +609,10 @@ export class ExpressionResolver {
    * does. `partial`: a call site could not be read, so its value is not among them.
    */
   valuesAt(k: number): { values: Val[]; partial: boolean } {
+    return this.guarded({ values: [], partial: true }, () => this.valuesAtIn(k));
+  }
+
+  private valuesAtIn(k: number): { values: Val[]; partial: boolean } {
     if (this.work <= 0) return { values: [], partial: true };
     this.begin(40_000);
     this.partial = false;
@@ -735,9 +777,13 @@ export class ExpressionResolver {
     if (start >= end) return null;
     if (this.budget-- <= 0 || (this.inBody && this.bodyWork-- <= 0)) return this.stop("work limit");
     if (depth > MAX_DEPTH) return this.stop("depth limit");
-    // ( … ) around the whole range
-    if (this.punct(start, "(") && this.match[start] === end - 1)
-      return this.evalRange(start + 1, end - 1, env, depth);
+    // ( … ) around the whole range, in a loop: deep parentheses must not grow the stack
+    while (this.punct(start, "(") && this.match[start] === end - 1) {
+      start++;
+      end--;
+      if (start >= end) return null;
+      if (this.budget-- <= 0) return this.stop("work limit");
+    }
     // `!0`, `!1`: what minifiers write for true and false
     if (
       end === start + 2 &&
@@ -1464,6 +1510,7 @@ export class ExpressionResolver {
     fresh: Set<Val>,
     depth: number,
   ): { returned: boolean; value: Val | null } | null {
+    if (this.inBody >= MAX_NESTING) return this.stop("depth limit");
     this.inBody++;
     try {
       return this.runIn(from, to, env, own, fresh, depth);
@@ -1759,6 +1806,8 @@ export class ExpressionResolver {
           ? product([before.values, value.values])
           : null
         : null;
+      if (plus && before?.kind === "str" && value?.kind === "str" && !next)
+        return !!this.stop("too many values");
       env.set(name, plus ? (next ? { kind: "str", values: next } : UNKNOWN) : (value ?? UNKNOWN));
       return true;
     }
@@ -1868,6 +1917,7 @@ export class ExpressionResolver {
       for (const v of value.values) {
         const x = fn(v);
         if (x === null) return null;
+        if (x.length > MAX_STRING) return this.stop("too many values");
         out.push(x);
       }
       return { kind: "str", values: [...new Set(out)] };
@@ -1972,6 +2022,7 @@ export class ExpressionResolver {
             ? v.replaceAll(pattern, each)
             : v.replaceAll(pattern, each);
       if (failed) return this.stop(`the replacement of ${method} has no known value`);
+      if (done.length > MAX_STRING) return this.stop("too many values");
       out.push(done);
     }
     return { kind: "str", values: [...new Set(out)] };
@@ -1998,6 +2049,13 @@ export class ExpressionResolver {
     if (this.enclosingParam(k, name) || this.declaredLocally(k, name)) return null;
     const decl = this.topDeclarations().get(name);
     if (decl) return this.evalRange(decl[0], decl[1], new Map(), depth + 1);
+    // a name another module defines, in a scan of this file alone: say so instead of nothing
+    if (
+      !this.host &&
+      !this.reference &&
+      (this.constants.importOf(name, k) || this.constants.requireOf(name, k))
+    )
+      return this.stop(`a function or value of another module, not followed here: ${name}`);
     // `var { NAME } = <expr>` or `var { KEY: NAME } = <expr>` at the top of the file
     const part = this.topPattern(name);
     if (part) {
