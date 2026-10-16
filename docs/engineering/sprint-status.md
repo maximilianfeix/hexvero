@@ -15,9 +15,9 @@ any interruption or context compaction.
 
 ## Time log
 
-| Period (UTC) | Active work                                                          | Notes |
-| ------------ | -------------------------------------------------------------------- | ----- |
-| 22:44–23:05  | inventory, baseline, contracts, agent launch, market matrix, metrics | lead  |
+| Period (UTC) | Active work                                                                                                                                                                                                       | Notes         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 22:44–23:25  | inventory, baseline, contracts, 8 agents launched; M, E, C, P, D, G integrated; integration fixes (bridge coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor reads, 503 on timeout) | lead + agents |
 
 ## Agents and branches
 
