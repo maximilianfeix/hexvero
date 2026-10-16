@@ -226,7 +226,14 @@ const code = (text: string): string => {
   const pad = longest ? " " : "";
   return `${fence}${pad}${flat}${pad}${fence}`;
 };
-const cell = (text: string): string => text.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+/** Prose from a target (a file name, a limitation naming a channel): no Markdown of its own. */
+const cell = (text: string): string =>
+  text.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]()<>#!|~]/g, (c) => `\\${c}`);
+/** A file name as one shell word: single-quoted unless it is plain. */
+const shellWord = (text: string): string => {
+  const flat = text.replace(/[\u0000-\u001f\u007f]/g, "");
+  return /^[\w./@:+-]+$/.test(flat) ? flat : `'${flat.replace(/'/g, "'\\''")}'`;
+};
 const place = (p: Place): string =>
   `${p.role ? `${p.role} ` : ""}${code(`${p.file}${p.line === undefined ? "" : `:${p.line}`}`)}`;
 const show = (v: unknown): string => (v === undefined ? "not written" : JSON.stringify(v));
@@ -279,7 +286,9 @@ export function renderReleaseReport(r: ReleaseComparison): string {
   if (r.overview.windowChanges.length) {
     out.push("## Window settings to review", "");
     for (const w of r.overview.windowChanges)
-      out.push(`- ${code(w.window)} ${w.setting}: ${w.before} → ${w.after} (${w.direction})`);
+      out.push(
+        `- ${code(w.window)} ${w.setting}: ${code(w.before)} → ${code(w.after)} (${w.direction})`,
+      );
     out.push(
       "",
       "Whether a change matters depends on what the window loads; this is a fact to review, not a verdict.",
@@ -305,7 +314,7 @@ export function renderReleaseReport(r: ReleaseComparison): string {
     out.push(`- **${SIGN[row.change]}** ${code(row.key)}${where}${basis}`);
     for (const f of (row.fields ?? []).slice(0, 6))
       out.push(`  - ${code(f.field)}: ${code(show(f.before))} → ${code(show(f.after))}`);
-    if (row.reason) out.push(`  - ${row.reason}`);
+    if (row.reason) out.push(`  - ${cell(row.reason)}`);
   }
   if (r.changes.length) out.push("");
   for (const c of r.cut)
@@ -344,7 +353,7 @@ export function renderReleaseReport(r: ReleaseComparison): string {
   out.push("## Reproduce", "");
   out.push(
     "```bash",
-    `npx hexvero@${r.hexvero} compare ${nameA} ${nameB} --report report.md`,
+    `npx hexvero@${r.hexvero} compare ${shellWord(nameA)} ${shellWord(nameB)} --report report.md`,
     "```",
     "",
   );
