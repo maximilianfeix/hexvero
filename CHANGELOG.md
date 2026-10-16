@@ -28,6 +28,25 @@ All notable changes to hexvero are listed here. The format follows
   `docs/ci.md` and `.github/workflows/check-example.yml` show the check in GitHub Actions with
   an optional, least-privilege code-scanning upload.
 
+### JavaScript analysis
+
+- IPC channel names built by a channel-registry function are read:
+  `const BOARD = defineChannels("board", ["list", "moveCard"])` with a body that loops over the
+  list and writes `` `${prefix}:${kebab(name)}` `` into a fresh object, also with `forEach`,
+  `map` and `Object.fromEntries`, across CommonJS and ES modules, in esbuild bundles (also
+  minified) and in functions of a webpack-style bundle. Such rows say
+  `via: "resolved", resolution.method: "evaluated"`. Function bodies are read by a small,
+  explicitly listed abstract evaluation (resolve.ts); nothing of the analyzed code is run.
+  Where it stops (a statement outside the subset, too many values, a depth or work limit, a
+  cycle, a value known only at run time) the call keeps no channel, carries a `reason`, and
+  `ipc_channel_unresolved` names it, also for a channel named through another module's table
+  that the module could not read (before, those were dropped from the limitation silently).
+- Interface rows (C4) compute `direction` and `link` from every matching end and say how many
+  there are: `endsTotal`, `endsTruncated`; `ends` keeps the first 20 as evidence.
+- Hold-out results improved with no new false report: window settings read through bundled
+  modules (holdout2, holdout4) and bridge member channels named by a bundled module's table
+  (holdout2).
+
 ## [0.8.0] - 2026-10-16
 
 ### Compare releases
