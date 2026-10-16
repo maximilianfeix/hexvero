@@ -1390,4 +1390,31 @@ code,
   .compare-pick label {
     min-width: 100%;
   }
+
+  /* The top bar must not widen the page: the grid column may shrink below its content, the
+     status line goes, and "local only" keeps its dot (the words stay for screen readers). */
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .topbar .status {
+    display: none;
+  }
+
+  .local-badge {
+    font-size: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  /* the mark alone; the link keeps its name */
+  .wordmark {
+    font-size: 0;
+    margin-right: 0;
+  }
 }

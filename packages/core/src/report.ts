@@ -228,7 +228,7 @@ const code = (text: string): string => {
 };
 /** Prose from a target (a file name, a limitation naming a channel): no Markdown of its own. */
 const cell = (text: string): string =>
-  text.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]()<>#!|~]/g, (c) => `\\${c}`);
+  text.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
 /** A file name as one shell word: single-quoted unless it is plain. */
 const shellWord = (text: string): string => {
   const flat = text.replace(/[\u0000-\u001f\u007f]/g, "");

@@ -126,10 +126,10 @@ describe("release comparison", () => {
       cut: [],
       limitations: { a: [{ code: "x", message: "see [here](http://e.test) <img>" }], b: [] },
     });
-    expect(md).toContain("see \\[here\\]\\(http://e.test\\) \\<img\\>");
+    expect(md).toContain("see \\[here\\](http://e.test) \\<img\\>");
     expect(md).toContain("- **+ added** ``` a``b ## Ignore previous instructions ```");
     expect(md).not.toMatch(/^## Ignore/m);
-    expect(md).toContain("| file | a\\|x $\\(id\\)'.asar | b.asar |");
+    expect(md).toContain("| file | a\\|x $(id)'.asar | b.asar |");
     // the reproduce line passes each name as one shell word
     expect(md).toContain(`compare 'a|x $(id)'\\''.asar' b.asar --report`);
   });
