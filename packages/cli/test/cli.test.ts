@@ -56,6 +56,28 @@ describe("hexvero CLI", () => {
     expect(await main(["compare", a, b, "ipc", "--report", out], capture())).toBe(2);
   });
 
+  it("writes an HTML report for .html/.htm, with the same --force and paging rules", async () => {
+    const a = join(dir, "demo-h", "notesdesk-1.4.0.asar");
+    const b = join(dir, "demo-h", "notesdesk-1.5.0.asar");
+    expect(await main(["demo", join(dir, "demo-h")], capture())).toBe(0);
+    const out = join(dir, "report.HTML");
+    expect(await main(["compare", a, b, "--report", out, "--limit", "3"], capture())).toBe(0);
+    const html = readFileSync(out, "utf8");
+    expect(html.startsWith("<!doctype html>")).toBe(true);
+    expect(html).toContain("<strong>3 of 12 rows shown</strong> (rows 1–3)");
+    expect(html).toContain("--offset 3 --limit 3");
+    expect(html).toContain('<figure class="src">');
+    const refused = capture();
+    expect(await main(["compare", a, b, "--report", out], refused)).toBe(2);
+    expect(refused.stderr.join("\n")).toContain("pass --force");
+    const htm = join(dir, "page.htm");
+    expect(await main(["compare", a, b, "--report", htm, "--offset", "3"], capture())).toBe(0);
+    expect(readFileSync(htm, "utf8")).toContain("9 of 12 rows shown");
+    const md = join(dir, "page.txt");
+    expect(await main(["compare", a, b, "--report", md], capture())).toBe(0);
+    expect(readFileSync(md, "utf8")).toContain("# What changed");
+  });
+
   it("shows the cache and clears it only with --apply", async () => {
     const root = join(dir, "cache");
     mkdirSync(join(root, "scans"), { recursive: true });

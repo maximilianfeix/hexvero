@@ -339,7 +339,75 @@ export async function compareReleases(
   };
 }
 
-const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
+/**
+ * The summary both reports show: collections that differ in the app, and hexvero's own lists
+ * (findings, limitations) that differ because its description of each build did.
+ */
+export function summaryOf(r: ReleaseComparison): {
+  differing: CompareAllResult["collections"];
+  own: CompareAllResult["collections"];
+} {
+  // hexvero's own findings and limitations describe the reading, not the app
+  return {
+    differing: r.overview.collections.filter((c) => differs(c) && !HEXVERO_OWN.has(c.collection)),
+    own: r.overview.collections.filter((c) => differs(c) && HEXVERO_OWN.has(c.collection)),
+  };
+}
+
+/**
+ * One sentence of "Not established": hexvero's own words as strings, text from a target as
+ * `{ code }` (an identifier, quoted) or `{ data }` (prose such as a limitation's message). Each
+ * renderer quotes the target parts its own way.
+ */
+export type NotePart = string | { code: string } | { data: string };
+
+/** What the comparison could not establish, as both reports list it. */
+export function notEstablished(r: ReleaseComparison): NotePart[][] {
+  const notes: NotePart[][] = [];
+  const unknown = r.changes.filter((c) => c.change === "unknown").length;
+  if (unknown)
+    notes.push([
+      `${unknown} row(s) shown are unknown: found on one side where the other side did not read the file, or has values there it could not resolve. Neither added nor removed.`,
+    ]);
+  if (r.overview.partialScan.a || r.overview.partialScan.b)
+    notes.push([
+      "A JavaScript app was read only in part; items in unread files are unknown, not absent. Run `hexvero analyze <path> --all` on both first.",
+    ]);
+  for (const [collection, c] of Object.entries(r.completeness).toSorted(
+    ([x], [y]) => rank(x) - rank(y),
+  ))
+    if (!c.complete)
+      notes.push([
+        `${collection} is not whole (${c.gaps.join(", ")}): compared ${c.compared.a} of ${c.total.a} item(s) in a and ${c.compared.b} of ${c.total.b} in b.`,
+      ]);
+  for (const [side, list] of [
+    ["a", r.limitations.a],
+    ["b", r.limitations.b],
+  ] as const) {
+    for (const l of list.slice(0, 20))
+      notes.push([`${side}: `, { code: l.code }, " ", { data: l.message }]);
+    if (list.length > 20) notes.push([`${side}: ${list.length - 20} more limitation(s).`]);
+  }
+  notes.push(
+    [
+      "Absence from a list means hexvero did not find it in the files it read, not that the app cannot do it.",
+    ],
+    [
+      "Values computed at run time are shown as `${…}` or left out; nothing here was observed running.",
+    ],
+  );
+  return notes;
+}
+
+/** The sign and word of each kind of change, as both reports show them. */
+export const CHANGE_SIGN: Record<ChangeRow["change"], string> = {
+  added: "+",
+  removed: "−",
+  changed: "~",
+  unknown: "?",
+};
+
+export const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
 /** Text from a target, quoted so it cannot close the code span or start Markdown of its own. */
 const code = (text: string): string => {
   const flat = text.replace(/[\r\n]+/g, " ").slice(0, 300);
@@ -360,12 +428,7 @@ const place = (p: Place): string =>
   `${p.role ? `${p.role} ` : ""}${code(`${p.file}${p.line === undefined ? "" : `:${p.line}`}`)}`;
 const show = (v: unknown): string => (v === undefined ? "not written" : JSON.stringify(v));
 
-const SIGN: Record<ChangeRow["change"], string> = {
-  added: "+ added",
-  removed: "− removed",
-  changed: "~ changed",
-  unknown: "? unknown",
-};
+const SIGN = (change: ChangeRow["change"]): string => `${CHANGE_SIGN[change]} ${change}`;
 
 /**
  * The comparison as a Markdown report: summary, changes with their places, what could not be
@@ -387,11 +450,7 @@ export function renderReleaseReport(r: ReleaseComparison): string {
   out.push(`| sha256 | \`${r.a.info.sha256}\` | \`${r.b.info.sha256}\` |`, "");
 
   out.push("## Summary", "");
-  // hexvero's own findings and limitations describe the reading, not the app
-  const differing = r.overview.collections.filter(
-    (c) => differs(c) && !HEXVERO_OWN.has(c.collection),
-  );
-  const own = r.overview.collections.filter((c) => differs(c) && HEXVERO_OWN.has(c.collection));
+  const { differing, own } = summaryOf(r);
   if (differing.length === 0) out.push("No differences in the collections both builds share.", "");
   else {
     out.push(
@@ -445,7 +504,7 @@ export function renderReleaseReport(r: ReleaseComparison): string {
         }`
       : "";
     const basis = row.basis ? ` · ${row.basis}` : "";
-    out.push(`- **${SIGN[row.change]}** ${code(row.key)}${where}${basis}`);
+    out.push(`- **${SIGN(row.change)}** ${code(row.key)}${where}${basis}`);
     for (const f of (row.fields ?? []).slice(0, 6))
       out.push(`  - ${code(f.field)}: ${code(show(f.before))} → ${code(show(f.after))}`);
     if (row.reason) out.push(`  - ${cell(row.reason)}`);
@@ -462,33 +521,12 @@ export function renderReleaseReport(r: ReleaseComparison): string {
     out.push(`Earlier rows: \`hexvero compare <a> <b> --report <file> --offset 0\`.`, "");
 
   out.push("## Not established", "");
-  const notes: string[] = [];
-  const unknown = r.changes.filter((c) => c.change === "unknown").length;
-  if (unknown)
-    notes.push(
-      `${unknown} row(s) shown are unknown: found on one side where the other side did not read the file, or has values there it could not resolve. Neither added nor removed.`,
-    );
-  if (r.overview.partialScan.a || r.overview.partialScan.b)
-    notes.push(
-      "A JavaScript app was read only in part; items in unread files are unknown, not absent. Run `hexvero analyze <path> --all` on both first.",
-    );
-  for (const [collection, c] of Object.entries(r.completeness).toSorted(
-    ([x], [y]) => rank(x) - rank(y),
-  ))
-    if (!c.complete)
-      notes.push(
-        `${collection} is not whole (${c.gaps.join(", ")}): compared ${c.compared.a} of ${c.total.a} item(s) in a and ${c.compared.b} of ${c.total.b} in b.`,
-      );
-  for (const [side, list] of [
-    ["a", r.limitations.a],
-    ["b", r.limitations.b],
-  ] as const) {
-    for (const l of list.slice(0, 20)) notes.push(`${side}: ${code(l.code)} ${cell(l.message)}`);
-    if (list.length > 20) notes.push(`${side}: ${list.length - 20} more limitation(s).`);
-  }
-  notes.push(
-    "Absence from a list means hexvero did not find it in the files it read, not that the app cannot do it.",
-    "Values computed at run time are shown as `${…}` or left out; nothing here was observed running.",
+  const notes = notEstablished(r).map((note) =>
+    note
+      .map((part) =>
+        typeof part === "string" ? part : "code" in part ? code(part.code) : cell(part.data),
+      )
+      .join(""),
   );
   for (const n of notes) out.push(`- ${n}`);
   out.push("");
