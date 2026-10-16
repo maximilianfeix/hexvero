@@ -150,6 +150,21 @@ for (const asset of ["ui/index.html", "skills/hexvero/SKILL.md"])
 if (!JSON.parse(cli("setup", "--skill", "--json")).results?.length)
   fail("setup --skill found no skill");
 
+step("CLI: demo and compare --report from the shipped example builds");
+const demo = JSON.parse(cli("demo", join(project, "hexvero-demo"), "--json"));
+if (!demo.changes?.some((c) => c.change === "added" && c.key === "update:check"))
+  fail("demo did not report the added update:check channel");
+const report = join(project, "report.md");
+cli(
+  "compare",
+  join(project, "hexvero-demo", "notesdesk-1.4.0.asar"),
+  join(project, "hexvero-demo", "notesdesk-1.5.0.asar"),
+  "--report",
+  report,
+);
+if (!readFileSync(report, "utf8").includes("## Not established"))
+  fail("compare --report wrote no report");
+
 step("CLI: analyze, collection, compare, export on generated inputs");
 // A minimal ELF64 header is enough for the parser to answer; no fixture file is shipped.
 const elf = Buffer.alloc(64);

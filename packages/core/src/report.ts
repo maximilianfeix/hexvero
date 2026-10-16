@@ -231,7 +231,7 @@ const cell = (text: string): string =>
   text.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
 /** A file name as one shell word: single-quoted unless it is plain. */
 const shellWord = (text: string): string => {
-  const flat = text.replace(/[\u0000-\u001f\u007f]/g, "");
+  const flat = [...text].filter((c) => c.charCodeAt(0) > 31 && c !== "\u007f").join("");
   return /^[\w./@:+-]+$/.test(flat) ? flat : `'${flat.replace(/'/g, "'\\''")}'`;
 };
 const place = (p: Place): string =>
