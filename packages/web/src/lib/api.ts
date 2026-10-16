@@ -71,6 +71,63 @@ export interface ByteWindow {
   ascii: string;
   total: number;
 }
+/** Mirrors `ReleaseComparison` of @hexvero/core (the UI does not import server code). */
+export interface Place {
+  side: "a" | "b";
+  file: string;
+  line?: number;
+  role?: string;
+}
+export interface ChangeRow {
+  collection: string;
+  change: "added" | "removed" | "changed" | "unknown";
+  key: string;
+  where: Place[];
+  basis?: string;
+  fields?: Array<{ field: string; before: unknown; after: unknown }>;
+  reason?: string;
+}
+export interface CollectionComparison {
+  collection: string;
+  key: string | null;
+  added: number;
+  removed: number;
+  changed: number;
+  relocated: number;
+  unknown: number;
+  unchanged: number;
+  totals: { a: number; b: number };
+  partial: boolean;
+}
+export interface ReleaseComparison {
+  hexvero: string;
+  a: TargetRecord;
+  b: TargetRecord;
+  overview: {
+    collections: CollectionComparison[];
+    onlyA: string[];
+    onlyB: string[];
+    partialScan: { a: boolean; b: boolean };
+    windowChanges: Array<{
+      window: string;
+      setting: string;
+      before: string;
+      after: string;
+      direction: "more permissive" | "less permissive" | "unclear";
+    }>;
+  };
+  changes: ChangeRow[];
+  cut: Array<{ collection: string; shown: number; total: number }>;
+  limitations: { a: Limitation[]; b: Limitation[] };
+}
+export interface SourceWindow {
+  file: string;
+  line: number;
+  start: number;
+  lines: string[];
+  totalLines: number;
+  cut: Array<{ line: number; length: number }>;
+}
 export interface ApiError {
   code: string;
   message: string;
@@ -191,28 +248,48 @@ export const api = {
    * Downloads the full analysis. Fetched with the Authorization header like every other call and
    * saved from a Blob, so the session token never appears in a URL, history or a server log.
    */
-  exportJson: async (id: string): Promise<void> => {
-    const res = await fetch(`/api/targets/${id}/export`, {
-      headers: { authorization: `Bearer ${token()}` },
-    });
-    if (!res.ok) throw new HttpError(res.status, String(res.status), res.statusText);
-    const name =
-      /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ??
-      "analysis.hexvero.json";
-    const url = URL.createObjectURL(await res.blob());
-    try {
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = name;
-      document.body.append(link);
-      link.click();
-      link.remove();
-    } finally {
-      // the click has handed the Blob to the browser's download by now
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    }
-  },
+  exportJson: (id: string): Promise<void> =>
+    download(`/api/targets/${id}/export`, "analysis.hexvero.json"),
+  /** Opens the two example builds that ship with hexvero. */
+  demo: () => request<{ a: TargetRecord; b: TargetRecord }>("/demo", { method: "POST" }),
+  compare: (a: string, b: string) => cached<ReleaseComparison>(`/compare?${params({ a, b })}`),
+  /** The comparison as a Markdown report, saved like the JSON export. */
+  downloadReport: (a: string, b: string): Promise<void> =>
+    download(`/api/compare/report?${params({ a, b })}`, "hexvero-report.md"),
+  source: (id: string, file: string, line: number) =>
+    cached<SourceWindow>(`/targets/${id}/source?${params({ file, line, context: 14 })}`),
 };
+
+/**
+ * Fetches with the Authorization header like every other call and saves the body from a Blob,
+ * so the session token never appears in a URL, history or a server log.
+ */
+async function download(path: string, fallback: string): Promise<void> {
+  const res = await fetch(path, { headers: { authorization: `Bearer ${token()}` } });
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      message = ((await res.json()) as { error: ApiError }).error.message;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new HttpError(res.status, String(res.status), message);
+  }
+  const name =
+    /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallback;
+  const url = URL.createObjectURL(await res.blob());
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } finally {
+    // the click has handed the Blob to the browser's download by now
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+}
 
 function params(q: Record<string, string | number | boolean | undefined>): string {
   const p = new URLSearchParams();

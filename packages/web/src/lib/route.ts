@@ -12,7 +12,19 @@ export function parseRoute(): Route {
   const query = new URLSearchParams(window.location.search);
   if (parts[0] === "targets" && parts[1])
     return { targetId: parts[1], tab: parts[2] ?? "overview", query };
+  if (parts[0] === "compare") return { targetId: null, tab: "compare", query };
   return { targetId: null, tab: "overview", query };
+}
+
+/** The comparison of two open targets: /compare?a=…&b=… */
+export function navigateCompare(a?: string, b?: string, replace = false): void {
+  const q = new URLSearchParams();
+  if (a) q.set("a", a);
+  if (b) q.set("b", b);
+  const url = `/compare${q.size ? `?${q}` : ""}${window.location.hash}`;
+  if (replace) window.history.replaceState(null, "", url);
+  else window.history.pushState(null, "", url);
+  window.dispatchEvent(new Event("hexvero:navigate"));
 }
 
 export function navigate(
