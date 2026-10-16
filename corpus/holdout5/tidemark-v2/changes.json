@@ -1,0 +1,155 @@
+{
+  "from": "../tidemark/src",
+  "edits": [
+    {
+      "file": "shared/channels.js",
+      "find": "  RELEASE_DELETE: \"release:delete\",\n",
+      "replace": "  RELEASE_DUPLICATE: \"release:duplicate\",\n"
+    },
+    {
+      "file": "shared/channels.js",
+      "find": "  EDITOR_DIRTY: \"editor:dirty\",\n",
+      "replace": ""
+    },
+    {
+      "file": "shared/channels.js",
+      "find": "// Channel names shared by the main process and the editor preload (preload.js).\n// preload-preview.js runs sandboxed and cannot require this file; it writes its names out.",
+      "replace": "// Channel names shared by the main process and both preloads."
+    },
+    {
+      "file": "shared/channels.js",
+      "find": "[\"markdown\", \"html\", \"json\"]",
+      "replace": "[\"markdown\", \"html\", \"json\", \"text\"]"
+    },
+    {
+      "file": "main/format.js",
+      "find": "const toJson = (release) => JSON.stringify(release, null, 2);\n\nconst FORMATTERS = { markdown: toMarkdown, html: toHtml, json: toJson };",
+      "replace": "const toJson = (release) => JSON.stringify(release, null, 2);\n\nfunction toText(release) {\n  const lines = [heading(release)];\n  for (const [section, texts] of grouped(release)) {\n    lines.push(\"\", section.toUpperCase(), ...texts.map((text) => `  * ${text}`));\n  }\n  return `${lines.join(\"\\n\")}\\n`;\n}\n\nconst FORMATTERS = { markdown: toMarkdown, html: toHtml, json: toJson, text: toText };"
+    },
+    {
+      "file": "main/handlers.js",
+      "find": "function registerHandlers(router, windows) {\n  router.handle(CHANNELS.RELEASES_LIST,",
+      "replace": "function registerHandlers(router, windows) {\n  router.handle(CHANNELS.SETTINGS_GET, async () => {\n    const { token, ...rest } = settings.read();\n    return { ...rest, signedIn: Boolean(token) };\n  });\n  router.handle(CHANNELS.SETTINGS_SET, async (patch) => {\n    const { token, ...rest } = settings.write(patch);\n    return { ...rest, signedIn: Boolean(token) };\n  });\n\n  router.handle(CHANNELS.RELEASES_LIST,"
+    },
+    {
+      "file": "main/handlers.js",
+      "find": "  router.handle(CHANNELS.RELEASE_DELETE, async (id) => {\n    drafts.remove(id);\n    return true;\n  });\n  // \"release:archive\" is reserved for the archive view planned for 2.3; nothing handles it yet.\n\n  router.handle(CHANNELS.SETTINGS_GET, async () => {\n    const { token, ...rest } = settings.read();\n    return { ...rest, signedIn: Boolean(token) };\n  });\n  router.handle(CHANNELS.SETTINGS_SET, async (patch) => {\n    const { token, ...rest } = settings.write(patch);\n    return { ...rest, signedIn: Boolean(token) };\n  });\n",
+      "replace": "  router.handle(CHANNELS.RELEASE_DUPLICATE, async (id) => {\n    const source = drafts.get(id);\n    if (!source) throw new Error(`No draft with id ${id}`);\n    return drafts.put({ ...source, id: `${id}-copy-${Date.now().toString(36)}`, version: \"\" });\n  });\n  // \"release:archive\" is reserved for the archive view planned for 2.3; nothing handles it yet.\n"
+    },
+    {
+      "file": "main/handlers.js",
+      "find": "  router.on(CHANNELS.EDITOR_DIRTY, (event, dirty) => {\n    const win = BrowserWindow.fromWebContents(event.sender);\n    win?.setDocumentEdited(dirty);\n    win?.setTitle(dirty ? \"Tidemark (edited)\" : \"Tidemark\");\n  });\n\n",
+      "replace": ""
+    },
+    {
+      "file": "main/handlers.js",
+      "find": "const { BrowserWindow } = require(\"electron\");\n",
+      "replace": ""
+    },
+    {
+      "file": "main/windows.js",
+      "find": "  // The editor preload requires shared/channels.js, so it cannot run sandboxed.\n  // webSecurity stays off until local release images are served by a protocol handler.\n  const webPreferences = Object.assign({}, BASE_PREFS, {\n    preload: appFile(\"preload.js\"),\n    sandbox: false,\n    webSecurity: false,\n  });",
+      "replace": "  // The editor preload requires shared/channels.js, so it cannot run sandboxed.\n  // Local release images are served by the tidemark-asset: protocol since 2.3.\n  const webPreferences = Object.assign({}, BASE_PREFS, {\n    preload: appFile(\"preload.js\"),\n    sandbox: false,\n  });"
+    },
+    {
+      "file": "main/windows.js",
+      "find": "  webPreferences = { ...BASE_PREFS, preload: appFile(\"preload-preview.js\") };",
+      "replace": "  // preload-preview.js requires shared/channels.js as well since 2.3.\n  webPreferences = { ...BASE_PREFS, preload: appFile(\"preload-preview.js\"), sandbox: false };"
+    },
+    {
+      "file": "main.js",
+      "find": "ipcMain.on(CHANNELS.PREVIEW_OPEN, () => {\n  windows.previewWindow.open(windows.editor());\n});\n\nipcMain.on(\"preview:ping\", (event) => {\n  event.reply(\"preview:pong\", { at: Date.now(), editorOpen: Boolean(windows.editor()) });\n});\n",
+      "replace": "ipcMain.on(\"preview:ping\", (event) => {\n  event.reply(\"preview:pong\", { at: Date.now(), editorOpen: Boolean(windows.editor()) });\n});\n\nipcMain.on(CHANNELS.PREVIEW_OPEN, () => {\n  windows.previewWindow.open(windows.editor());\n});\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "const api = {\n  platform: process.platform,\n  listReleases:",
+      "replace": "const api = {\n  listReleases:"
+    },
+    {
+      "file": "preload.js",
+      "find": "  deleteRelease: call(CHANNELS.RELEASE_DELETE),\n",
+      "replace": "  duplicateRelease: call(CHANNELS.RELEASE_DUPLICATE),\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "  exportHtml: call(exportChannel(\"html\")),\n",
+      "replace": "  exportHtml: call(exportChannel(\"html\")),\n  exportText: call(exportChannel(\"text\")),\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "  markDirty: (dirty) => ipcRenderer.send(CHANNELS.EDITOR_DIRTY, Boolean(dirty)),\n",
+      "replace": ""
+    },
+    {
+      "file": "preload.js",
+      "find": "    if (channel) ipcRenderer.send(channel, report);\n  },\n};",
+      "replace": "    if (channel) ipcRenderer.send(channel, report);\n  },\n  platform: process.platform,\n};"
+    },
+    {
+      "file": "preload-preview.js",
+      "find": "// Sandboxed: only \"electron\" can be required here, so the channel names are written out.\nconst { contextBridge, ipcRenderer } = require(\"electron\");\n\ncontextBridge.exposeInMainWorld(\"preview\", {\n  onRender: (listener) => ipcRenderer.on(\"preview:render\", (_event, html) => listener(html)),",
+      "replace": "const { contextBridge, ipcRenderer } = require(\"electron\");\nconst { CHANNELS } = require(\"./shared/channels\");\n\ncontextBridge.exposeInMainWorld(\"preview\", {\n  onRender: (listener) => ipcRenderer.on(CHANNELS.PREVIEW_RENDER, (_event, html) => listener(html)),"
+    },
+    {
+      "file": "renderer.js",
+      "find": "const DEFAULT_FONT_SIZE = 15;\n",
+      "replace": "const DEFAULT_FONT_SIZE = 15;\nconst TRANSLATE_URL = \"https://api.lingoflow.example/v1/translate\";\n"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  dirty = value;\n  api.markDirty(value);",
+      "replace": "  dirty = value;\n  document.title = dirty ? \"Tidemark (edited)\" : \"Tidemark\";"
+    },
+    {
+      "file": "renderer.js",
+      "find": "async function removeDraft() {\n  if (!confirm(`Delete the draft ${current.version || \"without a version\"}?`)) return;\n  await api.deleteRelease(current.id);\n  current = createDraft();\n  render();\n  await refreshList();\n}",
+      "replace": "async function duplicate() {\n  current = await api.duplicateRelease(current.id);\n  render();\n  await refreshList();\n}"
+    },
+    {
+      "file": "renderer.js",
+      "find": "async function exportAs(format) {\n  const html = format === \"html\";\n  const text = html ? await api.exportHtml(current.id) : await api.exportMarkdown(current.id);\n  const link = document.createElement(\"a\");\n  link.href = URL.createObjectURL(new Blob([text], { type: html ? \"text/html\" : \"text/markdown\" }));\n  link.download = `${current.version || \"release\"}.${html ? \"html\" : \"md\"}`;",
+      "replace": "const EXPORTS = {\n  markdown: { run: (id) => api.exportMarkdown(id), type: \"text/markdown\", ext: \"md\" },\n  html: { run: (id) => api.exportHtml(id), type: \"text/html\", ext: \"html\" },\n  text: { run: (id) => api.exportText(id), type: \"text/plain\", ext: \"txt\" },\n};\n\nasync function exportAs(format) {\n  const { run, type, ext } = EXPORTS[format];\n  const text = await run(current.id);\n  const link = document.createElement(\"a\");\n  link.href = URL.createObjectURL(new Blob([text], { type }));\n  link.download = `${current.version || \"release\"}.${ext}`;"
+    },
+    {
+      "file": "renderer.js",
+      "find": "function applyFontSize(size) {\n  document.documentElement.style.setProperty(\"--editor-font\", `${size}px`);\n}\n\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "function render() {",
+      "replace": "function applyFontSize(size) {\n  document.documentElement.style.setProperty(\"--editor-font\", `${size}px`);\n}\n\nfunction render() {"
+    },
+    {
+      "file": "renderer.js",
+      "find": "async function showAbout() {",
+      "replace": "async function translate(target) {\n  const res = await fetch(TRANSLATE_URL, {\n    method: \"POST\",\n    headers: { \"content-type\": \"application/json\" },\n    body: JSON.stringify({ target, q: current.entries.map((entry) => entry.text) }),\n  });\n  if (!res.ok) throw new Error(`translate: HTTP ${res.status}`);\n  const { translations } = await res.json();\n  current = {\n    ...current,\n    entries: current.entries.map((entry, i) => ({ ...entry, text: translations[i] ?? entry.text })),\n  };\n  renderEntries();\n  changed();\n}\n\nasync function showAbout() {"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  $(\"#delete\").addEventListener(\"click\", removeDraft);",
+      "replace": "  $(\"#duplicate\").addEventListener(\"click\", duplicate);"
+    },
+    {
+      "file": "renderer.js",
+      "find": "  $(\"#export-html\").addEventListener(\"click\", () => exportAs(\"html\"));\n",
+      "replace": "  $(\"#export-html\").addEventListener(\"click\", () => exportAs(\"html\"));\n  $(\"#export-text\").addEventListener(\"click\", () => exportAs(\"text\"));\n  $(\"#translate\").addEventListener(\"change\", (event) => translate(event.target.value));\n"
+    },
+    {
+      "file": "index.html",
+      "find": "        <button id=\"delete\">Delete</button>\n",
+      "replace": "        <button id=\"duplicate\">Duplicate</button>\n"
+    },
+    {
+      "file": "index.html",
+      "find": "        <button id=\"export-html\">HTML</button>\n",
+      "replace": "        <button id=\"export-html\">HTML</button>\n        <button id=\"export-text\">Text</button>\n        <select id=\"translate\">\n          <option value=\"\">Translate…</option>\n          <option value=\"de\">German</option>\n          <option value=\"fr\">French</option>\n        </select>\n"
+    },
+    {
+      "file": "package.json",
+      "find": "\"version\": \"2.2.0\"",
+      "replace": "\"version\": \"2.3.0\""
+    }
+  ]
+}
