@@ -6,6 +6,16 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### MCP
+
+- `hexvero_check` (16th tool, read-only): the release policy check over MCP with an inline
+  `policy` or a `policyPath`, an optional read-only `baselinePath`, JSON/Markdown/SARIF output,
+  findings paged under a 256 KiB result budget. Baselines are written only by the CLI.
+- **Breaking:** `hexvero_compare` pages one list at a time: pass `list` (`added`, `removed`,
+  `changed`, `unknown`) with `offset`; `offset` without `list` is refused with `invalid_input`.
+  One offset applied to four lists of different lengths returned wrong pages before.
+- Catalog: 16 tools, `tools/list` 15,637 bytes (was 14,156 with 15 tools).
+
 ### Release policies
 
 - `hexvero check <before> <after> --policy <file>` applies a JSON release policy to the
