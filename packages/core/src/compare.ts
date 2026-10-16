@@ -48,6 +48,11 @@ export interface CompareOptions {
    * `unknown`, never `added` or `removed`.
    */
   cut?: { a?: boolean; b?: boolean } | undefined;
+  /**
+   * Called with each item found on one side only, as it is listed in `added`, `removed` or
+   * `unknown` (same order per list), so a caller can tell apart items that share a label.
+   */
+  onOneSided?: ((item: unknown, change: "added" | "removed" | "unknown") => void) | undefined;
   /** Items that exist per side when `left`/`right` are only a part (see `cut`); default: their lengths. */
   total?: { a: number; b: number } | undefined;
 }
@@ -366,7 +371,10 @@ function keyLabel(item: unknown, key: string): string {
   return (
     key
       .split("+")
-      // an absent part and a null one are the same identity (see keyValue), and read the same
+      // An absent part and a null one are the same identity (see keyValue), and read the same.
+      // The text "null" reads the same too although it is another identity; labels are kept as
+      // they are, because they feed row ids (C3) and other rows would get new ids. Rows whose
+      // labels collide are told apart by `rowIds` in report.ts instead.
       .map((part) => String((item as Record<string, unknown>)[part] ?? null))
       .join("::")
   );
@@ -569,6 +577,15 @@ export function compareItems(
     options.collection === undefined ? undefined : COLLECTION_FAMILY[options.collection];
   /** Records an item found on `side` only: removed/added when the other side read its file. */
   const oneSided = (item: unknown, shown: string, side: "a" | "b"): void => {
+    // classify records the item in exactly one list: unknown, or removed/added by its side
+    const before = unknown.length;
+    classify(item, shown, side);
+    options.onOneSided?.(
+      item,
+      unknown.length > before ? "unknown" : side === "a" ? "removed" : "added",
+    );
+  };
+  const classify = (item: unknown, shown: string, side: "a" | "b"): void => {
     if (side === "a" ? options.cut?.b : options.cut?.a) {
       unknown.push({
         key: shown,
