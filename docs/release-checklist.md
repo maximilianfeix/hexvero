@@ -1,29 +1,75 @@
-# Release checklist (0.4.0)
+# Release checklist
 
-Status words: PASS, FAIL, BLOCKED, NOT RUN. Updated 2026-10-14 for branch `oss/round-5`.
+How a release is cut, as implemented in `scripts/release.mjs` and `.github/workflows/release.yml`.
+A release is a tag `vX.Y.Z` on `main`; pushing the tag is the point of no return. CONTRIBUTING.md
+("Releases") has the same flow in short.
 
-| Gate                                                   | How                                                                   | Status                                                  |
-| ------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------- |
-| Type check, lint, format, unit tests                   | `npm run check`                                                       | PASS locally (macOS, Node 25)                           |
-| End-to-end flows                                       | `npm run e2e`                                                         | PASS locally (macOS, radare2)                           |
-| Corpus inputs rebuild to the committed bytes           | `node corpus/build.mjs --check`                                       | PASS                                                    |
-| No corpus result worse than committed                  | `node corpus/gate.mjs`                                                | PASS                                                    |
-| Committed examples match the generator                 | `node scripts/build-examples.mjs && git diff --exit-code -- examples` | PASS                                                    |
-| Packed tarballs install and work, worker pool included | `node scripts/smoke-tarballs.mjs`                                     | PASS locally                                            |
-| Release metadata                                       | `npm run release:check`                                               | PASS                                                    |
-| CI on Linux (Node 22, 24), Windows, macOS              | push the branch, open a PR                                            | NOT RUN (branch not pushed)                             |
-| Node 22.12 minimum                                     | ran the suite on 22.12 in round 4                                     | PASS (round 4), NOT RUN for round 5                     |
-| Ghidra adapter                                         | needs Ghidra                                                          | NOT RUN                                                 |
-| Website and homepage links                             | `docs/audits/domain-check.md`                                         | FAIL: hexvero.dev serves a certificate for another host |
-| Dependency audit                                       | `npm audit --omit=dev`                                                | PASS (0)                                                |
-| Security review items                                  | `docs/audits/security-review.md`                                      | PASS for P1/P2; two P3 items open by decision           |
-| Blind accuracy measurement recorded                    | `corpus/results/round3`                                               | PASS (and shows the limits)                             |
+## Before cutting
 
-## Before tagging
+| Gate                                       | How                                                                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| CI on `main` is green                      | every job of `ci.yml`: check (Node 22, 24), tests on Windows and macOS, e2e on Linux and macOS                                 |
+| e2e, examples, site demo, corpus, tarballs | part of the CI `e2e` job; `release.mjs` does **not** run `npm run e2e`, `corpus/build.mjs --check` or `corpus/gate.mjs` itself |
+| Release notes written                      | under `## [Unreleased]` in `CHANGELOG.md`; `release.mjs` refuses an empty section                                              |
+| npm publishing credentials                 | a trusted publisher for `release.yml` on npmjs.com, or the `NPM_TOKEN` repository secret as the fallback                       |
+| Optional rehearsal                         | `npm run release:check` (check, build, `build-site-demo.mjs --check`, `release-verify.mjs`, `smoke-tarballs.mjs`)              |
 
-1. Fix the domain (DNS to GitHub Pages and the custom domain in the repository settings), or point
-   `homepage` and `server.json` at `https://maximilianfeix.github.io/hexvero/` for this release.
-2. Push `oss/round-5`, open a pull request to `main`, and wait for every CI job.
-3. Merge, then `npm run release -- 0.4.0` (commits and tags locally) and
-   `git push --atomic origin main v0.4.0`; the release workflow publishes with provenance.
-4. Check the registry install: `npx hexvero@0.4.0 --version`, `npx hexvero@0.4.0 analyze <asar>`.
+## Cutting: `npm run release -- X.Y.Z [--push]`
+
+`scripts/release.mjs`, in this order. It stops before writing anything if a precondition fails:
+
+1. The version matches `x.y.z` or `x.y.z-pre`; the working tree is clean; the branch is `main`;
+   `git pull --ff-only origin main` succeeds; the `Unreleased` section of `CHANGELOG.md` is not
+   empty.
+2. `npm run check` on the untouched tree.
+3. Bumps the version in every versioned file:
+   - `packages/{core,mcp,server,cli,web}/package.json`, and their `@hexvero/*` dependencies to the
+     exact version;
+   - `SERVER_VERSION` in `packages/mcp/src/index.ts`, `VERSION` in `packages/cli/src/index.ts`,
+     `CORE_VERSION` in `packages/core/src/version.ts`;
+   - every `"version"` in `server.json`, and `.claude-plugin/plugin.json`.
+4. Removes the `unreleased-note` block from every `README*.md`.
+5. Moves the notes under `## [X.Y.Z] - <today>` in `CHANGELOG.md`, leaving an empty `Unreleased`.
+6. Runs the gates on the bumped tree: `npm install`, `npm run check`, `npm run build`,
+   `node scripts/build-site-demo.mjs` (regenerates `site/demo`, which names the version),
+   `node scripts/release-verify.mjs vX.Y.Z` (every file of step 3 agrees with the tag, the
+   CHANGELOG has the section), `node scripts/smoke-tarballs.mjs` (packs, installs the tarballs into
+   an empty project and exercises CLI, UI, skill and an MCP session). If any gate fails, the tree is
+   restored (`git checkout -- .` and `git clean` of `examples packages scripts docs`) and nothing
+   is committed.
+7. Commits `chore(release): X.Y.Z` and creates the annotated tag `vX.Y.Z`, locally.
+8. With `--push`: `git push --atomic origin main vX.Y.Z`. Without it, the script prints that
+   command and how to undo (`git tag -d vX.Y.Z && git reset --hard HEAD~1`).
+
+## Publishing: `.github/workflows/release.yml` on the tag
+
+1. `verify` (no credentials, Node 24, npm 11.6.2): `npm ci`, `npm run check`, `npm run build`,
+   `release-verify.mjs <tag>`, the tagged commit is an ancestor of `origin/main`,
+   `smoke-tarballs.mjs --out release`, `publish-tarballs.mjs release --dry-run` (a version already
+   on npm with other content stops here), release notes from the CHANGELOG section
+   (`release-notes.mjs`), tarballs and manifest uploaded as an artifact.
+2. `publish` (`contents: write`, `id-token: write`): the downloaded tarballs must match the
+   manifest's SHA-256; a **draft** GitHub release with the tarballs; `publish-tarballs.mjs release`
+   publishes in dependency order with provenance (npm dist-tag `next` for a pre-release version),
+   accepts a version already published with the same integrity, and reads every package back
+   from the registry until its integrity matches.
+3. `registry-smoke` (no credentials): `smoke-tarballs.mjs --registry --out release`, up to six
+   attempts 20 s apart for registry propagation; the installed packages must be the released
+   tarballs.
+4. `finalize`: the draft becomes public, `--latest` for a release, `--prerelease` for `x.y.z-pre`.
+
+Starting the workflow by hand runs `verify` only, as a rehearsal: release-verify without a tag,
+and versions already on npm are reported, not failed (`--allow-existing`).
+
+## After a failure
+
+- Gate failed in `release.mjs`: the tree is restored; fix on `main` and run it again.
+- Tag pushed, workflow failed: use **Re-run failed jobs**. It reuses the tarballs the `verify`
+  job tested; versions already on npm with identical content are accepted, a version with other
+  content fails the run. A published npm version cannot be replaced; a fix ships as a new version.
+
+## After publishing
+
+- `npx hexvero@X.Y.Z --version` and `npx hexvero@X.Y.Z demo <dir>` from a clean directory.
+- The GitHub release is public and carries the CHANGELOG section.
+- Add the `unreleased-note` block back to the READMEs when `main` gains features npm does not have.
