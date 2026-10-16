@@ -44,6 +44,8 @@ describe("analyzeInWorker", () => {
     const second = session.analyze(record.id);
     a.abort();
     await expect(first).rejects.toThrow(/cancelled/);
+    // the waiter that left is rejected by the session, with the code for a cancellation
+    await expect(first).rejects.toMatchObject({ code: "cancelled" });
     expect((await second).data.kind).toBe("binary");
     const third = await session.analyze(record.id);
     expect(third).toBe(await second);

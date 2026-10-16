@@ -123,37 +123,23 @@ async function readBody(req: IncomingMessage, max: number): Promise<Uint8Array> 
 
 /** Rows per comparison response at most (contract C3: the server pages at 500). */
 const COMPARE_MAX_ROWS = 500;
-
-type ComparisonPage = { offset: number; limit: number; total: number; next: number | null };
+/** Rows in a downloaded report: the core's largest page. */
+const REPORT_MAX_ROWS = 5000;
 
 /**
  * One page of the comparison (contract C3/C7). `offset` and `limit` go to the core; a core that
  * does not page yet (no `page` in its result) returns every row, and the page is cut here, so the
  * client sees the same shape either way.
  */
-async function comparePage(
+/** One page of the release comparison; the core pages the rows and reports `page`. */
+function comparePage(
   session: Session,
   a: string,
   b: string,
   offset: number,
   limit: number,
-): Promise<Awaited<ReturnType<typeof compareReleases>> & { page: ComparisonPage }> {
-  const options: Parameters<typeof compareReleases>[3] & { offset?: number; limit?: number } = {
-    maxRows: COMPARE_MAX_ROWS,
-    offset,
-    limit,
-  };
-  const result = (await compareReleases(session, a, b, options)) as Awaited<
-    ReturnType<typeof compareReleases>
-  > & { page?: ComparisonPage };
-  if (result.page) return result as typeof result & { page: ComparisonPage };
-  const total = result.changes.length;
-  const end = Math.min(total, offset + limit);
-  return {
-    ...result,
-    changes: result.changes.slice(offset, end),
-    page: { offset, limit, total, next: end < total ? end : null },
-  };
+): ReturnType<typeof compareReleases> {
+  return compareReleases(session, a, b, { offset, limit });
 }
 
 /**
@@ -274,7 +260,8 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       if (a === b) throw new AnalysisError("invalid_input", "pick two different targets");
       if (parts[1] === "report" && parts.length === 2) {
         // The report is the whole review: no client paging, the core's own row limit.
-        const comparison = await compareReleases(session, a, b, { maxRows: COMPARE_MAX_ROWS });
+        // up to the core's largest page; the report itself says how many rows it holds
+        const comparison = await compareReleases(session, a, b, { limit: REPORT_MAX_ROWS });
         res.writeHead(200, {
           "content-type": "text/markdown; charset=utf-8",
           "cache-control": "no-store",

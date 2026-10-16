@@ -717,7 +717,14 @@ function windowDrafts(r: ReleaseComparison): Draft[] {
     if (w.direction === "less permissive") continue;
     const row: ChangeRow = r.changes.find(
       (c) => c.collection === "windows" && c.key === w.window,
-    ) ?? { collection: "windows", change: "changed", key: w.window, where: [] };
+    ) ?? {
+      // the same id the report gives a row (C3): an empty id makes rowId derive it
+      id: rowId({ id: "", collection: "windows", change: "changed", key: w.window, where: [] }),
+      collection: "windows",
+      change: "changed",
+      key: w.window,
+      where: [],
+    };
     const unknown = w.direction === "unclear";
     out.push({
       rule: "window-more-permissive",
@@ -843,18 +850,37 @@ export function evaluatePolicy(
 
 /** Rows a check reads at most; past this the collection is reported as not decidable. */
 export const CHECK_MAX_ROWS = 100_000;
+/** The core's largest page of rows. */
+const CHECK_PAGE_ROWS = 5000;
 
 /**
- * The whole comparison a check needs: every row, not the first page a reader is shown.
- * TODO(C3): once `compareReleases` pages its rows (`{ offset, limit }` and `page.next`), this
- * loops over the pages up to CHECK_MAX_ROWS instead of asking for one large page.
+ * The whole comparison a check needs: every row, not the first page a reader is shown. Pages of
+ * the core's largest size are read until `page.next` is null; past CHECK_MAX_ROWS rows the
+ * remaining ones are not read and every rule is reported as undecidable ("budget"), never as
+ * passed.
  */
 export async function comparisonForCheck(
   session: Session,
   idA: string,
   idB: string,
 ): Promise<ReleaseComparison> {
-  return compareReleases(session, idA, idB, { maxRows: CHECK_MAX_ROWS });
+  const first = await compareReleases(session, idA, idB, { offset: 0, limit: CHECK_PAGE_ROWS });
+  const changes = [...first.changes];
+  let next = first.page.next;
+  while (next !== null && changes.length < CHECK_MAX_ROWS) {
+    const more = await compareReleases(session, idA, idB, { offset: next, limit: CHECK_PAGE_ROWS });
+    changes.push(...more.changes);
+    next = more.page.next;
+  }
+  if (next === null) return { ...first, changes, page: { ...first.page, offset: 0, next: null } };
+  // Rows left unread: mark every collection incomplete so no rule can pass on a part.
+  const completeness = Object.fromEntries(
+    Object.entries(first.completeness).map(([name, c]) => [
+      name,
+      { ...c, complete: false, gaps: [...new Set([...c.gaps, "budget"])].toSorted() },
+    ]),
+  );
+  return { ...first, changes, completeness, page: { ...first.page, offset: 0, next } };
 }
 
 /** Compares two opened targets and applies the policy: `hexvero check` without the printing. */

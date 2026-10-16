@@ -417,7 +417,7 @@ export function createHandlers(
         };
       }
       const name = str(a["collection"]);
-      const { diff, left, right } = await session.compareCollection(idA, idB, name, {
+      const { diff } = await session.compareCollection(idA, idB, name, {
         key: typeof a["key"] === "string" ? a["key"] : undefined,
         ignore: Array.isArray(a["ignore"]) ? (a["ignore"] as string[]) : [],
         strict: a["strict"] === true,
@@ -431,7 +431,9 @@ export function createHandlers(
         session.analyze(idA).then((x) => x.limitations.length),
         session.analyze(idB).then((x) => x.limitations.length),
       ]);
-      const partial = left.truncated || right.truncated;
+      const { completeness } = diff;
+      // compared only in part: a side exceeded the comparison budget
+      const partial = completeness.gaps.includes("budget");
       const partialScan = { a: await session.partial(idA), b: await session.partial(idB) };
       return {
         ...(partialScan.a || partialScan.b
@@ -446,24 +448,20 @@ export function createHandlers(
         ignored: diff.ignored,
         positional: diff.positional,
         left: {
-          total: left.total,
-          compared: left.items.length,
-          truncated: left.truncated,
+          total: completeness.total.a,
+          compared: completeness.compared.a,
+          truncated: completeness.compared.a < completeness.total.a,
           limitations: limitsA,
         },
         right: {
-          total: right.total,
-          compared: right.items.length,
-          truncated: right.truncated,
+          total: completeness.total.b,
+          compared: completeness.compared.b,
+          truncated: completeness.compared.b < completeness.total.b,
           limitations: limitsB,
         },
+        completeness,
         complete:
-          !partial &&
-          !left.itemTruncated &&
-          !right.itemTruncated &&
-          limitsA === 0 &&
-          limitsB === 0 &&
-          diff.ignored.length === 0,
+          completeness.complete && limitsA === 0 && limitsB === 0 && diff.ignored.length === 0,
         unchanged: diff.unchanged,
         // Lists are paged like collections: `next` is the offset of the following page.
         added: window(diff.added, 50),
@@ -477,10 +475,12 @@ export function createHandlers(
         },
         duplicateKeys: diff.duplicateKeys,
         note: partial
-          ? "Only the first 2000 items per side were compared; absence of a difference is not established."
-          : limitsA || limitsB
-            ? "All items of this collection were compared, but the analyses carry limitations; read them before treating equal as identical."
-            : "Complete comparison of both collections.",
+          ? `Only ${completeness.compared.a} of ${completeness.total.a} (a) and ${completeness.compared.b} of ${completeness.total.b} (b) items were compared (comparison budget); absence of a difference is not established.`
+          : !completeness.complete
+            ? `All items were compared, but the result is not whole (${completeness.gaps.join(", ")}): read unknown before treating a missing item as removed.`
+            : limitsA || limitsB
+              ? "All items of this collection were compared, but the analyses carry limitations; read them before treating equal as identical."
+              : "Complete comparison of both collections.",
       };
     },
     hexvero_sourcemap: async (a) => {
