@@ -6,7 +6,7 @@
  * as `dynamic` so that callers never mistake a guess for a fact.
  */
 
-import { Constants, resolveAliases } from "./aliases.js";
+import { Constants, type Evaluator, type Resolved, resolveAliases } from "./aliases.js";
 import { ExpressionResolver, type ResolveMethod } from "./resolve.js";
 
 export interface ModuleReference {
@@ -37,6 +37,11 @@ export interface IpcUsage {
   resolution?: { method: ResolveMethod; lines: number[] };
   /** A channel named by a constant of another module, to be looked up there. */
   channelRef?: { specifier: string; property: string; before?: string; after?: string };
+  /**
+   * For a call without a channel: why the evaluation of the code that builds it stopped (an
+   * unsupported form, too many values, a limit, a cycle, a value known only at run time).
+   */
+  reason?: string;
 }
 
 export interface ScanResult {
@@ -54,6 +59,10 @@ export interface ScanResult {
   reexports?: Record<string, { specifier: string; property: string }>;
   /** `export * from "…"` specifiers. */
   starExports?: string[];
+  /** Keys of `constants` whose values were read by evaluating code (see resolve.ts). */
+  evaluated?: string[];
+  /** Exported names whose value an evaluation could not read, with the reason. */
+  unevaluated?: Record<string, string>;
 }
 
 /** What a second reader of the same token stream needs to follow names. */
@@ -456,6 +465,15 @@ export function scanJavaScript(
   // Names are resolved with their scope: first the file's constants, then, when the file has
   // channel-forwarding helpers, those as well (they are found with the first result).
   const constants = new Constants(tokens);
+  let resolver: ExpressionResolver | null = null;
+  constants.useEvaluator(
+    evaluatorFor(
+      tokens,
+      constants,
+      () => resolver,
+      (r) => (resolver = r),
+    ),
+  );
   // Most files of a large application name none of the objects whose other names are followed
   // (icons, locale tables, vendored libraries). For those the resolution is skipped: nothing
   // would use it, and it is the most expensive step of a scan.
@@ -612,12 +630,7 @@ export function scanJavaScript(
       const named = channelAt(m + (direct ? 4 : 6));
       const api = direct ? "event.reply" : "event.sender.send";
       if (named && "value" in named)
-        ipc.push({
-          api,
-          channel: named.value,
-          line: at(m)!.line,
-          ...(named.via === "constant" ? { via: "constant" as const } : {}),
-        });
+        ipc.push({ api, channel: named.value, line: at(m)!.line, ...viaOf(named) });
       // A channel named by another module's constant, looked up once that module is read.
       else if (named && "ref" in named)
         ipc.push({ api, channel: null, line: at(m)!.line, channelRef: named.ref });
@@ -638,7 +651,6 @@ export function scanJavaScript(
   };
   /** IPC calls whose channel argument is neither a literal nor a constant: resolved below. */
   const open: Array<{ usage: IpcUsage; at: number }> = [];
-  let resolver: ExpressionResolver | null = null;
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
@@ -722,7 +734,8 @@ export function scanJavaScript(
           line: t.line,
         };
         if (named && "ref" in named) usage.channelRef = named.ref;
-        if (named && "value" in named && named.via === "constant") usage.via = "constant";
+        if (named && "value" in named && named.via !== "literal")
+          Object.assign(usage, viaOf(named));
         else if (owner !== t.value) usage.via = "alias";
         // `for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, fn)`:
         // one registration per key of the table.
@@ -778,7 +791,12 @@ export function scanJavaScript(
       const helper = resolver.enclosingName(argument);
       if (helper !== null && wrappers.has(helper)) continue;
       const found = resolver.resolveArgument(argument);
-      if (!found) continue;
+      if (!found) {
+        // why the evaluation of the code that builds the channel stopped, when it says
+        const why = resolver.reason;
+        if (why) usage.reason = `evaluation stopped: ${why}`;
+        continue;
+      }
       const index = ipc.indexOf(usage);
       if (index === -1) continue;
       ipc.splice(
@@ -810,5 +828,50 @@ export function scanJavaScript(
     ...(Object.keys(constants.exported).length ? { constants: constants.exported } : {}),
     ...(Object.keys(constants.reexported).length ? { reexports: constants.reexported } : {}),
     ...(constants.starExports.length ? { starExports: constants.starExports } : {}),
+    ...(constants.evaluated.length ? { evaluated: constants.evaluated } : {}),
+    ...(Object.keys(constants.unevaluated).length ? { unevaluated: constants.unevaluated } : {}),
+  };
+}
+
+/** `via` and `resolution` of an IPC row whose channel was read by name. */
+function viaOf(
+  named: Extract<NonNullable<Resolved>, { value: string }>,
+): Pick<IpcUsage, "via" | "resolution"> {
+  if (named.via === "evaluated")
+    return {
+      via: "resolved",
+      resolution: { method: "evaluated", lines: named.line === undefined ? [] : [named.line] },
+    };
+  return named.via === "constant" ? { via: "constant" } : {};
+}
+
+/**
+ * The evaluator that lets a file's constants read declarations only an evaluation can
+ * (`const BOARD = defineChannels(…)`), through the file's one resolver, created on first use.
+ */
+export function evaluatorFor(
+  tokens: Token[],
+  constants: Constants,
+  get: () => ExpressionResolver | null,
+  set: (r: ExpressionResolver) => void,
+): Evaluator {
+  const resolver = (): ExpressionResolver => {
+    const have = get();
+    if (have) return have;
+    const made = new ExpressionResolver(tokens, constants);
+    set(made);
+    return made;
+  };
+  return {
+    name: (name, at) => {
+      const r = resolver();
+      const value = r.topValue(name, at);
+      return { value, reason: r.reason };
+    },
+    at: (at) => {
+      const r = resolver();
+      const value = r.valueAt(at);
+      return { value, reason: r.reason };
+    },
   };
 }
