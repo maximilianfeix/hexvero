@@ -80,3 +80,16 @@ graph), R (independent review of 841b6db..HEAD).
 - npm download statistics unavailable for hexvero (API lag).
 
 ## Next steps / resume instructions
+
+1. On hand-back of A2 (`sprint/a2-wrappers`, IPC wrapper classes), J (`sprint/j-graph`, interface
+   map), R (independent review, read-only): merge into `sprint/10h`, fix review findings with
+   regression tests, run `npm run check`, `npm run e2e`, `npm run corpus`.
+2. Re-measure Discord in `node scripts/bench.mjs` at low load; record in this file.
+3. Final screenshots/video from the integrated build (Compare, evidence before/after, check
+   output, HTML report, interface map), social preview from `docs/launch/assets/social-preview.html`.
+4. Launch docs: claims registry `docs/launch/claims.md`, release notes 0.9.0, README top
+   (new workflow, keep limits), site from real data (`npm run site:demo`), status.json.
+5. Release 0.9.0 via the existing pipeline: PR `sprint/10h` → main, CI green, merge,
+   `npm run release -- 0.9.0` on main, `git push --atomic origin main v0.9.0`, watch the Release
+   workflow, verify `npx hexvero@0.9.0 demo` from an empty cache.
+6. Do not stop before not_before (2026-10-17T08:44:36Z); use the backlog in the brief §10/§13.
