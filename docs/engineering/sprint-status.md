@@ -15,15 +15,22 @@ any interruption or context compaction.
 
 ## Time log
 
-| Period (UTC) | Active work                    | Notes |
-| ------------ | ------------------------------ | ----- |
-| 22:44–       | inventory, baseline, contracts |       |
+| Period (UTC) | Active work                                                                                                                                                                                                       | Notes         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 22:44–23:25  | inventory, baseline, contracts, 8 agents launched; M, E, C, P, D, G integrated; integration fixes (bridge coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor reads, 503 on timeout) | lead + agents |
 
 ## Agents and branches
 
-| Role              | Branch / worktree | Status |
-| ----------------- | ----------------- | ------ |
-| Lead / integrator | `sprint/10h`      | active |
+| Role                              | Branch / worktree                              | Status                                                                                                                                                                                                                           |
+| --------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lead / integrator                 | `sprint/10h`                                   | active                                                                                                                                                                                                                           |
+| A analyzer (resolver, C4)         | `sprint/a-analyzer` `~/hexvero-10h-a-analyzer` | running since 22:58Z                                                                                                                                                                                                             |
+| B compare (C1–C3)                 | `sprint/b-compare`                             | running since 22:58Z                                                                                                                                                                                                             |
+| P policy (C5, C6, SARIF, CI)      | `sprint/p-policy`                              | running since 22:58Z                                                                                                                                                                                                             |
+| C web + server (C7)               | `sprint/c-web`                                 | running since 22:58Z                                                                                                                                                                                                             |
+| M map + skills                    | `sprint/m-map`                                 | running since 22:58Z                                                                                                                                                                                                             |
+| E independent fixtures (holdout5) | `sprint/e-fixtures` `f537d27`                  | DONE 23:11Z: Tidemark app, 2 versions, own v2 format (`changes`, `unchangedMoves`, `bundledFiles`); not built or scored. Kept out of A's worktree until A freezes; then base and final are scored with the same scorer revision. |
+| F launch / market                 | lead                                           | matrix, status.json, metrics done                                                                                                                                                                                                |
 
 ## Contracts (frozen before parallel work)
 
@@ -31,18 +38,58 @@ See [contracts.md](contracts.md).
 
 ## Acceptance (from the brief)
 
-| Item                             | Status  |
-| -------------------------------- | ------- |
-| Baseline measured at base commit | running |
+| Item                                           | Status                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------ |
+| Baseline measured at base commit               | PASS: check 405 tests, e2e 11, corpus 298 rows, bench (Node 22.17.1, M2) |
+| C4 interface ends truncation confirmed in code | confirmed (direction/link computed after slice)                          |
 
 ## Tests
 
-| Gate             | Base    | Final |
-| ---------------- | ------- | ----- |
-| `npm run check`  | running |       |
-| `npm run e2e`    | running |       |
-| `npm run corpus` | running |       |
+| Gate             | Base                                             | Final |
+| ---------------- | ------------------------------------------------ | ----- |
+| `npm run check`  | PASS (after excluding published text from oxfmt) |       |
+| `npm run e2e`    | PASS 11/11                                       |       |
+| `npm run corpus` | PASS 298 rows                                    |       |
+
+## Integration state (2026-10-16 23:50Z, `aa88007`)
+
+Merged into `sprint/10h`: M (map, skills), C (reviewer workspace), P (check/SARIF/CI), D (codes,
+release-verify), G (Fiddle case study), B (C1–C3), A (registry evaluation, C4, DoS limits),
+D2 (MCP check, per-list paging), H (holdout5 + round 4 blind result). Lead fixes: bridge-rule
+coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor reads, 503 on
+timeout, check reads every page. Gates at `aa88007`: check 539 passed, e2e 13, corpus 45 inputs /
+298 rows none worse.
+
+Running: A2 (IPC wrapper classes, Fiddle + holdout5 dev), I (offline HTML report), J (interface
+graph), R (independent review of 841b6db..HEAD).
+
+## Measurements
+
+- Blind holdout5 (round 4, scorer blobs in corpus/results/round4/README.md), totals over three
+  builds of one app, hit/missed/false: IPC channels base 47/7/0 → final 49/5/0; window settings
+  14/25/0 unchanged; bridge members 57/0/0; endpoints 15/3/0; storage keys 6/12/2. Changes v1→v2
+  identical at base and final (ipcChannels 3/1/0, contextBridge 4/0/0, webPreferences 0/2/0,
+  endpoints 1/0/0). holdout5 is a development set from now on.
+- Benchmark (Node 22.17.1, M2, load 15–20 during agents): Claude.app 7.14 → 7.92 s median,
+  ChatGPT.app 14.18 → 13.70 s, peak RSS 796 → 787 MiB; Discord median 0.75 → 1.45 s (first run
+  0.76 s both) to be re-measured at lower load.
 
 ## Open risks
 
+- REA documents `compare_application_versions`; release comparison alone is not a differentiator (docs/competitive/matrix-2026-10-17.md).
+- npm download statistics unavailable for hexvero (API lag).
+
 ## Next steps / resume instructions
+
+1. On hand-back of A2 (`sprint/a2-wrappers`, IPC wrapper classes), J (`sprint/j-graph`, interface
+   map), R (independent review, read-only): merge into `sprint/10h`, fix review findings with
+   regression tests, run `npm run check`, `npm run e2e`, `npm run corpus`.
+2. Re-measure Discord in `node scripts/bench.mjs` at low load; record in this file.
+3. Final screenshots/video from the integrated build (Compare, evidence before/after, check
+   output, HTML report, interface map), social preview from `docs/launch/assets/social-preview.html`.
+4. Launch docs: claims registry `docs/launch/claims.md`, release notes 0.9.0, README top
+   (new workflow, keep limits), site from real data (`npm run site:demo`), status.json.
+5. Release 0.9.0 via the existing pipeline: PR `sprint/10h` → main, CI green, merge,
+   `npm run release -- 0.9.0` on main, `git push --atomic origin main v0.9.0`, watch the Release
+   workflow, verify `npx hexvero@0.9.0 demo` from an empty cache.
+6. Do not stop before not_before (2026-10-17T08:44:36Z); use the backlog in the brief §10/§13.

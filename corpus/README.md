@@ -9,12 +9,18 @@ product, so all of it can be redistributed.
 
 ## What is in it
 
-| Set           | Purpose                                                                                                                     | Cases                                                                                                 |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `dev/`        | written alongside hexvero and used to tune it                                                                               | an Electron app in three builds, a later version of it, a C program in two builds and a later version |
-| `validation/` | written by someone with no access to hexvero's detectors or output; measured once untouched (round 1), then used for tuning | an Electron app in three builds, a later version, a C program in two builds                           |
-| `holdout/`    | written the same way after the tuning on the other two sets; measured untouched                                             | see `holdout/README.md`                                                                               |
-| `damaged/`    | corpus inputs cut or altered at fixed places                                                                                | six files                                                                                             |
+| Set           | Purpose                                                                                                                     | Cases                                                                                                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dev/`        | written alongside hexvero and used to tune it                                                                               | an Electron app in three builds, a later version of it, a C program in two builds and a later version                                                                          |
+| `validation/` | written by someone with no access to hexvero's detectors or output; measured once untouched (round 1), then used for tuning | an Electron app in three builds, a later version, a C program in two builds                                                                                                    |
+| `holdout/`    | written the same way after the tuning on the other two sets; measured untouched                                             | an Electron app in three builds (Punchclock, a time tracker), a later version, a C program in two builds; see `holdout/README.md`                                              |
+| `holdout2/`   | written after `holdout/`, without access to any tool's detectors, source code or output                                     | two Electron apps in three builds each (Cadence, a music player, in `tsc`-style CommonJS; Inkwell, a markdown editor), a later version of the editor; see `holdout2/README.md` |
+| `holdout3/`   | written after `holdout2/` the same way                                                                                      | an Electron app (Driftwood, a podcast player, with interface links), a later version; see `holdout3/README.md`                                                                 |
+| `holdout4/`   | written after `holdout3/` the same way                                                                                      | an Electron app in three builds (Lattice, a kanban board, with a `BrowserView` and an offscreen window), a later version; see `holdout4/README.md`                             |
+| `damaged/`    | corpus inputs cut or altered at fixed places                                                                                | six files                                                                                                                                                                      |
+
+Each hold-out README lists what its author read outside the set and what was verified, and how.
+Native programs are in `dev/`, `validation/` and `holdout/` only.
 
 Each Electron case is built three ways from the same sources: packed as written (`plain`), bundled
 by esbuild (`bundled`), and bundled and minified (`minified`). The facts are the same in all three;
@@ -81,7 +87,7 @@ The committed binaries are the ones the expectations were checked against.
 ```bash
 npm run build
 node corpus/observe-hexvero.mjs            # what hexvero reports, written to results/
-node corpus/score.mjs corpus/results/hexvero.observations.json [--set dev|validation|holdout|damaged]
+node corpus/score.mjs corpus/results/hexvero.observations.json [--set dev|validation|holdout|holdout2|holdout3|holdout4|damaged]
 ```
 
 The observer knows nothing about the expectations; the scorer knows nothing about the tool. They
@@ -118,7 +124,8 @@ graph may be incomplete.
 
 ## Results so far
 
-hexvero, hit of expected (plus false reports), from `results/hexvero.json` and `results/round2/`:
+hexvero, hit of expected (plus false reports), from `results/hexvero.json` and `results/round2/`.
+The table covers `holdout/`; the rows for `holdout2/` to `holdout4/` are in `results/hexvero.md`:
 
 | Class                                | dev      | validation | hold-out (blind)  |
 | ------------------------------------ | -------- | ---------- | ----------------- |
@@ -149,7 +156,8 @@ REA 6.4.0 on the same corpus, with the harness and every mapping decision: `comp
 
 ## Limits
 
-The corpus is small: three Electron applications of a few hundred lines and three C programs. It
+The corpus is small: seven Electron applications of a few hundred to about a thousand lines of
+JavaScript and three C programs. It
 shows whether a tool reads these idioms correctly. It says nothing about speed or coverage on large
 real applications, about formats other than Electron archives and Mach-O arm64 binaries, or about
 obfuscated code. A perfect score here means the listed idioms are handled, not that a tool is

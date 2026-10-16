@@ -1,0 +1,72 @@
+# An example of `hexvero check` in CI, run on the two synthetic example builds of this repository
+# (examples/notesdesk-1.4.0.asar → 1.5.0.asar). 1.5.0 adds an update host and a preload member,
+# so the check is expected to fail with exit 3; the job fails if it ever says anything else.
+# For your own repository see docs/ci.md.
+name: Release policy example
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: hexvero check on the example builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build hexvero
+        run: npm run build -w @hexvero/core -w @hexvero/mcp -w @hexvero/server -w hexvero
+      - name: Build the example builds and confirm they are the committed ones
+        run: node scripts/build-examples.mjs && git diff --exit-code -- examples
+      - name: Check the release against the example policy
+        id: check
+        run: |
+          set +e
+          node packages/cli/bin/hexvero.js check examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar --policy examples/policy.json --format sarif --out hexvero.sarif
+          code=$?
+          set -e
+          node packages/cli/bin/hexvero.js check examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar --policy examples/policy.json --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          # In your own workflow, `exit "$code"` here fails the job on a violated policy (3) or an
+          # undecidable one (4). The example is built to violate it, so anything but 3 is a bug.
+          test "$code" = 3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hexvero-sarif
+          path: hexvero.sarif
+          retention-days: 7
+
+  upload:
+    name: Upload SARIF to code scanning
+    needs: check
+    # Only where the token may write security events: never for pull requests from forks, and
+    # only when the repository opted in, so the example does not add alerts to a security tab by
+    # default. Set the repository variable HEXVERO_EXAMPLE_SARIF_UPLOAD=true to enable it.
+    if: >-
+      vars.HEXVERO_EXAMPLE_SARIF_UPLOAD == 'true' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: hexvero-sarif
+      - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: hexvero.sarif
+          category: hexvero-check-example

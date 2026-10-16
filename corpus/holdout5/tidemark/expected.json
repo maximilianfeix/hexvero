@@ -1,0 +1,998 @@
+{
+  "case": "tidemark",
+  "kind": "electron",
+  "license": "MIT, written for this corpus",
+  "inputs": [
+    "holdout5/tidemark.plain.asar",
+    "holdout5/tidemark.bundled.asar",
+    "holdout5/tidemark.minified.asar"
+  ],
+  "method": "Every expectation was written from the sources by reading them. No analysis tool was run on them, and no tool's detectors, source code or output were looked at. Line numbers were looked up by a scratch script that finds the line of a given piece of text and fails unless it occurs exactly once. A second scratch script ran main.js and both preloads in Node against a stand-in for the electron module and printed every ipcMain registration and webContents.send with its stack of file:line, every window's merged webPreferences, and the channel each exposed member invokes, sends on or listens to; its output agreed with the expectations. main.js, both preloads and the modules in main/ and shared/ are CommonJS; renderer.js and renderer-preview.js are ES modules that import from renderer/. FILE ATTRIBUTION: facts are attributed to the source file a reader sees them in, also when that is not an entry file: the IpcRouter class in main/ipc-router.js holds the ipcMain.handle / ipcMain.on calls, the channels are attached in main/handlers.js (receivers name main/handlers.js, the file where a reader sees which channel is received), every window is created in main/windows.js, publish:progress is sent from main/publish.js. In the bundled and minified inputs these modules are bundled into their entry file; bundledFiles maps each module to the file it ends up in, and a scorer should apply that map for those two inputs (line numbers then do not apply). Channel names come from the frozen CHANNELS object and from exportChannel(format) = `export:${format}` applied in a loop over the literal array EXPORT_FORMATS; both are resolvable by evaluating the source. One channel name comes from the environment (ipcChannels.unknown). webPreferences lists the keys preload, contextIsolation, nodeIntegration, sandbox, webSecurity, allowRunningInsecureContent, one entry per window and key the code writes (also through BASE_PREFS); count in an absent entry is one more than the number of windows that have that value, as in holdout4. interfaceLinks: a receiver reached through the IpcRouter wrapper has the line of the ipcMain call inside the wrapper as line, and entryFile/entryLine where the channel is handed to the wrapper.",
+  "bundledFiles": {
+    "main/ipc-router.js": "main.js",
+    "main/handlers.js": "main.js",
+    "main/windows.js": "main.js",
+    "main/publish.js": "main.js",
+    "main/remote.js": "main.js",
+    "main/store.js": "main.js",
+    "main/format.js": "main.js",
+    "shared/channels.js": "main.js, preload.js (and preload-preview.js in v2)",
+    "renderer/state.js": "renderer.js",
+    "renderer/web-store.js": "renderer.js",
+    "renderer/contributors.js": "renderer.js"
+  },
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "releases:list",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "CHANNELS.RELEASES_LIST in shared/channels.js. main/handlers.js router.handle(CHANNELS.RELEASES_LIST, ...), router being new IpcRouter(\"editor\") from main.js; registered in main/handlers.js through IpcRouter.handle (main/ipc-router.js), whose body calls ipcMain.handle(channel, ...); the preload member is call(CHANNELS.X), call being a preload helper that returns (...args) => ipcRenderer.invoke(channel, ...args). preload.js listReleases"
+        },
+        {
+          "channel": "release:load",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "router.handle(CHANNELS.RELEASE_LOAD, ...); preload.js loadRelease: call(CHANNELS.RELEASE_LOAD)"
+        },
+        {
+          "channel": "release:save",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "router.handle(CHANNELS.RELEASE_SAVE, ...); preload.js saveRelease"
+        },
+        {
+          "channel": "release:delete",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "router.handle(CHANNELS.RELEASE_DELETE, ...); preload.js deleteRelease"
+        },
+        {
+          "channel": "settings:get",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "router.handle(CHANNELS.SETTINGS_GET, ...); preload.js getSettings"
+        },
+        {
+          "channel": "settings:set",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "router.handle(CHANNELS.SETTINGS_SET, ...); preload.js setSettings"
+        },
+        {
+          "channel": "export:markdown",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "main/handlers.js: for (const format of EXPORT_FORMATS) router.handle(exportChannel(format), ...), with EXPORT_FORMATS = [\"markdown\", \"html\", \"json\"] and exportChannel = (format) => `export:${format}` from shared/channels.js. One call site registers every export channel. preload.js exportMarkdown: call(exportChannel(\"markdown\"))"
+        },
+        {
+          "channel": "export:html",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "the export loop; preload.js exportHtml: call(exportChannel(\"html\"))"
+        },
+        {
+          "channel": "export:json",
+          "receivers": ["main/handlers.js"],
+          "senders": [],
+          "why": "the export loop registers it, but no preload member or page sends on it: the program has a receiver without a sender"
+        },
+        {
+          "channel": "publish:start",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "router.handle(CHANNELS.PUBLISH_START, ...); preload.js publish: call(CHANNELS.PUBLISH_START)"
+        },
+        {
+          "channel": "publish:progress",
+          "receivers": ["preload.js"],
+          "senders": ["main/publish.js"],
+          "why": "main/publish.js publishRelease: report() calls contents.send(CHANNELS.PUBLISH_PROGRESS, ...), contents being windows.editor().webContents handed in by the publish:start handler. preload.js onPublishProgress: ipcRenderer.on(CHANNELS.PUBLISH_PROGRESS, wrapped) (and removeListener on the same channel)"
+        },
+        {
+          "channel": "editor:dirty",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "main/handlers.js router.on(CHANNELS.EDITOR_DIRTY, ...), IpcRouter.on calling ipcMain.on; preload.js markDirty: ipcRenderer.send(CHANNELS.EDITOR_DIRTY, ...)"
+        },
+        {
+          "channel": "preview:open",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js ipcMain.on(CHANNELS.PREVIEW_OPEN, ...) directly, not through the router; preload.js openPreview: ipcRenderer.send(CHANNELS.PREVIEW_OPEN)"
+        },
+        {
+          "channel": "preview:update",
+          "receivers": ["main/handlers.js"],
+          "senders": ["preload.js"],
+          "why": "main/handlers.js router.on(CHANNELS.PREVIEW_UPDATE, ...); preload.js updatePreview: ipcRenderer.send(CHANNELS.PREVIEW_UPDATE, release)"
+        },
+        {
+          "channel": "preview:render",
+          "receivers": ["preload-preview.js"],
+          "senders": ["main/handlers.js"],
+          "why": "main/handlers.js, inside the preview:update listener: preview.webContents.send(CHANNELS.PREVIEW_RENDER, toHtml(release)), preview being the preview window. preload-preview.js onRender: ipcRenderer.on(\"preview:render\", ...) with the literal (a sandboxed preload)"
+        },
+        {
+          "channel": "preview:ping",
+          "receivers": ["main.js"],
+          "senders": ["preload-preview.js"],
+          "why": "main.js ipcMain.on(\"preview:ping\", ...) with the literal; preload-preview.js ping: ipcRenderer.send(\"preview:ping\")"
+        },
+        {
+          "channel": "preview:pong",
+          "receivers": ["preload-preview.js"],
+          "senders": ["main.js"],
+          "why": "main.js: event.reply(\"preview:pong\", ...) inside the preview:ping listener, which answers on the sender's webContents; preload-preview.js onPong: ipcRenderer.once(\"preview:pong\", ...)"
+        },
+        {
+          "channel": "app:info",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "main.js ipcMain.handle(\"app:info\", ...) with the literal; preload.js appInfo: ipcRenderer.invoke(\"app:info\") directly (not through call(), since this handler does not wrap its answer)"
+        }
+      ],
+      "absent": [
+        {
+          "channel": "TIDEMARK_DIAG_CHANNEL",
+          "why": "the name of an environment variable. main/handlers.js listens with router.on(diagChannel, ...) where diagChannel = process.env.TIDEMARK_DIAG_CHANNEL, and preload.js sendDiagnostics sends with ipcRenderer.send(process.env.TIDEMARK_DIAG_CHANNEL, report). The channel exists only when the variable is set, and its name is whatever the variable holds; no part of it is in the source. See unknown below"
+        },
+        {
+          "channel": "release:archive",
+          "why": "main/handlers.js: only in a comment (reserved for 2.3; nothing handles it)"
+        },
+        {
+          "channel": "sync:legacy-pull",
+          "why": "shared/channels.js LEGACY_SYNC_CHANNEL: exported, used by nobody"
+        },
+        {
+          "channel": "export:pdf",
+          "why": "main.js: the id of a disabled menu item (Menu.buildFromTemplate); it looks like an export channel but no IPC uses it, and \"pdf\" is not in EXPORT_FORMATS"
+        },
+        {
+          "channel": "release:changed",
+          "why": "renderer.js: window.dispatchEvent(new CustomEvent(\"release:changed\", ...)), a DOM event inside the page"
+        },
+        {
+          "channel": "export:",
+          "why": "the template prefix of exportChannel in shared/channels.js; only the full names built from EXPORT_FORMATS are channels"
+        },
+        {
+          "channel": "markdown",
+          "why": "an element of EXPORT_FORMATS (so are html, json), only part of export:markdown"
+        },
+        {
+          "channel": "editor",
+          "why": "main.js new IpcRouter(\"editor\"): the router's name, used in its log messages"
+        },
+        {
+          "channel": "validating",
+          "why": "main/publish.js: a stage value sent ON publish:progress (so are uploading and done)"
+        },
+        {
+          "channel": "release_published",
+          "why": "main/publish.js: the name of a telemetry event posted over HTTP"
+        },
+        {
+          "channel": "ready-to-show",
+          "why": "main/windows.js: window events (so is closed)"
+        },
+        {
+          "channel": "window-all-closed",
+          "why": "main.js app.on, an application event (so is activate)"
+        },
+        {
+          "channel": "dragstart",
+          "why": "renderer.js DOM events (so are click, input, submit, keyup, change, error); renderer-preview.js change"
+        }
+      ],
+      "unknown": 1,
+      "unknownWhy": "One channel has a name chosen at run time that no static reading can know: process.env.TIDEMARK_DIAG_CHANNEL, read in main/handlers.js (router.on(diagChannel, ...), registered only when the variable is set) and in preload.js sendDiagnostics (ipcRenderer.send(channel, report)). It has no literal part, so it cannot be listed under present. A tool that reports it as a channel with an unknown or computed name is right; one that names it with a literal (for example the variable's name) is wrong. Its bridge member is sendDiagnostics with channel null and resolvable false"
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main/windows.js",
+          "window": "editorWindow",
+          "why": "createEditorWindow: webPreferences = Object.assign({}, BASE_PREFS, { preload: appFile(\"preload.js\"), sandbox: false, webSecurity: false }), appFile joining app.getAppPath(); passed to new BrowserWindow({ ..., webPreferences }) in shorthand"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "editorWindow",
+          "why": "from BASE_PREFS, copied first by Object.assign and not overridden"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "editorWindow",
+          "why": "from BASE_PREFS"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "editorWindow",
+          "why": "the Object.assign source after BASE_PREFS overrides BASE_PREFS.sandbox (true) with false"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "editorWindow",
+          "why": "the Object.assign override replaces BASE_PREFS.webSecurity (true)"
+        },
+        {
+          "key": "preload",
+          "value": "preload-preview.js",
+          "file": "main/windows.js",
+          "window": "previewWindow",
+          "why": "class PreviewWindow has a class field webPreferences = { ...BASE_PREFS, preload: appFile(\"preload-preview.js\") }; open() passes webPreferences: this.webPreferences to new BrowserWindow. window names the module's instance const previewWindow = new PreviewWindow() (the BrowserWindow is its field win)"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "previewWindow",
+          "why": "spread from BASE_PREFS into the class field"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "previewWindow",
+          "why": "spread from BASE_PREFS"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "previewWindow",
+          "why": "spread from BASE_PREFS, not overridden"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "previewWindow",
+          "why": "spread from BASE_PREFS"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "helpWindow",
+          "why": "openHelp: a webPreferences literal in new BrowserWindow({...}); no preload, page help.html"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "helpWindow",
+          "why": "in the literal"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "helpWindow",
+          "why": "in the literal"
+        }
+      ],
+      "absent": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window loads preload.js (editorWindow); helpWindow has no preload"
+        },
+        {
+          "key": "preload",
+          "value": "preload-preview.js",
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window loads it (previewWindow)"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 4,
+          "why": "exactly three windows have it. BASE_PREFS itself is no window"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main/windows.js",
+          "why": "no window has it"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 4,
+          "why": "exactly three windows have it"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main/windows.js",
+          "why": "no window has it"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 3,
+          "why": "exactly two windows have it, previewWindow (from BASE_PREFS) and helpWindow; editorWindow overrides it"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window has it, editorWindow"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window has it, previewWindow; helpWindow writes no webSecurity"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window has it, editorWindow"
+        },
+        {
+          "key": "allowRunningInsecureContent",
+          "value": true,
+          "file": "main/windows.js",
+          "why": "no window writes allowRunningInsecureContent"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "renderer.js",
+          "why": "renderer.js HARDENING = { contextIsolation: true, nodeIntegration: false, sandbox: true }: an object with the same keys that the About panel lists as text; it configures no window"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "renderer.js",
+          "why": "HARDENING, see above"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "renderer.js",
+          "why": "HARDENING, see above"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "tidemark",
+          "member": "platform",
+          "channel": null,
+          "why": "process.platform, a value; no IPC. The API is the variable api, exposed by contextBridge.exposeInMainWorld(\"tidemark\", api) at the end of preload.js"
+        },
+        {
+          "api": "tidemark",
+          "member": "listReleases",
+          "channel": "releases:list",
+          "why": "call(CHANNELS.RELEASES_LIST): the helper call returns the function that invokes the channel"
+        },
+        {
+          "api": "tidemark",
+          "member": "loadRelease",
+          "channel": "release:load"
+        },
+        {
+          "api": "tidemark",
+          "member": "saveRelease",
+          "channel": "release:save"
+        },
+        {
+          "api": "tidemark",
+          "member": "deleteRelease",
+          "channel": "release:delete"
+        },
+        {
+          "api": "tidemark",
+          "member": "getSettings",
+          "channel": "settings:get"
+        },
+        {
+          "api": "tidemark",
+          "member": "setSettings",
+          "channel": "settings:set"
+        },
+        {
+          "api": "tidemark",
+          "member": "exportMarkdown",
+          "channel": "export:markdown",
+          "why": "call(exportChannel(\"markdown\"))"
+        },
+        {
+          "api": "tidemark",
+          "member": "exportHtml",
+          "channel": "export:html",
+          "why": "call(exportChannel(\"html\"))"
+        },
+        {
+          "api": "tidemark",
+          "member": "publish",
+          "channel": "publish:start"
+        },
+        {
+          "api": "tidemark",
+          "member": "onPublishProgress",
+          "channel": "publish:progress",
+          "why": "ipcRenderer.on, and the returned function calls removeListener on the same channel"
+        },
+        {
+          "api": "tidemark",
+          "member": "markDirty",
+          "channel": "editor:dirty"
+        },
+        {
+          "api": "tidemark",
+          "member": "openPreview",
+          "channel": "preview:open"
+        },
+        {
+          "api": "tidemark",
+          "member": "updatePreview",
+          "channel": "preview:update"
+        },
+        {
+          "api": "tidemark",
+          "member": "appInfo",
+          "channel": "app:info"
+        },
+        {
+          "api": "tidemark",
+          "member": "sendDiagnostics",
+          "channel": null,
+          "why": "ipcRenderer.send(process.env.TIDEMARK_DIAG_CHANNEL, report): the channel is chosen at run time (see ipcChannels.unknownWhy)"
+        },
+        {
+          "api": "preview",
+          "member": "onRender",
+          "channel": "preview:render",
+          "why": "preload-preview.js: exposeInMainWorld(\"preview\", { ... }), an object literal inside the call"
+        },
+        {
+          "api": "preview",
+          "member": "ping",
+          "channel": "preview:ping"
+        },
+        {
+          "api": "preview",
+          "member": "onPong",
+          "channel": "preview:pong",
+          "why": "ipcRenderer.once"
+        }
+      ],
+      "absent": [
+        {
+          "api": "tidemark",
+          "member": "call",
+          "why": "call is a helper of preload.js that builds the invoking members; not exposed"
+        },
+        {
+          "api": "api",
+          "member": "listReleases",
+          "why": "api is the variable holding the object; the world sees it as tidemark"
+        },
+        {
+          "api": "tidemark",
+          "member": "wrapped",
+          "why": "a local of onPublishProgress"
+        },
+        {
+          "api": "tidemark",
+          "member": "onRender",
+          "why": "a member of the second API, preview, exposed by preload-preview.js"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://updates.tidemark.example/desktop/latest.json",
+          "method": "GET",
+          "why": "main.js checkForUpdate: fetch(UPDATE_FEED, { headers }), called by the app:info handler"
+        },
+        {
+          "prefix": "https://api.tidemark.example/v2/projects/",
+          "method": "GET",
+          "why": "main/remote.js fetchReleases: fetch(`${API_BASE}/projects/${encodeURIComponent(project)}/releases`, ...) with API_BASE = \"https://api.tidemark.example/v2\"; the project comes from the settings file at run time. Called by the releases:list handler"
+        },
+        {
+          "value": "https://api.tidemark.example/v2/releases",
+          "method": "POST",
+          "why": "main/remote.js postRelease: fetch(`${API_BASE}/releases`, { method: \"POST\", ... }), called by publishRelease"
+        },
+        {
+          "value": "https://telemetry.tidemark.example/v1/events",
+          "method": "POST",
+          "why": "main/remote.js sendTelemetry: fetch(request), request = new Request(TELEMETRY_URL, { method: \"POST\", ... }) and TELEMETRY_URL = new URL(\"/v1/events\", \"https://telemetry.tidemark.example\").href; sent after a publish when the setting telemetry is on"
+        },
+        {
+          "prefix": "https://code.tidemark.example/api/v1/repos/",
+          "method": "GET",
+          "why": "renderer/contributors.js loadContributors: fetch(url) with url = new URL(`repos/${repo}/contributors`, CODE_API), CODE_API = \"https://code.tidemark.example/api/v1/\" (a relative path keeps /api/v1/), plus ?limit=50; repo from the settings at run time. Called from renderer.js start"
+        },
+        {
+          "prefix": "https://cdn.tidemark.example/preview/themes/",
+          "method": "GET",
+          "why": "renderer-preview.js applyTheme: fetch(`${ASSET_CDN}/themes/${encodeURIComponent(theme)}.css`), ASSET_CDN = \"https://cdn.tidemark.example/preview\"; the theme comes from a select or localStorage"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "renderer.js checkLinks: fetch(href, { method: \"HEAD\", mode: \"no-cors\" }) for every http(s) link the author wrote into an entry; the address is user text",
+      "absent": [
+        {
+          "value": "https://staging-api.tidemark.example/v2",
+          "why": "main/remote.js STAGING_API: a constant nothing uses"
+        },
+        {
+          "value": "https://docs.tidemark.example/writing-release-notes",
+          "why": "main.js DOCS_URL: only given to shell.openExternal from the Help menu"
+        },
+        {
+          "value": "https://api.tidemark.example/v2",
+          "why": "renderer.js showAbout writes this text into #api-hint; no request goes to the base itself (main/remote.js only requests paths below it)"
+        },
+        {
+          "value": "https://telemetry.tidemark.example",
+          "why": "the base argument of new URL(\"/v1/events\", ...); the request goes to /v1/events"
+        },
+        {
+          "value": "https://code.tidemark.example/repos/",
+          "why": "a wrong reading of new URL(`repos/...`, CODE_API): a relative path keeps /api/v1/"
+        },
+        {
+          "value": "https://code.example/acme/widgets/pull/123",
+          "why": "index.html: part of the placeholder text of the entry field"
+        },
+        {
+          "value": "index.html",
+          "why": "main/windows.js loadFile(\"index.html\"), loadFile(\"preview.html\"), loadFile(\"help.html\"): files of the package"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "file",
+          "value": "tidemark-settings.json",
+          "ops": ["read", "write"],
+          "why": "main/store.js settings.read / settings.write: fs.readFileSync / fs.writeFileSync of the whole JSON at path.join(app.getPath(\"userData\"), SETTINGS_FILE); used by the settings, releases:list and publish:start handlers. Kind file as in holdout4"
+        },
+        {
+          "kind": "file",
+          "value": "tidemark-drafts.json",
+          "ops": ["read", "write"],
+          "why": "main/store.js drafts: every draft by id in one JSON file, read by all/get and rewritten whole by put and remove (release:delete)"
+        },
+        {
+          "kind": "localStorage",
+          "value": "tidemark.lastProject",
+          "ops": ["read", "write"],
+          "why": "renderer.js local.get(LAST_PROJECT) in start, local.set(LAST_PROJECT, ...) on the project field; local from renderer/web-store.js builds the key as `${PREFIX}${name}` with PREFIX = \"tidemark.\" and LAST_PROJECT = \"lastProject\""
+        },
+        {
+          "kind": "localStorage",
+          "value": "tidemark.fontSize",
+          "ops": ["read", "write", "delete"],
+          "why": "renderer.js local.get(FONT_SIZE), local.set(FONT_SIZE, ...) on the font field, local.remove(FONT_SIZE) on the reset button (localStorage.removeItem)"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "tidemark.cursor",
+          "ops": ["read", "write"],
+          "why": "renderer.js session.get(CURSOR) in start, session.set(CURSOR, ...) in open and on keyup"
+        },
+        {
+          "kind": "localStorage",
+          "value": "preview.theme",
+          "ops": ["read", "write"],
+          "why": "renderer-preview.js: localStorage.getItem(THEME_KEY) at start, setItem(THEME_KEY, theme) in applyTheme"
+        }
+      ],
+      "absent": [
+        {
+          "value": "lastProject",
+          "why": "the name handed to the web-store helper; the stored key is tidemark.lastProject (so are fontSize and cursor)"
+        },
+        {
+          "value": "tidemark.",
+          "why": "renderer/web-store.js PREFIX, only the start of each key"
+        },
+        {
+          "value": "token",
+          "why": "a field of the object in tidemark-settings.json (so are project, repo, theme, telemetry); the file is the storage entry"
+        },
+        {
+          "value": "userData",
+          "why": "main/store.js: the argument of app.getPath"
+        },
+        {
+          "value": "text/markdown",
+          "why": "renderer.js: the format of dataTransfer.setData during drag, and a Blob type"
+        },
+        {
+          "value": "x-tidemark-client",
+          "why": "main/remote.js: a request header"
+        },
+        {
+          "value": "limit",
+          "why": "renderer/contributors.js: a query parameter"
+        }
+      ]
+    },
+    "interfaceLinks": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "tidemark",
+          "member": "platform",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 15,
+          "ends": [],
+          "resolvable": true,
+          "why": "no IPC"
+        },
+        {
+          "api": "tidemark",
+          "member": "listReleases",
+          "channel": "releases:list",
+          "preload": "preload.js",
+          "memberLine": 16,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 11
+            }
+          ],
+          "resolvable": true,
+          "why": "the receiver is ipcMain.handle inside IpcRouter.handle (main/ipc-router.js line 16); entryFile/entryLine is the router.handle call in main/handlers.js. On the sending side the ipcRenderer.invoke is on preload.js line 9, inside the helper call"
+        },
+        {
+          "api": "tidemark",
+          "member": "loadRelease",
+          "channel": "release:load",
+          "preload": "preload.js",
+          "memberLine": 17,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 19
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "saveRelease",
+          "channel": "release:save",
+          "preload": "preload.js",
+          "memberLine": 18,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 20
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "deleteRelease",
+          "channel": "release:delete",
+          "preload": "preload.js",
+          "memberLine": 19,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 21
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "getSettings",
+          "channel": "settings:get",
+          "preload": "preload.js",
+          "memberLine": 20,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 27
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "setSettings",
+          "channel": "settings:set",
+          "preload": "preload.js",
+          "memberLine": 21,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 31
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "exportMarkdown",
+          "channel": "export:markdown",
+          "preload": "preload.js",
+          "memberLine": 22,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 37
+            }
+          ],
+          "resolvable": true,
+          "why": "one router.handle in the for loop over EXPORT_FORMATS (shared/channels.js line 21) registers every export channel"
+        },
+        {
+          "api": "tidemark",
+          "member": "exportHtml",
+          "channel": "export:html",
+          "preload": "preload.js",
+          "memberLine": 23,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 37
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "publish",
+          "channel": "publish:start",
+          "preload": "preload.js",
+          "memberLine": 24,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 16,
+              "api": "ipcMain.handle",
+              "entryFile": "main/handlers.js",
+              "entryLine": 44
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "onPublishProgress",
+          "channel": "publish:progress",
+          "preload": "preload.js",
+          "memberLine": 25,
+          "ends": [
+            {
+              "file": "main/publish.js",
+              "line": 9,
+              "api": "webContents.send"
+            }
+          ],
+          "resolvable": true,
+          "why": "contents.send inside report() of publishRelease; the three report(...) calls that trigger it are no ends"
+        },
+        {
+          "api": "tidemark",
+          "member": "markDirty",
+          "channel": "editor:dirty",
+          "preload": "preload.js",
+          "memberLine": 30,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 28,
+              "api": "ipcMain.on",
+              "entryFile": "main/handlers.js",
+              "entryLine": 50
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "openPreview",
+          "channel": "preview:open",
+          "preload": "preload.js",
+          "memberLine": 31,
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 29,
+              "api": "ipcMain.on"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "updatePreview",
+          "channel": "preview:update",
+          "preload": "preload.js",
+          "memberLine": 32,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 28,
+              "api": "ipcMain.on",
+              "entryFile": "main/handlers.js",
+              "entryLine": 56
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "appInfo",
+          "channel": "app:info",
+          "preload": "preload.js",
+          "memberLine": 33,
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 23,
+              "api": "ipcMain.handle"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "tidemark",
+          "member": "sendDiagnostics",
+          "channel": null,
+          "preload": "preload.js",
+          "memberLine": 34,
+          "ends": [
+            {
+              "file": "main/ipc-router.js",
+              "line": 28,
+              "api": "ipcMain.on",
+              "entryFile": "main/handlers.js",
+              "entryLine": 64
+            }
+          ],
+          "resolvable": false,
+          "why": "both ends read process.env.TIDEMARK_DIAG_CHANNEL, so a reader of the program knows they meet (when the variable is set), but no static reading gives the channel name"
+        },
+        {
+          "api": "preview",
+          "member": "onRender",
+          "channel": "preview:render",
+          "preload": "preload-preview.js",
+          "memberLine": 6,
+          "ends": [
+            {
+              "file": "main/handlers.js",
+              "line": 58,
+              "api": "webContents.send"
+            }
+          ],
+          "resolvable": true,
+          "why": "the send is inside the preview:update listener of main/handlers.js"
+        },
+        {
+          "api": "preview",
+          "member": "ping",
+          "channel": "preview:ping",
+          "preload": "preload-preview.js",
+          "memberLine": 7,
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 33,
+              "api": "ipcMain.on"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "preview",
+          "member": "onPong",
+          "channel": "preview:pong",
+          "preload": "preload-preview.js",
+          "memberLine": 8,
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 34,
+              "api": "event.reply"
+            }
+          ],
+          "resolvable": true,
+          "why": "event.reply in the preview:ping listener sends to the frame that sent the ping"
+        }
+      ],
+      "absent": [
+        {
+          "api": null,
+          "member": null,
+          "file": "main/handlers.js",
+          "line": 25,
+          "why": "a comment naming release:archive; the end of no member"
+        },
+        {
+          "api": null,
+          "member": null,
+          "file": "shared/channels.js",
+          "line": 25,
+          "why": "an unused channel constant"
+        },
+        {
+          "api": null,
+          "member": null,
+          "file": "main.js",
+          "line": 43,
+          "why": "a menu item id"
+        },
+        {
+          "api": "tidemark",
+          "member": "exportMarkdown",
+          "file": "main/handlers.js",
+          "line": 40,
+          "why": "the body of the export handler, not the registration; the end is the ipcMain.handle in main/ipc-router.js"
+        }
+      ]
+    }
+  }
+}

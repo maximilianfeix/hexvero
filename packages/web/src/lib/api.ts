@@ -1,4 +1,8 @@
-/** Typed client for the hexvero HTTP API. The session token travels in the URL hash. */
+/**
+ * Typed client for the hexvero HTTP API. The session token arrives once in the URL hash
+ * (`#token=…`, printed by `hexvero ui`); it is moved to storage and removed from the address bar
+ * on load, so it is not in copied links, history entries, screenshots of the URL or reports.
+ */
 
 export interface TargetInfo {
   path: string;
@@ -79,13 +83,32 @@ export interface Place {
   role?: string;
 }
 export interface ChangeRow {
+  /** Stable id (contract C3); the client fills it in when an older server leaves it out. */
+  id: string;
   collection: string;
   change: "added" | "removed" | "changed" | "unknown";
   key: string;
+  /** In b for added and changed rows, in a for removed ones; `[]` when no position is known. */
   where: Place[];
+  /** Changed rows: where the item was read in a (C3). Absent from older servers. */
+  whereBefore?: Place[];
   basis?: string;
   fields?: Array<{ field: string; before: unknown; after: unknown }>;
   reason?: string;
+}
+/** How much of one collection was compared (contract C1). */
+export interface CompareCompleteness {
+  compared: { a: number; b: number };
+  total: { a: number; b: number };
+  complete: boolean;
+  gaps: string[];
+}
+/** Which rows of the comparison `changes` holds (contract C3). */
+export interface ComparisonPage {
+  offset: number;
+  limit: number;
+  total: number;
+  next: number | null;
 }
 export interface CollectionComparison {
   collection: string;
@@ -119,6 +142,9 @@ export interface ReleaseComparison {
   changes: ChangeRow[];
   cut: Array<{ collection: string; shown: number; total: number }>;
   limitations: { a: Limitation[]; b: Limitation[] };
+  /** Per collection (C3); absent from older servers. */
+  completeness?: Record<string, CompareCompleteness>;
+  page: ComparisonPage;
 }
 export interface SourceWindow {
   file: string;
@@ -143,21 +169,55 @@ export class HttpError extends Error {
   }
 }
 
-const token = (): string => {
-  const fromHash = new URLSearchParams(window.location.hash.slice(1)).get("token");
-  if (fromHash) return fromHash;
+const TOKEN_KEY = "hexvero.token";
+/** Kept in memory as well, for a browser that refuses storage. */
+let memoryToken = "";
+
+/**
+ * Moves `#token=…` out of the address bar. The token goes to localStorage (same origin only: the
+ * loopback port of this server) so a reload and a link opened in a new tab keep working; it is
+ * left in the URL only when storage refuses it, because a reload would otherwise lock the page.
+ * Exported for the unit test; runs once when this module loads.
+ */
+export function adoptHashToken(
+  location: Pick<Location, "hash" | "pathname" | "search">,
+  storage: Pick<Storage, "setItem"> | null,
+  replace: (url: string) => void,
+): string {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const t = hash.get("token");
+  if (!t) return "";
+  memoryToken = t;
   try {
-    return localStorage.getItem("hexvero.token") ?? "";
+    if (!storage) return t;
+    storage.setItem(TOKEN_KEY, t);
   } catch {
-    return "";
+    return t;
+  }
+  hash.delete("token");
+  replace(`${location.pathname}${location.search}${hash.size ? `#${hash}` : ""}`);
+  return t;
+}
+
+const token = (): string => {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? memoryToken;
+  } catch {
+    return memoryToken;
   }
 };
-try {
-  const t = new URLSearchParams(window.location.hash.slice(1)).get("token");
-  if (t) localStorage.setItem("hexvero.token", t);
-} catch {
-  /* storage unavailable */
-}
+if (typeof window !== "undefined")
+  adoptHashToken(
+    window.location,
+    (() => {
+      try {
+        return window.localStorage;
+      } catch {
+        return null;
+      }
+    })(),
+    (url) => window.history.replaceState(window.history.state, "", url),
+  );
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -171,10 +231,50 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* non-JSON error body */
     }
+    if (res.status === 401)
+      error.message = `${error.message}. Open the link that \`hexvero ui\` printed in the terminal again.`;
     throw new HttpError(res.status, error.code, error.message);
   }
   return (await res.json()) as T;
 }
+
+/** A short, stable id for a row from a server that does not send one (before contract C3). */
+export function fallbackRowId(row: Pick<ChangeRow, "collection" | "change" | "key">): string {
+  // FNV-1a, 64 bit: not a security hash, only a key for the URL and React.
+  let h = 0xcbf29ce484222325n;
+  for (const byte of new TextEncoder().encode(`${row.collection}\0${row.change}\0${row.key}`)) {
+    h ^= BigInt(byte);
+    h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return h.toString(16).padStart(16, "0");
+}
+
+type WireComparison = Omit<ReleaseComparison, "changes" | "page"> & {
+  changes: Array<Omit<ChangeRow, "id"> & { id?: string }>;
+  page?: ComparisonPage;
+};
+
+/**
+ * Fills in what an older server leaves out (row ids, the page) so the views code against
+ * contract C3 only. Rows without a page were all sent at once.
+ */
+export function normalizeComparison(wire: WireComparison, offset = 0): ReleaseComparison {
+  const changes = wire.changes.map((row) => ({ ...row, id: row.id ?? fallbackRowId(row) }));
+  const cutRows = wire.cut.reduce((n, c) => n + Math.max(0, c.total - c.shown), 0);
+  return {
+    ...wire,
+    changes,
+    page: wire.page ?? {
+      offset,
+      limit: changes.length,
+      total: offset + changes.length + cutRows,
+      next: null,
+    },
+  };
+}
+
+/** Comparison pages that arrived; a pending or failed request is not kept. */
+const comparisons = new Map<string, ReleaseComparison>();
 
 const cache = new Map<string, Promise<unknown>>();
 const CACHE_LIMIT = 400;
@@ -252,12 +352,26 @@ export const api = {
     download(`/api/targets/${id}/export`, "analysis.hexvero.json"),
   /** Opens the two example builds that ship with hexvero. */
   demo: () => request<{ a: TargetRecord; b: TargetRecord }>("/demo", { method: "POST" }),
-  compare: (a: string, b: string) => cached<ReleaseComparison>(`/compare?${params({ a, b })}`),
+  /** One page of the comparison; `signal` cancels the wait (the server finishes its work). */
+  compare: async (
+    a: string,
+    b: string,
+    q: { offset?: number; limit?: number; signal?: AbortSignal } = {},
+  ): Promise<ReleaseComparison> => {
+    const path = `/compare?${params({ a, b, offset: q.offset, limit: q.limit })}`;
+    const hit = comparisons.get(path);
+    if (hit) return hit;
+    const init: RequestInit = q.signal ? { signal: q.signal } : {};
+    const result = normalizeComparison(await request<WireComparison>(path, init), q.offset ?? 0);
+    if (comparisons.size >= 40) comparisons.delete(comparisons.keys().next().value!);
+    comparisons.set(path, result);
+    return result;
+  },
   /** The comparison as a Markdown report, saved like the JSON export. */
   downloadReport: (a: string, b: string): Promise<void> =>
     download(`/api/compare/report?${params({ a, b })}`, "hexvero-report.md"),
-  source: (id: string, file: string, line: number) =>
-    cached<SourceWindow>(`/targets/${id}/source?${params({ file, line, context: 14 })}`),
+  source: (id: string, file: string, line: number, context = 14) =>
+    cached<SourceWindow>(`/targets/${id}/source?${params({ file, line, context })}`),
 };
 
 /**

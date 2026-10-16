@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/maximilianfeix/hexvero/main/docs/policy.schema.json",
+  "hexvero": "policy",
+  "version": 1,
+  "rules": {
+    "new-interface-member": { "level": "fail" },
+    "new-external-host": {
+      "level": "fail",
+      "allow": ["api.notesdesk.example", "telemetry.notesdesk.example", "*.cdn.notesdesk.example"]
+    },
+    "window-more-permissive": { "level": "fail" }
+  },
+  "unknown": "fail",
+  "suppressions": []
+}

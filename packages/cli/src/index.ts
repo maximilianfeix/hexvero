@@ -5,7 +5,9 @@ import {
   Session,
   compact,
   compareReleases,
+  collectReleaseSources,
   renderReleaseReport,
+  renderReleaseReportHtml,
   loadCallGraph,
   MAX_PAGE_BYTES,
   neighborhood,
@@ -51,10 +53,15 @@ Commands
   compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
                                                 Added, removed and changed items between two builds;
                                                 without a collection, counts for every shared one
-  compare <a> <b> --report file.md [--force] [--offset n] [--limit n]
-                                                Write a Markdown report: summary, changes with
-                                                file:line (200 rows per page), what could not be
-                                                established
+  compare <a> <b> --report file.md|file.html [--force] [--offset n] [--limit n]
+                                                Write a report: summary, changes with file:line
+                                                (200 rows per page), what could not be established;
+                                                .html/.htm writes one offline page with source
+                                                excerpts and filters, anything else Markdown
+  check <before> <after> --policy <file>        Apply a release policy (new interface members, new
+        [--baseline file] [--update-baseline]   external hosts, more permissive windows); exit 0
+        [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
+        [--out file] [--force]                  the result (never over a file without --force)
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -81,7 +88,8 @@ Options
   -h, --help  Show help
   -v, --version
 
-Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces`;
+Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces
+            check also: 2 invalid policy · 3 policy violated · 4 incomplete (unknown: fail)`;
 
 export async function main(argv: string[], io: Io = defaultIo()): Promise<number> {
   let args: ParsedArgs;
@@ -388,7 +396,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           offset: flagNumber(args.flags, "offset"),
           limit: flagNumber(args.flags, "limit"),
         });
-        const text = renderReleaseReport(comparison);
+        // .html/.htm: the self-contained page with source excerpts; anything else: Markdown
+        const text = /\.html?$/i.test(report)
+          ? renderReleaseReportHtml(comparison, await collectReleaseSources(session, comparison))
+          : renderReleaseReport(comparison);
         try {
           await writeFile(report, text, { flag: args.flags["force"] ? "w" : "wx" });
         } catch (error) {
@@ -617,6 +628,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           ),
         );
       return 0;
+    }
+    case "check": {
+      const { runCheck } = await import("./check.js");
+      return runCheck(args, io, session);
     }
     case "export": {
       const target = await session.open(need(0, "path"));

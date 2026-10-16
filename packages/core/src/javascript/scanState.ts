@@ -27,6 +27,20 @@ export function scanKey(info: TargetInfo, tree: FileTree): string | null {
   if (tree.kind === "asar") {
     if (!info.sha256) return null;
     digest.update(info.sha256);
+    // Unpacked entries are read from `<archive>.unpacked/`, outside the hashed bytes: whether each
+    // is there, and its size and time, are part of the input too.
+    for (const file of tree.files
+      .filter((f) => f.unpacked)
+      .toSorted((a, b) => (a.path < b.path ? -1 : 1))) {
+      let seen = "absent";
+      try {
+        const st = statSync(join(`${tree.root}.unpacked`, ...file.path.split("/")));
+        seen = `${st.size}\u0000${Math.round(st.mtimeMs)}`;
+      } catch {
+        // missing or unreadable: recorded as absent, so adding the file later changes the key
+      }
+      digest.update(`unpacked\u0000${file.path}\u0000${seen}\u0000`);
+    }
   } else {
     // A directory has no single content hash: its identity is every file's path, size and
     // modification time. Editing, adding or removing a file changes it.

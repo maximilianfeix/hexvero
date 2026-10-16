@@ -715,7 +715,7 @@ export async function runProvider(
     throw new AnalysisError(
       "provider_unavailable",
       `${request.provider} exceeded ${timeoutMs} ms and was killed`,
-      { timeoutMs },
+      { reason: "timeout", timeoutMs },
     );
   if (run.truncated && !graphOutputComplete)
     limitations.push({

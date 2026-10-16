@@ -71,6 +71,8 @@ jobs:
         run: npm run e2e
       - name: The committed examples are what the generator produces
         run: git diff --exit-code -- examples
+      - name: The website's example comparison is what the current build produces
+        run: node scripts/build-site-demo.mjs --check
       - name: The corpus inputs rebuild to the committed bytes
         run: node corpus/build.mjs --check
       - name: No corpus result is worse than the committed one

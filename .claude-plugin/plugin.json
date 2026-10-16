@@ -1,7 +1,7 @@
 {
   "name": "hexvero",
   "version": "0.8.0",
-  "description": "Evidence-first, execution-free analysis of binaries, Electron apps, APKs and archives: inspect, trace Electron interfaces, compare builds. An MCP server with 15 tools and a skill for investigations.",
+  "description": "Evidence-first, execution-free analysis of binaries, Electron apps, APKs and archives: inspect, trace Electron interfaces, compare builds. An MCP server with 16 tools and a skill for investigations.",
   "author": { "name": "Maximilian Feix", "url": "https://github.com/maximilianfeix" },
   "homepage": "https://github.com/maximilianfeix/hexvero",
   "repository": "https://github.com/maximilianfeix/hexvero",

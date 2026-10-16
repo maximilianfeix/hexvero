@@ -13,18 +13,20 @@ A static reading of both files by hexvero 0.8.0. Neither file was executed. Each
 
 | collection | added | removed | changed | unknown | unchanged |
 | --- | --: | --: | --: | --: | --: |
-| findings | 4 | 6 | 0 | 0 | 1 |
-| limitations | 1 | 0 | 0 | 0 | 0 |
 | modules | 0 | 0 | 3 | 0 | 1 |
-| ipcChannels | 1 | 1 | 0 | 0 | 5 |
+| ipcChannels (partial) | 1 | 0 | 0 | 1 | 5 |
 | webPreferences | 0 | 0 | 2 | 0 | 2 |
 | windows | 0 | 0 | 1 | 0 | 0 |
 | contextBridge | 1 | 1 | 0 | 0 | 5 |
-| interfaces | 1 | 1 | 0 | 0 | 5 |
-| ipc | 3 | 2 | 0 | 0 | 11 |
+| interfaces (partial) | 1 | 1 | 0 | 0 | 5 |
+| ipc (partial) | 3 | 1 | 0 | 1 | 11 |
 | endpoints | 1 | 0 | 0 | 0 | 2 |
 | storage | 1 | 0 | 0 | 0 | 1 |
 | urls | 1 | 0 | 0 | 0 | 2 |
+
+hexvero's own findings differ (1 added, 3 removed, 3 changed): its description of each build, not a change in the app.
+
+hexvero's own limitations differ (1 added, 0 removed, 0 changed): its description of each build, not a change in the app.
 
 ## Window settings to review
 
@@ -34,6 +36,8 @@ A static reading of both files by hexvero 0.8.0. Neither file was executed. Each
 Whether a change matters depends on what the window loads; this is a fact to review, not a verdict.
 
 ## Changes
+
+12 of 12 rows shown.
 
 ### interfaces
 
@@ -48,7 +52,8 @@ Whether a change matters depends on what the window loads; this is a fact to rev
 ### ipcChannels
 
 - **+ added** `update:check` — in b: receiver `main.js:30`, sender `preload.js:9`
-- **− removed** `shell:open` — in a: receiver `main.js:30`, sender `preload.js:9`
+- **? unknown** `shell:open` — in a: receiver `main.js:30`, sender `preload.js:9`
+  - the other side has values there that could not be resolved
 
 ### windows
 
@@ -79,7 +84,11 @@ Whether a change matters depends on what the window loads; this is a fact to rev
 
 ## Not established
 
-- b: `ipc_channel_unresolved` 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ipcMain.handle at main.js:33.
+- 1 row(s) shown are unknown: found on one side where the other side did not read the file, or has values there it could not resolve. Neither added nor removed.
+- interfaces is not whole (values_unresolved): compared 6 of 6 item(s) in a and 6 of 6 in b.
+- ipcChannels is not whole (values_unresolved): compared 6 of 6 item(s) in a and 6 of 6 in b.
+- ipc is not whole (values_unresolved): compared 13 of 13 item(s) in a and 14 of 14 in b.
+- b: `ipc_channel_unresolved` 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ipcMain.handle at main.js:33 (evaluation stopped: runtime value: process).
 - Absence from a list means hexvero did not find it in the files it read, not that the app cannot do it.
 - Values computed at run time are shown as `${…}` or left out; nothing here was observed running.
 

@@ -6,6 +6,61 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### MCP
+
+- `hexvero_check` (16th tool, read-only): the release policy check over MCP with an inline
+  `policy` or a `policyPath`, an optional read-only `baselinePath`, JSON/Markdown/SARIF output,
+  findings paged under a 256 KiB result budget. Baselines are written only by the CLI.
+- **Breaking:** `hexvero_compare` pages one list at a time: pass `list` (`added`, `removed`,
+  `changed`, `unknown`) with `offset`; `offset` without `list` is refused with `invalid_input`.
+  One offset applied to four lists of different lengths returned wrong pages before.
+- Catalog: 16 tools, `tools/list` 15,637 bytes (was 14,156 with 15 tools).
+
+### Release policies
+
+- `hexvero check <before> <after> --policy <file>` applies a JSON release policy to the
+  comparison of two builds: `new-interface-member` (a member pages can call that is new),
+  `new-external-host` (a new host outside the `allow` list; exact names and `*.domain`), and
+  `window-more-permissive`. Exit codes: `0` pass, `1` technical error, `2` usage error or invalid
+  policy, `3` policy violated, `4` not decidable under `unknown: fail`.
+- Policies are data only, validated with a message per problem and described by
+  `docs/policy.schema.json` (JSON Schema 2020-12). Unknowns (a host computed at run time, an
+  unresolved IPC channel, a file not read) are never a pass: `unknown: fail` makes the check
+  incomplete, `warn` and `allow` let it pass and keep them listed.
+- Findings carry fingerprints made from what they are about (member, host, window setting), not
+  lines, so `--baseline file --update-baseline` accepts the current findings once and later runs
+  only fail on new ones. Suppressions take a reason and an optional `expires` date; an expired
+  one counts as new again.
+- Output as text, JSON, Markdown or SARIF 2.1.0 from the same result; `--out` never replaces a
+  file without `--force`. SARIF locations are paths inside the analyzed build
+  (`uriBaseId: HEXVERO_TARGET_B`), never mapped onto repository files.
+- `hexvero demo` also copies the example policy (`policy.json`) and prints the `check` command;
+  `docs/ci.md` and `.github/workflows/check-example.yml` show the check in GitHub Actions with
+  an optional, least-privilege code-scanning upload.
+
+### JavaScript analysis
+
+- IPC channel names built by a channel-registry function are read:
+  `const BOARD = defineChannels("board", ["list", "moveCard"])` with a body that loops over the
+  list and writes `` `${prefix}:${kebab(name)}` `` into a fresh object, also with `forEach`,
+  `map` and `Object.fromEntries`, across CommonJS and ES modules, in esbuild bundles (also
+  minified) and in functions of a webpack-style bundle. Such rows say
+  `via: "resolved", resolution.method: "evaluated"`. Function bodies are read by a small,
+  explicitly listed abstract evaluation (resolve.ts); nothing of the analyzed code is run.
+  Where it stops (a statement outside the subset, too many values, a depth or work limit, a
+  cycle, a value known only at run time) the call keeps no channel, carries a `reason`, and
+  `ipc_channel_unresolved` names it, also for a channel named through another module's table
+  that the module could not read (before, those were dropped from the limitation silently).
+  A registry function imported from a third module (unbundled) is not followed yet; such calls
+  are named with that reason. The evaluation is bounded on hostile input: regular expressions
+  with at most one quantified atom, strings of at most 1,000 characters, at most 64 nested
+  blocks, and an exception inside it ends that question with a reason, not the analysis.
+- Interface rows (C4) compute `direction` and `link` from every matching end and say how many
+  there are: `endsTotal`, `endsTruncated`; `ends` keeps the first 20 as evidence.
+- Hold-out results improved with no new false report: window settings read through bundled
+  modules (holdout2, holdout4) and bridge member channels named by a bundled module's table
+  (holdout2).
+
 ## [0.8.0] - 2026-10-16
 
 ### Compare releases
@@ -19,6 +74,15 @@ All notable changes to hexvero are listed here. The format follows
   changes with places, a section for what could not be established, and the command to
   reproduce it. Deterministic (no dates, no directories); text from the targets is quoted so it
   cannot add links, HTML or a shell command of its own. Refuses to overwrite without `--force`.
+- `hexvero compare <a> <b> --report report.html` (or `.htm`) writes the same comparison as one
+  self-contained, offline HTML page: summary, window settings to review, changes per list with
+  sign and word, before/after places with the seven source lines around each (at most 200
+  excerpts and 250,000 characters, said when cut), completeness gaps, "Not established", "N of M
+  rows shown" and the reproduce command. Filters by kind, list and text run in one inline script
+  allowed by its sha256 in a strict Content-Security-Policy (`default-src 'none'`); the page reads
+  the same with JavaScript off, loads nothing and links nothing from target text. Target text is
+  escaped, and bidi, zero-width and control characters show as `⟨U+202E⟩`. Other extensions
+  still write Markdown; `--force`, `--offset` and `--limit` apply to both.
 - A list one build does not have at all (the first endpoint, the first storage key) is now
   reported row by row as added or removed, or as unknown when the other build was read only in
   part. Before, the comparison only said "only in b: endpoints".

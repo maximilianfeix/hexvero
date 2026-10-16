@@ -81,7 +81,9 @@ const fail = (res: ServerResponse, error: unknown): void => {
       error.code === "not_found"
         ? 404
         : error.code === "too_large"
-          ? 413
+          ? (error.details as { reason?: unknown } | undefined)?.reason === "timeout"
+            ? 503 // the analysis ran out of time; the input is not necessarily too big
+            : 413
           : error.code === "cancelled"
             ? 499
             : error.code === "provider_unavailable"
@@ -117,6 +119,27 @@ async function readBody(req: IncomingMessage, max: number): Promise<Uint8Array> 
     chunks.push(buf);
   }
   return new Uint8Array(Buffer.concat(chunks));
+}
+
+/** Rows per comparison response at most (contract C3: the server pages at 500). */
+const COMPARE_MAX_ROWS = 500;
+/** Rows in a downloaded report: the core's largest page. */
+const REPORT_MAX_ROWS = 5000;
+
+/**
+ * One page of the comparison (contract C3/C7). `offset` and `limit` go to the core; a core that
+ * does not page yet (no `page` in its result) returns every row, and the page is cut here, so the
+ * client sees the same shape either way.
+ */
+/** One page of the release comparison; the core pages the rows and reports `page`. */
+function comparePage(
+  session: Session,
+  a: string,
+  b: string,
+  offset: number,
+  limit: number,
+): ReturnType<typeof compareReleases> {
+  return compareReleases(session, a, b, { offset, limit });
 }
 
 /**
@@ -188,6 +211,12 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         throw new AnalysisError("invalid_input", `${key} must be a non-negative number`);
       return value;
     };
+    const whole = (key: string): number | undefined => {
+      const value = num(key);
+      if (value !== undefined && !Number.isSafeInteger(value))
+        throw new AnalysisError("invalid_input", `${key} must be a whole number`);
+      return value;
+    };
     const paging = (): { offset?: number; limit?: number; text?: string; maxBytes?: number } => {
       const out: { offset?: number; limit?: number; text?: string; maxBytes?: number } = {};
       const maxBytes = num("maxBytes");
@@ -229,11 +258,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       const [a, b] = [q.get("a"), q.get("b")];
       if (!a || !b) throw new AnalysisError("invalid_input", "a and b (target ids) are required");
       if (a === b) throw new AnalysisError("invalid_input", "pick two different targets");
-      const comparison = await compareReleases(session, a, b, {
-        offset: num("offset"),
-        limit: num("limit", 500),
-      });
       if (parts[1] === "report" && parts.length === 2) {
+        // The report is the whole review: no client paging, the core's own row limit.
+        // up to the core's largest page; the report itself says how many rows it holds
+        const comparison = await compareReleases(session, a, b, { limit: REPORT_MAX_ROWS });
         res.writeHead(200, {
           "content-type": "text/markdown; charset=utf-8",
           "cache-control": "no-store",
@@ -242,7 +270,12 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         res.end(renderReleaseReport(comparison));
         return;
       }
-      if (parts.length === 1) return json(res, 200, comparison);
+      if (parts.length === 1) {
+        const offset = whole("offset") ?? 0;
+        const limit = Math.min(whole("limit") ?? COMPARE_MAX_ROWS, COMPARE_MAX_ROWS);
+        if (limit < 1) throw new AnalysisError("invalid_input", "limit must be at least 1");
+        return json(res, 200, await comparePage(session, a, b, offset, limit));
+      }
     }
     if (req.method === "POST" && parts[0] === "uploads") {
       const name = (q.get("name") ?? "upload.bin").replace(/[^\w.@()-]+/g, "_");

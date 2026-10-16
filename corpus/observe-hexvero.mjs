@@ -4,6 +4,11 @@
  * observation format. It knows nothing about the expected results.
  *
  *   npm run build && node corpus/observe-hexvero.mjs [--out file.json] [--engines radare2,rizin]
+ *        [--core path/to/packages/core]
+ *
+ * --core measures another build of hexvero (for example a worktree of an older commit) with this
+ * observer; it names the `packages/core` directory whose `dist/` is loaded, and the version and
+ * commit in the result are read from there. The default is this checkout's `packages/core`.
  *
  * A scratch cache directory is used, so stored scans and cached graphs of earlier runs cannot
  * leak into the observations.
@@ -12,6 +17,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { builtRoot, corpusRoot, loadCases } from "./cases.mjs";
 
 const arg = (name, fallback) => {
@@ -20,7 +26,8 @@ const arg = (name, fallback) => {
 };
 const cache = mkdtempSync(join(tmpdir(), "hexvero-corpus-cache-"));
 process.env.HEXVERO_CACHE_DIR = cache;
-const core = await import("../packages/core/dist/index.js");
+const coreDir = resolve(arg("core", resolve(corpusRoot, "../packages/core")));
+const core = await import(pathToFileURL(join(coreDir, "dist", "index.js")).href);
 const out = resolve(arg("out", join(corpusRoot, "results", "hexvero.observations.json")));
 const engines = arg("engines", "radare2,rizin").split(",").filter(Boolean);
 const available = new Map((await core.detectProviders()).map((p) => [p.name, p]));
@@ -67,6 +74,10 @@ async function electron(path) {
         evidence: e.evidence,
       })),
     endpointsUnreadable: endpoints.filter((e) => e.value === null).length,
+    // IPC calls listed without a channel (a parameter or a computed value), with their place.
+    ipcUnreadable: (await all(session, target.id, "ipc"))
+      .filter((u) => u.channel === null && !String(u.api).startsWith("contextBridge."))
+      .map((u) => `${u.api} at ${u.file}:${u.line}`),
     storage: [...storage.values()],
   };
 }
@@ -206,7 +217,7 @@ async function native(path, expect, engine) {
 function robust(path, seconds) {
   const script = `
     process.env.HEXVERO_CACHE_DIR = ${JSON.stringify(cache)};
-    const core = await import(${JSON.stringify(resolve(corpusRoot, "../packages/core/dist/index.js"))});
+    const core = await import(${JSON.stringify(pathToFileURL(join(coreDir, "dist", "index.js")).href)});
     const session = new core.Session();
     try {
       const t = await session.open(${JSON.stringify(path)});
@@ -236,7 +247,10 @@ try {
     if (c.kind === "electron")
       for (const input of c.inputs)
         observations[input] = { electron: await electron(join(builtRoot, input)) };
-    else if (c.kind === "compare")
+    else if (c.kind === "compare") {
+      // A comparison case may also list the single-build facts of its later input.
+      for (const input of c.inputs ?? [])
+        observations[input] = { electron: await electron(join(builtRoot, input)) };
       observations[`compare:${c.a}|${c.b}`] = {
         compare: await compare(
           join(builtRoot, c.a),
@@ -244,7 +258,7 @@ try {
           Object.keys(c.expect.compare),
         ),
       };
-    else if (c.kind === "native")
+    } else if (c.kind === "native")
       for (const input of c.inputs)
         for (const engine of engines)
           observations[`native:${input}:${engine}`] = {
@@ -260,16 +274,16 @@ try {
   await core.killEngines?.();
   rmSync(cache, { recursive: true, force: true });
 }
-const pkg = JSON.parse(readFileSync(resolve(corpusRoot, "../packages/core/package.json"), "utf8"));
+const pkg = JSON.parse(readFileSync(join(coreDir, "package.json"), "utf8"));
 let commit = "unknown";
 try {
-  commit = execFileSync("git", ["-C", corpusRoot, "rev-parse", "--short", "HEAD"], {
+  commit = execFileSync("git", ["-C", coreDir, "rev-parse", "--short", "HEAD"], {
     encoding: "utf8",
     // outside a checkout (a copy of the tree) there is no commit; say "unknown" quietly
     stdio: ["ignore", "pipe", "ignore"],
   }).trim();
   if (
-    execFileSync("git", ["-C", corpusRoot, "status", "--porcelain", "--", "../packages"], {
+    execFileSync("git", ["-C", coreDir, "status", "--porcelain", "--", ".."], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim()

@@ -1,4 +1,6 @@
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readSync, realpathSync } from "node:fs";
+import { basename, join, sep } from "node:path";
+import { readRegularFile } from "../binary/file.js";
 import { ByteReader, utf8String } from "../binary/reader.js";
 import { AnalysisError } from "../model.js";
 
@@ -91,6 +93,36 @@ export function openAsarFile(path: string): AsarArchive {
     read,
     find: (p) => files.find((f) => f.path === p.replace(/\\/g, "/")),
   };
+}
+
+/**
+ * A file the archive lists as unpacked, read from `<archive>.unpacked/` next to it, where
+ * Electron puts such files. The path is resolved and must stay inside that directory; links that
+ * lead out of it are refused. Throws `not_found` when the directory or the file is missing.
+ */
+export function readUnpacked(archivePath: string, file: AsarFile, maxBytes: number): Uint8Array {
+  const dir = `${archivePath}.unpacked`;
+  let root: string;
+  try {
+    root = realpathSync(dir);
+  } catch {
+    throw new AnalysisError(
+      "not_found",
+      `${file.path} is stored in ${basename(dir)}, which is not next to the archive`,
+      { unpacked: true },
+    );
+  }
+  let real: string;
+  try {
+    real = realpathSync(join(dir, ...file.path.split("/")));
+  } catch {
+    throw new AnalysisError("not_found", `${file.path} is missing from ${basename(dir)}`, {
+      unpacked: true,
+    });
+  }
+  if (real !== root && !real.startsWith(root + sep))
+    throw new AnalysisError("invalid_input", `${file.path} resolves outside ${basename(dir)}`);
+  return readRegularFile(real, maxBytes, file.path);
 }
 
 function checkReadable(file: AsarFile, maxBytes: number): void {
