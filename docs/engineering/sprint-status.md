@@ -51,6 +51,29 @@ See [contracts.md](contracts.md).
 | `npm run e2e`    | PASS 11/11                                       |       |
 | `npm run corpus` | PASS 298 rows                                    |       |
 
+## Integration state (2026-10-16 23:50Z, `aa88007`)
+
+Merged into `sprint/10h`: M (map, skills), C (reviewer workspace), P (check/SARIF/CI), D (codes,
+release-verify), G (Fiddle case study), B (C1–C3), A (registry evaluation, C4, DoS limits),
+D2 (MCP check, per-list paging), H (holdout5 + round 4 blind result). Lead fixes: bridge-rule
+coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor reads, 503 on
+timeout, check reads every page. Gates at `aa88007`: check 539 passed, e2e 13, corpus 45 inputs /
+298 rows none worse.
+
+Running: A2 (IPC wrapper classes, Fiddle + holdout5 dev), I (offline HTML report), J (interface
+graph), R (independent review of 841b6db..HEAD).
+
+## Measurements
+
+- Blind holdout5 (round 4, scorer blobs in corpus/results/round4/README.md), totals over three
+  builds of one app, hit/missed/false: IPC channels base 47/7/0 → final 49/5/0; window settings
+  14/25/0 unchanged; bridge members 57/0/0; endpoints 15/3/0; storage keys 6/12/2. Changes v1→v2
+  identical at base and final (ipcChannels 3/1/0, contextBridge 4/0/0, webPreferences 0/2/0,
+  endpoints 1/0/0). holdout5 is a development set from now on.
+- Benchmark (Node 22.17.1, M2, load 15–20 during agents): Claude.app 7.14 → 7.92 s median,
+  ChatGPT.app 14.18 → 13.70 s, peak RSS 796 → 787 MiB; Discord median 0.75 → 1.45 s (first run
+  0.76 s both) to be re-measured at lower load.
+
 ## Open risks
 
 - REA documents `compare_application_versions`; release comparison alone is not a differentiator (docs/competitive/matrix-2026-10-17.md).
