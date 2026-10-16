@@ -21,16 +21,16 @@ any interruption or context compaction.
 
 ## Agents and branches
 
-| Role                              | Branch / worktree                              | Status                            |
-| --------------------------------- | ---------------------------------------------- | --------------------------------- |
-| Lead / integrator                 | `sprint/10h`                                   | active                            |
-| A analyzer (resolver, C4)         | `sprint/a-analyzer` `~/hexvero-10h-a-analyzer` | running since 22:58Z              |
-| B compare (C1–C3)                 | `sprint/b-compare`                             | running since 22:58Z              |
-| P policy (C5, C6, SARIF, CI)      | `sprint/p-policy`                              | running since 22:58Z              |
-| C web + server (C7)               | `sprint/c-web`                                 | running since 22:58Z              |
-| M map + skills                    | `sprint/m-map`                                 | running since 22:58Z              |
-| E independent fixtures (holdout5) | `sprint/e-fixtures` `f537d27` | DONE 23:11Z: Tidemark app, 2 versions, own v2 format (`changes`, `unchangedMoves`, `bundledFiles`); not built or scored. Kept out of A's worktree until A freezes; then base and final are scored with the same scorer revision. |
-| F launch / market                 | lead                                           | matrix, status.json, metrics done |
+| Role                              | Branch / worktree                              | Status                                                                                                                                                                                                                           |
+| --------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lead / integrator                 | `sprint/10h`                                   | active                                                                                                                                                                                                                           |
+| A analyzer (resolver, C4)         | `sprint/a-analyzer` `~/hexvero-10h-a-analyzer` | running since 22:58Z                                                                                                                                                                                                             |
+| B compare (C1–C3)                 | `sprint/b-compare`                             | running since 22:58Z                                                                                                                                                                                                             |
+| P policy (C5, C6, SARIF, CI)      | `sprint/p-policy`                              | running since 22:58Z                                                                                                                                                                                                             |
+| C web + server (C7)               | `sprint/c-web`                                 | running since 22:58Z                                                                                                                                                                                                             |
+| M map + skills                    | `sprint/m-map`                                 | running since 22:58Z                                                                                                                                                                                                             |
+| E independent fixtures (holdout5) | `sprint/e-fixtures` `f537d27`                  | DONE 23:11Z: Tidemark app, 2 versions, own v2 format (`changes`, `unchangedMoves`, `bundledFiles`); not built or scored. Kept out of A's worktree until A freezes; then base and final are scored with the same scorer revision. |
+| F launch / market                 | lead                                           | matrix, status.json, metrics done                                                                                                                                                                                                |
 
 ## Contracts (frozen before parallel work)
 
