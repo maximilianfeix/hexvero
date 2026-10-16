@@ -81,7 +81,7 @@ ipcMain.handle("settings:set", (_e, key, value) => store.set(key, value));
 ipcMain.handle("notes:list", () => store.get("notes") ?? []);
 ipcMain.handle("notes:save", (_e, note) => store.push("notes", note));
 ipcMain.on("app:quit", () => app.quit());
-${v2 ? 'ipcMain.handle("update:check", async () => fetch("https://updates.notesdesk.example/latest.json").then((r) => r.json()));\n' : 'ipcMain.on("shell:open", (_e, target) => shell.openPath(target));\n'}
+${v2 ? 'ipcMain.handle("update:check", async () => fetch("https://updates.notesdesk.example/latest.json").then((r) => r.json()));\n' : 'ipcMain.on("shell:open", (_e, target) => shell.openPath(target));\n'}${v2 ? '// The channel name comes from the environment at run time, so no static reading can name it.\nfor (const plugin of (process.env.NOTESDESK_PLUGINS ?? "").split(",").filter(Boolean))\n  ipcMain.handle(`plugin:${plugin}`, () => store.get(`plugins.${plugin}`));\n' : ""}
 app.whenReady().then(createWindow);
 app.on("window-all-closed", () => app.quit());
 `;
