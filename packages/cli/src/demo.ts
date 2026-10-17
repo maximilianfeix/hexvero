@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChangeRow, ReleaseComparison } from "@hexvero/core";
 import { UsageError } from "./args.js";
-import { heading, paint, type Io } from "./format.js";
+import { heading, paint, printable, type Io } from "./format.js";
 
 /** The two example builds that ship with the package (built by scripts/build-examples.mjs). */
 export const DEMO_FILES = ["notesdesk-1.4.0.asar", "notesdesk-1.5.0.asar"] as const;
@@ -81,20 +81,21 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
     const where = row.where
       .slice(0, 3)
       .map(
-        (p) => `${p.role ? `${p.role} ` : ""}${p.file}${p.line === undefined ? "" : `:${p.line}`}`,
+        (p) =>
+          `${p.role ? `${p.role} ` : ""}${printable(p.file)}${p.line === undefined ? "" : `:${p.line}`}`,
       )
       .join(", ");
     const fields = (row.fields ?? [])
       .slice(0, 3)
-      .map((f) => `${f.field}: ${JSON.stringify(f.before)} → ${JSON.stringify(f.after)}`)
+      .map((f) => printable(`${f.field}: ${JSON.stringify(f.before)} → ${JSON.stringify(f.after)}`))
       .join(", ");
     out.push(
-      `    ${paint(io, color, sign)} ${row.key}${
+      `    ${paint(io, color, sign)} ${printable(row.key)}${
         where ? paint(io, "dim", `  @ ${row.where[0]!.side}: ${where}`) : ""
       }${row.basis ? paint(io, "dim", ` · ${row.basis}`) : ""}`,
     );
     if (fields) out.push(paint(io, "dim", `        ${fields}`));
-    if (row.reason) out.push(paint(io, "dim", `        ${row.reason}`));
+    if (row.reason) out.push(paint(io, "dim", `        ${printable(row.reason)}`));
   }
   if (r.page.next !== null)
     out.push(
@@ -125,7 +126,9 @@ export function formatDemo(io: Io, r: ReleaseComparison, a: string, b: string): 
   if (r.overview.windowChanges.length) {
     lines.push("", paint(io, "bold", "  Window settings to review"));
     for (const w of r.overview.windowChanges)
-      lines.push(`    ${w.window} ${w.setting}: ${w.before} → ${w.after} (${w.direction})`);
+      lines.push(
+        `    ${printable(`${w.window} ${w.setting}: ${w.before} → ${w.after}`)} (${w.direction})`,
+      );
   }
   const limits = [
     ...r.limitations.a.map((l) => ["a", l] as const),
@@ -135,7 +138,7 @@ export function formatDemo(io: Io, r: ReleaseComparison, a: string, b: string): 
     lines.push("", paint(io, "bold", "  Not established"));
     for (const [side, l] of limits.slice(0, 5))
       lines.push(
-        `    ${paint(io, "yellow", "!")} ${side}: ${l.message} ${paint(io, "dim", `(${l.code})`)}`,
+        `    ${paint(io, "yellow", "!")} ${side}: ${printable(l.message)} ${paint(io, "dim", `(${l.code})`)}`,
       );
   }
   lines.push(

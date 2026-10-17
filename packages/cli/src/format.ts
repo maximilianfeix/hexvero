@@ -31,31 +31,58 @@ export function paint(io: Io, color: Color, text: string): string {
 }
 
 /**
- * Text that did not come from hexvero itself (a file name, an error naming an archive entry) as
- * one terminal-safe string: control characters other than newline and tab become `\u001b`, so
- * a name cannot move the cursor, retitle the window or recolor the output. The escape is the JSON
- * one, so a C1 character that JSON.stringify leaves as it is stays the same character in JSON.
+ * Characters that change what a terminal shows without being seen: bidi marks, embeddings,
+ * overrides and isolates, zero-width characters and the BOM (the set the Markdown and HTML
+ * reports show as escapes too).
+ */
+const HIDDEN = "\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff";
+// eslint-disable-next-line no-control-regex
+const ANY_CONTROL = new RegExp(`[\u0000-\u001f\u007f-\u009f${HIDDEN}]`, "g");
+const escapeChar = (c: string): string => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+
+/**
+ * Text that did not come from hexvero itself (a key, a file name, an error naming an archive
+ * entry) as one line of visible text: every control character, line breaks and tabs included,
+ * and every hidden character becomes `\u001b`, so the text can neither forge a line of output
+ * nor move the cursor, retitle the window, recolor or reorder what is shown. The escape is the
+ * JSON one, so a character JSON.stringify leaves as it is stays the same character in JSON.
  */
 export function printable(text: string): string {
-  return text.replace(CONTROL, escapeControl);
+  return text.replace(ANY_CONTROL, escapeChar);
 }
 
-// eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
-const escapeControl = (c: string): string => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+/** Like printable(), cut to at most `max` printed characters, never inside an escape. */
+export function printableCut(text: string, max: number): string {
+  const out: string[] = [];
+  let width = 0;
+  for (const c of text) {
+    const shown = c.replace(ANY_CONTROL, escapeChar);
+    if (width + shown.length > max - 1) {
+      out.push("…");
+      return out.join("");
+    }
+    out.push(shown);
+    width += shown.length;
+  }
+  return out.join("");
+}
+
+/** The number of characters a line takes on the terminal (code points, not UTF-16 units). */
+const printedWidth = (text: string): number => [...text].length;
+
 // eslint-disable-next-line no-control-regex
 const OWN_CONTROL = new RegExp(
-  `${TOKEN}(\u001b\\[\\d+m)|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]`,
+  `${TOKEN}(\u001b\\[\\d+m)|[\u0000-\u0008\u000b-\u001f\u007f-\u009f${HIDDEN}]`,
   "g",
 );
 
 /**
- * What reaches the terminal: printable(), except for the color codes paint() marked. Target text
- * (IPC channel names, file names, strings) is printed by many commands; filtering here covers
- * them all.
+ * What reaches the terminal: line breaks and tabs hexvero writes, the color codes paint()
+ * marked, and every other control or hidden character as an escape. Target text printed inside a
+ * line goes through printable() first, so its own line breaks are escaped there.
  */
 export function terminalSafe(text: string): string {
-  return text.replace(OWN_CONTROL, (match, own: string | undefined) => own ?? escapeControl(match));
+  return text.replace(OWN_CONTROL, (match, own: string | undefined) => own ?? escapeChar(match));
 }
 
 export function heading(io: Io, text: string): string {
@@ -70,16 +97,17 @@ export function formatFindings(io: Io, findings: Finding[]): string[] {
   if (!findings.length) return [paint(io, "dim", "  (no findings)")];
   return findings.flatMap((f) => {
     const badge = f.confidence === "confirmed" ? paint(io, "green", "●") : paint(io, "yellow", "○");
-    const location = f.location ? paint(io, "cyan", `  @ ${f.location}`) : "";
-    const lines = [`  ${badge} ${f.title}${location}`];
-    if (f.detail) lines.push(paint(io, "dim", `      ${f.detail}`));
+    const location = f.location ? paint(io, "cyan", `  @ ${printable(f.location)}`) : "";
+    const lines = [`  ${badge} ${printable(f.title)}${location}`];
+    if (f.detail) lines.push(paint(io, "dim", `      ${printable(f.detail)}`));
     return lines;
   });
 }
 
 export function formatLimitations(io: Io, limitations: Limitation[]): string[] {
   return limitations.map(
-    (l) => `  ${paint(io, "yellow", "!")} ${l.message} ${paint(io, "dim", `(${l.code})`)}`,
+    (l) =>
+      `  ${paint(io, "yellow", "!")} ${printable(l.message)} ${paint(io, "dim", `(${l.code})`)}`,
   );
 }
 
@@ -120,11 +148,13 @@ export function table(rows: Array<Record<string, unknown>>, maxWidth = 60): stri
             : typeof v === "object"
               ? JSON.stringify(v)
               : String(v);
-    return text.length > maxWidth ? `${text.slice(0, maxWidth - 1)}…` : text;
+    return printableCut(text, maxWidth);
   };
-  const widths = columns.map((c) => Math.max(c.length, ...rows.map((r) => cell(r[c]).length)));
+  const widths = columns.map((c) =>
+    Math.max(printedWidth(c), ...rows.map((r) => printedWidth(cell(r[c])))),
+  );
   const line = (values: string[]): string =>
-    `  ${values.map((v, i) => v.padEnd(widths[i]!)).join("  ")}`.trimEnd();
+    `  ${values.map((v, i) => v + " ".repeat(Math.max(0, widths[i]! - printedWidth(v)))).join("  ")}`.trimEnd();
   return [
     line(columns),
     line(widths.map((w) => "-".repeat(w))),

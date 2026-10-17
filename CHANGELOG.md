@@ -42,7 +42,15 @@ All notable changes to hexvero are listed here. The format follows
   IPC channel, archive entry or output name carrying `ESC ]0;…` or `ESC [2J` showed up raw in
   `analyze`, `compare` and error output. Every line now passes one filter that turns control
   characters into `\u001b` escapes and keeps only the color codes hexvero writes. A C1 character
-  in `--json` output becomes its JSON escape, so the JSON stays the same value.
+  in `--json` output becomes its JSON escape, so the JSON stays the same value. Target text
+  printed inside a line (keys, names, file names, strings, messages) also has its line breaks and
+  tabs escaped, so a storage key with `\r\n` can no longer print a forged line of its own, and
+  bidi, zero-width and BOM characters show as `\u200b` at the terminal as in the reports.
+  Table columns are aligned by the printed width and cut between escapes.
+- Markdown reports cut long target text before escaping it, so a code span never ends inside a
+  `\u{…}` escape.
+- Source windows of an archive read from disk notice when it was rebuilt in place while open
+  (size, modification time, inode) and read its header again.
 - A policy or baseline nested deeper than the stack (`{"hexvero": [[[[…]]]]}`) is reported as an
   invalid file (exit 2 in `hexvero check`, `invalid_input` over MCP, `400 invalid_policy` from the
   local server) instead of a stack overflow.
