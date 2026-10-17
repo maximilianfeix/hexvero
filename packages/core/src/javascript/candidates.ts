@@ -824,7 +824,12 @@ export function findCandidates(
         // a parameter pattern with a default: `function f({ api } = {})`
         if (is(tokens[o - 1], "punct", "(") || is(tokens[o - 1], "punct", ",")) {
           let q = o - 1;
-          while (q >= 0 && !is(tokens[q], "punct", "(")) {
+          for (let guard = 0; q >= 0 && !is(tokens[q], "punct", "("); guard++) {
+            // a parameter list too long to walk: taken as a write (an unknown row), flagged
+            if (guard >= 300) {
+              out.clientsSkipped = true;
+              return true;
+            }
             const x = tokens[q]!;
             if (x.type === "punct" && (x.value === ")" || x.value === "]" || x.value === "}")) {
               const m = res.openOf(q);
@@ -1293,7 +1298,12 @@ export function findCandidates(
       else hi = mid;
     }
     let to = lo;
-    while (to < all.length && all[to]! < end) to++;
+    let top = all.length;
+    while (to < top) {
+      const mid = (to + top) >> 1;
+      if (all[mid]! < end) to = mid + 1;
+      else top = mid;
+    }
     return { all, from: lo, to };
   };
   // Owners of derived bindings, by name and range (built once per name), and a budget for the

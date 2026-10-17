@@ -1085,6 +1085,22 @@ describe("request libraries: review fixes", () => {
     ]);
   });
 
+  it("bounds the walk over a long argument list before a pattern, and flags it", () => {
+    // each `{ api } = d` walked back over every argument before it: 50,000 took over a minute
+    const n = 50_000;
+    const source =
+      'const axios = require("axios");\nlet api = axios.create({ baseURL: "https://b.example" });\nf(' +
+      Array.from({ length: n }, (_, i) => `x${i}`).join(", ") +
+      ", " +
+      Array.from({ length: n }, () => "{ api } = d").join(", ") +
+      ');\napi.get("/x");';
+    const started = performance.now();
+    const found = find(source);
+    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(found.clientsSkipped).toBe(true);
+    expect(show(source)).toEqual(["http-client GET ?<expression> [unknown]"]);
+  });
+
   it("stays bounded past the functions the resolver reads, and on deep nesting", () => {
     for (const n of [61_000, 80_000]) {
       const source = Array.from(

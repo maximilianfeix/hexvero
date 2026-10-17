@@ -459,7 +459,8 @@ expression, made from a binding proven at the declaration; the name follows the 
 (`<expression>`) where it is meant. A write is an assignment (`=`, a compound assignment, `++`,
 `--`), a destructuring assignment (`({ api } = o)`, `({ k: api } = o)`, `[api] = l`, nested, with
 a default or a rest) or a `for (api of …)` / `for (api in …)` head; a declaration pattern, a
-parameter pattern and an object literal are none. A call before the declaration of an instance or
+parameter pattern and an object literal are none. A pattern whose parameter list or argument list
+is more than 300 tokens long is taken for a write (and the file flagged) rather than walked. A call before the declaration of an instance or
 a function value gives no row (the binding does not exist there yet). Only writes in the range
 the declaration is seen in (the block of a `let`/`const`, else its function) are asked about, at
 most 64 per declaration and 32,000 per file; past that the binding counts as written. The same
