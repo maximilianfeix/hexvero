@@ -347,6 +347,17 @@ written: Node then sends the request to localhost, which is not taken for an add
 object with a spread of something unknown. An argument that cannot be read is an unknown row with
 the argument as `expression`; nothing is guessed.
 
+An address another module exports as a template on its own constant (`module.exports = {
+DIRECTORY_URL: `${API_ROOT}/directory/top` }` with `const API_ROOT = "https://…"`), also when a
+third module passes it on with a spread (`module.exports = { ...endpoints }`) or a bundler wraps
+the modules (esbuild, plain and minified), is read for `fetch` and the clients above. Every gap of
+the template must be one name of a string constant of that module, declared before the template,
+and written exactly once in the whole file: a second declaration, an assignment (`API_ROOT = …`,
+`+=`, `++`), or another binding of the name as a parameter or in a destructuring pattern makes the
+entry unread, and the request keeps its unknown row. Anything else in a gap (`${API_ROOT.trim()}`,
+a call, a name the module does not declare) is not read either. At most 64 such names are checked
+per file.
+
 A client known by its name only (`https.get(…)` where `https` is not bound in the file,
 `axios.post(…)`) is read as before, without unknown rows; where a parameter or local of that name
 is meant (`function login(axios, body)`), the URL is read at the call only, not through call

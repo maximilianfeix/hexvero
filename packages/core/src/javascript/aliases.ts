@@ -1557,12 +1557,143 @@ export class Constants {
         for (const [inner, v] of this.object(k + 2, depth + 1)) table.set(`${key}.${inner}`, v);
         continue;
       }
+      if (
+        key !== null &&
+        tokens[k + 2]?.type === "template" &&
+        tokens[k + 2]!.value.includes("${")
+      ) {
+        // `DIRECTORY_URL: `${API_ROOT}/directory/top``: a template on the file's own constants
+        const read = this.constantTemplate(k + 2);
+        if (read && (is(tokens[read.end], "punct", ",") || is(tokens[read.end], "punct", "}")))
+          table.set(key, read.value);
+        continue;
+      }
       const v = text(tokens[k + 2]);
       const after = tokens[k + 3];
       if (key !== null && v !== null && (is(after, "punct", ",") || is(after, "punct", "}")))
         table.set(key, v);
     }
     return table;
+  }
+
+  /** Names checked by `onlyDeclaration`, with the answer. */
+  private readonly declaredOnce = new Map<string, boolean>();
+
+  /**
+   * The template that starts at k, when every gap in it is one name of a string constant of
+   * this file declared before it (`${API_ROOT}`), declared once and never assigned anywhere
+   * in the file. `end`: the token after the template. Null otherwise: no part is guessed.
+   */
+  private constantTemplate(k: number): { value: string; end: number } | null {
+    const tokens = this.tokens;
+    let value = "";
+    let at = k;
+    for (let pieces = 0; pieces < 12; pieces++) {
+      const piece = tokens[at];
+      if (piece?.type !== "template") return null;
+      if (!piece.value.endsWith("${…}")) return { value: value + piece.value, end: at + 1 };
+      value += piece.value.slice(0, -"${…}".length);
+      const name = tokens[at + 1];
+      if (name?.type !== "ident" || tokens[at + 2]?.type !== "template") return null;
+      const known = this.strings.get(name.value);
+      if (typeof known !== "string" || !this.onlyDeclaration(name.value)) return null;
+      value += known;
+      at += 2;
+    }
+    return null;
+  }
+
+  /**
+   * The name is written to exactly once in the whole file, by its declaration: no second
+   * `const|let|var NAME =`, no `NAME = …`, `NAME += …`, `NAME++`, and no other binding of it
+   * as a parameter or in a destructuring pattern that this check can see (`{ NAME }`, `[NAME]`
+   * followed by `=` or a parameter list). Linear in the file, once per name, at most 64 names.
+   */
+  private onlyDeclaration(name: string): boolean {
+    const cached = this.declaredOnce.get(name);
+    if (cached !== undefined) return cached;
+    if (this.declaredOnce.size >= 64) return false;
+    const tokens = this.tokens;
+    let writes = 0;
+    for (let j = 0; j < tokens.length && writes < 2; j++) {
+      const t = tokens[j]!;
+      if (t.type !== "ident" || t.value !== name || is(tokens[j - 1], "punct", ".")) continue;
+      const after = tokens[j + 1];
+      const before = tokens[j - 1];
+      if (
+        (after?.type === "punct" &&
+          (/^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) ||
+            after.value === "++" ||
+            after.value === "--")) ||
+        (before?.type === "punct" && (before.value === "++" || before.value === "--"))
+      )
+        writes++;
+      // `function f(NAME)`, `(NAME) =>`, `{ NAME } = …`, `catch (NAME)`: another binding
+      else if (
+        before?.type === "punct" &&
+        (before.value === "(" ||
+          before.value === "," ||
+          before.value === "{" ||
+          before.value === "[") &&
+        after?.type === "punct" &&
+        (after.value === ")" ||
+          after.value === "," ||
+          after.value === "}" ||
+          after.value === "]") &&
+        this.inPattern(j)
+      )
+        writes = 2;
+    }
+    const once = writes === 1;
+    this.declaredOnce.set(name, once);
+    return once;
+  }
+
+  /** The name at j stands in a parameter list or a destructuring pattern (a binding). */
+  private inPattern(j: number): boolean {
+    const tokens = this.tokens;
+    // the bracket the name is in, and what follows its closing bracket
+    let d = 0;
+    let open = -1;
+    for (let m = j - 1; m >= 0 && m > j - 400; m--) {
+      const p = tokens[m]!;
+      if (p.type !== "punct") continue;
+      if (p.value === ")" || p.value === "}" || p.value === "]") d++;
+      else if (p.value === "(" || p.value === "{" || p.value === "[") {
+        if (d === 0) {
+          open = m;
+          break;
+        }
+        d--;
+      }
+    }
+    if (open === -1) return true; // not found within reach: count it as a binding
+    d = 0;
+    for (let m = open; m < tokens.length && m < open + 400; m++) {
+      const p = tokens[m]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "{" || p.value === "[") d++;
+      else if (p.value === ")" || p.value === "}" || p.value === "]") {
+        d--;
+        if (d === 0) {
+          const next = tokens[m + 1];
+          if (tokens[open]!.value === "(")
+            // a parameter list: `function f(…) {`, `(…) =>`, `catch (…) {`
+            return (
+              is(next, "punct", "=>") ||
+              (is(next, "punct", "{") &&
+                !is(tokens[open - 1], "ident", "if") &&
+                !is(tokens[open - 1], "ident", "while") &&
+                !is(tokens[open - 1], "ident", "for") &&
+                !is(tokens[open - 1], "ident", "switch") &&
+                !is(tokens[open - 1], "ident", "with"))
+            );
+          // `{ NAME } = …`, `[NAME] = …`, and patterns inside a parameter list
+          return is(next, "punct", "=") || is(next, "ident", "of") || is(next, "ident", "in");
+        }
+      }
+    }
+    return true;
   }
 
   /**
