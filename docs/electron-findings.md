@@ -286,11 +286,11 @@ to a member outside the definition (`GlobalSetting.theme = "other"`), makes it a
 nothing is read through it. A member the enum does not have is not read.
 
 A call whose key cannot be read keeps the row of the storage call inside the wrapper with
-`value: null` and the parameter as `expression`, so an unread key is never hidden. Not read:
-calls of a wrapper from another module (`local.get(KEY)` with `local` imported), a wrapper called
-from a wrapper of another file, a key the wrapper takes from `this` (`this.prefix + key`), and
-constants a minifier declares in a list (`var a = 1, K = "key"`) where the resolver does not read
-them. At most 64 wrapper questions per file and 64 call sites per wrapper are read, each within the
+`value: null` and the parameter as `expression`, so an unread key is never hidden. Not read: a
+wrapper called from a wrapper of another file, a key the wrapper takes from `this` (`this.prefix +
+key`), a plain function another module exports as the wrapper (below), and constants a minifier
+declares in a list (`var a = 1, K = "key"`) where the resolver does not read them (inside a
+wrapper's own key they are read, below). At most 64 wrapper questions per file and 64 call sites per wrapper are read, each within the
 resolver's work budget. In a file with more than 50,000 functions (`function` and `=>`) wrappers
 are not followed per call at all (limitation `storage_wrappers_skipped`, for an application and
 for a single script), and the resolver reads
@@ -299,6 +299,53 @@ not met, the key stays unread.
 
 In a comparison, an unread key hides only items of its own kind in its file: an unread
 `sessionStorage` key does not make a new `localStorage` key unknown.
+
+### Wrappers of another module
+
+A method of a class or object literal whose storage call's key reads exactly one of its
+parameters (and nothing of `this`), unchanged in the body, is also followed into the modules that
+import it, with the mechanism that follows IPC wrapper classes (`ipcMainManager.handle` in Electron
+Fiddle, see wrappers.ts):
+
+```js
+// web-store.js
+const PREFIX = "tidemark.";
+const key = (name) => `${PREFIX}${name}`;
+export const local = { get: (name) => localStorage.getItem(key(name)), … };
+// renderer.js
+import { local } from "./renderer/web-store.js";
+local.get(LAST_PROJECT); // LAST_PROJECT = "lastProject": localStorage read tidemark.lastProject
+```
+
+The receiver must be proven to be an instance of that class or that object: `import { local }
+from`, `const { SettingsStore } = require("./store")` then `new SettingsStore()` (a name declared
+once; a call such as `s.set(…)` does not count as a change of `s`, an assignment to `s` anywhere in
+the file does), `const store = require("./store")` with `module.exports = new Store()` there, `new
+(require("./store").SettingsStore)()`, re-exports as for IPC wrappers, and the same in one
+esbuild bundle (ESM modules hoisted into one scope, `__commonJS` with `require_x()`, plain and
+minified; `var store = require_x()` counts when every `module.exports = …` of the bundle says the
+same). A method
+name another class also defines counts only on such an instance. The name must mean the import at
+the call: a parameter, local, destructuring pattern, `for … of` head or `catch` binding of it in
+between is something else, and gives no row. A method whose name is assigned as a member in the
+calling module or in the wrapper's (`local.get = f`, `Object.assign(x, { get })`) gives no row in
+that module.
+
+The argument is read in the calling module (a literal, a constant, another module's constant such
+as a member of a compiled string enum, `StorageKey.Theme`, or what the resolver reads through
+call sites, whole), and the wrapper's key expression is then evaluated in its own module with
+that value for the parameter (`key(name)` above, also when the minifier declares `key` and
+`PREFIX` in a list). Each call is a row at the call with `via` the wrapper (`local.get`,
+`SettingsStore.set`; a minified name such as `c.get` in a bundle). A call whose argument or key is
+not read whole is an unknown row at the call with the argument's name as `expression` (in one
+bundle only when the file has no unknown row of that kind already: the storage call inside the
+wrapper keeps its own unread row, as before). Calls on `this` stay with the in-file rules above.
+Bounds: the storage calls with an unread key of at most 64 per file are looked at, the readers'
+work budget per file, at most 200 calling files and 2,000 such rows per application; past them
+the limitation `storage_wrappers_capped` says so. Not followed across modules: a plain function as
+the wrapper (`exports.save = (key, v) => localStorage.setItem(key, v)`, `import { save }`), an
+electron-store instance a wrapper module holds, and HTTP requests made through a wrapper of
+another module (endpoints below).
 
 ## Requests through HTTP client modules (`endpoints`)
 

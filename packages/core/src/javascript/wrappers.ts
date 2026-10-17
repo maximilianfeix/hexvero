@@ -20,6 +20,7 @@
  */
 import type { Constants, Resolved } from "./aliases.js";
 import type { ExpressionResolver, FnDef } from "./resolve.js";
+import type { Candidate } from "./candidates.js";
 import type { IpcUsage, Token } from "./scan.js";
 
 /** One IPC call a wrapper method makes with one of its parameters, whole, as the channel. */
@@ -27,6 +28,24 @@ export interface Forward {
   api: string;
   /** The parameter that is the channel. */
   index: number;
+  /**
+   * A storage key instead of a channel (`api` is then the storage kind): the token where the
+   * key expression of the storage call inside the method starts, which reads parameter `index`,
+   * and what the storage call does.
+   */
+  key?: { at: number; op?: "read" | "write" | "delete" };
+}
+
+/** A call of a key-forwarding wrapper method on a proven instance of its class. */
+export interface KeyCall {
+  /** Token of the method name at the call. */
+  at: number;
+  /** Token where the argument for the forwarded parameter starts. */
+  arg: number;
+  forward: Forward & { key: NonNullable<Forward["key"]> };
+  cls: WrapperClass;
+  /** `label.method`, as the row's `via`. */
+  via: string;
 }
 
 export interface WrapperClass {
@@ -171,51 +190,87 @@ export class WrapperReader {
         }
         def = r.outerOf(def);
       }
-      if (!def || index === -1 || def.name === null || /^(constructor|__proto__)$/.test(def.name))
-        continue;
+      if (!def || index === -1) continue;
       if (this.declares(def, param, true)) continue;
-      let start: number | null = null;
-      let name = "";
-      if (def.owner !== null && !def.arrow) {
-        const range = r.classOfMethod(def);
-        if (range) {
-          start = range.start;
-          name = range.name;
-        }
-      } else if (def.member) {
-        start = r.objectOfMember(def);
-        if (start !== null) {
-          const named =
-            this.punct(start - 1, "=") &&
-            this.is(start - 2, "ident") &&
-            !this.punct(start - 3, ".");
-          name = named ? this.tokens[start - 2]!.value : "object";
-        }
-      }
-      if (start === null) continue;
-      let cls = this.byStart.get(start);
-      if (!cls) {
-        cls = {
-          id: `${name}@${start}`,
-          name,
-          file: this.file,
-          methods: {},
-          chain: [],
-        };
-        this.byStart.set(start, cls);
-        this.classes.push(cls);
-      }
-      const forwards = Object.hasOwn(cls.methods, def.name) ? cls.methods[def.name]! : [];
-      if (!forwards.some((f) => f.api === api && f.index === index)) forwards.push({ api, index });
-      cls.methods[def.name] = forwards;
-      this.inner.add(arg);
+      if (this.register(def, { api, index })) this.inner.add(arg);
     }
-    // methods of the classes that return `this`
+    this.findChains();
+  }
+
+  /**
+   * Finds the file's storage-key wrapper methods: a storage call whose key expression (at `at`)
+   * reads one parameter of the method or object-literal function around it, unchanged in the
+   * body (the resolver's rule for in-file wrappers). A method whose name is also assigned as a
+   * member in the file (`x.get = f`) is none: `x.get(…)` may call that other function.
+   */
+  findKeyWrappers(
+    keys: ReadonlyArray<{ at: number; kind: string; op?: "read" | "write" | "delete" }>,
+  ): void {
+    for (const { at, kind, op } of keys) {
+      if (this.work-- <= 0) break;
+      const found = this.r.keyParameter(at);
+      if (!found || found.def.name === null || this.r.memberAssigned(found.def.name)) continue;
+      this.register(found.def, {
+        api: kind,
+        index: found.index,
+        key: { at, ...(op ? { op } : {}) },
+      });
+    }
+    this.findChains();
+  }
+
+  /** Records def as a wrapper method with the forward; false when def is no method of a class or object. */
+  private register(def: FnDef, forward: Forward): boolean {
+    const { r } = this;
+    if (def.name === null || /^(constructor|__proto__)$/.test(def.name)) return false;
+    let start: number | null = null;
+    let name = "";
+    if (def.owner !== null && !def.arrow) {
+      const range = r.classOfMethod(def);
+      if (range) {
+        start = range.start;
+        name = range.name;
+      }
+    } else if (def.member) {
+      start = r.objectOfMember(def);
+      if (start !== null) {
+        const named =
+          this.punct(start - 1, "=") && this.is(start - 2, "ident") && !this.punct(start - 3, ".");
+        name = named ? this.tokens[start - 2]!.value : "object";
+      }
+    }
+    if (start === null) return false;
+    let cls = this.byStart.get(start);
+    if (!cls) {
+      cls = {
+        id: `${name}@${start}`,
+        name,
+        file: this.file,
+        methods: {},
+        chain: [],
+      };
+      this.byStart.set(start, cls);
+      this.classes.push(cls);
+    }
+    const forwards = Object.hasOwn(cls.methods, def.name) ? cls.methods[def.name]! : [];
+    if (
+      !forwards.some(
+        (f) => f.api === forward.api && f.index === forward.index && f.key?.at === forward.key?.at,
+      )
+    )
+      forwards.push(forward);
+    cls.methods[def.name] = forwards;
+    return true;
+  }
+
+  /** Methods of the file's own classes that return `this`. */
+  private findChains(): void {
     for (const cls of this.classes) {
+      if (cls.file !== this.file) continue;
       const range = this.r.classesOf().find((c) => c.start === this.startOf(cls));
       if (!range) continue;
       for (const m of this.r.methodsIn(range))
-        if (m.name && this.r.returnsSelf(m)) cls.chain.push(m.name);
+        if (m.name && this.r.returnsSelf(m) && !cls.chain.includes(m.name)) cls.chain.push(m.name);
     }
   }
 
@@ -275,6 +330,16 @@ export class WrapperReader {
       return this.valueOf(start + 1, end - 1, depth + 1);
     }
     if (this.is(start, "ident", "new")) {
+      // `new (require("./store").Store)(…)`
+      if (this.punct(start + 1, "(")) {
+        const group = r.closeOf(start + 1);
+        if (group === -1 || !this.punct(group + 1, "(") || r.closeOf(group + 1) !== end - 1)
+          return null;
+        const callee = this.valueOf(start + 2, group, depth + 1);
+        return callee?.kind === "cls"
+          ? { kind: "inst", cls: callee.cls, label: callee.label }
+          : null;
+      }
       let e = start + 1;
       while (e < end && (this.is(e, "ident") || this.punct(e, "."))) e++;
       if (e < end && !(this.punct(e, "(") && r.closeOf(e) === end - 1)) return null;
@@ -339,7 +404,14 @@ export class WrapperReader {
     if (depth > MAX_DEPTH) return null;
     const name = this.tokens[k]!.value;
     if (name === "this") return null;
-    const b = this.r.binding(k, name);
+    // `const s = new Store(); s.set(…)`: the resolver takes a call of a mutator (`set`, `push`)
+    // for a change of what the name holds; for an instance the binding stays, unless the name
+    // is assigned anywhere in the file
+    let b = this.r.binding(k, name);
+    if (!b) {
+      const loose = this.r.binding(k, name, true);
+      if (loose && !this.assignedAnywhere(name)) b = loose;
+    }
     if (b)
       switch (b.kind) {
         case "param":
@@ -355,10 +427,58 @@ export class WrapperReader {
         case "pattern":
           return this.member(this.valueOf(b.from[0], b.from[1], depth + 1), b.key);
       }
+    // no binding the resolver can read: a parameter, local, pattern, `for … of` head or `catch`
+    // of the name around k is something else than the import
+    if (this.r.boundAround(k, name)) return null;
     const imported = this.constants.importOf(name, k);
     if (imported) return this.external?.(imported.specifier, imported.property) ?? null;
     const required = this.constants.requireOf(name, k);
     return required ? { kind: "module", specifier: required } : null;
+  }
+
+  private readonly assignedCache = new Map<string, boolean>();
+
+  /**
+   * Whether the name is assigned anywhere in the file, in any scope: `NAME = …`, `NAME += …`,
+   * `NAME++`, or as part of a destructuring assignment (`[NAME] = …`, `({ NAME } = …)`). Counted
+   * against the work budget; used up, the name counts as assigned.
+   */
+  private assignedAnywhere(name: string): boolean {
+    const known = this.assignedCache.get(name);
+    if (known !== undefined) return known;
+    let found = false;
+    for (const j of this.r.namePositions(name)) {
+      if (this.work-- <= 0) {
+        found = true;
+        break;
+      }
+      if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
+      const before = this.tokens[j - 1];
+      const after = this.tokens[j + 1];
+      if (before?.type === "ident" && /^(const|let|var)$/.test(before.value)) continue;
+      if (
+        (after?.type === "punct" && /^([^=!<>]*=|\+\+|--)$/.test(after.value)) ||
+        (before?.type === "punct" && (before.value === "++" || before.value === "--"))
+      ) {
+        found = true;
+        break;
+      }
+      if (this.punct(j - 1, "[") || this.punct(j - 1, ",") || this.punct(j - 1, "{")) {
+        const open = this.container(j);
+        const close = open === -1 ? -1 : this.r.closeOf(open);
+        const word = this.tokens[open - 1];
+        if (
+          close !== -1 &&
+          this.punct(close + 1, "=") &&
+          !(word?.type === "ident" && /^(const|let|var)$/.test(word.value))
+        ) {
+          found = true;
+          break;
+        }
+      }
+    }
+    this.assignedCache.set(name, found);
+    return found;
   }
 
   /** The `(`, `[` or `{` that holds token j, or -1. */
@@ -533,6 +653,9 @@ export class WrapperReader {
     // `const r = require("./router")` with `module.exports = new Router()` there
     if (v?.kind === "module")
       v = this.external?.(v.specifier, "") ?? this.external?.(v.specifier, "default") ?? null;
+    // `var store = require_singleton()` in one bundle: what every `module.exports = …` of the
+    // file says, when they all say the same
+    else if (v?.kind === "bundle" && this.keyCallsOnly) v = this.keyValue("");
     return v?.kind === "inst" ? [v] : [];
   }
 
@@ -659,7 +782,8 @@ export class WrapperReader {
         }
         for (const v of this.receiverValues(start, j - 1)) {
           if (v.kind !== "inst" || !Object.hasOwn(v.cls.methods, method)) continue;
-          for (const { api, index } of v.cls.methods[method]!) {
+          for (const { api, index, key } of v.cls.methods[method]!) {
+            if (key) continue;
             const arg = r.argumentAt(j + 1, index);
             if (arg === null || this.punct(arg, ")")) continue;
             const named = channelArg(this.tokens, this.constants, arg);
@@ -675,6 +799,77 @@ export class WrapperReader {
           }
         }
       }
+    return out;
+  }
+
+  /**
+   * One entry per call of a key-forwarding wrapper method on a proven instance of its class, per
+   * storage call the method makes: the same receivers as `rows`. A method name that is assigned
+   * as a member in this file (`local.get = f`) gives none. With `onlySeeded`, only calls on a
+   * parameter another module passes an instance for. With `skipThis`, no call on `this` (or a
+   * chain from it): the resolver's in-file rules decide those (static against instance).
+   */
+  keyCalls(onlySeeded = false, skipThis = false): KeyCall[] {
+    this.keyCallsOnly = true;
+    this.chains.clear();
+    try {
+      return this.keyCallsIn(onlySeeded, skipThis);
+    } finally {
+      this.keyCallsOnly = false;
+      this.chains.clear();
+    }
+  }
+
+  /** Set while `keyCalls` reads: a bundle's module object is followed to its `module.exports`. */
+  private keyCallsOnly = false;
+
+  private keyCallsIn(onlySeeded: boolean, skipThis: boolean): KeyCall[] {
+    const out: KeyCall[] = [];
+    const { r } = this;
+    const names = new Set<string>();
+    for (const cls of this.classes)
+      for (const [m, forwards] of Object.entries(cls.methods))
+        if (forwards.some((f) => f.key)) names.add(m);
+    for (const method of names) {
+      if (this.r.memberAssigned(method)) continue;
+      for (const j of r.namePositions(method)) {
+        if (this.work-- <= 0) return out;
+        if (!(this.punct(j - 1, ".") || this.punct(j - 1, "?.")) || !this.punct(j + 1, "("))
+          continue;
+        let start = r.receiverAt(j - 1);
+        // `new (require("./store").Store)(…).m(…)`
+        if (start === null && this.punct(j - 2, ")")) {
+          const call = r.openOf(j - 2);
+          const group = this.punct(call - 1, ")") ? r.openOf(call - 1) : -1;
+          if (group > 0 && this.is(group - 1, "ident", "new")) start = group - 1;
+        }
+        if (start === null) continue;
+        if (this.is(start - 1, "ident", "new")) start--;
+        if (skipThis && this.is(start, "ident", "this")) continue;
+        if (onlySeeded) {
+          const b =
+            start === j - 2 && this.is(start, "ident")
+              ? r.binding(start, this.tokens[start]!.value)
+              : null;
+          if (b?.kind !== "param" || !this.seeds.get(b.def)?.has(b.index)) continue;
+        }
+        for (const v of this.receiverValues(start, j - 1)) {
+          if (v.kind !== "inst" || !Object.hasOwn(v.cls.methods, method)) continue;
+          for (const forward of v.cls.methods[method]!) {
+            if (!forward.key) continue;
+            const arg = r.argumentAt(j + 1, forward.index);
+            if (arg === null || this.punct(arg, ")")) continue;
+            out.push({
+              at: j,
+              arg,
+              forward: forward as KeyCall["forward"],
+              cls: v.cls,
+              via: `${v.label}.${method}`,
+            });
+          }
+        }
+      }
+    }
     return out;
   }
 
@@ -801,6 +996,8 @@ export interface WrapperModule {
 
 /** A module read again for the cross-file stage. */
 export interface ReadModule {
+  /** The text the tokens were read from (for columns). */
+  source?: string;
   tokens: Token[];
   constants: Constants;
   resolver: ExpressionResolver;
@@ -820,7 +1017,41 @@ export function linkWrappers(input: {
   open(path: string): ReadModule | null;
   maxFiles?: number;
 }): { rows: Map<string, WrapperRow[]>; capped: string[] } {
-  const out = new Map<string, WrapperRow[]>();
+  return linkWrapperCalls({
+    ...input,
+    read: (reader, onlySeeded) => reader.rows(onlySeeded),
+    same: (x, row) => x.at === row.at && x.usage.api === row.usage.api,
+  });
+}
+
+/**
+ * Calls of key-forwarding wrappers (storage keys) across modules: the same stage as
+ * `linkWrappers`, over the modules' `keyWrappers` facts.
+ */
+export function linkKeyWrappers(input: {
+  modules: readonly WrapperModule[];
+  edges: ReadonlyArray<{ from: string; to: string; resolved: boolean }>;
+  resolve(from: string, specifier: string): string | null;
+  open(path: string): ReadModule | null;
+  maxFiles?: number;
+}): { rows: Map<string, KeyCall[]>; capped: string[] } {
+  return linkWrapperCalls({
+    ...input,
+    read: (reader, onlySeeded) => reader.keyCalls(onlySeeded),
+    same: (x, row) => x.at === row.at && x.forward === row.forward,
+  });
+}
+
+function linkWrapperCalls<R>(input: {
+  modules: readonly WrapperModule[];
+  edges: ReadonlyArray<{ from: string; to: string; resolved: boolean }>;
+  resolve(from: string, specifier: string): string | null;
+  open(path: string): ReadModule | null;
+  maxFiles?: number;
+  read(reader: WrapperReader, onlySeeded: boolean): R[];
+  same(a: R, b: R): boolean;
+}): { rows: Map<string, R[]>; capped: string[] } {
+  const out = new Map<string, R[]>();
   const capped: string[] = [];
   const byId = new Map(input.modules.map((m) => [m.id, m]));
   const providers = new Set(
@@ -887,11 +1118,10 @@ export function linkWrappers(input: {
     readers.set(file, reader);
     return reader;
   };
-  const add = (file: string, rows: WrapperRow[]): void => {
+  const add = (file: string, rows: R[]): void => {
     if (!rows.length) return;
     const list = out.get(file) ?? [];
-    for (const row of rows)
-      if (!list.some((x) => x.at === row.at && x.usage.api === row.usage.api)) list.push(row);
+    for (const row of rows) if (!list.some((x) => input.same(x, row))) list.push(row);
     out.set(file, list);
   };
   // every class a provider exports is a class the importers can reach
@@ -911,7 +1141,7 @@ export function linkWrappers(input: {
     const reader = readerOf(file);
     if (!reader) continue;
     for (const cls of everyClass) reader.adopt(cls);
-    add(file, reader.rows());
+    add(file, input.read(reader, false));
     passes.push(...reader.passes());
   }
   for (const pass of passes) {
@@ -924,9 +1154,103 @@ export function linkWrappers(input: {
   }
   for (const file of new Set(passes.map((p) => p.file)).values()) {
     const reader = readers.get(file);
-    if (reader) add(file, reader.rows(true));
+    if (reader) add(file, input.read(reader, true));
   }
   for (const [file, reader] of readers)
     if (reader?.capped && !capped.includes(file)) capped.push(file);
   return { rows: out, capped };
+}
+
+/**
+ * The storage rows of calls of key-forwarding wrappers in one module (`caller`): per call, the
+ * argument read there (a literal, a constant, with `lookUp` another module's constant, or what
+ * the resolver reads through call sites, whole), then the key expression of the wrapper's
+ * storage call evaluated in the defining module (`open(cls.file)`, "" for the caller itself)
+ * with that value for its parameter. Anything not read whole is an unknown row at the call
+ * (`unread: true`), with the argument's name as `expression` when it is one.
+ */
+export function keyCallRows(
+  caller: ReadModule,
+  calls: readonly KeyCall[],
+  open: (file: string) => ReadModule | null,
+  lookUp: ((ref: { specifier: string; property: string }) => string | null) | null,
+): Array<Candidate & { unread?: true }> {
+  const { tokens, constants, resolver } = caller;
+  const out: Array<Candidate & { unread?: true }> = [];
+  const seen = new Map<string, Candidate>();
+  const source = caller.source;
+  const columnOf = (start: number): number =>
+    source === undefined ? 1 : start - (source.lastIndexOf("\n", start - 1) + 1) + 1;
+  for (const call of [...calls].toSorted((a, b) => a.at - b.at)) {
+    // the argument at the call, whole
+    let values: string[] | null = null;
+    const named = channelArg(tokens, constants, call.arg);
+    if (named && "value" in named) values = [named.value];
+    else if (named && "ref" in named) {
+      const found = !named.ref.before && !named.ref.after && lookUp ? lookUp(named.ref) : null;
+      values = found === null ? null : [found];
+    } else {
+      const found = resolver.resolveArgument(call.arg);
+      if (
+        found &&
+        !found.partial &&
+        found.values.every((v) => v !== "" && !v.includes("${…}") && !v.includes("\u0001"))
+      )
+        values = found.values;
+    }
+    // the key the wrapper builds from it, in the defining module
+    const provider = call.cls.file === "" ? caller : open(call.cls.file);
+    const keys: string[] = [];
+    let unread = !values?.length || !provider;
+    if (!unread && provider) {
+      const at = call.forward.key.at;
+      const def = provider.resolver.functionAt(at);
+      for (const v of values!) {
+        const got = def ? provider.resolver.keyWith(at, def, call.forward.index, v) : null;
+        if (!got) {
+          unread = true;
+          break;
+        }
+        for (const k of got) if (!keys.includes(k)) keys.push(k);
+      }
+    }
+    const t = tokens[call.at]!;
+    const kind = call.forward.api as Candidate["kind"];
+    const op = call.forward.key.op;
+    const reads: Array<Pick<Candidate, "value" | "evidence" | "expression">> = unread
+      ? [
+          {
+            value: null,
+            evidence: "unknown",
+            expression:
+              tokens[call.arg]?.type === "ident" && resolver.endOf(call.arg) === call.arg + 1
+                ? tokens[call.arg]!.value
+                : "<expression>",
+          },
+        ]
+      : keys.map((value) => ({ value, evidence: "inferred" as const }));
+    for (const r of reads) {
+      const id = `${kind}\u0000${r.value ?? `?${r.expression}`}\u0000${op ?? ""}\u0000${call.via}`;
+      const have = seen.get(id);
+      if (have) {
+        have.count++;
+        continue;
+      }
+      const row: Candidate & { unread?: true } = {
+        value: r.value,
+        kind,
+        evidence: r.evidence,
+        line: t.line,
+        column: columnOf(t.start),
+        ...(op ? { op } : {}),
+        ...(r.expression ? { expression: r.expression } : {}),
+        via: call.via,
+        count: 1,
+        ...(unread ? { unread: true as const } : {}),
+      };
+      seen.set(id, row);
+      out.push(row);
+    }
+  }
+  return out;
 }

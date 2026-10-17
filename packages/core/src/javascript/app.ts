@@ -20,7 +20,14 @@ import {
   type Token,
 } from "./scan.js";
 import { summarizeSourceMap } from "./sourcemap.js";
-import { linkWrappers, type ReadModule, type WrapperFacts } from "./wrappers.js";
+import {
+  keyCallRows,
+  linkKeyWrappers,
+  linkWrappers,
+  type ReadModule,
+  type WrapperFacts,
+  WrapperReader,
+} from "./wrappers.js";
 
 /** Minimal read-only file tree so directories and ASAR archives share one analyzer. */
 export interface FileTree {
@@ -62,6 +69,8 @@ export interface JsModule {
   ambient?: AmbientFacts;
   /** Wrapper classes and objects the file exports, for calls in other files (wrappers.ts). */
   wrappers?: WrapperFacts;
+  /** Storage-key wrapper classes and objects the file exports, for calls in other files. */
+  keyWrappers?: WrapperFacts;
 }
 
 /** How far back a setting may be from `webPreferences` / `BrowserWindow` to count as a window option. */
@@ -2447,7 +2456,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 19;
+export const JS_SCAN_SCHEMA = 20;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -2906,6 +2915,8 @@ export interface FileTokenFacts {
   braces: Array<[number, number]>;
   preferenceObjects: Array<[number, number]>;
   candidates: ReturnType<typeof findCandidates> | null;
+  /** Storage-key wrappers the file exports (wrappers.ts), from its storage calls with an open key. */
+  keyWrappers: WrapperFacts | null;
   bridge: ReturnType<typeof bridgeMembers> | null;
   navigation: NavigationHandler[] | null;
 }
@@ -2933,6 +2944,7 @@ export function readFileTokens(
   const preferenceObjects = new Map<number, number>();
   let ambient: ReturnType<typeof collectAmbient> | null = null;
   let candidates: ReturnType<typeof findCandidates> | null = null;
+  let keyWrappers: WrapperFacts | null = null;
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
   let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
@@ -3220,6 +3232,35 @@ export function readFileTokens(
       // Endpoints, storage and URL literals: only where the text can contain one at all.
       if (CAN_HOLD_CANDIDATES.test(source)) {
         candidates = findCandidates(tokens, source, undefined, context.aliases, context.constants);
+        // storage wrappers other modules may call: only an exported class or object counts
+        if (candidates.openKeys?.length && /export|module\.exports|exports\./.test(source)) {
+          const reader = new WrapperReader(
+            tokens,
+            new ExpressionResolver(tokens, context.constants),
+            context.constants,
+          );
+          reader.findKeyWrappers(candidates.openKeys);
+          keyWrappers = reader.facts();
+        }
+        // and calls of the file's own ones on proven instances (one bundle: esbuild, webpack)
+        // that the resolver's in-file reading did not give
+        if (candidates.openKeys?.length) {
+          const resolver = new ExpressionResolver(tokens, context.constants);
+          const reader = new WrapperReader(tokens, resolver, context.constants);
+          reader.findKeyWrappers(candidates.openKeys);
+          const calls = reader.classes.length ? reader.keyCalls(false, true) : [];
+          if (calls.length)
+            addOwnKeyRows(
+              candidates,
+              keyCallRows(
+                { source, tokens, constants: context.constants, resolver },
+                calls,
+                () => null,
+                null,
+              ),
+            );
+        }
+        delete candidates.openKeys;
       }
       if (/setWindowOpenHandler|will-navigate|will-frame-navigate/.test(source))
         navigation = navigationHandlers(
@@ -3244,6 +3285,7 @@ export function readFileTokens(
     braces,
     preferenceObjects: [...preferenceObjects],
     candidates,
+    keyWrappers,
     bridge,
     navigation,
   };
@@ -3372,6 +3414,7 @@ export function analyzeJavaScriptTree(
     const tokens = scanned ?? tokenize(text).tokens;
     const constants = new Constants(tokens);
     const made = {
+      source: text,
       tokens,
       constants,
       resolver: new ExpressionResolver(tokens, constants, path, host),
@@ -3912,6 +3955,7 @@ export function analyzeJavaScriptTree(
       ...(scan.evaluated ? { evaluated: scan.evaluated } : {}),
       ...(scan.unevaluated ? { unevaluated: scan.unevaluated } : {}),
       ...(scan.wrappers ? { wrappers: scan.wrappers } : {}),
+      ...(tokenFacts.keyWrappers ? { keyWrappers: tokenFacts.keyWrappers } : {}),
       ...(open && (open.facts.defines || open.facts.calls || open.facts.replies)
         ? { ambient: open.facts }
         : {}),
@@ -4245,13 +4289,34 @@ export function analyzeJavaScriptTree(
         "A file has more calls on undeclared names than are kept for cross-file resolution; IPC through a name defined in another file may be missing there.",
     });
 
+  // Storage keys passed to a wrapper class or object another module defines (wrappers.ts):
+  // read at each call in the modules that import it, with the key the provider's own key
+  // expression gives for the argument. A call whose argument or key cannot be read is an unknown
+  // row at the call. Nothing is read when no module exports such a wrapper.
+  const keyRows = linkedKeyRows(
+    linkKeyWrappers({
+      modules: modules.map((m) => ({
+        id: m.id,
+        ...(m.keyWrappers ? { wrappers: m.keyWrappers } : {}),
+        ...(m.reexports ? { reexports: m.reexports } : {}),
+        ...(m.starExports ? { starExports: m.starExports } : {}),
+      })),
+      edges,
+      resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
+      open: openModule,
+    }),
+    openModule,
+    (from, ref) => lookUp(from, ref),
+    limitations,
+  );
+
   // Endpoints and storage keys with a part that is a constant of another module.
   const finished = (rows: AppCandidate[]): AppCandidate[] =>
     rows.map((row) =>
       resolvePending(row, (specifier, property) => lookUp(row.file, { specifier, property })),
     );
   const endpoints = finished(facts.endpoints);
-  const storage = finished(facts.storage);
+  const storage = finished(keyRows.length ? [...facts.storage, ...keyRows] : facts.storage);
 
   // IPC channel matching
   const channels = new Map<string, { senders: Set<string>; receivers: Set<string> }>();
@@ -4698,4 +4763,76 @@ export function analyzeJavaScriptTree(
     findings,
     limitations,
   };
+}
+
+/** Storage rows of an application, at most. */
+const MAX_KEY_CALLS = 2000;
+
+/**
+ * The storage rows of the calls `linkKeyWrappers` found (see `keyCallRows`), in file order.
+ */
+function linkedKeyRows(
+  linked: ReturnType<typeof linkKeyWrappers>,
+  open: (path: string) => ReadModule | null,
+  lookUp: (from: string, ref: { specifier: string; property: string }) => string | null,
+  limitations: Limitation[],
+): AppCandidate[] {
+  const out: AppCandidate[] = [];
+  let capped = linked.capped.length > 0;
+  for (const [file, calls] of [...linked.rows].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
+    const caller = open(file);
+    if (!caller) continue;
+    const rows = keyCallRows(
+      caller,
+      calls,
+      (f) => open(f),
+      (ref) => lookUp(file, ref),
+    );
+    for (const row of rows) {
+      if (out.length >= MAX_KEY_CALLS) {
+        capped = true;
+        break;
+      }
+      const { unread: _, ...plain } = row;
+      out.push({ file, ...plain });
+    }
+  }
+  if (capped)
+    limitations.push({
+      code: "storage_wrappers_capped",
+      message: `Storage keys passed to wrappers of other modules were not all read (a budget, the limit of 200 calling files${linked.capped.length ? `: ${linked.capped.slice(0, 5).join(", ")}${linked.capped.length > 5 ? " …" : ""}` : ""}, or the limit of ${MAX_KEY_CALLS} rows).`,
+    });
+  return out;
+}
+
+/** Where a row stands, with its kind and op. */
+const placeOf = (r: Candidate): string => `${r.line}:${r.column}\u0000${r.kind}\u0000${r.op ?? ""}`;
+
+/**
+ * Rows of calls of a file's own storage wrappers read through wrappers.ts, added where the
+ * file's rows do not have them already (the same position, kind, op and key). An unknown row is
+ * added only when the file has no unknown row of that kind yet: the unread row of the storage
+ * call inside the wrapper already says that a key of that kind is not known in the file.
+ */
+function addOwnKeyRows(
+  candidates: ReturnType<typeof findCandidates>,
+  rows: ReturnType<typeof keyCallRows>,
+): void {
+  const have = new Set(candidates.storage.map((r) => `${placeOf(r)}\u0000${r.value ?? ""}`));
+  const unknownKinds = new Set(
+    candidates.storage.filter((r) => r.value === null).map((r) => r.kind),
+  );
+  const placed = new Set(candidates.storage.map(placeOf));
+  for (const { unread, ...row } of rows) {
+    if (candidates.storage.length >= 2000) {
+      candidates.truncated = true;
+      return;
+    }
+    if (unread) {
+      if (unknownKinds.has(row.kind) || placed.has(placeOf(row))) continue;
+      unknownKinds.add(row.kind);
+    } else if (have.has(`${placeOf(row)}\u0000${row.value}`)) continue;
+    have.add(`${placeOf(row)}\u0000${row.value ?? ""}`);
+    candidates.storage.push(row);
+  }
 }
