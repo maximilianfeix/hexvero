@@ -82,7 +82,13 @@ export function interfaceMap(app: AppParts, limitations: readonly Limitation[]):
   const ends = new Map<string, InterfaceEnd[]>();
   for (const m of app.modules) {
     for (const u of m.ipc) {
-      if (!u.channel || u.api.startsWith("ipcRenderer.") || u.api.startsWith("contextBridge."))
+      if (
+        !u.channel ||
+        u.api.startsWith("ipcRenderer.") ||
+        u.api.startsWith("contextBridge.") ||
+        // a method that is not read (`ipcMain[route.kind](…)`): no end of either kind
+        u.api.endsWith(".[unknown]")
+      )
         continue;
       const list = ends.get(u.channel) ?? [];
       list.push({
