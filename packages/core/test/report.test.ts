@@ -306,4 +306,19 @@ describe("source lines", () => {
     const native = await session.open(join(dir, "outside.js"));
     await expect(session.source(native.id, "outside.js", 1)).rejects.toBeTruthy();
   });
+  it("uses placeholders in the reproduce line when both builds have the same name", async () => {
+    // two `app.asar` from two release folders: names alone would not say which is which
+    const session = new Session();
+    mkdirSync(join(dir, "r1"), { recursive: true });
+    mkdirSync(join(dir, "r2"), { recursive: true });
+    writeFileSync(join(dir, "r1", "app.asar"), buildAsar(app(false)));
+    writeFileSync(join(dir, "r2", "app.asar"), buildAsar(app(true)));
+    const a = await session.open(join(dir, "r1", "app.asar"));
+    const b = await session.open(join(dir, "r2", "app.asar"));
+    const r = await compareReleases(session, a.id, b.id);
+    const md = renderReleaseReport(r);
+    expect(md).toContain("compare <before> <after> --report report.md");
+    expect(md).toContain("Both builds are named app.asar; pass their paths");
+    expect(md).not.toContain(dir);
+  });
 });

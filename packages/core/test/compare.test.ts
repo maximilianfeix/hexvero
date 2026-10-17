@@ -761,4 +761,23 @@ describe("items on one side only", () => {
       ["electron.ipc::null", ["title"]],
     ]);
   });
+  it("matches imported modules by specifier, so a changed count is a change", () => {
+    // Electron Fiddle 0.39.0: a new module importing node:https raised 10 import counts, which
+    // were reported as 10 removed and 10 added imports
+    const a = [
+      { specifier: "node:https", count: 3, builtin: true },
+      { specifier: "electron", count: 9, builtin: true },
+    ];
+    const b = [
+      { specifier: "node:https", count: 4, builtin: true },
+      { specifier: "electron", count: 9, builtin: true },
+    ];
+    const diff = compareItems(a, b, { collection: "externals" });
+    expect(diff.key).toBe("specifier");
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual([]);
+    expect(diff.changed.map((c) => [c.key, c.fields])).toEqual([
+      ["node:https", [{ field: "count", before: 3, after: 4 }]],
+    ]);
+  });
 });

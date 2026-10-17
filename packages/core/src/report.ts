@@ -579,11 +579,28 @@ export function renderReleaseReport(r: ReleaseComparison): string {
   out.push("");
 
   out.push("## Reproduce", "");
+  const targets = reproduceTargets(r);
   out.push(
     "```bash",
-    `npx hexvero@${r.hexvero} compare ${shellWord(nameA)} ${shellWord(nameB)} --report report.md`,
+    `npx hexvero@${r.hexvero} compare ${targets.a} ${targets.b} --report report.md`,
     "```",
     "",
   );
+  if (targets.note) out.push(targets.note, "");
   return out.join("\n");
+}
+
+/**
+ * The two targets as shell words for a reproduce line. Reports hold file names, not directories;
+ * when both builds have the same name (two `app.asar`), the names alone would not say which is
+ * which, so placeholders stand in and a note says so.
+ */
+export function reproduceTargets(r: ReleaseComparison): { a: string; b: string; note?: string } {
+  const [nameA, nameB] = [baseName(r.a.info.path), baseName(r.b.info.path)];
+  if (nameA !== nameB) return { a: shellWord(nameA), b: shellWord(nameB) };
+  return {
+    a: "<before>",
+    b: "<after>",
+    note: `Both builds are named ${nameA}; pass their paths (sha256 ${r.a.info.sha256.slice(0, 12)}… before, ${r.b.info.sha256.slice(0, 12)}… after).`,
+  };
 }
