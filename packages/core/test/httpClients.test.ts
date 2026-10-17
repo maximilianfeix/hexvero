@@ -856,3 +856,260 @@ describe("request libraries, instances and Request objects", () => {
     }
   });
 });
+
+describe("request libraries: review fixes", () => {
+  it("does not keep an instance's base when the file may change it", () => {
+    const A =
+      'const axios = require("axios");\nconst api = axios.create({ baseURL: "https://old.example/api" });\n';
+    const unknown = ["http-client GET ?<expression> [unknown]"];
+    const cases: Array<[string, string[]]> = [
+      [A + 'api.defaults.baseURL = "https://new.example/v2";\napi.get("/users");', unknown],
+      [A + 'api.defaults.baseURL = cfg.base;\napi.get("/users");', unknown],
+      [
+        A +
+          'api.interceptors.request.use((c) => { c.baseURL = other; return c; });\napi.get("/users");',
+        unknown,
+      ],
+      [
+        A + 'Object.assign(api.defaults, { baseURL: "https://x.example" });\napi.get("/users");',
+        unknown,
+      ],
+      [
+        A +
+          'function setup(a) { a.defaults.baseURL = "https://z.example"; }\nsetup(api);\napi.get("/users");',
+        unknown,
+      ],
+      [A + 'module.exports = { api };\napi.get("/users");', unknown],
+      [
+        'import axios from "axios";\nexport const api = axios.create({ baseURL: "https://exp.example" });\napi.get("/users");',
+        unknown,
+      ],
+      [
+        'const got = require("got");\nconst g = got.extend({ prefixUrl: "https://g.example/api" });\ng.defaults.options.prefixUrl = "https://h.example";\ng("users");',
+        ["http-client ?<expression> [unknown]"],
+      ],
+      // only requests: the base is kept
+      [
+        A + 'api.get("/users");\napi("items");',
+        [
+          "http-client GET https://old.example/api/users [inferred]",
+          "http-client GET https://old.example/api/items [inferred]",
+        ],
+      ],
+    ];
+    for (const [source, rows] of cases) expect(show(source), source).toEqual(rows);
+  });
+
+  for (const minify of [false, true])
+    it(`does not keep an instance's base changed after create in an esbuild bundle${minify ? ", minified" : ""}`, () => {
+      const source = bundle(
+        [
+          'import axios from "axios";',
+          'const api = axios.create({ baseURL: "https://old.example/api" });',
+          'api.defaults.baseURL = "https://new.example/v2";',
+          'export function f() { return api.get("/users"); }',
+        ].join("\n"),
+        minify,
+      );
+      expect(show(source)).toEqual(["http-client GET ?<expression> [unknown]"]);
+    });
+
+  it("does not read a relative address where the library's global defaults are changed", () => {
+    expect(
+      show(
+        [
+          'const axios = require("axios");',
+          'axios.defaults.baseURL = "https://glob.example/api";',
+          'axios.get("/users");',
+          'axios("/items");',
+          'axios.get("https://abs.example/x");',
+          "const api = axios.create({ timeout: 1 });",
+          'api.get("/u");',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client GET ?<expression> [unknown]",
+      "http-client GET https://abs.example/x [literal]",
+    ]);
+  });
+
+  it("does not keep the base of an instance whose call passes its config as a name", () => {
+    expect(
+      show(
+        [
+          'const axios = require("axios");',
+          'const api = axios.create({ baseURL: "https://b.example/api" });',
+          'api.get("/users", opts);',
+          'api.post("/p", body, config);',
+          'api.get("/plain");',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client GET ?opts [unknown]",
+      "http-client POST ?config [unknown]",
+      "http-client GET https://b.example/api/plain [inferred]",
+    ]);
+  });
+
+  it("does not take an imported or replaced Request for the global one", () => {
+    for (const head of [
+      'import { Request } from "./mine";',
+      'import Request from "./mine";',
+      'import { Foo as Request } from "./mine";',
+      'import X, { Request } from "./mine";',
+      "globalThis.Request = MyRequest;",
+      "window.Request = MyRequest;",
+      "self.Request = MyRequest;",
+      "Request = MyRequest;",
+    ])
+      expect(show(`${head}\nfetch(new Request("https://r.example/a"));`), head).toEqual([
+        "fetch ?<expression> [unknown]",
+      ]);
+  });
+
+  it("counts destructuring and for-of writes of a binding", () => {
+    const cases: Array<[string, string[]]> = [
+      [
+        'const axios = require("axios");\nlet api = axios.create({ baseURL: "https://b.example" });\n({ api } = other);\napi.get("/x");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'const axios = require("axios");\nlet api = axios.create({ baseURL: "https://b.example" });\n[api] = list;\napi.get("/x");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'const axios = require("axios");\nlet api = axios.create({ baseURL: "https://b.example" });\nfor (api of list) {}\napi.get("/x");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let h = require("https");\n[h] = list;\nh.get("https://x.example/a");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let h = require("https");\nfor (h of list) {}\nh.get("https://x.example/b");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let h = require("https");\n({ k: { h } } = o);\nh.get("https://x.example/c");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let axios = require("axios");\n({ axios } = other);\naxios("https://x.example/direct");',
+        ["http-client ?<expression> [unknown]"],
+      ],
+      // a parameter pattern, a declaration pattern and an object literal write nothing
+      [
+        'const https = require("https");\nfunction f({ https } = {}) { return https; }\nconst { a: { b } } = o;\nconst o2 = { https };\nhttps.get("https://kept.example/");',
+        ["http-client GET https://kept.example/ [literal]"],
+      ],
+      // a name declared twice in one scope and written: either may be meant
+      [
+        'var h = require("https");\nvar h = require("https");\nh = other;\nh.get("https://dup.example/x");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+    ];
+    for (const [source, rows] of cases) expect(show(source), source).toEqual(rows);
+  });
+
+  it("reads superagent callbacks, agents, bases with a query and calls before a declaration", () => {
+    expect(
+      show(
+        [
+          'const superagent = require("superagent");',
+          'superagent("https://s.example/f", function (err, res) {});',
+          'superagent("https://s.example/g", (e) => e);',
+          'const agent = require("superagent").agent();',
+          'agent.get("https://s.example/agent");',
+          "const a2 = superagent.agent();",
+          'a2.post("https://s.example/agent2");',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client GET https://s.example/f [literal]",
+      "http-client GET https://s.example/g [literal]",
+      "http-client GET https://s.example/agent [literal]",
+      "http-client POST https://s.example/agent2 [literal]",
+    ]);
+    expect(
+      show(
+        [
+          'const axios = require("axios");',
+          'const ky = require("ky");',
+          'const a = axios.create({ baseURL: "https://b.example/api?key=1" });',
+          'a.get("/users");',
+          'const k = ky.create({ prefixUrl: "https://k.example/v1#x" });',
+          'k.get("users");',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client GET ?options.baseURL [unknown]",
+      "http-client GET ?options.prefixUrl [unknown]",
+    ]);
+    expect(
+      show(
+        [
+          'const axios = require("axios");',
+          'api.get("/early");',
+          'const api = axios.create({ baseURL: "https://b.example" });',
+          'const https = require("https");',
+          'req("https://early.example/");',
+          "const req = https.request;",
+          'req("https://late.example/");',
+        ].join("\n"),
+      ),
+    ).toEqual(["http-client https://late.example/ [literal]"]);
+  });
+
+  it("flags and reads conservatively past the write bounds", () => {
+    // more writes than are checked: the name is not proven, its calls are unknown rows
+    const writes =
+      'let h = require("https");\n' +
+      Array.from({ length: 2100 }, (_, i) => `h = o${i};`).join("\n") +
+      '\nh.get("https://after-writes.example/");\nconst q = require("http");\nq.get("http://kept.example/");';
+    const a = find(writes);
+    expect(a.clientsSkipped).toBe(true);
+    expect(show(writes)).toEqual([
+      "http-client GET ?<expression> [unknown]",
+      "http-client GET http://kept.example/ [literal]",
+    ]);
+    // 200 declarations of one name in one scope and 200 writes: past 32,000 questions
+    const many =
+      Array.from({ length: 200 }, () => 'var h = require("https");').join("\n") +
+      "\n" +
+      Array.from({ length: 200 }, (_, i) => `h = o${i};`).join("\n") +
+      '\nh.get("https://after.example/");\nfunction f() { const q = require("https"); q.get("https://unrelated.example/"); }';
+    expect(find(many).clientsSkipped).toBe(true);
+    expect(show(many)).toEqual([
+      "http-client GET ?<expression> [unknown]",
+      "http-client GET https://unrelated.example/ [literal]",
+    ]);
+  });
+
+  it("stays bounded past the functions the resolver reads, and on deep nesting", () => {
+    for (const n of [61_000, 80_000]) {
+      const source = Array.from(
+        { length: n },
+        (_, i) =>
+          `function f${i}(){ let h = require("https"); h = o${i}; h.get("https://x.example/${i}"); }`,
+      ).join("\n");
+      const started = performance.now();
+      const found = find(source);
+      // generous: the point is bounded against quadratic (0.9.8: minutes or out of memory)
+      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(found.clientsSkipped).toBe(true);
+      expect(found.endpoints.filter((e) => e.value !== null)).toEqual([]);
+    }
+    const n = 60_000;
+    const nested =
+      'const axios = require("axios");\n' +
+      Array.from(
+        { length: n },
+        (_, i) =>
+          `function f${i}(){ let api = axios.create({ baseURL: "https://b.example" }); api.get("/p${i}");`,
+      ).join("\n") +
+      "}".repeat(n);
+    const started = performance.now();
+    find(nested);
+    expect(performance.now() - started).toBeLessThan(15_000);
+  });
+});
