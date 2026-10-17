@@ -6,6 +6,23 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Web UI
+
+- Release gate in the Compare view: a policy editor prefilled with `examples/policy.json`
+  (embedded at build time), **Run check**, the status as a word and a sign, each finding with
+  rule, key, places (linked to the source lines), basis and fingerprint, unknown findings marked,
+  undecidable rules with their gaps in plain words, and **Download SARIF** / **Download
+  Markdown**. An invalid policy lists every issue. Screenshots `docs/screenshots/ui-release-gate*.png`,
+  recording `docs/demo/ui-review.mp4`.
+
+### Server
+
+- `POST /api/check?a=<id>&b=<id>[&format=json|markdown|sarif]` (contract C7): the policy JSON is
+  the request body (at most 1 MiB, read with `parsePolicy`); the server reads no policy or
+  baseline path from the client. `400 invalid_policy` carries `details.issues`; Markdown and SARIF
+  are downloads with a file name. Behind the existing token, Host and Origin checks.
+- `MAX_POLICY_BYTES` is exported from `@hexvero/core`.
+
 ## [0.9.0] - 2026-10-17
 
 ### Electron analysis

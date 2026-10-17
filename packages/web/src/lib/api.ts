@@ -154,9 +154,38 @@ export interface SourceWindow {
   totalLines: number;
   cut: Array<{ line: number; length: number }>;
 }
+/** Mirrors `PolicyFinding` of @hexvero/core (contract C5). */
+export interface PolicyFinding {
+  rule: string;
+  fingerprint: string;
+  level: "fail" | "warn";
+  state: "new" | "baselined" | "suppressed" | "suppression-expired";
+  /** The ChangeRow id (C3) the finding is about. */
+  row: string;
+  collection: string;
+  key: string;
+  message: string;
+  where: Place[];
+  /** The finding rests on an unknown or incomplete comparison. */
+  unknown: boolean;
+  basis?: string;
+  suppression?: { reason: string; expires?: string };
+}
+/** Mirrors `PolicyResult` of @hexvero/core (contract C5). */
+export interface PolicyResult {
+  hexvero: "check";
+  version: 1;
+  status: "pass" | "fail" | "incomplete" | "error";
+  findings: PolicyFinding[];
+  incomplete: Array<{ rule: string; collection: string; gaps: string[] }>;
+  policy: { file: string; sha256: string };
+  a: TargetInfo;
+  b: TargetInfo;
+}
 export interface ApiError {
   code: string;
   message: string;
+  details?: unknown;
 }
 
 export class HttpError extends Error {
@@ -164,9 +193,30 @@ export class HttpError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    /** For `invalid_policy`: each problem of the policy with its JSON path. */
+    readonly issues: string[] = [],
   ) {
     super(message);
   }
+}
+
+/** The issue list of an `invalid_policy` error body; anything else has none. */
+export function issuesOf(error: ApiError): string[] {
+  const issues = (error.details as { issues?: unknown } | undefined)?.issues;
+  return Array.isArray(issues) ? issues.filter((i): i is string => typeof i === "string") : [];
+}
+
+/** Reads the error body of a failed response; a body that is not JSON keeps the status text. */
+async function errorOf(res: Response): Promise<HttpError> {
+  let error: ApiError = { code: String(res.status), message: res.statusText };
+  try {
+    error = ((await res.json()) as { error: ApiError }).error;
+  } catch {
+    /* non-JSON error body */
+  }
+  if (res.status === 401)
+    error.message = `${error.message}. Open the link that \`hexvero ui\` printed in the terminal again.`;
+  return new HttpError(res.status, error.code, error.message, issuesOf(error));
 }
 
 const TOKEN_KEY = "hexvero.token";
@@ -224,17 +274,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: { authorization: `Bearer ${token()}`, ...init.headers },
   });
-  if (!res.ok) {
-    let error: ApiError = { code: String(res.status), message: res.statusText };
-    try {
-      error = ((await res.json()) as { error: ApiError }).error;
-    } catch {
-      /* non-JSON error body */
-    }
-    if (res.status === 401)
-      error.message = `${error.message}. Open the link that \`hexvero ui\` printed in the terminal again.`;
-    throw new HttpError(res.status, error.code, error.message);
-  }
+  if (!res.ok) throw await errorOf(res);
   return (await res.json()) as T;
 }
 
@@ -348,7 +388,7 @@ export const api = {
    * Downloads the full analysis. Fetched with the Authorization header like every other call and
    * saved from a Blob, so the session token never appears in a URL, history or a server log.
    */
-  exportJson: (id: string): Promise<void> =>
+  exportJson: (id: string): Promise<string> =>
     download(`/api/targets/${id}/export`, "analysis.hexvero.json"),
   /** Opens the two example builds that ship with hexvero. */
   demo: () => request<{ a: TargetRecord; b: TargetRecord }>("/demo", { method: "POST" }),
@@ -368,8 +408,26 @@ export const api = {
     return result;
   },
   /** The comparison as a Markdown report, saved like the JSON export. */
-  downloadReport: (a: string, b: string): Promise<void> =>
+  downloadReport: (a: string, b: string): Promise<string> =>
     download(`/api/compare/report?${params({ a, b })}`, "hexvero-report.md"),
+  /**
+   * Checks the pair against a policy (contract C7). The policy text is the request body; the
+   * server reads no policy or baseline path. An invalid policy throws an HttpError with `issues`.
+   */
+  check: (a: string, b: string, policy: string, signal?: AbortSignal): Promise<PolicyResult> =>
+    request<PolicyResult>(`/check?${params({ a, b })}`, {
+      method: "POST",
+      body: policy,
+      headers: { "content-type": "application/json" },
+      ...(signal ? { signal } : {}),
+    }),
+  /** The check result as a SARIF log or Markdown, saved like the report. */
+  downloadCheck: (a: string, b: string, policy: string, format: "sarif" | "markdown") =>
+    download(
+      `/api/check?${params({ a, b, format })}`,
+      format === "sarif" ? "hexvero-check.sarif" : "hexvero-check.md",
+      { method: "POST", body: policy, headers: { "content-type": "application/json" } },
+    ),
   source: (id: string, file: string, line: number, context = 14) =>
     cached<SourceWindow>(`/targets/${id}/source?${params({ file, line, context })}`),
 };
@@ -378,17 +436,12 @@ export const api = {
  * Fetches with the Authorization header like every other call and saves the body from a Blob,
  * so the session token never appears in a URL, history or a server log.
  */
-async function download(path: string, fallback: string): Promise<void> {
-  const res = await fetch(path, { headers: { authorization: `Bearer ${token()}` } });
-  if (!res.ok) {
-    let message = res.statusText;
-    try {
-      message = ((await res.json()) as { error: ApiError }).error.message;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new HttpError(res.status, String(res.status), message);
-  }
+async function download(path: string, fallback: string, init: RequestInit = {}): Promise<string> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { authorization: `Bearer ${token()}`, ...init.headers },
+  });
+  if (!res.ok) throw await errorOf(res);
   const name =
     /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallback;
   const url = URL.createObjectURL(await res.blob());
@@ -403,6 +456,7 @@ async function download(path: string, fallback: string): Promise<void> {
     // the click has handed the Blob to the browser's download by now
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
+  return name;
 }
 
 function params(q: Record<string, string | number | boolean | undefined>): string {

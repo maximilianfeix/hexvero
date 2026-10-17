@@ -214,6 +214,7 @@ export { CORE_VERSION } from "./version.js";
 export {
   CHECK_EXIT,
   CHECK_MAX_ROWS,
+  MAX_POLICY_BYTES,
   POLICY_RULES,
   PolicyError,
   checkRelease,
