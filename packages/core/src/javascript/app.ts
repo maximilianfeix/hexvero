@@ -4634,7 +4634,7 @@ export function analyzeJavaScriptTree(
   if (nativeAddons.length)
     findings.push({
       kind: "js.native-addons",
-      title: `${nativeAddons.length} native addons (.node)`,
+      title: `${nativeAddons.length} native ${nativeAddons.length === 1 ? "addon" : "addons"} (.node)`,
       detail: nativeAddons.slice(0, 5).join(", "),
       confidence: "confirmed",
     });
@@ -4642,7 +4642,7 @@ export function analyzeJavaScriptTree(
   if (minified)
     findings.push({
       kind: "js.minified",
-      title: `${minified} minified bundles`,
+      title: `${minified} minified ${minified === 1 ? "bundle" : "bundles"}`,
       confidence: "inferred",
     });
   const unresolved = edges.filter((e) => !e.resolved && e.kind !== "dynamic-import").length;

@@ -6,6 +6,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Wording
+
+- One minified bundle or native addon is named in the singular ("1 minified bundle", not "1 minified
+  bundles"); found by a first-time-user run of 0.9.4.
+
 ## [0.9.4] - 2026-10-17
 
 ### Electron analysis
