@@ -535,7 +535,7 @@ describe("a placed literal is listed once", () => {
  */
 const REPLACED = [
   // the overlay of holdout6: a display's bounds, then the shorthand
-  "function overlay(display) {\n  const webPreferences = { contextIsolation: true, sandbox: true, webSecurity: false };\n  return new BrowserWindow({ ...display.bounds, frame: false, webPreferences });\n}",
+  "function overlay(display) {\n  const webPreferences = { contextIsolation: true, sandbox: true, webSecurity: false };\n  return new BrowserWindow({\n    ...display.bounds,\n    frame: false,\n    webPreferences,\n  });\n}",
   // a literal, after a parameter's spread
   'function literal(opts) {\n  return new BrowserWindow({ ...opts, show: false, webPreferences: { sandbox: true, preload: "p.js" } });\n}',
   // `webPreferences: NAME` after the spread of a call
@@ -565,6 +565,20 @@ const STILL_COMPUTED = [
   "function chosen(opts, dev) {\n  return new BrowserWindow({ ...opts, webPreferences: dev ? { sandbox: false } : { sandbox: true } });\n}",
   // a parameter the callers do not all fill in
   "function param(opts, webPreferences) {\n  return new BrowserWindow({ ...opts, webPreferences });\n}",
+  // a later write of the key the reading does not name: quoted, computed, a method, an accessor
+  'function quoted(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, "webPreferences": o.p });\n}',
+  "function single(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, 'webPreferences': o.p });\n}",
+  'function computedKey(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, ["webPreferences"]: o.p });\n}',
+  "function anyKey(o, k) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, [k]: o.p });\n}",
+  'function quotedUnsafe(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, "webPreferences": { nodeIntegration: true, contextIsolation: false, sandbox: false } });\n}',
+  "function method(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, webPreferences() { return o.p; } });\n}",
+  "function getter(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, get webPreferences() { return o.p; } });\n}",
+  'const P = { contextIsolation: true, sandbox: true };\nfunction namedThenQuoted(o) {\n  return new BrowserWindow({ ...o, webPreferences: P, "webPreferences": o.p });\n}',
+  // a prototype, which is not modeled
+  "function proto(o) {\n  return new BrowserWindow({ ...o, webPreferences: { sandbox: true }, __proto__: o });\n}",
+  // a later spread of an object that brings the key
+  "function spreadAfter(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, ...{ webPreferences: o.p } });\n}",
+  "function spreadCond(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, ...(o.dev && { webPreferences: o.p }) });\n}",
 ].join("\n");
 const ALL = "computed computed computed null computed";
 
@@ -583,12 +597,18 @@ describe("a whole webPreferences written after an unread spread", () => {
   });
 
   it("decides nothing when the spread comes after it or may reach inside it", () => {
-    const main = `const { BrowserWindow } = require("electron");\n${STILL_COMPUTED}\nmodule.exports = { after, inside, declared, chosen, param };`;
-    const expected = [ALL, ALL, ALL, ALL, ALL];
+    const main = `const { BrowserWindow } = require("electron");\n${STILL_COMPUTED}\nmodule.exports = { after, inside, declared, chosen, param, quoted, single, computedKey, anyKey, quotedUnsafe, method, getter, namedThenQuoted, proto, spreadAfter, spreadCond };`;
+    // the quoted unsafe object is read as well: two different values, which decide nothing
+    const expected = Array.from({ length: 16 }, (_, i) =>
+      i === 9 ? "conflicting conflicting conflicting null computed" : ALL,
+    );
     expect(states(analyze({ "main.js": main }))).toEqual(expected);
+    // esbuild's minifier writes `"webPreferences":` as a plain key: the later object then
+    // stands, with its unsafe values
+    const minified = expected.map((e, i) => (i === 9 ? "true false false null not written" : e));
     for (const minify of [false, true])
       expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(
-        expected,
+        minify ? minified : expected,
       );
   });
 

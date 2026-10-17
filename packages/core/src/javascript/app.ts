@@ -802,6 +802,32 @@ function windowRanges(
     for (let k = open + 1; k < end; k++) {
       const t = tokens[k]!;
       const next = tokens[k + 1];
+      // A member of a window's options that may write the key `webPreferences` without the
+      // reading naming it: `"webPreferences": …`, `[key]: …`, a method or an accessor. It may
+      // replace every setting written before it, as an unknown spread may: a whole
+      // `webPreferences` before it decides nothing. Plain `name: value`, the shorthand, a spread
+      // (read below) and another quoted or numbered key do not; `__proto__` counts as one.
+      if (
+        window !== null &&
+        level === "options" &&
+        (k - 1 === root || is(k - 1, ",")) &&
+        braceAround(k, open) === root
+      ) {
+        const plain =
+          is(k, "}") || // after a trailing comma
+          is(k, "...") ||
+          // `__proto__: x` sets the prototype, which is not modeled
+          (t.type === "ident" &&
+            t.value !== "__proto__" &&
+            (is(k + 1, ":") || is(k + 1, ",") || is(k + 1, "}"))) ||
+          ((t.type === "string" || t.type === "number") &&
+            t.value !== "webPreferences" &&
+            is(k + 1, ":"));
+        if (!plain) {
+          wholePrefs.delete(window);
+          hide(window, at ?? t.start);
+        }
+      }
       if (is(k, "...")) {
         const place = at ?? t.start;
         // `...name`, `...helper()`, `...this.name`; anything else (`...(dev ? a : b)`,
