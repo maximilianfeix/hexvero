@@ -6,6 +6,22 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Web UI
+
+- Text from the target is shown with invisible and direction-changing characters written out as
+  `⟨U+…⟩` in every view, not only in Compare, the evidence panel and the source view: finding
+  titles and details, limitations, table cells, module names in the graph, the target path above
+  the tabs and the target names in the sidebar. A right-to-left override in a channel list or a
+  file name (`…\u202Egpj.exe` read as `…exe.jpg`) no longer reorders what the reviewer reads.
+- A table, the strings list, the interface map, the module graph or the source lines that fail to
+  load (an error from the server, a timeout, a stopped server) say what failed, are announced to
+  screen readers and offer **Retry**; a failed table no longer reads "No rows match."
+- A link to a view the target does not have (the module graph or interface map of a plain
+  JavaScript file, an unknown tab) says so and offers the overview instead of the server's
+  "Unknown collection" message or an empty panel.
+- After a link or Back/Forward replaces the view, focus moves to the workspace instead of falling
+  to the page start; the "Reading …" line is announced while an analysis runs.
+
 ## [0.9.1] - 2026-10-17
 
 ### Web UI

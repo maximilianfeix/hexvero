@@ -1,7 +1,14 @@
 import type { KeyboardEvent, ReactElement } from "react";
 import { useState } from "react";
-import { api, formatBytes, formatCount, type TargetRecord } from "../lib/api.js";
+import {
+  api,
+  formatBytes,
+  formatCount,
+  type AnalysisResponse,
+  type TargetRecord,
+} from "../lib/api.js";
 import { navigate, navigateCompare } from "../lib/route.js";
+import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
 import { CollectionView } from "./CollectionView.js";
 import { GraphView } from "./GraphView.js";
@@ -13,6 +20,26 @@ import { StringsView } from "./StringsView.js";
 
 const FIXED_FIRST = ["overview", "findings"];
 const HIDDEN = new Set(["findings", "limitations"]);
+
+/** The views this target offers, in tab order; `tab` adds the source view while it is open. */
+export function tabsFor(
+  target: TargetRecord,
+  tab: string,
+  analysis: AnalysisResponse | null,
+): string[] {
+  const collections = analysis?.collections ?? {};
+  const app = analysis?.data["kind"] === "javascript-app";
+  return [
+    ...FIXED_FIRST,
+    ...Object.entries(collections)
+      .filter(([name, count]) => !HIDDEN.has(name) && count > 0)
+      .map(([name]) => name),
+    ...(target.info.format === "directory" ? [] : ["strings", "hex"]),
+    ...(app && (collections["interfaces"] ?? 0) > 0 ? ["interface-map"] : []),
+    ...(app ? ["graph"] : []),
+    ...(tab === "source" ? ["source"] : []),
+  ];
+}
 
 export function Workspace({
   target,
@@ -68,22 +95,14 @@ export function Workspace({
   const dynamic = Object.entries(collections)
     .filter(([name, count]) => !HIDDEN.has(name) && count > 0)
     .map(([name]) => name);
-  const tabs = [
-    ...FIXED_FIRST,
-    ...dynamic,
-    ...(isDirectory ? [] : ["strings", "hex"]),
-    ...(analysis.data?.data["kind"] === "javascript-app" && (collections["interfaces"] ?? 0) > 0
-      ? ["interface-map"]
-      : []),
-    ...(analysis.data?.data["kind"] === "javascript-app" ? ["graph"] : []),
-    ...(tab === "source" ? ["source"] : []),
-  ];
+  const tabs = tabsFor(target, tab, analysis.data);
+  const offered = tabs.includes(tab);
 
   return (
     <>
       <div className="target-header">
         <div className="path-line">
-          <span className="path">{target.info.path}</span>
+          <span className="path">{visible(target.info.path)}</span>
           <span>{target.info.format}</span>
           {!isDirectory && <span>{formatBytes(target.info.size)}</span>}
           {target.info.sha256 && (
@@ -118,8 +137,8 @@ export function Workspace({
           )}
         </div>
         {analysis.loading && (
-          <p className="verdict" style={{ color: "var(--ink-2)" }}>
-            Reading {target.info.path.split(/[\\/]/).pop()}…
+          <p className="verdict" role="status" style={{ color: "var(--ink-2)" }}>
+            Reading {visible(target.info.path.split(/[\\/]/).pop() ?? "")}…
           </p>
         )}
         {analysis.error && (
@@ -201,12 +220,26 @@ export function Workspace({
         {analysis.data && dynamic.includes(tab) && (
           <CollectionView targetId={target.id} name={tab} query={query} />
         )}
-        {tab === "strings" && <StringsView targetId={target.id} query={query} />}
-        {tab === "hex" && <HexView targetId={target.id} size={target.info.size} query={query} />}
-        {analysis.data && tab === "interface-map" && tabs.includes("interface-map") && (
+        {offered && tab === "strings" && <StringsView targetId={target.id} query={query} />}
+        {offered && tab === "hex" && (
+          <HexView targetId={target.id} size={target.info.size} query={query} />
+        )}
+        {analysis.data && offered && tab === "interface-map" && (
           <InterfaceMapView targetId={target.id} query={query} />
         )}
-        {analysis.data && tab === "graph" && <GraphView targetId={target.id} />}
+        {analysis.data && offered && tab === "graph" && <GraphView targetId={target.id} />}
+        {analysis.data && !offered && (
+          <p className="empty">
+            This target has no {label(tab).toLowerCase()} view.{" "}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => navigate(target.id, "overview", undefined, true)}
+            >
+              Show the overview
+            </button>
+          </p>
+        )}
         {tab === "source" && <SourceView targetId={target.id} query={query} />}
       </section>
     </>

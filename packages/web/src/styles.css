@@ -400,6 +400,10 @@ code,
   min-width: 0;
   min-height: 0;
 }
+/* focused after a view change only to carry focus on; not an interactive control */
+.workspace:focus {
+  outline: none;
+}
 
 .target-header {
   padding: 18px 24px 0;

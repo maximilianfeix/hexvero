@@ -26,6 +26,7 @@ import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
 import { Toolbar } from "./CollectionView.js";
 import { PlaceLink } from "./CompareView.js";
+import { LoadError } from "./LoadError.js";
 
 /** Rows read for the map and the list; past this the page says how many were left unread. */
 export const MAX_LOAD = 10_000;
@@ -92,7 +93,8 @@ export function InterfaceMapView({
   const filtered = useMemo(() => (rows ? filterRows(rows, text) : []), [rows, text]);
   const map = useMemo(() => buildMap(rows ?? [], filtered), [rows, filtered]);
 
-  if (loaded.error) return <p className="empty">{loaded.error.message}</p>;
+  if (loaded.error)
+    return <LoadError what="the interface map" error={loaded.error} onRetry={loaded.retry} />;
   if (!loaded.data || !rows) return <p className="empty">Reading the interface rows…</p>;
   if (rows.length === 0) return <p className="empty">No preload members were found to draw.</p>;
 

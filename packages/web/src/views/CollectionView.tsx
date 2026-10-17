@@ -4,7 +4,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, formatCount, type Page } from "../lib/api.js";
 import { formatBytes, nextOffset, reducedRow } from "../lib/pages.js";
 import { navigate } from "../lib/route.js";
+import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
+import { LoadError } from "./LoadError.js";
 
 const PAGE = 500;
 type Row = Record<string, unknown>;
@@ -37,6 +39,8 @@ export function CollectionView({
       <Table
         rows={page.data?.items ?? []}
         loading={page.loading}
+        error={page.error}
+        onRetry={page.retry}
         label={name}
         reduced={page.data ? reducedRow(page.data) : null}
       />
@@ -111,18 +115,26 @@ export function Toolbar({
   );
 }
 
-const cellText = (v: unknown): string =>
-  v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+/** A cell's text: target content, with invisible and direction-changing characters written out. */
+export const cellText = (v: unknown): string =>
+  visible(
+    v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v),
+  );
 
 export function Table({
   rows,
   loading,
   label,
   reduced = null,
+  error = null,
+  onRetry,
 }: {
   rows: Row[];
   loading: boolean;
   label?: string;
+  /** The rows did not arrive: shown instead of the empty message, with a retry. */
+  error?: Error | null;
+  onRetry?: (() => void) | undefined;
   /** A row the server shortened to fit the page, with the full item's size. */
   reduced?: { index: number; bytes: number } | null;
 }): ReactElement {
@@ -156,7 +168,11 @@ export function Table({
       aria-rowcount={rows.length + 1}
       tabIndex={0}
     >
-      {rows.length === 0 ? (
+      {rows.length === 0 && error && !loading ? (
+        <div style={{ padding: 24 }}>
+          <LoadError what="the rows" error={error} onRetry={onRetry} />
+        </div>
+      ) : rows.length === 0 ? (
         <p className="empty" style={{ padding: 24 }}>
           {loading ? "Loading…" : "No rows match."}
         </p>
@@ -222,7 +238,7 @@ function Cell({ value }: { value: unknown }): ReactElement {
       <>
         {(value as string[]).map((v) => (
           <span key={v} className="tag">
-            {v}
+            {visible(v)}
           </span>
         ))}
       </>

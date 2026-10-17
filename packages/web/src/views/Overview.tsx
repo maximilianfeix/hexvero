@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { AnalysisResponse } from "../lib/api.js";
+import { visible } from "../lib/text.js";
 import { PlaceLink } from "./CompareView.js";
 
 type Obj = Record<string, unknown>;
@@ -23,7 +24,7 @@ export function Overview({
           {facts.map(([k, v]) => (
             <div key={k}>
               <dt>{k}</dt>
-              <dd>{v}</dd>
+              <dd>{visible(v)}</dd>
             </div>
           ))}
         </dl>
@@ -62,10 +63,10 @@ export function Overview({
                 >
                   <span className="dot" />
                   <div>
-                    <span className="title">{f.title}</span>
+                    <span className="title">{visible(f.title)}</span>
                     <span className="confidence">{f.confidence}</span>
                     <span className="kind">{f.kind}</span>
-                    {f.detail && <div className="detail">{f.detail}</div>}
+                    {f.detail && <div className="detail">{visible(f.detail)}</div>}
                     {f.location && (
                       <div className="detail">
                         <Location analysis={analysis} location={f.location} />
@@ -85,7 +86,7 @@ export function Overview({
               <li key={i} className="finding limitation">
                 <span className="dot" />
                 <div>
-                  <span className="title">{l.message}</span>
+                  <span className="title">{visible(l.message)}</span>
                   <span className="kind">{l.code}</span>
                 </div>
               </li>
@@ -107,7 +108,7 @@ function Location({
 }): ReactElement {
   const m = /^(.+?):(\d+)$/.exec(location);
   if (analysis.data.kind !== "javascript-app" || !m)
-    return <code className="location">{location}</code>;
+    return <code className="location">{visible(location)}</code>;
   return (
     <PlaceLink
       place={{ side: "a", file: m[1]!, line: Number(m[2]) }}

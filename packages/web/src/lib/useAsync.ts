@@ -6,8 +6,12 @@ export interface AsyncState<T> {
   loading: boolean;
 }
 
+/** The state plus `retry`, which runs `factory` again for the same key. */
+export type AsyncResult<T> = AsyncState<T> & { retry: () => void };
+
 /** Runs `factory` when `key` changes; ignores stale resolutions. */
-export function useAsync<T>(key: string, factory: () => Promise<T>): AsyncState<T> {
+export function useAsync<T>(key: string, factory: () => Promise<T>): AsyncResult<T> {
+  const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<AsyncState<T>>({
     data: null,
     error: null,
@@ -30,6 +34,6 @@ export function useAsync<T>(key: string, factory: () => Promise<T>): AsyncState<
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  return state;
+  }, [key, attempt]);
+  return { ...state, retry: () => setAttempt((n) => n + 1) };
 }
