@@ -410,7 +410,7 @@ Checked against the source:
 
 1. **IPC argument shapes are not compared** (M1, unchanged).
 2. **Storage keys behind a wrapper are not read** (M2). The wrapper following of 0.9.0 covers
-   IPC calls only.
+   IPC calls only. Found after 0.9.1, see the next section.
 3. **A request whose URL arrives as a parameter is not an endpoint row**, not even an unknown
    one, when it is made with an HTTP client method (`https.get(url)`) rather than `fetch` (M3). The
    URL still shows up in `urls`, and `new-external-host` does read `urls`, so the check would
@@ -429,6 +429,31 @@ Checked against the source:
    findings and limitations)").
 8. The reports' "Reproduce" line reads `compare app.asar app.asar`, since both files have the
    same name; it does not say which directory each came from.
+
+## After 0.9.1: storage keys through wrappers (M2)
+
+Run on `sprint/round3` (the 0.9.2 candidate) on the same two archives, 2026-10-17:
+
+```bash
+$H compare asar/fiddle-0.38.0.asar asar/fiddle-0.39.0.asar storage
+```
+
+```text
+storage: 3 added, 0 removed, 0 changed, 0 unchanged, 82 relocated · matched by file+kind+value+op
+  + .webpack/renderer/main_window/index.js::localStorage::isUsingSocketFirewall::write
+  + .webpack/renderer/main_window/index.js::localStorage::isUsingSocketFirewall::delete
+  + .webpack/renderer/main_window/index.js::localStorage::isUsingSocketFirewall::read
+```
+
+M2 is found: the new setting is read through `this.retrieve(GlobalSetting.isUsingSocketFirewall)`
+and written through `this.save(…)` (both wrappers of `AppState` around `localStorage`). Checked
+against the v0.39.0 source (`src/renderer/state.ts`, `src/interfaces.ts`): 28 of the 28 keys the
+renderer stores are read, none missed, none false; 0.38.0 gives 27, and the only difference is
+`isUsingSocketFirewall`. The `delete` rows come from `save`'s `removeItem` branch for a `null`
+value, a possible operation, not a confirmed one. hexvero also says that 0.39.0 was read in part
+(70 of 71 JavaScript files) and that 4 storage values stay unread (3 `sessionStorage`, 1
+IndexedDB). M1 (IPC argument shapes) and M3 (an endpoint whose URL is a parameter of an HTTP
+client method) are still missed.
 
 ## Limitations of the study
 
