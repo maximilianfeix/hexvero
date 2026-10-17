@@ -561,3 +561,54 @@ describe("directory analysis", () => {
     expect(info.limitations.map((l) => l.code)).toContain("context_bridge_truncated");
   });
 });
+
+describe("channel tables with members the reading does not name", () => {
+  const E = 'const { ipcMain, ipcRenderer } = require("electron");\n';
+  const sent = (source: string): Array<string | null> =>
+    scanJavaScript(E + source).ipc.map((u) => u.channel);
+
+  it("lets a later computed key, accessor or method replace an entry", () => {
+    // a computed key that is a constant: that key, written later, wins
+    expect(
+      sent(
+        'const K = "chan";\nconst cfg = { chan: "c:plain", [K]: "c:computed" };\nipcRenderer.send(cfg.chan);',
+      ),
+    ).toEqual(["c:computed"]);
+    // one that is not known may be any key: the earlier entry is not known
+    expect(
+      sent('const cfg = { chan: "c:plain", [k]: "c:other" };\nipcRenderer.send(cfg.chan);'),
+    ).toEqual([null]);
+    // a getter or a method of the same name
+    expect(
+      sent(
+        'const cfg = { chan: "c:plain", get chan() { return "c:get"; } };\nipcRenderer.send(cfg.chan);',
+      ),
+    ).toEqual([null]);
+    expect(
+      sent('const cfg = { chan: "c:plain", chan() {} };\nipcRenderer.send(cfg.chan);'),
+    ).toEqual([null]);
+    // an accessor, generator or spread that cannot be named
+    for (const member of ["get [k]() {}", "async *gen() {}", "*gen() {}", "...other"])
+      expect(
+        sent(`const cfg = { chan: "c:plain", ${member} };\nipcRenderer.send(cfg.chan);`),
+        member,
+      ).toEqual([null]);
+    // after the member an entry is known again, and a member of another name changes nothing
+    expect(
+      sent(
+        'const cfg = { [k]: "x", chan: "c:after", get other() { return 1; } };\nipcRenderer.send(cfg.chan);',
+      ),
+    ).toEqual(["c:after"]);
+    expect(
+      sent('const cfg = { async other() {}, chan: "c:named" };\nipcRenderer.send(cfg.chan);'),
+    ).toEqual(["c:named"]);
+  });
+
+  it("lists no __proto__ channel for a handler table with a prototype", () => {
+    expect(
+      sent(
+        "const handlers = { __proto__: base, own: () => 1 };\nfor (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, fn);",
+      ),
+    ).toEqual(["own"]);
+  });
+});

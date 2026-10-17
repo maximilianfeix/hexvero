@@ -1762,17 +1762,20 @@ export class ExpressionResolver {
         props.set(key, this.lookup(key, k, env, depth + 1));
       } else if (key !== null) {
         // a method or a computed value; `get NAME()`, `set NAME()`, `async NAME()` name NAME
-        const accessor = key === "get" || key === "set" || key === "async";
+        // (`get()` is a method named get). Any other accessor or async member (`get [k]()`,
+        // `async *gen()`, `get 1()`) is not named here: it may be any key, also one written
+        // before, which it then replaces.
+        const accessor =
+          (key === "get" || key === "set" || key === "async") && !this.punct(k + 1, "(");
         const after = this.tokens[k + 1];
-        if (accessor && this.punct(k + 1, "[")) {
-          // `get [name]()`: may be any key, also one written before
+        const named =
+          (after?.type === "ident" || after?.type === "string") && this.punct(k + 2, "(");
+        if (!accessor) props.set(key, null);
+        else if (named) props.set(after.value, null);
+        else {
           for (const earlier of props.keys()) props.set(earlier, null);
           unknown = true;
-        } else
-          props.set(
-            accessor && (after?.type === "ident" || after?.type === "string") ? after.value : key,
-            null,
-          );
+        }
       } else if (t.type === "number") unknown = true;
       else {
         // `[name]: …`: the key it evaluates to, when that is one string; any other computed key

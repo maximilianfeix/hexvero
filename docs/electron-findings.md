@@ -40,8 +40,12 @@ A setting also reads as `computed` where the code next to the window does not de
   with or without a spread before the settings (`{ webPreferences: {…}, [k]: 1 }`). A computed
   key whose value is read (`[TITLE]` with `const TITLE = "title"`) is that key, so another one
   replaces nothing and `[KEY]` with `KEY = "webPreferences"` is the later `webPreferences`.
-  `__proto__: …` sets the prototype and never replaces an own key, so it hides nothing. The
-  limitation
+  `__proto__: …` sets the prototype and never replaces an own key, but Electron reads the
+  options by property access, so a key the object does not write may come from the prototype: in
+  a window's options it makes `webPreferences` unknown unless the options write their own, and in
+  a `webPreferences` object every key it does not write reads as computed (the ones it writes
+  stand). An accessor or async member that cannot be named (`get [k]()`, `async *gen()`,
+  `get 1()`) may be any key. The limitation
   `window_options_unresolved` names the windows whose settings are not all known;
 - the options object that was followed may be changed after its declaration. A write to one key
   (`prefs.sandbox = false`, `prefs.sandbox ||= x`, `delete prefs.sandbox`) makes that key
