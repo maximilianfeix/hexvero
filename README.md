@@ -114,7 +114,7 @@ $ echo $?
 3
 ```
 
-The policy is JSON, data only ([`examples/policy.json`](examples/policy.json), [schema](docs/policy.schema.json)) with three rules: `new-interface-member`, `new-external-host` (with an `allow` list) and `window-more-permissive`. Exit `0` pass, `1` technical error, `2` usage or invalid policy, `3` violated, `4` not decidable: an unknown (a host built at run time, an unreadable bridge, an app read in part) is never a pass under `"unknown": "fail"`. `--baseline file --update-baseline` accepts what is there once (the same run then exits `0`); suppressions take a reason and an expiry date. Output as text, JSON, Markdown or SARIF 2.1.0. The GitHub Actions workflow, with a least-privilege SARIF upload: [docs/ci.md](docs/ci.md). Over MCP: `hexvero_check`.
+The policy is JSON, data only ([`examples/policy.json`](examples/policy.json), [schema](docs/policy.schema.json)) with four rules: `new-interface-member`, `new-external-host` (with an `allow` list), `window-more-permissive` and `new-bridge-exposure` (a privileged object such as `ipcRenderer` or `fs` handed to pages as it is). Exit `0` pass, `1` technical error, `2` usage or invalid policy, `3` violated, `4` not decidable: an unknown (a host built at run time, an unreadable bridge, an app read in part) is never a pass under `"unknown": "fail"`. `--baseline file --update-baseline` accepts what is there once (the same run then exits `0`); suppressions take a reason and an expiry date. Output as text, JSON, Markdown or SARIF 2.1.0. The GitHub Actions workflow, with a least-privilege SARIF upload: [docs/ci.md](docs/ci.md). Over MCP: `hexvero_check`.
 
 On your own app: `npx hexvero compare old/app.asar new/app.asar --report report.html`, then `npx hexvero check old/app.asar new/app.asar --policy .hexvero/policy.json`.
 
@@ -423,7 +423,7 @@ Call graphs include tail calls through both radare2 (from its jump references) a
 - Call graphs depend on the engine's analysis; a function reached only through a pointer has no direct caller. Ghidra is verified on fixtures only.
 - Very large single items are returned compacted with a marker; very large files above the per-file budget are listed as unread.
 - `compare` is a per-collection diff: it does not line up renamed functions or match code by structure; a renamed window shows up as removed and added. It compares whole lists up to 200,000 items or 256 MiB per side and says when it did not. IPC argument shapes are not compared, so a new field in an existing channel's payload is not a change.
-- `hexvero check` judges three rules (new interface member, new external host, more permissive window); it is not a vulnerability scanner and a pass is not a security verdict.
+- `hexvero check` judges four rules (new interface member, new external host, more permissive window, privileged object newly handed to pages); it is not a vulnerability scanner and a pass is not a security verdict.
 - Native findings cite a collection (imports, symbols) rather than a file offset.
 - Files above 512 MiB are read lazily only for ASAR archives; other formats that large are refused with `too_large`.
 - No dynamic analysis, debugging, device access, firmware unpacking or packet capture: for those, see [REA](#compared-with-rea).

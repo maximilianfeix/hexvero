@@ -8,7 +8,8 @@
       "level": "fail",
       "allow": ["api.notesdesk.example", "telemetry.notesdesk.example", "*.cdn.notesdesk.example"]
     },
-    "window-more-permissive": { "level": "fail" }
+    "window-more-permissive": { "level": "fail" },
+    "new-bridge-exposure": { "level": "fail" }
   },
   "unknown": "fail",
   "suppressions": []

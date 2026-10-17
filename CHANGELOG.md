@@ -6,6 +6,18 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Release policies
+
+- New rule `new-bridge-exposure`: a privileged object a preload newly hands to pages as it is
+  (`ipcRenderer` or one of its methods, `shell`, the `electron` module, a Node module such as `fs`,
+  `process`, `require`), read from `bridgeExposures`. The same exposure in another preload file of
+  the before build is not new; an exposure hexvero could not decide is an unknown finding. A
+  policy that does not list the rule runs it at `warn`, so upgrading never turns a passing check
+  red; `examples/policy.json` lists it at `fail`. SARIF rule `NewBridgeExposure`, schema updated.
+  hexvero 0.9.6 and older reject a policy that lists the rule (exit 2, unknown rule); keep it
+  out of a policy that an older pinned version reads. A narrowed exposure (`ipcRenderer` →
+  `ipcRenderer.send`) is a different object and is reported as new.
+
 ### CLI
 
 - Commands hexvero suggests (`Next` after `demo` and `analyze`, the hints under lists and
