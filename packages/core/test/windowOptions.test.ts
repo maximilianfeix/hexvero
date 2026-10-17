@@ -40,7 +40,12 @@ const one = (main: string): JsAppInfo =>
   analyze({ "main.js": `const { BrowserWindow } = require("electron");\n${main}` });
 
 /** The fixture sources bundled by esbuild into main.js, optionally minified. */
-function bundled(sources: Record<string, string>, minify: boolean): Record<string, string> {
+function bundled(
+  sources: Record<string, string>,
+  minify: boolean,
+  /** An older target makes esbuild lower `?.` (`es2019`). */
+  target?: string,
+): Record<string, string> {
   const src = mkdtempSync(join(dir, "src-"));
   for (const [name, text] of Object.entries(sources)) {
     mkdirSync(dirname(join(src, name)), { recursive: true });
@@ -56,6 +61,7 @@ function bundled(sources: Record<string, string>, minify: boolean): Record<strin
     external: ["electron"],
     outfile,
     logLevel: "silent",
+    ...(target ? { target } : {}),
   });
   return { "main.js": readFileSync(outfile, "utf8") };
 }
@@ -591,6 +597,141 @@ describe("a whole webPreferences written after an unread spread", () => {
       "function f(opts) {\n  const webPreferences = { sandbox: true };\n  webPreferences.sandbox = opts.sandbox;\n  return new BrowserWindow({ ...opts, webPreferences });\n}",
     );
     expect(info.windows[0]?.computed ?? []).toContain("sandbox");
+  });
+});
+
+/** IPC calls with optional chaining, in main and preload, and look-alikes that are no IPC. */
+const OPTIONAL_MAIN = [
+  'const { ipcMain, BrowserWindow } = require("electron");',
+  'ipcMain?.handle("main:a", () => 1);',
+  'ipcMain.handle?.("main:b", (_e, x) => x);',
+  'ipcMain?.on?.("main:c", (event, x) => {',
+  '  event.sender?.send("reply:a", { x });',
+  '  event?.reply("reply:b", x);',
+  '  event.reply?.("reply:c");',
+  "});",
+  "const win = new BrowserWindow({});",
+  'win.webContents?.send("push:a", 1);',
+  'win?.webContents?.send("push:b", { a: 1, b: 2 });',
+  'win.webContents.send?.("push:c");',
+  "// look-alikes: another object, another temporary, another receiver",
+  "const socket = makeSocket();",
+  'socket?.send("no:a");',
+  'var t; (t = socket) == null ? void 0 : t.send("no:b");',
+  'var u; (u = ipcMain) == null ? void 0 : socket.send("no:c");',
+  'ipcMain == null ? void 0 : socket.on("no:d", () => {});',
+  "module.exports = { win };",
+].join("\n");
+const OPTIONAL_PRELOAD = [
+  'const { ipcRenderer, contextBridge } = require("electron");',
+  'ipcRenderer?.send("pre:a", 1, { b: 2 });',
+  'ipcRenderer.send?.("pre:b", { x: 1 });',
+  'ipcRenderer?.invoke?.("pre:c");',
+  'ipcRenderer?.on("pre:d", () => {});',
+  'contextBridge?.exposeInMainWorld("api", { go: (n) => ipcRenderer?.invoke("pre:e", n) });',
+  'var c; (c = ipcRenderer.send) == null ? void 0 : c.call(socket, "no:e");',
+  'var s; (s = other.ipcRenderer) == null ? void 0 : s.call(ipcRenderer, "no:f");',
+].join("\n");
+/** The same files written without `?.`. */
+const plainOf = (text: string): string => text.replace(/\?\.\(/g, "(").replace(/\?\./g, ".");
+/** `file api channel args` of every IPC row, without how the call was read (`via`). */
+const ipcRows = (info: JsAppInfo): string[] =>
+  info.modules
+    .flatMap((m) => m.ipc.map((r) => `${m.id} ${r.api} ${r.channel} ${r.args ?? ""}`.trim()))
+    .toSorted();
+
+const files = (main: string, preload: string): JsAppInfo =>
+  analyze({ "main.js": main, "preload.js": preload });
+/** IPC rows of a renderer that finds the IPC object on the window (`window.ipc = …`). */
+const ambientRows = (ui: string): string[] =>
+  ipcRows(
+    analyze({
+      "main.js": 'const { ipcMain } = require("electron");\nipcMain.on("boot", () => {});',
+      "js/default.js": 'window.ipc = require("electron").ipcRenderer;',
+      "js/ui.js": ui,
+    }),
+  );
+
+/** Both files bundled by esbuild. */
+const both = (minify: boolean, target?: string): JsAppInfo =>
+  files(
+    bundled({ "main.js": OPTIONAL_MAIN }, minify, target)["main.js"]!,
+    bundled({ "main.js": OPTIONAL_PRELOAD }, minify, target)["main.js"]!,
+  );
+
+describe("optional chaining on IPC calls", () => {
+  it("gives the rows of the plain call, in the source and as esbuild lowers it", () => {
+    const plain = files(plainOf(OPTIONAL_MAIN), plainOf(OPTIONAL_PRELOAD));
+    const expected = ipcRows(plain);
+    // the plain call is read as before: every channel, with its payload
+    expect(expected).toEqual([
+      "main.js event.reply reply:b (_)",
+      "main.js event.reply reply:c ()",
+      "main.js event.sender.send reply:a ({x})",
+      "main.js ipcMain.handle main:a",
+      "main.js ipcMain.handle main:b",
+      "main.js ipcMain.on main:c",
+      "main.js webContents.send push:a (_)",
+      "main.js webContents.send push:b ({a, b})",
+      "main.js webContents.send push:c ()",
+      "preload.js contextBridge.exposeInMainWorld api",
+      "preload.js ipcRenderer.invoke pre:c ()",
+      "preload.js ipcRenderer.invoke pre:e (_)",
+      "preload.js ipcRenderer.on pre:d",
+      "preload.js ipcRenderer.send pre:a (_, {b})",
+      "preload.js ipcRenderer.send pre:b ({x})",
+    ]);
+    const optional = files(OPTIONAL_MAIN, OPTIONAL_PRELOAD);
+    expect(ipcRows(optional)).toEqual(expected);
+    expect(optional.ipcChannels).toEqual(plain.ipcChannels);
+    expect(optional.contextBridge).toEqual(plain.contextBridge);
+    // esbuild keeps `?.` for a current target and lowers it for es2019:
+    // `(_a = ipcRenderer.send) == null ? void 0 : _a.call(ipcRenderer, …)`, minified `||`
+    for (const [minify, target] of [
+      [false, undefined],
+      [true, undefined],
+      [false, "es2019"],
+      [true, "es2019"],
+    ] as const) {
+      const info = both(minify, target);
+      const label = `${minify ? "minified" : "bundled"} ${target ?? "esnext"}`;
+      expect(ipcRows(info), label).toEqual(expected);
+      expect(info.ipcChannels, label).toEqual(plain.ipcChannels);
+    }
+  });
+
+  it("reads the lowered forms only where the temporary is assigned from the receiver", () => {
+    const rows = ipcRows(files(OPTIONAL_MAIN, OPTIONAL_PRELOAD)).join("\n");
+    expect(rows).not.toContain("no:");
+    // by hand: the forms esbuild, a minifier and TypeScript emit
+    const info = one(
+      [
+        'const { ipcRenderer } = require("electron");',
+        'var _a; (_a = ipcRenderer) == null ? void 0 : _a.send("low:a", 1);',
+        'var a; (a = ipcRenderer.invoke) == null || a.call(ipcRenderer, "low:b");',
+        'var _b; (_b = ipcRenderer) === null || _b === void 0 ? void 0 : _b.send("low:c");',
+        'null == ipcRenderer || ipcRenderer.send("low:d");',
+        'var _c, _d; (_d = (_c = ipcRenderer).send) == null ? void 0 : _d.call(_c, "low:e");',
+        "// not the same object",
+        'var _e; (_e = ipcRenderer) == null ? void 0 : _f.send("no:a");',
+        'var _g; (_g = ipcRenderer.send) == null ? void 0 : _g.call(_x, "no:b");',
+        'var _h; (_h = ipcRenderer.send) == null ? void 0 : _h.apply(ipcRenderer, ["no:c"]);',
+        'ipcRenderer == null ? void 0 : ipcRenderer2.send("no:d");',
+      ].join("\n"),
+    );
+    expect(ipcRows(info)).toEqual([
+      "main.js ipcRenderer.invoke low:b ()",
+      "main.js ipcRenderer.send low:a (_)",
+      "main.js ipcRenderer.send low:c ()",
+      "main.js ipcRenderer.send low:d ()",
+      "main.js ipcRenderer.send low:e ()",
+    ]);
+  });
+
+  it("reads an optional call on an IPC object a renderer finds on the window", () => {
+    const ui = 'window.ipc?.send("amb:a");\nipc?.send?.("amb:b", 1);';
+    expect(ambientRows(ui)).toEqual(ambientRows(plainOf(ui)));
+    expect(ambientRows(ui)).toContain("js/ui.js ipcRenderer.send amb:b");
   });
 });
 

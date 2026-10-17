@@ -459,6 +459,26 @@ wrapper`) or through a name another file defines (`via: global`): those rows hav
 the arguments of the wrapper are not necessarily what it sends. Keys are taken as written, not normalised: `{1.5: x}` and `{"1.5": x}`, `{0x10: x}` and `{16: x}`, `{["a"]: 1}` and `{a: 1}` give different shapes, as does a transpiler's spread helper (`_objectSpread({}, o, {a})` is `(_)`) against `{...o, a}`; `__proto__: p` counts as an unknown name. A comparison with an export written by 0.9.4 shows `args` on every sending call, as those rows have none. What a value argument holds (`_`),
 the keys of an object held in a variable, and what the receiver reads from the payload.
 
+## Optional chaining on IPC calls
+
+An IPC call written with optional chaining gives the row of the plain call, with the same channel,
+api, sender or receiver and `args`: `ipcRenderer?.send("x", …)`, `ipcRenderer.send?.("x")`,
+`ipcMain?.handle(…)`, `event.sender?.send(…)`, `event?.reply(…)`, `win?.webContents?.send(…)`,
+`contextBridge?.exposeInMainWorld(…)`. The call is made whenever the object is there, which is
+what a row says of a plain call too. `?.` is read as `.` only before the names of IPC methods and
+of the objects IPC is called on (`send`, `invoke`, `on`, `handle`, `reply`, `webContents`,
+`sender`, `ipcRenderer`, …); elsewhere it stays as written.
+
+The forms esbuild (and TypeScript, Babel) lower `?.` to for older targets are read the same way,
+plain and minified: `X == null ? void 0 : X.send(…)`, `X == null || X.send(…)`,
+`(_a = E) == null ? void 0 : _a.send(…)`, `(_a = E) === null || _a === void 0 ? void 0 :
+_a.send(…)`, and for an optional call `(_a = E.send) == null ? void 0 : _a.call(E, …)`, also
+`(_b = (_a = win.webContents).send) == null ? void 0 : _b.call(_a, …)`. Only where the receiver is
+provably the same object: the temporary is assigned from a chain of names in the same
+expression, and `.call` gets that chain (or the temporary it was assigned to) as its receiver.
+Another name after the test (`(_a = ipcRenderer) == null ? void 0 : socket.send(…)`), another
+receiver of `.call`, and `.apply(…)` give no row.
+
 ## Not read
 
 Electron fuses, Content Security Policy, what a navigation or window-open handler checks,

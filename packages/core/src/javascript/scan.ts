@@ -532,7 +532,225 @@ export function tokenize(
     tokens.push({ type: "punct", value: punct, line, start: i, end: i + punct.length });
     i += punct.length;
   }
-  return { tokens, truncated: i < n };
+  return { tokens: optionalIpcCalls(tokens), truncated: i < n };
+}
+
+/**
+ * Names whose optional chaining is read as the plain member: IPC methods and the objects IPC is
+ * called on. `ipcRenderer?.send("x")`, `ipcRenderer.send?.("x")`, `event.sender?.send("x")`,
+ * `win?.webContents?.send("x")` are then the same calls as without `?.`, for every reader.
+ */
+const OPTIONAL_IPC = new Set([
+  "on",
+  "once",
+  "handle",
+  "handleOnce",
+  "send",
+  "invoke",
+  "sendSync",
+  "sendToHost",
+  "postMessage",
+  "reply",
+  "exposeInMainWorld",
+  "webContents",
+  "sender",
+  "ipcRenderer",
+  "ipcMain",
+  "contextBridge",
+]);
+
+/**
+ * The token stream with optional chaining on IPC calls read as plain calls, in the source form
+ * and in the form esbuild (and TypeScript, Babel) lower it to for older targets:
+ *
+ * - `X?.m(` and `X.m?.(` are `X.m(` for a name m in OPTIONAL_IPC (`?.` before another name
+ *   stays as it is);
+ * - `X == null ? void 0 : X.m(` (also `X == null || X.m(`, `null == X || X.m(`) is `X.m(`;
+ * - `(T = E) == null ? void 0 : T.m(` (also with `||`, and `=== null || T === void 0 ? void 0 :`)
+ *   is `E.m(` when E is a chain of names: the temporary is assigned from E in the same expression,
+ *   so it is that object;
+ * - `(T = E.m) == null ? void 0 : T.call(R, …)` is `E.m(…)` when R is E itself, or the temporary
+ *   E was assigned to (`(_e = (_d = win.webContents).send) == null ? void 0 : _e.call(_d, …)`).
+ *
+ * The object guarded against null is the receiver of the call: the call is made whenever the
+ * object is there, which is what a row says of a plain call too. Nothing else is rewritten, and a
+ * receiver that is not provably the same object (another name, another temporary) is left alone.
+ */
+function optionalIpcCalls(tokens: Token[]): Token[] {
+  let any = false;
+  for (const t of tokens)
+    if (t.type === "punct" && (t.value === "?." || t.value === "==" || t.value === "===")) {
+      any = true;
+      break;
+    }
+  if (!any) return tokens;
+  const punct = (a: Token[], k: number, v: string): boolean =>
+    a[k]?.type === "punct" && a[k]!.value === v;
+  const ident = (a: Token[], k: number, v?: string): boolean =>
+    a[k]?.type === "ident" && (v === undefined || a[k]!.value === v);
+  const ipcName = (a: Token[], k: number): boolean =>
+    a[k]?.type === "ident" && OPTIONAL_IPC.has(a[k]!.value);
+  /** The end (exclusive) of the chain of names `a.b.c` that starts at k, or k. */
+  const chainEnd = (a: Token[], k: number): number => {
+    if (!ident(a, k)) return k;
+    let j = k + 1;
+    while (punct(a, j, ".") && ident(a, j + 1)) j += 2;
+    return j;
+  };
+  const same = (a: Token[], from: number, to: number, at: number): boolean => {
+    for (let j = from; j < to; j++)
+      if (a[at + j - from]?.type !== a[j]!.type || a[at + j - from]!.value !== a[j]!.value)
+        return false;
+    return true;
+  };
+  /**
+   * The length of the null test of the temporary `name` at k: `== null ? void 0 :`,
+   * `== null ||`, `=== null || name === void 0 ? void 0 :`; 0 when there is none.
+   */
+  const guard = (a: Token[], k: number, name: string): number => {
+    if (punct(a, k, "==") && ident(a, k + 1, "null")) {
+      if (punct(a, k + 2, "||")) return 3;
+      if (punct(a, k + 2, "?") && ident(a, k + 3, "void") && a[k + 4]?.value === "0")
+        return punct(a, k + 5, ":") ? 6 : 0;
+      return 0;
+    }
+    if (
+      punct(a, k, "===") &&
+      ident(a, k + 1, "null") &&
+      punct(a, k + 2, "||") &&
+      ident(a, k + 3, name) &&
+      punct(a, k + 4, "===") &&
+      ident(a, k + 5, "void") &&
+      a[k + 6]?.value === "0" &&
+      punct(a, k + 7, "?") &&
+      ident(a, k + 8, "void") &&
+      a[k + 9]?.value === "0" &&
+      punct(a, k + 10, ":")
+    )
+      return 11;
+    return 0;
+  };
+  // 1. `?.` in the source. The array is copied only from the first change on: most files have
+  // nothing to rewrite, and their stream stays the same array.
+  let a: Token[] = tokens;
+  let copy: Token[] | null = null;
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type === "punct" && t.value === "?.") {
+      // `X.m?.(`: the call itself; `X?.m`: the member
+      const call = punct(tokens, k + 1, "(") && ipcName(tokens, k - 1);
+      if (call || ipcName(tokens, k + 1)) {
+        copy ??= tokens.slice(0, k);
+        if (!call) copy.push({ ...t, value: "." });
+        continue;
+      }
+    }
+    copy?.push(t);
+  }
+  if (copy) a = copy;
+  // 2. the lowered forms, innermost first: a temporary inside E is read before E is
+  for (let pass = 0; pass < 3; pass++) {
+    const copied: { out: Token[] | null } = { out: null };
+    /** The copy up to token k, made at the first change. */
+    const start = (k: number): Token[] => (copied.out ??= a.slice(0, k));
+    for (let k = 0; k < a.length; k++) {
+      // Every form below starts with `X ==`, `X ===` or `(T =`: most tokens are passed over by
+      // this test alone.
+      const t1 = a[k + 1]?.value;
+      if (t1 !== "==" && t1 !== "===" && !(a[k]!.value === "(" && a[k + 2]?.value === "=")) {
+        copied.out?.push(a[k]!);
+        continue;
+      }
+      // `X == null ? void 0 : X.m`, `X == null || X.m`, `null == X || X.m`
+      if (ident(a, k) && !punct(a, k - 1, ".") && !punct(a, k - 1, "?.")) {
+        const name = a[k]!.value;
+        const g = guard(a, k + 1, name);
+        if (g && ident(a, k + 1 + g, name) && punct(a, k + 2 + g, ".") && ipcName(a, k + 3 + g)) {
+          start(k).push(a[k]!);
+          k += 1 + g; // on the second X, which is dropped: the `.` comes next
+          continue;
+        }
+      }
+      if (
+        ident(a, k, "null") &&
+        punct(a, k + 1, "==") &&
+        ident(a, k + 2) &&
+        punct(a, k + 3, "||") &&
+        ident(a, k + 4, a[k + 2]?.value) &&
+        punct(a, k + 5, ".") &&
+        ipcName(a, k + 6)
+      ) {
+        start(k).push(a[k + 4]!);
+        k += 4;
+        continue;
+      }
+      // `(T = E) <guard> T.m(` and `(T = E.m) <guard> T.call(R, …)`
+      if (punct(a, k, "(") && ident(a, k + 1) && punct(a, k + 2, "=")) {
+        const temp = a[k + 1]!.value;
+        // E: a chain of names, or `(T2 = C).m`
+        let inner: { name: string; from: number; to: number } | null = null;
+        let eFrom = k + 3;
+        let eTo = chainEnd(a, eFrom);
+        if (
+          eTo === eFrom &&
+          punct(a, eFrom, "(") &&
+          ident(a, eFrom + 1) &&
+          punct(a, eFrom + 2, "=")
+        ) {
+          const cTo = chainEnd(a, eFrom + 3);
+          if (
+            cTo > eFrom + 3 &&
+            punct(a, cTo, ")") &&
+            punct(a, cTo + 1, ".") &&
+            ident(a, cTo + 2)
+          ) {
+            inner = { name: a[eFrom + 1]!.value, from: eFrom + 3, to: cTo };
+            eTo = cTo + 3;
+          }
+        }
+        if (eTo > eFrom && punct(a, eTo, ")")) {
+          const g = guard(a, eTo + 1, temp);
+          const use = eTo + 1 + g;
+          if (g && ident(a, use, temp) && punct(a, use + 1, ".")) {
+            // `T.m(`: E is the receiver
+            if (!inner && ipcName(a, use + 2)) {
+              const o = start(k);
+              for (let j = eFrom; j < eTo; j++) o.push(a[j]!);
+              k = use; // the `.` after T comes next
+              continue;
+            }
+            // `T.call(R, …)`: E's last name is the method, R its receiver
+            const method = eTo - 1;
+            if (
+              ident(a, use + 2, "call") &&
+              punct(a, use + 3, "(") &&
+              ipcName(a, method) &&
+              punct(a, method - 1, ".")
+            ) {
+              const r = use + 4;
+              const rEnd = chainEnd(a, r);
+              const receiver = inner
+                ? rEnd === r + 1 && a[r]!.value === inner.name
+                : rEnd > r && rEnd - r === method - 1 - eFrom && same(a, eFrom, method - 1, r);
+              if (receiver && (punct(a, rEnd, ",") || punct(a, rEnd, ")"))) {
+                const o = start(k);
+                if (inner) for (let j = inner.from; j < inner.to; j++) o.push(a[j]!);
+                else for (let j = eFrom; j < method - 1; j++) o.push(a[j]!);
+                o.push(a[method - 1]!, a[method]!, a[use + 3]!);
+                // the arguments after R, without its comma
+                k = punct(a, rEnd, ",") ? rEnd : rEnd - 1;
+                continue;
+              }
+            }
+          }
+        }
+      }
+      copied.out?.push(a[k]!);
+    }
+    if (!copied.out) break;
+    a = copied.out;
+  }
+  return a;
 }
 
 const literal = (t: Token | undefined): string | null =>
