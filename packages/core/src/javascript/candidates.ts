@@ -561,11 +561,52 @@ export function findCandidates(
   // `net` itself when it is bound from it. Each entry keeps the token of its declaration: a call
   // is the module's only where its name means that declaration (`refersTo`), and a name that is
   // assigned again anywhere is no client at all.
+  // Webpack modules that only pass a module on (`7(e) { e.exports = require("https") }`, also
+  // `7: function (e) {…}` and arrows): their id, and whether that module is a client. An id
+  // written twice with different modules is not known.
+  let webpackIds: Map<string, ClientModule | "other" | null> | null = null;
+  const webpackModule = (id: string): ClientModule | "other" | null | undefined => {
+    if (!webpackIds) {
+      webpackIds = new Map();
+      const scopes = (wrapperResolver ??= makeResolver());
+      for (let k = 2; k + 3 < tokens.length; k++) {
+        if (
+          !is(tokens[k], "ident", "require") ||
+          !is(tokens[k + 1], "punct", "(") ||
+          tokens[k + 2]?.type !== "string" ||
+          !is(tokens[k - 1], "punct", "=") ||
+          !is(tokens[k - 2], "ident", "exports") ||
+          !is(tokens[k - 3], "punct", ".") ||
+          !is(tokens[k - 4], "ident")
+        )
+          continue;
+        const def = scopes.functionAt(k);
+        const first = def?.params[0];
+        if (!def || first?.kind !== "name" || first.name !== tokens[k - 4]!.value) continue;
+        const p = def.paramsAt;
+        const key = [p - 1, p - 2, p - 3].find((j) => {
+          const x = tokens[j];
+          return (
+            (x?.type === "number" || x?.type === "string") &&
+            (j === p - 1 || is(tokens[j + 1], "punct", ":"))
+          );
+        });
+        if (key === undefined) continue;
+        const moduleId = tokens[key]!.value;
+        const module = clientModule(tokens[k + 2]) ?? "other";
+        const before = webpackIds.get(moduleId);
+        webpackIds.set(moduleId, before === undefined || before === module ? module : null);
+      }
+    }
+    return webpackIds.get(id);
+  };
   const clients = new Map<string, Array<{ module: ClientModule; at: number }>>();
   /** Every name bound to a client module, as 0.9.2 read it: its rule applies where no binding is proven. */
   const legacyClients = new Set<string>();
+  /** Declarations of client names that an assignment writes to: no client where they are meant. */
+  const reassignedClients = new Map<string, number[]>();
   const functions = new Map<string, Array<{ module: ClientModule; verb: string; at: number }>>();
-  if (/require\(|import\b/.test(source)) {
+  if (/require\(|import\b|\.exports\b/.test(source)) {
     const bind = (name: string, module: ClientModule, at: number): void => {
       const list = clients.get(name) ?? [];
       list.push({ module, at });
@@ -600,6 +641,24 @@ export function findCandidates(
     for (let k = 0; k + 3 < tokens.length; k++) {
       const t = tokens[k]!;
       if (t.type !== "ident") continue;
+      // `const r = n(7)` in a webpack module, where module 7 passes a client module on
+      if (
+        is(tokens[k + 1], "punct", "=") &&
+        is(tokens[k + 2], "ident") &&
+        is(tokens[k + 3], "punct", "(") &&
+        tokens[k + 4]?.type === "number" &&
+        is(tokens[k + 5], "punct", ")") &&
+        (is(tokens[k - 1], "punct", ",") || /^(const|let|var)$/.test(tokens[k - 1]?.value ?? ""))
+      ) {
+        const module = webpackModule(tokens[k + 4]!.value);
+        if (
+          module &&
+          module !== "other" &&
+          (wrapperResolver ??= makeResolver()).moduleBinding(k + 1, t.value)
+        )
+          bind(t.value, module, k);
+        continue;
+      }
       if (
         t.value === "require" &&
         is(tokens[k + 1], "punct", "(") &&
@@ -693,8 +752,32 @@ export function findCandidates(
           functions.clear();
           break;
         }
-        const keep = <T extends { at: number }>(list: T[] | undefined): T[] =>
-          (list ?? []).filter((c) => !binder.writesTo(k, t.value, c.at));
+        // `h = require("http")`: another client module; the binding stays a client (a client
+        // of either module, so an options object without `protocol` is not read)
+        const another =
+          is(after, "punct", "=") &&
+          is(tokens[k + 2], "ident", "require") &&
+          is(tokens[k + 3], "punct", "(") &&
+          is(tokens[k + 5], "punct", ")") &&
+          !is(tokens[k + 6], "punct", ".") &&
+          !is(tokens[k + 6], "punct", "(") &&
+          !is(tokens[k + 6], "punct", "[")
+            ? clientModule(tokens[k + 4])
+            : null;
+        const keep = <T extends { at: number; module?: ClientModule }>(
+          list: T[] | undefined,
+        ): T[] =>
+          (list ?? []).filter((c) => {
+            if (!binder.writesTo(k, t.value, c.at)) return true;
+            if (another && another !== "electron" && c.module && c.module !== "electron") {
+              if (c.module !== another) c.module = "lib";
+              return true;
+            }
+            const gone = reassignedClients.get(t.value) ?? [];
+            gone.push(c.at);
+            reassignedClients.set(t.value, gone);
+            return false;
+          });
         const c = keep(clients.get(t.value));
         const f = keep(functions.get(t.value));
         if (c.length) clients.set(t.value, c);
@@ -717,34 +800,47 @@ export function findCandidates(
   const means = (j: number, list: Array<{ at: number }> | undefined): boolean =>
     !!list?.some((c) => refers(j, c.at));
   /**
-   * The declaration at `site` (name token, keyword) is initialised with a module object:
-   * `require("…")`, `n(<number>)` (webpack's require), `f(require("…"))` (an interop helper),
-   * also through a destructuring pattern (`const { https } = require("./deps")`).
+   * What the declaration at `site` (name token, keyword) is initialised with: `client` for
+   * `require("<client module>")` (also through an interop call or a destructuring pattern) or
+   * webpack's `n(<id>)` of a module that passes a client module on; `other` for another module;
+   * `unknown` for `n(<id>)` of a module this file does not show; null for anything else.
    */
-  const moduleInit = (site: { name: number; word: number }, at: number): boolean => {
+  const moduleKind = (
+    site: { name: number; word: number },
+    at: number,
+  ): "client" | "other" | "unknown" | null => {
     let eq = site.name + 1;
     if (site.word !== site.name - 1) {
       const close = (wrapperResolver ??= makeResolver()).closeOf(site.word + 1);
-      if (close === -1) return false;
+      if (close === -1) return null;
       eq = close + 1;
     }
-    if (!is(tokens[eq], "punct", "=")) return false;
+    if (!is(tokens[eq], "punct", "=")) return null;
     const a = eq + 1;
     const required = (j: number): boolean =>
       is(tokens[j], "ident", "require") &&
       is(tokens[j + 1], "punct", "(") &&
       tokens[j + 2]?.type === "string" &&
       is(tokens[j + 3], "punct", ")");
-    return (
-      required(a) ||
-      (is(tokens[a], "ident") && is(tokens[a + 1], "punct", "(") && required(a + 2)) ||
-      // `const https = n(5)` with n the webpack module function's require parameter
-      (site.word === site.name - 1 &&
-        is(tokens[a], "ident") &&
-        is(tokens[a + 1], "punct", "(") &&
-        tokens[a + 2]?.type === "number" &&
-        (wrapperResolver ??= makeResolver()).moduleBinding(at, tokens[at]!.value))
-    );
+    const spec = required(a)
+      ? tokens[a + 2]
+      : is(tokens[a], "ident") && is(tokens[a + 1], "punct", "(") && required(a + 2)
+        ? tokens[a + 4]
+        : undefined;
+    if (spec) return clientModule(spec) ? "client" : "other";
+    // `const r = n(5)` with n the webpack module function's require parameter
+    if (
+      site.word === site.name - 1 &&
+      is(tokens[a], "ident") &&
+      is(tokens[a + 1], "punct", "(") &&
+      tokens[a + 2]?.type === "number" &&
+      is(tokens[a + 3], "punct", ")") &&
+      (wrapperResolver ??= makeResolver()).moduleBinding(at, tokens[at]!.value)
+    ) {
+      const known = webpackModule(tokens[a + 2]!.value);
+      return known === "other" ? "other" : known ? "client" : "unknown";
+    }
+    return null;
   };
   /** The client module the verb at k is called on, when it is one of the bindings above. */
   const clientAt = (k: number): { module: ClientModule; verb: string } | null => {
@@ -1069,7 +1165,41 @@ export function findCandidates(
         }
         // a local of the name is another object, unless it is bound to a module itself
         // (`const https = n(5)` in a webpack module, `const https = require("https")`)
-        else if (bound?.kind === "local") client = !!bound.site && moduleInit(bound.site, k - 2);
+        else if (bound?.kind === "local") {
+          const kind = bound.site ? moduleKind(bound.site, k - 2) : null;
+          // a webpack module this file does not show: the client's own name still counts
+          // (0.9.2's rule); under another name the object is not known, and the call is an
+          // unknown row
+          if (kind === "unknown" && !HTTP_CLIENTS.has(owner!.value)) {
+            pushClient(
+              { value: null, evidence: "unknown", expression: "<expression>" },
+              t,
+              t.value === "request" ? verb(k + 1) : { method: t.value.toUpperCase() },
+            );
+            continue;
+          }
+          // A local bound to another module is that module, not an object of unknown shape;
+          // under a client's own name (`const axios = require("./http")`, a wrapper module) the
+          // name rule of 0.9.2 still holds.
+          const own = HTTP_CLIENTS.has(owner!.value);
+          if (kind === "other" && !own) continue;
+          client = kind === "client" || (own && (kind === "unknown" || kind === "other"));
+        }
+        // A declaration that an assignment writes to may hold something else at the call:
+        // which object is called is not known, so the call is an unknown row, not the address.
+        if (
+          client &&
+          reassignedClients
+            .get(owner!.value)
+            ?.some((at) => (wrapperResolver ??= makeResolver()).refersTo(k - 2, owner!.value, at))
+        ) {
+          pushClient(
+            { value: null, evidence: "unknown", expression: "<expression>" },
+            t,
+            t.value === "request" ? verb(k + 1) : { method: t.value.toUpperCase() },
+          );
+          continue;
+        }
       } else if (named) out.clientsSkipped = true;
       // `net.request({ url: "https://…", method: "POST" })`: the address is an option.
       const url = is(tokens[k + 2], "punct", "{") ? option(k + 1, "url") : null;

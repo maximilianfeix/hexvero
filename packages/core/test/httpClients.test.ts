@@ -171,9 +171,6 @@ describe("HTTP client modules", () => {
           "api.get(url);",
           'label.textContent = "https://shown.example/docs";',
           "console.log(`GET ${url}`);",
-          'let h = require("https");',
-          "h = mock;",
-          "h.get(url);",
           "const o = { get(u) { return u; } };",
           "o.get(url);",
         ].join("\n"),
@@ -311,6 +308,73 @@ describe("HTTP client modules", () => {
       [H + 'function f(https, a = https.get("https://fake-param-default.example/")) {}', []],
       [H + 'function f() { https.get("https://fake-hoisted.example/"); var https = fake; }', []],
       [H + 'try {} catch (https) { https.get("https://fake-catch.example/"); }', []],
+    ];
+    for (const [source, rows] of cases) expect(show(source)).toEqual(rows);
+  });
+
+  it("does not fall back to the name rule for a reassigned client or another module (#157)", () => {
+    const cases: Array<[string, string[]]> = [
+      // reassigned where the call means the binding: which object is called is not known, an
+      // unknown row instead of the address
+      [
+        'let h = require("https");\nh = fake;\nh.get("https://fake-reassigned.example/");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let https = require("https");\nhttps = fake;\nhttps.get("https://fake-reassigned.example/");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let h = require("https");\nh.get("https://real-before-reassign.example/");\nh = fake;',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let h = require("https");\nh ??= fake;\nh.get("https://nullish.example/");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      // every value assigned is a client module: still the client
+      [
+        'let https = require("https");\nif (x) https = require("http");\nhttps.get("https://either.example/");',
+        ["http-client GET https://either.example/ [literal]"],
+      ],
+      [
+        'let h = require("https");\nif (x) h = require("node:http");\nh.get("https://either2.example/");',
+        ["http-client GET https://either2.example/ [literal]"],
+      ],
+      // a webpack module whose id is not known to be a client: an unknown row at most
+      [
+        '2:function(e,t,n){const r=require("https")},\n3:function(e,t,n){const r=n(7);r.request("https://fake-other-module.example/")}',
+        ["http-client ?<expression> [unknown]"],
+      ],
+      // the module id is a client module of the same bundle: a request
+      [
+        '7:function(e){"use strict";e.exports=require("https")},\n2:function(e,t,n){const r=require("https")},\n3:function(e,t,n){const r=n(7);r.request("https://wp-known.example/")}',
+        ["http-client https://wp-known.example/ [literal]"],
+      ],
+      [
+        '{7(e){"use strict";e.exports=require("node:https")},3(e,t,n){const r=n(7);r.get("https://wp-known2.example/")},9(e){e.exports=require("https")}}',
+        ["http-client GET https://wp-known2.example/ [literal]"],
+      ],
+      // the module id is known to be something else: no client
+      [
+        '7:function(e){e.exports=require("fs")},\n2:function(e,t,n){const r=require("https")},\n3:function(e,t,n){const r=n(7);r.request("https://fake-fs.example/")}',
+        [],
+      ],
+      // a local bound to another module by require
+      [
+        'function a(){ const h = require("https"); h.get("https://real-a.example/"); }\nfunction b(){ const h = require("./cache"); return h.get("https://fake-cache.example/"); }',
+        ["http-client GET https://real-a.example/ [literal]"],
+      ],
+      // a wrapper module under a client's own name stays a client by name (0.9.2)
+      [
+        'const axios = require("./http");\naxios.post("https://api.example/wrapped");',
+        ["http-client POST https://api.example/wrapped [literal]"],
+      ],
+      // the client's own name stays a client by name (0.9.2), whatever module n(5) is
+      [
+        '1:function(e,t,n){const https=n(5);https.get("https://wp-n.example/")}',
+        ["http-client GET https://wp-n.example/ [literal]"],
+      ],
     ];
     for (const [source, rows] of cases) expect(show(source)).toEqual(rows);
   });
