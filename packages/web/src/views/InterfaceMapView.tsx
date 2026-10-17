@@ -50,8 +50,22 @@ interface Loaded {
 /** Node ids hold target text; the DOM attribute carries them percent-encoded (ASCII only). */
 const domKey = (id: string): string => encodeURIComponent(id);
 
-const select = (id: string | null): void =>
-  updateQuery({ sel: id ?? undefined }, { replace: true });
+/** History marker of an entry made by opening a selection (as the compare view does). */
+const SELECTION_STATE = "hexveroMapSelection";
+
+/**
+ * Opening a selection is a history entry, so Back closes it and stays on the map; moving to
+ * another node replaces it; closing goes back to the entry before it where there is one.
+ */
+export const select = (id: string | null): void => {
+  const opened = new URLSearchParams(window.location.search).has("sel");
+  const ours = (history.state as Record<string, unknown> | null)?.[SELECTION_STATE] === true;
+  if (id === null) {
+    if (opened && ours) history.back();
+    else updateQuery({ sel: undefined }, { replace: true });
+  } else if (opened) updateQuery({ sel: id }, { replace: true, state: history.state });
+  else updateQuery({ sel: id }, { state: { [SELECTION_STATE]: true } });
+};
 
 /** Follows the pages of the collection (pages can be cut short by the byte budget). */
 async function loadAll(targetId: string): Promise<Loaded> {

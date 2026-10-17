@@ -21,6 +21,8 @@ All notable changes to hexvero are listed here. The format follows
   "Unknown collection" message or an empty panel.
 - After a link or Back/Forward replaces the view, focus moves to the workspace instead of falling
   to the page start; the "Reading …" line is announced while an analysis runs.
+- In the interface map, opening a node or edge is a history entry, as in Compare: Back closes the
+  evidence and stays on the map (it used to leave the map).
 
 ## [0.9.1] - 2026-10-17
 
