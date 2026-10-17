@@ -135,7 +135,24 @@ const HTTP_CLIENTS = new Set([
   "http",
   "https",
 ]);
-const CLIENT_MODULES = /^(node:)?(https?|axios|got|ky|superagent|needle)$/;
+/**
+ * What a module binding is: Node's `http` or `https` (an options object without `protocol`
+ * addresses that scheme), Electron (a client through `net`), its `net`, or a request library
+ * whose options give the address as `url`.
+ */
+type ClientModule = "http" | "https" | "electron" | "net" | "lib";
+const clientModule = (spec: Token | undefined): ClientModule | null => {
+  if (spec?.type !== "string") return null;
+  if (spec.value === "electron") return "electron";
+  const m = /^(?:node:)?(https?|axios|got|ky|superagent|needle)$/.exec(spec.value);
+  return !m ? null : m[1] === "http" || m[1] === "https" ? m[1] : "lib";
+};
+/** An unknown row: a request whose address is not read, `expression` saying what was not. */
+const unknownRead = (expression: string): Read => ({
+  value: null,
+  evidence: "unknown",
+  expression,
+});
 /** Verbs that a map, a set or a header list also has; on an unknown object they prove nothing. */
 const LOOKUP_VERBS = new Set(["get", "delete", "head", "options"]);
 const GLOBALS = new Set(["window", "globalThis", "self", "net"]);
@@ -176,6 +193,8 @@ interface Read {
   more?: string[];
   /** Read at a call of this wrapper (see `Candidate.via`). */
   via?: string;
+  /** Read through call sites, and some of them could not be read: the values are not all. */
+  partial?: true;
 }
 
 export function findCandidates(
@@ -336,6 +355,7 @@ export function findCandidates(
       value: first,
       evidence: resolvedEvidence(first),
       ...(rest.length ? { more: rest } : {}),
+      ...(found!.partial ? { partial: true as const } : {}),
     };
   };
   /** A value with no fixed text at all (only `${…}`) says nothing: it is an unread argument. */
@@ -508,22 +528,166 @@ export function findCandidates(
   }
 
   // Names an HTTP client module is bound to (`const h = require("node:https")`, also through a
-  // bundler's interop call): their verb methods are requests whatever the name is.
-  const clients = new Set<string>();
-  if (/require\(|import /.test(source))
-    for (let k = 0; k + 4 < tokens.length; k++) {
-      if (!is(tokens[k], "ident") || !is(tokens[k + 1], "punct", "=")) continue;
-      const req = is(tokens[k + 2], "ident", "require")
-        ? k + 2
-        : is(tokens[k + 2], "ident") &&
-            is(tokens[k + 3], "punct", "(") &&
-            is(tokens[k + 4], "ident", "require")
-          ? k + 4
-          : -1;
-      if (req === -1 || !is(tokens[req + 1], "punct", "(")) continue;
-      const spec = tokens[req + 2];
-      if (spec?.type === "string" && CLIENT_MODULES.test(spec.value)) clients.add(tokens[k]!.value);
+  // bundler's interop call, `import h from "https"`, `import * as h from "https"`): their verb
+  // methods are requests whatever the name is. `functions`: a request function bound by name
+  // (`const { get } = require("https")`, `import { request as r } from "node:http"`).
+  // Electron's module object (`require("electron")`) is a client through its `net` member, and
+  // `net` itself when it is bound from it. Each entry keeps the token of its declaration: a call
+  // is the module's only where its name means that declaration (`refersTo`), and a name that is
+  // assigned again anywhere is no client at all.
+  const clients = new Map<string, Array<{ module: ClientModule; at: number }>>();
+  const functions = new Map<string, Array<{ module: ClientModule; verb: string; at: number }>>();
+  if (/require\(|import\b/.test(source)) {
+    const bind = (name: string, module: ClientModule, at: number): void => {
+      const list = clients.get(name) ?? [];
+      list.push({ module, at });
+      clients.set(name, list);
+    };
+    const named = (local: string, imported: string, module: ClientModule, at: number): void => {
+      if (module === "electron") {
+        if (imported === "net") bind(local, "net", at);
+        return;
+      }
+      if ((module !== "http" && module !== "https") || !/^(get|request)$/.test(imported)) return;
+      const list = functions.get(local) ?? [];
+      list.push({ module, verb: imported, at });
+      functions.set(local, list);
+    };
+    /** `{ a, b: c, d as e }` from `open` to `close`: [imported, local] pairs, or null. */
+    const pairs = (open: number, close: number, word: ":" | "as"): Array<[string, string]> => {
+      const found: Array<[string, string]> = [];
+      for (let j = open + 1; j < close; j++) {
+        const a = tokens[j]!;
+        if (a.type !== "ident") continue;
+        const sep =
+          word === ":" ? is(tokens[j + 1], "punct", ":") : is(tokens[j + 1], "ident", "as");
+        if (sep && is(tokens[j + 2], "ident")) {
+          found.push([a.value, tokens[j + 2]!.value]);
+          j += 2;
+        } else if (is(tokens[j + 1], "punct", ",") || j + 1 === close)
+          found.push([a.value, a.value]);
+      }
+      return found;
+    };
+    for (let k = 0; k + 3 < tokens.length; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "ident") continue;
+      if (
+        t.value === "require" &&
+        is(tokens[k + 1], "punct", "(") &&
+        is(tokens[k + 3], "punct", ")")
+      ) {
+        const module = clientModule(tokens[k + 2]);
+        if (!module) continue;
+        // `X = require(…)`, `X = f(require(…))`
+        if (is(tokens[k - 1], "punct", "=") && is(tokens[k - 2], "ident"))
+          bind(tokens[k - 2]!.value, module, k - 2);
+        else if (
+          is(tokens[k - 1], "punct", "(") &&
+          is(tokens[k - 2], "ident") &&
+          is(tokens[k - 3], "punct", "=") &&
+          is(tokens[k - 4], "ident")
+        )
+          bind(tokens[k - 4]!.value, module, k - 4);
+        else if (is(tokens[k - 1], "punct", "=") && is(tokens[k - 2], "punct", "}")) {
+          // `const { get, request: r } = require("https")`
+          let open = k - 3;
+          while (open > k - 64 && open >= 0 && !is(tokens[open], "punct", "{")) open--;
+          if (
+            !is(tokens[open], "punct", "{") ||
+            !/^(const|let|var)$/.test(tokens[open - 1]?.value ?? "")
+          )
+            continue;
+          for (const [imported, local] of pairs(open, k - 2, ":"))
+            named(local, imported, module, open);
+        }
+        continue;
+      }
+      if (t.value !== "import" || is(tokens[k - 1], "punct", ".")) continue;
+      // `import X from "m"`, `import * as X from "m"`, `import X, { a as b } from "m"`
+      let j = k + 1;
+      let local: string | null = null;
+      if (
+        is(tokens[j], "punct", "*") &&
+        is(tokens[j + 1], "ident", "as") &&
+        is(tokens[j + 2], "ident")
+      ) {
+        local = tokens[j + 2]!.value;
+        j += 3;
+      } else if (is(tokens[j], "ident") && tokens[j]!.value !== "from") {
+        local = tokens[j]!.value;
+        j++;
+        if (is(tokens[j], "punct", ",")) j++;
+      }
+      let open = -1;
+      let close = -1;
+      if (is(tokens[j], "punct", "{")) {
+        open = j;
+        while (j < k + 200 && j < tokens.length && !is(tokens[j], "punct", "}")) j++;
+        close = j;
+        j++;
+      }
+      if (!is(tokens[j], "ident", "from")) continue;
+      const module = clientModule(tokens[j + 1]);
+      if (!module) continue;
+      if (local !== null) bind(local, module, k);
+      if (open !== -1)
+        for (const [imported, name] of pairs(open, close, "as")) named(name, imported, module, k);
     }
+    // a name that is assigned again is not known to hold the module
+    const declared = new Set([...clients.keys(), ...functions.keys()]);
+    if (declared.size)
+      for (let k = 1; k + 1 < tokens.length; k++) {
+        const t = tokens[k]!;
+        if (t.type !== "ident" || !declared.has(t.value) || is(tokens[k - 1], "punct", "."))
+          continue;
+        const after = tokens[k + 1]!;
+        if (
+          after.type === "punct" &&
+          /^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) &&
+          !(clients.get(t.value) ?? []).some((c) => c.at === k)
+        ) {
+          clients.delete(t.value);
+          functions.delete(t.value);
+        }
+      }
+  }
+  /** The client module the verb at k is called on, when it is one of the bindings above. */
+  const clientAt = (k: number): { module: ClientModule; verb: string } | null => {
+    const t = tokens[k]!;
+    const means = (j: number, list: Array<{ at: number }> | undefined): boolean =>
+      !!list?.some((c) => (wrapperResolver ??= makeResolver()).refersTo(j, tokens[j]!.value, c.at));
+    if (!is(tokens[k - 1], "punct", ".") && !is(tokens[k - 1], "punct", "?.")) {
+      const list = functions.get(t.value);
+      if (!list || is(tokens[k - 1], "ident", "function")) return null;
+      const hit = list.find((c) => (wrapperResolver ??= makeResolver()).refersTo(k, t.value, c.at));
+      return hit ? { module: hit.module, verb: hit.verb } : null;
+    }
+    if (!HTTP_VERBS.has(t.value)) return null;
+    const owner = tokens[k - 2];
+    if (owner?.type !== "ident") return null;
+    if (!is(tokens[k - 3], "punct", ".")) {
+      const list = clients.get(owner.value)?.filter((c) => c.module !== "electron");
+      if (list?.length && means(k - 2, list)) {
+        const module = list[0]!.module;
+        return module === "net" && t.value !== "request" ? null : { module, verb: t.value };
+      }
+      return null;
+    }
+    // `X.default.get(…)` (a bundler's interop object), `X.net.request(…)` (Electron)
+    const root = tokens[k - 4];
+    if (root?.type !== "ident" || is(tokens[k - 5], "punct", ".")) return null;
+    const list = clients.get(root.value);
+    if (owner.value === "net" && t.value === "request") {
+      const electron = list?.filter((c) => c.module === "electron");
+      return electron?.length && means(k - 4, electron) ? { module: "net", verb: "request" } : null;
+    }
+    if (owner.value !== "default") return null;
+    const modules = list?.filter((c) => c.module !== "electron" && c.module !== "net");
+    return modules?.length && means(k - 4, modules)
+      ? { module: modules[0]!.module, verb: t.value }
+      : null;
+  };
 
   // Variables that hold an XMLHttpRequest: only their open() is a request.
   const xhrs = new Set<string>();
@@ -563,6 +727,82 @@ export function findCandidates(
     return m && /^[A-Za-z]{3,7}$/.test(m) ? { method: m.toUpperCase() } : {};
   };
 
+  // A request of a client module (see `clients`): the URL is read like a fetch URL, through the
+  // resolver when it is a parameter, and a call whose URL cannot be read is an unknown row.
+  let optionQuestions = 0;
+  /** The address an options object gives (`{ hostname, path, protocol }`), only when every part of it is known. */
+  const optionsAddress = (at: number, module: ClientModule): Read => {
+    if (optionQuestions++ >= 64) return unknownRead("<options>");
+    const v = (wrapperResolver ??= makeResolver()).valueAt(at);
+    if (v?.kind !== "obj" || v.open) return unknownRead("<options>");
+    /** undefined: not written; null: written, not known as one whole string. */
+    const part = (key: string): string | null | undefined => {
+      if (!v.props.has(key)) return undefined;
+      const p = v.props.get(key);
+      if (p?.kind !== "str" || p.values.length !== 1) return null;
+      const text = p.values[0]!;
+      return text.includes("${…}") || text.includes(REF_OPEN) ? null : text;
+    };
+    if (v.props.has("url")) {
+      // Node's http and https take no `url` option: the request goes elsewhere
+      const url = module === "net" || module === "lib" ? part("url") : null;
+      return url && ABSOLUTE.test(url)
+        ? { value: url, evidence: "inferred" }
+        : unknownRead("options.url");
+    }
+    if (module === "lib") return unknownRead("<options>");
+    // a port or a socket changes where the request goes; neither is read
+    for (const key of ["port", "socketPath"])
+      if (v.props.has(key)) return unknownRead(`options.${key}`);
+    const protocol = part("protocol");
+    const scheme = protocol ?? (module === "https" ? "https:" : "http:");
+    if (protocol === null || !/^https?:$/.test(scheme)) return unknownRead("options.protocol");
+    const key = v.props.has("hostname") ? "hostname" : "host";
+    const host = part(key);
+    // without a host the request goes to localhost by default: that is not read as an address
+    if (!host || !/^[a-z0-9.-]+$/i.test(host) || !/[a-z0-9]/i.test(host))
+      return unknownRead(`options.${key === "host" && host === undefined ? "hostname" : key}`);
+    const path = part("path");
+    if (path === null || (path !== undefined && !path.startsWith("/")))
+      return unknownRead("options.path");
+    return { value: `${scheme}//${host}${path ?? "/"}`, evidence: "inferred" };
+  };
+  const clientRequest = (t: Token, open: number, module: ClientModule, name: string): void => {
+    const at = open + 1;
+    const method = name === "request" ? verb(open) : { method: name.toUpperCase() };
+    if (is(tokens[at], "punct", "{")) {
+      push(out.endpoints, "http-client", optionsAddress(at, module), t, method);
+      return;
+    }
+    const r = readArg(at, true);
+    if (!r) return;
+    if (r.value !== null && ADDRESS_START.test(r.value)) {
+      push(out.endpoints, "http-client", r, t, method);
+      // a call site that could not be read keeps the unread row too, so nothing unread is hidden
+      if (r.partial)
+        push(
+          out.endpoints,
+          "http-client",
+          { value: null, evidence: "unknown", expression: read(at)?.expression ?? "<expression>" },
+          t,
+          method,
+        );
+      return;
+    }
+    // not shaped like an address (`${…}/x`, an error text a wrapper passes): not read
+    push(
+      out.endpoints,
+      "http-client",
+      {
+        value: null,
+        evidence: "unknown",
+        expression: r.value === null ? (r.expression ?? "<expression>") : "<expression>",
+      },
+      t,
+      method,
+    );
+  };
+
   /** True when the parenthesis at `open` closes right before a `{`: a definition, not a call. */
   const definesMethod = (open: number): boolean => {
     let d = 0;
@@ -594,6 +834,25 @@ export function findCandidates(
     const called = is(tokens[k + 1], "punct", "(");
     const member = is(prev, "punct", ".") || is(prev, "punct", "?.");
 
+    if (clients.size || functions.size) {
+      // `(0, X.get)(…)`: how esbuild calls a named import
+      const open = called
+        ? k + 1
+        : member &&
+            is(tokens[k + 1], "punct", ")") &&
+            is(tokens[k + 2], "punct", "(") &&
+            is(tokens[k - 3], "punct", ",") &&
+            is(tokens[k - 4], "number", "0") &&
+            is(tokens[k - 5], "punct", "(")
+          ? k + 2
+          : -1;
+      const c = open !== -1 && !(called && definesMethod(open)) ? clientAt(k) : null;
+      if (c) {
+        clientRequest(t, open, c.module, c.verb);
+        continue;
+      }
+    }
+
     if (t.value === "fetch" && called) {
       // `x.fetch(` is some object's own method unless x is the global object.
       if (member && !(is(tokens[k - 2], "ident") && GLOBALS.has(tokens[k - 2]!.value))) continue;
@@ -617,8 +876,14 @@ export function findCandidates(
         );
     } else if (HTTP_VERBS.has(t.value) && member && called) {
       const owner = tokens[k - 2];
-      const client =
-        is(owner, "ident") && (HTTP_CLIENTS.has(owner!.value) || clients.has(owner!.value));
+      // A client by its name only. Where a parameter or a local of that name is meant
+      // (`function login(axios, body)`), the URL is read at the call only: a value bound from
+      // call sites would be taken for a request of whatever object the callers pass.
+      const client = is(owner, "ident") && HTTP_CLIENTS.has(owner!.value);
+      const local =
+        client &&
+        !is(tokens[k - 3], "punct", ".") &&
+        (wrapperResolver ??= makeResolver()).shadowedAt(k - 2, owner!.value);
       // `net.request({ url: "https://…", method: "POST" })`: the address is an option.
       const url = is(tokens[k + 2], "punct", "{") ? option(k + 1, "url") : null;
       if (url !== null) {
@@ -626,7 +891,7 @@ export function findCandidates(
           push(out.endpoints, "http-client", { value: url, evidence: "inferred" }, t, verb(k + 1));
         continue;
       }
-      const r = readArg(k + 2, true);
+      const r = local ? read(k + 2) : readArg(k + 2, true);
       if (!r || r.value === null) continue;
       // An unknown object with a verb method is only taken for a request when the URL is
       // absolute and the verb is not one a collection has too: `router.get("/users", handler)`,

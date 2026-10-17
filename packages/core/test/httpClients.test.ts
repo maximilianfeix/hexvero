@@ -1,0 +1,229 @@
+/**
+ * Requests made with an HTTP client module (`node:https`, `node:http`, Electron's `net`): the URL
+ * is read like a fetch URL, also when it is a parameter of a wrapper, and a call whose URL cannot
+ * be read is an unknown row. Case-study miss M3 (Electron Fiddle 0.39.0, the vendored `sfw.mjs`).
+ */
+import { buildSync } from "esbuild";
+import { describe, expect, it } from "vitest";
+import { findCandidates } from "../src/javascript/candidates.js";
+import { tokenize } from "../src/javascript/scan.js";
+
+const find = (source: string) => findCandidates(tokenize(source).tokens, source);
+const show = (source: string): string[] =>
+  find(source).endpoints.map(
+    (r) =>
+      `${r.kind}${r.method ? ` ${r.method}` : ""} ${r.value ?? `?${r.expression}`} [${r.evidence}]`,
+  );
+
+/** The source bundled by esbuild (node platform, CommonJS out), optionally minified. */
+const bundle = (source: string, minify: boolean): string =>
+  buildSync({
+    stdin: { contents: source, loader: "js", resolveDir: process.cwd() },
+    bundle: true,
+    minify,
+    platform: "node",
+    format: "cjs",
+    external: ["electron"],
+    write: false,
+    logLevel: "silent",
+  }).outputFiles[0]!.text;
+
+/** The request code of `sfw.mjs` (sfw 2.0.4), unminified, with its shape kept. */
+const SFW = [
+  'import kt from "node:https";',
+  'import { URL as Nt } from "node:url";',
+  "async function Mt(t, e = {}) {",
+  "  const { headers: r = {}, maxRedirects: n = 5 } = e;",
+  "  return new Promise((i, s) => {",
+  "    const c = new Nt(t), a = { headers: { ...r } };",
+  "    kt.get(c, a, (r) => {",
+  "      const { statusCode: o, headers: c } = r;",
+  "      return o >= 300 && c.location && n > 0 ? i(Mt(c.location, { ...e, maxRedirects: n - 1 })) : i(r);",
+  '    }).on("error", s);',
+  "  });",
+  "}",
+  "async function Rt(t, e = {}) {",
+  "  const r = await async function (t, e = {}) {",
+  "    const r = await Mt(t, e);",
+  "    return r;",
+  "  }(t, e);",
+  "  return JSON.parse(r);",
+  "}",
+  "async function Gt() {",
+  '  const t = await Rt("https://api.github.com/repos/SocketDev/sfw-free/releases/latest", { userAgent: "sfw" });',
+  "  return t.tag_name;",
+  "}",
+  "Gt();",
+].join("\n");
+
+describe("HTTP client modules", () => {
+  it("reads a literal, a constant and a template URL", () => {
+    expect(
+      show(
+        [
+          'const https = require("node:https");',
+          'const h = require("http");',
+          'const BASE = "https://api.example/v2";',
+          'https.get("https://a.example/x", (res) => res.resume());',
+          "h.request(`${BASE}/items`).end();",
+          "https.get(`${BASE}/users/${id}`);",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client GET https://a.example/x [literal]",
+      "http-client https://api.example/v2/items [inferred]",
+      "http-client GET https://api.example/v2/users/${…} [template]",
+    ]);
+  });
+
+  it("keeps a client call whose URL cannot be read as an unknown row", () => {
+    expect(
+      show(
+        [
+          'import https from "node:https";',
+          'const { net } = require("electron");',
+          "https.get(process.env.FEED_URL);",
+          "net.request(target);",
+        ].join("\n"),
+      ),
+    ).toEqual(["http-client GET ?<expression> [unknown]", "http-client ?target [unknown]"]);
+  });
+
+  it("follows a URL parameter through wrappers to the call sites (sfw.mjs)", () => {
+    // The redirect, `Mt(c.location, …)`, passes a run-time value: that call site keeps the
+    // unknown row beside the address the other one gives.
+    expect(show(SFW)).toEqual([
+      "http-client GET https://api.github.com/repos/SocketDev/sfw-free/releases/latest [inferred]",
+      "http-client GET ?c [unknown]",
+    ]);
+  });
+
+  it("does not guess a wrapper's URL when a call site cannot be read", () => {
+    expect(
+      show(
+        [
+          'const https = require("https");',
+          "function load(url) { return https.get(url); }",
+          "load(process.argv[2]);",
+        ].join("\n"),
+      ),
+    ).toEqual(["http-client GET ?url [unknown]"]);
+  });
+
+  it("reads an options object only when every part of the address is known", () => {
+    expect(
+      show(
+        [
+          'const https = require("https");',
+          'const http = require("node:http");',
+          'https.request({ hostname: "api.example", path: "/v1/items", method: "POST" });',
+          'http.request({ host: "local.example", path: "/status" });',
+          'https.request({ protocol: "https:", hostname: "p.example" });',
+          'https.request({ hostname: host, path: "/v1/x" });',
+          'https.request({ hostname: "port.example", port: 8443, path: "/" });',
+          'https.request({ ...defaults, path: "/v1/y" });',
+          "https.request(options);",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client POST https://api.example/v1/items [inferred]",
+      "http-client http://local.example/status [inferred]",
+      "http-client https://p.example/ [inferred]",
+      "http-client ?options.hostname [unknown]",
+      "http-client ?options.port [unknown]",
+      "http-client ?<options> [unknown]",
+      "http-client ?options [unknown]",
+    ]);
+  });
+
+  it("reads Electron's net through the module object and named functions", () => {
+    expect(
+      show(
+        [
+          'const electron = require("electron");',
+          'const { get, request: send } = require("node:https");',
+          'electron.net.request("https://n.example/feed");',
+          'electron.net.request({ url: "https://n.example/post", method: "POST" });',
+          'get("https://d.example/");',
+          "send(u);",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client https://n.example/feed [literal]",
+      "http-client POST https://n.example/post [inferred]",
+      "http-client GET https://d.example/ [literal]",
+      "http-client ?u [unknown]",
+    ]);
+  });
+
+  it("does not take look-alikes for requests", () => {
+    expect(
+      show(
+        [
+          'const https = require("https");',
+          "function get(u) { return cache[u]; }",
+          "get(url);",
+          "function viaParam(https, u) { return https.get(u); }",
+          'viaParam(fake, "https://ghost.example/param");',
+          'const { request } = require("./api");',
+          "request(url);",
+          'const api = require("./api");',
+          "api.get(url);",
+          'label.textContent = "https://shown.example/docs";',
+          "console.log(`GET ${url}`);",
+          'let h = require("https");',
+          "h = mock;",
+          "h.get(url);",
+          "const o = { get(u) { return u; } };",
+          "o.get(url);",
+        ].join("\n"),
+      ),
+    ).toEqual([]);
+  });
+
+  for (const minify of [false, true])
+    it(`reads the same requests in an esbuild bundle${minify ? ", minified" : ""}`, () => {
+      const source = bundle(
+        [
+          'import https from "node:https";',
+          'import { get } from "node:http";',
+          'import { net } from "electron";',
+          "export function check(u) { return https.get(u); }",
+          'check("https://b.example/feed");',
+          'get("http://named.example/status");',
+          'net.request("https://e.example/ping");',
+          "net.request(process.env.X);",
+        ].join("\n"),
+        minify,
+      );
+      expect(show(source)).toEqual([
+        "http-client GET https://b.example/feed [inferred]",
+        "http-client GET http://named.example/status [literal]",
+        "http-client https://e.example/ping [literal]",
+        "http-client ?<expression> [unknown]",
+      ]);
+      const sfw = show(bundle(SFW, minify));
+      expect(sfw[0]).toBe(
+        "http-client GET https://api.github.com/repos/SocketDev/sfw-free/releases/latest [inferred]",
+      );
+      expect(sfw.slice(1)).toEqual([expect.stringMatching(/^http-client GET \?\w+ \[unknown\]$/)]);
+    });
+
+  it("stays linear on hostile input", () => {
+    const n = 20_000;
+    const source = [
+      'const https = require("https");',
+      ...Array.from(
+        { length: n },
+        (_, i) => `function w${i}(u) { return https.get(u); } w${i}(x${i});`,
+      ),
+      `https.request({ ${Array.from({ length: n }, (_, i) => `k${i}: "v"`).join(", ")} });`,
+      "https.get(".repeat(n),
+    ].join("\n");
+    const started = performance.now();
+    const found = find(source);
+    // generous: the point is linear against quadratic, and test machines are busy
+    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(found.endpoints.length).toBeLessThanOrEqual(2000);
+  });
+});

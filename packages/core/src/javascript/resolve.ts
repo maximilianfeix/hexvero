@@ -1359,10 +1359,11 @@ export class ExpressionResolver {
       return this.chain({ kind: "obj", props }, close + 1, end, env, depth);
     }
     // `new URL(path, base)`: the address the URL constructor builds, when both are known
-    if (t.value === "new" && this.is(start + 1, "ident", "URL") && this.punct(start + 2, "(")) {
-      const close = this.match[start + 2]!;
+    const urlOpen = t.value === "new" ? this.urlConstructor(start + 1) : -1;
+    if (urlOpen !== -1) {
+      const close = this.match[urlOpen]!;
       if (close === -1 || close >= end) return null;
-      const [path, base] = this.list(start + 2, close, env, depth);
+      const [path, base] = this.list(urlOpen, close, env, depth);
       if (path?.kind !== "str" || (base && base.kind !== "str")) return null;
       const out: string[] = [];
       // A gap in the path (`boards/${…}`) is carried through as a placeholder when gaps are
@@ -3589,8 +3590,11 @@ export class ExpressionResolver {
       this.lines.add(this.tokens[receiver]!.line);
       return envs;
     }
-    if (def.name === null) return null;
-    const sites = this.callSites(def);
+    // `(function (t) { … })(x)` and minified `async function (t) { … }(x)`: an anonymous function
+    // called where it is written has that one call site
+    const iife = def.name === null && !def.calledBy ? this.immediateCall(def) : -1;
+    if (def.name === null && iife === -1) return null;
+    const sites = iife !== -1 ? [iife] : this.callSites(def);
     if (!sites.length) return null;
     const envs: Env[] = [];
     for (const open of sites) {
@@ -3976,6 +3980,113 @@ export class ExpressionResolver {
     if (this.s.stringWrites.has(name)) found = true;
     this.s.memberWrites.set(name, found);
     return found;
+  }
+
+  /**
+   * The `(` of the call of an anonymous function that is called where it is written:
+   * `function (…) {…}(…)`, `(function (…) {…})(…)`, `((…) => {…})(…)`, also `async`. -1 otherwise.
+   */
+  private immediateCall(def: FnDef): number {
+    const end = def.body[1];
+    if (!def.arrow && this.punct(end, "(") && !this.is(def.paramsAt - 2, "ident", "default"))
+      return end;
+    if (!this.punct(end, ")") || !this.punct(end + 1, "(")) return -1;
+    let start = def.arrow ? def.paramsAt : def.paramsAt - 1;
+    if (this.is(start - 1, "ident", "async")) start--;
+    return this.opener[end] === start - 1 ? end + 1 : -1;
+  }
+
+  /**
+   * Names the URL class is bound to besides `URL`: `import { URL as X } from "node:url"`,
+   * `const { URL: X } = require("url")`. Module objects of `url` are in `urlModules`
+   * (`new url.URL(…)`, esbuild's `new import_node_url.URL(…)`). Computed once per resolver.
+   */
+  private urlNames: { classes: Set<string>; modules: Set<string> } | null = null;
+
+  /** At k, after `new`: the `(` of a URL constructor call, or -1. */
+  private urlConstructor(k: number): number {
+    if (this.is(k, "ident", "URL") && this.punct(k + 1, "(")) return k + 1;
+    if (!this.is(k, "ident")) return -1;
+    if (!this.urlNames) {
+      const classes = new Set<string>();
+      const modules = new Set<string>();
+      const t = this.tokens;
+      const urlSpec = (j: number): boolean =>
+        t[j]?.type === "string" && /^(node:)?url$/.test(t[j]!.value);
+      for (let j = 0; j + 4 < t.length; j++) {
+        // `X = require("url")`, `X = f(require("url"))`
+        if (this.is(j, "ident", "require") && this.punct(j + 1, "(") && urlSpec(j + 2)) {
+          if (this.punct(j - 1, "=") && this.is(j - 2, "ident")) modules.add(t[j - 2]!.value);
+          else if (this.punct(j - 1, "(") && this.is(j - 2, "ident") && this.punct(j - 3, "="))
+            modules.add(t[j - 4]?.type === "ident" ? t[j - 4]!.value : "");
+          else if (this.punct(j - 1, "=") && this.punct(j - 2, "}")) {
+            // `{ URL: X } = require("url")`
+            const open = this.opener[j - 2]!;
+            for (let m = open + 1; open !== -1 && m < j - 2; m++)
+              if (this.is(m, "ident", "URL") && this.punct(m + 1, ":") && this.is(m + 2, "ident"))
+                classes.add(t[m + 2]!.value);
+          }
+        }
+        // `import { URL as X } from "url"`, `import * as X from "url"`
+        if (this.is(j, "ident", "import")) {
+          let m = j + 1;
+          if (this.punct(m, "*") && this.is(m + 1, "ident", "as") && this.is(m + 2, "ident")) {
+            if (this.is(m + 3, "ident", "from") && urlSpec(m + 4)) modules.add(t[m + 2]!.value);
+            continue;
+          }
+          if (this.is(m, "ident") && this.punct(m + 1, ",")) m += 2;
+          if (!this.punct(m, "{")) continue;
+          const close = this.match[m]!;
+          if (close === -1 || !this.is(close + 1, "ident", "from") || !urlSpec(close + 2)) continue;
+          for (let n = m + 1; n < close; n++)
+            if (
+              this.is(n, "ident", "URL") &&
+              this.is(n + 1, "ident", "as") &&
+              this.is(n + 2, "ident")
+            )
+              classes.add(t[n + 2]!.value);
+        }
+      }
+      modules.delete("");
+      this.urlNames = { classes, modules };
+    }
+    const name = this.tokens[k]!.value;
+    if (this.urlNames.classes.has(name) && this.punct(k + 1, "(")) return k + 1;
+    if (
+      this.urlNames.modules.has(name) &&
+      this.punct(k + 1, ".") &&
+      this.is(k + 2, "ident", "URL") &&
+      this.punct(k + 3, "(")
+    )
+      return k + 3;
+    return -1;
+  }
+
+  /**
+   * The name at k refers to the declaration at `decl` (a token of it): k is inside the function
+   * around `decl` (or `decl` is at the top of the file), and no function between them binds the
+   * name itself, as a parameter, a declaration or a catch clause.
+   */
+  refersTo(k: number, name: string, decl: number): boolean {
+    if (this.catchBinds(k, name)) return false;
+    const home = this.enclosing(decl);
+    for (let d = this.enclosing(k), guard = 0; guard < 64; guard++) {
+      if (d === home) return true;
+      if (!d) return false;
+      if (this.paramIndex(d, name) !== -1) return false;
+      for (const j of this.occurrences(name, d.body[0], d.body[1])) {
+        const before = this.tokens[j - 1];
+        if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value))
+          return false;
+      }
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    return false;
+  }
+
+  /** A parameter, a local declaration or a catch clause around k binds the name. */
+  shadowedAt(k: number, name: string): boolean {
+    return this.shadowed(k, name);
   }
 
   private callSites(def: FnDef): number[] {
