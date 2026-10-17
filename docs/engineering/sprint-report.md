@@ -6,17 +6,17 @@ the very end.
 
 ## 1. Runtime and scope
 
-| Item         | Value                                                                                                                                                                            |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| started_at   | 2026-10-16T22:44:36Z                                                                                                                                                             |
-| working time | 22:44–03:44Z (5 h 00) and 14:00Z–ended_at; **03:44–14:00Z was a pause** (weekly usage limit: lead and every agent stopped)                                                       |
-| ended_at     | OPEN                                                                                                                                                                             |
-| base commit  | `841b6db` (0.8.0)                                                                                                                                                                |
-| final commit | OPEN (main)                                                                                                                                                                      |
+| Item         | Value                                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| started_at   | 2026-10-16T22:44:36Z                                                                                                                                                                                          |
+| working time | 22:44–03:44Z (5 h 00) and 14:00Z–ended_at; **03:44–14:00Z was a pause** (weekly usage limit: lead and every agent stopped)                                                                                    |
+| ended_at     | OPEN                                                                                                                                                                                                          |
+| base commit  | `841b6db` (0.8.0)                                                                                                                                                                                             |
+| final commit | OPEN (main)                                                                                                                                                                                                   |
 | releases     | 0.9.0 (01:20Z, run 38990077564), 0.9.1 (03:00Z, 38996747203), 0.9.2 (15:20Z, 39044161003), 0.9.3 (16:30Z, 39049256326), 0.9.4 (17:00Z, 39051642548), 0.9.5 (17:30Z, 39054086916), 0.9.6 (18:05Z, 39056731394) |
-| roles        | lead + specialists, at most six at a time (A, A2, A3, B, C, D, D2, E, E6, F, G, H, I, J, K, L, M, M3, P, P2, S, U, X; reviewers R, R2, R3)                                       |
-| PRs          | #136 (0.9.0), #137 (0.9.1), #139, #141, #142 (0.9.2), #144, #146, #148, #155, #156 (0.9.3), #159, #160 (0.9.4), #162, #163, #164 (0.9.5), #165 (0.9.6), #167, #169, #171                                         |
-| issues       | #138, #140, #143, #145, #147, #154, #157, #158, #161, #166, #168, #170 (closed by those PRs); #149–#153 good first issues                                                                          |
+| roles        | lead + specialists, at most six at a time (A, A2, A3, B, C, D, D2, E, E6, F, G, H, I, J, K, L, M, M3, P, P2, S, U, X; reviewers R, R2, R3)                                                                    |
+| PRs          | #136 (0.9.0), #137 (0.9.1), #139, #141, #142 (0.9.2), #144, #146, #148, #155, #156 (0.9.3), #159, #160 (0.9.4), #162, #163, #164 (0.9.5), #165 (0.9.6), #167, #169, #171                                      |
+| issues       | #138, #140, #143, #145, #147, #154, #157, #158, #161, #166, #168, #170 (closed by those PRs); #149–#153 good first issues                                                                                     |
 
 The ten hours are counted as working time. The `not_before` of the brief (08:44:36Z) fell into the
 pause; work continued after it until ten hours of work were reached.
@@ -97,17 +97,17 @@ results: Discord 0.9.5 995 → 953 ms, Claude.app 8.4 → 7.5 s (interleaved aga
 769 ms / 6.7 s; load 5–13). What remains against the base is, by CPU profile (Discord, self ms
 per run, 4 profiles each), one linear pass per file for each analysis added in the sprint:
 
-| Function                            | 0.8.0 | 0.9.5 | Analysis                                   |
-| ----------------------------------- | ----- | ----- | ------------------------------------------ |
-| `findCandidates`                    | 43    | 80    | HTTP clients, webpack module ids, storage  |
-| `privilegedBindings` + `privileged` | 0     | 39    | bridge exposures                           |
-| `navigationHandlers`                | 0     | 14    | navigation handlers                        |
-| `readWrappers`                      | 0     | 11    | IPC wrapper classes                        |
-| `innermostBlock`, `depthAt`         | 0     | 17    | bracket tables (once per file)             |
-| `memberWritten`, `storageKey`       | 0     | 17    | storage wrappers                           |
-| `webpackModule`                     | 0     | 8     | webpack module-id table                    |
-| `matches` (payload)                 | 0     | 8     | IPC payload shapes                         |
-| `Constants` (second instance)       | 19    | 30    | window-option evaluation                   |
+| Function                            | 0.8.0 | 0.9.5 | Analysis                                  |
+| ----------------------------------- | ----- | ----- | ----------------------------------------- |
+| `findCandidates`                    | 43    | 80    | HTTP clients, webpack module ids, storage |
+| `privilegedBindings` + `privileged` | 0     | 39    | bridge exposures                          |
+| `navigationHandlers`                | 0     | 14    | navigation handlers                       |
+| `readWrappers`                      | 0     | 11    | IPC wrapper classes                       |
+| `innermostBlock`, `depthAt`         | 0     | 17    | bracket tables (once per file)            |
+| `memberWritten`, `storageKey`       | 0     | 17    | storage wrappers                          |
+| `webpackModule`                     | 0     | 8     | webpack module-id table                   |
+| `matches` (payload)                 | 0     | 8     | IPC payload shapes                        |
+| `Constants` (second instance)       | 19    | 30    | window-option evaluation                  |
 
 This is the cost of the new facts, not repeated work; it is justified as such here, and the
 remaining candidates (reusing the scan's `Constants` for the window evaluation, an identifier
@@ -150,7 +150,10 @@ doyensec/awesome-electronjs-hacking, five good first issues. Prepared, not publi
 0.9.0, 0.9.2 and 0.9.6 (maintainer's click), HN fact brief (HN forbids generated text; the maintainer
 writes the post), second article (re-run on 0.9.6), Console.dev submission. Blocked: Reddit (browser automation
 blocked), punkpeye/awesome-mcp-servers (needs a Glama listing), sindresorhus/awesome-electron
-(from 2026-11-11), Lobsters (invitation).
+(from 2026-11-11), Lobsters (invitation). Metrics at the end of the sprint, with the baseline's commands: stars 5 → 5,
+views 149 → 161 (14 days), npm downloads still not reported by the API, DEV 0 reactions
+([docs/growth/metrics-2026-10-17-end.md](../growth/metrics-2026-10-17-end.md)); the posts that
+reach people were not made during the sprint.
 
 ## 9. Known limits, next five tasks, how to continue
 
