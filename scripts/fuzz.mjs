@@ -103,6 +103,7 @@ const leaves = (node, prefix = "") =>
 
 const CANARY_HTML = "<x-canary onload=alert(1)>";
 const CANARY_MD = "[x-canary](http://x-canary.invalid)";
+const FORGED = "FORGED-LINE";
 const NAMES = [
   "..",
   "../../escape.js",
@@ -128,6 +129,8 @@ const NAMES = [
   "\ud800lone.js",
   "con.js",
   "%2e%2e%2fenc.js",
+  `crlf\r\n${FORGED}.js`,
+  "zero\u200bwidth\u2066iso\u061c.js",
 ];
 const SIZES = [-1, 0, 1.5, 2 ** 31, 2 ** 32 + 1, 2 ** 53, 1e308, "12", null, true, {}, [], "-5"];
 const OFFSETS = ["-1", "1e30", "abc", "999999999", 123, null, "0x10", "", "9007199254740993", {}];
@@ -165,6 +168,12 @@ new BrowserWindow({ webPreferences: { nodeIntegration: true, contextIsolation: f
           `//# sourceMappingURL=data:application/json;base64,${Buffer.from('{"version":3,"sources":["../../../escape.js","/abs.js"],"sourcesContent":["a","b"],"mappings":"AAAA"}').toString("base64")}`,
         () => `"\\u{110000}" + '\\x' + "\\u12" + \`\\u{\` `,
         () => "#!/usr/bin/env node\n<!-- html comment\n--> also\n",
+        // line forging and hidden characters in every kind of target text the CLI prints
+        () => `class S { save(k, v) { localStorage.setItem(k, v); } run() { this.save("k\\u200b\\u009b31m\\r\\n${FORGED}::write · literal", 1); this.save("t\\tx\\u202e\\u2066y\\ufeff", 2); } }
+new S().run();
+const { ipcMain } = require("electron");
+ipcMain.handle("c\\n${FORGED} ipc\\u061c", () => 1);
+fetch("https://a.example/\\r\\n${FORGED}");`,
       ])(),
     );
   return Buffer.from(parts.join(rng.chance(0.5) ? "\n" : ""), "utf8");
@@ -419,8 +428,11 @@ function run(args, cwd) {
 
 const RUNTIME_ERROR =
   /Cannot read propert|Cannot convert|is not a function|is not iterable|is not defined|Maximum call stack|Invalid (array|string|typed array) length|out of memory|Array buffer allocation|RangeError|TypeError|ReferenceError|SyntaxError: (?!.*JSON)/;
-// eslint-disable-next-line no-control-regex
-const TERMINAL_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
+const TERMINAL_CONTROL =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
+/** A line of output that starts with text a target tried to put on a line of its own. */
+const FORGED_LINE = new RegExp(`^[\\s+~?-]*${FORGED}`, "m");
 
 function checkRun(label, r, failures) {
   if (r.timedOut) failures.push(`${label}: timeout after ${BUDGET} ms`);
@@ -431,7 +443,11 @@ function checkRun(label, r, failures) {
     failures.push(`${label}: runtime error: ${r.stderr.slice(0, 300)}`);
   if (TERMINAL_CONTROL.test(r.stdout) || TERMINAL_CONTROL.test(r.stderr))
     failures.push(
-      `${label}: control character on the terminal: ${around(r.stdout + r.stderr, TERMINAL_CONTROL)}`,
+      `${label}: control or hidden character on the terminal: ${around(r.stdout + r.stderr, TERMINAL_CONTROL)}`,
+    );
+  if (FORGED_LINE.test(r.stdout) || FORGED_LINE.test(r.stderr))
+    failures.push(
+      `${label}: target text forged a line: ${around(r.stdout + r.stderr, FORGED_LINE)}`,
     );
 }
 
@@ -479,6 +495,8 @@ function checkOutputs(dir, outputs, failures) {
     if (/root:\*?:0:0:/.test(text)) failures.push(`${file}: content of /etc/passwd`);
     if (format === "html" && /<x-canary/i.test(text))
       failures.push(`${file}: unescaped markup from the input`);
+    if (format !== "json" && format !== "sarif" && FORGED_LINE.test(text))
+      failures.push(`${file}: target text forged a line: ${around(text, FORGED_LINE)}`);
     if (format === "md") {
       const bad = markdownEscapes(text);
       if (bad) failures.push(`${file}: Markdown from the input: ${JSON.stringify(bad)}`);
