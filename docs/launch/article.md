@@ -16,13 +16,13 @@ team has not agreed to. Three kinds of change are worth a gate in most Electron 
    `sandbox`).
 
 Everything below runs with Node 22.12+ and [hexvero](https://github.com/maximilianfeix/hexvero)
-0.9.0, on two synthetic builds that ship with it. Nothing is executed; both archives are only
+0.9.6, on two synthetic builds that ship with it. Nothing is executed; both archives are only
 read.
 
 ## 1. Two releases and a policy
 
 ```bash
-npx hexvero@0.9.0 demo > /dev/null; ls hexvero-demo
+npx hexvero@0.9.6 demo > /dev/null; ls hexvero-demo
 ```
 
 ```text
@@ -52,7 +52,7 @@ The policy is JSON, data only:
 
 ```bash
 A=hexvero-demo/notesdesk-1.4.0.asar B=hexvero-demo/notesdesk-1.5.0.asar
-npx hexvero@0.9.0 compare $A $B --report report.html | head -10
+npx hexvero@0.9.6 compare $A $B --report report.html | head -10
 ```
 
 ```text
@@ -82,7 +82,7 @@ environment variable:
 ```
 
 So the honest answer is "unknown": the other build has a channel in that file whose name a static
-reading cannot know. hexvero 0.8.0 printed `- shell:open` for the same pair; 0.9.0 does not.
+reading cannot know. hexvero 0.8.0 printed `- shell:open` for the same pair; since 0.9.0 it does not.
 
 `report.html` is one offline file (33,298 bytes here) with the source lines of both builds next to
 each changed row; for the window change, `main.js:8` from 1.4.0 and from 1.5.0.
@@ -90,7 +90,7 @@ each changed row; for the window change, `main.js:8` from 1.4.0 and from 1.5.0.
 ## 3. The gate
 
 ```bash
-npx hexvero@0.9.0 check $A $B --policy hexvero-demo/policy.json; echo "exit $?"
+npx hexvero@0.9.6 check $A $B --policy hexvero-demo/policy.json; echo "exit $?"
 ```
 
 ```text
@@ -127,7 +127,7 @@ because which members a preload exposes is read from the bridge itself.
 ## 5. Accepting what is there
 
 ```bash
-npx hexvero@0.9.0 check $A $B --policy hexvero-demo/policy.json \
+npx hexvero@0.9.6 check $A $B --policy hexvero-demo/policy.json \
   --baseline .hexvero/baseline.json --update-baseline
 ```
 
@@ -146,12 +146,12 @@ survives code moving. A one-off exception is a suppression with the fingerprint,
 - name: hexvero check
   run: |
     set +e
-    npx --yes hexvero@0.9.0 check previous/app.asar dist/app.asar \
+    npx --yes hexvero@0.9.6 check previous/app.asar dist/app.asar \
       --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
       --format sarif --out hexvero.sarif
     code=$?
     set -e
-    npx --yes hexvero@0.9.0 check previous/app.asar dist/app.asar \
+    npx --yes hexvero@0.9.6 check previous/app.asar dist/app.asar \
       --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
       --format markdown >> "$GITHUB_STEP_SUMMARY" || true
     exit "$code"
@@ -168,21 +168,23 @@ never mapped onto your repository's files, because a bundled `main.js` is not yo
 
 - It is static. A pass means nothing new against the policy in what was read, not that the app
   cannot do these things at run time, and nothing here is a vulnerability verdict.
-- It misses things. On the newest blind set (one app in three builds, written by someone without
-  access to hexvero, measured once) it found 49 of 54 IPC channels with none false, but only 14
-  of 39 window settings, and both expected window-setting changes to the next version were
-  missed: the options were built with `Object.assign({}, BASE_PREFS, …)` across a binding
+- It misses things, and it can be wrong. On the newest blind set (one screenshot annotator in
+  three builds and a later version, written by someone without access to hexvero, measured once)
+  it found 52 of 64 IPC channels and 22 of 41 storage keys with none false, but 44 of 52 window
+  settings with 15 false; all 15 were duplicate rows of literals that were right for their
+  window, fixed after that measurement
+  ([round 5](https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round5/README.md)).
+  On the blind set before it, only 14 of 39 window settings were found
   ([round 4](https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round4/README.md)).
-  A window rule that cannot read the settings is exactly where exit 4 matters. The same set, now
-  a development set after the misses were worked on, gives 72 of 72 channels but still 17 of 52
-  window settings; that number is not blind and is not a substitute for the one above.
+  A window rule that cannot read the settings is exactly where exit 4 matters.
 - On a real app, Electron Fiddle 0.38.0 → 0.39.0, a check with 0.8.0 found no false change but
-  missed a new field in an IPC payload and a new storage key behind a wrapper
+  missed four changes: a new field in an IPC payload, a new storage key behind the app's own
+  wrapper, the request of a bundled CLI, and that CLI's file. 0.9.6 reports all four, each checked
+  against Fiddle's source
   ([case study](https://github.com/maximilianfeix/hexvero/blob/main/docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md)).
-  Payload shapes are not compared in 0.9.0 either. What 0.9.0 does read there is Fiddle's IPC
-  wrapper class (`ipcMainManager.handle`): 45 of its 46 bridge members with a channel are now
-  linked to a main-process handler, against none with 0.8.0, which is what
-  `new-interface-member` needs to name the handler of a new member.
+  It still does not read what a handler takes from a payload.
+- It costs time: the analyses added for this make a scan of Discord's `app.asar` about 24 %
+  slower than 0.8.0 (769 → 953 ms).
 - Other tools compare versions too (REA documents `compare_application_versions`) and
   Electronegativity writes SARIF for single-build checks. What this adds is the Electron release
   delta with the line behind each change, unknowns kept apart, and a policy with baselines on
@@ -191,8 +193,8 @@ never mapped onto your repository's files, because a bundled `main.js` is not yo
 ## Try it on your app
 
 ```bash
-npx hexvero@0.9.0 compare old/app.asar new/app.asar --report report.html
-npx hexvero@0.9.0 check old/app.asar new/app.asar --policy .hexvero/policy.json
+npx hexvero@0.9.6 compare old/app.asar new/app.asar --report report.html
+npx hexvero@0.9.6 check old/app.asar new/app.asar --policy .hexvero/policy.json
 ```
 
 Use it on software you own or may examine. A bug report with a wrong or missing fact (and the
