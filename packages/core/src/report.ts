@@ -586,7 +586,7 @@ export function renderReleaseReport(r: ReleaseComparison): string {
     "```",
     "",
   );
-  if (targets.note) out.push(targets.note, "");
+  if (targets.sameName !== undefined) out.push(sameNameNote(r, targets.sameName, cell), "");
   return out.join("\n");
 }
 
@@ -595,12 +595,18 @@ export function renderReleaseReport(r: ReleaseComparison): string {
  * when both builds have the same name (two `app.asar`), the names alone would not say which is
  * which, so placeholders stand in and a note says so.
  */
-export function reproduceTargets(r: ReleaseComparison): { a: string; b: string; note?: string } {
+export function reproduceTargets(r: ReleaseComparison): {
+  a: string;
+  b: string;
+  /** Set when both builds have the same file name: the raw name, for the renderer to escape. */
+  sameName?: string;
+} {
   const [nameA, nameB] = [baseName(r.a.info.path), baseName(r.b.info.path)];
   if (nameA !== nameB) return { a: shellWord(nameA), b: shellWord(nameB) };
-  return {
-    a: "<before>",
-    b: "<after>",
-    note: `Both builds are named ${nameA}; pass their paths (sha256 ${r.a.info.sha256.slice(0, 12)}… before, ${r.b.info.sha256.slice(0, 12)}… after).`,
-  };
+  return { a: "<before>", b: "<after>", sameName: nameA };
+}
+
+/** The note under a reproduce line with placeholders; `quote` escapes the name for the format. */
+export function sameNameNote(r: ReleaseComparison, name: string, quote: (s: string) => string) {
+  return `Both builds are named ${quote(name)}; pass their paths (sha256 ${r.a.info.sha256.slice(0, 12)}… before, ${r.b.info.sha256.slice(0, 12)}… after).`;
 }

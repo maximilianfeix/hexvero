@@ -320,5 +320,12 @@ describe("source lines", () => {
     expect(md).toContain("compare <before> <after> --report report.md");
     expect(md).toContain("Both builds are named app.asar; pass their paths");
     expect(md).not.toContain(dir);
+    // the name is target data: no Markdown of its own in the note
+    const hostile = { ...r, a: { ...r.a, info: { ...r.a.info, path: "[x](y)<b>.asar" } } };
+    const named = {
+      ...hostile,
+      b: { ...r.b, info: { ...r.b.info, path: "[x](y)<b>.asar" } },
+    };
+    expect(renderReleaseReport(named)).toContain("named \\[x\\](y)\\<b\\>.asar;");
   });
 });

@@ -5,6 +5,7 @@ import {
   DEFAULT_RELEASE_ROWS,
   notEstablished,
   reproduceTargets,
+  sameNameNote,
   summaryOf,
   type ChangeRow,
   type Place,
@@ -451,7 +452,7 @@ export function renderReleaseReportHtml(
   out.push(
     `<section id="reproduce"><h2>Reproduce</h2><pre class="cmd"><code>${escapeHtml(
       `npx hexvero@${r.hexvero} compare ${targets.a} ${targets.b} --report ${reportName}${page}`,
-    )}</code></pre>${targets.note ? `<p class="note">${escapeHtml(targets.note)}</p>` : ""}</section>`,
+    )}</code></pre>${targets.sameName !== undefined ? `<p class="note">${sameNameNote(r, targets.sameName, escapeHtml)}</p>` : ""}</section>`,
     `<footer>hexvero ${escapeHtml(r.hexvero)} · static analysis, nothing was run · this file loads nothing from the network</footer>`,
   );
 
