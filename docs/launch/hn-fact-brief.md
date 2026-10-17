@@ -31,12 +31,12 @@ Verify both commands from an empty directory on the release you link before post
 
 ## Numbers, with their limits (say both)
 
-- Newest blind set `holdout5` (one app, three builds, written without access to hexvero, measured
+- Blind set `holdout5` (newest until round 5; see `holdout6` below; one app, three builds, written without access to hexvero, measured
   once on 2026-10-17): IPC channels 49 of 54 found, no false ones; window settings 14 of 39;
   changes between two versions: channels 3 of 4, bridge members 4 of 4, window settings 0 of 2,
   endpoints 1 of 1. Source: `corpus/results/round4/README.md`. Most misses: a wrapper class around
   `ipcMain`, window options built with `Object.assign`.
-- Second blind set `holdout6` (a screenshot annotator, written without access to hexvero,
+- Newest blind set `holdout6` (a screenshot annotator, written without access to hexvero,
   measured once on the 0.9.2 code): IPC channels 52 of 64, no false; bridge members 60 of 80, no
   false; storage keys 22 of 41, no false; window settings 44 of 52 with 15 false, all of them
   duplicate rows of literals that were right for their window (fixed after the measurement; the
