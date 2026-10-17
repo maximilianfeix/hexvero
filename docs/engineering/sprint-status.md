@@ -122,6 +122,12 @@ passed, e2e 13, corpus 298 rows none worse.
   load 8–12: 0.8.0 778 ms, 0.9.0 842 ms, 0.9.1 1065 ms (+26 %). Core-level bisect: the jump comes
   with `1d7107a` (window options, A3). Warm `compare` Claude vs Discord (registry): 0.9.0 261 ms,
   0.9.1 195 ms, so the 0.9.1 CHANGELOG line on warm commands holds. P2 works on the regression.
+- **Regression fixed (P2, `5836078`):** the window-options evaluation tokenized each file a
+  second time and rebuilt the resolver tables for the copy. Lead re-check on `sprint/round3`
+  (CLI `analyze --json --fresh` Discord, empty cache per run, 7 interleaved runs, load 8–12, two
+  agents running): registry 0.9.0 926 ms, registry 0.9.1 1226 ms, round three 986 ms (+6.5 %).
+  P2's own run at load 7: 864 / 1043 / 852 ms; Claude.app unchanged (7,222 / 6,946 / 7,192 ms).
+  Outputs identical (Discord, Claude, examples, corpus observations).
 - **Active time vs wall time:** 22:44–03:44Z and from 14:00Z are working time; 03:44–14:00Z was
   the usage-limit pause. The ten hours are counted as working time, not wall time.
 
