@@ -1,18 +1,17 @@
 # Sprint report: 10-hour sprint "know what changed inside your Electron release"
 
 Brief: `~/Downloads/hexvero-10h-masterprompt.md` (§14). Running record with every hand-over,
-review and measurement: [sprint-status.md](sprint-status.md). Entries marked OPEN are filled in at
-the very end.
+review and measurement: [sprint-status.md](sprint-status.md). All entries are filled in.
 
 ## 1. Runtime and scope
 
 | Item         | Value                                                                                                                                                                                                         |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | started_at   | 2026-10-16T22:44:36Z                                                                                                                                                                                          |
-| working time | 22:44–03:44Z (5 h 00) and 14:00Z–ended_at; **03:44–14:00Z was a pause** (weekly usage limit: lead and every agent stopped)                                                                                    |
-| ended_at     | OPEN                                                                                                                                                                                                          |
+| working time | 22:44:36–03:44Z (4 h 59 min) and 14:01Z–ended_at; **03:44–14:00Z was a pause** (weekly usage limit: lead and every agent stopped)                                                                             |
+| ended_at     | 2026-10-17T19:02:01Z: 10 h 0 min of working time (4 h 59 min before the pause, 5 h 1 min after); 20 h 17 wall time with the 10 h 17 pause                                                                     |
 | base commit  | `841b6db` (0.8.0)                                                                                                                                                                                             |
-| final commit | OPEN (main)                                                                                                                                                                                                   |
+| final commit | main after #176 (this report); last code change `ccba870` (#165), released as 0.9.6 `849b30e`                                                                                                                 |
 | releases     | 0.9.0 (01:20Z, run 38990077564), 0.9.1 (03:00Z, 38996747203), 0.9.2 (15:20Z, 39044161003), 0.9.3 (16:30Z, 39049256326), 0.9.4 (17:00Z, 39051642548), 0.9.5 (17:30Z, 39054086916), 0.9.6 (18:05Z, 39056731394) |
 | roles        | lead + specialists, at most six at a time (A, A2, A3, B, C, D, D2, E, E6, F, G, H, I, J, K, L, M, M3, P, P2, S, U, X; reviewers R, R2, R3)                                                                    |
 | PRs          | #136 (0.9.0), #137 (0.9.1), #139, #141, #142 (0.9.2), #144, #146, #148, #155, #156 (0.9.3), #159, #160 (0.9.4), #162, #163, #164 (0.9.5), #165 (0.9.6), #167, #169, #171                                      |

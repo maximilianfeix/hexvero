@@ -196,6 +196,11 @@ redirect/range calls), checked against the text of `sfw.mjs`. R3 review (15:55Z)
 L1 `defaultPort`/`lookup`, L2 `URL` alias shadowed → back to M3. Not merged before fixed and
 re-reviewed.
 
+## Working time at the end
+
+22:44:36–03:44Z (4 h 59 min 24 s) and 14:01Z until the end (see sprint-report §1); ten hours of
+work were reached at 19:01:36Z. Wall time includes the usage-limit pause 03:44–14:01Z (10 h 17).
+
 ## Next steps / resume instructions
 
 The sprint is closed; [sprint-report.md](sprint-report.md) is the hand-over (brief §14). To
