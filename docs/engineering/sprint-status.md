@@ -182,9 +182,24 @@ Working time so far: 22:44–03:44Z (5 h 00) + 14:00–14:40Z (0 h 40) = 5 h 40;
 are reached at about 19:00Z if work continues without a break (corrected 15:30Z: an earlier
 "18:20Z" here was a miscalculation).
 
+## After 0.9.2: M3 (endpoints through HTTP client methods), 15:30Z–
+
+Branch `sprint/m3-endpoints` (`~/hexvero-10h-m3`, from `18df53f`): `6c59302` requests through
+`node:https`/`http`/Electron `net`/request libraries; `36f8f99` template constants of a module's
+own constants in exported objects (holdout3 endpoints 18/3/0 → 21/0/0; corpus gate none worse).
+Fiddle full app 0.38 → 0.39: the `sfw.mjs` GitHub API URL added (plus an unknown row for its
+redirect/range calls), checked against the text of `sfw.mjs`. R3 review (15:55Z): C1 quadratic
+`refersTo` (32,000 calls: 69 ms → 8.1 s), H1 a call of a function's result taken for an IIFE
+(false endpoint), M1/M2 destructuring and for-of shadows, M3 options overriding a URL argument,
+L1 `defaultPort`/`lookup`, L2 `URL` alias shadowed → back to M3. Not merged before fixed and
+re-reviewed.
+
 ## Next steps / resume instructions
 
-1. On hand-back of S, X, U: cherry-pick or merge onto a branch from main, run the gates (check,
+0. M3: on hand-back, R3 re-review of the fix commits, gates, PR, merge; release 0.9.3 only if
+   gates and review are clean. Then fill the OPEN entries of sprint-report.md and merge
+   `sprint/final-report`.
+1. (done for round three) On hand-back of S, X, U: cherry-pick or merge onto a branch from main, run the gates (check,
    e2e, corpus, `build-site-demo --check`), run an independent review (second reader + security
    review) before any release; fix findings with regression tests.
 2. Release 0.9.2 only if round three changes behaviour users see: PR → CI → squash merge →
