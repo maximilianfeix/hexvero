@@ -59,6 +59,9 @@ const constants = [
   ["packages/core/src/version.ts", /CORE_VERSION = "[^"]+"/, `CORE_VERSION = "${version}"`],
   ["server.json", /"version": "[^"]+"/g, `"version": "${version}"`],
   [".claude-plugin/plugin.json", /"version": "[^"]+"/, `"version": "${version}"`],
+  // The CI example pins a version (users copy it): it names the release being cut.
+  ["docs/ci.md", /hexvero@\d+\.\d+\.\d+(-[\w.]+)?/g, `hexvero@${version}`],
+  ["site/index.html", /hexvero@\d+\.\d+\.\d+(-[\w.]+)?/g, `hexvero@${version}`],
 ];
 for (const [file, re, replacement] of constants)
   writeFileSync(file, readFileSync(file, "utf8").replace(re, replacement));

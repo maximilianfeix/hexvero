@@ -21,6 +21,8 @@ const versioned = [
   "server.json",
   ".claude-plugin/plugin.json",
   "CHANGELOG.md",
+  "docs/ci.md",
+  "site/index.html",
   "scripts/release-verify.mjs",
 ];
 const dirs: string[] = [];
@@ -69,6 +71,18 @@ describe("release-verify", () => {
     const r = verify(dir);
     expect(r.status).toBe(1);
     expect(r.output).toContain("packages/web is 0.0.1");
+  });
+
+  it("fails when the CI example pins another version", () => {
+    const dir = copyRepo();
+    const path = join(dir, "docs/ci.md");
+    writeFileSync(
+      path,
+      readFileSync(path, "utf8").replace(/hexvero@\d+\.\d+\.\d+/, "hexvero@0.0.1"),
+    );
+    const r = verify(dir);
+    expect(r.status).toBe(1);
+    expect(r.output).toContain("docs/ci.md pins hexvero@0.0.1");
   });
 
   it("fails when the Claude plugin manifest version differs", () => {
