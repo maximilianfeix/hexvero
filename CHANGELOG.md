@@ -37,9 +37,18 @@ All notable changes to hexvero are listed here. The format follows
   `web-contents-created`), with `returns: deny | allow` only where the returned `action` is a
   literal, else `unknown`. Absence reads "no … found in the files read". New limitation code
   `navigation_handlers_truncated`.
+- Review fixes to both (each was a false fact): a name written again after its declaration, a
+  loop, catch or parenthesis-less arrow parameter of the same name is not the privileged object;
+  a Node module's method counts only where it acts (`fs.readFileSync`, `child_process.spawn`;
+  not `os.platform`, `fs.statSync`), and `os` is no longer listed; `returns` is `unknown` when a
+  spread or computed key follows the action or a path ends without a return; `win.webContents`
+  through a parameter of the window's name, and `contents` of a function inside
+  `web-contents-created`, read `targetKind: webContents`. Rows carry `window` (name, `app` or
+  null) and compare by file, kind, `targetKind` and `window`, so a renamed minified receiver is
+  not removed and added. `JS_SCAN_SCHEMA` 10.
 - Both collections compare (identity without lines, lines as positions, the written evidence not a
   change of its own) and come after `windows` in release reports and the compare view.
-  `JS_SCAN_SCHEMA` is 9, so stored scans are read again. Rules and sources:
+  Stored scans are read again. Rules and sources:
   docs/electron-findings.md.
 
 ### Compare and reports

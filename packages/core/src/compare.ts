@@ -215,7 +215,8 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   // the code as written: a minifier renames `o.ipcRenderer` to `n.ipcRenderer` between builds,
   // while `exposed` / `kind`, `target` and `returns` carry the fact
   bridgeExposures: ["evidence"],
-  navigationHandlers: ["evidence"],
+  // `target` restates `window`, or is the receiver as written (renamed by minifiers)
+  navigationHandlers: ["evidence", "target"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -279,8 +280,13 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   contextBridge: [["api", "member"]],
   // what is exposed where; the line is a position (SOURCE_LINE_FIELDS)
   bridgeExposures: [["file", "api", "member", "exposed"]],
-  // a handler per webContents and kind; the same pair twice is matched as a multiset
-  navigationHandlers: [["file", "kind", "target"]],
+  // a handler per kind and window (or app); a receiver that is neither is matched by its kind,
+  // not by its text, which minifiers rename. The same pair twice is matched as a multiset.
+  navigationHandlers: [
+    ["file", "kind", "targetKind", "window"],
+    // every row is of a receiver that is neither (no `window` anywhere)
+    ["file", "kind", "targetKind"],
+  ],
   interfaces: [["file", "api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.
   endpoints: [

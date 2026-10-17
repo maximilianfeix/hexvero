@@ -336,7 +336,7 @@ describe("comparing the observations", () => {
     );
     expect(rows.map((c) => `${c.collection} ${c.change} ${c.key}`)).toEqual([
       "bridgeExposures added preload.js::api::ipc::ipcRenderer",
-      "navigationHandlers removed main.js::setWindowOpenHandler::win",
+      "navigationHandlers removed main.js::setWindowOpenHandler::window::win",
     ]);
     expect(rows[0]!.where).toEqual([{ side: "b", file: "preload.js", line: 4 }]);
     expect(rows[1]!.where).toEqual([{ side: "a", file: "main.js", line: 3 }]);
@@ -377,5 +377,143 @@ describe("comparing the observations", () => {
     expect(diff.unknown.map((u) => u.reason)).toEqual([
       "the other side has values there that could not be resolved",
     ]);
+  });
+});
+
+const preload = (body: string): JsAppInfo =>
+  analyze({
+    "main.js": "",
+    "preload.js": `const { contextBridge, ipcRenderer } = require("electron");\n${body}`,
+  });
+const navigation = (body: string): Array<Record<string, unknown>> =>
+  analyze({
+    "main.js": `const { app, BrowserWindow, shell } = require("electron");\nconst win = new BrowserWindow({});\n${body}`,
+  }).navigationHandlers.map(({ kind, target, targetKind, returns, window }) => ({
+    kind,
+    target,
+    targetKind,
+    window,
+    ...(returns ? { returns } : {}),
+  }));
+/** A handler row on a receiver that is not a window. */
+const row = (target: string): object => ({
+  kind: "setWindowOpenHandler",
+  target,
+  targetKind: "webContents",
+  window: null,
+  returns: "deny",
+  evidence: `${target}.setWindowOpenHandler(…)`,
+  file: "main.js",
+  line: 1,
+});
+
+/** Review findings on sprint/091: each was a false fact before the fix. */
+describe("review regressions", () => {
+  it("#3a a name assigned again after its declaration is not the privileged object", () => {
+    const info = preload(
+      'let r = require("electron").ipcRenderer; r = { send(){} };\ncontextBridge.exposeInMainWorld("api", { r });',
+    );
+    expect(info.bridgeExposures).toEqual([]);
+  });
+
+  it("#3b/#3c a loop variable, an arrow parameter or a catch parameter shadows the import", () => {
+    for (const body of [
+      'for (const ipcRenderer of [1]) contextBridge.exposeInMainWorld("api", { ipcRenderer });',
+      '[1].forEach(ipcRenderer => contextBridge.exposeInMainWorld("api", { ipcRenderer }));',
+      '[1].forEach((ipcRenderer) => contextBridge.exposeInMainWorld("api", { x: ipcRenderer }));',
+      'try {} catch (ipcRenderer) { contextBridge.exposeInMainWorld("api", { ipcRenderer }); }',
+    ])
+      expect(preload(body).bridgeExposures, body).toEqual([]);
+  });
+
+  it("#3d a Node module's method counts only where it acts; information helpers do not", () => {
+    const info = preload(
+      [
+        'const os = require("os");',
+        'const fs = require("fs");',
+        'const path = require("path");',
+        'const cp = require("child_process");',
+        'contextBridge.exposeInMainWorld("api", {',
+        "  platform: os.platform, os, env: process.env,",
+        "  stat: fs.statSync, join: path.join,",
+        "  read: fs.readFileSync, run: cp.spawn,",
+        "});",
+      ].join("\n"),
+    );
+    expect(exposed(info)).toEqual(["api.read fs.readFileSync", "api.run child_process.spawn"]);
+  });
+
+  it("#4 returns is unknown when a spread or a computed key may replace the action", () => {
+    for (const body of [
+      'win.webContents.setWindowOpenHandler(() => ({ action: "deny", ...extra }));',
+      'win.webContents.setWindowOpenHandler(() => ({ action: "deny", [k]: "allow" }));',
+      'win.webContents.setWindowOpenHandler(() => ({ ...base, action: "deny", [k]: 1 }));',
+      // one path returns nothing
+      'win.webContents.setWindowOpenHandler((d) => { if (d.url) return { action: "deny" }; });',
+    ])
+      expect(navigation(body)[0]?.["returns"], body).toBe("unknown");
+    // the later of two literal keys wins, as in JavaScript
+    expect(
+      navigation(
+        'win.webContents.setWindowOpenHandler(() => ({ action: "deny", action: "allow" }));',
+      )[0]?.["returns"],
+    ).toBe("allow");
+    // a spread before the literal action is replaced by it
+    expect(
+      navigation('win.webContents.setWindowOpenHandler(() => ({ ...base, action: "deny" }));')[0]?.[
+        "returns"
+      ],
+    ).toBe("deny");
+  });
+
+  it("#5 a parameter of the same name is not the window, nor the created webContents", () => {
+    expect(
+      navigation(
+        'function f(win){ win.webContents.setWindowOpenHandler(() => ({ action: "deny" })); }',
+      ),
+    ).toEqual([
+      {
+        kind: "setWindowOpenHandler",
+        target: "win.webContents",
+        targetKind: "webContents",
+        window: null,
+        returns: "deny",
+      },
+    ]);
+    expect(
+      navigation(
+        'app.on("web-contents-created", (e, contents) => { [other].forEach(contents => contents.setWindowOpenHandler(() => ({ action: "deny" }))); });',
+      ),
+    ).toEqual([
+      {
+        kind: "setWindowOpenHandler",
+        target: "contents",
+        targetKind: "webContents",
+        window: null,
+        returns: "deny",
+      },
+    ]);
+    // the window itself, also when it is assigned to a name declared without a value
+    expect(
+      analyze({
+        "main.js": [
+          'const { BrowserWindow } = require("electron");',
+          "let mainWindow;",
+          "function create() {",
+          "  mainWindow = new BrowserWindow({});",
+          '  mainWindow.webContents.on("will-navigate", (e) => e.preventDefault());',
+          "}",
+        ].join("\n"),
+      }).navigationHandlers.map((h) => `${h.targetKind} ${h.window}`),
+    ).toEqual(["window mainWindow"]);
+  });
+
+  it("#9 a renamed receiver that is not a window is no removed and added handler", () => {
+    const diff = compareItems([row("e.webContents")], [row("t.webContents")], {
+      collection: "navigationHandlers",
+    });
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual([]);
+    expect(diff.changed).toEqual([]);
   });
 });

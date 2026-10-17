@@ -118,21 +118,32 @@ especially IPC, to untrusted web content in your preload scripts", and "Exposing
 exposed member, or the exposed value as a whole, is one of these, read from tokens (a comment or a
 string never counts):
 
-| Written as the value                                                                                                                                                                                              | `exposed`                                 |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `ipcRenderer` (`{ ipcRenderer }`, `ipc: ipcRenderer`, `exposeInMainWorld("ipc", ipcRenderer)`)                                                                                                                    | `ipcRenderer`                             |
-| a method of it as a reference: `ipcRenderer.send`, `ipcRenderer.on.bind(ipcRenderer)`                                                                                                                             | `ipcRenderer.send`, `ipcRenderer.on`      |
-| `shell`, or one of its methods as a reference                                                                                                                                                                     | `shell`, `shell.openExternal`             |
-| the `electron` module itself, `require("electron")`                                                                                                                                                               | `electron`                                |
-| a Node module object: `fs`, `fs/promises`, `child_process`, `net`, `dgram`, `http`, `https`, `http2`, `tls`, `os`, `vm`, `worker_threads`, `cluster`, `module`, `process` (also `node:`, also a method reference) | the module name, e.g. `fs`, `fs.readFile` |
-| the globals `process` and `require`, where the file declares no such name                                                                                                                                         | `process`, `require`                      |
+| Written as the value                                                                                                                                                                                                                        | `exposed`                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `ipcRenderer` (`{ ipcRenderer }`, `ipc: ipcRenderer`, `exposeInMainWorld("ipc", ipcRenderer)`)                                                                                                                                              | `ipcRenderer`                                 |
+| a method of it as a reference: `ipcRenderer.send`, `ipcRenderer.on.bind(ipcRenderer)`                                                                                                                                                       | `ipcRenderer.send`, `ipcRenderer.on`          |
+| `shell`, or one of its methods as a reference                                                                                                                                                                                               | `shell`, `shell.openExternal`                 |
+| the `electron` module itself, `require("electron")`                                                                                                                                                                                         | `electron`                                    |
+| a Node module object: `fs`, `fs/promises`, `child_process`, `net`, `dgram`, `http`, `https`, `http2`, `tls`, `vm`, `worker_threads`, `cluster`, `module`, `process` (also `node:`); a method of one by reference only where it acts (below) | the module name, e.g. `fs`; `fs.readFileSync` |
+| the globals `process` and `require`, where the file declares no such name                                                                                                                                                                   | `process`, `require`                          |
 
 A name counts as electron's or Node's only through a declaration in the same file:
 `require("electron")` or `import … from "electron"` (destructured, renamed, `import * as`), what
 bundlers write for them (`import_electron.ipcRenderer`, `__toESM(require("fs"))`, `o.ipcRenderer`
 in a minified file), and `y = x` / `y = x.ipcRenderer` after such a declaration. A name declared
-twice in the file, or a parameter or loop variable of the same name where the value is written, is
-not taken. Path modules such as `path`, `url` or `util` are not listed.
+twice in the file, written again after its declaration (`let r = ipcRenderer; r = {…}`, also
+`r ||= …`, `r++`), or bound as a parameter, loop or catch variable (`for (const ipcRenderer of …)`,
+`forEach(ipcRenderer => …)`, `catch (ipcRenderer)`) where the value is written or around the
+`exposeInMainWorld` call, is not taken. Modules that only compute or inform (`path`, `url`,
+`util`, `events`, `os`) are not listed, nor is `process.env` or `process.versions`.
+
+A Node module's method counts only where it acts: `fs` and `fs/promises` methods that read,
+write, remove, rename, copy, open or watch (`readFileSync`, `writeFile`, `rm`, `createReadStream`,
+…; not `statSync` or `existsSync`); `child_process` `exec*`, `spawn*`, `fork`; `net`/`tls`/`http`/
+`https`/`http2` `connect`, `request`, `get`, `create*Server`; `dgram.createSocket`; `vm` `run*`,
+`compileFunction`, `Script`; `worker_threads.Worker`; `cluster.fork`; `module.createRequire`;
+`process` `kill`, `exit`, `abort`, `chdir`, `dlopen`, `binding`. The module object itself is
+always listed. Every method of `ipcRenderer` and `shell` counts.
 
 Not this observation: a member that wraps the object in a function of its own
 (`send: (c, d) => ipcRenderer.send(c, d)`, `openUrl(u) { return shell.openExternal(u) }`, a
@@ -161,10 +172,23 @@ webContents event that also covers frames ([webContents][wc]). One row per regis
 | inside `app.on("web-contents-created", (e, contents) => …)` on `contents`                | as above               | `app` (`targetKind: app`)                                    |
 | on any other receiver (`view.webContents`, `this.contents`)                              | as above               | the receiver as written (`targetKind: webContents`)          |
 
+`win.webContents` names the window `win` only where `win` is that window by scope: a parameter of
+that name (`function f(win) { win.webContents… }`) or a local declared with something other than
+`new …` is another binding and reads `targetKind: webContents`; a name declared without a value
+and assigned the window (`let win; … win = new BrowserWindow()`) is matched by its name, as
+`windows` names it. `contents` inside `web-contents-created` is `app` only where it is that
+callback's own parameter, not a parameter of the same name of a function inside it. `window` is the
+window's name, `app`, or null for `targetKind: webContents`; a comparison matches rows by file,
+kind, `targetKind` and `window`, so a receiver a minifier renames is no removed and added handler.
+
 `returns` (only for `setWindowOpenHandler`) is `deny` or `allow` only when every return of the
 handler is an object literal whose `action` is that string literal: `() => ({ action: "deny" })`,
 `return { action: "deny" }`, and the minified `(open(u), { action: "deny" })`. A handler passed by
-name, a conditional, two different literals, a nested function or no return at all is `unknown`.
+name, a conditional, two different literals, a nested function, a body whose last statement is no
+return (a path then returns nothing), or no return at all is `unknown`. Within one literal the later
+key wins, as in JavaScript (`{ action: "deny", action: "allow" }` is `allow`, `{ ...base, action:
+"deny" }` is `deny`); a spread or a computed key after the action may replace it
+(`{ action: "deny", ...extra }`, `{ action: "deny", [k]: "allow" }`), so that is `unknown`.
 Nothing here says that a handler is safe or unsafe, nor whether it checks the URL or the sender
 ([Security, 17][sec] is not read).
 

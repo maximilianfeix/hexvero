@@ -1026,7 +1026,7 @@ export interface BridgeScan {
 const PRIVILEGED_ELECTRON = new Set(["ipcRenderer", "shell"]);
 /**
  * Node modules whose object handed to a page gives it file, process, network or code access.
- * Pure helpers (`path`, `url`, `util`, `events`, …) are not listed.
+ * Helpers that only compute or inform (`path`, `url`, `util`, `events`, `os`, …) are not listed.
  */
 const PRIVILEGED_BUILTINS = new Set([
   "fs",
@@ -1038,13 +1038,54 @@ const PRIVILEGED_BUILTINS = new Set([
   "https",
   "http2",
   "tls",
-  "os",
   "vm",
   "worker_threads",
   "cluster",
   "module",
   "process",
 ]);
+
+const ASSIGNMENT_OPERATORS = new Set([
+  "=",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "%=",
+  "**=",
+  "<<=",
+  ">>=",
+  ">>>=",
+  "&=",
+  "|=",
+  "^=",
+  "&&=",
+  "||=",
+  "??=",
+]);
+
+/**
+ * The methods of a privileged Node module that act (read or write files, start processes, open
+ * connections, run code) when handed to a page by reference. Any other method (`fs.statSync`,
+ * `fs.existsSync`, a constant) is not listed; the module object itself always is.
+ */
+const ACTING_METHODS: Readonly<Record<string, RegExp>> = {
+  fs: /^(read|write|append|unlink|rm|rmdir|mkdir|mkdtemp|rename|copyFile|cp|open|symlink|link|chmod|chown|truncate|ftruncate|utimes|createReadStream|createWriteStream|opendir|watch)/,
+  "fs/promises":
+    /^(read|write|append|unlink|rm|rmdir|mkdir|mkdtemp|rename|copyFile|cp|open|symlink|link|chmod|chown|truncate|utimes|opendir|watch)/,
+  child_process: /^(exec|execSync|execFile|execFileSync|spawn|spawnSync|fork)$/,
+  net: /^(connect|createConnection|createServer)$/,
+  tls: /^(connect|createServer)$/,
+  dgram: /^createSocket$/,
+  http: /^(request|get|createServer)$/,
+  https: /^(request|get|createServer)$/,
+  http2: /^(connect|createServer|createSecureServer)$/,
+  vm: /^(runInThisContext|runInNewContext|runInContext|compileFunction|Script|SourceTextModule)$/,
+  worker_threads: /^Worker$/,
+  cluster: /^(fork|setupPrimary|setupMaster)$/,
+  module: /^(createRequire|_load)$/,
+  process: /^(kill|exit|abort|chdir|dlopen|binding)$/,
+};
 
 /** `electron`, a privileged Node module (without `node:`), or null for any other specifier. */
 function privilegedModule(specifier: string): string | null {
@@ -1110,6 +1151,8 @@ function privilegedBindings(tokens: Token[]): {
     return path.length ? { kind: "path", path } : null;
   };
   const simple: Array<{ name: string; rhs: Rhs }> = [];
+  /** Names declared with an initializer (`const r = …`): that is their one write. */
+  const initialized = new Set<string>();
   const patterns: Array<{ entries: Array<[string, string]>; rhs: Rhs }> = [];
   const imports: Array<[string, string]> = [];
   for (let k = 0; k + 2 < tokens.length; k++) {
@@ -1155,8 +1198,14 @@ function privilegedBindings(tokens: Token[]): {
       continue;
     }
     if (!declares) continue;
+    // `for (const ipcRenderer of …)`: a declaration without an initializer
+    if (t.type === "ident" && ident(k + 1) && (ident(k + 2) === "of" || ident(k + 2) === "in")) {
+      count(ident(k + 1)!);
+      continue;
+    }
     if (ident(k + 1) && is(k + 2, "=") && !is(k + 3, "=")) {
       count(ident(k + 1)!);
+      initialized.add(ident(k + 1)!);
       const rhs = rhsAt(k + 3);
       if (rhs) simple.push({ name: ident(k + 1)!, rhs });
       continue;
@@ -1185,8 +1234,24 @@ function privilegedBindings(tokens: Token[]): {
     const rhs = rhsAt(j + 2);
     if (rhs) patterns.push({ entries, rhs });
   }
+  // Every write of a name: `r = …`, `r ||= …`, `r++`. A name written again after its declaration
+  // (`let r = ipcRenderer; r = { send() {} }`) may be anything where it is used.
+  const writes = new Map<string, number>();
+  for (let k = 0; k + 1 < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident" || is(k - 1, ".") || is(k - 1, "?.")) continue;
+    const next = tokens[k + 1]!;
+    const written =
+      (next.type === "punct" && ASSIGNMENT_OPERATORS.has(next.value)) ||
+      is(k - 1, "++") ||
+      is(k - 1, "--") ||
+      is(k + 1, "++") ||
+      is(k + 1, "--");
+    if (written) writes.set(t.value, (writes.get(t.value) ?? 0) + 1);
+  }
   const meaning = new Map<string, string>();
-  const once = (name: string): boolean => (declared.get(name) ?? 0) === 1;
+  const once = (name: string): boolean =>
+    (declared.get(name) ?? 0) === 1 && (writes.get(name) ?? 0) === (initialized.has(name) ? 1 : 0);
   for (const [name, m] of imports) if (once(name)) meaning.set(name, m);
   const ofPath = (path: string[]): string | null => {
     const base = once(path[0]!) ? meaning.get(path[0]!) : undefined;
@@ -1215,6 +1280,10 @@ function privilegedBindings(tokens: Token[]): {
     }
     if (!grew) break;
   }
+  // `once` decides for the caller too: a name it does not take is reported as declared twice
+  // (also `process = …` or `require = …`: then no longer the global)
+  for (const name of writes.keys())
+    if (!once(name)) declared.set(name, Math.max(2, declared.get(name) ?? 0));
   return { meaning, declared };
 }
 
@@ -1382,7 +1451,17 @@ export function bridgeMembers(
    * one with `.bind(…)`. Anything else (a function, a call, an object, a property of an object
    * of the file) is null: a wrapper around a privileged object is not that object.
    */
-  const privileged = (from: number, end: number): string | null => {
+  /**
+   * Whether `name` at `from` is another binding than the file's declaration: a parameter or loop
+   * variable around the value or around the exposing call (`for (const ipcRenderer of …)`,
+   * `forEach(ipcRenderer => …)`, `catch (ipcRenderer)`).
+   */
+  const shadowed = (call: number, from: number, name: string): boolean => {
+    if (boundLocally(call, name) || boundLocally(from, name)) return true;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    return resolver.paramAround(from, name) || resolver.paramAround(call, name);
+  };
+  const privileged = (call: number, from: number, end: number): string | null => {
     if (from >= end || end - from > 40) return null;
     let stop = end;
     // `ipcRenderer.on.bind(ipcRenderer)`: the method itself, bound
@@ -1416,7 +1495,7 @@ export function bridgeMembers(
       base = (declared.get(name) ?? 0) === 1 ? (meaning.get(name) ?? null) : null;
       // a parameter or loop variable where the value is written is another binding (asked only
       // for a name that means something, as the walk back is the costly part)
-      if ((global || base) && boundLocally(from, name)) return null;
+      if ((global || base) && shadowed(call, from, name)) return null;
       if (global) return bound ? null : name;
       k += 1;
     }
@@ -1437,6 +1516,13 @@ export function bridgeMembers(
       else if (member === null && what !== "electron") member = p;
       else return null;
     }
+    // a Node module's method only where it acts (`fs.readFileSync`, not `fs.statSync`)
+    if (
+      member !== null &&
+      ACTING_METHODS[what] !== undefined &&
+      !ACTING_METHODS[what]!.test(member)
+    )
+      return null;
     if (bound && member === null) return null;
     return member === null ? what : `${what}.${member}`;
   };
@@ -1477,7 +1563,7 @@ export function bridgeMembers(
       // Every exposure is a member too, so past this cap the member cap has already marked the
       // file's inventory as cut (`context_bridge_truncated`).
       if (exposures.length >= MAX_BRIDGE_PER_FILE) return;
-      const what = privileged(from, end);
+      const what = privileged(i, from, end);
       if (!what) return;
       exposures.push({
         api,
@@ -1758,6 +1844,11 @@ export interface NavigationHandler {
   /** `window`: a window located in this file; `app`: every webContents; else as written. */
   targetKind: "window" | "app" | "webContents";
   /**
+   * The window's name or `app`; null for `targetKind: webContents`. With `kind` and `targetKind`
+   * this is the row's identity in a comparison, so a receiver a minifier renames is no change.
+   */
+  window: string | null;
+  /**
    * For `setWindowOpenHandler`: `deny` or `allow` only when every return of the handler is an
    * object literal whose `action` is that string literal; else `unknown`.
    */
@@ -1782,6 +1873,8 @@ export function navigationHandlers(
   tokens: Token[],
   file: string,
   windowNames: ReadonlySet<string>,
+  /** Scope of names: a parameter or local of the window's name is another binding. */
+  resolver?: ExpressionResolver,
 ): NavigationHandler[] {
   const out: NavigationHandler[] = [];
   const is = (i: number, value: string): boolean =>
@@ -1806,7 +1899,9 @@ export function navigationHandlers(
     return -1;
   };
   /** The parameters and body of a function written at `k`: `(a, b) => …`, `a => …`, `function (a) {…}`. */
-  const fnAt = (k: number): { params: string[]; body: number; end: number } | null => {
+  const fnAt = (
+    k: number,
+  ): { params: string[]; paramsAt: number; body: number; end: number } | null => {
     let j = k;
     if (ident(j) === "async") j++;
     if (ident(j) === "function") {
@@ -1814,6 +1909,7 @@ export function navigationHandlers(
       if (ident(j)) j++;
     }
     const params: string[] = [];
+    const paramsAt = j;
     if (is(j, "(")) {
       const close = closeOf(j);
       if (close < 0) return null;
@@ -1828,7 +1924,7 @@ export function navigationHandlers(
     if (is(j, "=>")) j++;
     if (is(j, "{")) {
       const end = closeOf(j);
-      return end < 0 ? null : { params, body: j, end };
+      return end < 0 ? null : { params, paramsAt, body: j, end };
     }
     // an expression body: up to the `,` or `)` that ends the argument
     let end = j;
@@ -1841,11 +1937,11 @@ export function navigationHandlers(
         d--;
       } else if (p.value === "," && d === 0) break;
     }
-    return { params, body: j, end: end - 1 };
+    return { params, paramsAt, body: j, end: end - 1 };
   };
   // `app.on("web-contents-created", (event, contents) => { … })`: the callback's extent and the
   // name of the webContents parameter
-  const created: Array<{ start: number; end: number; name: string }> = [];
+  const created: Array<{ start: number; end: number; name: string; paramsAt: number }> = [];
   for (let k = 0; k + 4 < tokens.length && created.length < MAX_CONTENTS_CREATED; k++) {
     if (
       !(is(k, ".") && LISTEN_METHODS.has(ident(k + 1) ?? "") && is(k + 2, "(")) ||
@@ -1855,7 +1951,8 @@ export function navigationHandlers(
     )
       continue;
     const fn = fnAt(k + 5);
-    if (fn && fn.params[1]) created.push({ start: fn.body, end: fn.end, name: fn.params[1] });
+    if (fn && fn.params[1])
+      created.push({ start: fn.body, end: fn.end, name: fn.params[1], paramsAt: fn.paramsAt });
   }
   /** The receiver chain ending right before the `.` at `dot`: its first token index. */
   const receiverStart = (dot: number): number => {
@@ -1868,18 +1965,38 @@ export function navigationHandlers(
   const targetOf = (
     from: number,
     dot: number,
-  ): { target: string; targetKind: NavigationHandler["targetKind"] } => {
+  ): Pick<NavigationHandler, "target" | "targetKind" | "window"> => {
     const chain: string[] = [];
     for (let j = from; j < dot; j += 2) chain.push(ident(j)!);
+    const asWritten = {
+      target: short(chain.join(".")),
+      targetKind: "webContents" as const,
+      window: null,
+    };
     if (chain.length === 1) {
-      const inside = created.find((c) => c.name === chain[0] && from > c.start && from < c.end);
-      if (inside) return { target: "app", targetKind: "app" };
+      const name = chain[0]!;
+      const inside = created.find((c) => c.name === name && from > c.start && from < c.end);
+      // the callback's own parameter, not one of a function inside it of the same name
+      const bound = inside && resolver ? resolver.binding(from, name, true) : null;
+      if (
+        inside &&
+        (!resolver || (bound?.kind === "param" && bound.def.paramsAt === inside.paramsAt))
+      )
+        return { target: "app", targetKind: "app", window: "app" };
+      return asWritten;
     }
-    if (chain.length >= 2 && chain.at(-1) === "webContents") {
-      const owner = chain.at(-2)!;
-      if (windowNames.has(owner)) return { target: owner, targetKind: "window" };
+    if (chain.at(-1) !== "webContents") return asWritten;
+    const owner = chain.at(-2)!;
+    if (!windowNames.has(owner)) return asWritten;
+    // `win.webContents`: `win` must be the file's window there, not a parameter or another local
+    // of that name. A member chain (`this.mainWindow.webContents`) is matched by its name.
+    if (chain.length === 2 && resolver) {
+      if (resolver.paramAround(from, owner)) return asWritten;
+      const bound = resolver.binding(from, owner, true);
+      if (bound && bound.kind !== "value") return asWritten;
+      if (bound?.kind === "value" && ident(bound.range[0]) !== "new") return asWritten;
     }
-    return { target: short(chain.join(".")), targetKind: "webContents" };
+    return { target: owner, targetKind: "window", window: owner };
   };
   /** `deny`/`allow` when every return of the handler at `k` is `{ action: "<that>" … }`. */
   const returnsOf = (k: number): NonNullable<NavigationHandler["returns"]> => {
@@ -1892,16 +2009,18 @@ export function navigationHandlers(
       let found: string | null = null;
       for (let j = open + 1, d = 0; j < close; j++) {
         if (--work < 0) return null;
+        const key = d === 0 && (is(j - 1, "{") || is(j - 1, ","));
+        // A spread or a computed key after the action may replace it (`{ action: "deny",
+        // ...extra }`, `[k]: "allow"`); one before it is replaced by it.
+        if (key && (is(j, "...") || is(j, "[")) && found !== null) return null;
         if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
         else if (is(j, "}") || is(j, ")") || is(j, "]")) d--;
-        else if (
-          d === 0 &&
-          (is(j - 1, "{") || is(j - 1, ",")) &&
-          (ident(j) === "action" || tokens[j]?.value === "action") &&
-          is(j + 1, ":")
-        ) {
+        else if (key) {
+          if (tokens[j]?.value !== "action") continue;
           const v = tokens[j + 2];
-          if (v?.type !== "string" || !(is(j + 3, ",") || j + 3 === close)) return null;
+          // the later of two literal keys wins, as in JavaScript; anything else is not read
+          if (!is(j + 1, ":") || v?.type !== "string" || !(is(j + 3, ",") || j + 3 === close))
+            return null;
           found = v.value;
         }
       }
@@ -1947,6 +2066,19 @@ export function navigationHandlers(
       }
       // without a return the handler gives undefined: not a literal that was read
       if (!values.size) return "unknown";
+      // A path that ends without a return gives undefined too: the last statement of the body
+      // must be a return (`if (ok) return { action: "deny" };` alone is not read as deny).
+      let last = -1;
+      for (let j = fn.body + 1, d = 0, next = fn.body + 1; j < fn.end; j++) {
+        if (j === next && !is(j, ";")) last = j;
+        if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
+        else if (is(j, "}") || is(j, ")") || is(j, "]")) {
+          d--;
+          if (d === 0 && is(j, "}")) next = j + 1;
+        } else if (d === 0 && is(j, ";")) next = j + 1;
+        else if (j === next && is(j, ";")) next = j + 1;
+      }
+      if (last === -1 || ident(last) !== "return") return "unknown";
     }
     if (values.size !== 1) return "unknown";
     const [only] = [...values];
@@ -1968,7 +2100,7 @@ export function navigationHandlers(
     if (!kind) continue;
     const from = receiverStart(k);
     if (from < 0) continue;
-    const { target, targetKind } = targetOf(from, k);
+    const { target, targetKind, window } = targetOf(from, k);
     const call =
       kind === "setWindowOpenHandler"
         ? `${tokens
@@ -1983,6 +2115,7 @@ export function navigationHandlers(
       kind,
       target,
       targetKind,
+      window,
       ...(kind === "setWindowOpenHandler" ? { returns: returnsOf(k + 3) } : {}),
       evidence: short(call),
       file,
@@ -2079,7 +2212,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 9;
+export const JS_SCAN_SCHEMA = 10;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -2849,6 +2982,7 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
           tokens,
           path,
           new Set(ranges.flatMap((r) => (r.window !== null && r.name ? [r.name] : []))),
+          new ExpressionResolver(tokens, context.constants),
         );
       if (!source.includes("exposeIn")) return;
       bridge = bridgeMembers({ tokens, truncated, context }, path);
