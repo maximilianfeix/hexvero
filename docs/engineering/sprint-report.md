@@ -36,7 +36,7 @@ pause; work continued after it until ten hours of work were reached.
 | Performance (§10.4)                        | —                                                | warm compare/report/check −20 to −29 % (MCP SDK loaded only for `hexvero mcp`); 0.9.1's cold-scan regression (+26 %) fixed: Discord 0.9.0 827 ms, 0.9.1 1,062 ms, 0.9.2 878 ms                                                                           | `eda5ef0`; P2 in #142; `docs/benchmarks.md`                     |
 | Robustness (§13 "adversariale Inputs")     | no fuzzing                                       | `npm run fuzz` (seeded); fixed: forged ASAR headers, policies nested past the stack, 100k-entry archives, slow HTML report, terminal escape and line forging, excerpts of a build changed on disk                                                        | `scripts/fuzz.mjs`, `cli/src/format.ts`, `core/src/source.ts`   |
 | MCP review workflow (§10.5)                | compare in one page                              | per-list paging, `hexvero_check` with path confinement; 16 tools, `tools/list` 15,637 bytes                                                                                                                                                              | `packages/mcp/src`                                              |
-| Case study (§10.6)                         | none for real releases                           | Electron Fiddle 0.38.0 → 0.39.0, checked against the source; re-run on 0.9.0 and for M2 on 0.9.2                                                                                                                                                         | `docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md`         |
+| Case study (§10.6)                         | none for real releases                           | Electron Fiddle 0.38.0 → 0.39.0, checked against the source; re-run on 0.9.0, then M2 found (0.9.2), M3 (0.9.3), M1 (0.9.5): all four 0.8.0 misses reported                                                                                              | `docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md`         |
 | Contributor experience (§10.7)             | no detector guide                                | `docs/contributing/new-detector.md`; five tasks re-checked on 0.9.2 and filed as good first issues #149–#153                                                                                                                                             | `docs/launch/contributor-tasks.md`; #155                        |
 | Endpoints through HTTP client methods (M3) | `https.get(url)` with a parameter URL: no row    | requests through `node:https`/`http`, Electron `net` and request libraries are endpoints; strict bindings, IIFE call sites, options merged over a URL only when known; undecidable → unknown row; Fiddle: the bundled CLI's api.github.com request found | `candidates.ts`, `resolve.ts`; #156, #160                       |
 | IPC payload shapes (M1)                    | a new payload field on a channel was invisible   | sending `ipc` rows carry an `args` shape (sorted object-literal keys, `…` for unknown names); Fiddle: `NPM_ADD_MODULES` gains `useSocketFirewall`, the one changed call of 157                                                                           | `javascript/payload.ts`, `compare.ts`; #164                     |
@@ -54,8 +54,8 @@ Inventory and fit: [skill-audit.md](skill-audit.md) (installed, missing, not nee
 the marketplaces). Project skills added: `.claude/skills/hexvero-codebase`,
 `hexvero-evidence-contracts`, `hexvero-parser-regression`, `hexvero-launch-proof`.
 `skills/hexvero/SKILL.md` was not changed. Used: subagent-driven work per role with frozen
-contracts (C1–C7); three independent second readers (R: 21 findings; R2: 10; R3: 9, then 5 more on
-re-review; all fixed); the security-guidance review on every commit (it found hidden real
+contracts (C1–C7); three independent second readers (R: 21 findings; R2: 10; R3 on round three 9 + 5, on M3 7, then
+5 more, then 1, on M1 5 low; all fixed or documented as limits); the security-guidance review on every commit (it found hidden real
 findings in two fix rounds and a quadratic scope walk); Playwright checks of the UI (agent U, and
 the lead on the published 0.9.2); the claims registry of `hexvero-launch-proof`.
 
@@ -123,7 +123,7 @@ Never mix them.
   settings 14/25/0 unchanged; changes v1→v2: channels 3 of 4, bridge members 4 of 4, window
   settings 0 of 2, endpoints 1 of 1 (`corpus/results/round4/README.md`).
 - **Blind, `holdout6`** (round 5, a screenshot annotator written without access to hexvero,
-  measured once on `7f38b14`; 0.8.0 → 0.9.2 code): IPC channels 52/12/0 throughout; storage keys
+  measured once; 0.8.0 → `7f38b14`, the 0.9.2 candidate): IPC channels 52/12/0 throughout; storage keys
   14/27/0 → 22/19/0; endpoints 15/6/4 → 16/5/4; window settings 24/28/2 → 44/8/15, where the 15
   false are windowless duplicates of rows that were right; window-setting changes 0/1/6 → 1/0/1
   (`corpus/results/round5/README.md`).
@@ -136,14 +136,14 @@ Never mix them.
 Screenshots: `docs/screenshots/` (compare, evidence before/after, interface map, release gate,
 source, graph, overview, HTML report; phone widths). Videos: `docs/demo/compare.mp4`,
 `release-gate.mp4` (25 s), `ui-review.mp4`. Example reports: `site/demo/report.md`,
-`report.html` (generated by each release; the site names 0.9.2). CI example: `docs/ci.md` and the
+`report.html` (generated by each release; the site names 0.9.6). CI example: `docs/ci.md` and the
 site (pinned to the release), `.github/workflows/check-example.yml`. The web UI of the published
 0.9.2 was checked by hand at 1440 px (compare view and release gate on the demo).
 
 ## 8. Marketing and publication status
 
-Source of truth: `docs/launch/status.json`. Published: npm 0.9.0 to 0.9.5, GitHub releases,
-website https://maximilianfeix.github.io/hexvero/, official MCP registry (0.9.5 latest), DEV
+Source of truth: `docs/launch/status.json`. Published: npm 0.9.0 to 0.9.6, GitHub releases,
+website https://maximilianfeix.github.io/hexvero/, official MCP registry (0.9.6 latest), DEV
 article
 https://dev.to/taventix/what-changed-in-this-electron-update-diffing-two-appasar-builds-without-running-either-422d,
 doyensec/awesome-electronjs-hacking, five good first issues. Prepared, not published: X posts for
@@ -160,7 +160,7 @@ reach people were not made during the sprint.
 Limits (details in `docs/electron-findings.md` "Not read" and the storage-wrapper section):
 cross-module mutation of options objects; class-field options read as computed; a window whose
 options spread an unknown object reads as computed; storage wrappers called from another module
-or declared twice in a file stay unread; IPC payload shapes are not compared (Fiddle M1); a
+or declared twice in a file stay unread; a
 same-size in-place edit of an app-folder file is not detected; table widths count code points
 (wide CJK characters misalign); HTTP clients bound through webpack ids of another chunk, a client held in a variable, `got(url)`/`axios(url)` called directly, options passed as a name; IPC payload keys compared as written (`{1.5: x}` vs `{"1.5": x}`), transpiler spread helpers, what a handler reads from the payload; `ipcRenderer?.send(…)` gives no row.
 
