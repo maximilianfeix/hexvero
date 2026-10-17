@@ -16,7 +16,7 @@ npx hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0
 ```
 
 Verify both commands from an empty directory on the release you link before posting (latest:
-0.9.1, checked 2026-10-17 03:00Z).
+0.9.2, checked 2026-10-17 15:25Z).
 
 ## Facts you can state (each with its source)
 
@@ -36,6 +36,12 @@ Verify both commands from an empty directory on the release you link before post
   changes between two versions: channels 3 of 4, bridge members 4 of 4, window settings 0 of 2,
   endpoints 1 of 1. Source: `corpus/results/round4/README.md`. Most misses: a wrapper class around
   `ipcMain`, window options built with `Object.assign`.
+- Second blind set `holdout6` (a screenshot annotator, written without access to hexvero,
+  measured once on the 0.9.2 code): IPC channels 52 of 64, no false; bridge members 60 of 80, no
+  false; storage keys 22 of 41, no false; window settings 44 of 52 with 15 false, all of them
+  duplicate rows of literals that were right for their window (fixed after the measurement; the
+  set is a development set from then on). Source: `corpus/results/round5/README.md`. Say both the
+  hits and the 15.
 - Real app, Electron Fiddle 0.38.0 → 0.39.0 (measured with 0.8.0): no false change in channels,
   bridge or windows; 4 changes found by reading the source that hexvero missed. Source:
   `docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md`.
@@ -49,7 +55,9 @@ Verify both commands from an empty directory on the release you link before post
   these instead of, or mixed with, the blind 49 of 54 above.
 - Cost: Discord `analyze` median about +7 % (771 → 825 ms; a re-run gave 812 → 879 ms), Claude.app
   within noise; interleaved runs against 0.8.0 on one Apple M2 with other load.
-- Verify every row in `docs/launch/claims.md` (A1, A6–A8, N1–N6) on the release you link.
+- Verify every row in `docs/launch/claims.md` (A1, A6–A8, N1–N6, B1–B5) on the release you link.
+- 0.9.2 finds the new Electron Fiddle setting `isUsingSocketFirewall` (stored through the app's
+  own `save`/`retrieve` wrappers): claims B3.
 - 0.9.1 adds two observations: privileged objects a preload hands to pages (`bridgeExposures`)
   and navigation/new-window handlers (`navigationHandlers`, `returns: deny` only where it is a
   literal). Where the analysis cannot decide, an exposure is kept and flagged, never dropped.
