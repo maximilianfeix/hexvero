@@ -441,6 +441,10 @@ function flatten(v: Val | null): Flat {
 }
 
 /** String constants and tables of string constants declared in one file. */
+/** Short-named enum definitions read per file, and token visits to check them (settleScoped). */
+const MAX_SCOPED = 256;
+const SCOPED_WORK = 1_000_000;
+
 export class Constants {
   private readonly strings = new Map<string, string | null>();
   private readonly tables = new Map<string, Map<string, string>>();
@@ -501,6 +505,24 @@ export class Constants {
    * file share with different contents: nothing is resolved through it.
    */
   private readonly enums = new Map<string, Map<string, string> | null>();
+  /** `(E || (exports.K = E = {}))`: the CommonJS export key of an enum, by enum name (tsc's emit). */
+  private readonly enumExports = new Map<string, string>();
+  /**
+   * Enums under a minifier's one- or two-letter name (`var i; (function (e) { … })(i || (i = {}))`
+   * in a webpack module): known only inside the block that declares the name, and only where the
+   * name means nothing else anywhere in that block (it is read as `i.MEMBER` and nothing else).
+   */
+  private readonly scopedEnums = new Map<
+    string,
+    Array<{ members: Map<string, string>; from: number; to: number }>
+  >();
+  /** Short-named enum definitions waiting for `settleScoped` (at most MAX_SCOPED). */
+  private readonly pendingScoped: Array<{
+    name: string;
+    members: Map<string, string>;
+    k: number;
+    end: number;
+  }> = [];
 
   /** Reads the compiled string enums of the file into `enums`. */
   private readEnums(): void {
@@ -547,6 +569,7 @@ export class Constants {
       if (is(tokens[open], "punct", ")")) open++;
       if (!is(tokens[open], "punct", "(")) continue;
       const names = new Set<string>();
+      const short = new Set<string>();
       let argumentsEnd = open + 1;
       for (let a = open + 1, depth = 1; a < tokens.length && a < open + 24 && depth > 0; a++) {
         argumentsEnd = a;
@@ -560,9 +583,30 @@ export class Constants {
         // other function of the bundle, so the enum is not known by it.
         if (t.type === "ident" && is(tokens[a + 1], "punct", "=") && t.value.length > 2)
           names.add(t.value);
+        else if (
+          t.type === "ident" &&
+          is(tokens[a + 1], "punct", "=") &&
+          !is(tokens[a - 1], "punct", ".") &&
+          is(tokens[a + 2], "punct", "{")
+        )
+          short.add(t.value);
+        // `exports.K = E = {}`: tsc's CommonJS export of the enum
+        if (
+          t.type === "ident" &&
+          t.value === this.exportsName &&
+          !is(tokens[a - 1], "punct", ".") &&
+          is(tokens[a + 1], "punct", ".") &&
+          is(tokens[a + 2], "ident") &&
+          is(tokens[a + 3], "punct", "=") &&
+          is(tokens[a + 4], "ident")
+        )
+          this.enumExports.set(tokens[a + 4]!.value, tokens[a + 2]!.value);
       }
       if (parameter.length > 2) names.add(parameter);
       spans.push([k, argumentsEnd]);
+      for (const name of short)
+        if (this.pendingScoped.length < MAX_SCOPED)
+          this.pendingScoped.push({ name, members, k, end: argumentsEnd });
       for (const name of names) {
         const known = this.enums.get(name);
         if (known === undefined) {
@@ -579,6 +623,7 @@ export class Constants {
       }
       k = j;
     }
+    this.settleScoped();
     if (!this.enums.size) return;
     // The enum's name must mean the enum everywhere in the file. Outside the definitions, any
     // other binding of the name (a declaration with a value, an assignment, a parameter, a
@@ -613,13 +658,110 @@ export class Constants {
   }
 
   /**
+   * Records the enums under a short name for the block around each definition, where the name
+   * means the enum everywhere in that block: declared with `var name;` and otherwise only read as
+   * `name.MEMBER`. One pass finds the blocks and one the positions of the names; the check of the
+   * positions in each block is charged to one budget per file (SCOPED_WORK), so many such
+   * definitions stay linear.
+   */
+  private settleScoped(): void {
+    const pending = this.pendingScoped;
+    if (!pending.length) return;
+    const tokens = this.tokens;
+    // the innermost `{` around each definition, and where it closes (-1 / length: the top level)
+    const opens = new Int32Array(pending.length).fill(-1);
+    const closes = new Int32Array(pending.length).fill(tokens.length);
+    const order = pending.map((_, i) => i).toSorted((a, b) => pending[a]!.k - pending[b]!.k);
+    const stack: number[] = [];
+    const waiting = new Map<number, number[]>(); // `{` index -> definitions inside it
+    let next = 0;
+    for (let j = 0; j < tokens.length; j++) {
+      while (next < order.length && pending[order[next]!]!.k === j) {
+        const i = order[next++]!;
+        const open = stack.at(-1) ?? -1;
+        opens[i] = open;
+        if (open !== -1) waiting.set(open, [...(waiting.get(open) ?? []), i]);
+      }
+      const t = tokens[j]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "{") stack.push(j);
+      else if (t.value === "}") {
+        const open = stack.pop();
+        if (open !== undefined) for (const i of waiting.get(open) ?? []) closes[i] = j;
+      }
+    }
+    const names = new Set(pending.map((p) => p.name));
+    const positions = new Map<string, number[]>();
+    for (let j = 0; j < tokens.length; j++) {
+      const t = tokens[j]!;
+      if (t.type !== "ident" || !names.has(t.value)) continue;
+      const list = positions.get(t.value);
+      if (list) list.push(j);
+      else positions.set(t.value, [j]);
+    }
+    let work = SCOPED_WORK;
+    for (let i = 0; i < pending.length && work > 0; i++) {
+      const { name, members, k, end } = pending[i]!;
+      const open = opens[i]!;
+      const close = closes[i]!;
+      // an unclosed block: which one it is is not known
+      if (open !== -1 && close === tokens.length) continue;
+      const all = positions.get(name) ?? [];
+      let lo = 0;
+      let hi = all.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (all[mid]! <= open) lo = mid + 1;
+        else hi = mid;
+      }
+      let declared = false;
+      let valid = true;
+      for (let p = lo; p < all.length && all[p]! < close; p++) {
+        if (--work <= 0) {
+          valid = false;
+          break;
+        }
+        const j = all[p]!;
+        if (j >= k && j <= end) continue;
+        if (is(tokens[j - 1], "punct", ".")) continue;
+        if (
+          is(tokens[j - 1], "ident", "var") &&
+          (is(tokens[j + 1], "punct", ";") || is(tokens[j + 1], "punct", ","))
+        ) {
+          if (declared) valid = false;
+          declared = true;
+        } else if (
+          !(
+            is(tokens[j + 1], "punct", ".") &&
+            is(tokens[j + 2], "ident") &&
+            !is(tokens[j + 3], "punct", "=")
+          )
+        )
+          valid = false; // a parameter, a declaration, a write, a bare use
+        if (!valid) break;
+      }
+      if (!valid || !declared) continue;
+      const list = this.scopedEnums.get(name) ?? [];
+      list.push({ members, from: open, to: close });
+      this.scopedEnums.set(name, list);
+    }
+  }
+
+  /** A member of an enum known under a short name in the block around token k. */
+  private scopedMember(name: string, member: string, k: number): string | null {
+    for (const e of this.scopedEnums.get(name) ?? [])
+      if (k > e.from && k < e.to) return e.members.get(member) ?? null;
+    return null;
+  }
+
+  /**
    * The value of `Enum.MEMBER` or `anything.Enum.MEMBER` used as an argument at token `k`.
    * The object in front of the enum name is whatever the module was imported as and is not
    * looked at: the enum name and the member decide.
    */
   private enumMember(k: number): string | null {
     const tokens = this.tokens;
-    if (!this.enums.size || tokens[k]?.type !== "ident") return null;
+    if ((!this.enums.size && !this.scopedEnums.size) || tokens[k]?.type !== "ident") return null;
     const chain = [tokens[k]!.value];
     let at = k + 1;
     while (chain.length < 3 && is(tokens[at], "punct", ".") && is(tokens[at + 1], "ident")) {
@@ -629,7 +771,10 @@ export class Constants {
     if (chain.length < 2 || (!is(tokens[at], "punct", ",") && !is(tokens[at], "punct", ")")))
       return null;
     const [name, member] = chain.slice(-2) as [string, string];
-    return this.enums.get(name)?.get(member) ?? null;
+    return (
+      this.enums.get(name)?.get(member) ??
+      (chain.length === 2 && this.scopedEnums.size ? this.scopedMember(name, member, k) : null)
+    );
   }
 
   constructor(private readonly tokens: Token[]) {
@@ -1082,6 +1227,9 @@ export class Constants {
       const name = tokens[k + 2]!.value;
       for (const [key, v] of this.enums.get(name) ?? []) this.exported[`${name}.${key}`] = v;
     }
+    // `(E || (exports.E = E = {}))`, as tsc compiles an exported enum to CommonJS
+    for (const [name, exportKey] of this.enumExports)
+      for (const [key, v] of this.enums.get(name) ?? []) this.exported[`${exportKey}.${key}`] = v;
     for (const { key, at } of this.exportNames) {
       if (key in this.exported) continue;
       const name = tokens[at]!.value;
@@ -1294,6 +1442,10 @@ export class Constants {
 
   /** The string value of `NAME.PROPERTY` in a table of this file, as used at token k. */
   memberOf(name: string, property: string, k?: number): string | null {
+    if (k !== undefined && this.scopedEnums.size) {
+      const scoped = this.scopedMember(name, property, k);
+      if (scoped !== null) return scoped;
+    }
     if (
       !this.sees(k, name) ||
       this.reassigned.has(name) ||

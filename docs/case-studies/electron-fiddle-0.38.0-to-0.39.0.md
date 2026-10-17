@@ -161,7 +161,7 @@ No reported item claims a change in IPC, contextBridge, windows, webPreferences,
 
 - What the 22 changed modules actually changed is not described beyond byte size. Most of it is likely the webpack 5.94 → 5.104.1 bump, but this study did not diff the bundles chunk by chunk.
 - Whether `sfw.mjs` contacts any host other than the GitHub API URL at run time (for example, through a downloaded binary) cannot be told statically. The study did not run it.
-- hexvero links no `ElectronFiddle` member to a main-process handler in either build ("link unknown" for all 46), so it cannot say which members reach privileged code. The source shows that they do, through `ipcMainManager.handle`.
+- hexvero links no `ElectronFiddle` member to a main-process handler in either build ("link unknown" for all 46), so it cannot say which members reach privileged code. The source shows that they do, through `ipcMainManager.handle`. (Read since then: 45 of 46 are linked, see [IPC wrapper classes: before and after](#ipc-wrapper-classes-before-and-after).)
 
 ## Timings
 
@@ -180,7 +180,63 @@ No reported item claims a change in IPC, contextBridge, windows, webPreferences,
 2. **Metadata churn shows up as changes.** When coverage changes on one side, every interface's `reason` and every finding title count as changed or added. In this case that was 58 of 82 reported items, which buries the 2 items that matter (the new URL and the skipped file).
 3. **IPC argument shapes are not compared**, so a new payload field on an existing channel (M1) is invisible.
 4. **Storage keys passed through wrappers or enums are unreadable**, so a new persisted setting (M2) is invisible. hexvero says the values could not be read, which is honest, but there is nothing to diff.
-5. **Custom IPC wrappers** (`ipcMainManager.handle`) are not followed to their handler, so no member of the app's main bridge is linked to a main-process end.
+5. **Custom IPC wrappers** (`ipcMainManager.handle`) are not followed to their handler, so no member of the app's main bridge is linked to a main-process end. (Read since then, see the next section.)
+
+## IPC wrapper classes: before and after
+
+Limitation 5 was taken up afterwards (sprint branch `sprint/a2-wrappers`, base commit `aa88007`).
+Fiddle registers its main-process handlers through a singleton:
+[`src/main/ipc.ts`](https://github.com/electron/fiddle/blob/v0.39.0/src/main/ipc.ts) defines
+`class IpcMainManager extends EventEmitter` whose `handle(channel, listener)` calls
+`ipcMain.removeHandler(channel)` and `ipcMain.handle(channel, listener)`, and whose constructor
+calls `ipcMain.on(name, …)` for every name of `ipcMainEvents`
+([`src/ipc-events.ts`](https://github.com/electron/fiddle/blob/v0.39.0/src/ipc-events.ts)) and
+re-emits it. The module exports `ipcMainManager = new IpcMainManager()`, and 25 calls in 10 other
+modules register `ipcMainManager.handle(IpcEvents.X, …)`. In the webpack build the class is the
+one-letter `l` of module `76675`, the instance is `n.ipcMainManager`, and the calls read
+`a.ipcMainManager.handle(c.IpcEvents.X, …)` with `a = i(76675)`.
+
+hexvero now reads a method that passes its parameter on, whole, as the channel of an IPC call as
+a wrapper, and records each call of it on an instance as a row of that IPC API, at the call, with
+`via: "wrapper"` and `wrapper: "ipcMainManager.handle"`. For the constructor's loop it now reads
+webpack's `i(57755)` as that module of the bundle and the one-letter enum `i` inside it, so
+`r.ipcMainEvents.forEach((e) => ipcMain.on(e, …))` gives one `ipcMain.on` row per listed channel.
+
+Command (the archives as described under [Commands](#commands); the script only reads them
+through hexvero's own `@hexvero/core`; `<base>` is a worktree of `aa88007`, built):
+
+```bash
+node scripts/case-study/bridge-links.mjs <base>/packages/core ElectronFiddle asar/fiddle-0.38.0.asar asar/fiddle-0.39.0.asar
+node scripts/case-study/bridge-links.mjs packages/core ElectronFiddle asar/fiddle-0.38.0.asar asar/fiddle-0.39.0.asar
+```
+
+| `ElectronFiddle` (both builds the same)             | before (`aa88007`)       | after                                                                                                                                                               |
+| --------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| members / with a channel                            | 51 / 46                  | 51 / 46                                                                                                                                                             |
+| members linked to a main-process end                | 0                        | 45                                                                                                                                                                  |
+| interface `link`                                    | unknown 46, unresolved 5 | resolved 45, unknown 1, unresolved 5                                                                                                                                |
+| linked members, by their end                        | none                     | 25 with an `ipcMain.handle` end via wrapper `ipcMainManager.handle`, 43 with an `ipcMain.on` end (the constructor's loop, `via: "resolved"`, element); 23 have both |
+| IPC channels / IPC rows / rows without a channel    | 63 / 90 / 12             | 64 / 157 / 10                                                                                                                                                       |
+| `analyze` in-process (`analyzeMs`, 0.38.0 / 0.39.0) | 2571 / 2820 ms           | 2771 / 2226 ms (run to run noise; no consistent change)                                                                                                             |
+
+Every link was checked against the source at `v0.39.0`: the 45 linked channels are exactly the
+channels of the 25 `ipcMainManager.handle(…)` calls in `src/main` together with the 43 names of
+`ipcMainEvents` (45 names in all); none is linked that is in neither. The one member left unknown, `onGetFiles`
+(`GET_FILES`), is correct: the main process sends that channel to the page through
+`ipcMainManager.send`, which writes to a `webContents` parameter; there is no main-process
+receiver. The 64th channel is `WEBCONTENTS_READY_FOR_IPC_SIGNAL`, the constructor's own
+`ipcMain.on(r.WEBCONTENTS_READY_FOR_IPC_SIGNAL, …)`, now read through `i(57755)` as well.
+`ipcMainManager.on(…)` (EventEmitter's own method, not one of the class's) gives no row of its
+own, and neither does `ipcMainManager.send(…)`.
+
+The comparison changes with it. `compare asar/fiddle-0.38.0.asar asar/fiddle-0.39.0.asar`
+before (`aa88007`): interfaces 0 changed, but `webPreferences` 1 added and `windows` 1 changed,
+because the webpack 5.104 build of 0.39.0 writes its modules as methods (`76675(e,n,i){…}`),
+which `aa88007` did not read as functions, so the main window's options (returned by a helper)
+were read as opaque in 0.39.0 only. After: both builds are read the same way, `webPreferences`
+and `windows` show no difference (the source has none), and the summary is `findings` 6 changed,
+`limitations` 1 added, `modules` 22 changed, `urls` 1 added, everything else unchanged
+(`ipcChannels` 64, `interfaces` 71, `ipc` 157).
 
 ## Limitations of the study
 

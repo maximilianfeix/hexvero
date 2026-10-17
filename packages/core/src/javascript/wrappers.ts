@@ -1,0 +1,932 @@
+/**
+ * IPC wrappers that are classes or objects: a method that passes one of its parameters on, whole,
+ * as the channel of an IPC call,
+ *
+ *     class IpcMainManager { handle(channel, fn) { ipcMain.removeHandler(channel); ipcMain.handle(channel, fn) } }
+ *     export const ipcMainManager = new IpcMainManager();
+ *     ipcMainManager.handle(IpcEvents.GET_FILES, …)          // in another module
+ *
+ * and the calls of that method on an instance of the class. A call is read where it is made, with
+ * the channel its argument names, and recorded as an IPC row of the method's IPC API with
+ * `via: "wrapper"` and `wrapper: "<Class>.<method>"`.
+ *
+ * An instance is recognised only through what is written: `new C(…)`, a name or a property key
+ * of the file bound to one (declared once, never assigned anything else), `this` inside the
+ * class, a chain of methods that return `this`, a parameter whose every readable call site passes
+ * one, and the same across modules through `require`/`import`, re-exports and the module wrappers
+ * of webpack and esbuild. A method that does anything else with its parameter before the call
+ * (`ns + ":" + name`, an assignment to it) is no wrapper; a receiver that cannot be traced to an
+ * instance gives no row. Nothing is evaluated or run; every search is bounded.
+ */
+import type { Constants, Resolved } from "./aliases.js";
+import type { ExpressionResolver, FnDef } from "./resolve.js";
+import type { IpcUsage, Token } from "./scan.js";
+
+/** One IPC call a wrapper method makes with one of its parameters, whole, as the channel. */
+export interface Forward {
+  api: string;
+  /** The parameter that is the channel. */
+  index: number;
+}
+
+export interface WrapperClass {
+  /** `name@token`: unique in its file. */
+  id: string;
+  name: string;
+  /** The module the class is defined in; "" for the file being read. */
+  file: string;
+  methods: Record<string, Forward[]>;
+  /** Methods that return `this`, so that `r.a(…).b(…)` is one instance. */
+  chain: string[];
+}
+
+/** What a module keeps for the cross-file stage: its wrappers and the export keys naming one. */
+export interface WrapperFacts {
+  classes: Array<Omit<WrapperClass, "file">>;
+  /** export key (`""`: `module.exports` itself) -> a wrapper class, or an instance of one */
+  exports: Record<string, { kind: "cls" | "inst"; id: string }>;
+}
+
+/** What an expression is, as far as wrappers are concerned. */
+export type WrapperValue =
+  | { kind: "cls" | "inst"; cls: WrapperClass; label: string }
+  | { kind: "fn"; def: FnDef }
+  /** An export of another module that is no wrapper, maybe a function: read there if needed. */
+  | { kind: "xfn"; file: string; key: string }
+  /** Another module's exports (`require("./x")`, `import * as x`). */
+  | { kind: "module"; specifier: string }
+  /** A bundler's module object in this file (`i(76675)`, `require_x()`): its members are keys. */
+  | { kind: "bundle" };
+
+/** A row the reader found, with the token of its channel argument. */
+export interface WrapperRow {
+  usage: IpcUsage;
+  arg: number;
+  /** The argument names no channel the scan can read: for the resolver. */
+  unread: boolean;
+  /** Token of the method name at the call. */
+  at: number;
+}
+
+/** Resolves another module's export for the cross-file stage. */
+export type ExternalLookup = (specifier: string, key: string) => WrapperValue | null;
+
+const MAX_SITES = 64;
+const MAX_KEY_POSITIONS = 2000;
+const MAX_DEPTH = 12;
+
+/**
+ * The channel an argument names, only when the argument is that literal or name and nothing more
+ * (`"win:" + id` is not the channel `win:`). The same rule as the scanner's.
+ */
+export function channelArg(tokens: Token[], constants: Constants, k: number): Resolved {
+  if (tokens[k]?.type === "template") return constants.resolveArg(k);
+  const named = constants.resolve(k);
+  if (named === null) return null;
+  let end = k + 1;
+  while (
+    tokens[end]?.type === "punct" &&
+    tokens[end]!.value === "." &&
+    tokens[end + 1]?.type === "ident"
+  )
+    end += 2;
+  const next = tokens[end];
+  return next?.type === "punct" && (next.value === "," || next.value === ")") ? named : null;
+}
+
+const same = (a: WrapperValue, b: WrapperValue): boolean => {
+  if (a.kind !== b.kind) return false;
+  if ((a.kind === "cls" || a.kind === "inst") && (b.kind === "cls" || b.kind === "inst"))
+    return a.cls.id === b.cls.id && a.cls.file === b.cls.file;
+  if (a.kind === "fn" && b.kind === "fn") return a.def === b.def;
+  if (a.kind === "xfn" && b.kind === "xfn") return a.file === b.file && a.key === b.key;
+  if (a.kind === "module" && b.kind === "module") return a.specifier === b.specifier;
+  return a.kind === "bundle";
+};
+
+/** A minifier's name says nothing; the export key it is reached through says more. */
+const labelled = (v: WrapperValue, key: string): WrapperValue =>
+  (v.kind === "cls" && key) || (v.kind === "inst" && v.label.length <= 2 && key)
+    ? { ...v, label: key }
+    : v;
+
+export class WrapperReader {
+  readonly classes: WrapperClass[] = [];
+  /** The `{` of a class body or wrapper object literal -> its wrapper. */
+  private readonly byStart = new Map<number, WrapperClass>();
+  private readonly keyCache = new Map<string, WrapperValue | null>();
+  private readonly siteCache = new Map<FnDef, number[]>();
+  private readonly seeds = new Map<FnDef, Map<number, WrapperValue[]>>();
+  /** Receivers that are chains of calls, by their bounds: a long chain is read link by link once. */
+  private readonly chains = new Map<string, WrapperValue[]>();
+  /** Channel arguments of the IPC calls inside wrapper methods (the calls of the method carry the channels). */
+  readonly inner = new Set<number>();
+  /** Token visits left for this file: used up, nothing more is read (and `capped` says so). */
+  private work = 400_000;
+
+  /** The work budget ran out: calls of wrappers in this file may be missing. */
+  get capped(): boolean {
+    return this.work <= 0;
+  }
+
+  constructor(
+    private readonly tokens: Token[],
+    private readonly r: ExpressionResolver,
+    private readonly constants: Constants,
+    private readonly external: ExternalLookup | null = null,
+    private readonly file = "",
+  ) {}
+
+  private is(k: number, type: Token["type"], value?: string): boolean {
+    const t = this.tokens[k];
+    return !!t && t.type === type && (value === undefined || t.value === value);
+  }
+
+  private punct(k: number, value: string): boolean {
+    return this.is(k, "punct", value);
+  }
+
+  /** Known wrappers of another module (cross-file stage): reachable as classes of this reader. */
+  adopt(cls: WrapperClass): void {
+    if (!this.classes.includes(cls)) this.classes.push(cls);
+  }
+
+  /**
+   * Finds the file's wrapper methods from its IPC calls whose channel argument is a lone name:
+   * `{ api, arg }` with `arg` the token of that name.
+   */
+  findClasses(calls: ReadonlyArray<{ api: string; arg: number }>): void {
+    const { r } = this;
+    for (const { api, arg } of calls) {
+      const param = this.tokens[arg]!.value;
+      // the function around the call whose parameter it is (also through callbacks in the method)
+      let def = r.functionAt(arg);
+      let index = -1;
+      for (let guard = 0; def && guard < 4; guard++) {
+        index = def.params.findIndex((p) => p.kind === "name" && p.name === param);
+        if (index !== -1) break;
+        if (this.declares(def, param)) {
+          def = null;
+          break;
+        }
+        def = r.outerOf(def);
+      }
+      if (!def || index === -1 || def.name === null || /^(constructor|__proto__)$/.test(def.name))
+        continue;
+      if (this.declares(def, param, true)) continue;
+      let start: number | null = null;
+      let name = "";
+      if (def.owner !== null && !def.arrow) {
+        const range = r.classOfMethod(def);
+        if (range) {
+          start = range.start;
+          name = range.name;
+        }
+      } else if (def.member) {
+        start = r.objectOfMember(def);
+        if (start !== null) {
+          const named =
+            this.punct(start - 1, "=") &&
+            this.is(start - 2, "ident") &&
+            !this.punct(start - 3, ".");
+          name = named ? this.tokens[start - 2]!.value : "object";
+        }
+      }
+      if (start === null) continue;
+      let cls = this.byStart.get(start);
+      if (!cls) {
+        cls = {
+          id: `${name}@${start}`,
+          name,
+          file: this.file,
+          methods: {},
+          chain: [],
+        };
+        this.byStart.set(start, cls);
+        this.classes.push(cls);
+      }
+      const forwards = Object.hasOwn(cls.methods, def.name) ? cls.methods[def.name]! : [];
+      if (!forwards.some((f) => f.api === api && f.index === index)) forwards.push({ api, index });
+      cls.methods[def.name] = forwards;
+      this.inner.add(arg);
+    }
+    // methods of the classes that return `this`
+    for (const cls of this.classes) {
+      const range = this.r.classesOf().find((c) => c.start === this.startOf(cls));
+      if (!range) continue;
+      for (const m of this.r.methodsIn(range))
+        if (m.name && this.r.returnsSelf(m)) cls.chain.push(m.name);
+    }
+  }
+
+  private startOf(cls: WrapperClass): number {
+    return Number(cls.id.slice(cls.id.lastIndexOf("@") + 1));
+  }
+
+  /**
+   * Whether the body of def declares the name (`const|let|var name`) or, with `assigns`, writes
+   * to it (`name = …`, `name += …`, `name++`): then the parameter is not passed on unchanged.
+   */
+  private declares(def: FnDef, name: string, assigns = false): boolean {
+    for (const j of this.r.namePositions(name, def.body[0], def.body[1])) {
+      if (this.work-- <= 0) break;
+      if (this.punct(j - 1, ".")) continue;
+      const before = this.tokens[j - 1];
+      if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value))
+        return true;
+      if (!assigns) continue;
+      const after = this.tokens[j + 1];
+      if (
+        (after?.type === "punct" && /^([^=!<>]*=|\+\+|--)$/.test(after.value)) ||
+        (before?.type === "punct" && (before.value === "++" || before.value === "--"))
+      )
+        return true;
+    }
+    return false;
+  }
+
+  // ---------- values ----------
+
+  /** The start of the value of an assignment chain in [start, end): `n.A = n.B = new C` -> `new C`. */
+  private assigned(start: number, end: number): number {
+    let at = start;
+    for (let j = start; j < end; j++) {
+      const t = this.tokens[j]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "(" || t.value === "[" || t.value === "{") {
+        const close = this.r.closeOf(j);
+        if (close === -1 || close >= end) return at;
+        j = close;
+      } else if (t.value === "=") at = j + 1;
+    }
+    return at;
+  }
+
+  /** What the expression in [start, end) is. */
+  valueOf(start: number, end: number, depth = 0): WrapperValue | null {
+    if (depth > MAX_DEPTH || this.work-- <= 0 || start >= end) return null;
+    const { r } = this;
+    start = this.assigned(start, end);
+    if (start >= end) return null;
+    // `(X)`, `(0, X.K)`
+    if (this.punct(start, "(") && r.closeOf(start) === end - 1) {
+      if (this.is(start + 1, "number") && this.punct(start + 2, ","))
+        return this.valueOf(start + 3, end - 1, depth + 1);
+      return this.valueOf(start + 1, end - 1, depth + 1);
+    }
+    if (this.is(start, "ident", "new")) {
+      let e = start + 1;
+      while (e < end && (this.is(e, "ident") || this.punct(e, "."))) e++;
+      if (e < end && !(this.punct(e, "(") && r.closeOf(e) === end - 1)) return null;
+      const callee = this.valueOf(start + 1, e, depth + 1);
+      return callee?.kind === "cls" ? { kind: "inst", cls: callee.cls, label: callee.label } : null;
+    }
+    if (this.is(start, "ident", "class")) {
+      for (let j = start + 1; j < end && j < start + 21; j++)
+        if (this.punct(j, "{")) {
+          const cls = this.byStart.get(j);
+          return cls && r.closeOf(j) === end - 1 ? { kind: "cls", cls, label: cls.name } : null;
+        }
+      return null;
+    }
+    if (this.punct(start, "{")) {
+      const cls = this.byStart.get(start);
+      return cls && r.closeOf(start) === end - 1 ? { kind: "inst", cls, label: cls.name } : null;
+    }
+    // a function expression
+    for (let j = start; j < end && j < start + 4; j++) {
+      const def = r.functionWithParamsAt(j);
+      if (def && (def.body[1] === end || def.body[1] === end + 1)) return { kind: "fn", def };
+    }
+    if (end === start + 1 && this.is(start, "ident")) return this.nameValue(start, depth + 1);
+    // `require("./x")`
+    if (
+      this.is(start, "ident", "require") &&
+      this.punct(start + 1, "(") &&
+      this.is(start + 2, "string") &&
+      this.punct(start + 3, ")") &&
+      end === start + 4
+    )
+      return { kind: "module", specifier: this.tokens[start + 2]!.value };
+    // a call: `i(76675)` (webpack), `require_x()` (esbuild), `__toESM(require_x())` (interop)
+    if (this.is(start, "ident") && this.punct(start + 1, "(") && r.closeOf(start + 1) === end - 1) {
+      if (end === start + 3 || (end === start + 4 && this.is(start + 2, "number")))
+        return { kind: "bundle" };
+      const first = start + 2;
+      const inner = this.valueOf(first, Math.min(r.endOf(first), end - 1), depth + 1);
+      return inner?.kind === "bundle" || inner?.kind === "module" ? inner : null;
+    }
+    // `<base>.K`
+    if (end - start >= 3 && this.punct(end - 2, ".") && this.is(end - 1, "ident")) {
+      const key = this.tokens[end - 1]!.value;
+      if (end - 2 === start + 1 && this.is(start, "ident", "this")) return this.keyValue(key);
+      return this.member(this.valueOf(start, end - 2, depth + 1), key);
+    }
+    return null;
+  }
+
+  private member(base: WrapperValue | null, key: string): WrapperValue | null {
+    if (base?.kind === "bundle") {
+      const v = this.keyValue(key);
+      return v ? labelled(v, key) : null;
+    }
+    if (base?.kind === "module") return this.external?.(base.specifier, key) ?? null;
+    return null;
+  }
+
+  /** What the identifier at k is bound to. */
+  private nameValue(k: number, depth: number): WrapperValue | null {
+    if (depth > MAX_DEPTH) return null;
+    const name = this.tokens[k]!.value;
+    if (name === "this") return null;
+    const b = this.r.binding(k, name);
+    if (b)
+      switch (b.kind) {
+        case "param":
+          return null;
+        case "value":
+          return this.valueOf(b.range[0], b.range[1], depth + 1);
+        case "function":
+          return { kind: "fn", def: b.def };
+        case "class": {
+          const cls = this.byStart.get(b.start);
+          return cls ? { kind: "cls", cls, label: cls.name } : null;
+        }
+        case "pattern":
+          return this.member(this.valueOf(b.from[0], b.from[1], depth + 1), b.key);
+      }
+    const imported = this.constants.importOf(name, k);
+    if (imported) return this.external?.(imported.specifier, imported.property) ?? null;
+    const required = this.constants.requireOf(name, k);
+    return required ? { kind: "module", specifier: required } : null;
+  }
+
+  /** The `(`, `[` or `{` that holds token j, or -1. */
+  private container(j: number): number {
+    for (let i = j - 1, steps = 0; i >= 0 && steps < 400; i--, steps++) {
+      const t = this.tokens[i]!;
+      if (t.type !== "punct") continue;
+      if (t.value === ")" || t.value === "]" || t.value === "}") {
+        i = this.r.openOf(i);
+        if (i === -1) return -1;
+      } else if (t.value === "(" || t.value === "[" || t.value === "{") return i;
+    }
+    return -1;
+  }
+
+  /**
+   * What the property key K of this file is: every definition of it (`.K = v`, `K: v`, `{ K }`,
+   * `export const K`, `export { a as K }`, a class field `K = v`) must say the same, and say
+   * something; `.K = void 0` (TypeScript's export hoisting) says nothing. `""` is the module's
+   * `module.exports = v` itself, `"default"` its `export default v`.
+   */
+  keyValue(key: string): WrapperValue | null {
+    const cached = this.keyCache.get(key);
+    if (cached !== undefined) return cached;
+    // Read at depth 0, so that the cached answer does not depend on where it was asked first;
+    // keys within keys are bounded by their own nesting.
+    if (this.keyNesting >= 8) return null;
+    this.keyNesting++;
+    try {
+      return this.keyValueIn(key);
+    } finally {
+      this.keyNesting--;
+    }
+  }
+
+  private keyNesting = 0;
+
+  private keyValueIn(key: string): WrapperValue | null {
+    const depth = 0;
+    this.keyCache.set(key, null); // a cycle reads as nothing
+    let found: WrapperValue | null = null;
+    let ok = true;
+    const visit = (v: WrapperValue | null): void => {
+      if (!v) ok = false;
+      else if (!found) found = v;
+      else if (!same(found, v)) ok = false;
+    };
+    const { r } = this;
+    /** `void 0`, TypeScript's export hoisting, says nothing about the key. */
+    const valueAfter = (at: number): void => {
+      if (this.is(at, "ident", "void") && this.is(at + 1, "number")) return;
+      visit(this.valueOf(at, r.endOf(at), depth + 1));
+    };
+    const name = key === "" ? "exports" : key;
+    const all = r.namePositions(name);
+    if (all.length > MAX_KEY_POSITIONS) return null;
+    for (const j of all) {
+      if (this.work-- <= 0) break;
+      if (!ok) break;
+      if (key === "" || key === "default") {
+        if (key === "" && this.punct(j - 1, ".") && this.punct(j + 1, "=")) valueAfter(j + 2);
+        else if (key === "default" && this.is(j - 1, "ident", "export") && !this.punct(j + 1, ","))
+          valueAfter(j + 1);
+        continue;
+      }
+      // `.K = value`
+      if (this.punct(j - 1, ".") && this.punct(j + 1, "=")) {
+        valueAfter(j + 2);
+        continue;
+      }
+      if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
+      // an entry of an object literal (not of a pattern or an import list)
+      if (
+        (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
+        (this.punct(j + 1, ":") || this.punct(j + 1, ",") || this.punct(j + 1, "}"))
+      ) {
+        const open = this.container(j);
+        if (open === -1 || !this.punct(open, "{")) continue;
+        const close = r.closeOf(open);
+        if (close === -1 || this.punct(close + 1, "=") || this.is(open - 1, "ident", "import"))
+          continue;
+        // a pattern in a parameter list: `function f({ K }) {`
+        const around = this.container(open);
+        if (around !== -1 && this.punct(around, "(") && r.functionWithParamsAt(around)) continue;
+        if (this.is(close + 1, "ident", "from")) {
+          // `export { K } from "./x"`
+          if (this.is(open - 1, "ident", "export") && this.is(close + 2, "string"))
+            visit(this.external?.(this.tokens[close + 2]!.value, key) ?? null);
+          continue;
+        }
+        if (this.punct(j + 1, ":")) valueAfter(j + 2);
+        else visit(this.nameValue(j, depth + 1));
+        continue;
+      }
+      // `export { a as K }`, `export { a as K } from "./x"`
+      if (this.is(j - 1, "ident", "as") && this.is(j - 2, "ident")) {
+        const open = this.container(j);
+        if (open === -1 || !this.is(open - 1, "ident", "export")) continue;
+        const close = r.closeOf(open);
+        if (this.is(close + 1, "ident", "from") && this.is(close + 2, "string"))
+          visit(this.external?.(this.tokens[close + 2]!.value, this.tokens[j - 2]!.value) ?? null);
+        else visit(this.nameValue(j - 2, depth + 1));
+        continue;
+      }
+      // `export const K = …`, `export class K`, `export function K`
+      if (
+        this.is(j - 1, "ident") &&
+        /^(const|let|var|class|function)$/.test(this.tokens[j - 1]!.value) &&
+        this.is(j - 2, "ident", "export")
+      ) {
+        visit(this.nameValue(j, depth + 1));
+        continue;
+      }
+      // a class field: `K = value` directly in a class body
+      if (
+        this.punct(j + 1, "=") &&
+        (this.punct(j - 1, ";") ||
+          this.punct(j - 1, "{") ||
+          this.punct(j - 1, "}") ||
+          this.is(j - 1, "ident", "static"))
+      ) {
+        const body = r
+          .classesOf()
+          .find((c) => c.start < j && j < c.end && r.depthOf(j) === r.depthOf(c.start) + 1);
+        if (body) valueAfter(j + 2);
+      }
+    }
+    const result = ok ? found : null;
+    this.keyCache.set(key, result);
+    return result;
+  }
+
+  // ---------- receivers ----------
+
+  /** The wrapper class of the method `this` means at k, when that is a method of one. */
+  private thisClass(k: number): WrapperClass | null {
+    let def = this.r.functionAt(k);
+    while (def?.arrow) def = this.r.outerOf(def);
+    if (!def || def.owner === null) return null;
+    const range = this.r.classOfMethod(def);
+    return range ? (this.byStart.get(range.start) ?? null) : null;
+  }
+
+  /** The instances of wrappers the receiver expression in [start, end) can be. */
+  receiverValues(start: number, end: number, depth = 0): WrapperValue[] {
+    if (depth > 4 || this.work-- <= 0) return [];
+    if (end === start + 1 && this.is(start, "ident", "this")) {
+      const cls = this.thisClass(start);
+      return cls ? [{ kind: "inst", cls, label: cls.name }] : [];
+    }
+    if (end === start + 1 && this.is(start, "ident")) {
+      const b = this.r.binding(start, this.tokens[start]!.value);
+      if (b?.kind === "param") return this.paramValues(b.def, b.index, depth + 1);
+    }
+    // a chain: `<receiver>.m(…)` is the same instance when m returns `this`; any length, each
+    // link read once
+    if (this.punct(end - 1, ")")) {
+      const open = this.r.openOf(end - 1);
+      if (open > start + 1 && this.is(open - 1, "ident") && this.punct(open - 2, ".")) {
+        const key = `${start}:${end}`;
+        const known = this.chains.get(key);
+        if (known) return known;
+        const method = this.tokens[open - 1]!.value;
+        const out = this.receiverValues(start, open - 2, depth).filter(
+          (v) => v.kind === "inst" && v.cls.chain.includes(method),
+        );
+        this.chains.set(key, out);
+        return out;
+      }
+    }
+    let v = this.valueOf(start, end, depth + 1);
+    // `const r = require("./router")` with `module.exports = new Router()` there
+    if (v?.kind === "module")
+      v = this.external?.(v.specifier, "") ?? this.external?.(v.specifier, "default") ?? null;
+    return v?.kind === "inst" ? [v] : [];
+  }
+
+  /** What a parameter of def can be: what its every readable call site passes, or a seed. */
+  private paramValues(def: FnDef, index: number, depth: number): WrapperValue[] {
+    const seeded = this.seeds.get(def)?.get(index);
+    if (seeded) return seeded;
+    const out: WrapperValue[] = [];
+    for (const open of this.callSitesOf(def)) {
+      const arg = this.r.argumentAt(open, index);
+      if (arg === null) continue;
+      for (const v of this.receiverValues(arg, this.r.endOf(arg), depth + 1))
+        if (!out.some((o) => same(o, v))) out.push(v);
+    }
+    return out;
+  }
+
+  /** What another module passes for parameter `index` of def (cross-file stage). */
+  seed(def: FnDef, index: number, values: WrapperValue[]): void {
+    const by = this.seeds.get(def) ?? new Map<number, WrapperValue[]>();
+    const have = by.get(index) ?? [];
+    for (const v of values) if (!have.some((h) => same(h, v))) have.push(v);
+    by.set(index, have);
+    this.seeds.set(def, by);
+    this.chains.clear();
+  }
+
+  /**
+   * The `(` of every call of def in the file: by its name, through the keys it is exported or
+   * passed on under (`module.exports = { register: register2 }`), and through the names an object
+   * pattern takes it under (`var { register } = require_x()`, minified `{register:F}=Y()`).
+   */
+  private callSitesOf(def: FnDef): number[] {
+    const cached = this.siteCache.get(def);
+    if (cached) return cached;
+    const out: number[] = [];
+    this.siteCache.set(def, out);
+    if (def.name === null) return out;
+    const { r } = this;
+    const add = (open: number): void => {
+      if (out.length < MAX_SITES && !out.includes(open)) out.push(open);
+    };
+    const names = new Set<string>(def.member ? [] : [def.name]);
+    const keys = new Set<string>();
+    for (const j of r.namePositions(def.name)) {
+      if (this.work-- <= 0) break;
+      if (
+        this.punct(j - 1, ":") &&
+        this.is(j - 2, "ident") &&
+        (this.punct(j - 3, "{") || this.punct(j - 3, ","))
+      )
+        keys.add(this.tokens[j - 2]!.value);
+      else if (this.punct(j - 1, "=") && this.is(j - 2, "ident") && this.punct(j - 3, "."))
+        keys.add(this.tokens[j - 2]!.value);
+      else if (
+        (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
+        (this.punct(j + 1, ",") || this.punct(j + 1, "}"))
+      )
+        keys.add(def.name);
+    }
+    for (const key of keys) {
+      const v = this.keyValue(key);
+      if (v?.kind !== "fn" || v.def !== def) continue;
+      for (const j of r.namePositions(key)) {
+        if (this.work-- <= 0) break;
+        if (this.punct(j - 1, ".") && this.punct(j + 1, "(")) add(j + 1);
+        else if (this.punct(j - 1, ".") && this.punct(j + 1, ")") && this.punct(j + 2, "("))
+          add(j + 2); // `(0, x.K)(…)`
+        else if (
+          (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
+          this.punct(j + 1, ":") &&
+          this.is(j + 2, "ident")
+        )
+          names.add(this.tokens[j + 2]!.value);
+        else if (
+          (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
+          (this.punct(j + 1, ",") || this.punct(j + 1, "}"))
+        )
+          names.add(key);
+      }
+    }
+    for (const name of names)
+      for (const j of r.namePositions(name)) {
+        if (this.work-- <= 0) break;
+        if (out.length >= MAX_SITES) break;
+        if (!this.punct(j + 1, "(") || this.punct(j - 1, ".") || j + 1 === def.paramsAt) continue;
+        if (this.is(j - 1, "ident", "function")) continue;
+        const v = this.nameValue(j, 1);
+        if (v?.kind === "fn" && v.def === def) add(j + 1);
+      }
+    return out;
+  }
+
+  // ---------- results ----------
+
+  private methodNames(): Set<string> {
+    const names = new Set<string>();
+    for (const cls of this.classes) for (const m of Object.keys(cls.methods)) names.add(m);
+    return names;
+  }
+
+  /**
+   * One row per call of a wrapper method on an instance of its wrapper, per IPC call the method
+   * makes. With `onlySeeded`, only calls on a parameter another module passes an instance for.
+   */
+  rows(onlySeeded = false): WrapperRow[] {
+    const out: WrapperRow[] = [];
+    const { r } = this;
+    for (const method of this.methodNames())
+      for (const j of r.namePositions(method)) {
+        if (this.work-- <= 0) break;
+        if (this.work <= 0) return out;
+        if (!(this.punct(j - 1, ".") || this.punct(j - 1, "?.")) || !this.punct(j + 1, "("))
+          continue;
+        let start = r.receiverAt(j - 1);
+        if (start === null) continue;
+        if (this.is(start - 1, "ident", "new")) start--;
+        if (onlySeeded) {
+          const b =
+            start === j - 2 && this.is(start, "ident")
+              ? r.binding(start, this.tokens[start]!.value)
+              : null;
+          if (b?.kind !== "param" || !this.seeds.get(b.def)?.has(b.index)) continue;
+        }
+        for (const v of this.receiverValues(start, j - 1)) {
+          if (v.kind !== "inst" || !Object.hasOwn(v.cls.methods, method)) continue;
+          for (const { api, index } of v.cls.methods[method]!) {
+            const arg = r.argumentAt(j + 1, index);
+            if (arg === null || this.punct(arg, ")")) continue;
+            const named = channelArg(this.tokens, this.constants, arg);
+            const usage: IpcUsage = {
+              api,
+              channel: named && "value" in named ? named.value : null,
+              line: this.tokens[j]!.line,
+              via: "wrapper",
+              wrapper: `${v.label}.${method}`,
+            };
+            if (named && "ref" in named) usage.channelRef = named.ref;
+            out.push({ usage, arg, unread: !named, at: j });
+          }
+        }
+      }
+    return out;
+  }
+
+  /**
+   * Calls of another module's function that pass an instance of a wrapper (cross-file stage):
+   * `registerHandlers(router, windows)` with `router = new IpcRouter(…)`.
+   */
+  passes(): Array<{
+    file: string;
+    key: string;
+    index: number;
+    values: WrapperValue[];
+  }> {
+    const out: Array<{
+      file: string;
+      key: string;
+      index: number;
+      values: WrapperValue[];
+    }> = [];
+    const { r, tokens } = this;
+    for (let j = 0; j + 1 < tokens.length && out.length < 256 && this.work > 0; j++) {
+      if (tokens[j]!.type !== "ident" || !this.punct(j + 1, "(")) continue;
+      if (this.is(j - 1, "ident", "function")) continue;
+      let callee: WrapperValue | null = null;
+      if (!this.punct(j - 1, ".")) callee = this.nameValue(j, 1);
+      else {
+        const start = r.receiverAt(j - 1);
+        if (start !== null) callee = this.valueOf(start, j + 1, 1);
+      }
+      if (callee?.kind !== "xfn") continue;
+      for (let index = 0; index < 6; index++) {
+        const arg = r.argumentAt(j + 1, index);
+        if (arg === null || this.punct(arg, ")")) break;
+        const values = this.receiverValues(arg, r.endOf(arg));
+        if (values.length) out.push({ file: callee.file, key: callee.key, index, values });
+      }
+    }
+    return out;
+  }
+
+  /** The export keys of this file that name one of its wrappers or an instance of one. */
+  facts(): WrapperFacts | null {
+    if (!this.classes.length) return null;
+    const { r, tokens } = this;
+    const keys = new Set<string>();
+    const names = new Set<string>();
+    for (const cls of this.classes) {
+      const start = this.startOf(cls);
+      // the name the class or object is bound to
+      for (let j = start - 1; j >= 0 && j > start - 21; j--)
+        if (this.is(j, "ident", "class")) {
+          if (this.is(j + 1, "ident") && !this.is(j + 1, "ident", "extends"))
+            names.add(tokens[j + 1]!.value);
+          else if (this.punct(j - 1, "=") && this.is(j - 2, "ident"))
+            names.add(tokens[j - 2]!.value);
+          break;
+        }
+      if (this.punct(start - 1, "=") && this.is(start - 2, "ident"))
+        names.add(tokens[start - 2]!.value);
+    }
+    // names holding an instance: `x = new C(…)`; and the keys the names are stored under
+    const instances = new Set<string>();
+    for (const name of names)
+      for (const j of r.namePositions(name)) {
+        if (this.work-- <= 0) break;
+        if (!this.is(j - 1, "ident", "new")) continue;
+        const at = j - 1;
+        if (this.punct(at - 1, "=") && this.is(at - 2, "ident")) {
+          if (this.punct(at - 3, "."))
+            keys.add(tokens[at - 2]!.value === "exports" ? "" : tokens[at - 2]!.value);
+          else instances.add(tokens[at - 2]!.value);
+        } else if (this.punct(at - 1, ":") && this.is(at - 2, "ident"))
+          keys.add(tokens[at - 2]!.value);
+        else if (this.is(at - 1, "ident", "default") && this.is(at - 2, "ident", "export"))
+          keys.add("default");
+      }
+    for (const name of [...names, ...instances]) {
+      keys.add(name);
+      for (const j of r.namePositions(name)) {
+        if (this.work-- <= 0) break;
+        if (this.punct(j - 1, ":") && this.is(j - 2, "ident")) keys.add(tokens[j - 2]!.value);
+        else if (this.punct(j - 1, "=") && this.is(j - 2, "ident") && this.punct(j - 3, "."))
+          keys.add(tokens[j - 2]!.value === "exports" ? "" : tokens[j - 2]!.value);
+        else if (this.is(j - 1, "ident", "default") && this.is(j - 2, "ident", "export"))
+          keys.add("default");
+        else if (this.is(j + 1, "ident", "as") && this.is(j + 2, "ident"))
+          keys.add(tokens[j + 2]!.value);
+      }
+    }
+    const exports: WrapperFacts["exports"] = {};
+    for (const key of [...keys].toSorted()) {
+      if (key === "__proto__") continue;
+      const v = this.keyValue(key);
+      if ((v?.kind === "cls" || v?.kind === "inst") && v.cls.file === this.file)
+        exports[key] = { kind: v.kind, id: v.cls.id };
+    }
+    if (!Object.keys(exports).length) return null;
+    return {
+      classes: this.classes
+        .filter((c) => c.file === this.file)
+        .map(({ id, name, methods, chain }) => ({ id, name, methods, chain })),
+      exports,
+    };
+  }
+
+  /** The function an export key of this file names (cross-file stage). */
+  exportedFunction(key: string): FnDef | null {
+    const v = this.keyValue(key);
+    if (v?.kind === "fn") return v.def;
+    // `export function K` / `function K` exported by `module.exports = { K }` reads as the
+    // function through keyValue; a top-level function of that name otherwise
+    const b = key ? this.r.binding(this.tokens.length - 1, key) : null;
+    return b?.kind === "function" ? b.def : null;
+  }
+}
+
+/** A module as the cross-file stage reads it. */
+export interface WrapperModule {
+  id: string;
+  wrappers?: WrapperFacts;
+  reexports?: Record<string, { specifier: string; property: string }>;
+  starExports?: string[];
+}
+
+/** A module read again for the cross-file stage. */
+export interface ReadModule {
+  tokens: Token[];
+  constants: Constants;
+  resolver: ExpressionResolver;
+}
+
+/**
+ * Calls of wrappers across modules: in the modules that import a module defining a wrapper (or
+ * one that passes its exports on), calls on instances that module exports or on instances made
+ * from its classes; and calls on a parameter of another module's function that such a module
+ * passes an instance for. Returns rows per module id; nothing is read when no module exports a
+ * wrapper.
+ */
+export function linkWrappers(input: {
+  modules: readonly WrapperModule[];
+  edges: ReadonlyArray<{ from: string; to: string; resolved: boolean }>;
+  resolve(from: string, specifier: string): string | null;
+  open(path: string): ReadModule | null;
+  maxFiles?: number;
+}): { rows: Map<string, WrapperRow[]>; capped: string[] } {
+  const out = new Map<string, WrapperRow[]>();
+  const capped: string[] = [];
+  const byId = new Map(input.modules.map((m) => [m.id, m]));
+  const providers = new Set(
+    input.modules
+      .filter((m) => m.wrappers && Object.keys(m.wrappers.exports).length)
+      .map((m) => m.id),
+  );
+  if (!providers.size) return { rows: out, capped };
+  // classes of other modules, one object per class so that identity holds across readers
+  const known = new Map<string, WrapperClass>();
+  const classOf = (file: string, id: string): WrapperClass | null => {
+    const key = `${file}\0${id}`;
+    const have = known.get(key);
+    if (have) return have;
+    const c = byId.get(file)?.wrappers?.classes.find((x) => x.id === id);
+    if (!c) return null;
+    const made: WrapperClass = { ...c, file };
+    known.set(key, made);
+    return made;
+  };
+  const lookup =
+    (from: string) =>
+    (specifier: string, key: string, depth = 0): WrapperValue | null => {
+      if (depth > 4) return null;
+      const target = input.resolve(from, specifier);
+      const m = target ? byId.get(target) : undefined;
+      if (!m) return null;
+      const e =
+        m.wrappers?.exports[key] ?? (key === "default" ? m.wrappers?.exports[""] : undefined);
+      if (e) {
+        const cls = classOf(m.id, e.id);
+        if (cls) return labelled({ kind: e.kind, cls, label: cls.name }, key);
+      }
+      const passed = m.reexports?.[key];
+      if (passed) {
+        const v = lookup(m.id)(passed.specifier, passed.property, depth + 1);
+        if (v) return v;
+      }
+      for (const star of m.starExports ?? []) {
+        const v = lookup(m.id)(star, key, depth + 1);
+        if (v && v.kind !== "xfn") return v;
+      }
+      return key ? { kind: "xfn", file: m.id, key } : null;
+    };
+  // modules that pass a provider's exports on are providers as well
+  for (let round = 0; round < 3; round++)
+    for (const e of input.edges) {
+      const m = byId.get(e.from);
+      if (e.resolved && providers.has(e.to) && (m?.reexports || m?.starExports?.length))
+        providers.add(e.from);
+    }
+  const allImporters = [
+    ...new Set(input.edges.filter((e) => e.resolved && providers.has(e.to)).map((e) => e.from)),
+  ].toSorted();
+  const importers = allImporters.slice(0, input.maxFiles ?? 200);
+  capped.push(...allImporters.slice(importers.length));
+  const readers = new Map<string, WrapperReader | null>();
+  const readerOf = (file: string): WrapperReader | null => {
+    if (readers.has(file)) return readers.get(file)!;
+    const read = input.open(file);
+    const reader = read
+      ? new WrapperReader(read.tokens, read.resolver, read.constants, lookup(file), file)
+      : null;
+    readers.set(file, reader);
+    return reader;
+  };
+  const add = (file: string, rows: WrapperRow[]): void => {
+    if (!rows.length) return;
+    const list = out.get(file) ?? [];
+    for (const row of rows)
+      if (!list.some((x) => x.at === row.at && x.usage.api === row.usage.api)) list.push(row);
+    out.set(file, list);
+  };
+  // every class a provider exports is a class the importers can reach
+  const everyClass: WrapperClass[] = [];
+  for (const id of providers)
+    for (const c of byId.get(id)?.wrappers?.classes ?? []) {
+      const cls = classOf(id, c.id);
+      if (cls) everyClass.push(cls);
+    }
+  const passes: Array<{
+    file: string;
+    key: string;
+    index: number;
+    values: WrapperValue[];
+  }> = [];
+  for (const file of importers) {
+    const reader = readerOf(file);
+    if (!reader) continue;
+    for (const cls of everyClass) reader.adopt(cls);
+    add(file, reader.rows());
+    passes.push(...reader.passes());
+  }
+  for (const pass of passes) {
+    const reader = readerOf(pass.file);
+    if (!reader) continue;
+    const def = reader.exportedFunction(pass.key);
+    if (!def) continue;
+    for (const cls of everyClass) reader.adopt(cls);
+    reader.seed(def, pass.index, pass.values);
+  }
+  for (const file of new Set(passes.map((p) => p.file)).values()) {
+    const reader = readers.get(file);
+    if (reader) add(file, reader.rows(true));
+  }
+  for (const [file, reader] of readers)
+    if (reader?.capped && !capped.includes(file)) capped.push(file);
+  return { rows: out, capped };
+}

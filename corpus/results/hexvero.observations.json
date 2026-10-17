@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.8.0",
-  "commit": "05c31b4+uncommitted",
+  "commit": "aa88007+uncommitted",
   "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
@@ -572,6 +572,9 @@
      }
     ],
     "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcMain.on at undefined:54"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -792,6 +795,9 @@
      }
     ],
     "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcMain.on at undefined:60"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -1006,6 +1012,9 @@
      }
     ],
     "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcMain.on at undefined:1"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -1461,6 +1470,12 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "webContents.send at undefined:72",
+     "ipcMain.handle at undefined:80",
+     "ipcMain.on at undefined:143",
+     "ipcRenderer.invoke at undefined:12"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -1887,6 +1902,12 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "webContents.send at undefined:69",
+     "ipcMain.handle at undefined:72",
+     "ipcMain.on at undefined:117",
+     "ipcRenderer.invoke at undefined:28"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -2313,6 +2334,12 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "webContents.send at undefined:1",
+     "ipcMain.handle at undefined:1",
+     "ipcMain.on at undefined:1",
+     "ipcRenderer.invoke at undefined:1"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -4982,6 +5009,12 @@
      }
     ],
     "endpointsUnreadable": 4,
+    "ipcUnreadable": [
+     "webContents.send at undefined:159",
+     "ipcMain.on at undefined:313",
+     "ipcRenderer.invoke at undefined:12",
+     "ipcRenderer.invoke at undefined:23"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -5548,6 +5581,11 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcMain.on at undefined:328",
+     "ipcRenderer.invoke at undefined:107",
+     "ipcRenderer.invoke at undefined:113"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -5753,6 +5791,13 @@
       ]
      },
      {
+      "channel": "menu:new-entry",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "sync:cancel",
       "senders": [
        "preload.js"
@@ -5802,6 +5847,13 @@
      },
      {
       "channel": "timer:tick",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "update:ready",
       "senders": [
        "main.js"
       ],
@@ -6061,6 +6113,20 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:1",
+     "ipcMain.on at undefined:1",
+     "ipcMain.on at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.send at undefined:1",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.sendSync at undefined:1",
+     "ipcRenderer.on at undefined:1"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -6671,6 +6737,12 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcMain.on at undefined:61",
+     "webContents.send at undefined:253",
+     "ipcRenderer.on at undefined:11",
+     "ipcRenderer.on at undefined:62"
+    ],
     "storage": [
      {
       "kind": "sessionStorage",
@@ -7156,6 +7228,12 @@
      }
     ],
     "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcMain.on at undefined:212",
+     "webContents.send at undefined:371",
+     "ipcRenderer.on at undefined:36",
+     "ipcRenderer.on at undefined:78"
+    ],
     "storage": [
      {
       "kind": "sessionStorage",
@@ -7634,6 +7712,13 @@
      }
     ],
     "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:4",
+     "ipcMain.on at undefined:4",
+     "webContents.send at undefined:5",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.on at undefined:1"
+    ],
     "storage": [
      {
       "kind": "sessionStorage",
@@ -8139,6 +8224,9 @@
      }
     ],
     "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:309"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -8610,6 +8698,9 @@
      }
     ],
     "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:392"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -9008,6 +9099,21 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "webContents.send at undefined:1",
+     "webContents.send at undefined:2",
+     "ipcMain.on at undefined:2",
+     "webContents.send at undefined:2",
+     "ipcMain.handle at undefined:2",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.send at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.invoke at undefined:1"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -9552,6 +9658,13 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "webContents.send at undefined:378",
+     "ipcRenderer.invoke at undefined:7",
+     "ipcRenderer.invoke at undefined:17",
+     "ipcRenderer.on at undefined:22",
+     "ipcRenderer.on at undefined:44"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -10081,6 +10194,13 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "webContents.send at undefined:390",
+     "ipcRenderer.invoke at undefined:5",
+     "ipcRenderer.invoke at undefined:60",
+     "ipcRenderer.on at undefined:63",
+     "ipcRenderer.on at undefined:82"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -10610,6 +10730,13 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "webContents.send at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.on at undefined:1"
+    ],
     "storage": [
      {
       "kind": "electron-store",
@@ -11023,6 +11150,39 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:92",
+     "ipcMain.on at undefined:101",
+     "ipcMain.handle at undefined:154",
+     "ipcMain.handle at undefined:159",
+     "ipcMain.handle at undefined:163",
+     "ipcMain.handle at undefined:173",
+     "ipcMain.handle at undefined:177",
+     "ipcMain.handle at undefined:181",
+     "ipcMain.handle at undefined:190",
+     "ipcMain.on at undefined:199",
+     "ipcMain.handle at undefined:201",
+     "ipcMain.handle at undefined:202",
+     "ipcMain.handle at undefined:204",
+     "ipcMain.handle at undefined:217",
+     "ipcMain.on at undefined:228",
+     "webContents.send at undefined:236",
+     "ipcRenderer.on at undefined:13",
+     "ipcRenderer.invoke at undefined:25",
+     "ipcRenderer.invoke at undefined:32",
+     "ipcRenderer.invoke at undefined:33",
+     "ipcRenderer.invoke at undefined:34",
+     "ipcRenderer.on at undefined:35",
+     "ipcRenderer.send at undefined:36",
+     "ipcRenderer.send at undefined:37",
+     "ipcRenderer.send at undefined:38",
+     "ipcRenderer.invoke at undefined:39",
+     "ipcRenderer.invoke at undefined:40",
+     "ipcRenderer.invoke at undefined:41",
+     "ipcRenderer.invoke at undefined:42",
+     "ipcRenderer.on at undefined:44",
+     "ipcRenderer.send at undefined:45"
+    ],
     "storage": [
      {
       "kind": "localStorage",
@@ -11324,6 +11484,39 @@
      }
     ],
     "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:218",
+     "ipcMain.on at undefined:225",
+     "ipcMain.handle at undefined:265",
+     "ipcMain.handle at undefined:269",
+     "ipcMain.handle at undefined:272",
+     "ipcMain.handle at undefined:278",
+     "ipcMain.handle at undefined:281",
+     "ipcMain.handle at undefined:284",
+     "ipcMain.handle at undefined:292",
+     "ipcMain.on at undefined:299",
+     "ipcMain.handle at undefined:300",
+     "ipcMain.handle at undefined:301",
+     "ipcMain.handle at undefined:302",
+     "ipcMain.handle at undefined:314",
+     "ipcMain.on at undefined:323",
+     "webContents.send at undefined:330",
+     "ipcRenderer.on at undefined:40",
+     "ipcRenderer.invoke at undefined:49",
+     "ipcRenderer.invoke at undefined:55",
+     "ipcRenderer.invoke at undefined:56",
+     "ipcRenderer.invoke at undefined:57",
+     "ipcRenderer.on at undefined:58",
+     "ipcRenderer.send at undefined:59",
+     "ipcRenderer.send at undefined:60",
+     "ipcRenderer.send at undefined:61",
+     "ipcRenderer.invoke at undefined:62",
+     "ipcRenderer.invoke at undefined:63",
+     "ipcRenderer.invoke at undefined:64",
+     "ipcRenderer.invoke at undefined:65",
+     "ipcRenderer.on at undefined:67",
+     "ipcRenderer.send at undefined:68"
+    ],
     "storage": [
      {
       "kind": "localStorage",
@@ -11625,6 +11818,39 @@
      }
     ],
     "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:5",
+     "ipcMain.on at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.on at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.handle at undefined:5",
+     "ipcMain.on at undefined:5",
+     "webContents.send at undefined:5",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.send at undefined:1",
+     "ipcRenderer.send at undefined:1",
+     "ipcRenderer.send at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.on at undefined:1",
+     "ipcRenderer.send at undefined:1"
+    ],
     "storage": [
      {
       "kind": "localStorage",
@@ -11717,6 +11943,64 @@
      "changed": [],
      "relocated": 3,
      "unchanged": 2
+    }
+   }
+  },
+  "compare:holdout5/tidemark.plain.asar|holdout5/tidemark-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "key": "channel",
+     "added": [
+      "export:text",
+      "release:duplicate"
+     ],
+     "removed": [
+      "editor:dirty",
+      "release:delete"
+     ],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 16
+    },
+    "contextBridge": {
+     "key": "api+member",
+     "added": [
+      "tidemark.duplicateRelease",
+      "tidemark.exportText"
+     ],
+     "removed": [
+      "tidemark.deleteRelease",
+      "tidemark.markDirty"
+     ],
+     "changed": [],
+     "relocated": 12,
+     "unchanged": 5
+    },
+    "webPreferences": {
+     "key": "file+windowName+key",
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 3
+    },
+    "endpoints": {
+     "key": "file+kind+value",
+     "added": [
+      "https://api.lingoflow.example/v1/translate"
+     ],
+     "removed": [],
+     "changed": [],
+     "relocated": 1,
+     "unchanged": 6
+    },
+    "storage": {
+     "key": "file+kind+value+op",
+     "added": [],
+     "removed": [],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 7
     }
    }
   },
