@@ -28,6 +28,27 @@ All notable changes to hexvero are listed here. The format follows
 - In the interface map, opening a node or edge is a history entry, as in Compare: Back closes the
   evidence and stays on the map (it used to leave the map).
 
+### Robustness
+
+- The CLI no longer prints control characters from a target or a file name to the terminal: an
+  IPC channel, archive entry or output name carrying `ESC ]0;…` or `ESC [2J` showed up raw in
+  `analyze`, `compare` and error output. Every line now passes one filter that turns control
+  characters into `\u001b` escapes and keeps only the color codes hexvero writes. A C1 character
+  in `--json` output becomes its JSON escape, so the JSON stays the same value.
+- A policy or baseline nested deeper than the stack (`{"hexvero": [[[[…]]]]}`) is reported as an
+  invalid file (exit 2 in `hexvero check`, `invalid_input` over MCP, `400 invalid_policy` from the
+  local server) instead of a stack overflow.
+- ASAR headers with `null`, a string or a list where a node belongs, or a size that is not a
+  non-negative integer, are read: the entry is skipped, or listed but refused on reading with
+  `malformed`. They used to fail as `Cannot read properties of null`.
+- Archives with very many entries: looking a file up by path was a linear search, so analyzing an
+  ASAR with 100,000 entries ran past 10 s; an HTML report parsed the archive header again for each
+  of its up to 200 source excerpts (17 s for that archive, 1 s now).
+- `scripts/fuzz.mjs`: a deterministic mutation harness (seeded, no new dependency) that runs
+  hostile archives, JavaScript, package.json, policy and baseline files and output paths through
+  the built CLI and checks for crashes, hangs, writes outside the requested path and output that
+  escapes its format.
+
 ## [0.9.1] - 2026-10-17
 
 ### Web UI
