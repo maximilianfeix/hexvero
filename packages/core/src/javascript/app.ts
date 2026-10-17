@@ -384,6 +384,13 @@ interface WindowRanges {
   externals: ExternalBase[];
   /** Every place per window where something unreadable was applied (`opaque` is the last). */
   hides: Map<number, number[]>;
+  /**
+   * Per window, the place of the last write of the whole `webPreferences` key in the window's
+   * own options (`webPreferences: {…}`, `webPreferences: prefs`, the shorthand `{ webPreferences
+   * }`) whose object could be followed. When it comes after every place in `opaque`, nothing
+   * unreadable can reach a setting: the later key replaces whatever a spread before it brought.
+   */
+  wholePrefs: Map<number, number>;
 }
 
 /**
@@ -442,8 +449,12 @@ function windowRanges(
   const opaque = new Map<number, number>();
   /** Every place something unreadable was applied, per window; `opaque` holds the last one. */
   const hides = new Map<number, number[]>();
+  /** How often something unreadable was applied, per window (not capped, unlike `hides`). */
+  const hideCount = new Map<number, number>();
+  const wholePrefs = new Map<number, number>();
   const hide = (window: number | null, upTo: number): void => {
     if (window === null) return;
+    hideCount.set(window, (hideCount.get(window) ?? 0) + 1);
     opaque.set(window, Math.max(opaque.get(window) ?? -1, upTo));
     const places = hides.get(window) ?? [];
     if (places.length < 200) places.push(upTo);
@@ -766,13 +777,26 @@ function windowRanges(
       if (brace === root) return level;
       return is(brace - 1, ":") && tokens[brace - 2]?.value === "webPreferences" ? "prefs" : null;
     };
+    /**
+     * The window's own options, read in place: a `webPreferences` key written at their top level
+     * replaces the whole object, whatever was spread into the options before it.
+     */
+    const own = window !== null && depth === 0 && !inherited && at === null;
     /** `webPreferences: NAME` or the shorthand `webPreferences`, with the name at n. */
-    const namedPrefs = (n: number): void => {
+    const namedPrefs = (n: number, key: number): void => {
+      const before = window === null ? 0 : (hideCount.get(window) ?? 0);
       if (
         !followAt(n, window, inherited, depth, at, "prefs") &&
         !passedTo(n, window, depth, at, "prefs")
-      )
+      ) {
         hide(window, EVERYWHERE); // an import, or a parameter not every caller fills in
+        return;
+      }
+      if (!own || braceAround(key, open) !== root) return;
+      // The followed object lies elsewhere in the text: what it could not read itself (a spread
+      // in its declaration, an argument of a caller) is applied here, where the key is written.
+      if ((hideCount.get(window!) ?? 0) > before) hide(window, tokens[key]!.start);
+      else wholePrefs.set(window!, tokens[key]!.start);
     };
     // Objects that are named, spread or returned by a helper inside belong to the same window.
     for (let k = open + 1; k < end; k++) {
@@ -823,7 +847,7 @@ function windowRanges(
         braceAround(k, open) === root
       ) {
         // the shorthand `{ webPreferences }`: the variable of that name, in scope here
-        namedPrefs(k);
+        namedPrefs(k, k);
       } else if (
         t.type === "ident" &&
         t.value === "webPreferences" &&
@@ -831,7 +855,7 @@ function windowRanges(
         tokens[k + 2]?.type === "ident"
       ) {
         const name = tokens[k + 2]!.value;
-        if (is(k + 3, ",") || is(k + 3, "}")) namedPrefs(k + 2);
+        if (is(k + 3, ",") || is(k + 3, "}")) namedPrefs(k + 2, k);
         else if (
           name === "this" &&
           is(k + 3, ".") &&
@@ -892,6 +916,16 @@ function windowRanges(
             }
           }
         } else hide(window, EVERYWHERE); // `webPreferences: options.prefs`, `a ? b : c`
+      } else if (
+        own &&
+        t.type === "ident" &&
+        t.value === "webPreferences" &&
+        is(k + 1, ":") &&
+        is(k + 2, "{") &&
+        braceAround(k, open) === root
+      ) {
+        // `webPreferences: {…}` written in place: what it cannot read lies inside it, after this
+        wholePrefs.set(window!, t.start);
       } else if (
         t.type === "ident" &&
         t.value === "webPreferences" &&
@@ -963,6 +997,7 @@ function windowRanges(
     opaque,
     externals,
     hides,
+    wholePrefs,
     declOf,
   };
 }
@@ -2508,7 +2543,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 19;
+export const JS_SCAN_SCHEMA = 20;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -3159,10 +3194,11 @@ export function readFileTokens(
           const asOptions =
             (is(k - 1, "(") &&
               is(k + 1, ")") &&
-              // `new BrowserWindow(name)`, `new electron.BrowserWindow(name)`
+              // `new BrowserWindow(name)`, `new electron.BrowserWindow(name)`, also under the
+              // short name a minifier gives the class (`new n(t)`)
               (tokens[k - 3]?.value === "new" ||
                 (is(k - 3, ".") && tokens[k - 5]?.value === "new")) &&
-              WINDOW_CLASSES.has(tokens[k - 2]?.value ?? "")) ||
+              WINDOW_CLASSES.has(context.aliases.get(k - 2) ?? tokens[k - 2]?.value ?? "")) ||
             (inWindow &&
               ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
                 is(k - 1, "...") ||
@@ -3755,9 +3791,13 @@ export function analyzeJavaScriptTree(
           settings: reads.flatMap((x) => x!.settings),
           unknown: new Set(reads.flatMap((x) => [...x!.unknown])),
         };
-        // a caller whose options cannot be read may set any key
-        if (partial) for (const key of ["preload", ...BOOLEAN_KEYS]) read.unknown.add(key);
         const window = r.window;
+        // A caller whose options cannot be read may set any key, unless a whole `webPreferences`
+        // is written after every place such options are applied: then they reach no setting.
+        const whole = (located as WindowRanges).wholePrefs.get(window);
+        const replaced = whole !== undefined && whole > opaque.get(window)!;
+        if (partial && !replaced)
+          for (const key of ["preload", ...BOOLEAN_KEYS]) read.unknown.add(key);
         const windowLine = lineAt(r.start);
         // Where the evaluation cannot read a key, the rows as written stay, and the key is not
         // known for the window, unless the code writes it after the last place that could not
@@ -3876,11 +3916,15 @@ export function analyzeJavaScriptTree(
       if (facts.windows.some((w) => w.file === file.path && w.window === r.window)) continue;
       const where = located as WindowRanges | null;
       const hiddenUpTo = where?.opaque.get(r.window);
+      // A whole `webPreferences` written after every place that could not be followed decides
+      // every setting: `{ ...display.bounds, webPreferences }` takes nothing of the spread's.
+      const whole = where?.wholePrefs.get(r.window);
+      const replaced = hiddenUpTo !== undefined && whole !== undefined && whole > hiddenUpTo;
       // A change to a followed object concerns the windows that take options from such an
       // object; a window whose options are all written in place cannot be changed that way.
       const computedKeys = new Set<string>(where?.viaName.has(r.window) ? mutated : []);
       for (const key of evaluated.get(r.window) ?? []) computedKeys.add(key);
-      if (hiddenUpTo !== undefined)
+      if (hiddenUpTo !== undefined && !replaced)
         // What could not be followed may write any key; a key the code writes for the window
         // after that place stands, every other one is not known.
         for (const key of ["preload", ...BOOLEAN_KEYS])
@@ -3892,7 +3936,8 @@ export function analyzeJavaScriptTree(
         windowName: r.name ?? `#${r.window}`,
         line: lineAt(r.start),
         ...(computedKeys.size ? { computed: [...computedKeys] } : {}),
-        ...(hiddenUpTo === undefined ? {} : { opaque: true as const }),
+        // the settings are all known when a whole `webPreferences` replaced what was not read
+        ...(hiddenUpTo === undefined || replaced ? {} : { opaque: true as const }),
       });
     }
     if (sandboxCall === "always") facts.enableSandbox = "always";

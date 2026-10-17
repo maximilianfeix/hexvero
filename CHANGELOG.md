@@ -38,6 +38,10 @@ All notable changes to hexvero are listed here. The format follows
   1,990 → 1,760 ms (0.8.0: 1,560 ms); Claude.app unchanged (median, interleaved, on a shared machine
   at load 28 to 71; docs/benchmarks.md has the method and the raw runs).
 
+### Electron analysis
+
+- A window whose options spread something unreadable before a whole `webPreferences` is no longer read as computed: in `new BrowserWindow({ ...display.bounds, frame: false, webPreferences })` with `const webPreferences = { contextIsolation: true, sandbox: true }` the later key replaces anything the spread brought, so every setting is known (an unwritten one takes Electron's default) and the window is no longer named in `window_options_unresolved`. Only for a `webPreferences` written in the window's own options whose object (a literal, a followed name, the objects every caller passes) nothing unreadable reaches; a spread inside it or in the declaration it names, a condition, and a spread after it (`{ webPreferences: {…}, ...opts }`) stay computed. holdout6 overlay window: `nodeIntegration`/`contextIsolation`/`sandbox` computed → false/true/true in the plain, bundled and minified builds (the rows were already listed; the corpus score is unchanged). Also `new n(t)` under a minifier's short name for `BrowserWindow` counts as the window taking `t`, as `new BrowserWindow(t)` does, instead of handing the object on (which made every followed key computed). Stored scans are read again (JS_SCAN_SCHEMA 20).
+
 ## [0.9.6] - 2026-10-17
 
 ### Performance

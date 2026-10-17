@@ -27,7 +27,15 @@ A setting also reads as `computed` where the code next to the window does not de
 - the window's options take something that could not be followed: a parameter
   (`new BrowserWindow(options)`), a call, a condition between two objects, or a spread of a name
   that is not an object of the file. A key written after that place stands; every other key is
-  not known. The limitation `window_options_unresolved` names these windows;
+  not known. When the key written after it is the whole `webPreferences` (`webPreferences: {…}`,
+  `webPreferences: prefs`, the shorthand `{ ...display.bounds, frame: false, webPreferences }`)
+  and the object it names can be read, it replaces whatever the spread brought, so every setting
+  is known, also one it does not write (that one takes Electron's default). This holds only for
+  the window's own options and for an object nothing unreadable reaches: a spread inside the later
+  object or in the declaration it names (`{ ...prefs, sandbox: true }`), a `webPreferences` that
+  is a condition or a parameter not every caller fills in, and a spread after it
+  (`{ webPreferences: {…}, ...opts }`) keep the settings computed. The limitation
+  `window_options_unresolved` names the windows whose settings are not all known;
 - the options object that was followed may be changed after its declaration. A write to one key
   (`prefs.sandbox = false`, `prefs.sandbox ||= x`, `delete prefs.sandbox`) makes that key
   computed; anything that may change the object without being read here makes every key

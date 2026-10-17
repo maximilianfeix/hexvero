@@ -517,8 +517,80 @@ describe("a placed literal is listed once", () => {
     expect(rows).toEqual(
       expect.arrayContaining(["sandbox=true@2:1", "sandbox=false@5:2", "preload=p.js@3:2"]),
     );
-    // the opaque window still reads as computed: nothing it may take is hidden
-    expect(info.windows.find((w) => w.window === 3)?.computed).toContain("sandbox");
+    // the third window writes its whole webPreferences after the spread: the spread reaches
+    // none of its settings (up to 0.9.6 they read as computed)
+    expect(states(info)[2]).toBe("not written true true null not written");
+  });
+});
+
+/**
+ * A spread of something unread before the window's own `webPreferences`: the later key replaces
+ * the whole object, so what the spread may bring decides none of the settings. One window each.
+ */
+const REPLACED = [
+  // the overlay of holdout6: a display's bounds, then the shorthand
+  "function overlay(display) {\n  const webPreferences = { contextIsolation: true, sandbox: true, webSecurity: false };\n  return new BrowserWindow({ ...display.bounds, frame: false, webPreferences });\n}",
+  // a literal, after a parameter's spread
+  'function literal(opts) {\n  return new BrowserWindow({ ...opts, show: false, webPreferences: { sandbox: true, preload: "p.js" } });\n}',
+  // `webPreferences: NAME` after the spread of a call
+  "const PREFS = { contextIsolation: true };\nfunction named() {\n  return new BrowserWindow({ ...bounds(), webPreferences: PREFS });\n}",
+  // a named options object built that way
+  "function fromOptions(extra) {\n  const webPreferences = { sandbox: false };\n  const options = { ...extra, webPreferences };\n  return new BrowserWindow(options);\n}",
+  // a base followed inside the later literal
+  "const BASE = Object.freeze({ sandbox: true, contextIsolation: true });\nfunction based(opts) {\n  return new BrowserWindow({ ...opts, webPreferences: { ...BASE, nodeIntegration: false } });\n}",
+].join("\n");
+const REPLACED_STATES = [
+  "not written true true null false",
+  "not written not written true p.js not written",
+  "not written true not written null not written",
+  "not written not written false null not written",
+  "false true true null not written",
+];
+
+/** What may still reach a setting: each stays computed for the keys it may bring. */
+const STILL_COMPUTED = [
+  // the spread after the key replaces it
+  "function after(opts) {\n  return new BrowserWindow({ webPreferences: { sandbox: true }, ...opts });\n}",
+  // the spread inside the later object may bring any key
+  "function inside(opts, prefs) {\n  return new BrowserWindow({ ...opts, webPreferences: { sandbox: true, ...prefs } });\n}",
+  // the same, in the declaration the shorthand is followed to
+  "function declared(opts, prefs) {\n  const webPreferences = { ...prefs, sandbox: true };\n  return new BrowserWindow({ ...opts, webPreferences });\n}",
+  // a later value that is not an object written here
+  "function chosen(opts, dev) {\n  return new BrowserWindow({ ...opts, webPreferences: dev ? { sandbox: false } : { sandbox: true } });\n}",
+  // a parameter the callers do not all fill in
+  "function param(opts, webPreferences) {\n  return new BrowserWindow({ ...opts, webPreferences });\n}",
+].join("\n");
+const ALL = "computed computed computed null computed";
+
+describe("a whole webPreferences written after an unread spread", () => {
+  it("decides every setting of the window, plain, bundled and minified", () => {
+    const main = `const { BrowserWindow } = require("electron");\n${REPLACED}\nmodule.exports = { overlay, literal, named, fromOptions, based };`;
+    const plain = analyze({ "main.js": main });
+    expect(states(plain)).toEqual(REPLACED_STATES);
+    // nothing about their settings is left unknown, so no window is named as not followed
+    expect(plain.windows.filter((w) => w.computed || w.opaque)).toEqual([]);
+    expect(plain.limitations.map((l) => l.code)).not.toContain("window_options_unresolved");
+    for (const minify of [false, true])
+      expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(
+        REPLACED_STATES,
+      );
+  });
+
+  it("decides nothing when the spread comes after it or may reach inside it", () => {
+    const main = `const { BrowserWindow } = require("electron");\n${STILL_COMPUTED}\nmodule.exports = { after, inside, declared, chosen, param };`;
+    const expected = [ALL, ALL, ALL, ALL, ALL];
+    expect(states(analyze({ "main.js": main }))).toEqual(expected);
+    for (const minify of [false, true])
+      expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(
+        expected,
+      );
+  });
+
+  it("keeps a later write to the followed object computed", () => {
+    const info = one(
+      "function f(opts) {\n  const webPreferences = { sandbox: true };\n  webPreferences.sandbox = opts.sandbox;\n  return new BrowserWindow({ ...opts, webPreferences });\n}",
+    );
+    expect(info.windows[0]?.computed ?? []).toContain("sandbox");
   });
 });
 
