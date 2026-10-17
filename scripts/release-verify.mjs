@@ -5,7 +5,8 @@
  * Checks every file scripts/release.mjs bumps: the four published packages and their pinned
  * @hexvero/* dependencies, the private web package, the version constants compiled into the CLI,
  * MCP server and core (VERSION, SERVER_VERSION, CORE_VERSION), server.json, the Claude plugin
- * manifest (.claude-plugin/plugin.json), and the CHANGELOG section.
+ * manifest (.claude-plugin/plugin.json), the CHANGELOG section, and the version pinned in the
+ * CI example (docs/ci.md, site/index.html).
  */
 import { readFileSync } from "node:fs";
 
@@ -35,6 +36,9 @@ const constant = (file, pattern, label) => {
 constant("packages/cli/src/index.ts", /export const VERSION = "([^"]+)"/, "VERSION");
 constant("packages/mcp/src/index.ts", /export const SERVER_VERSION = "([^"]+)"/, "SERVER_VERSION");
 constant("packages/core/src/version.ts", /export const CORE_VERSION = "([^"]+)"/, "CORE_VERSION");
+for (const file of ["docs/ci.md", "site/index.html"])
+  for (const [, pinned] of read(file).matchAll(/hexvero@(\d+\.\d+\.\d+(?:-[\w.]+)?)/g))
+    if (pinned !== version) problems.push(`${file} pins hexvero@${pinned}, expected ${version}`);
 const manifest = JSON.parse(read("server.json"));
 if (manifest.version !== version) problems.push(`server.json version is ${manifest.version}`);
 for (const p of manifest.packages ?? [])
