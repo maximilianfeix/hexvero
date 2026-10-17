@@ -6,6 +6,22 @@ News forbids generated or AI-edited text and automated posting
 as an outline of facts and order, not as text to paste there. One channel, one story; no
 identical cross-posts, no vote requests.
 
+## X: 0.9.2 (draft; 0.9.2 is on npm since 2026-10-17)
+
+> Electron Fiddle 0.39.0 added a persisted setting, `isUsingSocketFirewall`, stored through the
+> app's own `save()`/`retrieve()` wrappers. hexvero 0.9.2 now reports it as the one new storage
+> key between the two builds, without running either.
+>
+> npx hexvero@0.9.2 compare old/app.asar new/app.asar storage
+>
+> github.com/maximilianfeix/hexvero
+
+Reply with the honest numbers from the second blind set (written without access to hexvero,
+measured once): IPC channels 52 of 64 and storage keys 22 of 41, none false; window settings 44 of
+52 with 15 false, all duplicate rows of literals that were right for their window, fixed after the
+measurement (`corpus/results/round5/README.md`). Every fact: [claims.md](claims.md) B1, B3.
+Publishing is the maintainer's click; check `npx hexvero@0.9.2` on the day you post.
+
 ## X: 0.9.0 (draft, post after 0.9.0 is on npm)
 
 > Know what changed inside your Electron release.
