@@ -60,10 +60,11 @@ coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor
 timeout, check reads every page. Gates at `aa88007`: check 539 passed, e2e 13, corpus 45 inputs /
 298 rows none worse.
 
-Running: A2 (IPC wrapper classes, Fiddle + holdout5 dev), I (offline HTML report), J (interface
-graph), R (independent review of 841b6db..HEAD).
+Merged later: I (HTML report), J (interface map), D2 L8, B L4, P review fixes, A review fixes.
+Running at 00:15Z: A2 (IPC wrapper classes, Fiddle + holdout5 dev). Gates at 973cfd7: check 596
+passed, e2e 13, corpus 298 rows none worse.
 
-## Independent review (agent R, 2026-10-17, 841b6db..f8ffe2d)
+## Independent review (agent R, 2026-10-17, 841b6db..f8ffe2d) — ALL FIXED and merged by 973cfd7 (00:15Z); extra: same-named windows judged together (8a1d4bb)
 
 4 high, 6 medium, 11 low; 16 confirmed with scripts (scratchpad/review/). Assigned:
 
