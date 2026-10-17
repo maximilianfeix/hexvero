@@ -479,8 +479,9 @@ function valueOf(r: ReleaseComparison, row: ChangeRow): string {
   const f = fieldsOf(r, row);
   if (f && typeof f["value"] === "string") return f["value"];
   if (f && typeof f["url"] === "string") return f["url"];
+  // WHATWG normalization first; `s` in case a line break survives (an escaped `\n` in a literal)
   const key = urlInput(row.key);
-  const m = /[a-z][a-z0-9+.-]*:\/\/.*$/i.exec(key) ?? /\$\{.*$/.exec(key);
+  const m = /[a-z][a-z0-9+.-]*:\/\/.*$/is.exec(key) ?? /\$\{.*$/s.exec(key);
   return m ? m[0] : row.key;
 }
 

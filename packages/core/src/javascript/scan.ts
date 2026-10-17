@@ -292,6 +292,67 @@ const isIdentPart = (c: string): boolean => {
   );
 };
 
+/**
+ * The text of the escape sequence at `j` (a backslash) of a string or template literal, the index
+ * after it, and the line breaks it spans (a line continuation): `\n`, `\x41`, `\u0041`,
+ * `\u{1F600}`, `\0`, legacy octal `\101`, and any other character as itself.
+ */
+function escapeAt(source: string, j: number): [string, number, number] {
+  const e = source[j + 1];
+  if (e === undefined) return ["", j + 1, 0];
+  const hex = (from: number, length: number): number | null => {
+    const digits = source.slice(from, from + length);
+    return digits.length === length && /^[0-9a-fA-F]+$/.test(digits) ? parseInt(digits, 16) : null;
+  };
+  switch (e) {
+    case "n":
+      return ["\n", j + 2, 0];
+    case "t":
+      return ["\t", j + 2, 0];
+    case "r":
+      return ["\r", j + 2, 0];
+    case "b":
+      return ["\b", j + 2, 0];
+    case "f":
+      return ["\f", j + 2, 0];
+    case "v":
+      return ["\v", j + 2, 0];
+    case "\r":
+      return ["", source[j + 2] === "\n" ? j + 3 : j + 2, 1];
+    case "\n":
+    case "\u2028":
+    case "\u2029":
+      return ["", j + 2, 1];
+    case "x": {
+      const code = hex(j + 2, 2);
+      return code === null ? ["x", j + 2, 0] : [String.fromCharCode(code), j + 4, 0];
+    }
+    case "u": {
+      if (source[j + 2] === "{") {
+        const close = source.indexOf("}", j + 3);
+        const code = close > j + 3 && close < j + 10 ? hex(j + 3, close - j - 3) : null;
+        if (code !== null && code <= 0x10ffff) return [String.fromCodePoint(code), close + 1, 0];
+        return ["u", j + 2, 0];
+      }
+      const code = hex(j + 2, 4);
+      return code === null ? ["u", j + 2, 0] : [String.fromCharCode(code), j + 6, 0];
+    }
+    default: {
+      // `\0` and legacy octal escapes: up to three octal digits, at most 255
+      const octal = /^[0-7]{1,3}/.exec(source.slice(j + 1, j + 4))?.[0];
+      if (octal !== undefined) {
+        let digits = octal;
+        while (parseInt(digits, 8) > 255) digits = digits.slice(0, -1);
+        return [String.fromCharCode(parseInt(digits, 8)), j + 1 + digits.length, 0];
+      }
+      // any other character stands for itself (a surrogate pair stays whole)
+      const cp = source.codePointAt(j + 1)!;
+      const ch = String.fromCodePoint(cp);
+      return [ch, j + 1 + ch.length, 0];
+    }
+  }
+}
+
 export function tokenize(
   source: string,
   maxTokens = 2_000_000,
@@ -340,8 +401,10 @@ export function tokenize(
       let run = j;
       while (j < n && source[j] !== c && source[j] !== "\n") {
         if (source[j] === "\\") {
-          value += source.slice(run, j) + (source[j + 1] ?? "");
-          j += 2;
+          const [text, next, lines] = escapeAt(source, j);
+          value += source.slice(run, j) + text;
+          line += lines;
+          j = next;
           run = j;
           continue;
         }
@@ -367,8 +430,10 @@ export function tokenize(
       let dynamic = false;
       while (j < n && source[j] !== "`") {
         if (source[j] === "\\") {
-          value += source[j + 1] ?? "";
-          j += 2;
+          const [text, next, lines] = escapeAt(source, j);
+          value += text;
+          line += lines;
+          j = next;
           continue;
         }
         if (source[j] === "$" && source[j + 1] === "{") {
