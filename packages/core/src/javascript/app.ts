@@ -7,7 +7,13 @@ import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
 import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
-import { type Binding, ExpressionResolver, type ModuleHost, type Val } from "./resolve.js";
+import {
+  type Binding,
+  builtIdentifierIndex,
+  ExpressionResolver,
+  type ModuleHost,
+  type Val,
+} from "./resolve.js";
 import {
   ALIAS_TARGETS,
   evaluatorFor,
@@ -1133,7 +1139,16 @@ function privilegedBindings(
    * destructuring pattern, whose own `{` is no block.
    */
   const blockScoped = new Map<number, "name" | "pattern">();
+  /**
+   * Declarations in token order, recorded during the walk and kept below only for the names that
+   * can matter (`relevant`): a bundle declares hundreds of thousands of names, and keeping places
+   * for every one of them was most of the cost of this reading.
+   */
+  const events: Array<string | number | false> = [];
   const count = (name: string, at: number, block: false | "name" | "pattern" = false): void => {
+    events.push(name, at, block);
+  };
+  const keep = (name: string, at: number, block: false | "name" | "pattern"): void => {
     if (block) blockScoped.set(at, block);
     declared.set(name, (declared.get(name) ?? 0) + 1);
     const places = declaredAt.get(name) ?? [];
@@ -1262,20 +1277,66 @@ function privilegedBindings(
     const rhs = rhsAt(j + 2);
     if (rhs) patterns.push({ entries, init: j + 2, rhs });
   }
+  // The names whose declarations and writes can be asked for below: `process` and `require`
+  // (their `declared` entries), and every name the rounds further down could record as privileged,
+  // read here by name alone (no scope), in the same order and for as many rounds, so it holds every
+  // name those rounds record. Declarations and writes of all other names are never asked for.
+  const relevant = new Set<string>(["process", "require"]);
+  for (const [name] of imports) relevant.add(name);
+  const from = (rhs: Rhs): boolean =>
+    rhs.kind === "module" ? rhs.meaning !== null : relevant.has(rhs.path[0]!);
+  for (let round = 0; round < 8; round++) {
+    let grew = false;
+    for (const { name, rhs } of simple)
+      if (!relevant.has(name) && from(rhs)) {
+        relevant.add(name);
+        grew = true;
+      }
+    for (const { entries, rhs } of patterns) {
+      if (!from(rhs)) continue;
+      for (const [key, local] of entries)
+        if (PRIVILEGED_ELECTRON.has(key) && !relevant.has(local)) {
+          relevant.add(local);
+          grew = true;
+        }
+    }
+    if (!grew) break;
+  }
+  for (let e = 0; e < events.length; e += 3)
+    if (relevant.has(events[e] as string))
+      keep(
+        events[e] as string,
+        events[e + 1] as number,
+        events[e + 2] as false | "name" | "pattern",
+      );
   // Every write of a name: `r = …`, `r ||= …`, `r++`. A write counts against a declaration only
   // where it resolves to the same binding (below), so a local of that name elsewhere is no write.
   const writes = new Map<string, number[]>();
-  for (let k = 0; k + 1 < tokens.length; k++) {
+  // With the file's identifier index already built, only the places of the relevant names are
+  // visited, in token order (the tokens the walk would stop at); else, or for names used too
+  // often, the walk.
+  const index = builtIdentifierIndex(tokens);
+  let visit: number[] | null = null;
+  if (index) {
+    visit = [];
+    for (const name of relevant) for (const k of index.get(name) ?? []) visit.push(k);
+    if (visit.length > tokens.length >> 4) visit = null;
+    else visit.sort((a, b) => a - b);
+  }
+  for (let i = 0; visit ? i < visit.length : i + 1 < tokens.length; i++) {
+    const k = visit ? visit[i]! : i;
+    if (k + 1 >= tokens.length) continue;
     const t = tokens[k]!;
-    if (t.type !== "ident" || is(k - 1, ".") || is(k - 1, "?.")) continue;
+    if (t.type !== "ident") continue;
     const next = tokens[k + 1]!;
+    // the shape of a write first, the name only then
     const written =
       (next.type === "punct" && ASSIGNMENT_OPERATORS.has(next.value)) ||
       is(k - 1, "++") ||
       is(k - 1, "--") ||
       is(k + 1, "++") ||
       is(k + 1, "--");
-    if (!written) continue;
+    if (!written || !relevant.has(t.value) || is(k - 1, ".") || is(k - 1, "?.")) continue;
     const places = writes.get(t.value) ?? [];
     if (places.length < MAX_PLACES) places.push(k);
     writes.set(t.value, places);
@@ -2915,9 +2976,10 @@ export function readFileTokens(
   source: string,
   /**
    * Receives the file's token stream, so the scan can evaluate the file again on the same tokens
-   * (and the resolver tables built for them) instead of tokenizing it a second time.
+   * (and the resolver tables built for them) instead of tokenizing it a second time, and the
+   * scan's constants of the file, whose tables a second reading shares (`withoutEvaluator`).
    */
-  keep?: (tokens: Token[]) => void,
+  keep?: (tokens: Token[], constants: Constants) => void,
 ): FileTokenFacts {
   let ranges: WindowRange[] = [];
   let located: WindowRanges | null = null;
@@ -2937,7 +2999,7 @@ export function readFileTokens(
   let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
     onTokens: (tokens, truncated, context) => {
-      keep?.(tokens);
+      keep?.(tokens, context.constants);
       if (source.includes("enableSandbox")) {
         // Read from tokens, so a comment or a string is no call. Only a statement at the top
         // of the file that no condition guards is certain to run.
@@ -3364,13 +3426,18 @@ export function analyzeJavaScriptTree(
       return modulesRead.get(target)?.resolver ?? null;
     },
   };
-  const moduleResolver = (path: string, text: string, scanned?: Token[] | null): ReadModule => {
+  const moduleResolver = (
+    path: string,
+    text: string,
+    scanned?: { tokens: Token[]; constants: Constants } | null,
+  ): ReadModule => {
     const cached = modulesRead.get(path);
     if (cached) return cached;
     // The scan's own tokens of the file when it has them: the same stream (same tokenizer, same
-    // limit), and the resolver tables built on it during the scan are shared, not built again.
-    const tokens = scanned ?? tokenize(text).tokens;
-    const constants = new Constants(tokens);
+    // limit), and the resolver tables built on it during the scan are shared, not built again;
+    // so are the scan's constants, read as a fresh `Constants` of those tokens would read them.
+    const tokens = scanned?.tokens ?? tokenize(text).tokens;
+    const constants = scanned ? scanned.constants.withoutEvaluator() : new Constants(tokens);
     const made = {
       tokens,
       constants,
@@ -3410,10 +3477,10 @@ export function analyzeJavaScriptTree(
     runBytes += file.size;
     bytes += file.size;
     /** The file's tokens when this thread tokenized it (not when a worker did). */
-    let scanned: Token[] | null = null;
+    let scanned: { tokens: Token[]; constants: Constants } | null = null;
     const tokenFacts =
       options.prepared?.get(file.path) ??
-      readFileTokens(file.path, source, (tokens) => (scanned = tokens));
+      readFileTokens(file.path, source, (tokens, constants) => (scanned = { tokens, constants }));
     const { scan, located, ranges, sandboxCall, settingsAt, braces } = tokenFacts;
     const ambient = tokenFacts.ambient;
     const mutated = new Set(tokenFacts.mutated);

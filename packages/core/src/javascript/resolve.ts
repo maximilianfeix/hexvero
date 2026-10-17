@@ -337,6 +337,16 @@ interface Structure {
 
 const structures = new WeakMap<Token[], Structure>();
 
+/**
+ * Positions of every identifier by name for these tokens, when a resolver has already built the
+ * index (null otherwise: a caller then walks the tokens itself rather than pay for building it).
+ */
+export function builtIdentifierIndex(
+  tokens: Token[],
+): ReadonlyMap<string, readonly number[]> | null {
+  return structures.get(tokens)?.names ?? null;
+}
+
 export class ExpressionResolver {
   private readonly match: Int32Array;
   /** For a closing bracket, its opening one. */
@@ -2871,19 +2881,44 @@ export class ExpressionResolver {
 
   /** Bracket depth (all kinds) at token k, from the start of the file; computed once. */
   private depthAt(k: number): number {
-    if (!this.s.depths) {
-      const depths = new Int32Array(this.tokens.length);
-      let d = 0;
-      for (let j = 0; j < this.tokens.length; j++) {
-        depths[j] = d;
-        const p = this.tokens[j]!;
-        if (p.type !== "punct") continue;
-        if (p.value === "{" || p.value === "(" || p.value === "[") d++;
-        else if (p.value === "}" || p.value === ")" || p.value === "]") d--;
+    if (!this.s.depths) this.bracketTables();
+    return this.s.depths![k] ?? 0;
+  }
+
+  /**
+   * Two tables of the file's brackets, built together in one pass on first use of either:
+   * `depths`, the bracket depth (all kinds) at each token counted from the start of the file
+   * (every closing bracket counts, so it can go below 0), and `parents`, the innermost open
+   * bracket around each token (-1: none; a closing bracket with none open is passed over).
+   */
+  private bracketTables(): void {
+    const tokens = this.tokens;
+    const n = tokens.length;
+    const depths = new Int32Array(n);
+    const parents = new Int32Array(n);
+    const open: number[] = [];
+    let top = -1;
+    let d = 0;
+    for (let j = 0; j < n; j++) {
+      depths[j] = d;
+      parents[j] = top;
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      const v = p.value;
+      if (v === "{" || v === "(" || v === "[") {
+        d++;
+        open.push(j);
+        top = j;
+      } else if (v === "}" || v === ")" || v === "]") {
+        d--;
+        if (open.length) {
+          open.pop();
+          top = open.length ? open[open.length - 1]! : -1;
+        }
       }
-      this.s.depths = depths;
     }
-    return this.s.depths[k] ?? 0;
+    this.s.depths = depths;
+    this.s.parents = parents;
   }
 
   /** `const|let|var NAME = <expr>` at depth 0, declared once and not assigned elsewhere. */
@@ -4606,19 +4641,8 @@ export class ExpressionResolver {
    * header with its body, else the bracket's extent.
    */
   private innermostBlock(j: number, d: FnDef | null): [number, number] | null {
-    if (!this.s.parents) {
-      const parents = new Int32Array(this.tokens.length).fill(-1);
-      const open: number[] = [];
-      for (let i = 0; i < this.tokens.length; i++) {
-        parents[i] = open.at(-1) ?? -1;
-        const t = this.tokens[i]!;
-        if (t.type !== "punct") continue;
-        if (t.value === "{" || t.value === "(" || t.value === "[") open.push(i);
-        else if (t.value === "}" || t.value === ")" || t.value === "]") open.pop();
-      }
-      this.s.parents = parents;
-    }
-    const p = this.s.parents[j]!;
+    if (!this.s.parents) this.bracketTables();
+    const p = this.s.parents![j]!;
     if (p === -1 || (d && p <= d.body[0])) return null;
     const close = this.match[p]!;
     if (this.punct(p, "(") && this.is(p - 1, "ident", "for") && close !== -1) {

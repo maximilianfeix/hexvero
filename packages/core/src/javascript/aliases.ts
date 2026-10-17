@@ -1376,6 +1376,30 @@ export class Constants {
     }
   }
 
+  /**
+   * The file's constants exactly as `new Constants(tokens)` reads them on the same tokens: no
+   * evaluator, no `visible`, and the exports as they stood before `useEvaluator`. What the
+   * constructor builds from the tokens is shared, not read again: nothing changes it after
+   * construction (`useEvaluator` and `computed` change only the parts made fresh here).
+   */
+  withoutEvaluator(): Constants {
+    const view = Object.assign(Object.create(Constants.prototype) as Constants, this);
+    const added = new Set(this.evaluated);
+    const exported: Record<string, string> = {};
+    for (const key of Object.keys(this.exported))
+      if (!added.has(key)) exported[key] = this.exported[key]!;
+    Object.assign(view, {
+      evaluator: null,
+      visible: null,
+      computedCache: new Map(),
+      computedReasons: new Map(),
+      exported,
+      evaluated: [],
+      unevaluated: {},
+    });
+    return view;
+  }
+
   /** The table or string an evaluation reads for a computed top-level name; cached. */
   private computed(name: string): (Flat & { line: number }) | null {
     const cached = this.computedCache.get(name);

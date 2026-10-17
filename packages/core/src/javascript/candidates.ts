@@ -15,7 +15,7 @@
  * A URL that merely occurs as a string is not an endpoint. Those go to `urls`.
  */
 import { Constants, resolveAliases } from "./aliases.js";
-import { ExpressionResolver, type WrapperCalls } from "./resolve.js";
+import { builtIdentifierIndex, ExpressionResolver, type WrapperCalls } from "./resolve.js";
 import type { Token } from "./scan.js";
 
 const OWN_TARGETS: ReadonlySet<string> = new Set(["fetch", "localStorage", "sessionStorage"]);
@@ -201,6 +201,25 @@ const STORE_OPS: Record<string, Candidate["op"]> = {
   set: "write",
   delete: "delete",
 };
+/** `=` and the compound assignments: what `/^([-+*\/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/` matches. */
+const WRITE_OPERATORS = new Set([
+  "=",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "%=",
+  "&=",
+  "|=",
+  "^=",
+  "**=",
+  "<<=",
+  ">>=",
+  ">>>=",
+  "&&=",
+  "||=",
+  "??=",
+]);
 const ABSOLUTE = /^(https?|wss?):\/\/[^\s"'<>]{3,}/i;
 
 const is = (t: Token | undefined, type: Token["type"], value?: string): boolean =>
@@ -728,21 +747,34 @@ export function findCandidates(
     const declared = new Set([...clients.keys(), ...functions.keys()]);
     for (const name of declared) legacyClients.add(name);
     let writes = 0;
+    // Where the file's identifier index is already built (resolve.ts, shared by every resolver of
+    // these tokens), only the places of the declared names are visited, in token order: the same
+    // tokens the walk below stops at. Without one, or for names used too often, the walk.
+    const index = declared.size ? builtIdentifierIndex(tokens) : null;
+    let places: number[] | null = null;
+    if (index) {
+      places = [];
+      for (const name of declared) for (const k of index.get(name) ?? []) places.push(k);
+      if (places.length > tokens.length >> 4) places = null;
+      else places.sort((a, b) => a - b);
+    }
     if (declared.size)
-      for (let k = 1; k + 1 < tokens.length; k++) {
+      for (let i = places ? 0 : 1; places ? i < places.length : i + 1 < tokens.length; i++) {
+        const k = places ? places[i]! : i;
+        if (k < 1 || k + 1 >= tokens.length) continue;
         const t = tokens[k]!;
-        if (t.type !== "ident" || !declared.has(t.value) || is(tokens[k - 1], "punct", "."))
-          continue;
+        if (t.type !== "ident") continue;
         const after = tokens[k + 1]!;
         const before = tokens[k - 1]!;
+        // the shape of a write first (two token reads), the name only then
         if (
           !(
             (after.type === "punct" &&
-              (/^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) ||
-                after.value === "++" ||
-                after.value === "--")) ||
+              (WRITE_OPERATORS.has(after.value) || after.value === "++" || after.value === "--")) ||
             (before.type === "punct" && (before.value === "++" || before.value === "--"))
-          )
+          ) ||
+          !declared.has(t.value) ||
+          is(before, "punct", ".")
         )
           continue;
         const binder = (wrapperResolver ??= makeResolver());
