@@ -295,6 +295,16 @@ interface Structure {
   names: Map<string, number[]> | null;
   depths: Int32Array | null;
   innermost: Int32Array | null;
+  /** For every token, the innermost bracket it is in (-1: none). */
+  parents: Int32Array | null;
+  /** What the module exports by name (see `exportValue`). */
+  exportIndex: Map<string, [number, number]> | null;
+  /** Webpack module functions by key (see `webpackModule`). */
+  moduleTable: Map<string, FnDef | null> | null;
+  /** Plain `function NAME(…) {…}` declarations by name (see `nestedFunction`). */
+  fnDecls: Map<string, FnDef[]> | null;
+  /** Functions by the names their parameters bind (see `paramAround`). */
+  paramDefs: Map<string, FnDef[]> | null;
 }
 
 const structures = new WeakMap<Token[], Structure>();
@@ -389,6 +399,11 @@ export class ExpressionResolver {
         names: null,
         depths: null,
         innermost: null,
+        parents: null,
+        exportIndex: null,
+        moduleTable: null,
+        fnDecls: null,
+        paramDefs: null,
       };
       structures.set(tokens, shared);
     }
@@ -1010,14 +1025,13 @@ export class ExpressionResolver {
     return { values, partial: partial || this.partial };
   }
 
-  private exportIndex: Map<string, [number, number]> | null = null;
   /**
    * The value this module exports under a name: `exports.NAME = …` (the last assignment that is
    * not `void 0`), `module.exports = { NAME: … }`, `export const NAME = …`, `export function NAME`.
    */
   exportValue(name: string, depth: number): Val | null {
     if (depth > MAX_DEPTH) return null;
-    if (!this.exportIndex) {
+    if (!this.s.exportIndex) {
       const index = new Map<string, [number, number]>();
       const tokens = this.tokens;
       for (let k = 0; k + 3 < tokens.length; k++) {
@@ -1074,9 +1088,9 @@ export class ExpressionResolver {
             index.set(tokens[k + 2]!.value, [k + 2, k + 3]);
         }
       }
-      this.exportIndex = index;
+      this.s.exportIndex = index;
     }
-    const range = this.exportIndex.get(name);
+    const range = this.s.exportIndex.get(name);
     if (!range) return null;
     return this.evalRange(range[0], range[1], new Map(), depth + 1);
   }
@@ -1773,8 +1787,6 @@ export class ExpressionResolver {
     return null;
   }
 
-  private moduleTable: Map<string, FnDef | null> | null = null;
-
   /**
    * `req(id)` at k, where `req` is the third parameter of the webpack module function around k
    * (webpack's require): the module of the file's table under that key, as a wrapped module whose
@@ -1783,15 +1795,15 @@ export class ExpressionResolver {
   private webpackModule(k: number, name: string, id: string): Val | null {
     const b = this.binding(k, name);
     if (b?.kind !== "param" || b.index !== 2 || this.moduleKey(b.def) === null) return null;
-    if (!this.moduleTable) {
+    if (!this.s.moduleTable) {
       const table = new Map<string, FnDef | null>();
       for (const d of this.functions()) {
         const key = this.moduleKey(d);
         if (key !== null && d.block) table.set(key, table.has(key) ? null : d);
       }
-      this.moduleTable = table;
+      this.s.moduleTable = table;
     }
-    const def = this.moduleTable.get(id);
+    const def = this.s.moduleTable.get(id);
     if (!def) return null;
     const param = (i: number): string | null => {
       const p = def.params[i];
@@ -2741,13 +2753,12 @@ export class ExpressionResolver {
     return null;
   }
 
-  private fnDecls: Map<string, FnDef[]> | null = null;
   /**
    * The function a name means at k when a function around k declares it with
    * `function NAME(…) {…}`, once and nothing else under that name there.
    */
   private nestedFunction(k: number, name: string): FnDef | null {
-    if (!this.fnDecls) {
+    if (!this.s.fnDecls) {
       const byName = new Map<string, FnDef[]>();
       for (const d of this.functions())
         if (
@@ -2757,11 +2768,14 @@ export class ExpressionResolver {
           !d.member &&
           this.is(d.paramsAt - 1, "ident", d.name) &&
           this.is(d.paramsAt - 2, "ident", "function")
-        )
-          byName.set(d.name, [...(byName.get(d.name) ?? []), d]);
-      this.fnDecls = byName;
+        ) {
+          const list = byName.get(d.name);
+          if (list) list.push(d);
+          else byName.set(d.name, [d]);
+        }
+      this.s.fnDecls = byName;
     }
-    const candidates = this.fnDecls.get(name);
+    const candidates = this.s.fnDecls.get(name);
     if (!candidates) return null;
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       const declared = this.declarationIn(d, name, k);
@@ -3890,14 +3904,12 @@ export class ExpressionResolver {
     return this.depthAt(k);
   }
 
-  private paramDefs: Map<string, FnDef[]> | null = null;
-
   /**
    * Whether a function whose parameter list names NAME holds token k, in that list or in its
    * body: k is then that parameter or within its reach, whatever `binding` could tell.
    */
   paramAround(k: number, name: string): boolean {
-    if (!this.paramDefs) {
+    if (!this.s.paramDefs) {
       const byName = new Map<string, FnDef[]>();
       for (const d of this.functions())
         for (const n of paramNames(d.params)) {
@@ -3905,9 +3917,9 @@ export class ExpressionResolver {
           list.push(d);
           byName.set(n, list);
         }
-      this.paramDefs = byName;
+      this.s.paramDefs = byName;
     }
-    for (const d of this.paramDefs.get(name) ?? [])
+    for (const d of this.s.paramDefs.get(name) ?? [])
       if (d.paramsAt <= k && k <= d.body[1]) return true;
     return false;
   }
@@ -4026,19 +4038,17 @@ export class ExpressionResolver {
   private readonly directCache = new Map<string, Declarations>();
   private readonly listedCache = new Map<string, [number, number] | null | undefined>();
 
-  private parents: Int32Array | null = null;
-
   /** Whether a `catch (…)` whose parameter names NAME has a block around token k. */
   private catchBinds(k: number, name: string): boolean {
     this.innermostBlock(k, null); // builds the table of brackets
-    let p = this.parents![k] ?? -1;
+    let p = this.s.parents![k] ?? -1;
     for (let steps = 0; p > 0 && steps < 256; steps++) {
       if (this.punct(p, "{") && this.punct(p - 1, ")")) {
         const open = this.opener[p - 1]!;
         if (open > 0 && this.is(open - 1, "ident", "catch"))
           for (let j = open + 1; j < p - 1; j++) if (this.is(j, "ident", name)) return true;
       }
-      p = this.parents![p]!;
+      p = this.s.parents![p]!;
     }
     // deeper than that: not known
     return p > 0;
@@ -4050,7 +4060,7 @@ export class ExpressionResolver {
    * header with its body, else the bracket's extent.
    */
   private innermostBlock(j: number, d: FnDef | null): [number, number] | null {
-    if (!this.parents) {
+    if (!this.s.parents) {
       const parents = new Int32Array(this.tokens.length).fill(-1);
       const open: number[] = [];
       for (let i = 0; i < this.tokens.length; i++) {
@@ -4060,9 +4070,9 @@ export class ExpressionResolver {
         if (t.value === "{" || t.value === "(" || t.value === "[") open.push(i);
         else if (t.value === "}" || t.value === ")" || t.value === "]") open.pop();
       }
-      this.parents = parents;
+      this.s.parents = parents;
     }
-    const p = this.parents[j]!;
+    const p = this.s.parents[j]!;
     if (p === -1 || (d && p <= d.body[0])) return null;
     const close = this.match[p]!;
     if (this.punct(p, "(") && this.is(p - 1, "ident", "for") && close !== -1) {
@@ -4101,12 +4111,12 @@ export class ExpressionResolver {
     const inner: DeclEntry[] = [];
     if (found.byOpen.size) {
       this.innermostBlock(k, d); // builds the table of brackets
-      let p = this.parents![k]!;
+      let p = this.s.parents![k]!;
       for (let steps = 0; p !== -1 && (!d || p > d.body[0]); steps++) {
         if (steps >= 64) return "deep";
         for (const e of found.byOpen.get(p) ?? [])
           if (e.scope![0] < k && k < e.scope![1]) inner.push(e);
-        p = this.parents![p]!;
+        p = this.s.parents![p]!;
       }
     }
     return { whole: found.whole, inner };
