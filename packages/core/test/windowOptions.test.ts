@@ -521,3 +521,20 @@ describe("a placed literal is listed once", () => {
     expect(info.windows.find((w) => w.window === 3)?.computed).toContain("sandbox");
   });
 });
+
+/** Titles of the minified-bundle finding. */
+const minifiedTitles = (info: JsAppInfo): string[] =>
+  info.findings.filter((f) => f.kind === "js.minified").map((f) => f.title);
+
+describe("the minified-bundle finding", () => {
+  it("counts one bundle in the singular", () => {
+    // one line over 2,000 characters: the scan counts it as minified
+    const min = `var a=1;${"function b(c){return c+1}".repeat(120)}`;
+    const single = analyze({ "main.js": min });
+    const pair = analyze({ "main.js": `require("./x.js");${min}`, "x.js": min });
+    expect([...minifiedTitles(single), ...minifiedTitles(pair)]).toEqual([
+      "1 minified bundle",
+      "2 minified bundles",
+    ]);
+  });
+});
