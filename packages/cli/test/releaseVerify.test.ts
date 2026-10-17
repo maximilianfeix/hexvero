@@ -62,7 +62,11 @@ function setJsonVersion(dir: string, file: string, version: string): void {
 
 describe("release-verify", () => {
   it("accepts the committed tree", () => {
-    expect(verify(copyRepo())).toMatchObject({ status: 0 });
+    // the script's own report is part of the expectation, so a failure shows what it found
+    expect(verify(copyRepo())).toEqual({
+      status: 0,
+      output: expect.stringContaining("is consistent"),
+    });
   });
 
   it("fails when the web package version differs", () => {
