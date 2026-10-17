@@ -697,29 +697,33 @@ export class Constants {
     const stack: number[] = [];
     const waiting = new Map<number, number[]>(); // `{` index -> definitions inside it
     let next = 0;
+    const names = new Set(pending.map((p) => p.name));
+    const positions = new Map<string, number[]>();
     for (let j = 0; j < tokens.length; j++) {
       while (next < order.length && pending[order[next]!]!.k === j) {
         const i = order[next++]!;
         const open = stack.at(-1) ?? -1;
         opens[i] = open;
-        if (open !== -1) waiting.set(open, [...(waiting.get(open) ?? []), i]);
+        if (open !== -1) {
+          const list = waiting.get(open);
+          if (list) list.push(i);
+          else waiting.set(open, [i]);
+        }
       }
       const t = tokens[j]!;
+      if (t.type === "ident") {
+        if (!names.has(t.value)) continue;
+        const list = positions.get(t.value);
+        if (list) list.push(j);
+        else positions.set(t.value, [j]);
+        continue;
+      }
       if (t.type !== "punct") continue;
       if (t.value === "{") stack.push(j);
       else if (t.value === "}") {
         const open = stack.pop();
         if (open !== undefined) for (const i of waiting.get(open) ?? []) closes[i] = j;
       }
-    }
-    const names = new Set(pending.map((p) => p.name));
-    const positions = new Map<string, number[]>();
-    for (let j = 0; j < tokens.length; j++) {
-      const t = tokens[j]!;
-      if (t.type !== "ident" || !names.has(t.value)) continue;
-      const list = positions.get(t.value);
-      if (list) list.push(j);
-      else positions.set(t.value, [j]);
     }
     let work = SCOPED_WORK;
     for (let i = 0; i < pending.length && work > 0; i++) {

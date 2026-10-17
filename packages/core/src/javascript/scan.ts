@@ -572,12 +572,15 @@ export function scanJavaScript(
   // Most files of a large application name none of the objects whose other names are followed
   // (icons, locale tables, vendored libraries). For those the resolution is skipped: nothing
   // would use it, and it is the most expensive step of a scan.
+  // Whether the text names IPC at all: tested once per file, not at every `this.x.on(…)`.
+  let ipcText: boolean | undefined;
+  const namesIpc = (): boolean => (ipcText ??= /ipc|webContents/.test(source));
   let aliases = new Map<number, string>();
   let wrappers = new Map<string, string>();
   if (NAMES_SOMETHING.test(source)) {
     const own = new Set(constants.names());
     aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
-    if (/ipc|webContents/.test(source)) wrappers = findWrappers(tokens, aliases);
+    if (namesIpc()) wrappers = findWrappers(tokens, aliases);
     if (wrappers.size) {
       for (const name of wrappers.keys()) own.add(name);
       aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
@@ -883,7 +886,7 @@ export function scanJavaScript(
         !IPC_APIS.has(`${owner}.${at(k + 2)!.value}`) &&
         is(k - 1, "punct", ".") &&
         is(k - 2, "ident", "this") &&
-        /ipc|webContents/.test(source)
+        namesIpc()
       )
         owner =
           (resolver ??= new ExpressionResolver(tokens, constants)).fieldOwner(
