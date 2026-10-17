@@ -27,7 +27,7 @@ any interruption or context compaction.
 | 14:00–14:40  | X handed back (fuzzing, 5 failures fixed); round three integrated on `sprint/round3`; gates green (check 707 \| 1 skip, e2e 13, corpus none worse); fuzz seed 7: 225 cases, 0 failed; P2 resumed                                                                                                                                                                                                                                                                                                                                              | lead + agents |
 | 14:40–15:30  | S N1–N4, X N5 integrated; blind round 5 on `holdout6` (once; 15 false window settings = windowless duplicates, fixed after); PR #142 squash `660c9f4`; release 0.9.2 (`18df53f`, run 39044161003 green; first local attempt stopped at a flaky release-verify test, second passed); npx hexvero@0.9.2 verified from an empty cache; registry and Pages 0.9.2; M3 (endpoints through HTTP client methods) started                                                                                                                              | lead + agents |
 | 15:30–17:05  | M3 (endpoints through HTTP client modules): 4 commits after 3 review rounds by R3 (critical quadratic scope walk, a false IIFE call site, shadows; then a regression that dropped real rows; then rows dropped without an unknown row); PR #156 → release 0.9.3 (`022b504`, run 39049256326; first local attempt stopped at the flaky providers test); #157 fixed (#160) and #158 test fixed (#159) → release 0.9.4 (`af5593d`, run 39051642548); launch records #144 #148, contributor issues #149–#153 (#155), release-verify output (#146) | lead + agents |
-| 17:05–       | fresh-user test of the README (published package only); M1 (IPC payload shapes) on `sprint/m1-payloads`; final report                                                                                                                                                                                                                                                                                                                                                                                                                         | lead + agents |
+| 17:05–18:15  | first-time-user run of the published docs (no checkout) → doc fixes #162, plural fix #163; M1 IPC payload shapes, reviewed (merge yes, 3 low fixed) → #164, release 0.9.5 (`627a48a`, run 39054086916); final gates on 0.9.5; speed against the base measured (Discord +21 %); profiling round P3, output-identical → #165, release 0.9.6 (`849b30e`, run 39056731394); records, final report | lead + agents |
 
 ## Agents and branches
 
@@ -198,14 +198,11 @@ re-reviewed.
 
 ## Next steps / resume instructions
 
-0. M3: on hand-back, R3 re-review of the fix commits, gates, PR, merge; release 0.9.3 only if
-   gates and review are clean. Then fill the OPEN entries of sprint-report.md and merge
-   `sprint/final-report`.
-1. (done for round three) On hand-back of S, X, U: cherry-pick or merge onto a branch from main, run the gates (check,
-   e2e, corpus, `build-site-demo --check`), run an independent review (second reader + security
-   review) before any release; fix findings with regression tests.
-2. Release 0.9.2 only if round three changes behaviour users see: PR → CI → squash merge →
-   `npm run release -- 0.9.2` in `~/hexvero-sprint` → `git push --atomic origin main v0.9.2` →
-   watch the Release workflow → `npx hexvero@0.9.2` from an empty cache → status.json.
-3. Fill the OPEN entries in [sprint-report.md](sprint-report.md) at the end (runtime, final
-   gates, round three, next five tasks). Do not stop before not_before (08:44:36Z).
+The sprint is closed; [sprint-report.md](sprint-report.md) is the hand-over (brief §14). To
+continue the product work: the five next tasks in sprint-report §9 (scan time against the base
+first), the good first issues #149–#153, and the maintainer's launch steps in
+`docs/launch/status.json` (X posts, HN in your own words, Glama listing, awesome-electron from
+2026-11-11). Every release: `npm run release -- <v>` in a clean main checkout, then
+`git push --atomic origin main v<v>`, watch the Release workflow, verify `npx hexvero@<v>` from an
+empty cache, update status.json. Measure speed only like for like (registry installs, or a
+core's `dist` loaded by path); give each agent worktree a real `node_modules` directory.

@@ -13,9 +13,9 @@ the very end.
 | ended_at     | OPEN                                                                                                                                                                             |
 | base commit  | `841b6db` (0.8.0)                                                                                                                                                                |
 | final commit | OPEN (main)                                                                                                                                                                      |
-| releases     | 0.9.0 (01:20Z, run 38990077564), 0.9.1 (03:00Z, 38996747203), 0.9.2 (15:20Z, 39044161003), 0.9.3 (16:30Z, 39049256326), 0.9.4 (17:00Z, 39051642548), 0.9.5 (17:30Z, 39054086916) |
+| releases     | 0.9.0 (01:20Z, run 38990077564), 0.9.1 (03:00Z, 38996747203), 0.9.2 (15:20Z, 39044161003), 0.9.3 (16:30Z, 39049256326), 0.9.4 (17:00Z, 39051642548), 0.9.5 (17:30Z, 39054086916), 0.9.6 (18:05Z, 39056731394) |
 | roles        | lead + specialists, at most six at a time (A, A2, A3, B, C, D, D2, E, E6, F, G, H, I, J, K, L, M, M3, P, P2, S, U, X; reviewers R, R2, R3)                                       |
-| PRs          | #136 (0.9.0), #137 (0.9.1), #139, #141, #142 (0.9.2), #144, #146, #148, #155, #156 (0.9.3), #159, #160 (0.9.4), #162, #163, #164 (0.9.5)                                         |
+| PRs          | #136 (0.9.0), #137 (0.9.1), #139, #141, #142 (0.9.2), #144, #146, #148, #155, #156 (0.9.3), #159, #160 (0.9.4), #162, #163, #164 (0.9.5), #165 (0.9.6)                                         |
 | issues       | #138, #140, #143, #145, #147, #154, #157, #158, #161 (closed by those PRs); #149–#153 good first issues                                                                          |
 
 The ten hours are counted as working time. The `not_before` of the brief (08:44:36Z) fell into the
@@ -90,10 +90,28 @@ Final speed, registry installs, `analyze --json --fresh`, a fresh cache per run,
 (17:39Z, load 7–15): Discord 0.8.0 809 ms, 0.9.0 901 ms, 0.9.5 976 ms (7 runs each; +21 % against
 the base, +8 % against 0.9.0); Claude.app (47 MB) 0.8.0 5.4–6.4 s, 0.9.5 6.9–7.7 s (3 runs each,
 noisy); peak RSS not higher (Claude 0.8.0 859–1,101 MiB, 0.9.5 857–994 MiB). The budget set at the
-start (at most 15 % against the base) is exceeded on Discord. The extra time comes with the
-analyses added in the sprint (window-option evaluation, bridge exposures, navigation handlers,
-storage wrappers, HTTP client requests, payload shapes); which of them costs how much is what the
-last profiling round measures. OPEN: its result.
+start (at most 15 % against the base) is exceeded on Discord.
+
+A last profiling round (0.9.6, `ccba870`) removed four repeated per-file passes with identical
+results: Discord 0.9.5 995 → 953 ms, Claude.app 8.4 → 7.5 s (interleaved against registry 0.8.0
+769 ms / 6.7 s; load 5–13). What remains against the base is, by CPU profile (Discord, self ms
+per run, 4 profiles each), one linear pass per file for each analysis added in the sprint:
+
+| Function                            | 0.8.0 | 0.9.5 | Analysis                                   |
+| ----------------------------------- | ----- | ----- | ------------------------------------------ |
+| `findCandidates`                    | 43    | 80    | HTTP clients, webpack module ids, storage  |
+| `privilegedBindings` + `privileged` | 0     | 39    | bridge exposures                           |
+| `navigationHandlers`                | 0     | 14    | navigation handlers                        |
+| `readWrappers`                      | 0     | 11    | IPC wrapper classes                        |
+| `innermostBlock`, `depthAt`         | 0     | 17    | bracket tables (once per file)             |
+| `memberWritten`, `storageKey`       | 0     | 17    | storage wrappers                           |
+| `webpackModule`                     | 0     | 8     | webpack module-id table                    |
+| `matches` (payload)                 | 0     | 8     | IPC payload shapes                         |
+| `Constants` (second instance)       | 19    | 30    | window-option evaluation                   |
+
+This is the cost of the new facts, not repeated work; it is justified as such here, and the
+remaining candidates (reusing the scan's `Constants` for the window evaluation, an identifier
+index for the reassigned-client loop) are next task 1.
 
 ## 6. Historical, development and blind results
 
@@ -145,8 +163,9 @@ same-size in-place edit of an app-folder file is not detected; table widths coun
 
 Next five tasks:
 
-1. Scan time against the sprint base: profile 0.8.0 against 0.9.5 on Discord and Claude.app and
-   remove repeated per-file work (see §5); the added analyses cost +21 % on Discord.
+1. Scan time against the sprint base (Discord +24 % against 0.8.0 on 0.9.6, see §5): reuse the
+   scan's `Constants` for the window-option evaluation where results stay identical, and index
+   identifiers for the reassigned-client loop.
 2. Wrapper calls across modules (storage and endpoints): follow an exported wrapper into the
    modules that import it, under the same strict rules.
 3. A third blind set before the next minor release, measured once on its release candidate.

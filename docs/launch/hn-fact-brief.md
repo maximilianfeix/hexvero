@@ -16,7 +16,7 @@ npx hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0
 ```
 
 Verify both commands from an empty directory on the release you link before posting (latest:
-0.9.5, checked 2026-10-17 17:35Z).
+0.9.6, checked 2026-10-17 18:14Z).
 
 ## Facts you can state (each with its source)
 
@@ -53,7 +53,9 @@ Verify both commands from an empty directory on the release you link before post
   channels 72/0/0, senders and receivers 131/9/0, window settings 17/35/0 over 4 inputs (0.9.0);
   0.9.1: window settings 32/20/0, window-setting changes v1→v2 1 of 2 (claims N2). Never quote
   these instead of, or mixed with, the blind 49 of 54 above.
-- Cost: Discord `analyze` median about +7 % (771 → 825 ms; a re-run gave 812 → 879 ms), Claude.app
+- Cost on 0.9.6: Discord `analyze --fresh` 769 ms (0.8.0) → 953 ms (+24 %), Claude.app 6.7 → 7.5 s,
+  peak memory not higher; say it, with the reason (one pass per added analysis, sprint report §5).
+- Earlier cost: Discord `analyze` median about +7 % (771 → 825 ms; a re-run gave 812 → 879 ms), Claude.app
   within noise; interleaved runs against 0.8.0 on one Apple M2 with other load.
 - Verify every row in `docs/launch/claims.md` (A1, A6–A8, N1–N6, B1–B5, E1–E3, F1–F2) on the release you link.
 - 0.9.5 shows the new payload field of the one changed IPC call in Fiddle (`NPM_ADD_MODULES` gains
