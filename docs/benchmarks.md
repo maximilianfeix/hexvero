@@ -277,6 +277,65 @@ Discord, Claude (also with `--all`), `examples/notesdesk-1.4.0.asar` and `notesd
 and `corpus/observe-hexvero.mjs` over the corpus: identical after removing `openedAt` and
 `durationMs`. `npm run corpus`: none worse, `corpus/results` unchanged.
 
+## Scan time after 0.9.6 (2026-10-17)
+
+**Problem.** 0.9.6 `analyze <discord> --json --fresh` was measured at 953 ms median against 769 ms
+for 0.8.0 (+24 %, interleaved, registry installs), Claude.app 7.5 s against 6.7 s.
+
+**Cause, by profile.** `node --cpu-prof` of one fresh analysis of Discord per process, self time per
+run (3 profiles of 0.9.6 at load 20.7 to 32, 5 after at load 41 to 47; at that load the absolute
+numbers are inflated and only the large differences mean something):
+
+| Function (packages/core/dist/javascript)                                          | 0.9.6  | after  |
+| --------------------------------------------------------------------------------- | ------ | ------ |
+| `Constants` constructor (aliases.js), self                                        | 66 ms  | 34 ms  |
+| `innermostBlock` + `depthAt` (+ `bracketTables` after; resolve.js), self          | 21 ms  | 18 ms  |
+| `findCandidates` (candidates.js), self                                            | 104 ms | 98 ms  |
+| `privilegedBindings` + `privileged` (app.js), self, V8 inlines one into the other | 76 ms  | 107 ms |
+
+The window-options evaluation of a scanned file built a second `Constants` of the same tokens
+(Discord's `bundle.js`, 654,380 tokens). It now reads the scan's instance through
+`withoutEvaluator()`: the tables the constructor builds are shared (nothing changes them after
+construction), and evaluator, `visible`, the evaluation caches and the exports an evaluation added
+are fresh, so it reads what a new instance reads. The bracket depths and parents of a token array
+are built in one pass instead of two. The reassigned-client check of the endpoint reader tests the
+shape of a write before the name, and, where the identifier index of the file is already built
+(it is for Discord's bundle), visits only the places of the declared names; the privileged-binding
+reader of the bridge keeps declarations and writes only for the names its rounds can record (a
+superset read by name, same order and rounds) and uses the same index for the writes. In-process,
+the bridge reader on Discord's bundle went from 40.5 to 37.6 ms (minimum of 15 interleaved runs,
+load 32.8), the per-file reader `readFileTokens` from 651 to 615 ms (minimum of 9, load 29.6).
+The privileged-binding row above did not go down in the profile; the profile spread at load 40+
+is larger than the change.
+
+**Result.** CLI, `analyze <app> --json --fresh`, a fresh process and an empty `HEXVERO_CACHE_DIR`
+per run, the three builds interleaved (registry installs of 0.8.0 and 0.9.6, this checkout's build
+`a886776`). The machine (Apple M2, 8 cores) was shared with other work during every run, at a
+1-minute load of 14 to 71, so wall times spread by up to 4×. CPU time (user + sys of the process and
+its workers, `/usr/bin/time -p`) is far less affected by that and is given as well:
+
+| Input, runs, load (min / median / max) | Measure | 0.8.0 median, runs (ms)                             | 0.9.6                                                         | after                                                         |
+| -------------------------------------- | ------- | --------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
+| Discord, 9, 33.7 / 39.5 / 43.1         | CPU     | 1,560: 1790 1360 1440 1670 1690 1750 1560 1420 1430 | 1,990 (+27.6 %): 2010 1570 1990 2060 2080 2710 1970 1720 1710 | 1,760 (+12.8 %): 1760 1630 1890 2000 2080 1760 1630 1580 1650 |
+| Discord, 9, 33.7 / 39.5 / 43.1         | wall    | 1,447: 2199 940 1406 1277 2132 1530 1560 1089 1447  | 1,740 (+20.2 %): 1740 961 1405 1770 1774 3736 1801 1060 1174  | 1,453 (+0.4 %): 1550 1202 1453 1720 2153 1517 1050 1011 1361  |
+| Claude, 5, 28.2 / 34.2 / 70.6          | CPU     | 33,390: 41320 33880 30580 33390 30920               | 40,680 (+21.8 %): 51500 47000 38120 40680 40570               | 41,070 (+23.0 %): 42950 35730 41540 39290 41070               |
+| Claude, 5, 28.2 / 34.2 / 70.6          | wall    | 18,632: 52650 17858 13615 20660 18632               | 31,213 (+67.5 %): 58059 26768 26179 34747 31213               | 21,569 (+15.8 %): 22207 19797 21569 24920 19402               |
+
+Discord's CPU time is within 15 % of 0.8.0 after the change (+12.8 % against +27.6 %). Claude did
+not change: its files are read by token workers, so the scan's tokens and constants are not in the
+thread that evaluates window options, and its files are small enough that the other changes do not
+show. What remains on both is the work 0.9.x added per file (the HTTP-client and privileged-binding
+readers, navigation handlers, wrapper methods, payload matching), each a linear pass or bounded
+by its own budget; no budget or limit was changed. These wall times are not comparable with the
+sections above, measured at load 6 to 17.
+
+**Same output.** From an empty cache and the same working directory, registry 0.9.6 and this
+build: `analyze --json --fresh` of Discord, Claude (also with `--all`), `examples/notesdesk-1.4.0.asar`
+and `notesdesk-1.5.0.asar`, and `export` of all four: identical after removing `openedAt`,
+`exportedAt` and `durationMs`. `corpus/observe-hexvero.mjs` with registry 0.9.6's core and with this
+build: identical observations (the `tool.commit` label differs). `npm run corpus`: none worse,
+`corpus/results` unchanged.
+
 ## Blind result on corpus/holdout3
 
 `corpus/holdout3` was written by an independent agent without access to hexvero's code or

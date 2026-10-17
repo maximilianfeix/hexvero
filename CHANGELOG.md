@@ -29,6 +29,15 @@ All notable changes to hexvero are listed here. The format follows
 - The compare view explains the `ipc` group (the calls whose payload changed on an existing
   channel), like every other list; before, the group had no line saying what it lists.
 
+### Performance
+
+- Analysis of a large single-bundle app uses less CPU than 0.9.6, with identical results: the
+  window-options evaluation shares the scan's constants of the file instead of reading them again,
+  the bracket depth and parent tables are built in one pass, and the reassigned-client and
+  privileged-binding checks visit only the names they ask about. Discord `analyze --fresh` CPU time
+  1,990 → 1,760 ms (0.8.0: 1,560 ms); Claude.app unchanged (median, interleaved, on a shared machine
+  at load 28 to 71; docs/benchmarks.md has the method and the raw runs).
+
 ## [0.9.6] - 2026-10-17
 
 ### Performance
