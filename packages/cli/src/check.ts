@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve as resolvePath } from "node:path";
 import {
   CHECK_EXIT,
   CORE_VERSION,
@@ -101,6 +102,7 @@ export function formatCheck(io: Io, r: PolicyResult): string {
         "dim",
         `  baseline ${safe(r.baseline.file)}: ${r.baseline.matched} finding(s) matched`,
       ),
+      ...(r.baseline.warnings ?? []).map((w) => `  ${paint(io, "yellow", "!")} ${safe(w)}`),
     );
   if (r.status === "fail" || r.status === "incomplete")
     lines.push(
@@ -199,6 +201,8 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
   let result = await checkRelease(session, a.id, b.id, policy, { baseline });
   if (update && baselineFile) {
     const written = createBaseline(result);
+    // a baseline usually lives in a directory of its own (.hexvero/baseline.json): create it
+    await mkdir(dirname(resolvePath(baselineFile)), { recursive: true });
     await writeFile(baselineFile, `${JSON.stringify(written, null, 2)}\n`);
     const loaded = parseBaseline(JSON.stringify(written), baselineFile);
     result = await checkRelease(session, a.id, b.id, policy, { baseline: loaded });
@@ -220,5 +224,9 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
       `${paint(io, "bold", "hexvero check")} ${STATUS_TEXT[result.status]} · ${result.findings.length} finding(s) · ${safe(out)}`,
     );
   } else io.out(text);
+  // Text output lists them itself; with another format they go to stderr, not into the data.
+  if (format !== "text" || out)
+    for (const w of result.baseline?.warnings ?? [])
+      io.err(`${paint(io, "yellow", "warning:")} ${safe(w)}`);
   return CHECK_EXIT[result.status];
 }

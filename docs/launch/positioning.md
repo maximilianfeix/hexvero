@@ -1,9 +1,10 @@
 # Positioning (one page)
 
-**Headline:** Know what changed inside your app.
+**Headline (0.9.0):** Know what changed inside your Electron release.
 
-**Subline:** Inspect Electron apps and binaries, trace findings to their source, and compare
-releases. Locally, without executing the target.
+**Subline:** The interfaces pages can call, window settings and network hosts that changed
+between two builds, with the file and line on both sides, what could not be established, and a
+policy gate for CI. Locally, without executing the target. (Claims: [claims.md](claims.md) P4.)
 
 ## Who it is for
 
@@ -36,17 +37,20 @@ changed between two builds with the line behind each change.
 
 ## Numbers you may quote (with their source)
 
-- Newest blind set `holdout4` (measured once with 0.7.3): 12 of 57 IPC channels, 36 of 48 window
-  settings with 4 false, bridge members 66 of 66, 5 of 8 version changes. Source:
-  `corpus/holdout4/README.md`. Always quote the misses with the hits.
-- MCP catalog: 15 tools; session start about 3,800 tokens with `o200k_base`
-  (`node scripts/context-cost.mjs`, README table). Re-run before quoting.
+- Newest blind set `holdout5` (round 4, measured once on 2026-10-17): IPC channels 49 of 54 with
+  none false, bridge members 57 of 57, window settings 14 of 39; of the 8 expected changes to v2: channels
+  3 of 4, bridge members 4 of 4, window settings 0 of 2, endpoints 1 of 1. Source: `corpus/results/round4/README.md`.
+  Always quote the misses with the hits. (`holdout4`, 0.7.3: 12 of 57 channels.)
+- MCP catalog: 16 tools, `tools/list` 15,637 bytes; session start 17,847 bytes, 4,158 tokens with
+  `o200k_base` (`node scripts/context-cost.mjs`, 2026-10-17). Re-run before quoting.
 
 ## Do not claim
 
 - "secure", "safe", "malicious", "vulnerable" verdicts; that a static finding shows run-time
   behavior or exploitability.
 - "complete", "finds all IPC", "replaces Ghidra/REA/Electronegativity".
+- "first" or "only" tool that compares versions: REA documents `compare_application_versions`
+  (`docs/competitive/matrix-2026-10-17.md`). No market-leadership claim.
 - Any user, star or download count as an achievement; any speed comparison not re-measured.
 - "Never executes, so it is safe to open anything": parsing hostile bytes is still a risk.
 - "No network" without the cloud-agent caveat.

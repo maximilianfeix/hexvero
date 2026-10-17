@@ -14,6 +14,7 @@ import {
   compareItems,
   positionalFields,
   type CompareCompleteness,
+  type CompareOptions,
   type CompareResult,
   type SideCoverage,
   type UnresolvedFamily,
@@ -139,6 +140,8 @@ export interface CompareCollectionOptions {
   strict?: boolean | undefined;
   /** Resource limit per side (default `COMPARE_BUDGET`); for tests and callers with less room. */
   budget?: CompareBudget | undefined;
+  /** See `CompareOptions.onOneSided`. */
+  onOneSided?: CompareOptions["onOneSided"];
 }
 
 export interface StringsQuery extends CollectionQuery {
@@ -471,6 +474,7 @@ export class Session {
       coverage: { a: await this.coverage(idA), b: await this.coverage(idB) },
       cut: { a: partA.length < allA.length, b: partB.length < allB.length },
       total: { a: allA.length, b: allB.length },
+      onOneSided: options.onOneSided,
     });
     return { diff, left, right };
   }

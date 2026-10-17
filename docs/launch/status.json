@@ -55,15 +55,15 @@
       "status": "draft",
       "url": null,
       "date": "2026-10-17",
-      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md)."
+      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md). Updated for 0.9.0 facts on 2026-10-17 (holdout5, check); verify npx hexvero@0.9.0 demo/check before posting."
     },
     {
       "channel": "punkpeye/awesome-mcp-servers",
       "item": "list entry",
       "status": "blocked",
       "url": null,
-      "date": "2026-10-16",
-      "evidence": "Requires a Glama score badge; glama.ai/mcp/servers/maximilianfeix/hexvero returned 404."
+      "date": "2026-10-17",
+      "evidence": "Re-checked 2026-10-17: CONTRIBUTING HEAD 8a8b37d, check-glama.yml requires a Glama link; glama.ai/mcp/servers/maximilianfeix/hexvero returned 404."
     },
     {
       "channel": "sindresorhus/awesome-electron",
@@ -80,6 +80,70 @@
       "url": "https://github.com/doyensec/awesome-electronjs-hacking",
       "date": "2026-10-14",
       "evidence": "PR merged 2026-10-14; README lists hexvero under Open-Source & Commercial Tools"
+    },
+    {
+      "channel": "npm",
+      "item": "hexvero 0.9.0",
+      "status": "blocked",
+      "url": null,
+      "date": "2026-10-17",
+      "evidence": "Not released: waits for the merge of sprint/10h and npm run release -- 0.9.0 (lead). npx hexvero@0.8.0 check answers 'unknown command \"check\"'."
+    },
+    {
+      "channel": "GitHub release",
+      "item": "v0.9.0 notes",
+      "status": "draft",
+      "url": null,
+      "date": "2026-10-17",
+      "evidence": "docs/launch/release-notes-0.9.0.md and CHANGELOG Unreleased; every claim in docs/launch/claims.md, run on f964a0f."
+    },
+    {
+      "channel": "Website",
+      "item": "0.9.0 landing page: release gate, interface map, HTML report example",
+      "status": "ready",
+      "url": null,
+      "date": "2026-10-17",
+      "evidence": "site/ on branch sprint/f-launch; node scripts/build-site-demo.mjs --check passes; checked at 1440 and 390 px, light and dark, no horizontal scroll (Playwright). Deploys on merge to main."
+    },
+    {
+      "channel": "Official MCP registry",
+      "item": "server.json 0.9.0",
+      "status": "blocked",
+      "url": "https://registry.modelcontextprotocol.io/v0/servers?search=hexvero",
+      "date": "2026-10-17",
+      "evidence": "0.8.0 is listed as latest; 0.9.0 is published by the mcp-registry workflow after the release."
+    },
+    {
+      "channel": "X",
+      "item": "0.9.0 post with the 25 s release-gate video",
+      "status": "draft",
+      "url": null,
+      "date": "2026-10-17",
+      "evidence": "docs/launch/posts.md section 'X: 0.9.0'; video docs/demo/release-gate.mp4 (25.2 s). Post after 0.9.0 is on npm; publishing is the maintainer's click."
+    },
+    {
+      "channel": "Second technical article",
+      "item": "A release gate for Electron apps",
+      "status": "draft",
+      "url": null,
+      "date": "2026-10-17",
+      "evidence": "docs/launch/article.md; not for DEV (first article published there); venue to be chosen by the maintainer."
+    },
+    {
+      "channel": "Lobsters",
+      "item": "second article",
+      "status": "blocked",
+      "url": "https://lobste.rs/about",
+      "date": "2026-10-17",
+      "evidence": "Invitation-only; new users cannot submit unseen domains for 70 days (read 2026-10-17)."
+    },
+    {
+      "channel": "Console.dev",
+      "item": "newsletter submission",
+      "status": "draft",
+      "url": "https://console.dev/selection-criteria",
+      "date": "2026-10-17",
+      "evidence": "Submission is an email to hello@console.dev from the maintainer after 0.9.0."
     }
   ]
 }

@@ -1,7 +1,8 @@
 /**
  * `hexvero_check` (the release policy over MCP) and per-list paging of `hexvero_compare`.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -200,9 +201,100 @@ describe("hexvero_check", () => {
     const path = join(dir, "no-such-policy.json");
     const r = await call("hexvero_check", { targetA: a, targetB: b, policyPath: path });
     expect(r.ok).toBe(false);
-    expect(r.body["error"]).toMatchObject({ code: "not_found", details: { path } });
+    expect(r.body["error"]).toMatchObject({ code: "not_found" });
+    expect((r.body["error"] as { details: { path: string } }).details.path).toMatch(
+      /no-such-policy\.json$/,
+    );
     const notFile = await call("hexvero_check", { targetA: a, targetB: b, policyPath: dir });
     expect(notFile.body["error"]).toMatchObject({ code: "invalid_input" });
+  });
+
+  it("reads policy and baseline files only inside the allowed directories", async () => {
+    const roots = mkdtempSync(join(tmpdir(), "hexvero-roots-"));
+    const elsewhere = mkdtempSync(join(tmpdir(), "hexvero-elsewhere-"));
+    const previous = process.env["HEXVERO_WRITE_ROOTS"];
+    process.env["HEXVERO_WRITE_ROOTS"] = roots;
+    try {
+      const policyText = readFileSync(policyPath, "utf8");
+      const outside = join(elsewhere, "policy.json");
+      writeFileSync(outside, policyText);
+      const refused = await call("hexvero_check", { targetA: a, targetB: b, policyPath: outside });
+      expect(refused.body["error"]).toMatchObject({ code: "invalid_input" });
+      expect((refused.body["error"] as { message: string }).message).toContain(
+        "outside the allowed directories",
+      );
+      const baselineOutside = await call("hexvero_check", {
+        targetA: a,
+        targetB: b,
+        policy: examplePolicy,
+        baselinePath: join(elsewhere, "baseline.json"),
+      });
+      expect((baselineOutside.body["error"] as { message: string }).message).toContain(
+        "outside the allowed directories",
+      );
+      // a symlink inside a root that leads out of it is judged by where it leads
+      const link = join(roots, "policy.json");
+      symlinkSync(outside, link);
+      const viaLink = await call("hexvero_check", { targetA: a, targetB: b, policyPath: link });
+      expect((viaLink.body["error"] as { message: string }).message).toContain(
+        "outside the allowed directories",
+      );
+      // only .json files are read
+      writeFileSync(join(roots, "policy.txt"), policyText);
+      const txt = await call("hexvero_check", {
+        targetA: a,
+        targetB: b,
+        policyPath: join(roots, "policy.txt"),
+      });
+      expect((txt.body["error"] as { message: string }).message).toContain("must end in .json");
+      // the directory of an opened target is readable: a policy next to the builds it checks
+      writeFileSync(
+        join(elsewhere, "app.asar"),
+        buildAsar({ "package.json": JSON.stringify({ name: "beside", main: "main.js" }) }),
+      );
+      await session.open(join(elsewhere, "app.asar"));
+      const beside = await call("hexvero_check", { targetA: a, targetB: b, policyPath: outside });
+      expect(beside.body["status"]).toBe("fail");
+    } finally {
+      if (previous === undefined) delete process.env["HEXVERO_WRITE_ROOTS"];
+      else process.env["HEXVERO_WRITE_ROOTS"] = previous;
+      rmSync(roots, { recursive: true, force: true });
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("never quotes a file it could not use", async () => {
+    const notJson = join(dir, "secret.json");
+    writeFileSync(notJson, "{\n  TOKEN=s3cr3t-value\n}");
+    const r = await call("hexvero_check", { targetA: a, targetB: b, policyPath: notJson });
+    expect(r.body["error"]).toMatchObject({ code: "invalid_input" });
+    expect((r.body["error"] as { message: string }).message).toMatch(
+      /not valid JSON at line 2 col 3$/,
+    );
+    expect(r.text).not.toContain("s3cr3t");
+    expect(r.text).not.toContain("TOKEN");
+    const otherJson = join(dir, "config.json");
+    writeFileSync(otherJson, JSON.stringify({ apiKey: "s3cr3t-value", hexvero: "x" }));
+    for (const field of ["policyPath", "baselinePath"]) {
+      const o = await call("hexvero_check", {
+        targetA: a,
+        targetB: b,
+        ...(field === "policyPath" ? {} : { policy: examplePolicy }),
+        [field]: otherJson,
+      });
+      expect(o.body["error"]).toMatchObject({ code: "invalid_input" });
+      expect((o.body["error"] as { message: string }).message).toContain("is not a hexvero");
+      expect(o.text).not.toContain("s3cr3t");
+      expect(o.text).not.toContain("apiKey");
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("refuses a FIFO without blocking on it", async () => {
+    const fifo = join(dir, "fifo.json");
+    execFileSync("mkfifo", [fifo]);
+    const r = await call("hexvero_check", { targetA: a, targetB: b, policyPath: fifo });
+    expect(r.body["error"]).toMatchObject({ code: "invalid_input" });
+    expect((r.body["error"] as { message: string }).message).toContain("not a regular file");
   });
 
   it("keeps a large result within its byte budget and pages the findings", async () => {

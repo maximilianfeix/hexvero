@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { compareReleases, renderReleaseReport, Session } from "../src/index.js";
+import { changeRowId, rowIds } from "../src/report.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 const dir = mkdtempSync(join(tmpdir(), "hexvero-report-"));
@@ -47,6 +48,14 @@ async function pair(): Promise<{ session: Session; a: string; b: string }> {
   const b = await session.open(join(dir, "v2.asar"));
   return { session, a: a.id, b: b.id };
 }
+
+/** A row of the id test: what it is about, and the content its repeats are ordered by. */
+const keyedRow = (key: string, order: string) => ({
+  collection: "storage",
+  change: "added" as const,
+  key,
+  order,
+});
 
 describe("release comparison", () => {
   it("places every change at the file and line of the side it was read on", async () => {
@@ -151,6 +160,63 @@ describe("release comparison", () => {
     await expect(compareReleases(session, a, b, { limit: Number.NaN })).rejects.toMatchObject({
       code: "invalid_input",
     });
+  });
+
+  it("gives repeated identities their own ids and their own places", async () => {
+    // `api.go` exposed by several preload scripts: the bridge identity is api+member, so the
+    // rows of b.js and c.js share a key; and a build that is the first to have a bridge at all
+    const session = new Session();
+    const open = async (name: string, preloads: string[]): Promise<string> => {
+      const files: Record<string, string> = {
+        "package.json": JSON.stringify({ name: "dup", version: "1.0.0", main: "main.js" }),
+        "main.js": 'require("electron");',
+      };
+      for (const p of preloads)
+        files[p] = [
+          'const { contextBridge, ipcRenderer } = require("electron");',
+          `contextBridge.exposeInMainWorld("api", { go: () => ipcRenderer.invoke("go"), ${p[0]}: () => 1 });`,
+        ].join("\n");
+      writeFileSync(join(dir, name), buildAsar(files));
+      return (await session.open(join(dir, name))).id;
+    };
+    const none = await open("d0.asar", []);
+    const one = await open("d1.asar", ["a.js"]);
+    const three = await open("d3.asar", ["a.js", "b.js", "c.js"]);
+    for (const [a, b, files] of [
+      [one, three, ["b.js", "c.js"]],
+      [none, three, ["a.js", "b.js", "c.js"]],
+    ] as const) {
+      const rows = (await compareReleases(session, a, b)).changes.filter(
+        (c) => c.collection === "contextBridge",
+      );
+      expect(
+        rows.filter((r) => r.key === "api::go").map((r) => [r.change, r.where[0]?.file]),
+      ).toEqual(files.map((f) => ["added", f]));
+      const ids = rows.map((r) => r.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      // the first occurrence keeps the C3 formula, so ids of rows without repeats do not move
+      expect(ids).toContain(changeRowId("contextBridge", "added", "api::go"));
+      const again = await compareReleases(session, a, b);
+      expect(again.changes.map((r) => r.id)).toEqual(
+        (await compareReleases(session, a, b)).changes.map((r) => r.id),
+      );
+    }
+  });
+
+  it("numbers rows whose identity repeats in an order that does not depend on input order", () => {
+    const rows = [
+      keyedRow("k::null", '{"op":"set"}'),
+      keyedRow("other", "x"),
+      keyedRow("k::null", '{"op":null}'),
+    ];
+    const ids = rowIds(rows);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids[1]).toBe(changeRowId("storage", "added", "other"));
+    // the lower canonical form (`{"op":"set"}` before `{"op":null}`) gets the C3 formula,
+    // whatever position it had
+    expect(ids[0]).toBe(changeRowId("storage", "added", "k::null"));
+    expect(ids[2]).not.toBe(ids[0]);
+    expect(rowIds(rows.toReversed())).toEqual(ids.toReversed());
   });
 
   it("quotes target text so it cannot break out of its code span or row", () => {

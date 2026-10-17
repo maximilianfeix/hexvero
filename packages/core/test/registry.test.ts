@@ -542,3 +542,159 @@ describe("a registry function of another module, without bundling", () => {
     expect(message).toContain("another module");
   });
 });
+
+/** The channel of an IPC call whose channel argument is the given literal. */
+const literalAt = (literal: string) =>
+  scanJavaScript(`const { ipcMain } = require("electron");\nipcMain.on(${literal}, g);`).ipc[0]!
+    .channel;
+
+/**
+ * Review findings: each case is what the code really does at run time; the evaluation must report
+ * that channel or nothing (null), never another one. A false channel is worse than a miss.
+ */
+const truthOrNothing = (source: string, truth: string | null): void => {
+  const row = scanJavaScript(
+    `const { ipcMain } = require("electron");\n${source}\nipcMain.on(T.x, g);`,
+  ).ipc[0]!;
+  expect([truth, null]).toContain(row.channel);
+};
+
+describe("review: no false channel from the evaluation", () => {
+  it(
+    "H1: counts every quantifier, also on an escaped backslash, and charges regex work",
+    {
+      timeout: 3000,
+    },
+    () => {
+      const lit = `/${"\\\\?".repeat(20)}${"\\\\".repeat(12)}/g`;
+      expect(simpleRegex(lit)).toBeNull();
+      expect(simpleRegex("/\\\\?x/g")).not.toBeNull(); // one quantified atom
+      expect(simpleRegex("/a?\\??/g")).toBeNull(); // two, one of them an escaped `?`
+      const subject = ("\\\\".repeat(11) + "x").repeat(80);
+      const started = performance.now();
+      const row = scan(
+        `function f() { const o = {}; o.x = "${subject}"${`.replace(${lit}, "y")`.repeat(20)}; return o; }\nconst T = f();`,
+      );
+      expect(performance.now() - started).toBeLessThan(1500);
+      expect(row.channel).toBeNull();
+    },
+  );
+
+  it("H2: stops when an expression it cannot read may have effects", () => {
+    const cases: Array<[string, string | null]> = [
+      [
+        `function f(){ const parts = ["a"]; const n = parts.push("b"); const o = {}; o.x = parts.join(":"); return o; }\nconst T = f();`,
+        "a:b",
+      ],
+      [
+        `function f(){ const o = {x:"a"}; const z = Object.assign(o, {x:"b"}); return o; }\nconst T = f();`,
+        "b",
+      ],
+      [
+        `function f(){ let s = "a"; const z = (s = "b"); const o = {}; o.x = s; return o; }\nconst T = f();`,
+        "b",
+      ],
+      [`function f(){ const o = {x:"a"}; const d = delete o.x; return o; }\nconst T = f();`, null],
+      [
+        `function add(o){ o.x = "b"; } function f(){ const o = {x:"a"}; const r = add(o); return o; }\nconst T = f();`,
+        "b",
+      ],
+      [
+        `function f(){ const a = ["a"]; const b = a; const n = b.push("c"); const o = {}; o.x = a.join(); return o; }\nconst T = f();`,
+        "a,c",
+      ],
+      [
+        `function add(o){ o.x = "b"; return "k"; } function pick(a){ return a; } function f(){ const o = {x:"a"}; o.y = pick("k", add(o)); return o; }\nconst T = f();`,
+        "b",
+      ],
+    ];
+    for (const [source, truth] of cases) truthOrNothing(source, truth);
+  });
+
+  it("M1: a var declared again in a nested block or loop is the function's variable", () => {
+    truthOrNothing(
+      `function f(){ var s = "a"; { var s = "b"; } const o = {}; o.x = s; return o; }\nconst T = f();`,
+      "b",
+    );
+    truthOrNothing(
+      `function f(){ var s = "a"; for (const p of ["b"]) { var s = p; } const o = {}; o.x = s; return o; }\nconst T = f();`,
+      "b",
+    );
+  });
+
+  it("M2: a const of an inner block does not reach the code after the block", () => {
+    truthOrNothing(
+      `const N = "top"; function make(){ const o = {}; { const N = "inner"; } o.x = N; return o; }\nconst T = make();`,
+      "top",
+    );
+    // inside its own block it is the inner one
+    expect(
+      channels(`function f() { if (ok) { const ch = "in:block"; ipcMain.on(ch, g); } }`),
+    ).toEqual(["in:block"]);
+  });
+
+  it("M3: keeps the key order JavaScript has", () => {
+    truthOrNothing(
+      `function f(){ const o = {a:"1", b:"2"}; o.a = "3"; const r = {}; for (const k in o) r.x = k; return r; }\nconst T = f();`,
+      "b",
+    );
+    truthOrNothing(
+      `function f(){ const o = {b:"1", "2":"2"}; const r = {}; for (const k in o) r.x = k; return r; }\nconst T = f();`,
+      "b",
+    );
+    truthOrNothing(
+      `function f(){ const o = Object.fromEntries([["a","1"],["b","2"],["a","3"]]); const r = {}; for (const k in o) r.x = k; return r; }\nconst T = f();`,
+      "b",
+    );
+    truthOrNothing(
+      `function f(){ const o = {a:"1", b:"2", a:"3"}; const r = {}; for (const k in o) r.x = k; return r; }\nconst T = f();`,
+      "b",
+    );
+  });
+
+  it("M6: does not evaluate async functions or generators as returning their object", () => {
+    truthOrNothing(
+      `async function f(){ const r = {}; r.x = "a"; return r; }\nconst T = f();`,
+      null,
+    );
+    truthOrNothing(`function* f(){ const r = {}; r.x = "a"; return r; }\nconst T = f();`, null);
+    truthOrNothing(
+      `const f = async () => { const r = {}; r.x = "a"; return r; };\nconst T = f();`,
+      null,
+    );
+  });
+
+  it("L1: a table changed after it was built is not read", () => {
+    const F = `function f(){ const o = {}; o.x = "a"; return o; }\n`;
+    for (const after of [
+      `const U = T; U.x = "changed";`,
+      "mutate(T);",
+      "delete T.x;",
+      'T.x += "changed";',
+    ])
+      truthOrNothing(`${F}const T = f();\n${after}`, null);
+  });
+
+  it("L1: a table that is only read elsewhere stays known", () => {
+    const F = `function f(){ const o = {}; o.x = "a"; return o; }\nconst T = f();\n`;
+    const at = (after: string) =>
+      scanJavaScript(`const { ipcMain } = require("electron");\n${F}${after}\nipcMain.on(T.x, g);`)
+        .ipc[0]!.channel;
+    expect(at("const C = Object.assign({}, T, { y: 1 });")).toBe("a");
+    expect(at("new Notification({ body: T });")).toBe("a");
+    expect(at("function read(t) { return t.x; }\nread(T);")).toBe("a");
+    expect(at('function write(t) { t.x = "b"; }\nwrite(T);')).toBeNull();
+    expect(at("Object.assign(T, { x: 1 });")).toBeNull();
+    expect(at("class Box { constructor(t) { t.x = 1; } }\nnew Box(T);")).toBeNull();
+  });
+
+  it("L3: decodes escapes in string literals", () => {
+    expect(literalAt(String.raw`"a\x41"`)).toBe("aA");
+    expect(literalAt('"a\\u0041"')).toBe("aA");
+    expect(literalAt(String.raw`"a\u{41}"`)).toBe("aA");
+    expect(literalAt('"a\\\nb"')).toBe("ab");
+    expect(literalAt(String.raw`'a\0b'`)).toBe("a\0b");
+    expect(literalAt(String.raw`"a\nb"`)).toBe("a\nb");
+    expect(literalAt(String.raw`"a\\b"`)).toBe("a\\b");
+  });
+});

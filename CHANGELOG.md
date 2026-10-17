@@ -29,6 +29,45 @@ All notable changes to hexvero are listed here. The format follows
   file), and the scope lookups behind the wrapper search are cached and charged to the
   resolver's budget, so hostile inputs stay linear (`completeness.test.ts`). Stored scans of the earlier format are read again (`JS_SCAN_SCHEMA` 7).
 
+### Comparing releases
+
+- `compare` covers whole lists (up to 200,000 items or 256 MiB serialized per side, said when
+  not) instead of the first 2,000 items per side, and every comparison reports its
+  `completeness` per list (compared, total, gaps).
+- An item found on one side only is `unknown`, not `removed` or `added`, when the other build did
+  not read its file or has a value of the same kind there that could not be resolved (an IPC
+  call without a readable channel, a computed window setting, a URL with `${…}`), with that
+  reason.
+- Release comparisons are paged (`--report <file> --offset n --limit n`, `/api/compare`), rows
+  carry stable ids, and changed rows carry the place in the before build (`whereBefore`), so a
+  change is shown with the file and line on both sides.
+- `--report report.html` (or `.htm`): one self-contained, offline page with the summary, the
+  window settings to review, each change with the source lines of both builds, what was not
+  established and the command to reproduce it; filters run in one inline script allowed by a
+  strict CSP, all target text is escaped and bidi or invisible characters are written out.
+- Less noise: an interface row whose only difference is its `reason` text is unchanged, and
+  findings are matched by kind and location, so a reworded title is not an added and a removed
+  finding (both seen on Electron Fiddle 0.38.0 → 0.39.0).
+
+### Web UI
+
+- Compare view as a reviewer workspace: a summary bar of facts, filters for change kind, list and
+  basis kept in the URL, an evidence panel with the lines of the build before and after side by
+  side, "N of M shown" with Load more, keyboard navigation. The session token moves from the
+  address bar to storage on load.
+- Interface map tab for JavaScript apps: window → preload member → channel → main-process
+  handler, each edge saying whether it was read as a literal, resolved, or not read (with the
+  reason); every node opens its file and line.
+
+### Reading Electron apps and files
+
+- Entries an ASAR marks as unpacked are read from `<archive>.unpacked/` next to the archive,
+  confined like a directory target; when that directory is missing, the limitation says so
+  instead of "too large or could not be decoded". The scan cache key covers those files.
+- Target files are read through one descriptor that refuses anything but a regular file
+  (`O_NONBLOCK`, `O_NOFOLLOW`, same-inode check after open), so a FIFO cannot block an analysis
+  and a link swapped in after the check cannot lead out of the root.
+
 ### MCP
 
 - `hexvero_check` (16th tool, read-only): the release policy check over MCP with an inline
@@ -40,6 +79,15 @@ All notable changes to hexvero are listed here. The format follows
 - Catalog: 16 tools, `tools/list` 15,637 bytes (was 14,156 with 15 tools).
 
 ### Release policies
+
+- Review fixes: `window-more-permissive` also judges new and renamed windows by their own
+  settings (a removed window with the same setting makes it unknown); hosts and members the
+  before build already had (another file, another path) are not new; a target that is not a
+  JavaScript application, or two of different kinds, is refused with exit 1 instead of passing;
+  SARIF paths start with `hexvero-build/<side>/<archive>/` so they cannot land on repository
+  files; URL values lose control characters as in WHATWG URL before their host is read;
+  unknown findings get their own fingerprints; a baseline written for another policy or before
+  build is reported; a check compares the builds once however many pages it reads.
 
 - `hexvero check <before> <after> --policy <file>` applies a JSON release policy to the
   comparison of two builds: `new-interface-member` (a member pages can call that is new),
@@ -78,6 +126,13 @@ All notable changes to hexvero are listed here. The format follows
   are named with that reason. The evaluation is bounded on hostile input: regular expressions
   with at most one quantified atom, strings of at most 1,000 characters, at most 64 nested
   blocks, and an exception inside it ends that question with a reason, not the analysis.
+  It also stops, rather than guess, when an expression it cannot read may have effects (a call,
+  an assignment, `delete`), at `var` inside a block, at `async` functions and generators, at
+  integer-like and `__proto__` keys, and when a built table is aliased, `delete`d or passed to
+  code that may change it; keys keep the order JavaScript gives them, and a block's `const` no
+  longer reaches past its block.
+- String and template literals decode `\x41`, `\u0041`, `\u{41}`, `\0`, octal escapes and line
+  continuations as JavaScript does (before, `"a\x41"` was read as `ax41`).
 - Interface rows (C4) compute `direction` and `link` from every matching end and say how many
   there are: `endsTotal`, `endsTruncated`; `ends` keeps the first 20 as evidence.
 - Hold-out results improved with no new false report: window settings read through bundled
@@ -97,6 +152,15 @@ All notable changes to hexvero are listed here. The format follows
   changes with places, a section for what could not be established, and the command to
   reproduce it. Deterministic (no dates, no directories); text from the targets is quoted so it
   cannot add links, HTML or a shell command of its own. Refuses to overwrite without `--force`.
+- `hexvero compare <a> <b> --report report.html` (or `.htm`) writes the same comparison as one
+  self-contained, offline HTML page: summary, window settings to review, changes per list with
+  sign and word, before/after places with the seven source lines around each (at most 200
+  excerpts and 250,000 characters, said when cut), completeness gaps, "Not established", "N of M
+  rows shown" and the reproduce command. Filters by kind, list and text run in one inline script
+  allowed by its sha256 in a strict Content-Security-Policy (`default-src 'none'`); the page reads
+  the same with JavaScript off, loads nothing and links nothing from target text. Target text is
+  escaped, and bidi, zero-width and control characters show as `⟨U+202E⟩`. Other extensions
+  still write Markdown; `--force`, `--offset` and `--limit` apply to both.
 - A list one build does not have at all (the first endpoint, the first storage key) is now
   reported row by row as added or removed, or as unknown when the other build was read only in
   part. Before, the comparison only said "only in b: endpoints".

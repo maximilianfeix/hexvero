@@ -90,6 +90,14 @@ export {
   reduceItem,
 } from "./paging.js";
 export {
+  collectReleaseSources,
+  escapeHtml,
+  MAX_HTML_EXCERPTS,
+  MAX_HTML_EXCERPT_CHARS,
+  placeKey,
+  renderReleaseReportHtml,
+} from "./htmlReport.js";
+export {
   compareReleases,
   renderReleaseReport,
   type ChangeRow,

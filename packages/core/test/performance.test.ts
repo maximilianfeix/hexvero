@@ -80,7 +80,8 @@ describe("JavaScript scan performance", () => {
       "y",
     ]);
     // an unterminated string ends at the line end and keeps everything up to it
-    expect(tokenize('"abc\\n').tokens[0]?.value).toBe("abcn");
+    // (with its escapes decoded: `\n` is a line break)
+    expect(tokenize('"abc\\n').tokens[0]?.value).toBe("abc\n");
     expect(tokenize('"ab\ncd"').tokens[0]?.value).toBe("ab");
   });
 

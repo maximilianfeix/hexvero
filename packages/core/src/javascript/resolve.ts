@@ -196,7 +196,7 @@ export function simpleRegex(literal: string): RegExp | null {
   const [, body, flags] = m as unknown as [string, string, string];
   if (!/^[gi]*$/.test(flags) || new Set(flags).size !== flags.length) return null;
   const ATOM =
-    /^(?:\[\^?(?:\\[^\n]|[^\\\][])+\]|\\[dDwWsS\\/.\-_:^$*+?()[\]{}|]|[^\\[\](){}|*+?^$])[*+?]?/;
+    /^(?:\[\^?(?:\\[^\n]|[^\\\][])+\]|\\[dDwWsS\\/.\-_:^$*+?()[\]{}|]|[^\\[\](){}|*+?^$])([*+?])?/;
   let rest = body;
   if (rest.startsWith("^")) rest = rest.slice(1);
   if (rest.endsWith("$") && !rest.endsWith("\\$")) rest = rest.slice(0, -1);
@@ -206,7 +206,8 @@ export function simpleRegex(literal: string): RegExp | null {
   for (let atoms = 0; rest.length; atoms++) {
     const a = ATOM.exec(rest);
     if (!a || atoms >= 32) return null;
-    if (/[*+?]$/.test(a[0]) && !a[0].endsWith("\\?") && ++quantified > 1) return null;
+    // the quantifier is its own group, so an escaped `\?` or `\\` before it is still counted
+    if (a[1] !== undefined && ++quantified > 1) return null;
     rest = rest.slice(a[0].length);
   }
   try {
@@ -235,6 +236,10 @@ const product = (parts: string[][]): string[] | null => {
   return out;
 };
 
+/** An array-index key (ordered first by JavaScript) or `__proto__`: not modeled. */
+const unordered = (key: string): boolean =>
+  key === "__proto__" || (/^(0|[1-9]\d{0,9})$/.test(key) && Number(key) < 2 ** 32 - 1);
+
 /** Every local name a parameter list binds. */
 function paramNames(params: Param[]): string[] {
   const out: string[] = [];
@@ -256,7 +261,14 @@ interface Structure {
   /** First plain block function per name, and every function by the token of its parameters. */
   defsByName: Map<string, FnDef> | null;
   defsByParams: Map<number, FnDef> | null;
-  declCache: Map<string, { range: [number, number] | null } | null>;
+  /**
+   * Per function and name: its declarations and writes in the body. `scope`: for a `const`,
+   * `let` or `class` of an inner block, the token range it is visible in (null: the function's).
+   */
+  declCache: Map<
+    string,
+    Array<{ j: number; weight: number; init: boolean; scope: [number, number] | null }>
+  >;
   topDecls: Map<string, [number, number] | null> | null;
   topPatterns: Map<string, { key: string; from: [number, number] } | null>;
   classes: Array<{ name: string; start: number; end: number }> | null;
@@ -305,6 +317,10 @@ export class ExpressionResolver {
   private bodyWork = 500_000;
   /** How many bodies are being evaluated right now (nested calls). */
   private inBody = 0;
+  /** Blocks and loop bodies the statement being run is in, inside its own function. */
+  private blocks = 0;
+  /** An expression that may have had effects could not be read in the current question. */
+  private effectUnknown = false;
 
   constructor(
     private readonly tokens: Token[],
@@ -382,6 +398,7 @@ export class ExpressionResolver {
     this.budget = budget;
     this.why = null;
     this.statements = 0;
+    this.effectUnknown = false;
   }
 
   private is(k: number, type: Token["type"], value?: string): boolean {
@@ -575,10 +592,270 @@ export class ExpressionResolver {
   private topValueIn(name: string, at?: number): Val | null {
     const decl = this.topDeclarations().get(name);
     if (decl === null) return null;
-    if (decl) return this.evalRange(decl[0], decl[1], new Map(), 0);
+    if (decl)
+      return this.unlessChanged(
+        name,
+        decl[0] - 2,
+        this.evalRange(decl[0], decl[1], new Map(), 0),
+        0,
+        this.tokens.length,
+        null,
+      );
     // `var a = 1, NAME = …`, as minifiers write declarations
     if (at === undefined || this.writtenElsewhere(name, at - 2)) return null;
-    return this.evalRange(at, this.exprEnd(at), new Map(), 0);
+    return this.unlessChanged(
+      name,
+      at - 2,
+      this.evalRange(at, this.exprEnd(at), new Map(), 0),
+      0,
+      this.tokens.length,
+      null,
+    );
+  }
+
+  /** The value, unless it is an object or a list the code may change after building it. */
+  private unlessChanged(
+    name: string,
+    decl: number,
+    value: Val | null,
+    from: number,
+    to: number,
+    owner: FnDef | null,
+  ): Val | null {
+    if (value && (value.kind === "obj" || value.kind === "arr" || value.kind === "map"))
+      if (this.escapes(name, decl, from, to, owner))
+        return this.stop("the value may be changed after it was built");
+    return value;
+  }
+
+  /**
+   * For a value built by code (a call, an IIFE): whether the name declared at `decl` is used in
+   * [from, to) in a way that may change it after it was built: aliased, passed to a function,
+   * `delete`d, written with `+=`/`++`. Reading a key, exporting it, `Object.freeze`,
+   * `Object.keys/values/entries` and `typeof` are fine. Only for computed values: a literal
+   * table keeps the rules it had.
+   */
+  private escapes(
+    name: string,
+    decl: number,
+    from: number,
+    to: number,
+    owner: FnDef | null = null,
+  ): boolean {
+    const init = decl + 2;
+    const computed =
+      this.punct(init, "(") ||
+      (this.is(init, "ident") && (this.punct(init + 1, "(") || this.punct(init + 1, ".")));
+    if (!computed) return false;
+    return this.changedIn(name, decl, from, to, owner, 0);
+  }
+
+  /** Whether a use of the name in [from, to) (not the one at `decl`) may change its value. */
+  private changedIn(
+    name: string,
+    decl: number,
+    from: number,
+    to: number,
+    owner: FnDef | null,
+    depth: number,
+  ): boolean {
+    for (const j of this.occurrences(name, from, to)) {
+      if (j === decl || this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
+      // another binding of the same name: a declaration, or a use inside a function that has
+      // its own parameter or declaration of it
+      if (/^(const|let|var|function|class)$/.test(this.tokens[j - 1]?.value ?? "")) continue;
+      if (this.boundBetween(j, name, owner)) continue;
+      if (this.is(j - 1, "ident", "delete")) return true;
+      if (this.punct(j - 1, "++") || this.punct(j - 1, "--")) return true;
+      // read only: `typeof T`, `...T`, `for (… of T)`, `k in T`, a call of it `T(…)`
+      if (/^(typeof|of|in)$/.test(this.tokens[j - 1]?.value ?? "") || this.punct(j - 1, "..."))
+        continue;
+      if (this.punct(j + 1, "(")) continue;
+      // a key read, unless it is written
+      let after = -1;
+      if ((this.punct(j + 1, ".") || this.punct(j + 1, "?.")) && this.is(j + 2, "ident"))
+        after = j + 3;
+      else if (this.punct(j + 1, "[") && this.match[j + 1] !== -1) after = this.match[j + 1]! + 1;
+      if (after !== -1) {
+        const t = this.tokens[after];
+        if (
+          t?.type === "punct" &&
+          /^(?:=|\+\+|--|[-+*/%&|^]=|\*\*=|<<=|>>>?=|&&=|\|\|=|\?\?=)$/.test(t.value)
+        )
+          return true;
+        // a method called on it may change it (`T.push(…)`); reading a member and calling it
+        // with the key's own value is a read only when that member is a string of the table
+        if (
+          this.punct(after, "(") &&
+          this.is(j + 2, "ident") &&
+          MUTATORS.test(this.tokens[j + 2]!.value)
+        )
+          return true;
+        continue;
+      }
+      if (this.exportedAt(j)) continue;
+      if (this.externalConstructorArgument(j)) continue;
+      if (this.assignSource(j)) continue;
+      // `Object.freeze(T)`, `Object.keys(T)`, …: the whole argument, read only
+      if (
+        this.punct(j - 1, "(") &&
+        this.punct(j + 1, ")") &&
+        /^(freeze|keys|values|entries)$/.test(this.tokens[j - 2]?.value ?? "") &&
+        this.punct(j - 3, ".") &&
+        this.is(j - 4, "ident", "Object")
+      )
+        continue;
+      // an argument of a function of this file that only reads that parameter
+      const arg = this.localCallArgument(j);
+      if (arg && depth < 3) {
+        const p = arg.def.params[arg.index];
+        if (
+          p?.kind === "name" &&
+          p.name &&
+          !this.changedIn(p.name, -1, arg.def.body[0], arg.def.body[1], arg.def, depth + 1)
+        )
+          continue;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /** A whole argument after the first of `Object.assign(target, …)`: read, never written. */
+  private assignSource(j: number): boolean {
+    if (!this.punct(j - 1, ",") || !(this.punct(j + 1, ",") || this.punct(j + 1, ")")))
+      return false;
+    let i = j - 1;
+    for (let steps = 0; i >= 0 && steps < 2000; steps++, i--) {
+      const t = this.tokens[i]!;
+      if (t.type !== "punct") continue;
+      if (t.value === ")" || t.value === "]" || t.value === "}") {
+        const o = this.opener[i]!;
+        if (o === -1) return false;
+        i = o;
+      } else if (t.value === "(") break;
+      else if (t.value === "[" || t.value === "{" || t.value === ";") return false;
+    }
+    return (
+      this.punct(i, "(") &&
+      this.is(i - 1, "ident", "assign") &&
+      this.punct(i - 2, ".") &&
+      this.is(i - 3, "ident", "Object")
+    );
+  }
+
+  /**
+   * For a name at j that is a whole argument of a plain call `f(…, NAME, …)` of a function f
+   * declared once in this file: that function and the argument's index.
+   */
+  private localCallArgument(j: number): { def: FnDef; index: number } | null {
+    if (!(this.punct(j - 1, "(") || this.punct(j - 1, ","))) return null;
+    if (!(this.punct(j + 1, ",") || this.punct(j + 1, ")"))) return null;
+    let index = 0;
+    let i = j - 1;
+    for (let steps = 0; i >= 0 && steps < 2000; steps++, i--) {
+      const t = this.tokens[i]!;
+      if (t.type !== "punct") continue;
+      if (t.value === ")" || t.value === "]" || t.value === "}") {
+        const o = this.opener[i]!;
+        if (o === -1) return null;
+        i = o;
+      } else if (t.value === ",") index++;
+      else if (t.value === "(") break;
+      else if (t.value === "[" || t.value === "{" || t.value === ";") return null;
+    }
+    if (!this.punct(i, "(") || !this.is(i - 1, "ident") || this.punct(i - 2, ".")) return null;
+    if (this.is(i - 2, "ident", "new")) return null;
+    const callee = this.tokens[i - 1]!.value;
+    const defs = this.functions().filter((d) => d.name === callee && d.owner === null && !d.member);
+    if (defs.length !== 1 || defs[0]!.paramsAt === i) return null;
+    return { def: defs[0]!, index };
+  }
+
+  /**
+   * Whether the token at j is inside the arguments of `new X(…)` (also nested in object literals
+   * there), with X not a class or function of this file: `new BrowserWindow({ webPreferences:
+   * prefs })`. A constructor of a library (Electron's windows) reads its options; one written
+   * here could change them, so that use stays an escape.
+   */
+  private externalConstructorArgument(j: number): boolean {
+    let i = j - 1;
+    for (let levels = 0, steps = 0; i >= 0 && levels < 8 && steps < 4000; steps++) {
+      const t = this.tokens[i]!;
+      if (t.type === "punct") {
+        if (t.value === ")" || t.value === "]" || t.value === "}") {
+          const o = this.opener[i]!;
+          if (o === -1) return false;
+          i = o - 1;
+          continue;
+        }
+        if (t.value === ";") return false;
+        if (t.value === "(" || t.value === "[" || t.value === "{") {
+          if (t.value === "{" && (this.punct(i - 1, "=>") || this.punct(i - 1, ")"))) return false;
+          if (t.value === "(" && this.is(i - 1, "ident")) {
+            const ctor = this.tokens[i - 1]!.value;
+            const named = this.is(i - 2, "ident", "new")
+              ? ctor
+              : this.punct(i - 2, ".") && this.is(i - 4, "ident", "new")
+                ? ctor
+                : null;
+            if (named === null) return false;
+            const local =
+              this.classRanges().some((c) => c.name === named) ||
+              this.functions().some((d) => d.name === named);
+            return !local;
+          }
+          levels++;
+        }
+      }
+      i--;
+    }
+    return false;
+  }
+
+  /** Whether a function around j, inside `owner` (or anywhere), binds the name itself. */
+  private boundBetween(j: number, name: string, owner: FnDef | null): boolean {
+    for (let d = this.enclosing(j), guard = 0; d && d !== owner && guard < 20; guard++) {
+      if (this.paramIndex(d, name) !== -1 || this.declarationIn(d, name, j)) return true;
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    return false;
+  }
+
+  /**
+   * Whether the name at j is exported as it is: `export { T }`, `export default T`,
+   * `exports.K = T`, `module.exports = T`, an entry of `X.exports = { … }`.
+   */
+  private exportedAt(j: number): boolean {
+    if (this.is(j - 1, "ident", "default") && this.is(j - 2, "ident", "export")) return true;
+    if (this.punct(j - 1, "=") && this.is(j - 2, "ident") && this.punct(j - 3, ".")) {
+      if (this.is(j - 2, "ident", "exports")) return true;
+      if (this.is(j - 4, "ident", "exports")) return true;
+    }
+    if (!(this.punct(j + 1, ",") || this.punct(j + 1, "}") || this.is(j + 1, "ident", "as")))
+      return false;
+    // the object or list the entry is in
+    let open = j - 1;
+    if (this.punct(open, ":") && (this.is(open - 1, "ident") || this.is(open - 1, "string")))
+      open -= 2;
+    for (let steps = 0; open >= 0 && steps < 4000; steps++) {
+      if (this.punct(open, "{")) break;
+      if (this.punct(open, "}") || this.punct(open, ")") || this.punct(open, "]")) {
+        const o = this.opener[open]!;
+        if (o === -1) return false;
+        open = o - 1;
+        continue;
+      }
+      if (this.punct(open, "(") || this.punct(open, "[") || this.punct(open, ";")) return false;
+      open--;
+    }
+    if (!this.punct(open, "{")) return false;
+    if (this.is(open - 1, "ident", "export")) return true;
+    return (
+      this.punct(open - 1, "=") &&
+      this.is(open - 2, "ident", "exports") &&
+      this.punct(open - 3, ".")
+    );
   }
 
   /** Whether the name is assigned, changed or written to anywhere but at token `decl`. */
@@ -775,7 +1052,53 @@ export class ExpressionResolver {
 
   // ---------- expressions ----------
 
+  /**
+   * The value of [start, end). Inside an evaluated body, an expression that cannot be read and
+   * may have effects (a call, an assignment, `++`, `delete`, `new`, `await`) marks the question:
+   * what it did is not known, so the body stops after the statement (see `run`).
+   */
   private evalRange(start: number, end: number, env: Env, depth: number): Val | null {
+    const v = this.evalRangeIn(start, end, env, depth);
+    if (v === null && this.inBody > 0 && !this.effectUnknown && this.mayHaveEffects(start, end))
+      this.effectUnknown = true;
+    return v;
+  }
+
+  /** Whether evaluating [start, end) may change something: a call, an assignment, `delete`, … */
+  private mayHaveEffects(start: number, end: number): boolean {
+    this.bodyWork -= end - start;
+    for (let j = start; j < end; j++) {
+      const t = this.tokens[j]!;
+      if (t.type === "ident") {
+        if (/^(delete|new|await|yield|import)$/.test(t.value)) return true;
+        continue;
+      }
+      if (t.type !== "punct") continue;
+      if (t.value === "(") {
+        const before = this.tokens[j - 1];
+        if (j === start || !before) continue;
+        // a call: `f(`, `a.b(`, `f()(`, `a[0](`, a tagged template's function
+        if (
+          (before.type === "ident" &&
+            !/^(function|if|for|while|switch|catch|return|typeof|void|of|in|instanceof|case|else|do|throw)$/.test(
+              before.value,
+            )) ||
+          (before.type === "punct" && (before.value === ")" || before.value === "]")) ||
+          before.type === "template"
+        )
+          return true;
+      } else if (
+        t.value === "=" ||
+        t.value === "++" ||
+        t.value === "--" ||
+        /^(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)=$/.test(t.value)
+      )
+        return true;
+    }
+    return false;
+  }
+
+  private evalRangeIn(start: number, end: number, env: Env, depth: number): Val | null {
     if (start >= end) return null;
     if (this.budget-- <= 0 || (this.inBody && this.bodyWork-- <= 0)) return this.stop("work limit");
     if (depth > MAX_DEPTH) return this.stop("depth limit");
@@ -922,7 +1245,8 @@ export class ExpressionResolver {
       for (const e of list.elems) {
         const key = e?.kind === "arr" ? this.oneString(e.elems[0] ?? null) : null;
         if (key === null || e?.kind !== "arr") return this.stop("a computed key is not known");
-        props.delete(key);
+        if (unordered(key)) return this.stop("a key JavaScript orders or treats apart");
+        // a repeated key keeps its first place, as in JavaScript
         props.set(key, e.elems.length > 1 ? (e.elems[1] ?? null) : { kind: "undef" });
       }
       this.note("evaluated");
@@ -1214,11 +1538,13 @@ export class ExpressionResolver {
         continue;
       }
       const key = t.type === "ident" ? t.value : t.type === "string" ? t.value : null;
+      // an integer-like key is ordered before the others and `__proto__` sets the prototype:
+      // the order and the keys of such an object are not modeled
+      if (key !== null && unordered(key)) unknown = true;
       if (key !== null && this.punct(k + 1, ":")) {
-        props.delete(key); // a later write moves the key, as in JavaScript it replaces it
+        // a repeated key keeps its first place, as in JavaScript
         props.set(key, this.evalRange(k + 2, end, env, depth + 1));
       } else if (key !== null && end === k + 1) {
-        props.delete(key);
         props.set(key, this.lookup(key, k, env, depth + 1));
       } else if (key !== null) props.set(key, null); // a method or a computed value
       else unknown = true; // a computed key: `[name]: …`
@@ -1428,6 +1754,8 @@ export class ExpressionResolver {
     if (depth >= MAX_DEPTH) return this.stop("depth limit");
     if (this.budget-- <= 0) return this.stop("work limit");
     if (this.active.has(callee.def)) return this.stop("cycle");
+    if (this.asyncOrGenerator(callee.def))
+      return this.stop("an async function or a generator returns a promise or an iterator");
     const inner = new Map(callee.env);
     if (!this.bind(callee.def.params, args, inner)) return null;
     this.active.add(callee.def);
@@ -1451,15 +1779,23 @@ export class ExpressionResolver {
   ): boolean {
     if (depth >= MAX_DEPTH) return !!this.stop("depth limit");
     if (this.active.has(callee.def)) return !!this.stop("cycle");
+    if (this.asyncOrGenerator(callee.def))
+      return !!this.stop("an async function or a generator as a callback");
     const inner = new Map(callee.env);
     this.bind(callee.def.params, args, inner);
     const own = new Set(paramNames(callee.def.params));
     const [start, end] = callee.def.body;
     this.active.add(callee.def);
     try {
-      return callee.def.block
-        ? this.run(start + 1, end - 1, inner, own, fresh, depth) !== null
-        : this.run(start, end, inner, own, fresh, depth) !== null;
+      const outer = this.blocks;
+      this.blocks = 0;
+      try {
+        return callee.def.block
+          ? this.run(start + 1, end - 1, inner, own, fresh, depth) !== null
+          : this.run(start, end, inner, own, fresh, depth) !== null;
+      } finally {
+        this.blocks = outer;
+      }
     } finally {
       this.active.delete(callee.def);
     }
@@ -1507,6 +1843,16 @@ export class ExpressionResolver {
     return true;
   }
 
+  /**
+   * `async function`, `async (…) =>`, `async name(…) {`, `function*`, `*name(…) {`: what a call
+   * returns is a promise or an iterator, not the value of the body.
+   */
+  private asyncOrGenerator(def: FnDef): boolean {
+    for (let j = def.paramsAt - 1; j >= def.paramsAt - 3 && j >= 0; j--)
+      if (this.is(j, "ident", "async") || this.punct(j, "*")) return true;
+    return false;
+  }
+
   /** The end of the expression of a body that is `{ return <expr>; }` and nothing else, or -1. */
   private returnOnly(def: FnDef): number {
     const [start, end] = def.body;
@@ -1533,14 +1879,14 @@ export class ExpressionResolver {
     const exprEnd = this.returnOnly(def);
     if (exprEnd !== -1) return this.evalRange(start + 2, exprEnd, env, depth);
     // any other body: its statements, in the evaluation subset
-    const ran = this.run(
-      start + 1,
-      end - 1,
-      env,
-      new Set(paramNames(def.params)),
-      new Set(),
-      depth,
-    );
+    const outer = this.blocks;
+    this.blocks = 0;
+    let ran: ReturnType<typeof this.run>;
+    try {
+      ran = this.run(start + 1, end - 1, env, new Set(paramNames(def.params)), new Set(), depth);
+    } finally {
+      this.blocks = outer;
+    }
     if (!ran) return null;
     this.note("evaluated");
     return ran.returned ? ran.value : { kind: "undef" };
@@ -1580,7 +1926,9 @@ export class ExpressionResolver {
     depth: number,
   ): { returned: boolean; value: Val | null } | null {
     let k = from;
+    const unread = "an expression that may have effects could not be read";
     while (k < to) {
+      if (this.effectUnknown) return this.stop(unread);
       if (++this.statements > MAX_STATEMENTS || this.budget-- <= 0 || this.bodyWork-- <= 0)
         return this.stop("work limit");
       const t = this.tokens[k]!;
@@ -1596,7 +1944,14 @@ export class ExpressionResolver {
       if (t.type === "punct" && t.value === "{") {
         const close = this.match[k]!;
         if (close === -1 || close >= to) return this.stop("unsupported statement: block");
-        const inner = this.run(k + 1, close, new Map(env), new Set(), fresh, depth);
+        this.blocks++;
+        const inner = (() => {
+          try {
+            return this.run(k + 1, close, new Map(env), new Set(), fresh, depth);
+          } finally {
+            this.blocks--;
+          }
+        })();
         if (!inner || inner.returned) return inner;
         k = close + 1;
         continue;
@@ -1609,8 +1964,13 @@ export class ExpressionResolver {
         for (const [a, b] of parts.slice(0, -1))
           if (!this.effect(a, b, env, own, fresh, depth)) return null;
         const [a, b] = parts[parts.length - 1]!;
-        return { returned: true, value: this.evalRange(a, b, env, depth) };
+        const value = this.evalRange(a, b, env, depth);
+        if (this.effectUnknown) return this.stop(unread);
+        return { returned: true, value };
       }
+      // `var` in a block belongs to the whole function, which this evaluation does not model
+      if (t.type === "ident" && t.value === "var" && this.blocks > 0)
+        return this.stop("var inside a block");
       if (t.type === "ident" && (t.value === "const" || t.value === "let" || t.value === "var")) {
         const next = this.declare(k + 1, to, env, own, fresh, depth);
         if (next === null) return null;
@@ -1640,6 +2000,7 @@ export class ExpressionResolver {
       for (const [a, b] of parts) if (!this.effect(a, b, env, own, fresh, depth)) return null;
       k = end;
     }
+    if (this.effectUnknown) return this.stop(unread);
     return { returned: false, value: null };
   }
 
@@ -1781,9 +2142,15 @@ export class ExpressionResolver {
       const scope: Env = new Map(env);
       this.bind([param], [element], scope);
       const own = new Set(paramNames([param]));
-      const r = block
-        ? this.run(close + 2, bodyEnd, scope, own, fresh, depth)
-        : this.run(close + 1, bodyEnd, scope, own, fresh, depth);
+      this.blocks++;
+      let r: ReturnType<typeof this.run>;
+      try {
+        r = block
+          ? this.run(close + 2, bodyEnd, scope, own, fresh, depth)
+          : this.run(close + 1, bodyEnd, scope, own, fresh, depth);
+      } finally {
+        this.blocks--;
+      }
       if (!r) return null;
       if (r.returned) return { returned: true, value: r.value };
     }
@@ -1877,7 +2244,8 @@ export class ExpressionResolver {
       return !!this.stop("a write to an object the function did not create");
     if (!target.props.has(key) && target.props.size >= MAX_ITERATIONS)
       return !!this.stop("too many values");
-    target.props.delete(key);
+    if (unordered(key)) return !!this.stop("a key JavaScript orders or treats apart");
+    // a key written again keeps its place, as in JavaScript
     target.props.set(key, value);
     return true;
   }
@@ -2061,10 +2429,15 @@ export class ExpressionResolver {
       let failed = false;
       let count = 0;
       const each = (match: string): string => {
+        this.bodyWork--;
         const x = failed || ++count > MAX_ITERATIONS ? null : replacement(match);
         if (x === null) failed = true;
         return x ?? "";
       };
+      // every application costs the evaluation work in proportion to the string
+      this.bodyWork -= v.length;
+      this.budget -= Math.ceil(v.length / 16);
+      if (this.bodyWork <= 0 || this.budget <= 0) return this.stop("work limit");
       const done =
         method === "replace"
           ? typeof pattern === "string"
@@ -2089,7 +2462,13 @@ export class ExpressionResolver {
     // a `const` of the function around k, declared once before k: its initializer, read with
     // the same bindings
     const local = this.localConst(k, name);
-    if (local) return this.evalRange(local[0], local[1], env, depth + 1);
+    if (local) {
+      const around = this.enclosing(local[0]);
+      const v = this.evalRange(local[0], local[1], env, depth + 1);
+      return around
+        ? this.unlessChanged(name, local[0] - 2, v, around.body[0], around.body[1], around)
+        : v;
+    }
     // `var { KEY: NAME } = <expr>` in a function around k (a module a bundler wrapped)
     const pattern = this.localPattern(k, name);
     if (pattern) {
@@ -2106,7 +2485,15 @@ export class ExpressionResolver {
     // a name that is also a parameter or local of the function around k is that one instead.
     if (this.enclosingParam(k, name) || this.declaredLocally(k, name)) return null;
     const decl = this.topDeclarations().get(name);
-    if (decl) return this.evalRange(decl[0], decl[1], new Map(), depth + 1);
+    if (decl)
+      return this.unlessChanged(
+        name,
+        decl[0] - 2,
+        this.evalRange(decl[0], decl[1], new Map(), depth + 1),
+        0,
+        this.tokens.length,
+        null,
+      );
     // a name another module defines, in a scan of this file alone: say so instead of nothing
     if (
       !this.host &&
@@ -2188,7 +2575,7 @@ export class ExpressionResolver {
     const candidates = this.fnDecls.get(name);
     if (!candidates) return null;
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
-      const declared = this.declarationIn(d, name);
+      const declared = this.declarationIn(d, name, k);
       if (declared) {
         if (declared.range) return null; // a const, let or var
         const here = candidates.filter((f) => this.enclosing(f.paramsAt) === d);
@@ -2668,7 +3055,7 @@ export class ExpressionResolver {
   /** `const NAME = …` once in the innermost function around k that declares NAME, before k. */
   private localConst(k: number, name: string): [number, number] | null {
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
-      const decl = this.declarationIn(d, name);
+      const decl = this.declarationIn(d, name, k);
       if (decl) return decl.range && decl.range[0] - 2 < k ? decl.range : null;
       d = this.enclosing(d.paramsAt - 1);
     }
@@ -2691,39 +3078,72 @@ export class ExpressionResolver {
    * initializer of its single `const`, `let` or `var` that is never assigned again (null range
    * for anything else).
    */
-  private declarationIn(d: FnDef, name: string): { range: [number, number] | null } | null {
+  private declarationIn(
+    d: FnDef,
+    name: string,
+    k: number,
+  ): { range: [number, number] | null } | null {
     const key = `${d.paramsAt}:${name}`;
-    const cached = this.s.declCache.get(key);
-    if (cached !== undefined) return cached;
+    let entries = this.s.declCache.get(key);
+    if (!entries) {
+      entries = [];
+      for (const j of this.occurrences(name, d.body[0], d.body[1])) {
+        if (this.punct(j - 1, ".")) continue;
+        const before = this.tokens[j - 1];
+        if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) {
+          // `let` and `var` too: a later assignment counts twice, so the name is not followed
+          const init = /^(const|let|var)$/.test(before.value) && this.punct(j + 1, "=");
+          const blockScoped = /^(const|let|class)$/.test(before.value);
+          entries.push({ j, weight: 1, init, scope: blockScoped ? this.blockScope(j, d) : null });
+        } else if (
+          this.punct(j - 1, ",") &&
+          this.punct(j + 1, "=") &&
+          !this.punct(j + 2, "=") &&
+          this.inDeclarationList(j)
+        )
+          // `var a = 1, NAME = …`, as minifiers write declarations
+          entries.push({ j, weight: 1, init: true, scope: null });
+        else if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
+          entries.push({ j, weight: 2, init: false, scope: null });
+      }
+      this.s.declCache.set(key, entries);
+    }
+    // a declaration of an inner block counts only for a use inside that block
     let at = -1;
     let declared = 0;
-    for (const j of this.occurrences(name, d.body[0], d.body[1])) {
-      if (this.punct(j - 1, ".")) continue;
-      const before = this.tokens[j - 1];
-      if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) {
-        declared++;
-        // `let` and `var` too: a later assignment counts twice below, so the name is not followed
-        if (/^(const|let|var)$/.test(before.value) && this.punct(j + 1, "=")) at = j;
-      } else if (
-        this.punct(j - 1, ",") &&
-        this.punct(j + 1, "=") &&
-        !this.punct(j + 2, "=") &&
-        this.inDeclarationList(j)
-      ) {
-        // `var a = 1, NAME = …`, as minifiers write declarations
-        declared++;
-        at = j;
-      } else if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
-        declared += 2;
+    for (const e of entries) {
+      if (e.scope && !(e.scope[0] < k && k < e.scope[1])) continue;
+      declared += e.weight;
+      if (e.init) at = e.j;
     }
-    const result = !declared
-      ? null
-      : {
-          range:
-            declared === 1 && at >= 0 ? ([at + 2, this.exprEnd(at + 2)] as [number, number]) : null,
-        };
-    this.s.declCache.set(key, result);
-    return result;
+    if (!declared) return null;
+    return {
+      range:
+        declared === 1 && at >= 0 ? ([at + 2, this.exprEnd(at + 2)] as [number, number]) : null,
+    };
+  }
+
+  /**
+   * Where a `const`, `let` or `class` declared at j is visible: null at the function's own block
+   * level, else the block it is in (for a `for (…)` header, the header and the loop body).
+   */
+  private blockScope(j: number, d: FnDef): [number, number] | null {
+    for (let i = j - 1, steps = 0; i > d.body[0] && steps < 20_000; i--, steps++) {
+      const t = this.tokens[i]!;
+      if (t.type !== "punct") continue;
+      if (t.value === ")" || t.value === "]" || t.value === "}") {
+        const o = this.opener[i]!;
+        if (o === -1) return [i, i];
+        i = o;
+      } else if (t.value === "{" || t.value === "[") return [i, this.match[i]!];
+      else if (t.value === "(") {
+        const close = this.match[i]!;
+        if (!this.is(i - 1, "ident", "for") || close === -1) return [i, close];
+        const body = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
+        return [i, Math.max(close, body)];
+      }
+    }
+    return null;
   }
 
   /** Whether the name at j (after a `,`) is a declarator of a `const`, `let` or `var` list. */
@@ -3447,7 +3867,7 @@ export class ExpressionResolver {
       if (d.params.some((p) => paramNames([p]).includes(name))) return null;
       const part = this.patternIn(d, name);
       if (part !== undefined) return part?.kind === "pattern" ? part : null;
-      if (this.declarationIn(d, name)) return null;
+      if (this.declarationIn(d, name, k)) return null;
       d = this.enclosing(d.paramsAt - 1);
     }
     return null;

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   compareItems,
-  itemLabel,
+  canonical,
   positionalFields,
   type CompareCompleteness,
   type FieldChange,
@@ -89,6 +89,53 @@ export function changeRowId(collection: string, change: ChangeRow["change"], key
   return createHash("sha256").update(`${collection}\0${change}\0${key}`).digest("hex").slice(0, 16);
 }
 
+/**
+ * Ids for rows, unique within one comparison. Rows that share collection, change and key (an
+ * identity that repeats, or two labels that read the same, such as a part that is absent and a
+ * part that is the text "null") are numbered in the order of `order`, the item's content
+ * without positions, so the numbering does not depend on where the items sit or in which order
+ * they were listed. The first keeps the C3 formula, so a row that does not repeat keeps its id;
+ * the n-th (n ≥ 1) hashes `${collection}\0${change}\0${key}\0${n}`.
+ */
+export function rowIds(
+  rows: ReadonlyArray<{
+    collection: string;
+    change: ChangeRow["change"];
+    key: string;
+    order: string;
+  }>,
+): string[] {
+  const groups = new Map<string, number[]>();
+  rows.forEach((row, i) => {
+    const group = `${row.collection}\0${row.change}\0${row.key}`;
+    const list = groups.get(group);
+    if (list) list.push(i);
+    else groups.set(group, [i]);
+  });
+  const ids: string[] = [];
+  for (const [group, members] of groups) {
+    const sorted = members.toSorted((x, y) => {
+      const [ox, oy] = [rows[x]!.order, rows[y]!.order];
+      return ox < oy ? -1 : ox > oy ? 1 : x - y;
+    });
+    sorted.forEach((i, n) => {
+      ids[i] =
+        n === 0
+          ? changeRowId(rows[i]!.collection, rows[i]!.change, rows[i]!.key)
+          : createHash("sha256").update(`${group}\0${n}`).digest("hex").slice(0, 16);
+    });
+  }
+  return ids;
+}
+
+/** An item's content without its position fields, the order of rows that share a key. */
+function contentOrder(item: unknown, positional: readonly string[]): string {
+  if (!isItem(item)) return canonical(item);
+  const copy: Item = {};
+  for (const [k, v] of Object.entries(item)) if (!positional.includes(k)) copy[k] = v;
+  return canonical(copy);
+}
+
 /** What a page can reach first, then what the app talks to, then everything else. */
 const ORDER = [
   "interfaces",
@@ -115,16 +162,6 @@ const rank = (name: string): number => {
 
 type Item = Record<string, unknown>;
 const isItem = (v: unknown): v is Item => typeof v === "object" && v !== null && !Array.isArray(v);
-
-/** The first item per reported label, from every item of the side. */
-function index(items: readonly unknown[], key: string | null): Map<string, unknown> {
-  const m = new Map<string, unknown>();
-  for (const item of items) {
-    const label = itemLabel(item, key);
-    if (!m.has(label)) m.set(label, item);
-  }
-  return m;
-}
 
 const differs = (c: CompareAllResult["collections"][number]): boolean =>
   Boolean(c.added || c.removed || c.changed || c.unknown);
@@ -236,6 +273,18 @@ export async function compareReleases(
     callsByChannel("ipc" in (await session.collections(id)) ? await session.items(id, "ipc") : []);
   const [ipcA, ipcB] = await Promise.all([ipcOf(idA), ipcOf(idB)]);
   const rows: ChangeRow[] = [];
+  /** Per row, the content its id is ordered by when its key repeats. */
+  const orders: string[] = [];
+  const formats = [session.get(idA).info.format, session.get(idB).info.format];
+  type OneSided = "added" | "removed" | "unknown";
+  /** The one-sided items of a comparison, per list, in the order the lists name them. */
+  const collect = (): {
+    items: Record<OneSided, unknown[]>;
+    onOneSided: (item: unknown, change: OneSided) => void;
+  } => {
+    const items: Record<OneSided, unknown[]> = { added: [], removed: [], unknown: [] };
+    return { items, onOneSided: (item, change) => items[change].push(item) };
+  };
   const add = (
     collection: string,
     change: ChangeRow["change"],
@@ -245,8 +294,9 @@ export async function compareReleases(
     extra: Partial<ChangeRow> = {},
   ): void => {
     const basis = basisOf(item);
+    orders.push(contentOrder(item, positionalFields(collection, formats)));
     rows.push({
-      id: changeRowId(collection, change, key),
+      id: "",
       collection,
       change,
       key,
@@ -258,55 +308,52 @@ export async function compareReleases(
   const unknownRows = (
     collection: string,
     unknown: readonly UnknownItem[],
-    inA: ReadonlyMap<string, unknown>,
-    inB: ReadonlyMap<string, unknown>,
+    items: readonly unknown[],
   ): void => {
-    for (const u of unknown)
-      add(collection, "unknown", u.key, (u.side === "a" ? inA : inB).get(u.key), u.side, {
-        reason: u.reason,
-      });
+    unknown.forEach((u, i) =>
+      add(collection, "unknown", u.key, items[i], u.side, { reason: u.reason }),
+    );
   };
   for (const { collection } of differing) {
-    const { diff } = await session.compareCollection(idA, idB, collection);
-    const [allA, allB] = await Promise.all([
-      session.items(idA, collection),
-      session.items(idB, collection),
-    ]);
-    const [inA, inB] = [index(allA, diff.key), index(allB, diff.key)];
-    for (const key of diff.added) add(collection, "added", key, inB.get(key), "b");
-    for (const key of diff.removed) add(collection, "removed", key, inA.get(key), "a");
+    const { items, onOneSided } = collect();
+    const { diff } = await session.compareCollection(idA, idB, collection, { onOneSided });
+    // each row gets its own item, also when several items share its label
+    diff.added.forEach((key, i) => add(collection, "added", key, items.added[i], "b"));
+    diff.removed.forEach((key, i) => add(collection, "removed", key, items.removed[i], "a"));
     // the item as read in b, and where its counterpart was read in a
     for (const c of diff.changed)
       add(collection, "changed", c.key, c.after, "b", {
         fields: c.fields,
         whereBefore: placesOf(c.before, "a", ipcA),
       });
-    unknownRows(collection, diff.unknown, inA, inB);
+    unknownRows(collection, diff.unknown, items.unknown);
   }
   // A list one build does not have at all (the first endpoint, the first storage key): every
   // item is added or removed, unless the other build may hold it where it was not read.
   const [coverageA, coverageB] = await Promise.all([session.coverage(idA), session.coverage(idB)]);
-  const formats = [session.get(idA).info.format, session.get(idB).info.format];
   for (const [side, names] of [
     ["b", overview.onlyB],
     ["a", overview.onlyA],
   ] as const) {
     const id = side === "b" ? idB : idA;
     for (const collection of names.toSorted((x, y) => rank(x) - rank(y))) {
-      const items = await session.items(id, collection);
-      const diff = compareItems(side === "a" ? items : [], side === "b" ? items : [], {
+      const all = await session.items(id, collection);
+      const { items, onOneSided } = collect();
+      const diff = compareItems(side === "a" ? all : [], side === "b" ? all : [], {
         collection,
         positional: positionalFields(collection, formats),
         coverage: { a: coverageA, b: coverageB },
+        onOneSided,
       });
       completeness[collection] = diff.completeness;
       if (SUMMARY_ONLY.has(collection)) continue;
-      const own = index(items, diff.key);
-      for (const key of diff.added) add(collection, "added", key, own.get(key), "b");
-      for (const key of diff.removed) add(collection, "removed", key, own.get(key), "a");
-      unknownRows(collection, diff.unknown, own, own);
+      diff.added.forEach((key, i) => add(collection, "added", key, items.added[i], "b"));
+      diff.removed.forEach((key, i) => add(collection, "removed", key, items.removed[i], "a"));
+      unknownRows(collection, diff.unknown, items.unknown);
     }
   }
+  const ids = rowIds(rows.map((row, i) => ({ ...row, order: orders[i]! })));
+  rows.forEach((row, i) => (row.id = ids[i]!));
   const ordered = rows
     .map((row, i) => ({ row, i }))
     .toSorted((x, y) => rank(x.row.collection) - rank(y.row.collection) || x.i - y.i)
@@ -339,7 +386,75 @@ export async function compareReleases(
   };
 }
 
-const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
+/**
+ * The summary both reports show: collections that differ in the app, and hexvero's own lists
+ * (findings, limitations) that differ because its description of each build did.
+ */
+export function summaryOf(r: ReleaseComparison): {
+  differing: CompareAllResult["collections"];
+  own: CompareAllResult["collections"];
+} {
+  // hexvero's own findings and limitations describe the reading, not the app
+  return {
+    differing: r.overview.collections.filter((c) => differs(c) && !HEXVERO_OWN.has(c.collection)),
+    own: r.overview.collections.filter((c) => differs(c) && HEXVERO_OWN.has(c.collection)),
+  };
+}
+
+/**
+ * One sentence of "Not established": hexvero's own words as strings, text from a target as
+ * `{ code }` (an identifier, quoted) or `{ data }` (prose such as a limitation's message). Each
+ * renderer quotes the target parts its own way.
+ */
+export type NotePart = string | { code: string } | { data: string };
+
+/** What the comparison could not establish, as both reports list it. */
+export function notEstablished(r: ReleaseComparison): NotePart[][] {
+  const notes: NotePart[][] = [];
+  const unknown = r.changes.filter((c) => c.change === "unknown").length;
+  if (unknown)
+    notes.push([
+      `${unknown} row(s) shown are unknown: found on one side where the other side did not read the file, or has values there it could not resolve. Neither added nor removed.`,
+    ]);
+  if (r.overview.partialScan.a || r.overview.partialScan.b)
+    notes.push([
+      "A JavaScript app was read only in part; items in unread files are unknown, not absent. Run `hexvero analyze <path> --all` on both first.",
+    ]);
+  for (const [collection, c] of Object.entries(r.completeness).toSorted(
+    ([x], [y]) => rank(x) - rank(y),
+  ))
+    if (!c.complete)
+      notes.push([
+        `${collection} is not whole (${c.gaps.join(", ")}): compared ${c.compared.a} of ${c.total.a} item(s) in a and ${c.compared.b} of ${c.total.b} in b.`,
+      ]);
+  for (const [side, list] of [
+    ["a", r.limitations.a],
+    ["b", r.limitations.b],
+  ] as const) {
+    for (const l of list.slice(0, 20))
+      notes.push([`${side}: `, { code: l.code }, " ", { data: l.message }]);
+    if (list.length > 20) notes.push([`${side}: ${list.length - 20} more limitation(s).`]);
+  }
+  notes.push(
+    [
+      "Absence from a list means hexvero did not find it in the files it read, not that the app cannot do it.",
+    ],
+    [
+      "Values computed at run time are shown as `${…}` or left out; nothing here was observed running.",
+    ],
+  );
+  return notes;
+}
+
+/** The sign and word of each kind of change, as both reports show them. */
+export const CHANGE_SIGN: Record<ChangeRow["change"], string> = {
+  added: "+",
+  removed: "−",
+  changed: "~",
+  unknown: "?",
+};
+
+export const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
 /** Text from a target, quoted so it cannot close the code span or start Markdown of its own. */
 const code = (text: string): string => {
   const flat = text.replace(/[\r\n]+/g, " ").slice(0, 300);
@@ -360,12 +475,7 @@ const place = (p: Place): string =>
   `${p.role ? `${p.role} ` : ""}${code(`${p.file}${p.line === undefined ? "" : `:${p.line}`}`)}`;
 const show = (v: unknown): string => (v === undefined ? "not written" : JSON.stringify(v));
 
-const SIGN: Record<ChangeRow["change"], string> = {
-  added: "+ added",
-  removed: "− removed",
-  changed: "~ changed",
-  unknown: "? unknown",
-};
+const SIGN = (change: ChangeRow["change"]): string => `${CHANGE_SIGN[change]} ${change}`;
 
 /**
  * The comparison as a Markdown report: summary, changes with their places, what could not be
@@ -387,11 +497,7 @@ export function renderReleaseReport(r: ReleaseComparison): string {
   out.push(`| sha256 | \`${r.a.info.sha256}\` | \`${r.b.info.sha256}\` |`, "");
 
   out.push("## Summary", "");
-  // hexvero's own findings and limitations describe the reading, not the app
-  const differing = r.overview.collections.filter(
-    (c) => differs(c) && !HEXVERO_OWN.has(c.collection),
-  );
-  const own = r.overview.collections.filter((c) => differs(c) && HEXVERO_OWN.has(c.collection));
+  const { differing, own } = summaryOf(r);
   if (differing.length === 0) out.push("No differences in the collections both builds share.", "");
   else {
     out.push(
@@ -445,7 +551,7 @@ export function renderReleaseReport(r: ReleaseComparison): string {
         }`
       : "";
     const basis = row.basis ? ` · ${row.basis}` : "";
-    out.push(`- **${SIGN[row.change]}** ${code(row.key)}${where}${basis}`);
+    out.push(`- **${SIGN(row.change)}** ${code(row.key)}${where}${basis}`);
     for (const f of (row.fields ?? []).slice(0, 6))
       out.push(`  - ${code(f.field)}: ${code(show(f.before))} → ${code(show(f.after))}`);
     if (row.reason) out.push(`  - ${cell(row.reason)}`);
@@ -462,33 +568,12 @@ export function renderReleaseReport(r: ReleaseComparison): string {
     out.push(`Earlier rows: \`hexvero compare <a> <b> --report <file> --offset 0\`.`, "");
 
   out.push("## Not established", "");
-  const notes: string[] = [];
-  const unknown = r.changes.filter((c) => c.change === "unknown").length;
-  if (unknown)
-    notes.push(
-      `${unknown} row(s) shown are unknown: found on one side where the other side did not read the file, or has values there it could not resolve. Neither added nor removed.`,
-    );
-  if (r.overview.partialScan.a || r.overview.partialScan.b)
-    notes.push(
-      "A JavaScript app was read only in part; items in unread files are unknown, not absent. Run `hexvero analyze <path> --all` on both first.",
-    );
-  for (const [collection, c] of Object.entries(r.completeness).toSorted(
-    ([x], [y]) => rank(x) - rank(y),
-  ))
-    if (!c.complete)
-      notes.push(
-        `${collection} is not whole (${c.gaps.join(", ")}): compared ${c.compared.a} of ${c.total.a} item(s) in a and ${c.compared.b} of ${c.total.b} in b.`,
-      );
-  for (const [side, list] of [
-    ["a", r.limitations.a],
-    ["b", r.limitations.b],
-  ] as const) {
-    for (const l of list.slice(0, 20)) notes.push(`${side}: ${code(l.code)} ${cell(l.message)}`);
-    if (list.length > 20) notes.push(`${side}: ${list.length - 20} more limitation(s).`);
-  }
-  notes.push(
-    "Absence from a list means hexvero did not find it in the files it read, not that the app cannot do it.",
-    "Values computed at run time are shown as `${…}` or left out; nothing here was observed running.",
+  const notes = notEstablished(r).map((note) =>
+    note
+      .map((part) =>
+        typeof part === "string" ? part : "code" in part ? code(part.code) : cell(part.data),
+      )
+      .join(""),
   );
   for (const n of notes) out.push(`- ${n}`);
   out.push("");

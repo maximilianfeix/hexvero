@@ -6,8 +6,9 @@
  * The status is decided on every finding; the result shows a page of them (`findingsPage`) and
  * stays within CHECK_RESULT_BYTES, so a large check never floods the agent's context.
  */
-import { readFile, stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import {
   AnalysisError,
   CORE_VERSION,
@@ -23,6 +24,7 @@ import {
   type PolicyResult,
   type Session,
 } from "@hexvero/core";
+import { checkReadPath } from "./writePolicy.js";
 
 /** Upper bound of the serialized result, like the default page budget of the other tools. */
 export const CHECK_RESULT_BYTES = 256 * 1024;
@@ -35,54 +37,139 @@ const MAX_PLACES = 20;
 const invalid = (error: PolicyError): AnalysisError =>
   new AnalysisError("invalid_input", error.message.split("\n")[0]!, { issues: error.issues });
 
-async function readSmall(path: string, what: "policy" | "baseline"): Promise<string> {
-  const absolute = resolve(path);
+/** Line and column (1-based) of a character offset. */
+function lineCol(text: string, offset: number): string {
+  const before = text.slice(0, offset).split("\n");
+  return `line ${before.length} col ${before.at(-1)!.length + 1}`;
+}
+
+/** A prefix that already fails for a reason other than ending early. */
+const fails = (prefix: string): boolean => {
   try {
-    const info = await stat(absolute);
+    JSON.parse(prefix);
+    return false;
+  } catch (e) {
+    return !/end of JSON input|Unterminated string/i.test((e as Error).message);
+  }
+};
+
+/**
+ * Where JSON.parse failed, without its message (which quotes the text). V8 names the position for
+ * most errors; for an unexpected token it does not, and the offset is found as the shortest
+ * prefix that already fails for a reason other than ending early.
+ */
+function errorOffset(text: string, error: Error): number {
+  const at = /position (\d+)/.exec(error.message);
+  if (at) return Number(at[1]);
+  if (/end of JSON input/i.test(error.message)) return text.length;
+  let lo = 1;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (fails(text.slice(0, mid))) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo - 1;
+}
+
+/**
+ * Reads a policy or baseline file the agent named, through one descriptor (opened non-blocking
+ * and checked with fstat, so the checked file is the one read and a FIFO cannot block). Only
+ * inside the allowed directories (`checkReadPath`). Errors never quote the file: a file that is
+ * not JSON is reported by position only, and a JSON file that does not declare itself a hexvero
+ * policy or baseline is refused without listing its keys or values.
+ */
+async function readJsonFile(
+  path: string,
+  what: "policy" | "baseline",
+  session: Session,
+): Promise<string> {
+  const opened = session
+    .list()
+    .map((t) => (t.info.format === "directory" ? t.info.path : dirname(t.info.path)));
+  const real = checkReadPath(path, what, opened);
+  let text: string;
+  let handle;
+  try {
+    handle = await open(real, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+    const info = await handle.stat();
     if (!info.isFile())
-      throw new AnalysisError("invalid_input", `the ${what} ${absolute} is not a file`, {
-        path: absolute,
+      throw new AnalysisError("invalid_input", `the ${what} ${real} is not a regular file`, {
+        path: real,
       });
     if (info.size > MAX_POLICY_BYTES)
       throw new AnalysisError(
         "invalid_input",
-        `the ${what} ${absolute} is larger than ${MAX_POLICY_BYTES} bytes`,
-        { path: absolute },
+        `the ${what} ${real} is larger than ${MAX_POLICY_BYTES} bytes`,
+        { path: real },
       );
-    return await readFile(absolute, "utf8");
+    const bytes = Buffer.alloc(info.size);
+    let done = 0;
+    while (done < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, done, bytes.length - done, done);
+      if (bytesRead === 0) break;
+      done += bytesRead;
+    }
+    text = bytes.subarray(0, done).toString("utf8");
   } catch (error) {
     if (error instanceof AnalysisError) throw error;
     const code = (error as NodeJS.ErrnoException).code;
     throw new AnalysisError(
       code === "ENOENT" ? "not_found" : "invalid_input",
-      `cannot read the ${what} ${absolute}: ${code ?? (error as Error).message}${
+      `cannot read the ${what} ${real}: ${code ?? "read failed"}${
         code === "ENOENT" && what === "baseline"
           ? "; a baseline is created with the CLI: hexvero check <before> <after> --policy <file> --baseline <file> --update-baseline"
           : ""
       }`,
-      { path: absolute },
+      { path: real },
+    );
+  } finally {
+    await handle?.close();
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    throw new AnalysisError(
+      "invalid_input",
+      `the ${what} ${real} is not valid JSON at ${lineCol(text, errorOffset(text, error as Error))}`,
+      { path: real },
     );
   }
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    (raw as Record<string, unknown>)["hexvero"] !== what
+  )
+    throw new AnalysisError(
+      "invalid_input",
+      `the ${what} ${real} is not a hexvero ${what} (it must be a JSON object with "hexvero": "${what}")`,
+      { path: real },
+    );
+  return text;
 }
 
-export async function loadPolicy(args: Record<string, unknown>): Promise<LoadedPolicy> {
+export async function loadPolicy(
+  args: Record<string, unknown>,
+  session: Session,
+): Promise<LoadedPolicy> {
   const inline = args["policy"];
   const path = args["policyPath"];
   if ((inline === undefined) === (path === undefined))
     throw new AnalysisError("invalid_input", "pass exactly one of policy or policyPath");
   try {
     if (typeof path === "string")
-      return parsePolicy(await readSmall(path, "policy"), resolve(path));
+      return parsePolicy(await readJsonFile(path, "policy", session), resolve(path));
     return parsePolicy(JSON.stringify(inline), "inline");
   } catch (error) {
     throw error instanceof PolicyError ? invalid(error) : error;
   }
 }
 
-async function loadBaseline(path: unknown): Promise<LoadedBaseline | undefined> {
+async function loadBaseline(path: unknown, session: Session): Promise<LoadedBaseline | undefined> {
   if (typeof path !== "string") return undefined;
   try {
-    return parseBaseline(await readSmall(path, "baseline"), resolve(path));
+    return parseBaseline(await readJsonFile(path, "baseline", session), resolve(path));
   } catch (error) {
     throw error instanceof PolicyError ? invalid(error) : error;
   }
@@ -107,8 +194,8 @@ export async function runCheckTool(
   session: Session,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  const policy = await loadPolicy(args);
-  const baseline = await loadBaseline(args["baselinePath"]);
+  const policy = await loadPolicy(args, session);
+  const baseline = await loadBaseline(args["baselinePath"], session);
   const result = await checkRelease(
     session,
     String(args["targetA"]),
