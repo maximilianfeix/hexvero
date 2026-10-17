@@ -6,6 +6,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Electron analysis
+
+- IPC payload shapes (case-study miss M1): the `ipc` row of a call that sends (`ipcRenderer.send` / `invoke` / `sendSync` / `postMessage`, `webContents.send`, `event.reply`, `event.sender.send`) carries `args`, the arguments after the channel as written: `({dir, packageManager}, ...)` names the sorted property names of an object literal argument, `…` ends a list whose names a `...spread` or a computed key leaves unknown, `...` is a spread argument and `_` any other value; `not read` when the call's brackets do not close. `compare` reports a changed `args` as a changed call (the identity stays `module+api+channel`; repeats of one channel in a file that differ only there are still paired, not removed and added), and the release report lists those calls. Electron Fiddle 0.38.0 → 0.39.0: `compare … ipc` goes from 157 unchanged to `1 changed` — `preload.js::ipcRenderer.invoke::NPM_ADD_MODULES`, `args: "({dir, packageManager}, ...)" → "({dir, packageManager, useSocketFirewall}, ...)"`, the one change of `src/preload/preload.ts`. Not read: calls through wrapper methods, helpers and names of other files (no `args`). Stored scans are read again (JS_SCAN_SCHEMA 19).
+
 ### Wording
 
 - One minified bundle or native addon is named in the singular ("1 minified bundle", not "1 minified

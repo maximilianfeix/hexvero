@@ -7,6 +7,7 @@
  */
 
 import { Constants, type Evaluator, type Resolved, resolveAliases } from "./aliases.js";
+import { PayloadReader } from "./payload.js";
 import { ExpressionResolver, type ResolveMethod } from "./resolve.js";
 import { WrapperReader, type WrapperFacts, type WrapperRow } from "./wrappers.js";
 
@@ -46,6 +47,14 @@ export interface IpcUsage {
    * unsupported form, too many values, a limit, a cycle, a value known only at run time).
    */
   reason?: string;
+  /**
+   * For a call that sends (`ipcRenderer.send` / `invoke` / `sendSync` / `postMessage`,
+   * `webContents.send`, `event.reply`, `event.sender.send`) read at the call itself: the shape of
+   * the arguments after the channel as written, e.g. `({dir, packageManager}, ...)`, or
+   * `not read` (see payload.ts). Absent on rows read elsewhere (a wrapper method, a helper, a name
+   * of another file): their payload is not read. Compared as content; never part of the identity.
+   */
+  args?: string;
 }
 
 export interface ScanResult {
@@ -265,6 +274,14 @@ const IPC_APIS = new Set([
 /** Objects a class field may hold that the scan reads IPC calls on. */
 const FIELD_TARGETS: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]);
 const IPC_METHODS = new Set([...IPC_APIS].map((api) => api.split(".")[1]!));
+/** The calls whose arguments after the channel are a payload that is sent (see `IpcUsage.args`). */
+const SENDING_APIS: ReadonlySet<string> = new Set([
+  "ipcRenderer.send",
+  "ipcRenderer.invoke",
+  "ipcRenderer.sendSync",
+  "ipcRenderer.postMessage",
+  "webContents.send",
+]);
 const PUNCT3 = new Set(["===", "!==", "...", ">>>", "**=", "<<=", ">>=", "&&=", "||=", "??="]);
 const PUNCT2 = new Set([
   "=>",
@@ -776,11 +793,12 @@ export function scanJavaScript(
       if (!direct && !viaSender) continue;
       const named = channelAt(m + (direct ? 4 : 6));
       const api = direct ? "event.reply" : "event.sender.send";
+      const args = payload.shapeAt(m + (direct ? 3 : 5));
       if (named && "value" in named)
-        ipc.push({ api, channel: named.value, line: at(m)!.line, ...viaOf(named) });
+        ipc.push({ api, channel: named.value, line: at(m)!.line, ...viaOf(named), args });
       // A channel named by another module's constant, looked up once that module is read.
       else if (named && "ref" in named)
-        ipc.push({ api, channel: null, line: at(m)!.line, channelRef: named.ref });
+        ipc.push({ api, channel: null, line: at(m)!.line, channelRef: named.ref, args });
     }
   };
 
@@ -798,6 +816,7 @@ export function scanJavaScript(
   };
   /** IPC calls whose channel argument is neither a literal nor a constant: resolved below. */
   const open: Array<{ usage: IpcUsage; at: number }> = [];
+  const payload = new PayloadReader(tokens);
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
@@ -884,6 +903,8 @@ export function scanJavaScript(
         if (named && "value" in named && named.via !== "literal")
           Object.assign(usage, viaOf(named));
         else if (owner !== t.value) usage.via = "alias";
+        const shape = SENDING_APIS.has(api) ? { args: payload.shapeAt(k + 3) } : {};
+        Object.assign(usage, shape);
         // `for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, fn)`:
         // one registration per key of the table.
         const keys =
@@ -895,13 +916,22 @@ export function scanJavaScript(
             ? pairList(k, at(k + 4)!.value)
             : [];
         if (keys.length)
-          for (const channel of keys) ipc.push({ api, channel, line: t.line, via: "table" });
+          for (const channel of keys)
+            ipc.push({ api, channel, line: t.line, via: "table", ...shape });
         else if (pairs.some((p) => p !== null)) {
           // One registration per pair; a pair whose name cannot be read stays a call without one.
           for (const p of pairs)
-            if (p && "value" in p) ipc.push({ api, channel: p.value, line: t.line, via: "table" });
+            if (p && "value" in p)
+              ipc.push({ api, channel: p.value, line: t.line, via: "table", ...shape });
             else if (p && "ref" in p)
-              ipc.push({ api, channel: null, line: t.line, via: "table", channelRef: p.ref });
+              ipc.push({
+                api,
+                channel: null,
+                line: t.line,
+                via: "table",
+                channelRef: p.ref,
+                ...shape,
+              });
           if (pairs.includes(null)) ipc.push(usage);
         } else {
           ipc.push(usage);
@@ -971,6 +1001,8 @@ export function scanJavaScript(
             ? { via: "wrapper" as const, wrapper: usage.wrapper }
             : { via: "resolved" as const }),
           resolution: { method: found.method, lines: found.lines },
+          // the same call, so the same payload
+          ...(usage.args === undefined ? {} : { args: usage.args }),
         })),
       );
     }

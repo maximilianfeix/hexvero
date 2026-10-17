@@ -16,6 +16,7 @@
  * on one page's own channel object (`webContents.ipc.on`), replies through `event.sender.send`
  * in listeners registered under another name, and `webContents.postMessage`.
  */
+import { PayloadReader } from "./payload.js";
 import type { IpcUsage, Token } from "./scan.js";
 
 export type IpcTarget = "ipcMain" | "ipcRenderer";
@@ -155,6 +156,7 @@ export function collectAmbient(
   const own: Array<AmbientCall & { bindings: number }> = [];
   const ipc: IpcUsage[] = [];
   const replies: IpcUsage[] = [];
+  let payload: PayloadReader | undefined;
   let truncated = false;
   const room = <T>(list: T[]): boolean => {
     if (list.length < MAX_PER_FILE) return true;
@@ -239,7 +241,13 @@ export function collectAmbient(
             ? "webContents.postMessage"
             : null;
       const channel = api ? literal(tokens[i + 2]) : null;
-      if (api && channel !== null && room(replies)) replies.push({ api, channel, line: t.line });
+      if (api && channel !== null && room(replies))
+        replies.push({
+          api,
+          channel,
+          line: t.line,
+          args: (payload ??= new PayloadReader(tokens)).shapeAt(i + 1),
+        });
     }
     if (property) continue;
 

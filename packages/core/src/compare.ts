@@ -229,6 +229,16 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
 };
 
 /**
+ * Fields that are content but say nothing about which of several items with the same identity
+ * is which: the payload shape of an IPC call (`args`) changes while the call stays the same. When
+ * repeats of one identity are matched by content, items that differ only there are still paired
+ * (as changed) instead of being reported as removed and added.
+ */
+const SHAPE_FIELDS: Record<string, readonly string[]> = {
+  ipc: ["args"],
+};
+
+/**
  * Positions in a capture: a HAR request's `index` is where it sits in the log, so two captures
  * of the same requests in another order differ there only. Only HAR targets have `requests`.
  */
@@ -518,6 +528,9 @@ export function compareItems(
 ): CompareResult {
   const ignored = [...(options.ignore ?? [])];
   const derived = (options.collection && DERIVED_FIELDS[options.collection]) || [];
+  const shapes = ((options.collection && SHAPE_FIELDS[options.collection]) || []).filter(
+    (f) => !(options.ignore ?? []).includes(f),
+  );
   const positional = [...(options.positional ?? [])].filter((f) => !ignored.includes(f));
   let field: string | null =
     options.key === undefined ? detectKey(left, right, options.collection) : options.key;
@@ -594,6 +607,13 @@ export function compareItems(
       )
         copy[k] = v;
     return canonical(copy);
+  };
+  /** Content without positions and without shape fields: what repeats are paired by last. */
+  const withoutShapes = (x: unknown): string => {
+    if (!isRecord(x)) return withoutPositions(x);
+    const copy: Record<string, unknown> = { ...x };
+    for (const f of shapes) delete copy[f];
+    return withoutPositions(copy);
   };
   const l = group(left);
   const r = group(right);
@@ -698,35 +718,13 @@ export function compareItems(
       // Which duplicate moved where cannot be told apart, so the sample names the identity only.
       if (moved > 0 && relocatedSample.length < 20)
         relocatedSample.push({ key: shown, fields: [], before: restA, after: restB });
-      for (const item of goneA) oneSided(item, shown, "a");
-      for (const item of goneB) oneSided(item, shown, "b");
+      // Repeats that differ only in a shape field (the payload of a call): still the same calls.
+      const [leftA, leftB] = shapes.length ? pairShapes(goneA, goneB, shown) : [goneA, goneB];
+      for (const item of leftA) oneSided(item, shown, "a");
+      for (const item of leftB) oneSided(item, shown, "b");
       continue;
     }
-    const before = items[0];
-    const after = other.items[0];
-    if (content(before) === content(after)) {
-      unchanged++;
-      continue;
-    }
-    const fields: FieldChange[] = [];
-    const moved: FieldChange[] = [];
-    const [sb, sa] = [strip(before), strip(after)];
-    if (isRecord(sb) && isRecord(sa)) {
-      for (const f of [...new Set([...Object.keys(sb), ...Object.keys(sa)])].toSorted()) {
-        if (ignored.includes(f) || derived.includes(f)) continue;
-        if (canonical(sb[f]) === canonical(sa[f])) continue;
-        if (positional.includes(f) && addressLike(sb[f]) && addressLike(sa[f]))
-          moved.push({ field: f, before: sb[f], after: sa[f] });
-        else diffPaths(sb[f], sa[f], f, 1, fields);
-      }
-    }
-    if (fields.length === 0 && moved.length > 0) {
-      relocated++;
-      if (relocatedSample.length < 20)
-        relocatedSample.push({ key: shown, fields: moved, before, after });
-      continue;
-    }
-    changed.push({ key: shown, fields, before, after });
+    diffOne(shown, items[0], other.items[0]);
   }
   for (const [typed, { shown, items }] of r)
     if (!l.has(typed)) for (const item of items) oneSided(item, shown, "b");
@@ -751,6 +749,74 @@ export function compareItems(
     compared: { a: left.length, b: right.length },
     completeness: completenessOf(left.length, right.length, options, family, unknown),
   };
+
+  /**
+   * Pairs the repeats left over after content matching that differ only in shape fields. A class
+   * with one item per side is one changed item; several per side cannot be told apart, so they
+   * are one changed item whose shape fields list every side's values (sorted), and the items
+   * beyond the smaller side stay one-sided. Returns both rests.
+   */
+  function pairShapes(
+    as: unknown[],
+    bs: unknown[],
+    shown: string,
+  ): [restA: unknown[], restB: unknown[]] {
+    const ma = tally(as, withoutShapes);
+    const mb = tally(bs, withoutShapes);
+    const restA: unknown[] = [];
+    const restB: unknown[] = [];
+    for (const [c, itemsA] of ma) {
+      const itemsB = mb.get(c) ?? [];
+      const n = Math.min(itemsA.length, itemsB.length);
+      restA.push(...itemsA.slice(n));
+      restB.push(...itemsB.slice(n));
+      if (n === 0) continue;
+      if (itemsA.length === 1 && itemsB.length === 1) {
+        diffOne(shown, itemsA[0], itemsB[0]);
+        continue;
+      }
+      const values = (list: unknown[], f: string): unknown[] =>
+        list
+          .map((x) => (isRecord(x) ? x[f] : undefined))
+          .toSorted((p, q) => String(canonical(p)).localeCompare(String(canonical(q))));
+      const fields: FieldChange[] = [];
+      for (const f of shapes) {
+        const before = values(itemsA, f);
+        const after = values(itemsB, f);
+        if (canonical(before) !== canonical(after)) fields.push({ field: f, before, after });
+      }
+      changed.push({ key: shown, fields, before: itemsA, after: itemsB });
+    }
+    for (const [c, itemsB] of mb) if (!ma.has(c)) restB.push(...itemsB);
+    return [restA, restB];
+  }
+
+  /** One matched pair: unchanged, relocated (only positions moved) or changed. */
+  function diffOne(shown: string, before: unknown, after: unknown): void {
+    if (content(before) === content(after)) {
+      unchanged++;
+      return;
+    }
+    const fields: FieldChange[] = [];
+    const moved: FieldChange[] = [];
+    const [sb, sa] = [strip(before), strip(after)];
+    if (isRecord(sb) && isRecord(sa)) {
+      for (const f of [...new Set([...Object.keys(sb), ...Object.keys(sa)])].toSorted()) {
+        if (ignored.includes(f) || derived.includes(f)) continue;
+        if (canonical(sb[f]) === canonical(sa[f])) continue;
+        if (positional.includes(f) && addressLike(sb[f]) && addressLike(sa[f]))
+          moved.push({ field: f, before: sb[f], after: sa[f] });
+        else diffPaths(sb[f], sa[f], f, 1, fields);
+      }
+    }
+    if (fields.length === 0 && moved.length > 0) {
+      relocated++;
+      if (relocatedSample.length < 20)
+        relocatedSample.push({ key: shown, fields: moved, before, after });
+      return;
+    }
+    changed.push({ key: shown, fields, before, after });
+  }
 }
 
 function completenessOf(

@@ -18,6 +18,15 @@ function capture(): Io & { stdout: string[]; stderr: string[] } {
   return io;
 }
 
+/** A one-file app whose IPC payload gains keys that are terminal control text. */
+const payloadApp = (v2: boolean): Buffer =>
+  buildAsar({
+    "package.json": JSON.stringify({ name: "p", main: "main.js" }),
+    "main.js":
+      'const { ipcRenderer } = require("electron");\n' +
+      `ipcRenderer.send("save", { d${v2 ? ', ok\u202egnp, "\\u001b[31mred": 1' : ""} });\n`,
+  });
+
 describe("hexvero CLI", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-cli-"));
   const so = join(dir, "lib.so");
@@ -38,6 +47,20 @@ describe("hexvero CLI", () => {
     const refused = capture();
     expect(await main(["demo", target], refused)).toBe(2);
     expect(refused.stderr.join("\n")).toContain("exists with other content");
+  });
+
+  it("shows a changed IPC payload with the target's key names escaped", async () => {
+    const a = join(dir, "payload-a.asar");
+    const b = join(dir, "payload-b.asar");
+    writeFileSync(a, payloadApp(false));
+    writeFileSync(b, payloadApp(true));
+    const io = capture();
+    expect(await main(["compare", a, b, "ipc"], io)).toBe(0);
+    const text = io.stdout.join("\n");
+    expect(text).toContain("0 added, 0 removed, 1 changed");
+    expect(text).toContain("args:");
+    expect(text).toContain("\\u202e");
+    expect(text.includes("\u001b") || text.includes("\u202e")).toBe(false);
   });
 
   it("writes a compare report and refuses to overwrite it without --force", async () => {
