@@ -639,10 +639,24 @@ export class Constants {
       const property = is(tokens[k - 1], "punct", ".");
       // `x.Name = void 0` is how compiled modules announce the export before defining it;
       // `var Name;` is the declaration TypeScript emits in front of the enum.
-      const announced =
-        is(next, "punct", "=") &&
-        is(tokens[k + 2], "ident", "void") &&
-        tokens[k + 3]?.value === "0";
+      // tsc announces all exports of a module in one chain, `x.A = x.Name = x.B = void 0`;
+      // followed for at most 64 links, so a long chain costs no more than that per enum name.
+      let announced = false;
+      if (is(next, "punct", "="))
+        for (let at = k + 2, links = 0; links < 64; links++) {
+          if (is(tokens[at], "ident", "void") && tokens[at + 1]?.value === "0") {
+            announced = true;
+            break;
+          }
+          if (
+            !is(tokens[at], "ident") ||
+            !is(tokens[at + 1], "punct", ".") ||
+            !is(tokens[at + 2], "ident") ||
+            !is(tokens[at + 3], "punct", "=")
+          )
+            break;
+          at += 4;
+        }
       const rebound =
         (is(next, "punct", "=") && !is(tokens[k + 2], "punct", "=") && !announced) ||
         (!property &&
@@ -759,7 +773,7 @@ export class Constants {
    * The object in front of the enum name is whatever the module was imported as and is not
    * looked at: the enum name and the member decide.
    */
-  private enumMember(k: number): string | null {
+  private enumMember(k: number, endAt?: number): string | null {
     const tokens = this.tokens;
     if ((!this.enums.size && !this.scopedEnums.size) || tokens[k]?.type !== "ident") return null;
     const chain = [tokens[k]!.value];
@@ -768,13 +782,27 @@ export class Constants {
       chain.push(tokens[at + 1]!.value);
       at += 2;
     }
-    if (chain.length < 2 || (!is(tokens[at], "punct", ",") && !is(tokens[at], "punct", ")")))
+    if (
+      chain.length < 2 ||
+      (endAt === undefined
+        ? !is(tokens[at], "punct", ",") && !is(tokens[at], "punct", ")")
+        : at !== endAt)
+    )
       return null;
     const [name, member] = chain.slice(-2) as [string, string];
     return (
       this.enums.get(name)?.get(member) ??
       (chain.length === 2 && this.scopedEnums.size ? this.scopedMember(name, member, k) : null)
     );
+  }
+
+  /**
+   * The value of `Enum.MEMBER` or `anything.Enum.MEMBER` when that chain is exactly the tokens
+   * [k, end): for the resolver, which reads expressions of any extent (an argument bound at a
+   * call site, a key inside a wrapper). The same rules as `enumMember`.
+   */
+  enumAt(k: number, end: number): string | null {
+    return this.enumMember(k, end);
   }
 
   constructor(private readonly tokens: Token[]) {

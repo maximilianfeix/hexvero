@@ -4,6 +4,7 @@ import {
   compareItems,
   detectKey,
   positionalFields,
+  storageSlot,
   type SideCoverage,
   type UnresolvedFamily,
 } from "../src/compare.js";
@@ -75,6 +76,17 @@ const wholeSide = (...files: string[]): SideCoverage => ({
 const unresolvedIn = (family: UnresolvedFamily, ...files: string[]): SideCoverage => ({
   ...wholeSide("main.js", "extra.js"),
   unresolved: new Map([[family, new Set(files)]]),
+});
+
+const storageRow = (kind: string, value: string) => ({
+  file: "index.js",
+  kind,
+  value,
+  op: "read",
+  evidence: "inferred",
+  line: 2,
+  column: 1,
+  count: 1,
 });
 
 const interfaceRow = (link: string, reason: string) => ({
@@ -726,6 +738,33 @@ describe("items on one side only", () => {
       });
       expect(channels.unknown.map((u) => u.reason)).toEqual([reason]);
     });
+  });
+
+  it("lets an unread storage key hide only items of its own storage kind in its file", () => {
+    // Electron Fiddle 0.38 → 0.39: an unread sessionStorage key in the same bundle
+    const unread = (kind: string): SideCoverage => ({
+      ...wholeSide("index.js"),
+      unresolved: new Map([["storage", new Set([storageSlot("index.js", kind)])]]),
+    });
+    const after = [
+      storageRow("localStorage", "theme"),
+      storageRow("localStorage", "isUsingSocketFirewall"),
+    ];
+    const other = compareItems([storageRow("localStorage", "theme")], after, {
+      collection: "storage",
+      coverage: { a: unread("sessionStorage"), b: wholeSide("index.js") },
+    });
+    expect(other.added).toEqual(["index.js::localStorage::isUsingSocketFirewall::read"]);
+    expect(other.unknown).toEqual([]);
+    // an unread localStorage key there may be the new one: not called added
+    const same = compareItems([storageRow("localStorage", "theme")], after, {
+      collection: "storage",
+      coverage: { a: unread("localStorage"), b: wholeSide("index.js") },
+    });
+    expect(same.added).toEqual([]);
+    expect(same.unknown.map((u) => [u.key, u.file])).toEqual([
+      ["index.js::localStorage::isUsingSocketFirewall::read", "index.js"],
+    ]);
   });
 
   it("does not call an interface row changed when only the explanation of its link differs", () => {

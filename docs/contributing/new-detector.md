@@ -39,9 +39,12 @@ with `push` (`candidates.ts:313`):
 ```ts
 const op = STORAGE_OPS[next!.value];
 if (!op) continue;
-const r = readArg(k + 4);
-if (r) push(out.storage, kind, r, t, { op });
+storageKey(kind, k + 4, t, { op });
 ```
+
+`storageKey` reads the key with `readArg`, or, when the key is a parameter of the function the call
+is in, at each call of that wrapper (`ExpressionResolver.wrapperCalls`, rows with `via`; see
+docs/electron-findings.md, Storage keys through wrappers and enums).
 
 Things to copy from it:
 
@@ -121,11 +124,12 @@ on these.
 `Session.coverage` (`session.ts:402-403`) records the files where a value could not be resolved:
 
 ```ts
-for (const row of app.storage) if (computedValue(row.value)) unresolved.add("storage", row.file);
+for (const row of app.storage)
+  if (computedValue(row.value)) unresolved.add("storage", storageSlot(row.file, row.kind));
 ```
 
 `compare` uses that to call a one-sided item `unknown` instead of `added` or `removed` when the
-other side has an unread value in the same file. A limitation that hides values is mapped to a
+other side has an unread value in the same file (for storage: of the same kind in the same file). A limitation that hides values is mapped to a
 family in `UNRESOLVED_LIMITATIONS` (`session.ts:1013`).
 
 ### 5. Identity for compare

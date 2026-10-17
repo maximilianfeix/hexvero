@@ -6,6 +6,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Electron analysis
+
+- Storage keys through wrapper methods and enums: a storage call whose key is a parameter of the function or method it is in (Electron Fiddle's `save(key, value)` / `retrieve(key)`) is read at each call of that wrapper in the same file, one row per call with that call's line and column and `via` naming the wrapper (`AppState.save`, `prefs.get`, `put`). Keys are read as literals, constants, templates and members of compiled TypeScript string enums (`c.GlobalSetting.theme` as webpack writes an import, the enum announced in tsc's `t.A = t.GlobalSetting = … = void 0` chain); a call whose key cannot be read keeps the storage call's unread row, nothing is guessed. A class written as `exports.Name = class {…}` is now a class for the resolver, an object literal of helpers in a minifier's `var a = …, c = {…}` is followed, and a parameter or local of the helper's name around a call is no call of it. The resolver reads up to 200,000 functions per file (was 20,000: Fiddle's renderer bundle has 25,113, and its `AppState` came after the first 20,000). In `compare`, an unread storage key hides only items of its own kind in its file. Electron Fiddle 0.38.0 → 0.39.0: storage rows 10 / 10 (all unread) to 82 / 85, 27 / 28 keys read (every `GlobalSetting` and `WindowSpecificSetting` member, checked against the v0.39.0 source), and `compare` lists `isUsingSocketFirewall` as added (read, write, delete) with nothing else added or removed (miss M2 of the case study). holdout5 storage keys unchanged at 7 / 17 / 4 (its misses are wrappers called from another module and files). Not read: wrapper calls from another module, keys taken from `this`, constants in a minifier's declaration list (docs/electron-findings.md). Stored scans are read again.
+
 ### Web UI
 
 - Text from the target is shown with invisible and direction-changing characters written out as

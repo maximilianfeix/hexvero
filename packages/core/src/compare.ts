@@ -60,6 +60,12 @@ export interface CompareOptions {
 /** A collection family whose values can be unresolved in a file (see `SideCoverage.unresolved`). */
 export type UnresolvedFamily = "ipc" | "bridge" | "window" | "endpoint" | "storage";
 
+/**
+ * How the storage family records an unread value: by file and storage kind, since a key of one
+ * kind (`sessionStorage`) can never be the item of another (`localStorage`).
+ */
+export const storageSlot = (file: string, kind: string): string => `${file}\u0000${kind}`;
+
 /** The family of each collection whose one-sided items an unresolved value can explain. */
 export const COLLECTION_FAMILY: Readonly<Record<string, UnresolvedFamily>> = {
   ipcChannels: "ipc",
@@ -650,7 +656,13 @@ export function compareItems(
       // (an IPC channel built at run time): the item may well be that value.
       const hidden = family === undefined ? undefined : other.unresolved.get(family);
       if (hidden && hidden.size > 0) {
-        const there = hidden.has("*") ? (files[0] ?? "") : files.find((f) => hidden.has(f));
+        const kind =
+          family === "storage" && typeof (item as { kind?: unknown })?.kind === "string"
+            ? (item as { kind: string }).kind
+            : null;
+        const there = hidden.has("*")
+          ? (files[0] ?? "")
+          : files.find((f) => hidden.has(f) || (kind !== null && hidden.has(storageSlot(f, kind))));
         if (there !== undefined) {
           unknown.push({
             key: shown,

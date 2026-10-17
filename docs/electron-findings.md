@@ -218,6 +218,54 @@ will-frame-navigate listener found in the files read", with the number of files 
 registered through code hexvero does not follow (a computed event name, a helper that is handed the
 webContents) is not seen, and a partial scan adds "in the scanned part".
 
+## Storage keys through wrappers and enums (`storage`)
+
+A storage call whose key is (or is built from) a parameter of the function or method it is in
+makes that function a wrapper:
+
+```js
+class AppState {
+  save(key, value) {
+    localStorage.setItem(key, String(value));
+  }
+  retrieve(key) {
+    return JSON.parse(localStorage.getItem(key) || "null");
+  }
+  a() {
+    this.save(GlobalSetting.isUsingSocketFirewall, true);
+  }
+}
+```
+
+The key is then read at each call of the wrapper in the same file, with what that call passes, and
+each readable call is a row of its own: the call's file, line and column, the op of the storage
+call inside the wrapper, and `via` naming the wrapper (`AppState.save`, `prefs.get` for a method of
+an object literal, `put` for a function). A wrapper whose storage calls have both outcomes
+(`save` writes or, with no value, removes) gives one row per op at each call. Calls are found as
+the resolver finds them for IPC helpers: `this.name(…)` inside the same class, `x.name(…)` on an
+instance of the class or on the object literal (declared once at the top of the file, also in a
+minifier's `var a = …, c = { … }`), and `name(…)` for a function; a parameter or local of the same
+name around a call is another object, and that call does not count. A class is the one written as
+`class Name`, `var Name = class` or `exports.Name = class`.
+
+A key is read when it is a literal, a constant, a template or `+` of those, or a member of a
+compiled TypeScript string enum of the file, `GlobalSetting.theme` or `c.GlobalSetting.theme` as
+webpack writes an import (`(function (e) { e.theme = "theme" })(u || (t.GlobalSetting = u = {}))`).
+The enum's name must mean the enum everywhere in the file: tsc's export chain
+`t.A = t.GlobalSetting = t.B = void 0` announces it, any other binding of the name makes it
+ambiguous and nothing is read through it. A member the enum does not have is not read.
+
+A call whose key cannot be read keeps the row of the storage call inside the wrapper with
+`value: null` and the parameter as `expression`, so an unread key is never hidden. Not read:
+calls of a wrapper from another module (`local.get(KEY)` with `local` imported), a wrapper called
+from a wrapper of another file, a key the wrapper takes from `this` (`this.prefix + key`), and
+constants a minifier declares in a list (`var a = 1, K = "key"`) where the resolver does not read
+them. At most 64 wrapper questions per file and 64 call sites per wrapper are read, each within the
+resolver's work budget.
+
+In a comparison, an unread key hides only items of its own kind in its file: an unread
+`sessionStorage` key does not make a new `localStorage` key unknown.
+
 ## Not read
 
 Electron fuses, Content Security Policy, what a navigation or window-open handler checks,

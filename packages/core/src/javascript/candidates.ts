@@ -15,7 +15,7 @@
  * A URL that merely occurs as a string is not an endpoint. Those go to `urls`.
  */
 import { Constants, resolveAliases } from "./aliases.js";
-import { ExpressionResolver } from "./resolve.js";
+import { ExpressionResolver, type WrapperCalls } from "./resolve.js";
 import type { Token } from "./scan.js";
 
 const OWN_TARGETS: ReadonlySet<string> = new Set(["fetch", "localStorage", "sessionStorage"]);
@@ -91,6 +91,12 @@ export interface Candidate {
   op?: "read" | "write" | "delete";
   /** The unread argument, for `unknown` rows: an identifier name or `<expression>`. */
   expression?: string;
+  /**
+   * A storage key read at a call of a wrapper (`this.save(KEY, v)` for a method whose
+   * `localStorage.setItem(key, …)` takes its parameter): the wrapper, `name` or `Class.method`.
+   * The row's position is then that call, not the storage call inside the wrapper.
+   */
+  via?: string;
   /** How many times the same kind and value occur in this file (first position is reported). */
   count: number;
 }
@@ -156,6 +162,8 @@ interface Read {
   expression?: string;
   /** Further values the same call takes (one per readable call site of a helper). */
   more?: string[];
+  /** Read at a call of this wrapper (see `Candidate.via`). */
+  via?: string;
 }
 
 export function findCandidates(
@@ -256,6 +264,22 @@ export function findCandidates(
           value += "${…}";
           evidence = "template";
         }
+      } else if (t.type === "ident" && is(tokens[j + 1], "punct", ".")) {
+        // `Enum.MEMBER`, `module.Enum.MEMBER`: a member of a compiled TypeScript string enum
+        let end = j + 1;
+        while (end < j + 7 && is(tokens[end], "punct", ".") && is(tokens[end + 1], "ident"))
+          end += 2;
+        const member = constants.enumAt(j, end);
+        if (member !== null) {
+          value += member;
+          if (evidence === "literal") evidence = "inferred";
+          j = end - 1;
+        } else if (parts === 0)
+          return { value: null, evidence: "unknown", expression: "<expression>" };
+        else {
+          value += "${…}";
+          return { value, evidence: "template" };
+        }
       } else if (parts === 0)
         return { value: null, evidence: "unknown", expression: "<expression>" };
       else {
@@ -270,11 +294,8 @@ export function findCandidates(
   // The slow path, for arguments the reader above cannot complete: the bounded resolver of
   // resolve.ts (helpers, API client classes, parameters bound at their call sites). Names from
   // other modules become references, filled in when the application scan knows that module.
-  let resolver: ExpressionResolver | null = null;
-  let resolved = 0;
-  const throughResolver = (k: number, url: boolean): Read | null => {
-    if (resolved++ > 32) return null;
-    resolver ??= new ExpressionResolver(
+  const makeResolver = (): ExpressionResolver =>
+    new ExpressionResolver(
       tokens,
       constants,
       "",
@@ -282,6 +303,11 @@ export function findCandidates(
       (specifier, property) => `${REF_OPEN}${specifier}${REF_SPLIT}${property}${REF_OPEN}`,
       true,
     );
+  let resolver: ExpressionResolver | null = null;
+  let resolved = 0;
+  const throughResolver = (k: number, url: boolean): Read | null => {
+    if (resolved++ > 32) return null;
+    resolver ??= makeResolver();
     // Values from the call sites that could be read are real requests, even when another call
     // site could not be read; a value that is nothing but gaps says nothing and is dropped.
     const found = resolver.resolveArgument(k);
@@ -317,7 +343,7 @@ export function findCandidates(
     t: Token,
     extra: { method?: string; op?: Candidate["op"] } = {},
   ): void => {
-    const key = `${list === out.endpoints ? "e" : list === out.storage ? "s" : list === out.urls ? "u" : "r"}\u0000${kind}\u0000${r.value ?? `?${r.expression}`}\u0000${extra.method ?? ""}\u0000${extra.op ?? ""}`;
+    const key = `${list === out.endpoints ? "e" : list === out.storage ? "s" : list === out.urls ? "u" : "r"}\u0000${kind}\u0000${r.value ?? `?${r.expression}`}\u0000${extra.method ?? ""}\u0000${extra.op ?? ""}\u0000${r.via ?? ""}`;
     const existing = seen.get(key);
     if (existing) {
       existing.count++;
@@ -336,6 +362,7 @@ export function findCandidates(
       ...(extra.method ? { method: extra.method } : {}),
       ...(extra.op ? { op: extra.op } : {}),
       ...(r.expression ? { expression: r.expression } : {}),
+      ...(r.via ? { via: r.via } : {}),
       count: 1,
     };
     seen.set(key, row);
@@ -349,6 +376,63 @@ export function findCandidates(
         t,
         extra,
       );
+  };
+
+  // Storage wrappers: a key that is (or is built from) a parameter of the function or method the
+  // storage call is in is read at each call of that function in this file, with the key its
+  // arguments give: one row per call site, `via` the wrapper. A call site that cannot be read
+  // keeps the unread row of the storage call itself, so nothing unread is hidden.
+  // A resolver of its own: its work budget is not the one the endpoint questions used up.
+  let wrapperResolver: ExpressionResolver | null = null;
+  let wrapperQuestions = 0;
+  const wrappers = new Map<number, WrapperCalls | null>();
+  const storageKey = (
+    kind: Candidate["kind"],
+    k: number,
+    t: Token,
+    extra: { op?: Candidate["op"] },
+    adjust: (r: Read) => Read = (r) => r,
+  ): void => {
+    const fast = read(k);
+    const open = !fast || fast.value === null || fast.value.includes("${…}");
+    let calls = wrappers.get(k);
+    if (open && calls === undefined && wrapperQuestions++ < 64) {
+      wrapperResolver ??= makeResolver();
+      calls = wrapperResolver.wrapperCalls(k);
+      wrappers.set(k, calls);
+    }
+    if (!open || !calls) {
+      const r = readArg(k);
+      if (r) push(out.storage, kind, adjust(r), t, extra);
+      return;
+    }
+    let unread = false;
+    for (const site of calls.sites) {
+      if (!site.values) {
+        unread = true;
+        continue;
+      }
+      for (const value of site.values)
+        push(
+          out.storage,
+          kind,
+          adjust({ value, evidence: resolvedEvidence(value), via: calls.name }),
+          tokens[site.at]!,
+          extra,
+        );
+    }
+    if (!unread || !fast) return;
+    push(
+      out.storage,
+      kind,
+      adjust(
+        fast.value !== null && fast.value.replaceAll("${…}", "") !== ""
+          ? fast
+          : { value: null, evidence: "unknown", expression: fast.expression ?? "<expression>" },
+      ),
+      t,
+      extra,
+    );
   };
 
   // Variables that hold an electron-store instance; only looked for when the package is named.
@@ -567,8 +651,7 @@ export function findCandidates(
       if (is(tokens[k + 1], "punct", ".") && is(next, "ident") && is(tokens[k + 3], "punct", "(")) {
         const op = STORAGE_OPS[next!.value];
         if (!op) continue;
-        const r = readArg(k + 4);
-        if (r) push(out.storage, kind, r, t, { op });
+        storageKey(kind, k + 4, t, { op });
       } else if (
         is(tokens[k + 1], "punct", ".") &&
         is(next, "ident") &&
@@ -581,11 +664,9 @@ export function findCandidates(
           op: is(tokens[k - 1], "ident", "delete") ? "delete" : assigned ? "write" : "read",
         });
       } else if (is(tokens[k + 1], "punct", "[") && is(tokens[k + 3], "punct", "]")) {
-        const r = readArg(k + 2);
-        if (r)
-          push(out.storage, kind, r, t, {
-            op: is(tokens[k + 4], "punct", "=") ? "write" : "read",
-          });
+        storageKey(kind, k + 2, t, {
+          op: is(tokens[k + 4], "punct", "=") ? "write" : "read",
+        });
       }
     } else if (
       (t.value === "indexedDB" || t.value === "caches") &&
@@ -615,16 +696,11 @@ export function findCandidates(
     ) {
       const op = STORE_OPS[tokens[k + 2]!.value];
       if (!op) continue;
-      const r = readArg(k + 4);
       // The variable is taken for a store because of how it was created, so never `literal`.
-      if (r)
-        push(
-          out.storage,
-          "electron-store",
-          { ...r, evidence: r.evidence === "literal" ? "inferred" : r.evidence },
-          t,
-          { op },
-        );
+      storageKey("electron-store", k + 4, t, { op }, (r) => ({
+        ...r,
+        evidence: r.evidence === "literal" ? "inferred" : r.evidence,
+      }));
     } else if (t.value === "path" && is(tokens[k + 1], "punct", ":")) {
       const v = tokens[k + 2];
       if (

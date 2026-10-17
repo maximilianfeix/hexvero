@@ -315,6 +315,126 @@ describe("storage through helpers", () => {
   });
 });
 
+const rows = (source: string): string[] =>
+  find(source).storage.map(
+    (r) =>
+      `${r.kind} ${r.op} ${r.value ?? `?${r.expression}`} [${r.evidence}]${r.via ? ` via ${r.via}` : ""} @${r.line}:${r.column}`,
+  );
+
+describe("storage through wrapper methods and enums", () => {
+  // Electron Fiddle's AppState as webpack and terser emit it: a TypeScript string enum in one
+  // module, announced in tsc's export chain; the class as `exports.AppState = class {…}` in another
+  const enumModule =
+    '33271(e,t){"use strict";var u,h;Object.defineProperty(t,"__esModule",{value:!0}),t.WindowSpecificSetting=t.GlobalSetting=t.PACKAGE_NAME=void 0,t.PACKAGE_NAME="package.json",function(e){e.theme="theme",e.isUsingSocketFirewall="isUsingSocketFirewall",e.knownVersion="known-electron-versions"}(u||(t.GlobalSetting=u={})),function(e){e.version="version"}(h||(t.WindowSpecificSetting=h={}))},';
+  const fiddle = (body: string[]): string =>
+    [
+      "(()=>{var __webpack_modules__={",
+      enumModule,
+      "500(e,t,n){const c=n(33271);t.AppState=class{theme=localStorage.getItem(c.GlobalSetting.theme);",
+      ...body,
+      'save(e,t){if(null!=t){const n="object"==typeof t?JSON.stringify(t):t.toString();localStorage.setItem(e,n)}else localStorage.removeItem(e)}retrieve(e){const t=localStorage.getItem(e);return JSON.parse(t||"null")}}},',
+      "};})();",
+    ].join("\n");
+
+  it("reads keys a method passes on, at each call of the method, with the enum member named there", () => {
+    expect(
+      rows(
+        fiddle([
+          "isUsingSocketFirewall=this.retrieve(c.GlobalSetting.isUsingSocketFirewall);",
+          "setFirewall(e){this.isUsingSocketFirewall=e,this.save(c.GlobalSetting.isUsingSocketFirewall,e)}",
+          "known(){return this.retrieve(c.GlobalSetting.knownVersion)}",
+          "setVersion(e){this.save(c.WindowSpecificSetting.version,e)}",
+        ]),
+      ),
+    ).toEqual([
+      "localStorage read theme [inferred] @3:52",
+      "localStorage write isUsingSocketFirewall [inferred] via AppState.save @5:50",
+      "localStorage write version [inferred] via AppState.save @7:20",
+      "localStorage delete isUsingSocketFirewall [inferred] via AppState.save @5:50",
+      "localStorage delete version [inferred] via AppState.save @7:20",
+      "localStorage read isUsingSocketFirewall [inferred] via AppState.retrieve @4:28",
+      "localStorage read known-electron-versions [inferred] via AppState.retrieve @6:21",
+    ]);
+  });
+
+  it("keeps the unread row when a call site passes a key it cannot read, and never guesses", () => {
+    expect(
+      rows(
+        fiddle([
+          "a(){this.retrieve(c.GlobalSetting.theme)}",
+          // computed at run time: no key
+          "b(e){return this.retrieve(e+Math.random())}",
+          // a member the enum does not have
+          "d(){return this.retrieve(c.GlobalSetting.missing)}",
+        ]),
+      ),
+    ).toEqual([
+      "localStorage read theme [inferred] @3:52",
+      "localStorage write ?e [unknown] @7:81",
+      "localStorage delete ?e [unknown] @7:112",
+      "localStorage read theme [inferred] via AppState.retrieve @4:10",
+      "localStorage read ?e [unknown] @7:159",
+    ]);
+  });
+
+  it("does not take a call of another class's method of the same name for the wrapper", () => {
+    expect(
+      rows(
+        [
+          'class Prefs { load() { return this.read("prefs.ui"); } read(key) { return localStorage.getItem(key); } }',
+          'class Doc { open() { this.read("not-a-key"); } read(path) { return path; } }',
+          'function put(name, v) { localStorage.setItem("app." + name, v); }',
+          'put("zoom", 1);',
+          'const K = "tab"; put(K, 2);',
+          // an object of helpers in a minifier's declaration list; a parameter of the same name
+          // in another function is another object, and its call no call of the helper
+          'var a=1,c={get:t=>sessionStorage.getItem(t)};c.get("pane");function f(c){c.get("nope")}',
+          // a prefix the wrapper adds that cannot be read: no `${…}theme` key, the unread row
+          'function pref(n) { return localStorage.getItem(prefix() + n); } pref("theme");',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "localStorage read prefs.ui [inferred] via Prefs.read @1:36",
+      "localStorage write app.zoom [inferred] via put @4:1",
+      "localStorage write app.tab [inferred] via put @5:18",
+      "sessionStorage read pane [inferred] via c.get @6:48",
+      "localStorage read ?<expression> [unknown] @7:27",
+    ]);
+  });
+
+  it("reads an enum member only where the enum's name means the enum", () => {
+    // a second binding of the name makes it ambiguous: nothing is read through it
+    expect(
+      rows(
+        [
+          '(function (S) { S.theme = "theme"; })(Setting || (exports.Setting = Setting = {}));',
+          'var Setting; Setting = { theme: "other" };',
+          "localStorage.getItem(Setting.theme);",
+        ].join("\n"),
+      ),
+    ).toEqual(["localStorage read ?<expression> [unknown] @3:1"]);
+  });
+
+  it("stays linear on many wrapper calls and long export chains", () => {
+    const calls = 20_000;
+    const source = [
+      `exports.${Array.from({ length: 5000 }, (_, i) => `E${i}`).join("=exports.")}=void 0;`,
+      '(function (S) { S.a = "a"; })(Setting || (exports.Setting = Setting = {}));',
+      "class Store { save(k, v) { localStorage.setItem(k, v); } run() {",
+      ...Array.from(
+        { length: calls },
+        (_, i) => `this.save(Setting.a, ${i}); this.save(x${i}, 1);`,
+      ),
+      "} }",
+    ].join("\n");
+    const started = performance.now();
+    const found = find(source);
+    // generous: the point is linear against quadratic, and test machines are busy
+    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(found.storage.length).toBeLessThanOrEqual(2000);
+  });
+});
+
 describe("names and scope", () => {
   const targets = new Set(["ipcMain", "ipcRenderer", "fetch"]);
   const uses = (source: string, own: string[] = []): string[] => {

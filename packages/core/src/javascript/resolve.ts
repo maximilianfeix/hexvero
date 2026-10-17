@@ -55,6 +55,14 @@ export interface ResolvedValues {
   partial: boolean;
 }
 
+/** The call sites of a wrapper function and what each passes (see `wrapperCalls`). */
+export interface WrapperCalls {
+  /** The function, or `Class.method`. */
+  name: string;
+  /** `at`: the token of the function or method name at the call; `values`: null when unread. */
+  sites: Array<{ at: number; values: string[] | null }>;
+}
+
 /** Where a literal value is written. */
 export interface ValueSource {
   file: string;
@@ -143,6 +151,8 @@ export interface FnDef {
 }
 
 const MAX_VALUES = 64;
+/** Functions read per file (a large bundle has some tens of thousands). */
+const MAX_FUNCTIONS = 200_000;
 const MAX_DEPTH = 10;
 const MAX_SITES = 64;
 /** Rounds of one loop, `forEach` or `map`, and keys an evaluated object may get. */
@@ -487,6 +497,71 @@ export class ExpressionResolver {
     // The expression uses a parameter of the function it is in: read every binding of it.
     const bound = this.throughParameters(k, end, 0);
     return bound ? this.result(bound) : read;
+  }
+
+  /**
+   * The calls of a wrapper: the expression at k (a storage key) reads a parameter of the named
+   * function or method around it, and each call site of that function in this file binds it.
+   * One entry per call site, with the method name token there and the values its arguments give
+   * the expression, whole (null: that call site cannot be read, or only with a gap). For a
+   * method, a call on `this` counts only inside the same class. Null when the expression reads
+   * no parameter, the parameter is
+   * assigned in the body, or no call site is found. Bounded like `resolveArgument`: at most
+   * MAX_SITES call sites, MAX_VALUES values per site, and one work budget per question.
+   */
+  wrapperCalls(k: number): WrapperCalls | null {
+    return this.guarded(null, () => this.wrapperCallsIn(k));
+  }
+
+  private wrapperCallsIn(k: number): WrapperCalls | null {
+    if (this.work <= 0) return null;
+    this.begin(20_000);
+    const end = this.exprEnd(k);
+    const def = this.enclosing(k);
+    if (!def || def.name === null || def.calledBy) return null;
+    const used = new Set<string>();
+    for (let j = k; j < end; j++)
+      if (
+        this.is(j, "ident") &&
+        !this.punct(j - 1, ".") &&
+        this.paramIndex(def, this.tokens[j]!.value) !== -1
+      )
+        used.add(this.tokens[j]!.value);
+    if (!used.size) return null;
+    for (const name of used)
+      for (const j of this.occurrences(name, def.body[0], def.body[1]))
+        if (
+          !this.punct(j - 1, ".") &&
+          ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
+        )
+          return null;
+    const range = def.owner ? this.classRanges().find((c) => c.name === def.owner) : null;
+    const sites = this.callSites(def).filter(
+      (open) =>
+        !this.is(open - 3, "ident", "this") || (!!range && open > range.start && open < range.end),
+    );
+    if (!sites.length) return null;
+    const out: WrapperCalls["sites"] = [];
+    for (const open of sites) {
+      const close = this.match[open]!;
+      if (close === -1) continue;
+      const values: string[] = [];
+      let unread = false;
+      for (const caller of this.callerEnvs(open, close, 0)) {
+        const env: Env = new Map();
+        this.bind(def.params, this.list(open, close, caller, 1), env);
+        const v = this.evalRange(k, end, env, 1);
+        // Only whole keys: a gap may be a part of the wrapper's own text that is not read (a
+        // prefix constant), and `${…}theme` would then stand for a key no build has.
+        const read =
+          v?.kind === "str" ? v.values.filter((x) => x !== "" && !x.includes("${…}")) : [];
+        if (!read.length) unread = true;
+        for (const x of read) if (values.length < MAX_VALUES && !values.includes(x)) values.push(x);
+      }
+      out.push({ at: open - 1, values: unread && !values.length ? null : values });
+    }
+    const holder = def.owner ?? (def.member ? this.literalOwner(def) : null);
+    return out.length ? { name: holder ? `${holder}.${def.name}` : def.name, sites: out } : null;
   }
 
   private result(values: string[]): ResolvedValues | null {
@@ -1422,6 +1497,12 @@ export class ExpressionResolver {
           values: [last.value.replace(/^.*[\\/]/, "")],
           src: { file: this.file, line: last.line },
         };
+    }
+    // `Enum.MEMBER` or `module.Enum.MEMBER`, a member of a compiled TypeScript string enum of
+    // this file (the rules of `Constants.enumAt`); a name bound in the evaluation is that instead
+    if (!env.has(t.value) && this.punct(start + 1, ".")) {
+      const member = this.constants.enumAt(start, end);
+      if (member !== null) return { kind: "str", values: [member] };
     }
     // name, name.prop, name(args), name(args)(args), name.prop(args)
     let value = this.lookup(t.value, start, env, depth);
@@ -2918,10 +2999,11 @@ export class ExpressionResolver {
     for (let k = 0; k + 2 < this.tokens.length; k++) {
       if (!this.is(k, "ident", "class")) continue;
       // `class Name {`, or `var Name = class {` as bundlers write it (the variable names it)
+      // or `exports.Name = class {`, as tsc writes an exported class expression
       const name =
         this.is(k + 1, "ident") && !this.is(k + 1, "ident", "extends")
           ? this.tokens[k + 1]!.value
-          : this.punct(k - 1, "=") && this.is(k - 2, "ident") && !this.punct(k - 3, ".")
+          : this.punct(k - 1, "=") && this.is(k - 2, "ident")
             ? this.tokens[k - 2]!.value
             : null;
       if (name === null) continue;
@@ -2952,7 +3034,7 @@ export class ExpressionResolver {
       for (const c of classes) if (k > c.start && k < c.end) return c.name;
       return null;
     };
-    for (let k = 0; k < tokens.length && defs.length < 20_000; k++) {
+    for (let k = 0; k < tokens.length && defs.length < MAX_FUNCTIONS; k++) {
       const t = tokens[k]!;
       // function NAME ( … ) {   /   function ( … ) {
       if (t.type === "ident" && t.value === "function") {
@@ -3649,12 +3731,12 @@ export class ExpressionResolver {
       if (t.value === "(" || t.value === "[" || t.value === ";") break;
       if (t.value === "{") {
         const name = this.tokens[j - 2];
+        // `const NAME = {`, or `var a = 1, NAME = {` as minifiers write it
         if (
           this.punct(j - 1, "=") &&
           name?.type === "ident" &&
-          !this.punct(j - 3, ".") &&
-          this.is(j - 3, "ident") &&
-          /^(const|let|var)$/.test(this.tokens[j - 3]!.value) &&
+          ((this.is(j - 3, "ident") && /^(const|let|var)$/.test(this.tokens[j - 3]!.value)) ||
+            (this.punct(j - 3, ",") && this.inDeclarationList(j - 2))) &&
           !this.enclosing(j) &&
           this.declaredOnce(name.value)
         )
@@ -3675,7 +3757,14 @@ export class ExpressionResolver {
     for (const j of this.positions(name)) {
       if (this.punct(j - 1, ".")) continue;
       const before = this.tokens[j - 1];
-      if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value))
+      if (
+        (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) ||
+        (this.punct(j - 1, ",") &&
+          this.punct(j + 1, "=") &&
+          !this.punct(j + 2, "=") &&
+          this.depthAt(j) === 0 &&
+          this.inDeclarationList(j))
+      )
         declared++;
       else if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j)) return false;
     }
@@ -3703,7 +3792,14 @@ export class ExpressionResolver {
         // a method of an object literal: `http.getJson(…)` for `const http = { getJson(url) {…} }`
         if (before) {
           const literal = def.member ? this.literalOwner(def) : null;
-          if (literal && this.is(k - 2, "ident", literal) && !this.punct(k - 3, "."))
+          // a parameter or local of the same name around the call is another object
+          if (
+            literal &&
+            this.is(k - 2, "ident", literal) &&
+            !this.punct(k - 3, ".") &&
+            !this.enclosingParam(k - 2, literal) &&
+            !this.declaredLocally(k - 2, literal)
+          )
             out.push(k + 1);
           continue;
         }
