@@ -2447,7 +2447,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 17;
+export const JS_SCAN_SCHEMA = 18;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -3431,6 +3431,11 @@ export function analyzeJavaScriptTree(
     const cand = tokenFacts.candidates;
     if (cand) {
       if (cand.truncated) facts.candidatesCapped = true;
+      if (cand.clientsSkipped && facts.limitations.length < 200)
+        facts.limitations.push({
+          code: "client_calls_skipped",
+          message: `${file.path}: more than 2,000 calls of HTTP client modules (node:https, node:http, Electron's net) were checked; the further ones give no endpoint rows.`,
+        });
       if (cand.wrappersSkipped && facts.limitations.length < 200)
         facts.limitations.push({
           code: "storage_wrappers_skipped",

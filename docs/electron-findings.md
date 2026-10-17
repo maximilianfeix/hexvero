@@ -300,6 +300,100 @@ not met, the key stays unread.
 In a comparison, an unread key hides only items of its own kind in its file: an unread
 `sessionStorage` key does not make a new `localStorage` key unknown.
 
+## Requests through HTTP client modules (`endpoints`)
+
+A call of Node's `http` or `https` module or of Electron's `net` is an `http-client` endpoint row,
+read as a `fetch` URL is, when the name it is made on is bound to that module:
+
+- `X = require("node:https")` (also `http`, and through a bundler's interop call,
+  `X = __toESM(require("https"))`, then `X.get(…)` and `X.default.get(…)`), `import X from
+  "https"`, `import * as X from "https"`;
+- a request function bound by name: `const { get, request: r } = require("https")`, `import {
+  request as r } from "node:http"`, and esbuild's `(0, X.get)(…)` for such an import;
+- Electron: `const { net } = require("electron")` or `import { net } from "electron"`, then
+  `net.request(…)`, and `E.net.request(…)` with `E = require("electron")` (esbuild's
+  `import_electron.net.request(…)`).
+
+The name must mean that binding at the call: a parameter of the name in a function between the
+call and the binding (also in the parameter list the call stands in, `function f(https, a =
+https.get(…))`), a `catch` binding, or another declaration of the name visible at the call
+(`const|let|var|function|class NAME`, a destructuring pattern, `const { get } = o`, `[get] = o`,
+a `for (const https of …)` head; a named function expression binds its name inside itself only)
+is another object. A declaration of the name in another function or block shadows only there,
+and a class field (`class A { https = 1 }`) or an object key binds nothing. An assignment whose
+name means the binding (`h = mock`) makes it no proven client. The declarations of a name are
+read once per file into ranges, so the check is linear.
+
+Where no binding is proven, the rule of 0.9.2 applies: a call on `http`, `https`, `axios`, `got`,
+`ky`, `superagent`, `needle`, `$http` or a name bound to one of those modules anywhere in the file
+is a request when its URL is read as an address, without unknown rows. This also holds for a
+local that is itself bound to a module (`const https = n(5)` in a webpack module, `const https =
+require("https")` in another module of a bundle); a local bound to anything else, and a parameter
+of a name the file binds to a client module, is another object. At most 2,000 client calls are
+checked per file (limitation `client_calls_skipped`); the further ones are read by that rule, so
+a literal address past the cap is still a row. Unknown client rows past 200 per file are folded
+into one `<expression>` row with its count, so they cannot push known addresses out of the list
+(2,000 rows per list). The request libraries named by
+`require` (`axios`, `got`, `ky`, `superagent`, `needle`) count the same way. The method is `GET`
+for `get`, `POST` etc. for the verb methods, and for `request` the `method` option when the call
+writes one.
+
+The URL argument is read like a `fetch` URL: a literal, a constant, a template, and a parameter of
+the function around the call, followed to the call sites of that function with the resolver's
+rules (as for storage wrappers above: a function declared once, `this.name(…)` only in its own
+class, no shadowing binding, no member assignment of the name, at most 64 call sites, depth 3).
+An anonymous function called where it is written (`async function (t, e) { … }(t, e)`,
+`(function (u) { … })(x)`, `!function (u) { … }(x)`, `((u) => { … })(x)`) has that call as its
+one call site; the parenthesis around it must group it, not open a call it is an argument of
+(`foo(function (u) { … })(x)` calls what `foo` returns), and
+`new URL(t)` is read also when `URL` comes from `node:url` under another name (`import { URL as
+Nt } from "node:url"`, `new url.URL(…)`), where that name means the import (a parameter `Nt` is
+something else). Only a value shaped like an address counts (a scheme,
+`/path`, or another module's constant). When some call sites give an address and others cannot be
+read, the call has a row per address and keeps an unknown row too (`expression` names the
+argument): Electron Fiddle 0.39.0's `sfw.mjs` reads
+`https://api.github.com/repos/SocketDev/sfw-free/releases/latest` from `Gt()` → `Rt(t)` → an
+inline `async function (t, e)` → `Mt(t)` → `kt.get(new Nt(t), …)`, and keeps an unknown row for
+the redirect `Mt(c.location, …)` and the download `Mt(t, { headers })`, whose URLs exist only at
+run time.
+
+An options object is read only when every part of the address is known: `hostname` (or `host`),
+`path` (default `/`) and `protocol` (default `https:` for `https`, `http:` for `http` and Electron's
+`net`), each one whole string; `url` for `net` and the request libraries. Anything else is an
+unknown row whose `expression` says which part was not read: `options.hostname` (also when none is
+written: Node then sends the request to localhost, which is not taken for an address),
+`options.port`, `options.defaultPort`, `options.socketPath`, `options.lookup` and
+`options.createConnection` (not read at all), `options.url` for Node's `http` and
+`https` (which take no `url` option), `options.path`, `options.protocol`, and `<options>` for an
+object with a spread of something unknown. Node merges an options object over a URL
+(`https.request(url, { hostname })`): when the second argument is an object literal that sets
+`protocol`, `hostname`, `host` or `path`, those parts replace the URL's, and only when each is
+known (a `host` or `hostname` with a port is unknown: Node takes it as a bare name); one of the options above, a spread or a part that is not known makes the row unknown. An
+options object passed as a name there is not read (the URL is kept). An argument that cannot be read is an unknown row with
+the argument as `expression`; nothing is guessed.
+
+An address another module exports as a template on its own constant (`module.exports = {
+DIRECTORY_URL: `${API_ROOT}/directory/top` }` with `const API_ROOT = "https://…"`), also when a
+third module passes it on with a spread (`module.exports = { ...endpoints }`) or a bundler wraps
+the modules (esbuild, plain and minified), is read for `fetch` and the clients above. Every gap of
+the template must be one name of a string constant of that module, declared before the template,
+and written exactly once in the whole file: a second declaration, an assignment (`API_ROOT = …`,
+`+=`, `++`), or another binding of the name (a parameter, also of an arrow `API_ROOT => …`, a
+destructuring pattern, a `for (const API_ROOT of|in …)` head) makes the entry unread, and the request keeps its unknown row. Anything else in a gap (`${API_ROOT.trim()}`,
+a call, a name the module does not declare) is not read either. At most 64 such names are checked
+per file.
+
+A client known by its name only (`https.get(…)` where `https` is not bound in the file,
+`axios.post(…)`) is read as before, without unknown rows; where a parameter or local of that name
+is meant as a parameter (`function login(axios, body)`), the URL is read at the call only, not
+through call sites; a declaration, pattern or `for … of` of the name, and a member of another
+object (`this.https.get(…)`), make it no client by name (only the shape rule for unknown objects
+applies). Not read: modules a bundler refers to by number (webpack's `r = n(65692)` for
+`e.exports = require("https")`, as in Fiddle's main bundle, where Sentry's `t.net.request(…)` and
+`electron-devtools-installer`'s `s.net ? s.net.request : r.get` stay without a row in both
+versions), a client passed around as a value (`const l = net.request; l(url)`), wrappers called
+from another module, and `fetch(new Request(url))`.
+
 ## Not read
 
 Electron fuses, Content Security Policy, what a navigation or window-open handler checks,

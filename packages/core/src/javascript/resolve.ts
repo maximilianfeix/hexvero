@@ -153,6 +153,23 @@ export interface FnDef {
 }
 
 const MAX_VALUES = 64;
+/** Words after which `(` groups an expression rather than calling something. */
+const GROUPING_WORDS = new Set([
+  "return",
+  "typeof",
+  "void",
+  "await",
+  "yield",
+  "case",
+  "in",
+  "of",
+  "delete",
+  "throw",
+  "else",
+  "do",
+  "new",
+  "instanceof",
+]);
 /**
  * Functions read per file. Electron Fiddle's renderer bundle has 25,113 (its storage wrapper
  * class comes after the first 20,000); the tables grow with this number, so it stays bounded.
@@ -1359,10 +1376,11 @@ export class ExpressionResolver {
       return this.chain({ kind: "obj", props }, close + 1, end, env, depth);
     }
     // `new URL(path, base)`: the address the URL constructor builds, when both are known
-    if (t.value === "new" && this.is(start + 1, "ident", "URL") && this.punct(start + 2, "(")) {
-      const close = this.match[start + 2]!;
+    const urlOpen = t.value === "new" ? this.urlConstructor(start + 1) : -1;
+    if (urlOpen !== -1) {
+      const close = this.match[urlOpen]!;
       if (close === -1 || close >= end) return null;
-      const [path, base] = this.list(start + 2, close, env, depth);
+      const [path, base] = this.list(urlOpen, close, env, depth);
       if (path?.kind !== "str" || (base && base.kind !== "str")) return null;
       const out: string[] = [];
       // A gap in the path (`boards/${…}`) is carried through as a placeholder when gaps are
@@ -3589,8 +3607,11 @@ export class ExpressionResolver {
       this.lines.add(this.tokens[receiver]!.line);
       return envs;
     }
-    if (def.name === null) return null;
-    const sites = this.callSites(def);
+    // `(function (t) { … })(x)` and minified `async function (t) { … }(x)`: an anonymous function
+    // called where it is written has that one call site
+    const iife = def.name === null && !def.calledBy ? this.immediateCall(def) : -1;
+    if (def.name === null && iife === -1) return null;
+    const sites = iife !== -1 ? [iife] : this.callSites(def);
     if (!sites.length) return null;
     const envs: Env[] = [];
     for (const open of sites) {
@@ -3976,6 +3997,309 @@ export class ExpressionResolver {
     if (this.s.stringWrites.has(name)) found = true;
     this.s.memberWrites.set(name, found);
     return found;
+  }
+
+  /**
+   * The `(` of the call of an anonymous function that is called where it is written:
+   * `function (…) {…}(…)`, `(function (…) {…})(…)`, `((…) => {…})(…)`, also `async`. -1 otherwise.
+   */
+  private immediateCall(def: FnDef): number {
+    const end = def.body[1];
+    if (!def.arrow && this.punct(end, "(") && !this.is(def.paramsAt - 2, "ident", "default"))
+      return end;
+    if (!this.punct(end, ")") || !this.punct(end + 1, "(")) return -1;
+    let start = def.arrow ? def.paramsAt : def.paramsAt - 1;
+    if (this.is(start - 1, "ident", "async")) start--;
+    if (this.opener[end] !== start - 1) return -1;
+    // The `(` must group the function, not open a call it is an argument of:
+    // `foo(function (u) {…})("x")` calls what foo returns, not the function.
+    const before = this.tokens[start - 2];
+    if (
+      before &&
+      ((before.type === "ident" && !GROUPING_WORDS.has(before.value)) ||
+        before.type === "string" ||
+        before.type === "template" ||
+        before.type === "number" ||
+        (before.type === "punct" &&
+          (before.value === ")" ||
+            before.value === "]" ||
+            before.value === "." ||
+            before.value === "?.")))
+    )
+      return -1;
+    return end + 1;
+  }
+
+  /**
+   * Names the URL class is bound to besides `URL`: `import { URL as X } from "node:url"`,
+   * `const { URL: X } = require("url")`. Module objects of `url` are in `urlModules`
+   * (`new url.URL(…)`, esbuild's `new import_node_url.URL(…)`). Computed once per resolver.
+   */
+  private urlNames: { classes: Map<string, number>; modules: Map<string, number> } | null = null;
+
+  /** At k, after `new`: the `(` of a URL constructor call, or -1. */
+  private urlConstructor(k: number): number {
+    if (this.is(k, "ident", "URL") && this.punct(k + 1, "(")) return k + 1;
+    if (!this.is(k, "ident")) return -1;
+    if (!this.urlNames) {
+      const classes = new Map<string, number>();
+      const modules = new Map<string, number>();
+      const t = this.tokens;
+      const urlSpec = (j: number): boolean =>
+        t[j]?.type === "string" && /^(node:)?url$/.test(t[j]!.value);
+      for (let j = 0; j + 4 < t.length; j++) {
+        // `X = require("url")`, `X = f(require("url"))`
+        if (this.is(j, "ident", "require") && this.punct(j + 1, "(") && urlSpec(j + 2)) {
+          if (this.punct(j - 1, "=") && this.is(j - 2, "ident"))
+            modules.set(t[j - 2]!.value, j - 2);
+          else if (this.punct(j - 1, "(") && this.is(j - 2, "ident") && this.punct(j - 3, "="))
+            modules.set(t[j - 4]?.type === "ident" ? t[j - 4]!.value : "", j - 4);
+          else if (this.punct(j - 1, "=") && this.punct(j - 2, "}")) {
+            // `{ URL: X } = require("url")`
+            const open = this.opener[j - 2]!;
+            for (let m = open + 1; open !== -1 && m < j - 2; m++)
+              if (this.is(m, "ident", "URL") && this.punct(m + 1, ":") && this.is(m + 2, "ident"))
+                classes.set(t[m + 2]!.value, open);
+          }
+        }
+        // `import { URL as X } from "url"`, `import * as X from "url"`
+        if (this.is(j, "ident", "import")) {
+          let m = j + 1;
+          if (this.punct(m, "*") && this.is(m + 1, "ident", "as") && this.is(m + 2, "ident")) {
+            if (this.is(m + 3, "ident", "from") && urlSpec(m + 4)) modules.set(t[m + 2]!.value, j);
+            continue;
+          }
+          if (this.is(m, "ident") && this.punct(m + 1, ",")) m += 2;
+          if (!this.punct(m, "{")) continue;
+          const close = this.match[m]!;
+          if (close === -1 || !this.is(close + 1, "ident", "from") || !urlSpec(close + 2)) continue;
+          for (let n = m + 1; n < close; n++)
+            if (
+              this.is(n, "ident", "URL") &&
+              this.is(n + 1, "ident", "as") &&
+              this.is(n + 2, "ident")
+            )
+              classes.set(t[n + 2]!.value, j);
+        }
+      }
+      modules.delete("");
+      this.urlNames = { classes, modules };
+    }
+    const name = this.tokens[k]!.value;
+    // the name must mean that import where it is used, not a parameter or local of the name
+    const classDecl = this.urlNames.classes.get(name);
+    if (classDecl !== undefined && this.punct(k + 1, "("))
+      return this.refersTo(k, name, classDecl) ? k + 1 : -1;
+    const moduleDecl = this.urlNames.modules.get(name);
+    if (
+      moduleDecl !== undefined &&
+      this.refersTo(k, name, moduleDecl) &&
+      this.punct(k + 1, ".") &&
+      this.is(k + 2, "ident", "URL") &&
+      this.punct(k + 3, "(")
+    )
+      return k + 3;
+    return -1;
+  }
+
+  /** Declarations of each name in the file and the range each is visible in (`bindingSites`). */
+  private readonly bindingTables = new Map<
+    string,
+    Array<{ name: number; word: number; from: number; to: number }>
+  >();
+  /** Per name and excluded declaration: binding ranges sorted by start, with running maximum ends. */
+  private readonly coverTables = new Map<string, { from: number[]; maxTo: number[] }>();
+
+  /**
+   * Every declaration of `name` in the file: `const|let|var|function|class NAME`, a name in a
+   * destructuring pattern of `const|let|var` (`{ a, NAME }`, `{ k: NAME }`, `[NAME]`, nested),
+   * `for (const NAME of …)`. `word`: the declaring keyword's token; `from`/`to`: the range the
+   * declaration is visible in (its block, a `for` statement, or for `var` and `function` the
+   * function around it, or the whole file). Computed once per name, linear in its occurrences.
+   */
+  private bindingSites(
+    name: string,
+  ): Array<{ name: number; word: number; from: number; to: number }> {
+    const cached = this.bindingTables.get(name);
+    if (cached) return cached;
+    const out: Array<{ name: number; word: number; from: number; to: number }> = [];
+    this.bindingTables.set(name, out);
+    this.innermostBlock(0, null); // builds the table of brackets
+    const parents = this.s.parents!;
+    const n = this.tokens.length;
+    const declaring = (j: number): boolean =>
+      this.is(j, "ident") && /^(const|let|var|function|class)$/.test(this.tokens[j]!.value);
+    for (const j of this.positions(name)) {
+      if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
+      let word = declaring(j - 1) ? j - 1 : -1;
+      if (word === -1 && !this.punct(j + 1, ":")) {
+        let p = parents[j] ?? -1;
+        for (
+          let steps = 0;
+          p >= 0 && steps < 6 && (this.punct(p, "{") || this.punct(p, "["));
+          steps++
+        ) {
+          if (
+            declaring(p - 1) &&
+            !this.is(p - 1, "ident", "function") &&
+            !this.is(p - 1, "ident", "class")
+          ) {
+            word = p - 1;
+            break;
+          }
+          p = parents[p] ?? -1;
+        }
+      }
+      if (word === -1) continue;
+      const kind = this.tokens[word]!.value;
+      let range: [number, number];
+      const own = kind === "function" ? this.functionWithParamsAt(j + 1) : null;
+      if (own && !this.declarationStart(word)) {
+        // `const g = function https() {…}`: the name is bound inside that function only
+        range = [j + 1, own.body[1]];
+      } else if (kind === "var" || kind === "function") {
+        const d = this.enclosing(word);
+        range = d ? [d.body[0], d.body[1]] : [0, n];
+      } else range = this.innermostBlock(word, null) ?? [0, n];
+      out.push({ name: j, word, from: range[0], to: range[1] });
+    }
+    return out;
+  }
+
+  /** The `function` (or `async function`) at k starts a statement: a declaration, not an expression. */
+  private declarationStart(k: number): boolean {
+    const at = this.is(k - 1, "ident", "async") ? k - 1 : k;
+    const before = this.tokens[at - 1];
+    return (
+      !before ||
+      (before.type === "punct" &&
+        (before.value === ";" || before.value === "{" || before.value === "}")) ||
+      (before.type === "ident" && (before.value === "export" || before.value === "default"))
+    );
+  }
+
+  /**
+   * k stands in the parameter list of a function (a default value, `function f(https, a =
+   * https.get(…))`) that has a parameter of the name: that parameter is meant there.
+   */
+  private parameterListBinds(k: number, name: string): boolean {
+    this.innermostBlock(0, null);
+    const parents = this.s.parents!;
+    let p = parents[k] ?? -1;
+    for (let steps = 0; p >= 0 && steps < 32; steps++) {
+      if (this.punct(p, "(")) {
+        const d = this.functionWithParamsAt(p);
+        if (d && this.paramIndex(d, name) !== -1) return true;
+      }
+      p = parents[p] ?? -1;
+    }
+    return false;
+  }
+
+  /** A declaration of the name other than `decl` (its name or pattern token) is visible at k. */
+  private covered(k: number, name: string, decl: number): boolean {
+    const key = `${name}\u0000${decl}`;
+    let table = this.coverTables.get(key);
+    if (!table) {
+      const sites = this.bindingSites(name)
+        .filter((b) => b.name !== decl && b.word !== decl - 1)
+        .toSorted((a, b) => a.from - b.from);
+      const maxTo: number[] = [];
+      let max = -1;
+      for (const b of sites) maxTo.push((max = Math.max(max, b.to)));
+      table = { from: sites.map((b) => b.from), maxTo };
+      this.coverTables.set(key, table);
+    }
+    let lo = 0;
+    let hi = table.from.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (table.from[mid]! <= k) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo > 0 && table.maxTo[lo - 1]! >= k;
+  }
+
+  /**
+   * The name at k refers to the declaration at `decl` (its name token, or the token after the
+   * keyword of a destructuring pattern, or an `import`): k is inside the function around `decl`
+   * (or `decl` is at the top of the file), no function between them has a parameter of that
+   * name, no `catch` binds it, and no other declaration of the name (also in a destructuring
+   * pattern or a `for … of` head) is visible at k. Tables are built once per name, so a file with
+   * many calls stays linear.
+   */
+  refersTo(k: number, name: string, decl: number): boolean {
+    if (this.catchBinds(k, name) || this.parameterListBinds(k, name)) return false;
+    const home = this.enclosing(decl);
+    for (let d = this.enclosing(k), guard = 0; d !== home; guard++) {
+      if (!d || guard >= 64) return false;
+      if (this.paramIndex(d, name) !== -1) return false;
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    return !this.covered(k, name, decl);
+  }
+
+  /**
+   * How the name at k is bound around it: `param` (a parameter of a function around k, also in a
+   * parameter list k stands in), `local` (a declaration, pattern, `for … of` head or `catch`
+   * visible at k; `site` is the innermost such declaration, absent for `catch`), or null.
+   */
+  boundAround(
+    k: number,
+    name: string,
+  ): { kind: "param" } | { kind: "local"; site?: { name: number; word: number } } | null {
+    if (this.parameterListBinds(k, name)) return { kind: "param" };
+    for (let d = this.enclosing(k), guard = 0; d && guard < 64; guard++) {
+      if (this.paramIndex(d, name) !== -1) return { kind: "param" };
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    if (this.catchBinds(k, name)) return { kind: "local" };
+    if (!this.covered(k, name, -2)) return null;
+    let best: { name: number; word: number; from: number; to: number } | null = null;
+    for (const b of this.bindingSites(name))
+      if (b.from <= k && k <= b.to && (!best || b.from >= best.from)) best = b;
+    return best ? { kind: "local", site: { name: best.name, word: best.word } } : { kind: "local" };
+  }
+
+  /**
+   * The token at j writes to the declaration at `decl`: an assignment (`NAME = …`, `NAME += …`,
+   * `NAME++`) that is no declaration, parameter default, class field or pattern binding of its
+   * own, where the name means that declaration.
+   */
+  writesTo(j: number, name: string, decl: number): boolean {
+    if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) return false;
+    const after = this.tokens[j + 1];
+    const before = this.tokens[j - 1];
+    const writes =
+      (after?.type === "punct" &&
+        (/^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) ||
+          after.value === "++" ||
+          after.value === "--")) ||
+      (before?.type === "punct" && (before.value === "++" || before.value === "--"));
+    if (!writes) return false;
+    if (before?.type === "ident" && /^(const|let|var)$/.test(before.value)) return false;
+    if (this.bindingSites(name).some((b) => b.name === j)) return false;
+    this.innermostBlock(0, null);
+    const p = this.s.parents![j] ?? -1;
+    // a parameter default (`function f(https = x)`)
+    if (p >= 0 && this.punct(p, "(") && this.functionWithParamsAt(p)) return false;
+    // a class field (`class A { https = 1 }`)
+    if (p >= 0 && this.punct(p, "{") && this.classRanges().some((c) => c.start === p)) return false;
+    // `var a = 1, https = x`: a declaration list
+    if (this.punct(j - 1, ",")) {
+      for (let m = j - 2, depth = 0; m >= 0 && m > j - 400; m--) {
+        const t = this.tokens[m]!;
+        if (t.type === "punct") {
+          if (t.value === ")" || t.value === "]" || t.value === "}") depth++;
+          else if (t.value === "(" || t.value === "[" || t.value === "{") {
+            if (depth === 0) break;
+            depth--;
+          } else if (depth === 0 && t.value === ";") break;
+        } else if (depth === 0 && t.type === "ident" && /^(const|let|var)$/.test(t.value))
+          return false;
+      }
+    }
+    return this.refersTo(j, name, decl);
   }
 
   private callSites(def: FnDef): number[] {
