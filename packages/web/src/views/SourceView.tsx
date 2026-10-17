@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { useEffect, useRef } from "react";
-import { api } from "../lib/api.js";
+import { api, HttpError } from "../lib/api.js";
 import { navigate } from "../lib/route.js";
 import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
@@ -57,7 +57,16 @@ export function SourceView({
       </div>
       {source.loading && <p className="empty">Reading {visible(file)}…</p>}
       {source.error && (
-        <LoadError what={`${visible(file)}:${line}`} error={source.error} onRetry={source.retry} />
+        <LoadError
+          what={`${visible(file)}:${line}`}
+          error={source.error}
+          // 409: the build changed on disk since its analysis; only opening it again helps
+          onRetry={
+            source.error instanceof HttpError && source.error.status === 409
+              ? undefined
+              : source.retry
+          }
+        />
       )}
       {source.data && (
         <div className="source-lines" role="region" aria-label={`${file} around line ${line}`}>

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -39,6 +39,25 @@ describe("hexvero HTTP API", () => {
       body: (await res.json()) as Record<string, unknown>,
     };
   };
+
+  it("answers 409 for a source window of an app changed on disk since its analysis", async () => {
+    const app = join(mkdtempSync(join(tmpdir(), "hexvero-changing-")), "app");
+    mkdirSync(app);
+    writeFileSync(join(app, "package.json"), '{"name":"x","main":"main.js"}');
+    writeFileSync(join(app, "main.js"), appFiles("1")["main.js"]!);
+    const opened = await api("/targets", { method: "POST", body: JSON.stringify({ path: app }) });
+    const id = opened.body["id"] as string;
+    expect((await api(`/targets/${id}/source?file=main.js&line=1`)).status).toBe(200);
+    writeFileSync(join(app, "main.js"), `// rebuilt\n${appFiles("2")["main.js"]!}`);
+    const refused = await api(`/targets/${id}/source?file=main.js&line=1`);
+    expect(refused.status).toBe(409);
+    expect(refused.body["error"]).toMatchObject({
+      message: "main.js changed on disk since it was analyzed; open it again",
+      details: { reason: "changed_on_disk" },
+    });
+    // later tests count the open targets
+    expect((await api(`/targets/${id}`, { method: "DELETE" })).status).toBe(200);
+  });
 
   it("rejects requests without the token and cross-origin callers", async () => {
     const res = await fetch(`${running.url}/api/health`);

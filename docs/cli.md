@@ -161,6 +161,14 @@ equal `a`/`b`, unknown `format`, a target that is not a JavaScript app), `401` n
 `403` foreign Host or Origin, `404` unknown target id, `405` a method other than POST, `413` a
 body over 1 MiB.
 
+A source window (`GET /api/targets/<id>/source`, the excerpts of an HTML report, the web source
+view) comes only from the build that was analyzed. When the archive was rebuilt in place since it
+was opened (size, modification time or inode differ), or a file of an application directory no
+longer has the size the analysis read, the request is refused: `409` with code `invalid_input`,
+`details.reason: "changed_on_disk"` and the message `<name> changed on disk since it was
+analyzed; open it again`. `compare --report file.html` stops with that error rather than mixing
+excerpts from two builds.
+
 ## Collections by format
 
 | Format               | Collections                                                                                                                                                                |

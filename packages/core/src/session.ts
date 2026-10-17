@@ -553,7 +553,7 @@ export class Session {
         "invalid_input",
         "Source lines are available for Electron archives and application directories",
       );
-    const read = new Set(analysis.data.app.modules.map((m) => m.id));
+    const read = new Map(analysis.data.app.modules.map((m) => [m.id, m.size]));
     return sourceWindow(this.entry(id).loaded, read, file, line, context);
   }
 

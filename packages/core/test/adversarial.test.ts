@@ -2,11 +2,12 @@
  * Regression tests for inputs found by scripts/fuzz.mjs: each one used to end in a JavaScript
  * runtime error (a TypeError or a stack overflow) instead of a typed error or a result.
  */
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openAsar } from "../src/formats/asar.js";
+import { collectReleaseSources } from "../src/htmlReport.js";
 import { AnalysisError } from "../src/model.js";
 import { parseBaseline, parsePolicy, PolicyError } from "../src/policy.js";
 import { compareReleases, renderReleaseReport, visibleControls } from "../src/report.js";
@@ -159,8 +160,21 @@ describe("Markdown report code spans", () => {
   });
 });
 
-describe("an archive rebuilt in place while it is open", () => {
-  it("is read again for source windows when its size or time changed", async () => {
+/** The error a source call ends in, or undefined. */
+async function failure(call: Promise<unknown>): Promise<AnalysisError | undefined> {
+  try {
+    await call;
+  } catch (error) {
+    return error as AnalysisError;
+  }
+  return undefined;
+}
+
+describe("a target rebuilt on disk after it was analyzed", () => {
+  const first = 'const { ipcMain } = require("electron");\nipcMain.handle("one", () => 1);\n';
+  const second = `// a longer header comment moves every offset\n${first.replace("one", "two")}`;
+
+  it("refuses source windows from an archive rebuilt in place", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hexvero-rebuilt-"));
     try {
       const pkg = '{"name":"x","main":"main.js"}';
@@ -170,17 +184,59 @@ describe("an archive rebuilt in place while it is open", () => {
           pkg + main,
         );
       const path = join(dir, "app.asar");
-      const first = 'const { ipcMain } = require("electron");\nipcMain.handle("one", () => 1);\n';
       writeFileSync(path, asar(first));
       // maxBytes below the file size: the archive is read from disk on demand (lazy)
       const session = new Session({ maxBytes: 64 });
       const { id } = await session.open(path);
       await session.analyze(id);
       expect((await session.source(id, "main.js", 2)).lines.join("\n")).toContain('"one"');
-      const second = `// a longer header comment moves every offset\n${first.replace("one", "two")}`;
       writeFileSync(path, asar(second));
       utimesSync(path, new Date(), new Date(Date.now() + 5_000));
-      expect((await session.source(id, "main.js", 2)).lines.join("\n")).toContain('"two"');
+      // the excerpt would come from another build than the one the analysis describes
+      const error = await failure(session.source(id, "main.js", 2));
+      expect(error).toBeInstanceOf(AnalysisError);
+      expect(error!.message).toBe("app.asar changed on disk since it was analyzed; open it again");
+      expect(error!.details).toMatchObject({ reason: "changed_on_disk" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an HTML report's excerpts rather than mixing builds", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hexvero-rebuilt-report-"));
+    try {
+      const app = (name: string, main: string) => {
+        mkdirSync(join(dir, name));
+        writeFileSync(join(dir, name, "package.json"), '{"name":"x","main":"main.js"}');
+        writeFileSync(join(dir, name, "main.js"), main);
+        return join(dir, name);
+      };
+      const session = new Session();
+      const a = await session.open(app("a", first));
+      const b = await session.open(app("b", first.replace("one", "two")));
+      const comparison = await compareReleases(session, a.id, b.id);
+      expect((await collectReleaseSources(session, comparison)).size).toBeGreaterThan(0);
+      writeFileSync(join(dir, "b", "main.js"), second);
+      const error = await failure(collectReleaseSources(session, comparison));
+      expect(error?.details).toMatchObject({ reason: "changed_on_disk" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses source windows from a file of a directory target that changed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hexvero-rebuilt-dir-"));
+    try {
+      writeFileSync(join(dir, "package.json"), '{"name":"x","main":"main.js"}');
+      writeFileSync(join(dir, "main.js"), first);
+      const session = new Session();
+      const { id } = await session.open(dir);
+      await session.analyze(id);
+      expect((await session.source(id, "main.js", 2)).lines.join("\n")).toContain('"one"');
+      writeFileSync(join(dir, "main.js"), second);
+      const error = await failure(session.source(id, "main.js", 2));
+      expect(error?.message).toBe("main.js changed on disk since it was analyzed; open it again");
+      expect(error?.details).toMatchObject({ reason: "changed_on_disk" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

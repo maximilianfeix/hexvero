@@ -49,8 +49,11 @@ All notable changes to hexvero are listed here. The format follows
   Table columns are aligned by the printed width and cut between escapes.
 - Markdown reports cut long target text before escaping it, so a code span never ends inside a
   `\u{…}` escape.
-- Source windows of an archive read from disk notice when it was rebuilt in place while open
-  (size, modification time, inode) and read its header again.
+- Source windows come only from the build that was analyzed. An archive rebuilt in place since it
+  was opened (size, modification time or inode differ), or an app-folder file whose size is not
+  the one analyzed, is refused with `<name> changed on disk since it was analyzed; open it again`
+  (`details.reason: "changed_on_disk"`; HTTP `409` from the local server; the web source view
+  shows it without a Retry button; `compare --report file.html` stops instead of mixing builds).
 - A policy or baseline nested deeper than the stack (`{"hexvero": [[[[…]]]]}`) is reported as an
   invalid file (exit 2 in `hexvero check`, `invalid_input` over MCP, `400 invalid_policy` from the
   local server) instead of a stack overflow.

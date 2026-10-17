@@ -96,17 +96,19 @@ const fail = (res: ServerResponse, error: unknown): void => {
   }
   if (error instanceof AnalysisError) {
     const status =
-      error.code === "not_found"
-        ? 404
-        : error.code === "too_large"
-          ? (error.details as { reason?: unknown } | undefined)?.reason === "timeout"
-            ? 503 // the analysis ran out of time; the input is not necessarily too big
-            : 413
-          : error.code === "cancelled"
-            ? 499
-            : error.code === "provider_unavailable"
-              ? 501
-              : 400;
+      error.details?.["reason"] === "changed_on_disk"
+        ? 409 // the file is no longer the one analyzed; opening it again resolves it
+        : error.code === "not_found"
+          ? 404
+          : error.code === "too_large"
+            ? (error.details as { reason?: unknown } | undefined)?.reason === "timeout"
+              ? 503 // the analysis ran out of time; the input is not necessarily too big
+              : 413
+            : error.code === "cancelled"
+              ? 499
+              : error.code === "provider_unavailable"
+                ? 501
+                : 400;
     json(res, status, {
       error: {
         code: error.code,
