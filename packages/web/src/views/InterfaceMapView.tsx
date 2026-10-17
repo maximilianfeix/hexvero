@@ -21,7 +21,7 @@ import {
   rowsOf,
 } from "../lib/interfaceMap.js";
 import { nextOffset } from "../lib/pages.js";
-import { updateQuery } from "../lib/route.js";
+import { navigate, updateQuery } from "../lib/route.js";
 import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
 import { Toolbar } from "./CollectionView.js";
@@ -677,7 +677,18 @@ export function InterfaceEvidence({
                       ))}
                     </ul>
                   )}
-                  {row.endsTruncated && <p className="note">{endsNote(row)}</p>}
+                  {row.endsTruncated && row.channel !== null && (
+                    <p className="note">
+                      {endsNote(row)}{" "}
+                      <button
+                        type="button"
+                        className="btn quiet"
+                        onClick={() => navigate(targetId, "ipc", { q: row.channel ?? undefined })}
+                      >
+                        Open the ipc list for {visible(row.channel)}
+                      </button>
+                    </p>
+                  )}
                 </dd>
               </div>
             </dl>
