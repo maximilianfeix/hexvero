@@ -1,6 +1,6 @@
 # MCP server
 
-Start: `npx -y hexvero mcp` (stdio; pin a version, e.g. `npx -y hexvero@0.9.4 mcp`, for reproducible results). Register with `hexvero setup --apply` (dry run without `--apply`; existing files are backed up as `*.hexvero-backup`) or add it to your client's
+Start: `npx -y hexvero mcp` (stdio; pin a version, e.g. `npx -y hexvero@0.9.6 mcp`, for reproducible results). Register with `hexvero setup --apply` (dry run without `--apply`; existing files are backed up as `*.hexvero-backup`) or add it to your client's
 configuration manually:
 
 ```json

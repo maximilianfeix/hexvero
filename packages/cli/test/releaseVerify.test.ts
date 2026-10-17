@@ -23,6 +23,8 @@ const versioned = [
   "CHANGELOG.md",
   "docs/ci.md",
   "site/index.html",
+  "README.md",
+  "docs/mcp.md",
   "scripts/release-verify.mjs",
 ];
 const dirs: string[] = [];

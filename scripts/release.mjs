@@ -62,6 +62,9 @@ const constants = [
   // The CI example pins a version (users copy it): it names the release being cut.
   ["docs/ci.md", /hexvero@\d+\.\d+\.\d+(-[\w.]+)?/g, `hexvero@${version}`],
   ["site/index.html", /hexvero@\d+\.\d+\.\d+(-[\w.]+)?/g, `hexvero@${version}`],
+  // and so do the pinning examples for the MCP server
+  ["README.md", /hexvero@\d+\.\d+\.\d+(-[\w.]+)?/g, `hexvero@${version}`],
+  ["docs/mcp.md", /hexvero@\d+\.\d+\.\d+(-[\w.]+)?/g, `hexvero@${version}`],
 ];
 for (const [file, re, replacement] of constants)
   writeFileSync(file, readFileSync(file, "utf8").replace(re, replacement));
