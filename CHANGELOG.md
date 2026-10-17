@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-17
+
 ### Web UI
 
 - Release gate in the Compare view: a policy editor prefilled with `examples/policy.json`
