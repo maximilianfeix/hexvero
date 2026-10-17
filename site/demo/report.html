@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-45Ru3cndJL9OORAiyHJhsEOZzS4iAT89q6QfjvPuyjA='; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="referrer" content="no-referrer">
+<meta name="generator" content="hexvero 0.8.0">
+<title>What changed: notesdesk-1.4.0.asar → notesdesk-1.5.0.asar · hexvero</title>
+<style>
+:root{color-scheme:dark light;--bg:#1b1d21;--panel:#23262c;--line:#31353d;--ink:#e8e6e1;--ink-2:#9a9ea7;--ink-3:#8e939d;--amber:#f2b84b;--amber-soft:#3a2f17;--alert:#e5736f;--ok:#8fc98a;--sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:light){:root{--bg:#f3f4f6;--panel:#fff;--line:#dcdfe4;--ink:#1d2026;--ink-2:#5c616b;--ink-3:#676c76;--amber:#8a5e04;--amber-soft:#fbefcf;--alert:#b3261e;--ok:#2a752e}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html{background:var(--bg)}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);font-variant-numeric:tabular-nums}
+::selection{background:var(--amber-soft)}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+main{max-width:1180px;margin:0 auto;padding:32px 24px 64px}
+h1{font-size:clamp(1.25rem,2.2vw,1.75rem);font-weight:600;letter-spacing:-.02em;margin:0 0 8px;text-wrap:balance;overflow-wrap:anywhere}
+h2{font-size:1.1rem;font-weight:600;margin:40px 0 12px;padding-top:16px;border-top:1px solid var(--line)}
+h3{font-size:.95rem;font-weight:600;margin:24px 0 8px}
+p{margin:0 0 12px;max-width:80ch}.note{color:var(--ink-3);font-size:14px}
+code,pre,.mono{font-family:var(--mono);font-size:13px}
+code{overflow-wrap:anywhere}
+table{border-collapse:collapse;width:auto;min-width:min(100%,640px);font-size:14px;margin:0 0 16px}
+th,td{text-align:left;padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--ink-2);font-weight:500}td.n,th.n{text-align:right}
+.wrap-table{overflow-x:auto}
+ul.plain{margin:0 0 16px;padding-left:20px}ul.plain li{margin:4px 0}
+.dir-more{color:var(--alert)}.dir-less{color:var(--ok)}.dir-unclear{color:var(--ink-2)}
+form#filters{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin:0 0 16px;font-size:14px}
+form#filters label{display:inline-flex;gap:6px;align-items:center}
+form#filters select,form#filters input[type=search]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:4px 8px}
+form#filters input[type=checkbox]{accent-color:var(--amber)}
+#f-count{color:var(--ink-3)}
+ul.rows{list-style:none;margin:0;padding:0}
+li.row{display:grid;grid-template-columns:1.5rem minmax(0,1fr);gap:4px 8px;padding:12px 0;border-bottom:1px solid var(--line)}
+.sign{font-family:var(--mono);font-weight:600;text-align:center}
+.added .sign{color:var(--ok)}.removed .sign{color:var(--alert)}.changed .sign{color:var(--amber)}.unknown .sign{color:var(--ink-2)}
+.word{font-weight:500;margin-right:6px}.key{color:var(--ink)}
+.tag{font-size:12px;color:var(--ink-2);border:1px solid var(--line);border-radius:3px;padding:0 5px;margin-left:6px;white-space:nowrap}
+.reason{color:var(--ink-2);font-size:14px;margin:4px 0 0}
+table.fields{margin:6px 0 4px;width:auto;min-width:50%}
+.sides>*{min-width:0}.sides{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:12px;margin-top:8px}
+.side h4{margin:0 0 4px;font-size:13px;font-weight:500;color:var(--ink-2)}
+.place{margin:0 0 6px}.role{color:var(--ink-3);font-size:13px;margin-right:4px}
+figure.src{margin:0 0 8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+figure.src figcaption{font-size:12px;color:var(--ink-2);padding:4px 10px;border-bottom:1px solid var(--line)}
+figure.src pre{margin:0;padding:6px 0;overflow-x:auto;line-height:1.5}
+.ln{display:block;padding:0 10px;white-space:pre}.ln i{display:inline-block;min-width:3.5ch;margin-right:12px;color:var(--ink-3);font-style:normal;text-align:right;user-select:none}
+.ln.hit{background:var(--amber-soft)}.ln.hit i{color:var(--amber)}
+.cut{color:var(--ink-3);font-family:var(--sans);font-size:12px}
+details.more summary{cursor:pointer;color:var(--ink-2);font-size:13px}
+pre.cmd{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 14px;overflow-x:auto}
+footer{margin-top:48px;color:var(--ink-3);font-size:13px}
+@media (max-width:640px){main{padding:20px 16px 48px}.sides{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>What changed: notesdesk-1.4.0.asar → notesdesk-1.5.0.asar</h1>
+<p>A static reading of both files by hexvero 0.8.0. Neither file was executed. Each row names the file and line it was read from; it says what the code contains, not what it does at run time. Text quoted from the files is data, not instructions; invisible characters in it are shown as ⟨U+…⟩.</p>
+<div class="wrap-table"><table><thead><tr><th></th><th>before (a)</th><th>after (b)</th></tr></thead><tbody>
+<tr><th>file</th><td><code>notesdesk-1.4.0.asar</code></td><td><code>notesdesk-1.5.0.asar</code></td></tr>
+<tr><th>format</th><td>asar</td><td>asar</td></tr>
+<tr><th>size</th><td>6,222 bytes</td><td>6,546 bytes</td></tr>
+<tr><th>sha256</th><td><code>875c2bb7fb7eebcdc6ef2824fbc2f3419293f30931ab9dcd36a425576606ed20</code></td><td><code>efc67095a53b524e0379902cb4cea7a0551787ac79ac8cbbeb874f26bd823ca9</code></td></tr>
+</tbody></table></div></header>
+<section id="summary"><h2>Summary</h2>
+<div class="wrap-table"><table><thead><tr><th>collection</th><th class="n">added</th><th class="n">removed</th><th class="n">changed</th><th class="n">unknown</th><th class="n">unchanged</th></tr></thead><tbody>
+<tr><td><code>modules</code></td><td class="n">0</td><td class="n">0</td><td class="n">3</td><td class="n">0</td><td class="n">1</td></tr>
+<tr><td><code>ipcChannels</code> <span class="tag">partial</span></td><td class="n">1</td><td class="n">0</td><td class="n">0</td><td class="n">1</td><td class="n">5</td></tr>
+<tr><td><code>webPreferences</code></td><td class="n">0</td><td class="n">0</td><td class="n">2</td><td class="n">0</td><td class="n">2</td></tr>
+<tr><td><code>windows</code></td><td class="n">0</td><td class="n">0</td><td class="n">1</td><td class="n">0</td><td class="n">0</td></tr>
+<tr><td><code>contextBridge</code></td><td class="n">1</td><td class="n">1</td><td class="n">0</td><td class="n">0</td><td class="n">5</td></tr>
+<tr><td><code>interfaces</code> <span class="tag">partial</span></td><td class="n">1</td><td class="n">1</td><td class="n">0</td><td class="n">0</td><td class="n">5</td></tr>
+<tr><td><code>ipc</code> <span class="tag">partial</span></td><td class="n">3</td><td class="n">1</td><td class="n">0</td><td class="n">1</td><td class="n">11</td></tr>
+<tr><td><code>endpoints</code></td><td class="n">1</td><td class="n">0</td><td class="n">0</td><td class="n">0</td><td class="n">2</td></tr>
+<tr><td><code>storage</code></td><td class="n">1</td><td class="n">0</td><td class="n">0</td><td class="n">0</td><td class="n">1</td></tr>
+<tr><td><code>urls</code></td><td class="n">1</td><td class="n">0</td><td class="n">0</td><td class="n">0</td><td class="n">2</td></tr>
+</tbody></table></div>
+<p class="note">hexvero's own findings differ (1 added, 3 removed, 3 changed): its description of each build, not a change in the app.</p>
+<p class="note">hexvero's own limitations differ (1 added, 0 removed, 0 changed): its description of each build, not a change in the app.</p>
+</section>
+<section id="windows"><h2>Window settings to review</h2><div class="wrap-table"><table><thead><tr><th>window</th><th>setting</th><th>before</th><th>after</th><th>direction</th></tr></thead><tbody>
+<tr><td><code>main.js::win</code></td><td><code>nodeIntegrationInEffect</code></td><td><code>on</code></td><td><code>off</code></td><td class="dir-less">less permissive</td></tr>
+<tr><td><code>main.js::win</code></td><td><code>sandboxInEffect</code></td><td><code>off</code></td><td><code>on</code></td><td class="dir-less">less permissive</td></tr>
+</tbody></table></div><p class="note">Whether a change matters depends on what the window loads; this is a fact to review, not a verdict.</p></section>
+<section id="changes"><h2>Changes</h2>
+<p id="page"><strong>12 of 12 rows shown</strong> (rows 1–12).</p>
+<form id="filters" hidden aria-label="Filter rows"><label><input type="checkbox" name="kind" value="added" checked> + added</label><label><input type="checkbox" name="kind" value="removed" checked> − removed</label><label><input type="checkbox" name="kind" value="changed" checked> ~ changed</label><label><input type="checkbox" name="kind" value="unknown" checked> ? unknown</label><label>list <select id="f-list"><option value="">all on this page</option><option value="interfaces">interfaces</option><option value="contextBridge">contextBridge</option><option value="ipcChannels">ipcChannels</option><option value="windows">windows</option><option value="webPreferences">webPreferences</option><option value="endpoints">endpoints</option><option value="storage">storage</option><option value="urls">urls</option></select></label><label>text <input type="search" id="f-text" placeholder="key, file, value"></label><span id="f-count" aria-live="polite"></span></form>
+<section class="group"><h3><code>interfaces</code> <span class="note">2 row(s)</span></h3><ul class="rows">
+<li class="row added" id="row-9113dba1b97ac6cf" data-change="added" data-list="interfaces">
+<span class="sign" aria-hidden="true">+</span>
+<div><div><span class="word">added</span><code>preload.js::notesdesk::checkUpdate</code><span class="tag">link direct</span></div><div class="sides"><div class="side"><h4>in after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><code>preload.js:9</code> · lines 6–11 of 11</figcaption><pre><code><span class="ln"><i>6</i>  listNotes: () =&gt; ipcRenderer.invoke(&quot;notes:list&quot;),</span><span class="ln"><i>7</i>  saveNote: (note) =&gt; ipcRenderer.invoke(&quot;notes:save&quot;, note),</span><span class="ln"><i>8</i>  quit: () =&gt; ipcRenderer.send(&quot;app:quit&quot;),</span><span class="ln hit"><i>9</i>  checkUpdate: () =&gt; ipcRenderer.invoke(&quot;update:check&quot;),</span><span class="ln"><i>10</i>});</span><span class="ln"><i>11</i> </span></code></pre></figure></div><div class="place"><figure class="src"><figcaption><span class="role">handler</span><code>main.js:30</code> · lines 27–33 of 37</figcaption><pre><code><span class="ln"><i>27</i>ipcMain.handle(&quot;notes:list&quot;, () =&gt; store.get(&quot;notes&quot;) ?? []);</span><span class="ln"><i>28</i>ipcMain.handle(&quot;notes:save&quot;, (_e, note) =&gt; store.push(&quot;notes&quot;, note));</span><span class="ln"><i>29</i>ipcMain.on(&quot;app:quit&quot;, () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.handle(&quot;update:check&quot;, async () =&gt; fetch(&quot;https://updates.notesdesk.example/latest.json&quot;).then((r) =&gt; r.json()));</span><span class="ln"><i>31</i>// The channel name comes from the environment at run time, so no static reading can name it.</span><span class="ln"><i>32</i>for (const plugin of (process.env.NOTESDESK_PLUGINS ?? &quot;&quot;).split(&quot;,&quot;).filter(Boolean))</span><span class="ln"><i>33</i>  ipcMain.handle(`plugin:${plugin}`, () =&gt; store.get(`plugins.${plugin}`));</span></code></pre></figure></div></div></div></div>
+</li>
+<li class="row removed" id="row-4306fede47a37326" data-change="removed" data-list="interfaces">
+<span class="sign" aria-hidden="true">−</span>
+<div><div><span class="word">removed</span><code>preload.js::notesdesk::openInShell</code><span class="tag">link direct</span></div><div class="sides"><div class="side"><h4>in before (a) · notesdesk-1.4.0.asar</h4><div class="place"><figure class="src"><figcaption><code>preload.js:9</code> · lines 6–11 of 11</figcaption><pre><code><span class="ln"><i>6</i>  listNotes: () =&gt; ipcRenderer.invoke(&quot;notes:list&quot;),</span><span class="ln"><i>7</i>  saveNote: (note) =&gt; ipcRenderer.invoke(&quot;notes:save&quot;, note),</span><span class="ln"><i>8</i>  quit: () =&gt; ipcRenderer.send(&quot;app:quit&quot;),</span><span class="ln hit"><i>9</i>  openInShell: (target) =&gt; ipcRenderer.send(&quot;shell:open&quot;, target),</span><span class="ln"><i>10</i>});</span><span class="ln"><i>11</i> </span></code></pre></figure></div><div class="place"><figure class="src"><figcaption><span class="role">handler</span><code>main.js:30</code> · lines 27–33 of 34</figcaption><pre><code><span class="ln"><i>27</i>ipcMain.handle(&quot;notes:list&quot;, () =&gt; store.get(&quot;notes&quot;) ?? []);</span><span class="ln"><i>28</i>ipcMain.handle(&quot;notes:save&quot;, (_e, note) =&gt; store.push(&quot;notes&quot;, note));</span><span class="ln"><i>29</i>ipcMain.on(&quot;app:quit&quot;, () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.on(&quot;shell:open&quot;, (_e, target) =&gt; shell.openPath(target));</span><span class="ln"><i>31</i> </span><span class="ln"><i>32</i>app.whenReady().then(createWindow);</span><span class="ln"><i>33</i>app.on(&quot;window-all-closed&quot;, () =&gt; app.quit());</span></code></pre></figure></div></div></div></div>
+</li>
+</ul></section>
+<section class="group"><h3><code>contextBridge</code> <span class="note">2 row(s)</span></h3><ul class="rows">
+<li class="row added" id="row-8c3236ca6bdb4a7a" data-change="added" data-list="contextBridge">
+<span class="sign" aria-hidden="true">+</span>
+<div><div><span class="word">added</span><code>notesdesk::checkUpdate</code></div><div class="sides"><div class="side"><h4>in after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><code>preload.js:9</code> · lines 6–11 of 11</figcaption><pre><code><span class="ln"><i>6</i>  listNotes: () =&gt; ipcRenderer.invoke(&quot;notes:list&quot;),</span><span class="ln"><i>7</i>  saveNote: (note) =&gt; ipcRenderer.invoke(&quot;notes:save&quot;, note),</span><span class="ln"><i>8</i>  quit: () =&gt; ipcRenderer.send(&quot;app:quit&quot;),</span><span class="ln hit"><i>9</i>  checkUpdate: () =&gt; ipcRenderer.invoke(&quot;update:check&quot;),</span><span class="ln"><i>10</i>});</span><span class="ln"><i>11</i> </span></code></pre></figure></div></div></div></div>
+</li>
+<li class="row removed" id="row-ac0401413b07110f" data-change="removed" data-list="contextBridge">
+<span class="sign" aria-hidden="true">−</span>
+<div><div><span class="word">removed</span><code>notesdesk::openInShell</code></div><div class="sides"><div class="side"><h4>in before (a) · notesdesk-1.4.0.asar</h4><div class="place"><figure class="src"><figcaption><code>preload.js:9</code> · lines 6–11 of 11</figcaption><pre><code><span class="ln"><i>6</i>  listNotes: () =&gt; ipcRenderer.invoke(&quot;notes:list&quot;),</span><span class="ln"><i>7</i>  saveNote: (note) =&gt; ipcRenderer.invoke(&quot;notes:save&quot;, note),</span><span class="ln"><i>8</i>  quit: () =&gt; ipcRenderer.send(&quot;app:quit&quot;),</span><span class="ln hit"><i>9</i>  openInShell: (target) =&gt; ipcRenderer.send(&quot;shell:open&quot;, target),</span><span class="ln"><i>10</i>});</span><span class="ln"><i>11</i> </span></code></pre></figure></div></div></div></div>
+</li>
+</ul></section>
+<section class="group"><h3><code>ipcChannels</code> <span class="note">2 row(s)</span></h3><ul class="rows">
+<li class="row added" id="row-627ce3d5806ac4c9" data-change="added" data-list="ipcChannels">
+<span class="sign" aria-hidden="true">+</span>
+<div><div><span class="word">added</span><code>update:check</code></div><div class="sides"><div class="side"><h4>in after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><span class="role">receiver</span><code>main.js:30</code> · lines 27–33 of 37</figcaption><pre><code><span class="ln"><i>27</i>ipcMain.handle(&quot;notes:list&quot;, () =&gt; store.get(&quot;notes&quot;) ?? []);</span><span class="ln"><i>28</i>ipcMain.handle(&quot;notes:save&quot;, (_e, note) =&gt; store.push(&quot;notes&quot;, note));</span><span class="ln"><i>29</i>ipcMain.on(&quot;app:quit&quot;, () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.handle(&quot;update:check&quot;, async () =&gt; fetch(&quot;https://updates.notesdesk.example/latest.json&quot;).then((r) =&gt; r.json()));</span><span class="ln"><i>31</i>// The channel name comes from the environment at run time, so no static reading can name it.</span><span class="ln"><i>32</i>for (const plugin of (process.env.NOTESDESK_PLUGINS ?? &quot;&quot;).split(&quot;,&quot;).filter(Boolean))</span><span class="ln"><i>33</i>  ipcMain.handle(`plugin:${plugin}`, () =&gt; store.get(`plugins.${plugin}`));</span></code></pre></figure></div><div class="place"><figure class="src"><figcaption><span class="role">sender</span><code>preload.js:9</code> · lines 6–11 of 11</figcaption><pre><code><span class="ln"><i>6</i>  listNotes: () =&gt; ipcRenderer.invoke(&quot;notes:list&quot;),</span><span class="ln"><i>7</i>  saveNote: (note) =&gt; ipcRenderer.invoke(&quot;notes:save&quot;, note),</span><span class="ln"><i>8</i>  quit: () =&gt; ipcRenderer.send(&quot;app:quit&quot;),</span><span class="ln hit"><i>9</i>  checkUpdate: () =&gt; ipcRenderer.invoke(&quot;update:check&quot;),</span><span class="ln"><i>10</i>});</span><span class="ln"><i>11</i> </span></code></pre></figure></div></div></div></div>
+</li>
+<li class="row unknown" id="row-124a6972dc20a3be" data-change="unknown" data-list="ipcChannels">
+<span class="sign" aria-hidden="true">?</span>
+<div><div><span class="word">unknown</span><code>shell:open</code></div><p class="reason">the other side has values there that could not be resolved</p><div class="sides"><div class="side"><h4>in before (a) · notesdesk-1.4.0.asar</h4><div class="place"><figure class="src"><figcaption><span class="role">receiver</span><code>main.js:30</code> · lines 27–33 of 34</figcaption><pre><code><span class="ln"><i>27</i>ipcMain.handle(&quot;notes:list&quot;, () =&gt; store.get(&quot;notes&quot;) ?? []);</span><span class="ln"><i>28</i>ipcMain.handle(&quot;notes:save&quot;, (_e, note) =&gt; store.push(&quot;notes&quot;, note));</span><span class="ln"><i>29</i>ipcMain.on(&quot;app:quit&quot;, () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.on(&quot;shell:open&quot;, (_e, target) =&gt; shell.openPath(target));</span><span class="ln"><i>31</i> </span><span class="ln"><i>32</i>app.whenReady().then(createWindow);</span><span class="ln"><i>33</i>app.on(&quot;window-all-closed&quot;, () =&gt; app.quit());</span></code></pre></figure></div><div class="place"><figure class="src"><figcaption><span class="role">sender</span><code>preload.js:9</code> · lines 6–11 of 11</figcaption><pre><code><span class="ln"><i>6</i>  listNotes: () =&gt; ipcRenderer.invoke(&quot;notes:list&quot;),</span><span class="ln"><i>7</i>  saveNote: (note) =&gt; ipcRenderer.invoke(&quot;notes:save&quot;, note),</span><span class="ln"><i>8</i>  quit: () =&gt; ipcRenderer.send(&quot;app:quit&quot;),</span><span class="ln hit"><i>9</i>  openInShell: (target) =&gt; ipcRenderer.send(&quot;shell:open&quot;, target),</span><span class="ln"><i>10</i>});</span><span class="ln"><i>11</i> </span></code></pre></figure></div></div></div></div>
+</li>
+</ul></section>
+<section class="group"><h3><code>windows</code> <span class="note">1 row(s)</span></h3><ul class="rows">
+<li class="row changed" id="row-7813645cdf3852db" data-change="changed" data-list="windows">
+<span class="sign" aria-hidden="true">~</span>
+<div><div><span class="word">changed</span><code>main.js::win</code></div><div class="wrap-table"><table class="fields"><thead><tr><th>field</th><th>before</th><th>after</th></tr></thead><tbody><tr><td><code>nodeIntegration</code></td><td><code>true</code></td><td><code>false</code></td></tr><tr><td><code>nodeIntegrationInEffect</code></td><td><code>&quot;on&quot;</code></td><td><code>&quot;off&quot;</code></td></tr><tr><td><code>sandbox</code></td><td><code>false</code></td><td><code>true</code></td></tr><tr><td><code>sandboxInEffect</code></td><td><code>&quot;off&quot;</code></td><td><code>&quot;on&quot;</code></td></tr></tbody></table></div><div class="sides"><div class="side"><h4>before (a) · notesdesk-1.4.0.asar</h4><div class="place"><figure class="src"><figcaption><code>main.js:8</code> · lines 5–11 of 34</figcaption><pre><code><span class="ln"><i>5</i>const store = new Store(path.join(app.getPath(&quot;userData&quot;), &quot;settings.json&quot;));</span><span class="ln"><i>6</i> </span><span class="ln"><i>7</i>function createWindow() {</span><span class="ln hit"><i>8</i>  const win = new BrowserWindow({</span><span class="ln"><i>9</i>    width: 1100,</span><span class="ln"><i>10</i>    height: 720,</span><span class="ln"><i>11</i>    webPreferences: {</span></code></pre></figure></div></div><div class="side"><h4>after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><code>main.js:8</code> · lines 5–11 of 37</figcaption><pre><code><span class="ln"><i>5</i>const store = new Store(path.join(app.getPath(&quot;userData&quot;), &quot;settings.json&quot;));</span><span class="ln"><i>6</i> </span><span class="ln"><i>7</i>function createWindow() {</span><span class="ln hit"><i>8</i>  const win = new BrowserWindow({</span><span class="ln"><i>9</i>    width: 1100,</span><span class="ln"><i>10</i>    height: 720,</span><span class="ln"><i>11</i>    webPreferences: {</span></code></pre></figure></div></div></div></div>
+</li>
+</ul></section>
+<section class="group"><h3><code>webPreferences</code> <span class="note">2 row(s)</span></h3><ul class="rows">
+<li class="row changed" id="row-bb93cf045b2c8c33" data-change="changed" data-list="webPreferences">
+<span class="sign" aria-hidden="true">~</span>
+<div><div><span class="word">changed</span><code>main.js::win::nodeIntegration</code></div><div class="wrap-table"><table class="fields"><thead><tr><th>field</th><th>before</th><th>after</th></tr></thead><tbody><tr><td><code>value</code></td><td><code>true</code></td><td><code>false</code></td></tr></tbody></table></div><div class="sides"><div class="side"><h4>before (a) · notesdesk-1.4.0.asar</h4><div class="place"><figure class="src"><figcaption><code>main.js:14</code> · lines 11–17 of 34</figcaption><pre><code><span class="ln"><i>11</i>    webPreferences: {</span><span class="ln"><i>12</i>      preload: path.join(__dirname, &quot;preload.js&quot;),</span><span class="ln"><i>13</i>      contextIsolation: true,</span><span class="ln hit"><i>14</i>      nodeIntegration: true,</span><span class="ln"><i>15</i>      sandbox: false,</span><span class="ln"><i>16</i>    },</span><span class="ln"><i>17</i>  });</span></code></pre></figure></div></div><div class="side"><h4>after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><code>main.js:14</code> · lines 11–17 of 37</figcaption><pre><code><span class="ln"><i>11</i>    webPreferences: {</span><span class="ln"><i>12</i>      preload: path.join(__dirname, &quot;preload.js&quot;),</span><span class="ln"><i>13</i>      contextIsolation: true,</span><span class="ln hit"><i>14</i>      nodeIntegration: false,</span><span class="ln"><i>15</i>      sandbox: true,</span><span class="ln"><i>16</i>    },</span><span class="ln"><i>17</i>  });</span></code></pre></figure></div></div></div></div>
+</li>
+<li class="row changed" id="row-77adde38d4c4e5f3" data-change="changed" data-list="webPreferences">
+<span class="sign" aria-hidden="true">~</span>
+<div><div><span class="word">changed</span><code>main.js::win::sandbox</code></div><div class="wrap-table"><table class="fields"><thead><tr><th>field</th><th>before</th><th>after</th></tr></thead><tbody><tr><td><code>value</code></td><td><code>false</code></td><td><code>true</code></td></tr></tbody></table></div><div class="sides"><div class="side"><h4>before (a) · notesdesk-1.4.0.asar</h4><div class="place"><figure class="src"><figcaption><code>main.js:15</code> · lines 12–18 of 34</figcaption><pre><code><span class="ln"><i>12</i>      preload: path.join(__dirname, &quot;preload.js&quot;),</span><span class="ln"><i>13</i>      contextIsolation: true,</span><span class="ln"><i>14</i>      nodeIntegration: true,</span><span class="ln hit"><i>15</i>      sandbox: false,</span><span class="ln"><i>16</i>    },</span><span class="ln"><i>17</i>  });</span><span class="ln"><i>18</i>  win.loadFile(&quot;renderer/index.html&quot;);</span></code></pre></figure></div></div><div class="side"><h4>after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><code>main.js:15</code> · lines 12–18 of 37</figcaption><pre><code><span class="ln"><i>12</i>      preload: path.join(__dirname, &quot;preload.js&quot;),</span><span class="ln"><i>13</i>      contextIsolation: true,</span><span class="ln"><i>14</i>      nodeIntegration: false,</span><span class="ln hit"><i>15</i>      sandbox: true,</span><span class="ln"><i>16</i>    },</span><span class="ln"><i>17</i>  });</span><span class="ln"><i>18</i>  win.loadFile(&quot;renderer/index.html&quot;);</span></code></pre></figure></div></div></div></div>
+</li>
+</ul></section>
+<section class="group"><h3><code>endpoints</code> <span class="note">1 row(s)</span></h3><ul class="rows">
+<li class="row added" id="row-dcd6f1f9066d698c" data-change="added" data-list="endpoints">
+<span class="sign" aria-hidden="true">+</span>
+<div><div><span class="word">added</span><code>main.js::fetch::https://updates.notesdesk.example/latest.json</code><span class="tag">literal</span></div><div class="sides"><div class="side"><h4>in after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><code>main.js:30</code> · lines 27–33 of 37</figcaption><pre><code><span class="ln"><i>27</i>ipcMain.handle(&quot;notes:list&quot;, () =&gt; store.get(&quot;notes&quot;) ?? []);</span><span class="ln"><i>28</i>ipcMain.handle(&quot;notes:save&quot;, (_e, note) =&gt; store.push(&quot;notes&quot;, note));</span><span class="ln"><i>29</i>ipcMain.on(&quot;app:quit&quot;, () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.handle(&quot;update:check&quot;, async () =&gt; fetch(&quot;https://updates.notesdesk.example/latest.json&quot;).then((r) =&gt; r.json()));</span><span class="ln"><i>31</i>// The channel name comes from the environment at run time, so no static reading can name it.</span><span class="ln"><i>32</i>for (const plugin of (process.env.NOTESDESK_PLUGINS ?? &quot;&quot;).split(&quot;,&quot;).filter(Boolean))</span><span class="ln"><i>33</i>  ipcMain.handle(`plugin:${plugin}`, () =&gt; store.get(`plugins.${plugin}`));</span></code></pre></figure></div></div></div></div>
+</li>
+</ul></section>
+<section class="group"><h3><code>storage</code> <span class="note">1 row(s)</span></h3><ul class="rows">
+<li class="row added" id="row-30b48af6c7c7815a" data-change="added" data-list="storage">
+<span class="sign" aria-hidden="true">+</span>
+<div><div><span class="word">added</span><code>renderer/app.bundle.js::localStorage::notesdesk.telemetry::read</code><span class="tag">literal</span></div><div class="sides"><div class="side"><h4>in after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><code>renderer/app.bundle.js:15</code> · lines 12–18 of 68</figcaption><pre><code><span class="ln"><i>12</i>  return res.json();</span><span class="ln"><i>13</i>}</span><span class="ln"><i>14</i>async function telemetry(event) {</span><span class="ln hit"><i>15</i>  if (localStorage.getItem(&quot;notesdesk.telemetry&quot;) !== &quot;on&quot;) return;</span><span class="ln"><i>16</i>  await fetch(&quot;https://telemetry.notesdesk.example/collect&quot;, { method: &quot;POST&quot;, body: JSON.stringify({ event, ts: Date.now() }) });</span><span class="ln"><i>17</i>}</span><span class="ln"><i>18</i>/***/ }),</span></code></pre></figure></div></div></div></div>
+</li>
+</ul></section>
+<section class="group"><h3><code>urls</code> <span class="note">1 row(s)</span></h3><ul class="rows">
+<li class="row added" id="row-e354749839751d34" data-change="added" data-list="urls">
+<span class="sign" aria-hidden="true">+</span>
+<div><div><span class="word">added</span><code>main.js::https://updates.notesdesk.example/latest.json</code><span class="tag">literal</span></div><div class="sides"><div class="side"><h4>in after (b) · notesdesk-1.5.0.asar</h4><div class="place"><figure class="src"><figcaption><code>main.js:30</code> · lines 27–33 of 37</figcaption><pre><code><span class="ln"><i>27</i>ipcMain.handle(&quot;notes:list&quot;, () =&gt; store.get(&quot;notes&quot;) ?? []);</span><span class="ln"><i>28</i>ipcMain.handle(&quot;notes:save&quot;, (_e, note) =&gt; store.push(&quot;notes&quot;, note));</span><span class="ln"><i>29</i>ipcMain.on(&quot;app:quit&quot;, () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.handle(&quot;update:check&quot;, async () =&gt; fetch(&quot;https://updates.notesdesk.example/latest.json&quot;).then((r) =&gt; r.json()));</span><span class="ln"><i>31</i>// The channel name comes from the environment at run time, so no static reading can name it.</span><span class="ln"><i>32</i>for (const plugin of (process.env.NOTESDESK_PLUGINS ?? &quot;&quot;).split(&quot;,&quot;).filter(Boolean))</span><span class="ln"><i>33</i>  ipcMain.handle(`plugin:${plugin}`, () =&gt; store.get(`plugins.${plugin}`));</span></code></pre></figure></div></div></div></div>
+</li>
+</ul></section>
+</section>
+<section id="not-established"><h2>Not established</h2>
+<div class="wrap-table"><table><thead><tr><th>collection</th><th>gaps</th><th class="n">compared in a</th><th class="n">compared in b</th></tr></thead><tbody>
+<tr><td><code>ipcChannels</code></td><td><code>values_unresolved</code></td><td class="n">6 of 6</td><td class="n">6 of 6</td></tr>
+<tr><td><code>interfaces</code></td><td><code>values_unresolved</code></td><td class="n">6 of 6</td><td class="n">6 of 6</td></tr>
+<tr><td><code>ipc</code></td><td><code>values_unresolved</code></td><td class="n">13 of 13</td><td class="n">14 of 14</td></tr>
+</tbody></table></div>
+<ul class="plain"><li>1 row(s) shown are unknown: found on one side where the other side did not read the file, or has values there it could not resolve. Neither added nor removed.</li><li>interfaces is not whole (values_unresolved): compared 6 of 6 item(s) in a and 6 of 6 in b.</li><li>ipcChannels is not whole (values_unresolved): compared 6 of 6 item(s) in a and 6 of 6 in b.</li><li>ipc is not whole (values_unresolved): compared 13 of 13 item(s) in a and 14 of 14 in b.</li><li>b: <code>ipc_channel_unresolved</code> 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ipcMain.handle at main.js:33 (evaluation stopped: runtime value: process).</li><li>Absence from a list means hexvero did not find it in the files it read, not that the app cannot do it.</li><li>Values computed at run time are shown as <code>${…}</code> or left out; nothing here was observed running.</li></ul></section>
+<section id="reproduce"><h2>Reproduce</h2><pre class="cmd"><code>npx hexvero@0.8.0 compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar --report report.html</code></pre></section>
+<footer>hexvero 0.8.0 · static analysis, nothing was run · this file loads nothing from the network</footer>
+</main>
+<script>(function () {
+  var d = document, form = d.getElementById("filters");
+  if (!form) return;
+  form.hidden = false;
+  var rows = Array.prototype.slice.call(d.querySelectorAll("li.row"));
+  var groups = Array.prototype.slice.call(d.querySelectorAll("section.group"));
+  var kinds = Array.prototype.slice.call(form.querySelectorAll("input[name=kind]"));
+  var list = d.getElementById("f-list"), query = d.getElementById("f-text"), count = d.getElementById("f-count");
+  var words = rows.map(function (r) { return (r.textContent || "").toLowerCase(); });
+  function apply() {
+    var on = {}, shown = 0, l = list.value, t = query.value.trim().toLowerCase();
+    kinds.forEach(function (k) { on[k.value] = k.checked; });
+    rows.forEach(function (r, i) {
+      var keep = on[r.getAttribute("data-change")] && (!l || r.getAttribute("data-list") === l) && (!t || words[i].indexOf(t) !== -1);
+      r.hidden = !keep;
+      if (keep) shown++;
+    });
+    groups.forEach(function (g) { g.hidden = !g.querySelector("li.row:not([hidden])"); });
+    count.textContent = shown === rows.length ? "" : shown + " of " + rows.length + " rows on this page match";
+  }
+  form.addEventListener("input", apply);
+  form.addEventListener("change", apply);
+  form.addEventListener("submit", function (e) { e.preventDefault(); });
+  apply();
+})();</script>
+</body>
+</html>

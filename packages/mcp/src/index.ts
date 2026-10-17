@@ -119,6 +119,12 @@ export const TOOL_ANNOTATIONS: Record<
     idempotentHint: true,
     openWorldHint: false,
   },
+  hexvero_check: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   hexvero_sourcemap: {
     readOnlyHint: true,
     destructiveHint: false,

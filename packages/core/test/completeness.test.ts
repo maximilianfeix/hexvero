@@ -230,11 +230,18 @@ describe("a guess is not reported as a fact", () => {
         'const CH = { SAVE: "doc:save" };\nfor (const k of Object.keys(CH)) { ipcMain.on(CH[k], f); }',
       ),
     ).toEqual([]);
+    // A string method outside the evaluation subset is not read …
+    expect(
+      ipc(
+        'const H = { a: f };\nfor (const [id, fn] of Object.entries(H)) ipcMain.handle(id.normalize("NFC"), fn);',
+      ),
+    ).toEqual([]);
+    // … one inside it is (resolve.ts lists them): the loop registers exactly "A".
     expect(
       ipc(
         "const H = { a: f };\nfor (const [id, fn] of Object.entries(H)) ipcMain.handle(id.toUpperCase(), fn);",
       ),
-    ).toEqual([]);
+    ).toEqual(["ipcMain.handle A"]);
     expect(
       ipc(
         "const opts = { a: 1, b: 2 };\nObject.keys(opts).forEach((k) => use(k));\nipcMain.on(k, f);",
@@ -300,6 +307,29 @@ describe("a guess is not reported as a fact", () => {
 });
 
 describe("hostile input stays fast", () => {
+  it(
+    "bounds the reading of short-named enums and of bindings by scope",
+    { timeout: 30_000 },
+    () => {
+      for (const hostile of [
+        // many enums under one short name in one block, and in many blocks (aliases.ts settleScoped)
+        `function m(){${'var a;(function(e){e.X="x"})(a||(a={}));'.repeat(20_000)}${"ipcMain.on(a.X,f);".repeat(20_000)}}`,
+        `${'{var a;(function(e){e.X="x"})(a||(a={}));ipcMain.on(a.X,f)}'.repeat(30_000)}`,
+        // a name written in thousands of nested functions, asked for at every one (resolve.ts
+        // binding): took more than two minutes before the scans were cached
+        `class C{handle(c,f){ipcMain.handle(c,f)}}function g(){${'function h(){x=1;x.handle("a",f)}'.repeat(20_000)}}`,
+        // block-scoped declarations of one name in thousands of blocks, and one block of thousands
+        `class C{handle(c,f){ipcMain.handle(c,f)}}function m(){${'if(x){const r=new C;r.handle("a",f)}'.repeat(20_000)}r.handle("b",f)}`,
+        `class C{handle(c,f){ipcMain.handle(c,f)}}function m(){if(x){${"var r=1;".repeat(20_000)}}${'r.handle("b",f);'.repeat(2000)}}`,
+      ]) {
+        const started = performance.now();
+        analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
+        // about 0.3 s each here; unbounded, the last one takes minutes
+        expect(performance.now() - started).toBeLessThan(5_000);
+      }
+    },
+  );
+
   it("bounds the listener, helper and window scans", { timeout: 90_000 }, () => {
     for (const hostile of [
       // twice the size at which each of these took 3 to 14 seconds before it was bounded
@@ -307,6 +337,11 @@ describe("hostile input stays fast", () => {
       "const a=x=>(".repeat(120_000),
       "new BrowserWindow({".repeat(120_000),
       `new BrowserWindow({webPreferences:{${Array.from({ length: 4000 }, (_, i) => `...h${i}()`).join(",")}}});${"filler(1);".repeat(240_000)}`,
+      // IPC wrapper classes (wrappers.ts): many same-named functions with a receiver parameter,
+      // a property key defined over and over, a chain of methods that return this
+      `class C{handle(c,f){ipcMain.handle(c,f);return this}}${'function g(r){r.handle("x",f)}g(new C);'.repeat(30_000)}`,
+      `class C{handle(c,f){ipcMain.handle(c,f)}}${'a.k=new C;a.k.handle("x",f);'.repeat(60_000)}`,
+      `class C{handle(c,f){ipcMain.handle(c,f);return this}}new C()${'.handle("a",f)'.repeat(60_000)};`,
     ]) {
       const started = performance.now();
       analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);

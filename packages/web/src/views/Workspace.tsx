@@ -6,6 +6,7 @@ import { useAsync } from "../lib/useAsync.js";
 import { CollectionView } from "./CollectionView.js";
 import { GraphView } from "./GraphView.js";
 import { HexView } from "./HexView.js";
+import { InterfaceMapView } from "./InterfaceMapView.js";
 import { Overview } from "./Overview.js";
 import { SourceView } from "./SourceView.js";
 import { StringsView } from "./StringsView.js";
@@ -71,6 +72,9 @@ export function Workspace({
     ...FIXED_FIRST,
     ...dynamic,
     ...(isDirectory ? [] : ["strings", "hex"]),
+    ...(analysis.data?.data["kind"] === "javascript-app" && (collections["interfaces"] ?? 0) > 0
+      ? ["interface-map"]
+      : []),
     ...(analysis.data?.data["kind"] === "javascript-app" ? ["graph"] : []),
     ...(tab === "source" ? ["source"] : []),
   ];
@@ -199,6 +203,9 @@ export function Workspace({
         )}
         {tab === "strings" && <StringsView targetId={target.id} query={query} />}
         {tab === "hex" && <HexView targetId={target.id} size={target.info.size} query={query} />}
+        {analysis.data && tab === "interface-map" && tabs.includes("interface-map") && (
+          <InterfaceMapView targetId={target.id} query={query} />
+        )}
         {analysis.data && tab === "graph" && <GraphView targetId={target.id} />}
         {tab === "source" && <SourceView targetId={target.id} query={query} />}
       </section>
@@ -212,6 +219,7 @@ const LABELS: Record<string, string> = {
   strings: "Strings",
   hex: "Hex",
   graph: "Module graph",
+  "interface-map": "Interface map",
   goDependencies: "Go dependencies",
   ipcChannels: "IPC channels",
   userStrings: "User strings",

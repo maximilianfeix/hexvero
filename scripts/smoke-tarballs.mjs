@@ -165,6 +165,33 @@ cli(
 if (!readFileSync(report, "utf8").includes("## Not established"))
   fail("compare --report wrote no report");
 
+step("CLI: check with the shipped example policy (exit 3, JSON result)");
+{
+  const demoDir = join(project, "hexvero-demo");
+  const argv = [
+    bin,
+    "check",
+    join(demoDir, "notesdesk-1.4.0.asar"),
+    join(demoDir, "notesdesk-1.5.0.asar"),
+    "--policy",
+    join(demoDir, "policy.json"),
+    "--format",
+    "json",
+  ];
+  let status = 0;
+  let stdout = "";
+  try {
+    stdout = run(process.execPath, argv, project);
+  } catch (error) {
+    status = error.status;
+    stdout = String(error.stdout ?? "");
+  }
+  if (status !== 3) fail(`check on the example builds exited ${status}, expected 3`);
+  const result = JSON.parse(stdout);
+  if (!result.findings?.some((f) => f.key === "updates.notesdesk.example"))
+    fail("check did not report the new update host");
+}
+
 step("CLI: analyze, collection, compare, export on generated inputs");
 // A minimal ELF64 header is enough for the parser to answer; no fixture file is shipped.
 const elf = Buffer.alloc(64);

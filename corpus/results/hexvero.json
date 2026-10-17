@@ -1,9 +1,9 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.7.4",
-  "commit": "2fa9b6e+uncommitted",
-  "node": "v25.2.1",
+  "version": "0.8.0",
+  "commit": "aa88007+uncommitted",
+  "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
    "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
@@ -410,8 +410,8 @@
   {
    "set": "holdout",
    "class": "IPC channels",
-   "hit": 64,
-   "missed": 8,
+   "hit": 66,
+   "missed": 6,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -419,8 +419,8 @@
   {
    "set": "holdout",
    "class": "IPC senders and receivers",
-   "hit": 105,
-   "missed": 20,
+   "hit": 107,
+   "missed": 22,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -563,8 +563,8 @@
   {
    "set": "holdout2",
    "class": "window settings",
-   "hit": 48,
-   "missed": 15,
+   "hit": 52,
+   "missed": 11,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -581,8 +581,8 @@
   {
    "set": "holdout2",
    "class": "bridge member channel",
-   "hit": 113,
-   "missed": 16,
+   "hit": 121,
+   "missed": 8,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -842,8 +842,8 @@
   {
    "set": "holdout4",
    "class": "window settings",
-   "hit": 44,
-   "missed": 4,
+   "hit": 48,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -2329,15 +2329,13 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "IPC channels",
-   "hit": 18,
-   "missed": 6,
+   "hit": 20,
+   "missed": 4,
    "false": 0,
    "notes": [
     "missed projects:list",
     "missed projects:create",
     "missed projects:rename",
-    "missed menu:new-entry",
-    "missed update:ready",
     "missed theme:changed"
    ]
   },
@@ -2345,8 +2343,8 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 26,
-   "missed": 9,
+   "hit": 28,
+   "missed": 11,
    "false": 0,
    "notes": [
     "timer:start: sender preload.js missed",
@@ -2357,7 +2355,9 @@
     "invoice:export: sender preload.js missed",
     "invoice:exported: sender main.js missed",
     "sync:progress: receiver preload.js missed",
-    "config:get-sync: sender preload.js missed"
+    "config:get-sync: sender preload.js missed",
+    "menu:new-entry: receiver preload.js missed",
+    "update:ready: receiver preload.js missed"
    ]
   },
   {
@@ -2639,13 +2639,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "window settings",
-   "hit": 7,
-   "missed": 2,
+   "hit": 9,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
@@ -2740,13 +2737,11 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "window settings",
-   "hit": 6,
-   "missed": 3,
+   "hit": 8,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "missed main.js preload=preload.js",
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false"
+    "missed main.js preload=preload.js"
    ]
   },
   {
@@ -3020,19 +3015,10 @@
    "set": "holdout2",
    "input": "holdout2/music-player.bundled.asar",
    "class": "bridge member channel",
-   "hit": 14,
-   "missed": 8,
+   "hit": 22,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "cadence.listPlaylists: expected playlists:list, got null",
-    "cadence.savePlaylist: expected playlists:save, got null",
-    "cadence.reportState: expected player:state-changed, got null",
-    "cadence.getSettings: expected settings:get, got null",
-    "cadence.updateSettings: expected settings:set, got null",
-    "cadence.onSettingsChanged: expected settings:changed, got null",
-    "mini.onState: expected player:state, got null",
-    "mini.getArtwork: expected mini:get-artwork, got null"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
@@ -3717,14 +3703,10 @@
    "set": "holdout4",
    "input": "holdout4/kanban-board.bundled.asar",
    "class": "window settings",
-   "hit": 14,
-   "missed": 2,
+   "hit": 16,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "not scored: 1 row(s) with a computed value"
-   ]
+   "notes": []
   },
   {
    "set": "holdout4",
@@ -3852,14 +3834,10 @@
    "set": "holdout4",
    "input": "holdout4/kanban-board.minified.asar",
    "class": "window settings",
-   "hit": 14,
-   "missed": 2,
+   "hit": 16,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false",
-    "not scored: 1 row(s) with a computed value"
-   ]
+   "notes": []
   },
   {
    "set": "holdout4",

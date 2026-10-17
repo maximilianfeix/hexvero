@@ -12,6 +12,7 @@
  * that declares its own `n`. Where the tracking is unsure it declares a name too often, which
  * loses an alias and never invents one.
  */
+import type { Val } from "./resolve.js";
 import type { Token } from "./scan.js";
 
 const is = (t: Token | undefined, type: Token["type"], value?: string): boolean =>
@@ -397,12 +398,53 @@ export function resolveAliases(
 
 /** A string value reached by name, or where to look for it in another module. */
 export type Resolved =
-  | { value: string; via: "literal" | "constant" }
+  /** `evaluated`: a value of a declaration only an evaluation reads, declared at `line`. */
+  | { value: string; via: "literal" | "constant" | "evaluated"; line?: number }
   /** Another module's constant; `before` and `after`: text a template puts around it. */
   | { ref: { specifier: string; property: string; before?: string; after?: string } }
   | null;
 
+/**
+ * Reads the value of a declaration that only an evaluation can (see resolve.ts), with the reason
+ * when it cannot. Constants never evaluates anything itself.
+ */
+export interface Evaluator {
+  /** The value of a top-level name whose initializer starts at token `at`. */
+  name(name: string, at: number): { value: Val | null; reason: string | null };
+  /** The value of the expression that starts at token `at`. */
+  at(at: number): { value: Val | null; reason: string | null };
+}
+
+/** What an evaluated value gives a table: its single-valued string entries, nested as `a.b`. */
+interface Flat {
+  table: Map<string, string>;
+  value: string | null;
+}
+
+function one(v: Val | null | undefined): string | null {
+  return v?.kind === "str" && !v.ref && v.values.length === 1 && !v.values[0]!.includes("${…}")
+    ? v.values[0]!
+    : null;
+}
+
+function flatten(v: Val | null): Flat {
+  const table = new Map<string, string>();
+  const walk = (o: Extract<Val, { kind: "obj" }>, prefix: string, depth: number): void => {
+    for (const [key, p] of o.props) {
+      const entry = one(p);
+      if (entry !== null) table.set(`${prefix}${key}`, entry);
+      else if (p?.kind === "obj" && depth < 3) walk(p, `${prefix}${key}.`, depth + 1);
+    }
+  };
+  if (v?.kind === "obj") walk(v, "", 0);
+  return { table, value: one(v) };
+}
+
 /** String constants and tables of string constants declared in one file. */
+/** Short-named enum definitions read per file, and token visits to check them (settleScoped). */
+const MAX_SCOPED = 256;
+const SCOPED_WORK = 1_000_000;
+
 export class Constants {
   private readonly strings = new Map<string, string | null>();
   private readonly tables = new Map<string, Map<string, string>>();
@@ -433,6 +475,23 @@ export class Constants {
   /** Export entries whose value is a name, settled once the whole file is read. */
   private readonly exportNames: Array<{ key: string; at: number }> = [];
   /**
+   * Names declared at the top whose value only an evaluation reads (`const B = make(…)`,
+   * `Object.fromEntries(…)`): where the initializer starts; null when declared twice.
+   */
+  private readonly computedAt = new Map<string, number | null>();
+  private evaluator: Evaluator | null = null;
+  private readonly computedCache = new Map<string, (Flat & { line: number }) | null>();
+  private readonly computedReasons = new Map<string, string>();
+  /** Exports of names, and of calls, that only an evaluation reads; settled by `useEvaluator`. */
+  private readonly exportRequests: Array<{ key: string; name: string }> = [];
+  private readonly exportCalls: Array<{ key: string; at: number }> = [];
+  /** `module.exports = make(…)`: where the call starts. */
+  private wholeExportCall = -1;
+  /** Exported keys whose values an evaluation read. */
+  readonly evaluated: string[] = [];
+  /** Exported names an evaluation could not read, with the reason. */
+  readonly unevaluated: Record<string, string> = {};
+  /**
    * Token indexes at which a name means its top-level declaration (the result of
    * `resolveAliases` with `names()` as the file's own names). While it is null, every use counts.
    */
@@ -446,6 +505,24 @@ export class Constants {
    * file share with different contents: nothing is resolved through it.
    */
   private readonly enums = new Map<string, Map<string, string> | null>();
+  /** `(E || (exports.K = E = {}))`: the CommonJS export key of an enum, by enum name (tsc's emit). */
+  private readonly enumExports = new Map<string, string>();
+  /**
+   * Enums under a minifier's one- or two-letter name (`var i; (function (e) { … })(i || (i = {}))`
+   * in a webpack module): known only inside the block that declares the name, and only where the
+   * name means nothing else anywhere in that block (it is read as `i.MEMBER` and nothing else).
+   */
+  private readonly scopedEnums = new Map<
+    string,
+    Array<{ members: Map<string, string>; from: number; to: number }>
+  >();
+  /** Short-named enum definitions waiting for `settleScoped` (at most MAX_SCOPED). */
+  private readonly pendingScoped: Array<{
+    name: string;
+    members: Map<string, string>;
+    k: number;
+    end: number;
+  }> = [];
 
   /** Reads the compiled string enums of the file into `enums`. */
   private readEnums(): void {
@@ -492,6 +569,7 @@ export class Constants {
       if (is(tokens[open], "punct", ")")) open++;
       if (!is(tokens[open], "punct", "(")) continue;
       const names = new Set<string>();
+      const short = new Set<string>();
       let argumentsEnd = open + 1;
       for (let a = open + 1, depth = 1; a < tokens.length && a < open + 24 && depth > 0; a++) {
         argumentsEnd = a;
@@ -505,9 +583,30 @@ export class Constants {
         // other function of the bundle, so the enum is not known by it.
         if (t.type === "ident" && is(tokens[a + 1], "punct", "=") && t.value.length > 2)
           names.add(t.value);
+        else if (
+          t.type === "ident" &&
+          is(tokens[a + 1], "punct", "=") &&
+          !is(tokens[a - 1], "punct", ".") &&
+          is(tokens[a + 2], "punct", "{")
+        )
+          short.add(t.value);
+        // `exports.K = E = {}`: tsc's CommonJS export of the enum
+        if (
+          t.type === "ident" &&
+          t.value === this.exportsName &&
+          !is(tokens[a - 1], "punct", ".") &&
+          is(tokens[a + 1], "punct", ".") &&
+          is(tokens[a + 2], "ident") &&
+          is(tokens[a + 3], "punct", "=") &&
+          is(tokens[a + 4], "ident")
+        )
+          this.enumExports.set(tokens[a + 4]!.value, tokens[a + 2]!.value);
       }
       if (parameter.length > 2) names.add(parameter);
       spans.push([k, argumentsEnd]);
+      for (const name of short)
+        if (this.pendingScoped.length < MAX_SCOPED)
+          this.pendingScoped.push({ name, members, k, end: argumentsEnd });
       for (const name of names) {
         const known = this.enums.get(name);
         if (known === undefined) {
@@ -524,6 +623,7 @@ export class Constants {
       }
       k = j;
     }
+    this.settleScoped();
     if (!this.enums.size) return;
     // The enum's name must mean the enum everywhere in the file. Outside the definitions, any
     // other binding of the name (a declaration with a value, an assignment, a parameter, a
@@ -558,13 +658,110 @@ export class Constants {
   }
 
   /**
+   * Records the enums under a short name for the block around each definition, where the name
+   * means the enum everywhere in that block: declared with `var name;` and otherwise only read as
+   * `name.MEMBER`. One pass finds the blocks and one the positions of the names; the check of the
+   * positions in each block is charged to one budget per file (SCOPED_WORK), so many such
+   * definitions stay linear.
+   */
+  private settleScoped(): void {
+    const pending = this.pendingScoped;
+    if (!pending.length) return;
+    const tokens = this.tokens;
+    // the innermost `{` around each definition, and where it closes (-1 / length: the top level)
+    const opens = new Int32Array(pending.length).fill(-1);
+    const closes = new Int32Array(pending.length).fill(tokens.length);
+    const order = pending.map((_, i) => i).toSorted((a, b) => pending[a]!.k - pending[b]!.k);
+    const stack: number[] = [];
+    const waiting = new Map<number, number[]>(); // `{` index -> definitions inside it
+    let next = 0;
+    for (let j = 0; j < tokens.length; j++) {
+      while (next < order.length && pending[order[next]!]!.k === j) {
+        const i = order[next++]!;
+        const open = stack.at(-1) ?? -1;
+        opens[i] = open;
+        if (open !== -1) waiting.set(open, [...(waiting.get(open) ?? []), i]);
+      }
+      const t = tokens[j]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "{") stack.push(j);
+      else if (t.value === "}") {
+        const open = stack.pop();
+        if (open !== undefined) for (const i of waiting.get(open) ?? []) closes[i] = j;
+      }
+    }
+    const names = new Set(pending.map((p) => p.name));
+    const positions = new Map<string, number[]>();
+    for (let j = 0; j < tokens.length; j++) {
+      const t = tokens[j]!;
+      if (t.type !== "ident" || !names.has(t.value)) continue;
+      const list = positions.get(t.value);
+      if (list) list.push(j);
+      else positions.set(t.value, [j]);
+    }
+    let work = SCOPED_WORK;
+    for (let i = 0; i < pending.length && work > 0; i++) {
+      const { name, members, k, end } = pending[i]!;
+      const open = opens[i]!;
+      const close = closes[i]!;
+      // an unclosed block: which one it is is not known
+      if (open !== -1 && close === tokens.length) continue;
+      const all = positions.get(name) ?? [];
+      let lo = 0;
+      let hi = all.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (all[mid]! <= open) lo = mid + 1;
+        else hi = mid;
+      }
+      let declared = false;
+      let valid = true;
+      for (let p = lo; p < all.length && all[p]! < close; p++) {
+        if (--work <= 0) {
+          valid = false;
+          break;
+        }
+        const j = all[p]!;
+        if (j >= k && j <= end) continue;
+        if (is(tokens[j - 1], "punct", ".")) continue;
+        if (
+          is(tokens[j - 1], "ident", "var") &&
+          (is(tokens[j + 1], "punct", ";") || is(tokens[j + 1], "punct", ","))
+        ) {
+          if (declared) valid = false;
+          declared = true;
+        } else if (
+          !(
+            is(tokens[j + 1], "punct", ".") &&
+            is(tokens[j + 2], "ident") &&
+            !is(tokens[j + 3], "punct", "=")
+          )
+        )
+          valid = false; // a parameter, a declaration, a write, a bare use
+        if (!valid) break;
+      }
+      if (!valid || !declared) continue;
+      const list = this.scopedEnums.get(name) ?? [];
+      list.push({ members, from: open, to: close });
+      this.scopedEnums.set(name, list);
+    }
+  }
+
+  /** A member of an enum known under a short name in the block around token k. */
+  private scopedMember(name: string, member: string, k: number): string | null {
+    for (const e of this.scopedEnums.get(name) ?? [])
+      if (k > e.from && k < e.to) return e.members.get(member) ?? null;
+    return null;
+  }
+
+  /**
    * The value of `Enum.MEMBER` or `anything.Enum.MEMBER` used as an argument at token `k`.
    * The object in front of the enum name is whatever the module was imported as and is not
    * looked at: the enum name and the member decide.
    */
   private enumMember(k: number): string | null {
     const tokens = this.tokens;
-    if (!this.enums.size || tokens[k]?.type !== "ident") return null;
+    if ((!this.enums.size && !this.scopedEnums.size) || tokens[k]?.type !== "ident") return null;
     const chain = [tokens[k]!.value];
     let at = k + 1;
     while (chain.length < 3 && is(tokens[at], "punct", ".") && is(tokens[at + 1], "ident")) {
@@ -574,7 +771,10 @@ export class Constants {
     if (chain.length < 2 || (!is(tokens[at], "punct", ",") && !is(tokens[at], "punct", ")")))
       return null;
     const [name, member] = chain.slice(-2) as [string, string];
-    return this.enums.get(name)?.get(member) ?? null;
+    return (
+      this.enums.get(name)?.get(member) ??
+      (chain.length === 2 && this.scopedEnums.size ? this.scopedMember(name, member, k) : null)
+    );
   }
 
   constructor(private readonly tokens: Token[]) {
@@ -697,6 +897,18 @@ export class Constants {
         }
         continue;
       }
+      // `module.exports = make(…)`: read once an evaluator is known
+      if (
+        eq &&
+        !wrapper &&
+        t.value === "exports" &&
+        is(tokens[k - 1], "punct", ".") &&
+        is(tokens[k - 2], "ident", "module") &&
+        is(value, "ident") &&
+        value!.value !== "require" &&
+        (is(tokens[k + 3], "punct", "(") || is(tokens[k + 3], "punct", "."))
+      )
+        this.wholeExportCall = k + 2;
       if (
         t.value === "exports" &&
         is(tokens[k + 1], "punct", ".") &&
@@ -718,6 +930,19 @@ export class Constants {
       const listed = is(tokens[k - 1], "punct", ",");
       if (!declared && !listed) continue;
       const exportedHere = declared && is(tokens[k - 2], "ident", "export");
+      // `const B = make(…)`, `var a = 1, B = Object.fromEntries(…)`: read by an evaluation
+      if (
+        !wrapper &&
+        depth === 0 &&
+        ((is(value, "ident") &&
+          !/^(require|class|new|function|async|await|typeof|void|import)$/.test(value!.value) &&
+          (is(tokens[k + 3], "punct", "(") || is(tokens[k + 3], "punct", "."))) ||
+          // `(() => { … })()`, `(function () { … })()`
+          is(value, "punct", "("))
+      ) {
+        this.computedAt.set(t.value, this.computedAt.has(t.value) ? null : k + 2);
+        if (exportedHere) this.exportRequests.push({ key: t.value, name: t.value });
+      }
       const literal = text(value);
       const after = tokens[k + 3];
       if (
@@ -1002,6 +1227,9 @@ export class Constants {
       const name = tokens[k + 2]!.value;
       for (const [key, v] of this.enums.get(name) ?? []) this.exported[`${name}.${key}`] = v;
     }
+    // `(E || (exports.E = E = {}))`, as tsc compiles an exported enum to CommonJS
+    for (const [name, exportKey] of this.enumExports)
+      for (const [key, v] of this.enums.get(name) ?? []) this.exported[`${exportKey}.${key}`] = v;
     for (const { key, at } of this.exportNames) {
       if (key in this.exported) continue;
       const name = tokens[at]!.value;
@@ -1016,12 +1244,19 @@ export class Constants {
         !is(end, "punct", "}") &&
         !is(end, "punct", ";") &&
         end.line === tokens[at]!.line
-      )
+      ) {
+        // `exports.B = make(…)`, `{ B: Object.fromEntries(…) }`: read by an evaluation
+        if (is(end, "punct", "(") || is(tokens[at + 1], "punct", "."))
+          this.exportCalls.push({ key, at });
         continue;
+      }
       if (member === null) {
         const value = this.reassigned.has(name) ? null : this.strings.get(name);
         if (value) this.exported[key] = value;
         else if (this.imported.has(name)) this.reexported[key] = this.imported.get(name)!;
+        else if (this.tables.has(name) && !this.reassigned.has(name))
+          for (const [entry, v] of this.tables.get(name)!) this.exported[`${key}.${entry}`] = v;
+        else this.exportRequests.push({ key, name });
         continue;
       }
       const local = this.tables.get(name)?.get(member);
@@ -1047,7 +1282,73 @@ export class Constants {
       ...this.pairLists.keys(),
       ...this.requires.keys(),
       ...this.imported.keys(),
+      ...[...this.computedAt].filter(([, at]) => at !== null).map(([name]) => name),
     ];
+  }
+
+  /**
+   * Lets the file's names whose value only an evaluation reads be read through `evaluator`, and
+   * settles the exports of such names. Called once, right after construction.
+   */
+  useEvaluator(evaluator: Evaluator): void {
+    this.evaluator = evaluator;
+    this.computedCache.clear();
+    const put = (key: string, flat: Flat): void => {
+      const entries: Array<[string, string]> = [...flat.table].map(([sub, v]) => [
+        `${key}.${sub}`,
+        v,
+      ]);
+      if (flat.value !== null) entries.push([key, flat.value]);
+      for (const [full, v] of entries) {
+        if (full in this.exported) continue;
+        this.exported[full] = v;
+        this.evaluated.push(full);
+      }
+    };
+    for (const { key, name } of this.exportRequests) {
+      if (!this.computedAt.get(name)) continue;
+      const found = this.computed(name);
+      if (found) put(key, found);
+      else if (this.computedReasons.has(name))
+        this.unevaluated[key] = this.computedReasons.get(name)!;
+    }
+    for (const { key, at } of this.exportCalls) {
+      const { value, reason } = evaluator.at(at);
+      const flat = flatten(value);
+      if (flat.table.size || flat.value !== null) put(key, flat);
+      else if (reason) this.unevaluated[key] = reason;
+    }
+    if (this.wholeExportCall >= 0) {
+      const flat = flatten(evaluator.at(this.wholeExportCall).value);
+      for (const [key, v] of flat.table)
+        if (!(key in this.exported)) {
+          this.exported[key] = v;
+          this.evaluated.push(key);
+        }
+    }
+  }
+
+  /** The table or string an evaluation reads for a computed top-level name; cached. */
+  private computed(name: string): (Flat & { line: number }) | null {
+    const cached = this.computedCache.get(name);
+    if (cached !== undefined) return cached;
+    const at = this.computedAt.get(name);
+    let out: (Flat & { line: number }) | null = null;
+    if (
+      this.evaluator &&
+      at !== undefined &&
+      at !== null &&
+      !this.reassigned.has(name) &&
+      !this.strings.has(name) &&
+      !this.tables.has(name)
+    ) {
+      const { value, reason } = this.evaluator.name(name, at);
+      const flat = flatten(value);
+      if (flat.table.size || flat.value !== null) out = { ...flat, line: this.tokens[at]!.line };
+      else if (reason) this.computedReasons.set(name, reason);
+    }
+    this.computedCache.set(name, out);
+    return out;
   }
 
   private sees(k: number | undefined, name: string): boolean {
@@ -1059,6 +1360,7 @@ export class Constants {
     const value = this.strings.get(name);
     if (value) this.exported[name] = value;
     for (const [key, v] of this.tables.get(name) ?? []) this.exported[`${name}.${key}`] = v;
+    if (!value && !this.tables.has(name)) this.exportRequests.push({ key: name, name });
   }
 
   /** A destructuring pattern at `open`, if it takes names from another module. */
@@ -1140,6 +1442,10 @@ export class Constants {
 
   /** The string value of `NAME.PROPERTY` in a table of this file, as used at token k. */
   memberOf(name: string, property: string, k?: number): string | null {
+    if (k !== undefined && this.scopedEnums.size) {
+      const scoped = this.scopedMember(name, property, k);
+      if (scoped !== null) return scoped;
+    }
     if (
       !this.sees(k, name) ||
       this.reassigned.has(name) ||
@@ -1380,7 +1686,11 @@ export class Constants {
     const inner = this.resolve(k + 1, end);
     if (inner === null) return null;
     return "value" in inner
-      ? { value: `${before}${inner.value}${tail.value}`, via: "constant" }
+      ? {
+          value: `${before}${inner.value}${tail.value}`,
+          via: inner.via === "evaluated" ? "evaluated" : "constant",
+          ...(inner.line === undefined ? {} : { line: inner.line }),
+        }
       : { ref: { ...inner.ref, before, after: tail.value } };
   }
 
@@ -1411,6 +1721,9 @@ export class Constants {
         return null;
       const value = this.tables.get(t.value)?.get(property);
       if (value !== undefined) return { value, via: "constant" };
+      const computed = this.computed(t.value);
+      const read = computed?.table.get(property);
+      if (read !== undefined) return { value: read, via: "evaluated", line: computed!.line };
       const specifier = this.requires.get(t.value);
       if (specifier) return { ref: { specifier, property } };
       // a table imported by name: `const { CHANNELS } = require("./names")`, then CHANNELS.SAVE
@@ -1423,6 +1736,8 @@ export class Constants {
     if (this.reassigned.has(t.value)) return null;
     const value = this.strings.get(t.value);
     if (value) return { value, via: "constant" };
+    const computed = this.computed(t.value);
+    if (computed?.value) return { value: computed.value, via: "evaluated", line: computed.line };
     const ref = this.imported.get(t.value);
     return ref ? { ref } : null;
   }

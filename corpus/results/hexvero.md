@@ -1,6 +1,6 @@
-# hexvero 0.7.4 on the hexvero corpus
+# hexvero 0.8.0 on the hexvero corpus
 
-Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.8.0 · commit aa88007+uncommitted · node v22.17.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -50,8 +50,8 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout | functions | 4 | 68 | 0 | 0 |  |
 | holdout | call paths | 4 | 70 | 2 | 0 |  |
 | holdout | direct callers | 4 | 91 | 0 | 1 |  |
-| holdout | IPC channels | 3 | 64 | 8 | 0 |  |
-| holdout | IPC senders and receivers | 3 | 105 | 20 | 0 |  |
+| holdout | IPC channels | 3 | 66 | 6 | 0 |  |
+| holdout | IPC senders and receivers | 3 | 107 | 22 | 0 |  |
 | holdout | window settings | 3 | 27 | 6 | 0 |  |
 | holdout | bridge members | 3 | 60 | 9 | 0 |  |
 | holdout | bridge member channel | 3 | 40 | 20 | 0 |  |
@@ -67,9 +67,9 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout | changes in storage | 1 | 1 | 1 | 0 |  |
 | holdout2 | IPC channels | 6 | 118 | 8 | 0 |  |
 | holdout2 | IPC senders and receivers | 6 | 219 | 17 | 0 |  |
-| holdout2 | window settings | 6 | 48 | 15 | 0 |  |
+| holdout2 | window settings | 6 | 52 | 11 | 0 |  |
 | holdout2 | bridge members | 6 | 129 | 6 | 0 |  |
-| holdout2 | bridge member channel | 6 | 113 | 16 | 0 |  |
+| holdout2 | bridge member channel | 6 | 121 | 8 | 0 |  |
 | holdout2 | endpoints | 6 | 54 | 3 | 0 |  |
 | holdout2 | endpoint method | 6 | 9 | 9 | 0 |  |
 | holdout2 | requests with an unknown URL shown | 6 | 6 | 0 | 2 |  |
@@ -98,7 +98,7 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout3 | changes in storage | 1 | 1 | 0 | 0 |  |
 | holdout4 | IPC channels | 3 | 12 | 45 | 0 |  |
 | holdout4 | IPC senders and receivers | 3 | 18 | 6 | 0 |  |
-| holdout4 | window settings | 3 | 44 | 4 | 0 |  |
+| holdout4 | window settings | 3 | 48 | 0 | 0 |  |
 | holdout4 | bridge members | 3 | 66 | 0 | 0 |  |
 | holdout4 | bridge member channel | 3 | 21 | 45 | 0 |  |
 | holdout4 | endpoints | 3 | 15 | 6 | 0 |  |
@@ -258,8 +258,8 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout | holdout/time-tracker.bundled.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
 | holdout | holdout/time-tracker.bundled.asar | storage keys | 17 | 0 | 0 |  |
 | holdout | holdout/time-tracker.bundled.asar | storage read/write/delete | 13 | 2 | 0 | electron-store ui.locale: expected read+write, got read; electron-store ui.currency: expected read+write, got read |
-| holdout | holdout/time-tracker.minified.asar | IPC channels | 18 | 6 | 0 | missed projects:list; missed projects:create; missed projects:rename; missed menu:new-entry; missed update:ready; missed theme:changed |
-| holdout | holdout/time-tracker.minified.asar | IPC senders and receivers | 26 | 9 | 0 | timer:start: sender preload.js missed; timer:stop: sender preload.js missed; timer:tick: receiver preload.js missed; widget:pin: receiver main.js missed; widget:close: receiver main.js missed; invoice:export: sender preload.js missed; invoice:exported: sender main.js missed; sync:progress: receiver preload.js missed; config:get-sync: sender preload.js missed |
+| holdout | holdout/time-tracker.minified.asar | IPC channels | 20 | 4 | 0 | missed projects:list; missed projects:create; missed projects:rename; missed theme:changed |
+| holdout | holdout/time-tracker.minified.asar | IPC senders and receivers | 28 | 11 | 0 | timer:start: sender preload.js missed; timer:stop: sender preload.js missed; timer:tick: receiver preload.js missed; widget:pin: receiver main.js missed; widget:close: receiver main.js missed; invoice:export: sender preload.js missed; invoice:exported: sender main.js missed; sync:progress: receiver preload.js missed; config:get-sync: sender preload.js missed; menu:new-entry: receiver preload.js missed; update:ready: receiver preload.js missed |
 | holdout | holdout/time-tracker.minified.asar | window settings | 8 | 3 | 0 | missed main.js sandbox=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false |
 | holdout | holdout/time-tracker.minified.asar | bridge members | 20 | 3 | 0 | missed widget.pin; missed widget.close; missed widget.connect; 1 entry reported as unreadable |
 | holdout | holdout/time-tracker.minified.asar | bridge member channel | 8 | 12 | 0 | tracker.startTimer: expected timer:start, got null; tracker.stopTimer: expected timer:stop, got null; tracker.onTick: expected timer:tick, got null; tracker.listProjects: expected projects:list, got null; tracker.createProject: expected projects:create, got null; tracker.renameProject: expected projects:rename, got null; tracker.createInvoice: expected invoice:create, got null; tracker.exportInvoice: expected invoice:export, got null; tracker.onSyncProgress: expected sync:progress, got null; tracker.setting: expected config:get-sync, got null; tracker.onNewEntry: expected menu:new-entry, got null; tracker.onUpdateReady: expected update:ready, got null |
@@ -285,7 +285,7 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout2 | holdout2/markdown-editor.plain.asar | storage read/write/delete | 7 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.bundled.asar | IPC channels | 22 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.bundled.asar | IPC senders and receivers | 42 | 2 | 0 | settings:changed: sender main.js missed; vault:reveal: receiver main.js missed |
-| holdout2 | holdout2/markdown-editor.bundled.asar | window settings | 7 | 2 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false |
+| holdout2 | holdout2/markdown-editor.bundled.asar | window settings | 9 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.bundled.asar | bridge members | 21 | 2 | 0 | missed inkwell.listNotes; missed inkwell.searchNotes; 1 entry reported as unreadable |
 | holdout2 | holdout2/markdown-editor.bundled.asar | bridge member channel | 21 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.bundled.asar | endpoints | 9 | 0 | 0 |  |
@@ -295,7 +295,7 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout2 | holdout2/markdown-editor.bundled.asar | storage read/write/delete | 7 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.minified.asar | IPC channels | 22 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.minified.asar | IPC senders and receivers | 41 | 3 | 0 | settings:changed: sender main.js missed; vault:search: receiver main.js missed; vault:reveal: receiver main.js missed |
-| holdout2 | holdout2/markdown-editor.minified.asar | window settings | 6 | 3 | 0 | missed main.js preload=preload.js; missed main.js contextIsolation=true; missed main.js nodeIntegration=false |
+| holdout2 | holdout2/markdown-editor.minified.asar | window settings | 8 | 1 | 0 | missed main.js preload=preload.js |
 | holdout2 | holdout2/markdown-editor.minified.asar | bridge members | 21 | 2 | 0 | missed inkwell.listNotes; missed inkwell.searchNotes; 1 entry reported as unreadable |
 | holdout2 | holdout2/markdown-editor.minified.asar | bridge member channel | 21 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.minified.asar | endpoints | 9 | 0 | 0 |  |
@@ -322,7 +322,7 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout2 | holdout2/music-player.bundled.asar | IPC senders and receivers | 35 | 5 | 0 | playlists:list: receiver main.js missed; playlists:save: receiver main.js missed; settings:get: receiver main.js missed; settings:set: receiver main.js missed; mini:get-artwork: receiver main.js missed |
 | holdout2 | holdout2/music-player.bundled.asar | window settings | 7 | 5 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js sandbox=true |
 | holdout2 | holdout2/music-player.bundled.asar | bridge members | 22 | 0 | 0 |  |
-| holdout2 | holdout2/music-player.bundled.asar | bridge member channel | 14 | 8 | 0 | cadence.listPlaylists: expected playlists:list, got null; cadence.savePlaylist: expected playlists:save, got null; cadence.reportState: expected player:state-changed, got null; cadence.getSettings: expected settings:get, got null; cadence.updateSettings: expected settings:set, got null; cadence.onSettingsChanged: expected settings:changed, got null; mini.onState: expected player:state, got null; mini.getArtwork: expected mini:get-artwork, got null |
+| holdout2 | holdout2/music-player.bundled.asar | bridge member channel | 22 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.bundled.asar | endpoints | 10 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.bundled.asar | endpoint method | 0 | 3 | 0 | https://api.cadence.example/v2/scrobbles: expected POST; https://api.cadence.example/v2/me/likes/…: expected POST; https://api.cadence.example/v2/me/likes/…: expected DELETE |
 | holdout2 | holdout2/music-player.bundled.asar | requests with an unknown URL shown | 1 | 0 | 0 |  |
@@ -386,7 +386,7 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout4 | holdout4/kanban-board.plain.asar | storage read/write/delete | 3 | 0 | 0 |  |
 | holdout4 | holdout4/kanban-board.bundled.asar | IPC channels | 4 | 15 | 0 | missed board:list; missed board:move; missed board:archive; missed board:changed; missed card:create; missed card:rename; missed card:remove; missed card:link-preview; missed lane:collapse; missed lane:expand; missed lane:reorder; missed prefs:load; missed prefs:save; missed auth:sign-in; missed auth:sign-out |
 | holdout4 | holdout4/kanban-board.bundled.asar | IPC senders and receivers | 6 | 2 | 0 | activity:push: sender main.js missed; activity:clear: receiver main.js missed |
-| holdout4 | holdout4/kanban-board.bundled.asar | window settings | 14 | 2 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false; not scored: 1 row(s) with a computed value |
+| holdout4 | holdout4/kanban-board.bundled.asar | window settings | 16 | 0 | 0 |  |
 | holdout4 | holdout4/kanban-board.bundled.asar | bridge members | 22 | 0 | 0 |  |
 | holdout4 | holdout4/kanban-board.bundled.asar | bridge member channel | 7 | 15 | 0 | lattice.listBoards: expected board:list, got null; lattice.moveCard: expected board:move, got null; lattice.archiveBoard: expected board:archive, got null; lattice.onBoardChanged: expected board:changed, got null; lattice.collapseLane: expected lane:collapse, got null; lattice.expandLane: expected lane:expand, got null; lattice.reorderLanes: expected lane:reorder, got null; lattice.loadPrefs: expected prefs:load, got null; lattice.savePrefs: expected prefs:save, got null; lattice.signIn: expected auth:sign-in, got null; lattice.signOut: expected auth:sign-out, got null; cards.create: expected card:create, got null; cards.rename: expected card:rename, got null; cards.remove: expected card:remove, got null; cards.linkPreview: expected card:link-preview, got null |
 | holdout4 | holdout4/kanban-board.bundled.asar | endpoints | 5 | 2 | 0 | missed https://api.lattice.example/v1/templates; missed https://api.lattice.example/v1/feedback |
@@ -396,7 +396,7 @@ Tool: name hexvero · version 0.7.4 · commit 2fa9b6e+uncommitted · node v25.2.
 | holdout4 | holdout4/kanban-board.bundled.asar | storage read/write/delete | 3 | 0 | 0 |  |
 | holdout4 | holdout4/kanban-board.minified.asar | IPC channels | 4 | 15 | 0 | missed board:list; missed board:move; missed board:archive; missed board:changed; missed card:create; missed card:rename; missed card:remove; missed card:link-preview; missed lane:collapse; missed lane:expand; missed lane:reorder; missed prefs:load; missed prefs:save; missed auth:sign-in; missed auth:sign-out |
 | holdout4 | holdout4/kanban-board.minified.asar | IPC senders and receivers | 6 | 2 | 0 | activity:push: sender main.js missed; activity:clear: receiver main.js missed |
-| holdout4 | holdout4/kanban-board.minified.asar | window settings | 14 | 2 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false; not scored: 1 row(s) with a computed value |
+| holdout4 | holdout4/kanban-board.minified.asar | window settings | 16 | 0 | 0 |  |
 | holdout4 | holdout4/kanban-board.minified.asar | bridge members | 22 | 0 | 0 |  |
 | holdout4 | holdout4/kanban-board.minified.asar | bridge member channel | 7 | 15 | 0 | lattice.listBoards: expected board:list, got null; lattice.moveCard: expected board:move, got null; lattice.archiveBoard: expected board:archive, got null; lattice.onBoardChanged: expected board:changed, got null; lattice.collapseLane: expected lane:collapse, got null; lattice.expandLane: expected lane:expand, got null; lattice.reorderLanes: expected lane:reorder, got null; lattice.loadPrefs: expected prefs:load, got null; lattice.savePrefs: expected prefs:save, got null; lattice.signIn: expected auth:sign-in, got null; lattice.signOut: expected auth:sign-out, got null; cards.create: expected card:create, got null; cards.rename: expected card:rename, got null; cards.remove: expected card:remove, got null; cards.linkPreview: expected card:link-preview, got null |
 | holdout4 | holdout4/kanban-board.minified.asar | endpoints | 5 | 2 | 0 | missed https://api.lattice.example/v1/templates; missed https://api.lattice.example/v1/feedback |

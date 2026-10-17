@@ -6,8 +6,9 @@
  * as `dynamic` so that callers never mistake a guess for a fact.
  */
 
-import { Constants, resolveAliases } from "./aliases.js";
+import { Constants, type Evaluator, type Resolved, resolveAliases } from "./aliases.js";
 import { ExpressionResolver, type ResolveMethod } from "./resolve.js";
+import { WrapperReader, type WrapperFacts, type WrapperRow } from "./wrappers.js";
 
 export interface ModuleReference {
   specifier: string;
@@ -27,9 +28,12 @@ export interface IpcUsage {
    * or as one of the keys of an object whose entries are registered in a loop (`table`).
    * `global`: through a name another file defines (a `window.` global, or a name at the top of a
    * file that is built together with this one). `webContents`: on one page's own channel object
-   * (`webContents.ipc.on`).
+   * (`webContents.ipc.on`). A `wrapper` row of a class or object method (see wrappers.ts) is read
+   * at the call of the method and names it in `wrapper`.
    */
   via?: "alias" | "constant" | "wrapper" | "table" | "global" | "webContents" | "resolved";
+  /** For a call of a wrapper method: `<Class>.<method>` (or the export key of a minified class). */
+  wrapper?: string;
   /**
    * For `via: "resolved"`: how the channel was read from an expression the fast scan could not
    * (see resolve.ts), and the lines of the call sites or lists it was bound at.
@@ -37,6 +41,11 @@ export interface IpcUsage {
   resolution?: { method: ResolveMethod; lines: number[] };
   /** A channel named by a constant of another module, to be looked up there. */
   channelRef?: { specifier: string; property: string; before?: string; after?: string };
+  /**
+   * For a call without a channel: why the evaluation of the code that builds it stopped (an
+   * unsupported form, too many values, a limit, a cycle, a value known only at run time).
+   */
+  reason?: string;
 }
 
 export interface ScanResult {
@@ -54,6 +63,14 @@ export interface ScanResult {
   reexports?: Record<string, { specifier: string; property: string }>;
   /** `export * from "…"` specifiers. */
   starExports?: string[];
+  /** Keys of `constants` whose values were read by evaluating code (see resolve.ts). */
+  evaluated?: string[];
+  /** Exported names whose value an evaluation could not read, with the reason. */
+  unevaluated?: Record<string, string>;
+  /** Wrapper classes and objects this file exports, for calls in other files (wrappers.ts). */
+  wrappers?: WrapperFacts;
+  /** The search for calls of the file's wrappers ran out of its budget. */
+  wrappersCapped?: true;
 }
 
 /** What a second reader of the same token stream needs to follow names. */
@@ -62,6 +79,11 @@ export interface ScanContext {
   constants: Constants;
   /** Helper functions of the file that pass their first argument on as an IPC channel. */
   wrappers: Map<string, string>;
+  /**
+   * Calls of the file's wrapper methods (wrappers.ts), by the token of the method name: the IPC
+   * API and the token of the channel argument. Read on first use.
+   */
+  methodCalls?: () => ReadonlyMap<number, { api: string; arg: number }>;
 }
 
 /**
@@ -283,6 +305,67 @@ const isIdentPart = (c: string): boolean => {
   );
 };
 
+/**
+ * The text of the escape sequence at `j` (a backslash) of a string or template literal, the index
+ * after it, and the line breaks it spans (a line continuation): `\n`, `\x41`, `\u0041`,
+ * `\u{1F600}`, `\0`, legacy octal `\101`, and any other character as itself.
+ */
+function escapeAt(source: string, j: number): [string, number, number] {
+  const e = source[j + 1];
+  if (e === undefined) return ["", j + 1, 0];
+  const hex = (from: number, length: number): number | null => {
+    const digits = source.slice(from, from + length);
+    return digits.length === length && /^[0-9a-fA-F]+$/.test(digits) ? parseInt(digits, 16) : null;
+  };
+  switch (e) {
+    case "n":
+      return ["\n", j + 2, 0];
+    case "t":
+      return ["\t", j + 2, 0];
+    case "r":
+      return ["\r", j + 2, 0];
+    case "b":
+      return ["\b", j + 2, 0];
+    case "f":
+      return ["\f", j + 2, 0];
+    case "v":
+      return ["\v", j + 2, 0];
+    case "\r":
+      return ["", source[j + 2] === "\n" ? j + 3 : j + 2, 1];
+    case "\n":
+    case "\u2028":
+    case "\u2029":
+      return ["", j + 2, 1];
+    case "x": {
+      const code = hex(j + 2, 2);
+      return code === null ? ["x", j + 2, 0] : [String.fromCharCode(code), j + 4, 0];
+    }
+    case "u": {
+      if (source[j + 2] === "{") {
+        const close = source.indexOf("}", j + 3);
+        const code = close > j + 3 && close < j + 10 ? hex(j + 3, close - j - 3) : null;
+        if (code !== null && code <= 0x10ffff) return [String.fromCodePoint(code), close + 1, 0];
+        return ["u", j + 2, 0];
+      }
+      const code = hex(j + 2, 4);
+      return code === null ? ["u", j + 2, 0] : [String.fromCharCode(code), j + 6, 0];
+    }
+    default: {
+      // `\0` and legacy octal escapes: up to three octal digits, at most 255
+      const octal = /^[0-7]{1,3}/.exec(source.slice(j + 1, j + 4))?.[0];
+      if (octal !== undefined) {
+        let digits = octal;
+        while (parseInt(digits, 8) > 255) digits = digits.slice(0, -1);
+        return [String.fromCharCode(parseInt(digits, 8)), j + 1 + digits.length, 0];
+      }
+      // any other character stands for itself (a surrogate pair stays whole)
+      const cp = source.codePointAt(j + 1)!;
+      const ch = String.fromCodePoint(cp);
+      return [ch, j + 1 + ch.length, 0];
+    }
+  }
+}
+
 export function tokenize(
   source: string,
   maxTokens = 2_000_000,
@@ -331,8 +414,10 @@ export function tokenize(
       let run = j;
       while (j < n && source[j] !== c && source[j] !== "\n") {
         if (source[j] === "\\") {
-          value += source.slice(run, j) + (source[j + 1] ?? "");
-          j += 2;
+          const [text, next, lines] = escapeAt(source, j);
+          value += source.slice(run, j) + text;
+          line += lines;
+          j = next;
           run = j;
           continue;
         }
@@ -358,8 +443,10 @@ export function tokenize(
       let dynamic = false;
       while (j < n && source[j] !== "`") {
         if (source[j] === "\\") {
-          value += source[j + 1] ?? "";
-          j += 2;
+          const [text, next, lines] = escapeAt(source, j);
+          value += text;
+          line += lines;
+          j = next;
           continue;
         }
         if (source[j] === "$" && source[j + 1] === "{") {
@@ -456,6 +543,15 @@ export function scanJavaScript(
   // Names are resolved with their scope: first the file's constants, then, when the file has
   // channel-forwarding helpers, those as well (they are found with the first result).
   const constants = new Constants(tokens);
+  let resolver: ExpressionResolver | null = null;
+  constants.useEvaluator(
+    evaluatorFor(
+      tokens,
+      constants,
+      () => resolver,
+      (r) => (resolver = r),
+    ),
+  );
   // Most files of a large application name none of the objects whose other names are followed
   // (icons, locale tables, vendored libraries). For those the resolution is skipped: nothing
   // would use it, and it is the most expensive step of a scan.
@@ -471,7 +567,76 @@ export function scanJavaScript(
     }
     constants.visible = aliases;
   }
-  options.onTokens?.(tokens, truncated, { aliases, constants, wrappers });
+  // Wrapper classes and objects (wrappers.ts), read once on first use: by the bridge reader
+  // through the context, else after the scan below.
+  let wrapperScan: {
+    rows: WrapperRow[];
+    inner: Set<number>;
+    facts: WrapperFacts | null;
+    calls: Map<number, { api: string; arg: number }>;
+    capped?: true;
+  } | null = null;
+  const readWrappers = (): NonNullable<typeof wrapperScan> => {
+    if (wrapperScan) return wrapperScan;
+    wrapperScan = { rows: [], inner: new Set(), facts: null, calls: new Map() };
+    if (!/ipcMain|ipcRenderer|webContents/.test(source)) return wrapperScan;
+    const punct = (k: number, v: string): boolean =>
+      tokens[k]?.type === "punct" && tokens[k]!.value === v;
+    // IPC calls whose channel is a lone name: the calls a wrapper method can make
+    const calls: Array<{ api: string; arg: number }> = [];
+    for (let k = 0; k + 5 < tokens.length; k++) {
+      const method = tokens[k + 2]!;
+      if (
+        tokens[k]!.type !== "ident" ||
+        !punct(k + 1, ".") ||
+        method.type !== "ident" ||
+        !IPC_METHODS.has(method.value) ||
+        !punct(k + 3, "(") ||
+        tokens[k + 4]!.type !== "ident" ||
+        !(punct(k + 5, ",") || punct(k + 5, ")"))
+      )
+        continue;
+      let owner = aliases.get(k) ?? tokens[k]!.value;
+      if (
+        !IPC_APIS.has(`${owner}.${method.value}`) &&
+        punct(k - 1, ".") &&
+        tokens[k - 2]?.type === "ident" &&
+        tokens[k - 2]!.value === "this"
+      )
+        owner =
+          (resolver ??= new ExpressionResolver(tokens, constants)).fieldOwner(
+            k,
+            aliases,
+            FIELD_TARGETS,
+          ) ?? owner;
+      const api = `${owner}.${method.value}`;
+      if (IPC_APIS.has(api) && !api.startsWith("contextBridge.")) calls.push({ api, arg: k + 4 });
+    }
+    if (!calls.length) return wrapperScan;
+    const reader = new WrapperReader(
+      tokens,
+      (resolver ??= new ExpressionResolver(tokens, constants)),
+      constants,
+    );
+    reader.findClasses(calls);
+    if (!reader.classes.length) return wrapperScan;
+    const rows = reader.rows();
+    const facts = reader.facts();
+    wrapperScan = {
+      rows,
+      inner: reader.inner,
+      facts,
+      calls: new Map(rows.map((r) => [r.at, { api: r.usage.api, arg: r.arg }])),
+      ...(reader.capped ? { capped: true as const } : {}),
+    };
+    return wrapperScan;
+  };
+  options.onTokens?.(tokens, truncated, {
+    aliases,
+    constants,
+    wrappers,
+    methodCalls: () => readWrappers().calls,
+  });
   const references: ModuleReference[] = [];
   const ipc: IpcUsage[] = [];
   const exports = new Set<string>();
@@ -612,12 +777,7 @@ export function scanJavaScript(
       const named = channelAt(m + (direct ? 4 : 6));
       const api = direct ? "event.reply" : "event.sender.send";
       if (named && "value" in named)
-        ipc.push({
-          api,
-          channel: named.value,
-          line: at(m)!.line,
-          ...(named.via === "constant" ? { via: "constant" as const } : {}),
-        });
+        ipc.push({ api, channel: named.value, line: at(m)!.line, ...viaOf(named) });
       // A channel named by another module's constant, looked up once that module is read.
       else if (named && "ref" in named)
         ipc.push({ api, channel: null, line: at(m)!.line, channelRef: named.ref });
@@ -638,7 +798,6 @@ export function scanJavaScript(
   };
   /** IPC calls whose channel argument is neither a literal nor a constant: resolved below. */
   const open: Array<{ usage: IpcUsage; at: number }> = [];
-  let resolver: ExpressionResolver | null = null;
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
@@ -722,7 +881,8 @@ export function scanJavaScript(
           line: t.line,
         };
         if (named && "ref" in named) usage.channelRef = named.ref;
-        if (named && "value" in named && named.via === "constant") usage.via = "constant";
+        if (named && "value" in named && named.via !== "literal")
+          Object.assign(usage, viaOf(named));
         else if (owner !== t.value) usage.via = "alias";
         // `for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, fn)`:
         // one registration per key of the table.
@@ -769,6 +929,16 @@ export function scanJavaScript(
     }
   }
 
+  // Calls of the file's wrapper methods: read at the call, the channel from its argument.
+  const wrapped = readWrappers();
+  if (wrapped.rows.length) {
+    for (const row of wrapped.rows) {
+      ipc.push(row.usage);
+      if (row.unread) open.push({ usage: row.usage, at: row.arg });
+    }
+    ipc.sort((x, y) => x.line - y.line);
+  }
+
   // The slow path, only for the calls the fast scan left open: a bounded expression resolver.
   if (open.length) {
     resolver ??= new ExpressionResolver(tokens, constants);
@@ -777,19 +947,29 @@ export function scanJavaScript(
       // rows); the call inside it stays without a channel, as it may be called from elsewhere.
       const helper = resolver.enclosingName(argument);
       if (helper !== null && wrappers.has(helper)) continue;
+      // likewise inside a wrapper method of a class or object
+      if (wrapped.inner.has(argument)) continue;
       const found = resolver.resolveArgument(argument);
-      if (!found) continue;
+      if (!found) {
+        // why the evaluation of the code that builds the channel stopped, when it says
+        const why = resolver.reason;
+        if (why) usage.reason = `evaluation stopped: ${why}`;
+        continue;
+      }
       const index = ipc.indexOf(usage);
       if (index === -1) continue;
       ipc.splice(
         index,
         // a partial result keeps the call without a channel as well, for the limitation
         found.partial ? 0 : 1,
-        ...found.values.map((channel) => ({
+        ...found.values.map((channel): IpcUsage => ({
           api: usage.api,
           channel,
           line: usage.line,
-          via: "resolved" as const,
+          // a call of a wrapper method stays one, with how its argument was read
+          ...(usage.wrapper
+            ? { via: "wrapper" as const, wrapper: usage.wrapper }
+            : { via: "resolved" as const }),
           resolution: { method: found.method, lines: found.lines },
         })),
       );
@@ -810,5 +990,52 @@ export function scanJavaScript(
     ...(Object.keys(constants.exported).length ? { constants: constants.exported } : {}),
     ...(Object.keys(constants.reexported).length ? { reexports: constants.reexported } : {}),
     ...(constants.starExports.length ? { starExports: constants.starExports } : {}),
+    ...(constants.evaluated.length ? { evaluated: constants.evaluated } : {}),
+    ...(Object.keys(constants.unevaluated).length ? { unevaluated: constants.unevaluated } : {}),
+    ...(wrapped.facts ? { wrappers: wrapped.facts } : {}),
+    ...(wrapped.capped ? { wrappersCapped: true as const } : {}),
+  };
+}
+
+/** `via` and `resolution` of an IPC row whose channel was read by name. */
+function viaOf(
+  named: Extract<NonNullable<Resolved>, { value: string }>,
+): Pick<IpcUsage, "via" | "resolution"> {
+  if (named.via === "evaluated")
+    return {
+      via: "resolved",
+      resolution: { method: "evaluated", lines: named.line === undefined ? [] : [named.line] },
+    };
+  return named.via === "constant" ? { via: "constant" } : {};
+}
+
+/**
+ * The evaluator that lets a file's constants read declarations only an evaluation can
+ * (`const BOARD = defineChannels(…)`), through the file's one resolver, created on first use.
+ */
+export function evaluatorFor(
+  tokens: Token[],
+  constants: Constants,
+  get: () => ExpressionResolver | null,
+  set: (r: ExpressionResolver) => void,
+): Evaluator {
+  const resolver = (): ExpressionResolver => {
+    const have = get();
+    if (have) return have;
+    const made = new ExpressionResolver(tokens, constants);
+    set(made);
+    return made;
+  };
+  return {
+    name: (name, at) => {
+      const r = resolver();
+      const value = r.topValue(name, at);
+      return { value, reason: r.reason };
+    },
+    at: (at) => {
+      const r = resolver();
+      const value = r.valueAt(at);
+      return { value, reason: r.reason };
+    },
   };
 }

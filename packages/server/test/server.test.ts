@@ -175,6 +175,111 @@ describe("hexvero HTTP API", () => {
     expect((await api("/demo", { method: "POST" })).status).toBe(404);
   });
 
+  it("pages the comparison with offset and limit and checks both", async () => {
+    writeFileSync(join(dir, "p1.asar"), buildAsar(appFiles("1")));
+    writeFileSync(join(dir, "p2.asar"), buildAsar(appFiles("2")));
+    const a = (
+      await api("/targets", {
+        method: "POST",
+        body: JSON.stringify({ path: join(dir, "p1.asar") }),
+      })
+    ).body["id"] as string;
+    const b = (
+      await api("/targets", {
+        method: "POST",
+        body: JSON.stringify({ path: join(dir, "p2.asar") }),
+      })
+    ).body["id"] as string;
+    type Paged = {
+      changes: Array<{ key: string }>;
+      page: { offset: number; limit: number; total: number; next: number | null };
+    };
+    const all = (await api(`/compare?a=${a}&b=${b}`)).body as unknown as Paged;
+    expect(all.page).toMatchObject({ offset: 0, limit: 500, next: null });
+    expect(all.page.total).toBe(all.changes.length);
+    expect(all.page.total).toBeGreaterThan(1);
+    const first = (await api(`/compare?a=${a}&b=${b}&offset=0&limit=1`)).body as unknown as Paged;
+    expect(first.changes).toHaveLength(1);
+    expect(first.page).toEqual({ offset: 0, limit: 1, total: all.page.total, next: 1 });
+    const second = (await api(`/compare?a=${a}&b=${b}&offset=1&limit=1`)).body as unknown as Paged;
+    expect(second.changes[0]?.key).toBe(all.changes[1]?.key);
+    const last = (await api(`/compare?a=${a}&b=${b}&offset=${all.page.total - 1}&limit=5`))
+      .body as unknown as Paged;
+    expect(last.page.next).toBeNull();
+    // the server's own maximum holds, whatever the client asks for
+    expect(
+      ((await api(`/compare?a=${a}&b=${b}&limit=100000`)).body as unknown as Paged).page.limit,
+    ).toBe(500);
+    for (const bad of ["offset=-1", "offset=1.5", "limit=abc", "limit=0"])
+      expect((await api(`/compare?a=${a}&b=${b}&${bad}`)).status, bad).toBe(400);
+    // the token and origin checks still guard the paged route
+    expect((await fetch(`${running.url}/api/compare?a=${a}&b=${b}&offset=0&limit=1`)).status).toBe(
+      401,
+    );
+    const cross = await fetch(`${running.url}/api/compare?a=${a}&b=${b}&limit=1`, {
+      headers: { authorization: `Bearer ${running.token}`, origin: "http://evil.example" },
+    });
+    expect(cross.status).toBe(403);
+  });
+
+  it("returns hostile names and file text as data, never as markup", async () => {
+    const hostile = {
+      img: "<img src=x onerror=alert(1)>",
+      md: "**bold** [x](javascript:alert(1))",
+      bidi: `safe${String.fromCharCode(0x202e)}exe.txt`,
+    };
+    const long = `const pad = "${"A".repeat(5000)}";`;
+    writeFileSync(
+      join(dir, "h1.asar"),
+      buildAsar({
+        "package.json": JSON.stringify({ name: "h", version: "1", main: "main.js" }),
+        "main.js": 'require("electron").ipcMain.handle("old:ping", () => 1);\n',
+      }),
+    );
+    writeFileSync(
+      join(dir, "h2.asar"),
+      buildAsar({
+        "package.json": JSON.stringify({ name: "h", version: "2", main: "main.js" }),
+        "main.js": [
+          'const { ipcMain } = require("electron");',
+          ...Object.values(hostile).map((c) => `ipcMain.handle(${JSON.stringify(c)}, () => 1);`),
+          long,
+          "",
+        ].join("\n"),
+      }),
+    );
+    const id = async (name: string): Promise<string> =>
+      (await api("/targets", { method: "POST", body: JSON.stringify({ path: join(dir, name) }) }))
+        .body["id"] as string;
+    const [a, b] = [await id("h1.asar"), await id("h2.asar")];
+    const res = await fetch(`${running.url}/api/compare?a=${a}&b=${b}`, {
+      headers: { authorization: `Bearer ${running.token}` },
+    });
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toContain("default-src 'self'");
+    const comparison = (await res.json()) as { changes: Array<{ key: string; change: string }> };
+    const keys = comparison.changes.filter((c) => c.change === "added").map((c) => c.key);
+    // verbatim: the API neither strips nor interprets what the build contains
+    for (const value of Object.values(hostile)) expect(keys).toContain(value);
+    const report = await (
+      await fetch(`${running.url}/api/compare/report?a=${a}&b=${b}`, {
+        headers: { authorization: `Bearer ${running.token}` },
+      })
+    ).text();
+    // in the Markdown report target text sits in code spans: no tag, link or emphasis of its own
+    expect(report).toContain("`<img src=x onerror=alert(1)>`");
+    expect(report).toContain("`**bold** [x](javascript:alert(1))`");
+    expect(report.replace(/`[^`\n]*`/g, "")).not.toMatch(/<img|\]\(javascript:/);
+    const lines = (
+      await api(`/targets/${b}/source?file=main.js&line=${Object.keys(hostile).length + 2}`)
+    ).body as { lines: string[]; cut: Array<{ line: number; length: number }> };
+    // a very long line comes back cut, with its full length named
+    expect(lines.cut).toEqual([{ line: Object.keys(hostile).length + 2, length: long.length }]);
+    expect(Math.max(...lines.lines.map((l) => l.length))).toBeLessThanOrEqual(400);
+    expect(lines.lines.join("\n")).toContain(hostile.img);
+  });
+
   it("accepts the configured bind host and the loopback names", async () => {
     const custom = await startServer({ host: "127.0.0.1", staticDir: dir });
     try {

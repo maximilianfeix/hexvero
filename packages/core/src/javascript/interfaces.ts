@@ -17,6 +17,8 @@ export interface InterfaceEnd {
   api: string;
   /** How the end's channel was read when it was not a literal (see `IpcUsage.via`). */
   via?: string;
+  /** For a call of a wrapper method: which one (`IpcMainManager.handle`). */
+  wrapper?: string;
 }
 
 export interface InterfaceRow {
@@ -39,8 +41,12 @@ export interface InterfaceRow {
    * an end.
    */
   direction: "to-main" | "to-renderer" | "both" | null;
-  /** IPC calls outside renderer code on the same channel. */
+  /** IPC calls outside renderer code on the same channel: the first 20 by file and line. */
   ends: InterfaceEnd[];
+  /** How many such calls exist; `direction` and `link` are computed from all of them. */
+  endsTotal: number;
+  /** True when `ends` holds fewer than `endsTotal` calls. */
+  endsTruncated: boolean;
   /**
    * - `direct`: every end names the channel as a literal.
    * - `resolved`: an end was reached through a constant, an alias, a wrapper or the resolver.
@@ -59,6 +65,7 @@ const BLIND_SPOTS = new Set([
   "ipc_channel_unresolved",
   "ipc_receiver_unresolved",
   "ipc_open_calls_capped",
+  "ipc_wrappers_capped",
   "scan_truncated",
   "js_files_skipped",
   "js_files_truncated",
@@ -78,7 +85,13 @@ export function interfaceMap(app: AppParts, limitations: readonly Limitation[]):
       if (!u.channel || u.api.startsWith("ipcRenderer.") || u.api.startsWith("contextBridge."))
         continue;
       const list = ends.get(u.channel) ?? [];
-      list.push({ file: m.id, line: u.line, api: u.api, ...(u.via ? { via: u.via } : {}) });
+      list.push({
+        file: m.id,
+        line: u.line,
+        api: u.api,
+        ...(u.via ? { via: u.via } : {}),
+        ...(u.wrapper ? { wrapper: u.wrapper } : {}),
+      });
       ends.set(u.channel, list);
     }
   }
@@ -104,19 +117,22 @@ export function interfaceMap(app: AppParts, limitations: readonly Limitation[]):
         ...base,
         direction: null,
         ends: [],
+        endsTotal: 0,
+        endsTruncated: false,
         link: "unresolved",
         reason:
           "the member names no IPC channel hexvero could read; it may not use IPC at all, or pass a channel built at run time",
       };
     const found = (ends.get(b.channel) ?? [])
       .filter((e) => e.file !== b.file)
-      .toSorted((x, y) => x.file.localeCompare(y.file) || x.line - y.line)
-      .slice(0, MAX_ENDS);
+      .toSorted((x, y) => x.file.localeCompare(y.file) || x.line - y.line);
     if (found.length === 0)
       return {
         ...base,
         direction: null,
         ends: [],
+        endsTotal: 0,
+        endsTruncated: false,
         ...(blind.length
           ? {
               link: "unknown",
@@ -132,7 +148,9 @@ export function interfaceMap(app: AppParts, limitations: readonly Limitation[]):
     return {
       ...base,
       direction: toMain && toRenderer ? "both" : toMain ? "to-main" : "to-renderer",
-      ends: found,
+      ends: found.slice(0, MAX_ENDS),
+      endsTotal: found.length,
+      endsTruncated: found.length > MAX_ENDS,
       link: found.every((e) => e.via === undefined) ? "direct" : "resolved",
     };
   });

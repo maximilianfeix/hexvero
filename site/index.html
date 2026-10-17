@@ -4,17 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>hexvero: know what changed inside your app</title>
+    <title>hexvero: know what changed inside your Electron release</title>
     <meta
       name="description"
-      content="Inspect Electron apps and binaries, trace each finding to its file and line, and compare two releases. Locally, without executing the target. CLI, MCP server for coding agents, local web UI."
+      content="Compare two builds of an Electron app: interfaces pages can call, window settings and network hosts that changed, with the file and line on both sides, what could not be established, and a CI policy gate. Locally, without executing the target."
     />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://maximilianfeix.github.io/hexvero/" />
-    <meta property="og:title" content="hexvero: know what changed inside your app" />
+    <meta property="og:title" content="hexvero: know what changed inside your Electron release" />
     <meta
       property="og:description"
-      content="Compare two builds of an Electron app or binary: new IPC channels, preload members, window settings and endpoints, each with the file and line it was read from. The target is never run."
+      content="New interfaces, window settings and hosts between two Electron builds, with file and line on both sides, what could not be established, and a CI policy gate. The target is never run."
     />
     <meta
       property="og:image"
@@ -37,7 +37,7 @@
         "name": "hexvero",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS, Linux, Windows",
-        "description": "Static inspection of Electron apps and binaries with the file and line behind each finding, and a comparison of two releases. CLI, MCP server for coding agents and a local web UI.",
+        "description": "Static comparison of two Electron app builds with the file and line behind each change, a list of what could not be established, and a release policy check for CI. Also inspects binaries. CLI, MCP server for coding agents and a local web UI.",
         "url": "https://maximilianfeix.github.io/hexvero/",
         "codeRepository": "https://github.com/maximilianfeix/hexvero",
         "license": "https://opensource.org/licenses/MIT",
@@ -53,37 +53,38 @@
           ><img src="logo-mark.svg" width="26" height="26" alt="" />hexvero</a
         >
         <nav>
-          <a class="wide" href="#how">How it works</a><a class="wide" href="#agents">CLI and MCP</a
+          <a class="wide" href="#how">How it works</a><a class="wide" href="#gate">Release gate</a
           ><a class="wide" href="#limits">Limits</a
           ><a href="https://github.com/maximilianfeix/hexvero">GitHub</a>
         </nav>
       </header>
 
       <section style="border-top: 0; padding-top: 36px">
-        <h1>Know what changed inside your app.</h1>
+        <h1>Know what changed inside your Electron release.</h1>
         <p class="lede">
-          Inspect Electron apps and binaries, trace findings to their source, and compare releases.
-          Locally, without executing the target.
+          The interfaces pages can call, window settings and network hosts that changed between two
+          builds, with the file and line on both sides, what could not be established, and a policy
+          gate for CI. Locally, without executing the target.
         </p>
         <div class="cta">
           <a class="btn primary" href="demo/">See an example comparison</a>
-          <a class="btn" href="https://github.com/maximilianfeix/hexvero#readme">Read the docs</a>
+          <a class="btn" href="demo/report.html">Example HTML report</a>
+          <a class="btn" href="https://github.com/maximilianfeix/hexvero#readme">Docs</a>
         </div>
         <div class="cmd">
           <code id="start">npx hexvero demo</code>
           <button class="btn copy" type="button" data-copy="start" hidden>Copy</button>
         </div>
         <p class="note">
-          Needs Node.js 22.12 or newer. Copies two builds of an example Electron app into
-          <code>./hexvero-demo</code> and shows what changed between them;
-          <code>npx hexvero ui --demo --open</code> opens the same comparison in a local browser UI.
+          Needs Node.js 22.12 or newer. Copies two builds of an example Electron app and a policy
+          into <code>./hexvero-demo</code> and shows what changed between them.
         </p>
         <figure class="shot" style="margin-left: 0; margin-right: 0">
           <img
             src="ui-compare.png"
             width="1440"
             height="900"
-            alt="The hexvero web UI comparing two builds of an Electron app: window settings that changed, a new preload member and IPC channel, each linked to its file and line"
+            alt="The hexvero web UI comparing two builds of an Electron app: counts of changed interfaces, window settings and hosts, the lists that were not compared whole, window settings to review, and the change filters"
           />
         </figure>
         <p class="caption">
@@ -93,44 +94,45 @@
       </section>
 
       <section id="how">
-        <h2>Inspect, compare, verify</h2>
+        <h2>Demo, compare, gate</h2>
         <p class="sub">
-          For Electron developers and security engineers who need to know what a shipped app or an
-          update actually contains, and for coding agents doing the same work.
+          For Electron developers and security engineers who review what a release changed, and for
+          coding agents doing the same work over MCP.
         </p>
         <ol class="steps">
           <li>
-            <h3>Inspect</h3>
-            <p>
-              What a build exposes: IPC channels with senders and handlers, preload members, window
-              settings, endpoints, storage keys. Native binaries get imports, libraries and
-              hardening.
-            </p>
-            <pre><span class="dim">$</span> hexvero analyze notesdesk-1.5.0.asar
-  ● 6 members exposed to pages as window.notesdesk  @ preload.js:4
-  ○ 3 network endpoints read from the code  @ main.js:30</pre>
+            <h3>Demo</h3>
+            <p>Two releases of an example app and a policy, in one command.</p>
+            <pre><span class="dim">$</span> npx hexvero demo
+  interfaces (2)
+    + preload.js::notesdesk::checkUpdate  @ b: preload.js:9, handler main.js:30 · link direct
+  …
+  ipcChannels (2)
+    + update:check  @ b: receiver main.js:30, sender preload.js:9
+    ? shell:open  @ a: receiver main.js:30, sender preload.js:9
+        the other side has values there that could not be resolved</pre>
           </li>
           <li>
             <h3>Compare</h3>
             <p>
-              What the next release added, removed or changed, list by list. Code that only moved is
-              not reported as changed.
+              Every change with the place it was read from. In the UI and the HTML report, the lines
+              of both builds side by side.
             </p>
-            <pre><span class="dim">$</span> hexvero compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar
-  collection      added  removed  changed
-  contextBridge   1      1        0
-  windows         0      0        1
-  endpoints       1      0        0</pre>
+            <pre><span class="dim">$</span> hexvero compare hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --report report.html
+  …
+✓ report.html (33298 bytes)</pre>
           </li>
           <li>
-            <h3>Verify</h3>
+            <h3>Gate</h3>
             <p>
-              Every change names the file and line it was read from, and whether it was read as
-              written or inferred. What could not be established is listed.
+              A JSON policy over the same comparison: exit <code>3</code> on a new member, host or
+              more permissive window; <code>4</code> when it cannot decide.
             </p>
-            <pre><span class="dim">$</span> hexvero compare a.asar b.asar --report report.md
-  + update:check  @ b: receiver main.js:30, sender preload.js:9
-✓ report.md</pre>
+            <pre><span class="dim">$</span> hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --policy hexvero-demo/policy.json
+hexvero check fail: the policy is violated
+  …
+<span class="dim">$</span> echo $?
+3</pre>
           </li>
         </ol>
       </section>
@@ -153,9 +155,10 @@
               Whether any page calls it is not something a static reading can show.
             </li>
             <li>
-              <b>Open question.</b> Line 33 registers channels whose names come from an environment
-              variable. hexvero reports that (<code>ipc_channel_unresolved</code>) instead of
-              guessing, and the IPC finding turns from confirmed to inferred.
+              <b>Unknown, not removed.</b> 1.5.0 registers channels whose names come from an
+              environment variable (<code>main.js:33</code>, <code>ipc_channel_unresolved</code>).
+              So <code>shell:open</code>, present only in 1.4.0, is reported as unknown: the other
+              build has a channel there that could not be named.
             </li>
           </ul>
           <div>
@@ -187,6 +190,133 @@
             </p>
           </div>
         </div>
+        <figure class="shot" style="margin-left: 0; margin-right: 0">
+          <img
+            src="ui-evidence-before-after.png"
+            width="1440"
+            height="900"
+            loading="lazy"
+            alt="The changed window main.js::win in the web UI: nodeIntegration true to false and sandbox false to true, with the source lines of main.js:8 in the build before and the build after side by side"
+          />
+        </figure>
+        <p class="caption">
+          Before and after: the changed window with <code>main.js:8</code> of both builds. Real
+          output.
+        </p>
+        <figure class="shot" style="margin-left: 0; margin-right: 0">
+          <img
+            src="ui-interface-map.png"
+            width="1440"
+            height="900"
+            loading="lazy"
+            alt="The interface map of NotesDesk 1.5.0: the window main.js:win, the six preload members it loads, their IPC channels and the main-process handlers, with checkUpdate selected and linked to update:check and main.js:30"
+          />
+        </figure>
+        <p class="caption">
+          The interface map: window → preload member → channel → main-process handler, and how each
+          link was read. Real output for NotesDesk 1.5.0.
+        </p>
+      </section>
+
+      <section id="gate">
+        <h2>The release gate</h2>
+        <p class="sub">
+          <code>hexvero check</code> applies a policy to the comparison of the build you shipped and
+          the build you are about to ship. A real run on the example builds:
+        </p>
+        <pre
+          class="cmd"
+        ><code><span class="dim">$</span> hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --policy hexvero-demo/policy.json
+hexvero check fail: the policy is violated
+  before notesdesk-1.4.0.asar · after notesdesk-1.5.0.asar · policy policy.json
+
+  ✗ new-interface-member  notesdesk.checkUpdate  new · fail
+      New interface member notesdesk.checkUpdate is exposed to pages.
+      @ b: preload.js:9, handler main.js:30 · link direct · fingerprint 40aa15f76bfd9988f9302d187c03c61d
+  ✗ new-external-host  updates.notesdesk.example  new · fail
+      New external host updates.notesdesk.example, not in the allow list (https://updates.notesdesk.example/latest.json).
+      @ b: main.js:30 · literal · fingerprint 68312dcec55422c3b8affec165b21b83
+
+  Accept what is there now: add --baseline &lt;file&gt; --update-baseline, or a suppression with the fingerprint and a reason in the policy.</code></pre>
+        <p class="note">
+          Exit <code>3</code>. After
+          <code>--baseline .hexvero/baseline.json --update-baseline</code> accepts the two findings,
+          the same run exits <code>0</code>. Exit codes: <code>0</code> pass,
+          <code>1</code> technical error, <code>2</code> usage or invalid policy,
+          <code>3</code> violated, <code>4</code> not decidable (an unknown under
+          <code>"unknown": "fail"</code>). Output as text, JSON, Markdown or SARIF 2.1.0.
+        </p>
+        <h3>In GitHub Actions</h3>
+        <p class="note">
+          From
+          <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/ci.md">docs/ci.md</a>:
+          the check job with <code>contents: read</code>, the SARIF upload as a separate job with
+          <code>security-events: write</code>, skipped for pull requests from forks.
+          <code>hexvero check</code> is in hexvero 0.9.0 and later.
+        </p>
+        <pre class="cmd"><code>name: Release policy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      # Build your app and fetch the previous release here, e.g. into previous/ and dist/.
+      - name: hexvero check
+        run: |
+          set +e
+          npx --yes hexvero@0.9.0 check previous/app.asar dist/app.asar \
+            --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
+            --format sarif --out hexvero.sarif
+          code=$?
+          set -e
+          npx --yes hexvero@0.9.0 check previous/app.asar dist/app.asar \
+            --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
+            --format markdown &gt;&gt; "$GITHUB_STEP_SUMMARY" || true
+          exit "$code"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hexvero-sarif
+          path: hexvero.sarif
+          if-no-files-found: ignore
+
+  upload:
+    needs: check
+    if: &gt;-
+      always() &amp;&amp;
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: hexvero-sarif
+      - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: hexvero.sarif
+          category: hexvero-check</code></pre>
+        <p class="note">
+          A pass means hexvero found nothing new against the policy in what it read. It is not a
+          proof that the app cannot do these things at run time. SARIF locations are paths inside
+          the analyzed build (<code>hexvero-build/after/…</code>), never mapped onto your sources.
+        </p>
       </section>
 
       <section id="agents">
@@ -195,12 +325,12 @@
           <div>
             <h3>CLI and UI</h3>
             <pre>
-npx hexvero analyze ./MyApp.app/Contents/Resources/app.asar
-npx hexvero compare old.asar new.asar --report report.md
-npx hexvero ui --open</pre>
+npx hexvero compare old.asar new.asar --report report.html
+npx hexvero check old.asar new.asar --policy policy.json
+npx hexvero ui --demo --open</pre>
             <p class="note">
               The UI binds to 127.0.0.1 with a per-session token. Fonts are bundled; nothing is
-              loaded from the network.
+              loaded from the network. The HTML report is one offline file.
             </p>
           </div>
           <div>
@@ -209,9 +339,10 @@ npx hexvero ui --open</pre>
 npx hexvero setup --apply          # registers the server
 npx hexvero setup --skill --apply  # installs the skill</pre>
             <p class="note">
-              Claude Code, Codex, Cursor, VS Code and 14 other clients. Answers are small pages with
-              suggested next calls; text from the target is marked as data, not instructions. With a
-              cloud-hosted agent, what the agent reads goes to its model provider.
+              16 tools, including <code>hexvero_check</code> for the same policy. Answers are small
+              pages with suggested next calls; text from the target is marked as data, not
+              instructions. With a cloud-hosted agent, what the agent reads goes to its model
+              provider.
             </p>
           </div>
         </div>
@@ -220,7 +351,7 @@ npx hexvero setup --skill --apply  # installs the skill</pre>
       <section id="limits">
         <h2>What it reads, and what it cannot tell you</h2>
         <ul class="chips">
-          <li>Electron ASAR and app folders</li>
+          <li>Electron ASAR (with <code>app.asar.unpacked</code>) and app folders</li>
           <li>JavaScript bundles and source maps</li>
           <li>ELF</li>
           <li>PE</li>
@@ -235,17 +366,27 @@ npx hexvero setup --skill --apply  # installs the skill</pre>
         <ul class="limits" style="margin-top: 22px">
           <li>
             It reads files and never observes a running program. A finding is what the code
-            contains, not what it does.
+            contains, not what it does, and not whether anything is exploitable.
           </li>
           <li>
-            It misses things. On the newest blind set (an app written by someone without access to
-            hexvero, measured once with 0.7.3) it found 12 of 57 IPC channels and 5 of 8 expected
-            changes between two versions; most misses were channels built by a registry function it
-            does not evaluate. Absence from a list is weaker evidence than presence.
+            It misses things. On the newest blind set (one app in three builds, written by someone
+            without access to hexvero, measured once on 2026-10-17) it found 49 of 54 IPC channels
+            with none false, but only 14 of 39 window settings, and of the changes to the next
+            version 3 of 4 channels, 4 of 4 bridge members, 0 of 2 window settings and 1 of 1
+            endpoint. Most misses: a wrapper class around <code>ipcMain</code> and window options
+            built with <code>Object.assign</code>. Absence from a list is weaker evidence than
+            presence.
+          </li>
+          <li>
+            Since then wrapper classes are read. On the same set, now a development set and not a
+            blind result: 72 of 72 IPC channels, but window settings still 17 of 52. On Electron
+            Fiddle 0.38.0 and 0.39.0, which registers handlers through
+            <code>ipcMainManager.handle</code>, 45 of 46 bridge members are now linked to a
+            main-process handler (0.8.0: none).
           </li>
           <li>
             Values computed at run time are shown as <code>${…}</code> or listed as unresolved,
-            never guessed.
+            never guessed; an item they might hide is <code>unknown</code>, not removed.
           </li>
           <li>
             Not executing the target is not a safety guarantee: parsing a hostile file still
@@ -256,8 +397,14 @@ npx hexvero setup --skill --apply  # installs the skill</pre>
         <p class="note">
           Methods and numbers:
           <a href="https://github.com/maximilianfeix/hexvero#limits">README, Limits</a> ·
-          <a href="https://github.com/maximilianfeix/hexvero/blob/main/corpus/holdout4/README.md"
-            >blind set holdout4</a
+          <a
+            href="https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round4/README.md"
+            >blind set holdout5 (round 4)</a
+          >
+          ·
+          <a
+            href="https://github.com/maximilianfeix/hexvero/blob/main/docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md"
+            >Electron Fiddle case study</a
           >
           ·
           <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/electron-findings.md"
@@ -269,7 +416,7 @@ npx hexvero setup --skill --apply  # installs the skill</pre>
       <section>
         <div class="star">
           <p>
-            Open source under MIT. If it showed you something useful about a build, a star on GitHub
+            Open source under MIT. If it showed you something true about a release, a star on GitHub
             helps other people find it. A bug report naming a wrong or missing fact helps more.
           </p>
           <a class="btn" href="https://github.com/maximilianfeix/hexvero">GitHub</a>

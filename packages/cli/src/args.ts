@@ -55,6 +55,7 @@ const BOOLEAN_FLAGS = new Set([
   "clear",
   "force",
   "demo",
+  "update-baseline",
 ]);
 const SHORT: Record<string, string> = {
   "-h": "help",

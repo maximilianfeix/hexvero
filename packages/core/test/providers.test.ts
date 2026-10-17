@@ -374,6 +374,10 @@ esac
         operation: "functions",
         timeoutMs: 300,
       }),
-    ).rejects.toThrow(/exceeded 300 ms/);
+    ).rejects.toMatchObject({
+      code: "provider_unavailable",
+      message: expect.stringMatching(/exceeded 300 ms/),
+      details: { reason: "timeout", timeoutMs: 300 },
+    });
   });
 });

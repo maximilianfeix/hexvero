@@ -552,7 +552,21 @@ describe("flow 4: a coding agent over MCP stdio", () => {
         collection: "ipcChannels",
       });
       expect((diff.body["added"] as { sample: string[] }).sample).toEqual(["update:check"]);
-      expect((diff.body["removed"] as { sample: string[] }).sample).toEqual(["shell:open"]);
+      // 1.5.0 registers `plugin:${…}` handlers in main.js, a channel no static reading can name:
+      // shell:open, handled in main.js before, is not proven gone there (C2)
+      expect((diff.body["removed"] as { sample: string[] }).sample).toEqual([]);
+      expect((diff.body["unknown"] as { sample: unknown[] }).sample).toEqual([
+        {
+          key: "shell:open",
+          side: "a",
+          file: "main.js",
+          reason: "the other side has values there that could not be resolved",
+        },
+      ]);
+      expect(diff.body["completeness"]).toMatchObject({
+        complete: false,
+        gaps: ["values_unresolved"],
+      });
 
       // export, and a second export does not clobber the first
       const out = join(work, "agent-export.json");

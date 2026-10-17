@@ -6,7 +6,25 @@ News forbids generated or AI-edited text and automated posting
 as an outline of facts and order, not as text to paste there. One channel, one story; no
 identical cross-posts, no vote requests.
 
-## X: main post
+## X: 0.9.0 (draft, post after 0.9.0 is on npm)
+
+> Know what changed inside your Electron release.
+>
+> hexvero 0.9.0 compares two builds without running either, shows each change with the file and
+> line on both sides, keeps "could not tell" apart from "removed", and fails CI with exit 3 when a
+> release exposes a new member to pages or talks to a new host.
+>
+> npx hexvero demo
+>
+> github.com/maximilianfeix/hexvero
+
+Attach `docs/demo/release-gate.mp4` (25 s). Reply with the honest number: on the newest blind
+set 49 of 54 IPC channels, but 14 of 39 window settings (`corpus/results/round4/README.md`);
+on Electron Fiddle 45 of 46 bridge members are now linked to their main-process handler (0.8.0:
+0).
+Every fact: [claims.md](claims.md) C2, C3, C5, C7, A1.
+
+## X: main post (0.8.0, kept for reference)
 
 > Know what changed inside your app.
 >
@@ -47,8 +65,11 @@ Attach `docs/demo/compare.mp4` (or the GIF).
 - What it does, with the demo output (three lines from `npx hexvero demo`).
 - How it keeps facts apart: `●` read / `○` inferred, `literal` / `inferred`, unknown rows, the
   "Not established" section.
-- Honest numbers: newest blind set 12 of 57 IPC channels, 5 of 8 version changes; why it missed
-  them (registry function not evaluated). Link `corpus/holdout4/README.md`.
+- Honest numbers: newest blind set `holdout5` 49 of 54 IPC channels with none false, but 14 of 39
+  window settings, and 0 of 2 window-setting changes; why it missed them (wrapper class, options
+  built with `Object.assign`). Link `corpus/results/round4/README.md`. If you mention the
+  wrapper-class work, say it separately: Electron Fiddle 0 → 45 of 46 bridge members linked, and
+  holdout5 as a development set (not blind) 72 of 72 channels. See `hn-fact-brief.md`.
 - What it is not: no dynamic analysis, no verdicts, not a safety guarantee for hostile files.
 - Ask: "where was the first answer wrong or missing something obvious?"
 
@@ -70,6 +91,7 @@ between two asar builds
 
 **Body outline:** methodology first: tokenizer-based scan, bounded resolver for channel names,
 `interfaces` join (bridge member → channel → handler), how unknown differs from removed, the blind
-corpus and its misses (12/57 on holdout4) with the reason. Then the tool link. No vulnerability
+corpus and its misses (holdout5 blind: 49/54 channels, 14/39 window settings) with the reason,
+and, kept apart, what changed after the blind round (development set, Fiddle bridge links). Then the tool link. No vulnerability
 claims; the example app is synthetic. These subreddits expect technical substance; if the
 self-promotion rules do not allow a tool post, skip the channel.

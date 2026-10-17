@@ -5,7 +5,9 @@ import {
   Session,
   compact,
   compareReleases,
+  collectReleaseSources,
   renderReleaseReport,
+  renderReleaseReportHtml,
   loadCallGraph,
   MAX_PAGE_BYTES,
   neighborhood,
@@ -51,8 +53,15 @@ Commands
   compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
                                                 Added, removed and changed items between two builds;
                                                 without a collection, counts for every shared one
-  compare <a> <b> --report file.md [--force]    Write a Markdown report: summary, changes with
-                                                file:line, what could not be established
+  compare <a> <b> --report file.md|file.html [--force] [--offset n] [--limit n]
+                                                Write a report: summary, changes with file:line
+                                                (200 rows per page), what could not be established;
+                                                .html/.htm writes one offline page with source
+                                                excerpts and filters, anything else Markdown
+  check <before> <after> --policy <file>        Apply a release policy (new interface members, new
+        [--baseline file] [--update-baseline]   external hosts, more permissive windows); exit 0
+        [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
+        [--out file] [--force]                  the result (never over a file without --force)
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -79,7 +88,8 @@ Options
   -h, --help  Show help
   -v, --version
 
-Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces`;
+Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces
+            check also: 2 invalid policy · 3 policy violated · 4 incomplete (unknown: fail)`;
 
 export async function main(argv: string[], io: Io = defaultIo()): Promise<number> {
   let args: ParsedArgs;
@@ -382,8 +392,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       if (report !== undefined) {
         if (args.positionals[2] !== undefined)
           throw new UsageError("--report covers every collection; leave out the collection name");
-        const comparison = await compareReleases(session, a.id, b.id);
-        const text = renderReleaseReport(comparison);
+        const comparison = await compareReleases(session, a.id, b.id, {
+          offset: flagNumber(args.flags, "offset"),
+          limit: flagNumber(args.flags, "limit"),
+        });
+        // .html/.htm: the self-contained page with source excerpts; anything else: Markdown
+        const text = /\.html?$/i.test(report)
+          ? renderReleaseReportHtml(comparison, await collectReleaseSources(session, comparison))
+          : renderReleaseReport(comparison);
         try {
           await writeFile(report, text, { flag: args.flags["force"] ? "w" : "wx" });
         } catch (error) {
@@ -406,13 +422,20 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           io.out(toJson(all));
           return 0;
         }
-        const differing = all.collections.filter(
-          (c) => c.added || c.removed || c.changed || c.unknown,
-        );
+        const differs = (c: (typeof all.collections)[number]): boolean =>
+          Boolean(c.added || c.removed || c.changed || c.unknown);
+        // hexvero's own findings and limitations describe the reading, not the app
+        const own = new Set(["findings", "limitations"]);
+        const differing = all.collections.filter((c) => differs(c) && !own.has(c.collection));
+        const ownDiffering = all.collections.filter((c) => differs(c) && own.has(c.collection));
         io.out(
           heading(
             io,
-            `${all.collections.length} shared collection(s), ${differing.length} with differences`,
+            `${all.collections.length} shared collection(s), ${differing.length} with differences in the app${
+              ownDiffering.length
+                ? ` (plus hexvero's own ${ownDiffering.map((c) => c.collection).join(" and ")})`
+                : ""
+            }`,
           ),
         );
         for (const row of table(
@@ -439,9 +462,13 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
               `    ${w.direction === "more permissive" ? paint(io, "yellow", "!") : " "} ${w.window} ${w.setting}: ${w.before} → ${w.after}${paint(io, "dim", ` (${w.direction})`)}`,
             );
         }
-        if (all.collections.some((c) => c.partial))
+        for (const c of all.collections.filter((x) => x.partial))
           io.out(
-            paint(io, "yellow", "  ! partial: only the first 2,000 items of a side were compared"),
+            paint(
+              io,
+              "yellow",
+              `  ! ${c.collection} partial: ${c.completeness.gaps.join(", ")} (compared ${c.completeness.compared.a} of ${c.completeness.total.a} (a), ${c.completeness.compared.b} of ${c.completeness.total.b} (b))`,
+            ),
           );
         if (all.partialScan.a || all.partialScan.b)
           io.out(
@@ -493,7 +520,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         session.analyze(b.id).then((x) => x.limitations.length),
       ]);
       const partial = { a: await session.partial(a.id), b: await session.partial(b.id) };
-      const truncated = left.truncated || right.truncated;
+      const { completeness } = diff;
+      // compared only in part: a side exceeded the comparison budget
+      const truncated = completeness.gaps.includes("budget");
       if (json) {
         io.out(
           toJson({
@@ -501,17 +530,12 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             ...diff,
             changed: diff.changed.map((c) => ({ key: c.key, fields: c.fields })),
             relocatedSample: diff.relocatedSample.map((c) => ({ key: c.key, fields: c.fields })),
-            totals: { a: left.total, b: right.total },
+            totals: { ...completeness.total },
             truncated,
             limitations: { a: limitsA, b: limitsB },
             ...(partial.a || partial.b ? { partialScan: partial } : {}),
             complete:
-              !truncated &&
-              !left.itemTruncated &&
-              !right.itemTruncated &&
-              limitsA === 0 &&
-              limitsB === 0 &&
-              diff.ignored.length === 0,
+              completeness.complete && limitsA === 0 && limitsB === 0 && diff.ignored.length === 0,
           }),
         );
         return 0;
@@ -587,7 +611,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           paint(
             io,
             "yellow",
-            `  ! compared only the first ${left.items.length} of ${left.total} (a) and ${right.items.length} of ${right.total} (b) items; the result is partial`,
+            `  ! compared only the first ${completeness.compared.a} of ${completeness.total.a} (a) and ${completeness.compared.b} of ${completeness.total.b} (b) items; the result is partial`,
           ),
         );
       for (const [side, p] of Object.entries(partial))
@@ -604,6 +628,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           ),
         );
       return 0;
+    }
+    case "check": {
+      const { runCheck } = await import("./check.js");
+      return runCheck(args, io, session);
     }
     case "export": {
       const target = await session.open(need(0, "path"));

@@ -8,20 +8,49 @@ import { openAsarFile } from "../src/formats/asar.js";
 import { buildElf } from "./fixtures/elf.js";
 import { buildAsar } from "./fixtures/asar.js";
 
+/** A capture of these requests; `POST url` sends a POST, a bare URL a GET. */
 const har = (urls: string[]): string =>
   JSON.stringify({
     log: {
-      entries: urls.map((url) => ({
-        request: { method: "GET", url, headers: [] },
+      entries: urls.map((entry) => ({
+        request: {
+          method: entry.startsWith("POST ") ? "POST" : "GET",
+          url: entry.replace(/^POST /, ""),
+          headers: [],
+        },
         response: { status: 200, headers: [], content: { size: 0 } },
       })),
     },
+  });
+
+const long = (tail: string): string => `https://api.example.test/${"ü".repeat(200_000)}${tail}`;
+const wide = (i: number): string => `https://api.example.test/${"€".repeat(1000)}/${i}`;
+/** An app whose v2 registers a channel through a value read at run time (C2). */
+const unresolvedApp = (v2: boolean): Uint8Array =>
+  buildAsar({
+    "package.json": JSON.stringify({ name: "c2", version: "1.0.0", main: "main.js" }),
+    "main.js": [
+      'const { ipcMain } = require("electron");',
+      'require("./extra.js");',
+      v2 ? "ipcMain.handle(process.env.X, () => 1);" : 'ipcMain.handle("a:b", () => 1);',
+      v2 ? "" : 'ipcMain.on("c:d", () => 1);',
+    ].join("\n"),
+    // a real deletion in a file that has no unresolved value on either side
+    "extra.js": [
+      'const { ipcMain } = require("electron");',
+      v2 ? "" : 'ipcMain.on("gone:now", () => 1);',
+      'ipcMain.on("stays", () => 1);',
+    ].join("\n"),
   });
 
 describe("Session", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-session-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
   const session = new Session();
+  const open = async (name: string, list: string[]): Promise<string> => {
+    writeFileSync(join(dir, name), har(list));
+    return (await session.open(join(dir, name))).id;
+  };
 
   it("opens files with content-derived ids and analyzes once", async () => {
     const path = join(dir, "lib.so");
@@ -188,24 +217,132 @@ describe("Session", () => {
     expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(64 * 1024 * 1024);
   });
 
-  it("never reports an item as added or removed when the other side was compared only in part", async () => {
-    // 2,500 requests in opposite orders: each side's first 2,000 rows hold different requests,
-    // although both captures contain exactly the same ones.
-    const urls = Array.from({ length: 2500 }, (_, i) => `https://api.example.test/v1/item/${i}`);
-    writeFileSync(join(dir, "a.har"), har(urls));
-    writeFileSync(join(dir, "b.har"), har(urls.toReversed()));
-    const a = await session.open(join(dir, "a.har"));
-    const b = await session.open(join(dir, "b.har"));
-    const { diff, left, right } = await session.compareCollection(a.id, b.id, "requests");
-    expect(left.truncated && right.truncated).toBe(true);
-    expect(diff.added).toEqual([]);
-    expect(diff.removed).toEqual([]);
-    // First 2,000 of a: 0..1999; of b: 2499..500. Each side has 500 the other did not compare.
-    expect(diff.unknown.length).toBe(500 + 500);
-    expect(diff.unknown[0]?.reason).toBe("the other side was compared only in part");
-    const all = await session.compareAll(a.id, b.id);
-    const requests = all.collections.find((c) => c.collection === "requests");
-    expect(requests).toMatchObject({ added: 0, removed: 0, unknown: 1000, partial: true });
+  describe("compares whole collections, not their first page (C1)", () => {
+    const urls = Array.from({ length: 2600 }, (_, i) => `https://api.example.test/v1/item/${i}`);
+    it("finds the only change when it sits after item 2,000", async () => {
+      const changed = urls.map((u, i) => (i === 2300 ? `${u}?v=2` : u));
+      const [a, b] = [await open("c1-a.har", urls), await open("c1-b.har", changed)];
+      const { diff, left, right } = await session.compareCollection(a, b, "requests");
+      expect(diff.removed).toEqual([urls[2300]]);
+      expect(diff.added).toEqual([`${urls[2300]}?v=2`]);
+      expect([diff.unknown, diff.changed]).toEqual([[], []]);
+      expect(diff.unchanged).toBe(2599);
+      expect(diff.completeness).toEqual({
+        compared: { a: 2600, b: 2600 },
+        total: { a: 2600, b: 2600 },
+        complete: true,
+        gaps: [],
+      });
+      // the pages stay a bounded preview for callers that print items
+      expect([left.items.length, right.items.length]).toEqual([2000, 2000]);
+      const all = await session.compareAll(a, b);
+      expect(all.collections.find((c) => c.collection === "requests")).toMatchObject({
+        added: 1,
+        removed: 1,
+        unknown: 0,
+        partial: false,
+        totals: { a: 2600, b: 2600 },
+        completeness: { complete: true, gaps: [] },
+      });
+    });
+
+    it("reports nothing when the items were only reordered", async () => {
+      const [a, b] = [await open("c1-r1.har", urls), await open("c1-r2.har", urls.toReversed())];
+      const { diff } = await session.compareCollection(a, b, "requests");
+      expect([diff.added, diff.removed, diff.unknown, diff.changed]).toEqual([[], [], [], []]);
+      // a request's index is its position in the capture: it moved, nothing else
+      expect(diff.unchanged + diff.relocated).toBe(2600);
+      expect(diff.completeness.complete).toBe(true);
+    });
+
+    it("pairs duplicate identities that sit on different sides of the old page boundary", async () => {
+      // the same URL twice per side, as a GET and as a POST, at positions that used to fall
+      // into different pages: a page-by-page comparison paired the GET with the POST
+      const dup = "https://api.example.test/dup";
+      const left = [...urls];
+      left[10] = dup;
+      left[2200] = `POST ${dup}`;
+      const right = [...urls];
+      right[5] = `POST ${dup}`;
+      right[2400] = dup;
+      right[10] = urls[5]!;
+      right[2200] = urls[2400]!;
+      const [a, b] = [await open("c1-d1.har", left), await open("c1-d2.har", right)];
+      const { diff } = await session.compareCollection(a, b, "requests");
+      expect([diff.added, diff.removed, diff.unknown, diff.changed]).toEqual([[], [], [], []]);
+      expect(diff.duplicateKeys).toBe(1);
+    });
+
+    it("compares long UTF-8 fields to their last character", async () => {
+      const head = urls.slice(0, 2400);
+      const [a, b] = [
+        await open("c1-u1.har", [...head, long("a")]),
+        await open("c1-u2.har", [...head, long("b")]),
+      ];
+      const { diff } = await session.compareCollection(a, b, "requests");
+      expect(diff.removed.map((k) => k.slice(-2))).toEqual(["üa"]);
+      expect(diff.added.map((k) => k.slice(-2))).toEqual(["üb"]);
+      expect(diff.completeness.complete).toBe(true);
+    });
+
+    it("says it compared only part when a side exceeds the budget, and never calls the rest gone", async () => {
+      const shifted = [...urls.slice(1), "https://api.example.test/new"];
+      const [a, b] = [await open("c1-b1.har", urls), await open("c1-b2.har", shifted)];
+      const { diff } = await session.compareCollection(a, b, "requests", {
+        budget: { items: 100, bytes: 256 << 20 },
+      });
+      expect(diff.completeness).toEqual({
+        compared: { a: 100, b: 100 },
+        total: { a: 2600, b: 2600 },
+        complete: false,
+        gaps: ["budget"],
+      });
+      expect([diff.added, diff.removed]).toEqual([[], []]);
+      expect(diff.unknown.map((u) => u.reason)).toEqual(
+        Array(2).fill("the other side was compared only in part"),
+      );
+      // the byte budget counts UTF-8 bytes of the serialized items, not characters
+      const many = Array.from({ length: 50 }, (_, i) => wide(i));
+      const [c, d] = [await open("c1-w1.har", many), await open("c1-w2.har", many)];
+      const bytes = (
+        await session.compareCollection(c, d, "requests", {
+          // ~1,100 characters but ~3,100 bytes per item: 20 items by characters, 7 by bytes
+          budget: { items: 1000, bytes: 22_000 },
+        })
+      ).diff.completeness;
+      expect(bytes.complete).toBe(false);
+      expect(bytes.gaps).toEqual(["budget"]);
+      expect(bytes.compared.a).toBeLessThan(8);
+    });
+  });
+
+  it("calls a channel unknown, not removed, when the other build registers one it cannot read there (C2)", async () => {
+    writeFileSync(join(dir, "c2-v1.asar"), unresolvedApp(false));
+    writeFileSync(join(dir, "c2-v2.asar"), unresolvedApp(true));
+    const v1 = (await session.open(join(dir, "c2-v1.asar"))).id;
+    const v2 = (await session.open(join(dir, "c2-v2.asar"))).id;
+    const reason = "the other side has values there that could not be resolved";
+    for (const [a, b, side] of [
+      [v1, v2, "a"],
+      [v2, v1, "b"],
+    ] as const) {
+      const ipc = (await session.compareCollection(a, b, "ipc")).diff;
+      const gone = side === "a" ? ipc.removed : ipc.added;
+      expect(gone).toEqual(["extra.js::ipcMain.on::gone:now"]);
+      expect(ipc.unknown.filter((u) => u.side === side).map((u) => [u.key, u.reason])).toEqual([
+        ["main.js::ipcMain.handle::a:b", reason],
+        ["main.js::ipcMain.on::c:d", reason],
+      ]);
+      expect(ipc.completeness.gaps).toEqual(["values_unresolved"]);
+      const channels = (await session.compareCollection(a, b, "ipcChannels")).diff;
+      expect(side === "a" ? channels.removed : channels.added).toEqual(["gone:now"]);
+      expect(channels.unknown.map((u) => [u.key, u.reason]).toSorted()).toEqual([
+        ["a:b", reason],
+        ["c:d", reason],
+      ]);
+    }
+    expect((await session.coverage(v2))?.unresolved.get("ipc")).toEqual(new Set(["main.js"]));
+    expect((await session.coverage(v1))?.unresolved.get("ipc") ?? new Set()).toEqual(new Set());
   });
 
   it("exports the same bytes for the same input, apart from the fields it names as volatile", async () => {

@@ -102,6 +102,48 @@ describe("interface map", () => {
     expect(by("version")).toMatchObject({ link: "unresolved", channel: null, ends: [] });
   });
 
+  it("computes direction and link from every end, not only the 20 kept as evidence", () => {
+    // 24 `ipcMain.on` ends in a.js … x.js (literal), then the only sender, in z.js, through a
+    // constant: it sorts after the first 20, so a direction read from the kept ends is wrong.
+    const files = "abcdefghijklmnopqrstuvwx".split("");
+    const many = app({
+      modules: [
+        ...files.map((f) => ({
+          id: `${f}.js`,
+          ipc: [{ api: "ipcMain.on", channel: "bus:tick", line: 1 }],
+        })),
+        {
+          id: "z.js",
+          ipc: [{ api: "webContents.send", channel: "bus:tick", line: 2, via: "constant" }],
+        },
+        { id: "preload.js", ipc: [{ api: "ipcRenderer.on", channel: "bus:tick", line: 1 }] },
+      ],
+      contextBridge: [
+        {
+          api: "bus",
+          member: "tick",
+          channel: "bus:tick",
+          world: "main",
+          file: "preload.js",
+          line: 1,
+        },
+      ],
+    } as Partial<App>);
+    const [row] = interfaceMap(many, []);
+    expect(row).toMatchObject({
+      direction: "both",
+      link: "resolved",
+      endsTotal: 25,
+      endsTruncated: true,
+    });
+    expect(row!.ends).toHaveLength(20);
+    expect(row!.ends[0]).toMatchObject({ file: "a.js" });
+    expect(row!.ends.some((e) => e.file === "z.js")).toBe(false);
+    expect(by("open")).toMatchObject({ endsTotal: 1, endsTruncated: false });
+    expect(by("print")).toMatchObject({ endsTotal: 0, endsTruncated: false });
+    expect(by("version")).toMatchObject({ endsTotal: 0, endsTruncated: false });
+  });
+
   it("does not link a window whose preload is another file", () => {
     const other = interfaceMap(
       app({
