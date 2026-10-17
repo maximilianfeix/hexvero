@@ -39,8 +39,24 @@ All notable changes to hexvero are listed here. The format follows
   `navigation_handlers_truncated`.
 - Both collections compare (identity without lines, lines as positions, the written evidence not a
   change of its own) and come after `windows` in release reports and the compare view.
-  `JS_SCAN_SCHEMA` is 8, so stored scans are read again. Rules and sources:
+  `JS_SCAN_SCHEMA` is 9, so stored scans are read again. Rules and sources:
   docs/electron-findings.md.
+
+### Compare and reports
+
+- Imported modules (`externals`) are matched by specifier: a changed import count is one changed
+  row, not one removal and one addition (Electron Fiddle 0.38.0 → 0.39.0 on 0.9.0: 10 false
+  removals, now none).
+- When both builds have the same file name (two `app.asar`), the reproduce line uses
+  `<before>`/`<after>` and a note names both sha256 prefixes; reports still hold no directories.
+- Control characters in a name from the target (a heading, a table cell, the note) are shown as
+  `\u{…}` in Markdown reports, so an escape sequence does not reach a terminal.
+
+### CLI
+
+- The MCP SDK is loaded only for `hexvero mcp`. Warm `compare`, `compare --report` and `check`
+  are 20–29 % faster (interleaved runs, 9 each, Claude.app vs Discord; docs/benchmarks.md);
+  outputs are byte-identical.
 
 ## [0.9.0] - 2026-10-17
 
