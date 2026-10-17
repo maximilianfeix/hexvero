@@ -15,8 +15,8 @@ the very end.
 | final commit | OPEN (main)                                                                                                                                                                      |
 | releases     | 0.9.0 (01:20Z, run 38990077564), 0.9.1 (03:00Z, 38996747203), 0.9.2 (15:20Z, 39044161003), 0.9.3 (16:30Z, 39049256326), 0.9.4 (17:00Z, 39051642548), 0.9.5 (17:30Z, 39054086916), 0.9.6 (18:05Z, 39056731394) |
 | roles        | lead + specialists, at most six at a time (A, A2, A3, B, C, D, D2, E, E6, F, G, H, I, J, K, L, M, M3, P, P2, S, U, X; reviewers R, R2, R3)                                       |
-| PRs          | #136 (0.9.0), #137 (0.9.1), #139, #141, #142 (0.9.2), #144, #146, #148, #155, #156 (0.9.3), #159, #160 (0.9.4), #162, #163, #164 (0.9.5), #165 (0.9.6)                                         |
-| issues       | #138, #140, #143, #145, #147, #154, #157, #158, #161 (closed by those PRs); #149–#153 good first issues                                                                          |
+| PRs          | #136 (0.9.0), #137 (0.9.1), #139, #141, #142 (0.9.2), #144, #146, #148, #155, #156 (0.9.3), #159, #160 (0.9.4), #162, #163, #164 (0.9.5), #165 (0.9.6), #167, #169, #171                                         |
+| issues       | #138, #140, #143, #145, #147, #154, #157, #158, #161, #166, #168, #170 (closed by those PRs); #149–#153 good first issues                                                                          |
 
 The ten hours are counted as working time. The `not_before` of the brief (08:44:36Z) fell into the
 pause; work continued after it until ten hours of work were reached.
@@ -65,13 +65,13 @@ Commands: `npm run check` (typecheck, lint, format, tests, MCP shape), `npm run 
 `npm run corpus`, `node corpus/build.mjs --check`, `node scripts/build-site-demo.mjs --check`,
 `node scripts/release-verify.mjs`, `node scripts/smoke-tarballs.mjs`, `npm run fuzz`.
 
-| Gate                        | Base `841b6db` | 0.9.0 | 0.9.1 (`6bb3f44`)   | 0.9.2 (`660c9f4`)   | 0.9.5 (`627a48a`)   |
+| Gate                        | Base `841b6db` | 0.9.0 | 0.9.1 (`6bb3f44`)   | 0.9.2 (`660c9f4`)   | final (`fe6c7dc`)   |
 | --------------------------- | -------------- | ----- | ------------------- | ------------------- | ------------------- |
 | `npm run check`             | PASS, 405      | PASS  | PASS, 675 \| 1 skip | PASS, 727 \| 1 skip | PASS, 765 \| 1 skip |
 | `npm run e2e`               | PASS, 11       | PASS  | PASS, 13            | PASS, 13            | PASS, 13            |
 | `npm run corpus`            | PASS, 298 rows | PASS  | PASS, none worse    | PASS, none worse    | PASS, none worse    |
 | CI (Node 22/24, 3 OS, e2e)  | PASS           | PASS  | PASS                | PASS                | PASS                |
-| fuzz (× 225 cases)          | —              | —     | —                   | PASS, seeds 7–9     | PASS, seed 11       |
+| fuzz (× 225 cases)          | —              | —     | —                   | PASS, seeds 7–9     | PASS, seeds 11, 13  |
 | Release workflow + registry | —              | PASS  | PASS                | PASS                | PASS                |
 | `npx hexvero@<v>` from cold | —              | PASS  | PASS                | PASS (+ web UI)     | PASS                |
 
@@ -147,8 +147,8 @@ website https://maximilianfeix.github.io/hexvero/, official MCP registry (0.9.5 
 article
 https://dev.to/taventix/what-changed-in-this-electron-update-diffing-two-appasar-builds-without-running-either-422d,
 doyensec/awesome-electronjs-hacking, five good first issues. Prepared, not published: X posts for
-0.9.0 and 0.9.2 (maintainer's click), HN fact brief (HN forbids generated text; the maintainer
-writes the post), second article, Console.dev submission. Blocked: Reddit (browser automation
+0.9.0, 0.9.2 and 0.9.6 (maintainer's click), HN fact brief (HN forbids generated text; the maintainer
+writes the post), second article (re-run on 0.9.6), Console.dev submission. Blocked: Reddit (browser automation
 blocked), punkpeye/awesome-mcp-servers (needs a Glama listing), sindresorhus/awesome-electron
 (from 2026-11-11), Lobsters (invitation).
 
