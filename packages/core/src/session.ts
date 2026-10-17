@@ -393,6 +393,8 @@ export class Session {
     for (const b of app.contextBridge)
       if (b.member === null || (b.channel === null && b.channelRef))
         unresolved.add("bridge", b.file);
+    // an exposure kept without its name's scope read to the end may be another binding there
+    for (const x of app.bridgeExposures ?? []) if (x.undecided) unresolved.add("bridge", x.file);
     for (const w of app.webPreferences) if (w.value === null) unresolved.add("window", w.file);
     for (const w of app.windows ?? [])
       if ([w.nodeIntegration, w.contextIsolation, w.sandbox].includes("computed"))

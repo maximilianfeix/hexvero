@@ -54,6 +54,13 @@ All notable changes to hexvero are listed here. The format follows
   are shown; a declaration, parameter, loop variable or write of the same name in another
   function no longer hides the real binding (writes count only where they resolve to it); an
   accessor, method or generator next to the `action` literal makes `returns` unknown. `JS_SCAN_SCHEMA` 12.
+- No exposure is dropped where the analysis cannot decide: when the resolver's budget runs out,
+  two declarations in one function leave the binding open, or more declarations or writes exist
+  than are kept, the `bridgeExposures` row is kept with `undecided: budget | scope | writes`, and
+  the new limitation `bridge_exposures_undecided` lists it. An answer read before a later round
+  recorded a derived declaration (`var r = ipc` after `var ipc = q`) is read again. A value under a key
+  that is not read (`exposeInMainWorld(prefix + "ipc", ipcRenderer)`) and a bundler's default
+  import (`e.default.ipcRenderer`) are read. `JS_SCAN_SCHEMA` 13.
 - Both collections compare (identity without lines, lines as positions, the written evidence not a
   change of its own) and come after `windows` in release reports and the compare view.
   Stored scans are read again. Rules and sources:

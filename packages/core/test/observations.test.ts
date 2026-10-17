@@ -2,10 +2,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { buildSync } from "esbuild";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { compareItems, positionalFields } from "../src/compare.js";
 import { compareReleases, renderReleaseReport, Session } from "../src/index.js";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
+import { ExpressionResolver } from "../src/javascript/resolve.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 /**
@@ -590,5 +591,99 @@ describe("review regressions, false negatives", () => {
         "returns"
       ],
     ).toBe("deny");
+  });
+});
+
+/** Paths where the analysis cannot decide keep the exposure and say so; none drops it. */
+describe("review regressions, undecided scope", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("1 an answer read before a later round recorded its declaration is read again", () => {
+    // Round 1 records the top-level `r` (shell); `t = r` inside g asks for g's own `r`, which is
+    // privileged only once `ipc` (round 2) and then g's `r` (round 3) are recorded.
+    const info = preload(
+      [
+        'const r = require("electron").shell;',
+        "function g() {",
+        "  var t = r;",
+        "  var r = ipc;",
+        '  contextBridge.exposeInMainWorld("api", { r });',
+        "}",
+        "var ipc = q;",
+        'var q = require("electron").ipcRenderer;',
+      ].join("\n"),
+    );
+    expect(exposed(info)).toEqual(["api.r ipcRenderer"]);
+  });
+
+  it("2 a resolver whose budget ran out keeps the exposure, flagged", () => {
+    vi.spyOn(ExpressionResolver.prototype, "binding").mockReturnValue(null);
+    vi.spyOn(ExpressionResolver.prototype, "exhausted").mockReturnValue(true);
+    const info = preload(
+      'function g(){ const ipcRenderer = 1; return ipcRenderer; }\ncontextBridge.exposeInMainWorld("api", { ipc: ipcRenderer });',
+    );
+    expect(info.bridgeExposures.map((x) => `${x.member} ${x.exposed} ${x.undecided}`)).toEqual([
+      "ipc ipcRenderer budget",
+    ]);
+    expect(
+      info.limitations.find((l) => l.code === "bridge_exposures_undecided")?.message,
+    ).toContain("ipcRenderer at preload.js:3 (budget)");
+  });
+
+  it("3 hostile input: thousands of declarations of the name keep every exposure, flagged", () => {
+    const source = [
+      'const { contextBridge: c, ipcRenderer: r } = require("electron");',
+      Array.from({ length: 3000 }, (_, i) => `function f${i}(){var r=${i};r=r+1;return r}`).join(
+        "",
+      ),
+      Array.from(
+        { length: 400 },
+        (_, i) => `function g${i}(){c.exposeInMainWorld("x${i}",{ipc:r})}`,
+      ).join(""),
+    ].join("\n");
+    const started = performance.now();
+    const info = analyze({ "main.js": "", "preload.js": source });
+    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(info.bridgeExposures).toHaveLength(400);
+    expect(info.bridgeExposures.every((x) => x.exposed === "ipcRenderer")).toBe(true);
+    expect(info.limitations.some((l) => l.code === "bridge_exposures_undecided")).toBe(true);
+  });
+
+  it("an alias of the import, also in a function, is the import", () => {
+    for (const body of [
+      'var r = ipcRenderer;\ncontextBridge.exposeInMainWorld("api", { r });',
+      'function g() {\n  var r = ipcRenderer;\n  contextBridge.exposeInMainWorld("api", { r });\n}',
+    ])
+      expect(exposed(preload(body)), body).toEqual(["api.r ipcRenderer"]);
+  });
+
+  it("a block that declares the name again is decided, not flagged", () => {
+    const info = preload(
+      '{ const ipcRenderer = { send(){} }; contextBridge.exposeInMainWorld("api", { x: ipcRenderer }); }',
+    );
+    expect(info.bridgeExposures).toEqual([]);
+    expect(info.limitations.some((l) => l.code === "bridge_exposures_undecided")).toBe(false);
+  });
+
+  it("the hostile input of the timing run keeps its real exposures", () => {
+    const source = `const{contextBridge:c,ipcRenderer:r}=require("electron");${"var a=r,b=r;".repeat(20_000)}c.exposeInMainWorld("x",{${"m:r,".repeat(20_000)}});`;
+    const started = performance.now();
+    const info = analyze({ "main.js": "", "preload.js": source });
+    expect(performance.now() - started).toBeLessThan(15_000);
+    // the per-file cap: the inventory says it is cut
+    expect(info.bridgeExposures).toHaveLength(500);
+    expect(info.bridgeExposures.every((x) => x.exposed === "ipcRenderer")).toBe(true);
+    expect(info.limitations.some((l) => l.code === "context_bridge_truncated")).toBe(true);
+  });
+
+  it("4 a value under a key that is not read, and a bundler's default import, are read", () => {
+    const info = preload(
+      [
+        'const e = __toESM(require("electron"));',
+        'contextBridge.exposeInMainWorld(PREFIX + "ipc", ipcRenderer);',
+        'contextBridge.exposeInMainWorld("api", { send: e.default.ipcRenderer.send });',
+      ].join("\n"),
+    );
+    expect(exposed(info)).toEqual(["[computed].null ipcRenderer", "api.send ipcRenderer.send"]);
   });
 });

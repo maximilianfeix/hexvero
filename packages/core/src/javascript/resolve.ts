@@ -3874,6 +3874,14 @@ export class ExpressionResolver {
    * more than once, or is not in the file. `despiteWrites`: the declaration also when the name
    * is assigned or changed after it (the caller reads those writes itself).
    */
+  /**
+   * Whether the file's work budget is used up. A null from `binding` then means "not read", not
+   * "no binding": a caller must not take it as an answer.
+   */
+  exhausted(): boolean {
+    return this.work <= 0;
+  }
+
   binding(k: number, name: string, despiteWrites = false): Binding | null {
     // the scans below are charged to the file's work budget; used up, nothing is bound
     if (this.work <= 0) return null;

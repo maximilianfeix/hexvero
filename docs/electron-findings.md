@@ -163,6 +163,18 @@ object directly is not established; an empty `bridgeExposures` list never reads 
 while that limitation stands, and a comparison marks an exposure that only one side lists as
 `unknown` when the other side has such an entry in the same file.
 
+Where the scope of an exposed name cannot be read to the end, the row is kept, never dropped, and
+carries `undecided`: `budget` (the resolver's work budget for the file ran out, so "no binding"
+could not be told from "not read"; the file's privileged declarations of the name are then taken,
+several of different meaning named together as `ipcRenderer or shell`), `scope` (two declarations
+of the name in one function, or more declarations than are kept, leave open which is meant), or
+`writes` (more writes of the name than are kept). The limitation `bridge_exposures_undecided`
+lists these rows; such a row may be another binding of the same name. In a comparison the file
+then counts as one with unresolved bridge values, so an exposure only the other side lists there
+is `unknown`. Paths that end the reading for other reasons keep the row too: a walk back for a
+shadowing parameter that runs out of its range takes no shadowing, and a cut inventory is
+`context_bridge_truncated`.
+
 ## Navigation and new-window handlers (`navigationHandlers`)
 
 Electron's security guide, section 13 (limit navigation: "you can call `event.preventDefault()` in

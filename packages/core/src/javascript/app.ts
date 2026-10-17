@@ -995,6 +995,11 @@ export interface BridgeExposure {
   world: "main" | "isolated";
   file: string;
   line: number;
+  /**
+   * Set when the scope of the name could not be read to the end (see `Undecided`): the row is
+   * kept rather than dropped, and the limitation `bridge_exposures_undecided` names it.
+   */
+  undecided?: Undecided;
 }
 
 /** What one source file exposes, and whether a cap or an unclosed literal cut the reading short. */
@@ -1084,6 +1089,20 @@ const idOf = (b: Binding | null): string | null => {
 };
 
 /**
+ * Why an exposure is listed without the scope of its name read to the end: `budget`, the
+ * resolver's work budget for the file ran out; `scope`, two declarations in one function (or more
+ * than are kept) leave open which one is meant; `writes`, more writes of the name than are kept.
+ */
+export type Undecided = "budget" | "scope" | "writes";
+/** What a name stands for, flagged when that rests on a part that was not decided. */
+interface Meaning {
+  meaning: string;
+  undecided?: Undecided;
+}
+/** Declarations and writes kept per name for the scope reading. */
+const MAX_PLACES = 200;
+
+/**
  * What names of one file stand for, as far as privileged objects go: `electron`, `ipcRenderer`,
  * `shell` or a Node module (`fs`). Read from declarations on the token stream:
  * `x = require("electron")`, `x = __toESM(require("fs"))`, `{ ipcRenderer: r } = require(…)`,
@@ -1099,7 +1118,7 @@ function privilegedBindings(
   resolver: () => ExpressionResolver,
 ): {
   /** What the name at token `at` stands for there, by scope; null when it is nothing privileged. */
-  meaningAt: (name: string, at: number) => string | null;
+  meaningAt: (name: string, at: number) => Meaning | null;
   declared: Map<string, number>;
 } {
   const is = (i: number, value: string): boolean =>
@@ -1109,10 +1128,16 @@ function privilegedBindings(
   const declared = new Map<string, number>();
   /** Where each name is declared (its token), for the scope reading below. */
   const declaredAt = new Map<string, number[]>();
-  const count = (name: string, at: number): void => {
+  /**
+   * Declarations by `const` or `let`, visible only in their block; `pattern` for a name of a
+   * destructuring pattern, whose own `{` is no block.
+   */
+  const blockScoped = new Map<number, "name" | "pattern">();
+  const count = (name: string, at: number, block: false | "name" | "pattern" = false): void => {
+    if (block) blockScoped.set(at, block);
     declared.set(name, (declared.get(name) ?? 0) + 1);
     const places = declaredAt.get(name) ?? [];
-    if (places.length < 200) places.push(at);
+    if (places.length < MAX_PLACES) places.push(at);
     declaredAt.set(name, places);
   };
   /** `require("S")` at i: the privileged meaning of S and the token after `)`; else null. */
@@ -1174,7 +1199,7 @@ function privilegedBindings(
         local.push([ident(j + 2)!, null, j + 2]);
         j += 3;
       } else if (is(j, "{")) {
-        for (j++; j < tokens.length && j < k + 400 && !is(j, "}"); j++) {
+        for (j++; j < tokens.length && j < k + 4000 && !is(j, "}"); j++) {
           const name = ident(j);
           if (!name) continue;
           if (ident(j + 1) === "as" && ident(j + 2)) {
@@ -1202,11 +1227,11 @@ function privilegedBindings(
     // `let ipcRenderer;`: a declaration without a value (after the keyword only; after a comma
     // the same shape is an argument list)
     if (t.type === "ident" && ident(k + 1) && (is(k + 2, ";") || is(k + 2, ","))) {
-      count(ident(k + 1)!, k + 1);
+      count(ident(k + 1)!, k + 1, (t.value === "const" || t.value === "let") && "name");
       continue;
     }
     if (ident(k + 1) && is(k + 2, "=") && !is(k + 3, "=")) {
-      count(ident(k + 1)!, k + 1);
+      count(ident(k + 1)!, k + 1, (t.value === "const" || t.value === "let") && "name");
       const rhs = rhsAt(k + 3);
       if (rhs) simple.push({ name: ident(k + 1)!, at: k + 1, init: k + 3, rhs });
       continue;
@@ -1216,7 +1241,8 @@ function privilegedBindings(
     const entries: Array<[string, string, number]> = [];
     let j = k + 2;
     let d = 0;
-    for (; j < tokens.length && j < k + 400; j++) {
+    // as long as a real pattern gets: an `electron` pattern cut short would drop its names
+    for (; j < tokens.length && j < k + 4000; j++) {
       if (is(j, "{") || is(j, "[") || is(j, "(")) d++;
       else if (is(j, "}") || is(j, "]") || is(j, ")")) {
         if (d === 0) break;
@@ -1231,7 +1257,8 @@ function privilegedBindings(
     }
     // only a pattern that is assigned declares: `f("api", { ipc: r })` is an object argument
     if (!is(j, "}") || !is(j + 1, "=") || is(j + 2, "=")) continue;
-    for (const [, local, at] of entries) count(local, at);
+    for (const [, local, at] of entries)
+      count(local, at, (t.value === "const" || t.value === "let") && "pattern");
     const rhs = rhsAt(j + 2);
     if (rhs) patterns.push({ entries, init: j + 2, rhs });
   }
@@ -1250,94 +1277,203 @@ function privilegedBindings(
       is(k + 1, "--");
     if (!written) continue;
     const places = writes.get(t.value) ?? [];
-    if (places.length < 200) places.push(k);
+    if (places.length < MAX_PLACES) places.push(k);
     writes.set(t.value, places);
   }
   /** Privileged declarations per name: the name's token and what it stands for. */
-  const privileged = new Map<string, Array<{ at: number; meaning: string }>>();
+  /** `id`: the binding the resolver gives the declaration (`idOf`), known from its shape. */
+  const privileged = new Map<string, Array<{ at: number; id?: string } & Meaning>>();
   const recorded = new Set<number>();
-  const add = (name: string, at: number, meaning: string): boolean => {
+  /** Answers per binding; cleared whenever a declaration is recorded, as an answer may change. */
+  const byBinding = new Map<string, Meaning | null>();
+  const add = (name: string, at: number, m: Meaning, id?: string): boolean => {
     if (recorded.has(at)) return false;
     recorded.add(at);
     const decls = privileged.get(name) ?? [];
-    decls.push({ at, meaning });
+    decls.push({
+      meaning: m.meaning,
+      ...(m.undecided ? { undecided: m.undecided } : {}),
+      at,
+      ...(id ? { id } : {}),
+    });
     privileged.set(name, decls);
+    byBinding.clear();
     return true;
   };
-  for (const [name, m, at] of imports) add(name, at, m);
-  const ids = new Map<number, string | null>();
-  const byBinding = new Map<string, string | null>();
-  const meaningAt = (name: string, at: number): string | null => {
+  for (const [name, m, at] of imports) add(name, at, { meaning: m });
+  const ids = new Map<string, string | null>();
+  /**
+   * Where the scope cannot be read to the end, the exposure is kept and flagged, never dropped:
+   * the token rule (the name's privileged declarations; several of different meaning are named
+   * together).
+   */
+  const undecided = (decls: Array<{ at: number } & Meaning>, why: Undecided): Meaning => ({
+    meaning: [...new Set(decls.map((d) => d.meaning))].toSorted().join(" or "),
+    undecided: why,
+  });
+  /** One answer, flagged when it rests on a part that was not decided. */
+  const flag = (m: Meaning, why: Undecided | undefined): Meaning => {
+    const undecidedWhy = m.undecided ?? why;
+    return undecidedWhy ? { meaning: m.meaning, undecided: undecidedWhy } : { meaning: m.meaning };
+  };
+  /**
+   * Read by blocks and functions where the resolver does not bind the name (its own reading of the top
+   * level gave up, e.g. over a name used thousands of times): the declaration a position sees is
+   * the one of the innermost function around it that declares the name.
+   */
+  const byFunctions = (
+    name: string,
+    decls: Array<{ at: number } & Meaning>,
+    at: number,
+    r: ExpressionResolver,
+  ): Meaning | null => {
+    const all = declaredAt.get(name) ?? [];
+    const capped = all.length >= MAX_PLACES;
+    /**
+     * Where the declaration at p is visible: its block for `const`/`let` (the innermost `{` open
+     * around it: a declaration cannot stand in an object literal), else its function.
+     */
+    const scopeOf = (p: number): [number, number] => {
+      const kind = blockScoped.get(p);
+      if (kind) {
+        let skip = kind === "pattern";
+        for (let j = p - 1, d = 0; j >= 0 && j > p - 50_000; j--) {
+          const t = tokens[j]!;
+          if (t.type !== "punct") continue;
+          if (t.value === "}" || t.value === ")" || t.value === "]") d++;
+          // an open `(` around it (`for (let i …)`) is passed: the block decides
+          else if (t.value === "(" || t.value === "[") d = Math.max(0, d - 1);
+          else if (t.value === "{") {
+            if (d > 0) d--;
+            else if (skip) skip = false;
+            else {
+              const close = r.closeOf(j);
+              return [j, close < 0 ? tokens.length : close];
+            }
+          }
+        }
+      }
+      const f = r.functionAt(p);
+      return f ? [f.body[0], f.body[1]] : [-1, tokens.length];
+    };
+    /** The declaration visible at pos, or "tie" when two in one scope leave it open. */
+    const visible = (pos: number): number | "tie" => {
+      let depth = -2;
+      let found: number | "tie" = -1;
+      for (const p of all) {
+        const [start, end] = scopeOf(p);
+        if (!(start <= pos && pos <= end)) continue;
+        if (start > depth) [depth, found] = [start, p];
+        else if (start === depth) found = "tie";
+      }
+      return found;
+    };
+    const seen = visible(at);
+    if (seen === "tie" || capped) return undecided(decls, "scope");
+    const decl = decls.find((d) => d.at === seen);
+    if (!decl) return null;
+    let why: Undecided | undefined =
+      (writes.get(name) ?? []).length >= MAX_PLACES ? "writes" : undefined;
+    for (const w of writes.get(name) ?? []) {
+      if (w === decl.at || r.paramAround(w, name)) continue;
+      const v = visible(w);
+      if (v === "tie") why ??= "scope";
+      else if (v === decl.at) return null;
+    }
+    return flag(decl, why);
+  };
+  const meaningAt = (name: string, at: number): Meaning | null => {
     const decls = privileged.get(name);
     if (!decls) return null;
     const r = resolver();
-    const here = idOf(r.binding(at, name, true));
-    if (here === null) {
-      // The resolver does not bind it (its own reading of the file's top level gave up, e.g.
-      // over a declaration of the name in another function): read by functions instead. The
-      // declaration a position sees is the one of the innermost function around it that declares
-      // the name; two in one function are not decided.
-      const visible = (pos: number): number => {
-        let depth = -2;
-        let found = -1;
-        for (const p of declaredAt.get(name) ?? []) {
-          const f = r.functionAt(p);
-          if (f && !(f.body[0] <= pos && pos <= f.body[1])) continue;
-          const d = f ? f.body[0] : -1;
-          if (d > depth) [depth, found] = [d, p];
-          else if (d === depth) found = -1;
-        }
-        return found;
-      };
-      const decl = decls.find((d) => d.at === visible(at));
-      if (!decl) return null;
-      for (const w of writes.get(name) ?? [])
-        if (w !== decl.at && visible(w) === decl.at && !r.paramAround(w, name)) return null;
-      return decl.meaning;
-    }
+    const bound = r.binding(at, name, true);
+    // used up: a null is no answer, and the exposure is kept
+    if (!bound && r.exhausted()) return undecided(decls, "budget");
+    const here = idOf(bound);
+    if (here === null) return byFunctions(name, decls, at, r);
     // the same binding gives the same answer at every use: read once
     const key = `${name}\u0000${here}`;
     const known = byBinding.get(key);
     if (known !== undefined) return known;
+    let budget = false;
     const idAt = (pos: number): string | null => {
-      if (!ids.has(pos)) ids.set(pos, idOf(r.binding(pos, name, true)));
-      return ids.get(pos)!;
+      const k = `${name}\u0000${pos}`;
+      if (!ids.has(k)) {
+        const b = r.binding(pos, name, true);
+        if (!b && r.exhausted()) {
+          budget = true;
+          return null;
+        }
+        ids.set(k, idOf(b));
+      }
+      return ids.get(k)!;
     };
-    const match = decls.find((d) => idAt(d.at) === here);
-    let answer: string | null = match?.meaning ?? null;
-    // Written again where the same binding is meant (`let r = ipcRenderer; r = {…}`): it may be
-    // anything where it is used. A write that resolves to nothing is not counted.
-    if (match)
-      for (const w of writes.get(name) ?? [])
-        if (w !== match.at && idAt(w) === here) {
+    const match = decls.find((d) => d.id === here || (d.id === undefined && idAt(d.at) === here));
+    let answer: Meaning | null;
+    if (!match) {
+      // The use is bound to a declaration of known shape that is none of these: decided. Only a
+      // declaration whose binding is not known (an import) may still be the one meant.
+      const open = decls.some((d) => d.id === undefined && idAt(d.at) === null);
+      answer = budget ? undecided(decls, "budget") : open ? byFunctions(name, decls, at, r) : null;
+    } else {
+      // Written again where the same binding is meant (`let r = ipcRenderer; r = {…}`): it may
+      // be anything where it is used. A write that resolves to no binding is not counted; one
+      // the budget left unread keeps the exposure, flagged.
+      let why: Undecided | undefined =
+        (writes.get(name) ?? []).length >= MAX_PLACES ? "writes" : undefined;
+      answer = match;
+      for (const w of writes.get(name) ?? []) {
+        if (w === match.at) continue;
+        const id = idAt(w);
+        if (id === here) {
           answer = null;
           break;
         }
+        if (budget) why ??= "budget";
+      }
+      if (answer) answer = flag(answer, why);
+    }
     byBinding.set(key, answer);
     return answer;
   };
-  const ofPath = (path: string[], at: number): string | null => {
+  const ofPath = (path: string[], at: number): Meaning | null => {
     const base = meaningAt(path[0]!, at);
     if (!base) return null;
-    if (path.length === 1) return base;
-    if (path.length === 2 && base === "electron" && PRIVILEGED_ELECTRON.has(path[1]!))
-      return path[1]!;
-    // `__toESM(require("fs")).default`, `cp.default`: the module itself
-    if (path.length === 2 && base !== "electron" && path[1] === "default") return base;
+    // `__toESM(require("fs")).default`, `import_electron.default`: the module itself
+    const rest = path[1] === "default" ? path.slice(2) : path.slice(1);
+    if (rest.length === 0) return base;
+    if (rest.length === 1 && base.meaning === "electron" && PRIVILEGED_ELECTRON.has(rest[0]!))
+      return flag({ meaning: rest[0]! }, base.undecided);
     return null;
   };
-  // A few rounds: `const ipc = r` after `{ ipcRenderer: r } = require("electron")`.
-  for (let round = 0; round < 4; round++) {
+  // Rounds up to a fixed point: `const ipc = r` after `{ ipcRenderer: r } = require("electron")`.
+  for (let round = 0; round < 8; round++) {
     let grew = false;
-    const set = (name: string, at: number, m: string | null): void => {
-      if (m && add(name, at, m)) grew = true;
+    const set = (name: string, at: number, m: Meaning | null, id: string): void => {
+      if (m && add(name, at, m, id)) grew = true;
     };
     for (const { name, at, init, rhs } of simple)
-      set(name, at, rhs.kind === "module" ? rhs.meaning : ofPath(rhs.path, init));
+      set(
+        name,
+        at,
+        rhs.kind === "module"
+          ? rhs.meaning
+            ? { meaning: rhs.meaning }
+            : null
+          : ofPath(rhs.path, init),
+        `v${init}`,
+      );
     for (const { entries, init, rhs } of patterns) {
-      const source = rhs.kind === "module" ? rhs.meaning : ofPath(rhs.path, init);
-      if (source !== "electron") continue;
-      for (const [key, local, at] of entries) if (PRIVILEGED_ELECTRON.has(key)) set(local, at, key);
+      const source =
+        rhs.kind === "module"
+          ? rhs.meaning
+            ? { meaning: rhs.meaning }
+            : null
+          : ofPath(rhs.path, init);
+      if (source?.meaning !== "electron") continue;
+      for (const [key, local, at] of entries)
+        if (PRIVILEGED_ELECTRON.has(key))
+          set(local, at, flag({ meaning: key }, source.undecided), `p${init}:${key}`);
     }
     if (!grew) break;
   }
@@ -1521,7 +1657,11 @@ export function bridgeMembers(
     resolver ??= new ExpressionResolver(tokens, context.constants);
     return resolver.paramAround(from, name) || resolver.paramAround(call, name);
   };
-  const privileged = (call: number, from: number, end: number): string | null => {
+  const privileged = (
+    call: number,
+    from: number,
+    end: number,
+  ): { what: string; undecided?: Undecided } | null => {
     if (from >= end || end - from > 40) return null;
     let stop = end;
     // `ipcRenderer.on.bind(ipcRenderer)`: the method itself, bound
@@ -1540,6 +1680,7 @@ export function bridgeMembers(
     const { declared } = bindings;
     let k = from;
     let base: string | null = null;
+    let open: Undecided | undefined;
     const first = tokens[k];
     if (first?.type !== "ident") return null;
     if (
@@ -1555,11 +1696,13 @@ export function bridgeMembers(
       const name = first.value;
       const global =
         (name === "process" || name === "require") && !declared.has(name) && k + 1 === stop;
-      base = bindings.meaningAt(name, from);
+      const meant = bindings.meaningAt(name, from);
+      base = meant?.meaning ?? null;
+      open = meant?.undecided;
       // a parameter or loop variable where the value is written is another binding (asked only
       // for a name that means something, as the walk back is the costly part)
       if ((global || base) && shadowed(call, from, name)) return null;
-      if (global) return bound ? null : name;
+      if (global) return bound ? null : { what: name };
       k += 1;
     }
     if (!base) return null;
@@ -1569,20 +1712,22 @@ export function bridgeMembers(
       path.push(tokens[k + 1]!.value);
       k += 2;
     }
+    // `import_electron.default.ipcRenderer`, `cp.default`: a bundler's default import is the
+    // module itself
+    if (path[0] === "default") path.shift();
     if (path.length > 2) return null;
     let what = base;
     let member: string | null = null;
     for (const p of path) {
       if (what === "electron" && member === null && PRIVILEGED_ELECTRON.has(p)) what = p;
-      else if (what !== "electron" && member === null && p === "default" && path.length === 1)
-        continue;
       else if (member === null && what !== "electron") member = p;
       else return null;
     }
     // a Node module's member unless it only informs (`fs.statSync`, `process.env`)
     if (member !== null && HARMLESS_MEMBERS[what]?.test(member)) return null;
     if (bound && member === null) return null;
-    return member === null ? what : `${what}.${member}`;
+    const exposed = member === null ? what : `${what}.${member}`;
+    return open ? { what: exposed, undecided: open } : { what: exposed };
   };
   /** The value text as written, bounded. */
   const evidenceOf = (from: number, end: number): string =>
@@ -1621,16 +1766,17 @@ export function bridgeMembers(
       // Every exposure is a member too, so past this cap the member cap has already marked the
       // file's inventory as cut (`context_bridge_truncated`).
       if (exposures.length >= MAX_BRIDGE_PER_FILE) return;
-      const what = privileged(i, from, end);
-      if (!what) return;
+      const found = privileged(i, from, end);
+      if (!found) return;
       exposures.push({
         api,
         member,
-        exposed: what,
+        exposed: found.what,
         evidence: evidenceOf(from, end),
         world,
         file,
         line: tokens[from]!.line,
+        ...(found.undecided ? { undecided: found.undecided } : {}),
       });
     };
     let at = i + 2;
@@ -1728,10 +1874,19 @@ export function bridgeMembers(
         : null;
     if (!opens) {
       push(null, null, t.line);
-      // `exposeInMainWorld("ipc", ipcRenderer)`: the value as a whole, up to the call's end
-      if (simple) {
-        let end = at + 2;
-        for (let d = 0; end < tokens.length && end < at + 60; end++) {
+      // `exposeInMainWorld("ipc", ipcRenderer)`: the value as a whole, up to the call's end;
+      // also under a key that is not read (`exposeInMainWorld(prefix + "ipc", ipcRenderer)`)
+      let start = simple ? at + 2 : -1;
+      for (let j = at, d = 0; start < 0 && j < tokens.length && j < at + 400; j++) {
+        if (is(j, "(") || is(j, "[") || is(j, "{")) d++;
+        else if (is(j, ")") || is(j, "]") || is(j, "}")) {
+          if (d === 0) break;
+          d--;
+        } else if (d === 0 && is(j, ",")) start = j + 1;
+      }
+      if (start >= 0) {
+        let end = start;
+        for (let d = 0; end < tokens.length && end < start + 60; end++) {
           const p = tokens[end]!;
           if (p.type !== "punct") continue;
           if (p.value === "(" || p.value === "[" || p.value === "{") d++;
@@ -1740,7 +1895,7 @@ export function bridgeMembers(
             d--;
           } else if (p.value === "," && d === 0) break;
         }
-        if (is(end, ")") || (is(end, ",") && is(end + 1, ")"))) expose(null, at + 2, end);
+        if (is(end, ")") || (is(end, ",") && is(end + 1, ")"))) expose(null, start, end);
       }
       continue;
     }
@@ -2285,7 +2440,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 12;
+export const JS_SCAN_SCHEMA = 13;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -3804,6 +3959,15 @@ export function analyzeJavaScriptTree(
     limitations.push({
       code: "context_bridge_members_unreadable",
       message: `${bridgeUnread} contextBridge ${bridgeUnread === 1 ? "entry is" : "entries are"} not a plain member of an object literal in the same file (a value built elsewhere, a spread or a computed key), so the exposed members are not all listed.${unestablished ? ` Whether ${unestablished === 1 ? "it exposes" : "they expose"} a privileged object directly (collection bridgeExposures) is not established.` : ""}`,
+    });
+  const undecidedExposures = bridgeExposures.filter((x) => x.undecided);
+  if (undecidedExposures.length)
+    limitations.push({
+      code: "bridge_exposures_undecided",
+      message: `${undecidedExposures.length} of the bridgeExposures ${undecidedExposures.length === 1 ? "row is" : "rows are"} listed although the scope of the exposed name could not be read to the end (field undecided: budget = the file's resolver budget ran out, scope = two declarations in one function, writes = more writes than are kept): ${list(
+        undecidedExposures.map((x) => `${x.exposed} at ${x.file}:${x.line} (${x.undecided})`),
+        5,
+      )}. Such a row may be another binding of the same name; it is kept so that no exposure is dropped.`,
     });
   if (facts.navigationCapped)
     limitations.push({
