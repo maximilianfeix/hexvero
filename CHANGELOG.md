@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-10-17
+
 ### Release policies
 
 - New rule `new-bridge-exposure`: a privileged object a preload newly hands to pages as it is
