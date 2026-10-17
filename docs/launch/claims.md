@@ -83,3 +83,18 @@ version; after the release, run the same commands with `npx hexvero@0.9.0` from 
 Unchanged on re-run: C1–C7, C9–C12, C14–C22 (demo, compare, report sizes 33,298 / 4,197 bytes,
 check output byte-identical to the README block, SARIF locations, MCP probe, interface rows of
 the demo app, code-level checks). A1–A3 are a fixed blind measurement and do not change.
+
+## 0.9.1 (re-run on `d39a0bf`, branch `sprint/091`, 2026-10-17)
+
+| ID  | Claim                                                                                                                                                                   | Command / source                                                                                                     | Result                       |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| N1  | Example app 1.5.0: one `navigationHandlers` row (`setWindowOpenHandler`, window `win`, `returns: deny`), no `bridgeExposures` row; the comparison lists it as unchanged | `hexvero analyze examples/notesdesk-1.5.0.asar --json`; `hexvero compare examples/notesdesk-1.4.0.asar …-1.5.0.asar` | verified                     |
+| N2  | `holdout5` **development set** after 0.9.1, 4 inputs: window settings 32/20/0 (0.9.0: 17/35/0), webPreferences changes v1→v2 1/1/0 (0.9.0: 0/2/0), IPC channels 72/0/0  | `node corpus/observe-hexvero.mjs --out <obs>`; `node corpus/score.mjs <obs> --set holdout5`                          | verified; not a blind result |
+| N3  | Window options from a class field (`new BrowserWindow(this.options)`) read as computed, never as a literal                                                              | `packages/core/test/windowOptions.test.ts`; R2 probes t1–t3                                                          | verified                     |
+| N4  | Discord `analyze --fresh` median, 7 interleaved runs, same build setup: 0.9.0 1,123 ms, 0.9.1 1,053 ms (no slowdown; load 9–11)                                         | `scratchpad` A/B, `03588ec` vs `41d732c` worktree builds                                                             | verified                     |
+| N5  | Hostile preload (198 nested blocks redeclaring `ipcRenderer`, 400 exposures): 0.6 s, every exposure kept and flagged `undecided`; before `f3d9489` > 280 s              | `observations.test.ts` "stay linear"                                                                                 | verified                     |
+| N6  | Report sizes of the example unchanged: 33,298 / 4,197 bytes                                                                                                             | `compare --report r.html` / `r.md`                                                                                   | verified                     |
+
+Do not quote N2 instead of, or mixed with, the blind A1/A2. The window-settings number went down
+from the sprint's interim 42/10/0 on purpose: class fields are no longer read (R2 found ways to
+change them that the scan does not see; a false safe value is worse than computed).
