@@ -40,7 +40,12 @@ const one = (main: string): JsAppInfo =>
   analyze({ "main.js": `const { BrowserWindow } = require("electron");\n${main}` });
 
 /** The fixture sources bundled by esbuild into main.js, optionally minified. */
-function bundled(sources: Record<string, string>, minify: boolean): Record<string, string> {
+function bundled(
+  sources: Record<string, string>,
+  minify: boolean,
+  /** An older target makes esbuild lower `?.` (`es2019`). */
+  target?: string,
+): Record<string, string> {
   const src = mkdtempSync(join(dir, "src-"));
   for (const [name, text] of Object.entries(sources)) {
     mkdirSync(dirname(join(src, name)), { recursive: true });
@@ -56,6 +61,7 @@ function bundled(sources: Record<string, string>, minify: boolean): Record<strin
     external: ["electron"],
     outfile,
     logLevel: "silent",
+    ...(target ? { target } : {}),
   });
   return { "main.js": readFileSync(outfile, "utf8") };
 }
@@ -517,8 +523,235 @@ describe("a placed literal is listed once", () => {
     expect(rows).toEqual(
       expect.arrayContaining(["sandbox=true@2:1", "sandbox=false@5:2", "preload=p.js@3:2"]),
     );
-    // the opaque window still reads as computed: nothing it may take is hidden
-    expect(info.windows.find((w) => w.window === 3)?.computed).toContain("sandbox");
+    // the third window writes its whole webPreferences after the spread: the spread reaches
+    // none of its settings (up to 0.9.6 they read as computed)
+    expect(states(info)[2]).toBe("not written true true null not written");
+  });
+});
+
+/**
+ * A spread of something unread before the window's own `webPreferences`: the later key replaces
+ * the whole object, so what the spread may bring decides none of the settings. One window each.
+ */
+const REPLACED = [
+  // the overlay of holdout6: a display's bounds, then the shorthand
+  "function overlay(display) {\n  const webPreferences = { contextIsolation: true, sandbox: true, webSecurity: false };\n  return new BrowserWindow({\n    ...display.bounds,\n    frame: false,\n    webPreferences,\n  });\n}",
+  // a literal, after a parameter's spread
+  'function literal(opts) {\n  return new BrowserWindow({ ...opts, show: false, webPreferences: { sandbox: true, preload: "p.js" } });\n}',
+  // `webPreferences: NAME` after the spread of a call
+  "const PREFS = { contextIsolation: true };\nfunction named() {\n  return new BrowserWindow({ ...bounds(), webPreferences: PREFS });\n}",
+  // a named options object built that way
+  "function fromOptions(extra) {\n  const webPreferences = { sandbox: false };\n  const options = { ...extra, webPreferences };\n  return new BrowserWindow(options);\n}",
+  // a base followed inside the later literal
+  "const BASE = Object.freeze({ sandbox: true, contextIsolation: true });\nfunction based(opts) {\n  return new BrowserWindow({ ...opts, webPreferences: { ...BASE, nodeIntegration: false } });\n}",
+].join("\n");
+const REPLACED_STATES = [
+  "not written true true null false",
+  "not written not written true p.js not written",
+  "not written true not written null not written",
+  "not written not written false null not written",
+  "false true true null not written",
+];
+
+/** What may still reach a setting: each stays computed for the keys it may bring. */
+const STILL_COMPUTED = [
+  // the spread after the key replaces it
+  "function after(opts) {\n  return new BrowserWindow({ webPreferences: { sandbox: true }, ...opts });\n}",
+  // the spread inside the later object may bring any key
+  "function inside(opts, prefs) {\n  return new BrowserWindow({ ...opts, webPreferences: { sandbox: true, ...prefs } });\n}",
+  // the same, in the declaration the shorthand is followed to
+  "function declared(opts, prefs) {\n  const webPreferences = { ...prefs, sandbox: true };\n  return new BrowserWindow({ ...opts, webPreferences });\n}",
+  // a later value that is not an object written here
+  "function chosen(opts, dev) {\n  return new BrowserWindow({ ...opts, webPreferences: dev ? { sandbox: false } : { sandbox: true } });\n}",
+  // a parameter the callers do not all fill in
+  "function param(opts, webPreferences) {\n  return new BrowserWindow({ ...opts, webPreferences });\n}",
+  // a later write of the key the reading does not name: quoted, computed, a method, an accessor
+  'function quoted(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, "webPreferences": o.p });\n}',
+  "function single(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, 'webPreferences': o.p });\n}",
+  'function computedKey(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, ["webPreferences"]: o.p });\n}',
+  "function anyKey(o, k) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, [k]: o.p });\n}",
+  'function quotedUnsafe(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, "webPreferences": { nodeIntegration: true, contextIsolation: false, sandbox: false } });\n}',
+  "function method(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, webPreferences() { return o.p; } });\n}",
+  "function getter(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, get webPreferences() { return o.p; } });\n}",
+  'const P = { contextIsolation: true, sandbox: true };\nfunction namedThenQuoted(o) {\n  return new BrowserWindow({ ...o, webPreferences: P, "webPreferences": o.p });\n}',
+  // a prototype, which is not modeled
+  "function proto(o) {\n  return new BrowserWindow({ ...o, webPreferences: { sandbox: true }, __proto__: o });\n}",
+  // a later spread of an object that brings the key
+  "function spreadAfter(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, ...{ webPreferences: o.p } });\n}",
+  "function spreadCond(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, ...(o.dev && { webPreferences: o.p }) });\n}",
+].join("\n");
+const ALL = "computed computed computed null computed";
+
+describe("a whole webPreferences written after an unread spread", () => {
+  it("decides every setting of the window, plain, bundled and minified", () => {
+    const main = `const { BrowserWindow } = require("electron");\n${REPLACED}\nmodule.exports = { overlay, literal, named, fromOptions, based };`;
+    const plain = analyze({ "main.js": main });
+    expect(states(plain)).toEqual(REPLACED_STATES);
+    // nothing about their settings is left unknown, so no window is named as not followed
+    expect(plain.windows.filter((w) => w.computed || w.opaque)).toEqual([]);
+    expect(plain.limitations.map((l) => l.code)).not.toContain("window_options_unresolved");
+    for (const minify of [false, true])
+      expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(
+        REPLACED_STATES,
+      );
+  });
+
+  it("decides nothing when the spread comes after it or may reach inside it", () => {
+    const main = `const { BrowserWindow } = require("electron");\n${STILL_COMPUTED}\nmodule.exports = { after, inside, declared, chosen, param, quoted, single, computedKey, anyKey, quotedUnsafe, method, getter, namedThenQuoted, proto, spreadAfter, spreadCond };`;
+    // the quoted unsafe object is read as well: two different values, which decide nothing
+    const expected = Array.from({ length: 16 }, (_, i) =>
+      i === 9 ? "conflicting conflicting conflicting null computed" : ALL,
+    );
+    expect(states(analyze({ "main.js": main }))).toEqual(expected);
+    // esbuild's minifier writes `"webPreferences":` as a plain key: the later object then
+    // stands, with its unsafe values
+    const minified = expected.map((e, i) => (i === 9 ? "true false false null not written" : e));
+    for (const minify of [false, true])
+      expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(
+        minify ? minified : expected,
+      );
+  });
+
+  it("keeps a later write to the followed object computed", () => {
+    const info = one(
+      "function f(opts) {\n  const webPreferences = { sandbox: true };\n  webPreferences.sandbox = opts.sandbox;\n  return new BrowserWindow({ ...opts, webPreferences });\n}",
+    );
+    expect(info.windows[0]?.computed ?? []).toContain("sandbox");
+  });
+});
+
+/** IPC calls with optional chaining, in main and preload, and look-alikes that are no IPC. */
+const OPTIONAL_MAIN = [
+  'const { ipcMain, BrowserWindow } = require("electron");',
+  'ipcMain?.handle("main:a", () => 1);',
+  'ipcMain.handle?.("main:b", (_e, x) => x);',
+  'ipcMain?.on?.("main:c", (event, x) => {',
+  '  event.sender?.send("reply:a", { x });',
+  '  event?.reply("reply:b", x);',
+  '  event.reply?.("reply:c");',
+  "});",
+  "const win = new BrowserWindow({});",
+  'win.webContents?.send("push:a", 1);',
+  'win?.webContents?.send("push:b", { a: 1, b: 2 });',
+  'win.webContents.send?.("push:c");',
+  "// look-alikes: another object, another temporary, another receiver",
+  "const socket = makeSocket();",
+  'socket?.send("no:a");',
+  'var t; (t = socket) == null ? void 0 : t.send("no:b");',
+  'var u; (u = ipcMain) == null ? void 0 : socket.send("no:c");',
+  'ipcMain == null ? void 0 : socket.on("no:d", () => {});',
+  "module.exports = { win };",
+].join("\n");
+const OPTIONAL_PRELOAD = [
+  'const { ipcRenderer, contextBridge } = require("electron");',
+  'ipcRenderer?.send("pre:a", 1, { b: 2 });',
+  'ipcRenderer.send?.("pre:b", { x: 1 });',
+  'ipcRenderer?.invoke?.("pre:c");',
+  'ipcRenderer?.on("pre:d", () => {});',
+  'contextBridge?.exposeInMainWorld("api", { go: (n) => ipcRenderer?.invoke("pre:e", n) });',
+  'var c; (c = ipcRenderer.send) == null ? void 0 : c.call(socket, "no:e");',
+  'var s; (s = other.ipcRenderer) == null ? void 0 : s.call(ipcRenderer, "no:f");',
+].join("\n");
+/** The same files written without `?.`. */
+const plainOf = (text: string): string => text.replace(/\?\.\(/g, "(").replace(/\?\./g, ".");
+/** `file api channel args` of every IPC row, without how the call was read (`via`). */
+const ipcRows = (info: JsAppInfo): string[] =>
+  info.modules
+    .flatMap((m) => m.ipc.map((r) => `${m.id} ${r.api} ${r.channel} ${r.args ?? ""}`.trim()))
+    .toSorted();
+
+const files = (main: string, preload: string): JsAppInfo =>
+  analyze({ "main.js": main, "preload.js": preload });
+/** IPC rows of a renderer that finds the IPC object on the window (`window.ipc = …`). */
+const ambientRows = (ui: string): string[] =>
+  ipcRows(
+    analyze({
+      "main.js": 'const { ipcMain } = require("electron");\nipcMain.on("boot", () => {});',
+      "js/default.js": 'window.ipc = require("electron").ipcRenderer;',
+      "js/ui.js": ui,
+    }),
+  );
+
+/** Both files bundled by esbuild. */
+const both = (minify: boolean, target?: string): JsAppInfo =>
+  files(
+    bundled({ "main.js": OPTIONAL_MAIN }, minify, target)["main.js"]!,
+    bundled({ "main.js": OPTIONAL_PRELOAD }, minify, target)["main.js"]!,
+  );
+
+describe("optional chaining on IPC calls", () => {
+  it("gives the rows of the plain call, in the source and as esbuild lowers it", () => {
+    const plain = files(plainOf(OPTIONAL_MAIN), plainOf(OPTIONAL_PRELOAD));
+    const expected = ipcRows(plain);
+    // the plain call is read as before: every channel, with its payload
+    expect(expected).toEqual([
+      "main.js event.reply reply:b (_)",
+      "main.js event.reply reply:c ()",
+      "main.js event.sender.send reply:a ({x})",
+      "main.js ipcMain.handle main:a",
+      "main.js ipcMain.handle main:b",
+      "main.js ipcMain.on main:c",
+      "main.js webContents.send push:a (_)",
+      "main.js webContents.send push:b ({a, b})",
+      "main.js webContents.send push:c ()",
+      "preload.js contextBridge.exposeInMainWorld api",
+      "preload.js ipcRenderer.invoke pre:c ()",
+      "preload.js ipcRenderer.invoke pre:e (_)",
+      "preload.js ipcRenderer.on pre:d",
+      "preload.js ipcRenderer.send pre:a (_, {b})",
+      "preload.js ipcRenderer.send pre:b ({x})",
+    ]);
+    const optional = files(OPTIONAL_MAIN, OPTIONAL_PRELOAD);
+    expect(ipcRows(optional)).toEqual(expected);
+    expect(optional.ipcChannels).toEqual(plain.ipcChannels);
+    expect(optional.contextBridge).toEqual(plain.contextBridge);
+    // esbuild keeps `?.` for a current target and lowers it for es2019:
+    // `(_a = ipcRenderer.send) == null ? void 0 : _a.call(ipcRenderer, …)`, minified `||`
+    for (const [minify, target] of [
+      [false, undefined],
+      [true, undefined],
+      [false, "es2019"],
+      [true, "es2019"],
+    ] as const) {
+      const info = both(minify, target);
+      const label = `${minify ? "minified" : "bundled"} ${target ?? "esnext"}`;
+      expect(ipcRows(info), label).toEqual(expected);
+      expect(info.ipcChannels, label).toEqual(plain.ipcChannels);
+    }
+  });
+
+  it("reads the lowered forms only where the temporary is assigned from the receiver", () => {
+    const rows = ipcRows(files(OPTIONAL_MAIN, OPTIONAL_PRELOAD)).join("\n");
+    expect(rows).not.toContain("no:");
+    // by hand: the forms esbuild, a minifier and TypeScript emit
+    const info = one(
+      [
+        'const { ipcRenderer } = require("electron");',
+        'var _a; (_a = ipcRenderer) == null ? void 0 : _a.send("low:a", 1);',
+        'var a; (a = ipcRenderer.invoke) == null || a.call(ipcRenderer, "low:b");',
+        'var _b; (_b = ipcRenderer) === null || _b === void 0 ? void 0 : _b.send("low:c");',
+        'null == ipcRenderer || ipcRenderer.send("low:d");',
+        'var _c, _d; (_d = (_c = ipcRenderer).send) == null ? void 0 : _d.call(_c, "low:e");',
+        "// not the same object",
+        'var _e; (_e = ipcRenderer) == null ? void 0 : _f.send("no:a");',
+        'var _g; (_g = ipcRenderer.send) == null ? void 0 : _g.call(_x, "no:b");',
+        'var _h; (_h = ipcRenderer.send) == null ? void 0 : _h.apply(ipcRenderer, ["no:c"]);',
+        'ipcRenderer == null ? void 0 : ipcRenderer2.send("no:d");',
+      ].join("\n"),
+    );
+    expect(ipcRows(info)).toEqual([
+      "main.js ipcRenderer.invoke low:b ()",
+      "main.js ipcRenderer.send low:a (_)",
+      "main.js ipcRenderer.send low:c ()",
+      "main.js ipcRenderer.send low:d ()",
+      "main.js ipcRenderer.send low:e ()",
+    ]);
+  });
+
+  it("reads an optional call on an IPC object a renderer finds on the window", () => {
+    const ui = 'window.ipc?.send("amb:a");\nipc?.send?.("amb:b", 1);';
+    expect(ambientRows(ui)).toEqual(ambientRows(plainOf(ui)));
+    expect(ambientRows(ui)).toContain("js/ui.js ipcRenderer.send amb:b");
   });
 });
 

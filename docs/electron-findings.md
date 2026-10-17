@@ -27,7 +27,18 @@ A setting also reads as `computed` where the code next to the window does not de
 - the window's options take something that could not be followed: a parameter
   (`new BrowserWindow(options)`), a call, a condition between two objects, or a spread of a name
   that is not an object of the file. A key written after that place stands; every other key is
-  not known. The limitation `window_options_unresolved` names these windows;
+  not known. When the key written after it is the whole `webPreferences` (`webPreferences: {…}`,
+  `webPreferences: prefs`, the shorthand `{ ...display.bounds, frame: false, webPreferences }`)
+  and the object it names can be read, it replaces whatever the spread brought, so every setting
+  is known, also one it does not write (that one takes Electron's default). This holds only for
+  the window's own options and for an object nothing unreadable reaches: a spread inside the later
+  object or in the declaration it names (`{ ...prefs, sandbox: true }`), a `webPreferences` that
+  is a condition or a parameter not every caller fills in, and a spread after it
+  (`{ webPreferences: {…}, ...opts }`) keep the settings computed. So does a later member of the options that may write the key
+  without the reading naming it, and it makes every key before it computed as an unknown spread
+  does: a quoted `"webPreferences": …`, a computed key `[k]: …`, a method or accessor, and
+  `__proto__: …`. The limitation
+  `window_options_unresolved` names the windows whose settings are not all known;
 - the options object that was followed may be changed after its declaration. A write to one key
   (`prefs.sandbox = false`, `prefs.sandbox ||= x`, `delete prefs.sandbox`) makes that key
   computed; anything that may change the object without being read here makes every key
@@ -450,6 +461,26 @@ Not read: the payload of a call through a wrapper method or a channel-forwarding
 wrapper`) or through a name another file defines (`via: global`): those rows have no `args`, as
 the arguments of the wrapper are not necessarily what it sends. Keys are taken as written, not normalised: `{1.5: x}` and `{"1.5": x}`, `{0x10: x}` and `{16: x}`, `{["a"]: 1}` and `{a: 1}` give different shapes, as does a transpiler's spread helper (`_objectSpread({}, o, {a})` is `(_)`) against `{...o, a}`; `__proto__: p` counts as an unknown name. A comparison with an export written by 0.9.4 shows `args` on every sending call, as those rows have none. What a value argument holds (`_`),
 the keys of an object held in a variable, and what the receiver reads from the payload.
+
+## Optional chaining on IPC calls
+
+An IPC call written with optional chaining gives the row of the plain call, with the same channel,
+api, sender or receiver and `args`: `ipcRenderer?.send("x", …)`, `ipcRenderer.send?.("x")`,
+`ipcMain?.handle(…)`, `event.sender?.send(…)`, `event?.reply(…)`, `win?.webContents?.send(…)`,
+`contextBridge?.exposeInMainWorld(…)`. The call is made whenever the object is there, which is
+what a row says of a plain call too. `?.` is read as `.` only before the names of IPC methods and
+of the objects IPC is called on (`send`, `invoke`, `on`, `handle`, `reply`, `webContents`,
+`sender`, `ipcRenderer`, …); elsewhere it stays as written.
+
+The forms esbuild (and TypeScript, Babel) lower `?.` to for older targets are read the same way,
+plain and minified: `X == null ? void 0 : X.send(…)`, `X == null || X.send(…)`,
+`(_a = E) == null ? void 0 : _a.send(…)`, `(_a = E) === null || _a === void 0 ? void 0 :
+_a.send(…)`, and for an optional call `(_a = E.send) == null ? void 0 : _a.call(E, …)`, also
+`(_b = (_a = win.webContents).send) == null ? void 0 : _b.call(_a, …)`. Only where the receiver is
+provably the same object: the temporary is assigned from a chain of names in the same
+expression, and `.call` gets that chain (or the temporary it was assigned to) as its receiver.
+Another name after the test (`(_a = ipcRenderer) == null ? void 0 : socket.send(…)`), another
+receiver of `.call`, and `.apply(…)` give no row.
 
 ## Not read
 
