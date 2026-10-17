@@ -369,20 +369,19 @@ npx hexvero setup --skill --apply  # installs the skill</pre>
             contains, not what it does, and not whether anything is exploitable.
           </li>
           <li>
-            It misses things. On the newest blind set (one app in three builds, written by someone
-            without access to hexvero, measured once on 2026-10-17) it found 49 of 54 IPC channels
-            with none false, but only 14 of 39 window settings, and of the changes to the next
-            version 3 of 4 channels, 4 of 4 bridge members, 0 of 2 window settings and 1 of 1
-            endpoint. Most misses: a wrapper class around <code>ipcMain</code> and window options
-            built with <code>Object.assign</code>. Absence from a list is weaker evidence than
-            presence.
+            It misses things, and it can be wrong. On the newest blind set (a screenshot annotator
+            in three builds and a later version, written by someone without access to hexvero,
+            measured once on 2026-10-17) it found 52 of 64 IPC channels and 22 of 41 storage keys
+            with none false, but 44 of 52 window settings with 15 false: duplicate rows of literals
+            that were right for their window, fixed after that measurement. On the blind set before
+            it, 49 of 54 IPC channels and only 14 of 39 window settings. Absence from a list is
+            weaker evidence than presence.
           </li>
           <li>
-            Since then wrapper classes are read. On the same set, now a development set and not a
-            blind result: 72 of 72 IPC channels, but window settings still 17 of 52. On Electron
-            Fiddle 0.38.0 and 0.39.0, which registers handlers through
-            <code>ipcMainManager.handle</code>, 45 of 46 bridge members are now linked to a
-            main-process handler (0.8.0: none).
+            On a real update, Electron Fiddle 0.38.0 to 0.39.0, 0.8.0 missed four changes: a new
+            field in an IPC payload, a new setting stored through the app's own wrapper, the request
+            of a bundled CLI, and that CLI's file. 0.9.6 reports all four, each checked against the
+            source. A scan takes about 24 % longer than with 0.8.0 for it.
           </li>
           <li>
             Values computed at run time are shown as <code>${…}</code> or listed as unresolved,
@@ -397,6 +396,11 @@ npx hexvero setup --skill --apply  # installs the skill</pre>
         <p class="note">
           Methods and numbers:
           <a href="https://github.com/maximilianfeix/hexvero#limits">README, Limits</a> ·
+          <a
+            href="https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round5/README.md"
+            >blind set holdout6 (round 5)</a
+          >
+          ·
           <a
             href="https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round4/README.md"
             >blind set holdout5 (round 4)</a
