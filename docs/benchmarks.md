@@ -129,6 +129,102 @@ wall times vary by about ±20 % between runs.
 
 Cold and warm exports of six real Electron apps are byte-identical apart from timing fields.
 
+## Profile of analyze, compare, report and check (2026-10-17, after 0.9.0)
+
+**Machine and inputs.** Apple M2 (4 performance + 4 efficiency cores), 8 GiB RAM, macOS 26.5.2,
+Node 22.17.1, hexvero 0.9.0 at `03588ec`. The machine was **busy**: other agents were running, the
+1-minute load average was 12 to 25 on 8 cores during every measurement below (logged per run).
+Absolute times are therefore upper bounds; only interleaved comparisons within a row are meaningful.
+
+| Input                     | Bytes      | SHA-256                                                            |
+| ------------------------- | ---------- | ------------------------------------------------------------------ |
+| Claude desktop `app.asar` | 49,233,786 | `bfa22ac393906762fa04b9607ff202907405b089c1ae7db257159202f31bb3d0` |
+| Discord `app.asar`        | 3,613,300  | `d37245e51c24567ed4fc0998e223a70c0cf7c9b02bdf6ee0bd3942df92d050e0` |
+
+Claude against Discord is two different applications, the worst case for whole-list comparison:
+almost every item is added or removed.
+
+**Method.** Each run is a fresh process under `/usr/bin/time -l` (wall, user + sys, peak RSS),
+with `HEXVERO_CACHE_DIR` pointing to an empty directory for a cold run and to a directory holding
+both stored scans for a warm run. Profiles are `node --cpu-prof` (one `.cpuprofile` per thread),
+summarized by self and inclusive time per function. A/B runs alternate the two builds in the same
+loop (A, B, A, B, ...) so that load affects both alike.
+
+### Where the time goes
+
+`analyze <claude> --json --fresh`, 12.6 s wall, 30.6 s CPU, 824 MiB peak. Timeline of the
+threaded run (busy share of each thread per 0.5 s): the main thread reads the archive and plans for
+1.1 s, three token workers are then busy from 1.1 s to 9.6 s, and the main thread assembles for the
+last 1.4 s. With `HEXVERO_JS_THREADS=0` the same work in one thread, inclusive time:
+
+| Function (packages/core/dist/javascript)  | Inclusive | Self   |
+| ----------------------------------------- | --------- | ------ |
+| `readFileTokens` (app.js), all per-file   | 81 %      | 0.6 %  |
+| `onTokens` (app.js), the per-file readers | 35 %      | 5.1 %  |
+| `findCandidates` (candidates.js)          | 22 %      | 5.5 %  |
+| `resolveArgument` (resolve.js), bounded   | 15 %      | –      |
+| `Constants` constructor (aliases.js)      | 15 %      | 3.9 %  |
+| `tokenize` (scan.js)                      | 12 %      | 10.9 % |
+| garbage collector                         | 9 %       | 9.0 %  |
+| `resolveAliases` (aliases.js)             | 9 %       | 6.1 %  |
+| `collectAmbient` (ambient.js)             | 5 %       | 4.6 %  |
+
+No function holds more than 11 % of self time; the cost is a dozen linear passes over the token
+stream per file, spread evenly over three workers that stay busy until the same last half second. No
+single change there passes the 10 % bar while keeping the output identical; the largest isolated
+item, `/ipc|webContents/.test(source)` in `scanJavaScript`, is 2.6 %. That path was left alone.
+
+`compare <claude> <discord>` cold is the same scan (the Claude archive) plus 0.8 s for Discord:
+9.1 s median. Warm, with both scans stored, `compare`, `compare --report r.md|r.html` and `check
+--policy examples/policy.json` take 0.26 to 0.30 s, and the profile of `check` shows where:
+
+| `check`, warm, one profile (busy CPU)        | 0.9.0         | after the change |
+| -------------------------------------------- | ------------- | ---------------- |
+| sampled CPU                                  | 284 ms        | 196 ms           |
+| module loading (`node:internal/modules/*`)   | 107 ms (38 %) | 34 ms (18 %)     |
+| MCP SDK, zod, ajv and `@hexvero/mcp` frames  | 30 ms (11 %)  | 0                |
+| `@hexvero/core` work (load, compare, policy) | 122 ms (44 %) | 123 ms (66 %)    |
+
+(Three profile pairs; the quietest is shown. The others: 551 → 402 ms and 1,141 → 364 ms.)
+
+The CLI imported `@hexvero/mcp` at the top of `packages/cli/src/index.ts`, so every command loaded
+the MCP SDK, zod and ajv. Measured on its own (`await import`), that adds 61 to 106 ms after
+`@hexvero/core` (29 to 36 ms). It is used by one command, `hexvero mcp`.
+
+### The change
+
+`@hexvero/mcp` is now imported inside `case "mcp"`, like `ui`, `check` and `demo` already were.
+Nothing else changed.
+
+Interleaved A/B, 9 runs each, warm cache, load 12.9 to 15.9 (median 14.1):
+
+| Command (Claude → Discord)            | 0.9.0 median (min–max) | after (min–max)    | Change | Peak RSS      |
+| ------------------------------------- | ---------------------- | ------------------ | ------ | ------------- |
+| `compare`                             | 0.26 s (0.24–0.70)     | 0.19 s (0.18–0.22) | −27 %  | 205 → 184 MiB |
+| `compare --report r.md`               | 0.28 s (0.26–0.34)     | 0.20 s (0.19–0.24) | −29 %  | 212 → 187 MiB |
+| `compare --report r.html`             | 0.30 s (0.27–0.42)     | 0.24 s (0.21–0.28) | −20 %  | 226 → 201 MiB |
+| `check --policy examples/policy.json` | 0.29 s (0.26–0.38)     | 0.21 s (0.19–0.30) | −28 %  | 213 → 188 MiB |
+| `--version`                           | 0.12 s (0.11–0.15)     | 0.06 s (0.06–0.10) | −50 %  | 75 → 55 MiB   |
+
+Cold paths, interleaved, 3 runs each, load 11.7 to 25.3. The change cannot touch the scan; these
+rows show the noise of a loaded machine, not an effect:
+
+| Command                                 | 0.9.0 runs (s)     | after runs (s)     | CPU median, A → B |
+| --------------------------------------- | ------------------ | ------------------ | ----------------- |
+| `analyze <claude> --json --fresh`       | 10.63, 8.62, 12.02 | 10.25, 9.13, 6.88  | 31.1 → 27.2 s     |
+| `analyze <claude> --json` (stored scan) | 0.32, 0.52, 0.26   | 0.34, 0.31, 0.13   | 0.25 → 0.18 s     |
+| `compare`, empty cache                  | 7.78, 21.63, 9.12  | 16.71, 31.11, 9.52 | 30.4 → 35.8 s     |
+| `check`, empty cache                    | 6.84, 8.13, 8.47   | 9.17, 9.55, 9.25   | 30.0 → 30.6 s     |
+
+Peak RSS of the cold runs was 605 to 1,039 MiB on both builds.
+
+**Same output.** Before and after, from an empty cache each: `analyze --json` of both archives,
+of `examples/notesdesk-1.4.0.asar`, `notesdesk-1.5.0.asar` and `notesdesk-1.5.0.bundle.js`; on
+both pairs (Claude → Discord and notesdesk 1.4.0 → 1.5.0) `compare` as text and `--json`,
+`compare ipc --json`, `compare --report` as `.md` and `.html`, `check` as text, `json` and
+`sarif`, and `export` of the first input. All 23 files are byte-identical after removing
+`openedAt`, `exportedAt` and `durationMs`, and every exit code is the same.
+
 ## Blind result on corpus/holdout3
 
 `corpus/holdout3` was written by an independent agent without access to hexvero's code or

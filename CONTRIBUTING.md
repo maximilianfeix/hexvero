@@ -28,6 +28,13 @@ node scripts/smoke-tarballs.mjs   # install the packed packages into an empty pr
 | `corpus/`                                                         | inputs with written-down correct results and the scorer ([README](corpus/README.md))                                                                                           |
 | `skills/hexvero/`                                                 | the agent skill; a test checks that it names only tools and commands that exist                                                                                                |
 
+## Adding a detector
+
+[docs/contributing/new-detector.md](docs/contributing/new-detector.md) walks the whole path of a new
+observation or collection: the scan, confidence and location of a finding, limitations, the
+identity key `compare` matches by, report order, UI text, a byte-built fixture test and a corpus
+row, with the existing `storage` collection as the worked example.
+
 ## Fixing a missed or wrong finding
 
 The corpus makes these reviews objective:
