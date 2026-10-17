@@ -95,6 +95,30 @@ export function interfaceMap(app: AppParts, limitations: readonly Limitation[]):
       ends.set(u.channel, list);
     }
   }
+  // Per channel: its ends sorted once, and counts per file, so each bridge member costs the
+  // ends it shows rather than a filter and sort of every end (20,000 copies of one preload
+  // made that quadratic: 75 s in the regression test).
+  type Counts = { all: number; main: number; via: number };
+  const sorted = new Map<string, InterfaceEnd[]>();
+  const totals = new Map<string, Counts>();
+  const byFile = new Map<string, Counts>();
+  const add = (map: Map<string, Counts>, key: string, e: InterfaceEnd): void => {
+    const c = map.get(key) ?? { all: 0, main: 0, via: 0 };
+    c.all++;
+    if (e.api.startsWith("ipcMain.")) c.main++;
+    if (e.via !== undefined) c.via++;
+    map.set(key, c);
+  };
+  for (const [channel, list] of ends) {
+    sorted.set(
+      channel,
+      list.toSorted((x, y) => x.file.localeCompare(y.file) || x.line - y.line),
+    );
+    for (const e of list) {
+      add(totals, channel, e);
+      add(byFile, `${channel}\u0000${e.file}`, e);
+    }
+  }
   const blind = [
     ...new Set(limitations.map((l) => l.code).filter((c) => BLIND_SPOTS.has(c))),
     ...(app.coverage.complete ? [] : ["scan_partial"]),
@@ -123,10 +147,19 @@ export function interfaceMap(app: AppParts, limitations: readonly Limitation[]):
         reason:
           "the member names no IPC channel hexvero could read; it may not use IPC at all, or pass a channel built at run time",
       };
-    const found = (ends.get(b.channel) ?? [])
-      .filter((e) => e.file !== b.file)
-      .toSorted((x, y) => x.file.localeCompare(y.file) || x.line - y.line);
-    if (found.length === 0)
+    const none: Counts = { all: 0, main: 0, via: 0 };
+    const total = totals.get(b.channel) ?? none;
+    const own = byFile.get(`${b.channel}\u0000${b.file}`) ?? none;
+    // ends in other files than the member's own
+    const count = total.all - own.all;
+    const main = total.main - own.main;
+    const via = total.via - own.via;
+    const shown: InterfaceEnd[] = [];
+    for (const e of sorted.get(b.channel) ?? []) {
+      if (shown.length === MAX_ENDS) break;
+      if (e.file !== b.file) shown.push(e);
+    }
+    if (count === 0)
       return {
         ...base,
         direction: null,
@@ -143,15 +176,15 @@ export function interfaceMap(app: AppParts, limitations: readonly Limitation[]):
               reason: "no main-process end for this channel in any file read",
             }),
       };
-    const toMain = found.some((e) => e.api.startsWith("ipcMain."));
-    const toRenderer = found.some((e) => !e.api.startsWith("ipcMain."));
+    const toMain = main > 0;
+    const toRenderer = count - main > 0;
     return {
       ...base,
       direction: toMain && toRenderer ? "both" : toMain ? "to-main" : "to-renderer",
-      ends: found.slice(0, MAX_ENDS),
-      endsTotal: found.length,
-      endsTruncated: found.length > MAX_ENDS,
-      link: found.every((e) => e.via === undefined) ? "direct" : "resolved",
+      ends: shown,
+      endsTotal: count,
+      endsTruncated: count > MAX_ENDS,
+      link: via === 0 ? "direct" : "resolved",
     };
   });
 }

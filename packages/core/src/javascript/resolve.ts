@@ -55,6 +55,14 @@ export interface ResolvedValues {
   partial: boolean;
 }
 
+/** The call sites of a wrapper function and what each passes (see `wrapperCalls`). */
+export interface WrapperCalls {
+  /** The function, or `Class.method`. */
+  name: string;
+  /** `at`: the token of the function or method name at the call; `values`: null when unread. */
+  sites: Array<{ at: number; values: string[] | null }>;
+}
+
 /** Where a literal value is written. */
 export interface ValueSource {
   file: string;
@@ -140,9 +148,16 @@ export interface FnDef {
   member?: true;
   /** An arrow function: it has no `this` of its own. */
   arrow?: true;
+  /** A `static` method of a class: `this` in it is the class, not an instance. */
+  static?: true;
 }
 
 const MAX_VALUES = 64;
+/**
+ * Functions read per file. Electron Fiddle's renderer bundle has 25,113 (its storage wrapper
+ * class comes after the first 20,000); the tables grow with this number, so it stays bounded.
+ */
+const MAX_FUNCTIONS = 60_000;
 const MAX_DEPTH = 10;
 const MAX_SITES = 64;
 /** Rounds of one loop, `forEach` or `map`, and keys an evaluated object may get. */
@@ -285,6 +300,20 @@ interface Structure {
   names: Map<string, number[]> | null;
   depths: Int32Array | null;
   innermost: Int32Array | null;
+  /** For every token, the innermost bracket it is in (-1: none). */
+  parents: Int32Array | null;
+  /** What the module exports by name (see `exportValue`). */
+  exportIndex: Map<string, [number, number]> | null;
+  /** Webpack module functions by key (see `webpackModule`). */
+  moduleTable: Map<string, FnDef | null> | null;
+  /** Plain `function NAME(…) {…}` declarations by name (see `nestedFunction`). */
+  fnDecls: Map<string, FnDef[]> | null;
+  /** Functions by the names their parameters bind (see `paramAround`). */
+  paramDefs: Map<string, FnDef[]> | null;
+  /** Names assigned as a member somewhere in the file (see `memberWritten`). */
+  memberWrites: Map<string, boolean>;
+  /** Member names written through a string key (`x["k"] = …`, defineProperty, Object.assign). */
+  stringWrites: Set<string> | null;
 }
 
 const structures = new WeakMap<Token[], Structure>();
@@ -379,6 +408,13 @@ export class ExpressionResolver {
         names: null,
         depths: null,
         innermost: null,
+        parents: null,
+        exportIndex: null,
+        moduleTable: null,
+        fnDecls: null,
+        paramDefs: null,
+        memberWrites: new Map(),
+        stringWrites: null,
       };
       structures.set(tokens, shared);
     }
@@ -487,6 +523,67 @@ export class ExpressionResolver {
     // The expression uses a parameter of the function it is in: read every binding of it.
     const bound = this.throughParameters(k, end, 0);
     return bound ? this.result(bound) : read;
+  }
+
+  /**
+   * The calls of a wrapper: the expression at k (a storage key) reads a parameter of the named
+   * function or method around it, and each call site of that function in this file binds it.
+   * One entry per call site, with the method name token there and the values its arguments give
+   * the expression, whole (null: that call site cannot be read, or only with a gap). For a
+   * method, a call on `this` counts only inside the same class. Null when the expression reads
+   * no parameter, the parameter is
+   * assigned in the body, or no call site is found. Bounded like `resolveArgument`: at most
+   * MAX_SITES call sites, MAX_VALUES values per site, and one work budget per question.
+   */
+  wrapperCalls(k: number): WrapperCalls | null {
+    return this.guarded(null, () => this.wrapperCallsIn(k));
+  }
+
+  private wrapperCallsIn(k: number): WrapperCalls | null {
+    if (this.work <= 0) return null;
+    this.begin(20_000);
+    const end = this.exprEnd(k);
+    const def = this.enclosing(k);
+    if (!def || def.name === null || def.calledBy) return null;
+    const used = new Set<string>();
+    for (let j = k; j < end; j++)
+      if (
+        this.is(j, "ident") &&
+        !this.punct(j - 1, ".") &&
+        this.paramIndex(def, this.tokens[j]!.value) !== -1
+      )
+        used.add(this.tokens[j]!.value);
+    if (!used.size) return null;
+    for (const name of used)
+      for (const j of this.occurrences(name, def.body[0], def.body[1]))
+        if (
+          !this.punct(j - 1, ".") &&
+          ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
+        )
+          return null;
+    const sites = this.callSites(def);
+    if (!sites.length) return null;
+    const out: WrapperCalls["sites"] = [];
+    for (const open of sites) {
+      const close = this.match[open]!;
+      if (close === -1) continue;
+      const values: string[] = [];
+      let unread = false;
+      for (const caller of this.callerEnvs(open, close, 0)) {
+        const env: Env = new Map();
+        this.bind(def.params, this.list(open, close, caller, 1), env);
+        const v = this.evalRange(k, end, env, 1);
+        // Only whole keys: a gap may be a part of the wrapper's own text that is not read (a
+        // prefix constant), and `${…}theme` would then stand for a key no build has.
+        const read =
+          v?.kind === "str" ? v.values.filter((x) => x !== "" && !x.includes("${…}")) : [];
+        if (!read.length) unread = true;
+        for (const x of read) if (values.length < MAX_VALUES && !values.includes(x)) values.push(x);
+      }
+      out.push({ at: open - 1, values: unread && !values.length ? null : values });
+    }
+    const holder = def.owner ?? (def.member ? this.literalOwner(def) : null);
+    return out.length ? { name: holder ? `${holder}.${def.name}` : def.name, sites: out } : null;
   }
 
   private result(values: string[]): ResolvedValues | null {
@@ -935,14 +1032,13 @@ export class ExpressionResolver {
     return { values, partial: partial || this.partial };
   }
 
-  private exportIndex: Map<string, [number, number]> | null = null;
   /**
    * The value this module exports under a name: `exports.NAME = …` (the last assignment that is
    * not `void 0`), `module.exports = { NAME: … }`, `export const NAME = …`, `export function NAME`.
    */
   exportValue(name: string, depth: number): Val | null {
     if (depth > MAX_DEPTH) return null;
-    if (!this.exportIndex) {
+    if (!this.s.exportIndex) {
       const index = new Map<string, [number, number]>();
       const tokens = this.tokens;
       for (let k = 0; k + 3 < tokens.length; k++) {
@@ -999,9 +1095,9 @@ export class ExpressionResolver {
             index.set(tokens[k + 2]!.value, [k + 2, k + 3]);
         }
       }
-      this.exportIndex = index;
+      this.s.exportIndex = index;
     }
-    const range = this.exportIndex.get(name);
+    const range = this.s.exportIndex.get(name);
     if (!range) return null;
     return this.evalRange(range[0], range[1], new Map(), depth + 1);
   }
@@ -1423,6 +1519,12 @@ export class ExpressionResolver {
           src: { file: this.file, line: last.line },
         };
     }
+    // `Enum.MEMBER` or `module.Enum.MEMBER`, a member of a compiled TypeScript string enum of
+    // this file (the rules of `Constants.enumAt`); a name bound in the evaluation is that instead
+    if (!env.has(t.value) && this.punct(start + 1, ".")) {
+      const member = this.constants.enumAt(start, end, (name) => this.moduleBinding(start, name));
+      if (member !== null) return { kind: "str", values: [member] };
+    }
     // name, name.prop, name(args), name(args)(args), name.prop(args)
     let value = this.lookup(t.value, start, env, depth);
     let j = start + 1;
@@ -1692,8 +1794,6 @@ export class ExpressionResolver {
     return null;
   }
 
-  private moduleTable: Map<string, FnDef | null> | null = null;
-
   /**
    * `req(id)` at k, where `req` is the third parameter of the webpack module function around k
    * (webpack's require): the module of the file's table under that key, as a wrapped module whose
@@ -1702,15 +1802,15 @@ export class ExpressionResolver {
   private webpackModule(k: number, name: string, id: string): Val | null {
     const b = this.binding(k, name);
     if (b?.kind !== "param" || b.index !== 2 || this.moduleKey(b.def) === null) return null;
-    if (!this.moduleTable) {
+    if (!this.s.moduleTable) {
       const table = new Map<string, FnDef | null>();
       for (const d of this.functions()) {
         const key = this.moduleKey(d);
         if (key !== null && d.block) table.set(key, table.has(key) ? null : d);
       }
-      this.moduleTable = table;
+      this.s.moduleTable = table;
     }
-    const def = this.moduleTable.get(id);
+    const def = this.s.moduleTable.get(id);
     if (!def) return null;
     const param = (i: number): string | null => {
       const p = def.params[i];
@@ -2660,13 +2760,12 @@ export class ExpressionResolver {
     return null;
   }
 
-  private fnDecls: Map<string, FnDef[]> | null = null;
   /**
    * The function a name means at k when a function around k declares it with
    * `function NAME(…) {…}`, once and nothing else under that name there.
    */
   private nestedFunction(k: number, name: string): FnDef | null {
-    if (!this.fnDecls) {
+    if (!this.s.fnDecls) {
       const byName = new Map<string, FnDef[]>();
       for (const d of this.functions())
         if (
@@ -2676,11 +2775,14 @@ export class ExpressionResolver {
           !d.member &&
           this.is(d.paramsAt - 1, "ident", d.name) &&
           this.is(d.paramsAt - 2, "ident", "function")
-        )
-          byName.set(d.name, [...(byName.get(d.name) ?? []), d]);
-      this.fnDecls = byName;
+        ) {
+          const list = byName.get(d.name);
+          if (list) list.push(d);
+          else byName.set(d.name, [d]);
+        }
+      this.s.fnDecls = byName;
     }
-    const candidates = this.fnDecls.get(name);
+    const candidates = this.s.fnDecls.get(name);
     if (!candidates) return null;
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       const declared = this.declarationIn(d, name, k);
@@ -2918,10 +3020,11 @@ export class ExpressionResolver {
     for (let k = 0; k + 2 < this.tokens.length; k++) {
       if (!this.is(k, "ident", "class")) continue;
       // `class Name {`, or `var Name = class {` as bundlers write it (the variable names it)
+      // or `exports.Name = class {`, as tsc writes an exported class expression
       const name =
         this.is(k + 1, "ident") && !this.is(k + 1, "ident", "extends")
           ? this.tokens[k + 1]!.value
-          : this.punct(k - 1, "=") && this.is(k - 2, "ident") && !this.punct(k - 3, ".")
+          : this.punct(k - 1, "=") && this.is(k - 2, "ident")
             ? this.tokens[k - 2]!.value
             : null;
       if (name === null) continue;
@@ -2947,12 +3050,14 @@ export class ExpressionResolver {
     if (this.s.defs) return this.s.defs;
     const defs: FnDef[] = [];
     const tokens = this.tokens;
-    const classes = this.classRanges();
-    const classAt = (k: number): string | null => {
-      for (const c of classes) if (k > c.start && k < c.end) return c.name;
-      return null;
-    };
-    for (let k = 0; k < tokens.length && defs.length < 20_000; k++) {
+    // A method belongs to the class whose body is the innermost bracket around its name: a
+    // method of an object literal inside a method (`m() { const o = { save(z) {…} } }`) is not
+    // one of the class, nor is a method of a class nested in it.
+    const classStarts = new Map(this.classRanges().map((c) => [c.start, c.name]));
+    this.innermostBlock(0, null); // builds the table of brackets
+    const parents = this.s.parents!;
+    const classAt = (k: number): string | null => classStarts.get(parents[k]!) ?? null;
+    for (let k = 0; k < tokens.length && defs.length < MAX_FUNCTIONS; k++) {
       const t = tokens[k]!;
       // function NAME ( … ) {   /   function ( … ) {
       if (t.type === "ident" && t.value === "function") {
@@ -3067,7 +3172,12 @@ export class ExpressionResolver {
             (prev.value === "{" || prev.value === "}" || prev.value === ";")) ||
           (prev.type === "ident" && /^(static|async|get|set)$/.test(prev.value));
         if (!starts || /^(if|for|while|switch|catch|function|with)$/.test(t.value)) continue;
+        const isStatic =
+          this.is(k - 1, "ident", "static") ||
+          (/^(async|get|set)$/.test(prev?.type === "ident" ? prev.value : "") &&
+            this.is(k - 2, "ident", "static"));
         defs.push({
+          ...(isStatic ? { static: true as const } : {}),
           name: t.value,
           owner,
           params: this.parseParams(k + 1, close),
@@ -3162,6 +3272,49 @@ export class ExpressionResolver {
   }
 
   /** `const NAME = …` once in the innermost function around k that declares NAME, before k. */
+  /**
+   * NAME at k is bound to a module object: in the innermost function around k that binds NAME
+   * (no function in between has a parameter of that name), NAME is declared once as
+   * `NAME = r(<number>)` with r a parameter of that function (webpack's require), `require("…")`,
+   * or `h(require_x())` (esbuild's interop around a wrapped module), and never assigned again.
+   * The declaration stands before k, or k is inside a function nested in the one that declares
+   * NAME (webpack modules define functions before `const r = n(…)`; they run later).
+   */
+  moduleBinding(k: number, name: string): boolean {
+    if (this.catchBinds(k, name)) return false;
+    const own = this.enclosing(k);
+    for (let d = own, guard = 0; d && guard < 20; guard++) {
+      if (this.paramIndex(d, name) !== -1) return false;
+      const decl = this.declarationIn(d, name, k);
+      if (decl)
+        return (
+          !!decl.range && (decl.range[0] - 2 < k || d !== own) && this.moduleInit(decl.range, d)
+        );
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    const top = this.topDeclarations().get(name);
+    return !!top && (top[0] - 2 < k || own !== null) && this.moduleInit(top, null);
+  }
+
+  private moduleInit([a, b]: [number, number], d: FnDef | null): boolean {
+    const t = this.tokens;
+    if (!this.is(a, "ident") || !this.punct(a + 1, "(")) return false;
+    // `r(123)` with r the module function's require parameter, `require("./x")`
+    if (b === a + 4 && this.punct(a + 3, ")")) {
+      if (t[a + 2]?.type === "number") return !!d && this.paramIndex(d, t[a]!.value) !== -1;
+      return t[a]!.value === "require" && t[a + 2]?.type === "string";
+    }
+    // `__toESM(require_x())`, also with esbuild's node-mode argument
+    return (
+      this.is(a + 2, "ident") &&
+      t[a + 2]!.value.startsWith("require_") &&
+      this.punct(a + 3, "(") &&
+      this.punct(a + 4, ")") &&
+      (this.punct(a + 5, ")") || (this.punct(a + 5, ",") && this.punct(a + 7, ")"))) &&
+      this.match[a + 1] === b - 1
+    );
+  }
+
   private localConst(k: number, name: string): [number, number] | null {
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       const decl = this.declarationIn(d, name, k);
@@ -3649,12 +3802,12 @@ export class ExpressionResolver {
       if (t.value === "(" || t.value === "[" || t.value === ";") break;
       if (t.value === "{") {
         const name = this.tokens[j - 2];
+        // `const NAME = {`, or `var a = 1, NAME = {` as minifiers write it
         if (
           this.punct(j - 1, "=") &&
           name?.type === "ident" &&
-          !this.punct(j - 3, ".") &&
-          this.is(j - 3, "ident") &&
-          /^(const|let|var)$/.test(this.tokens[j - 3]!.value) &&
+          ((this.is(j - 3, "ident") && /^(const|let|var)$/.test(this.tokens[j - 3]!.value)) ||
+            (this.punct(j - 3, ",") && this.inDeclarationList(j - 2))) &&
           !this.enclosing(j) &&
           this.declaredOnce(name.value)
         )
@@ -3675,11 +3828,154 @@ export class ExpressionResolver {
     for (const j of this.positions(name)) {
       if (this.punct(j - 1, ".")) continue;
       const before = this.tokens[j - 1];
-      if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value))
+      if (
+        (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) ||
+        (this.punct(j - 1, ",") &&
+          this.punct(j + 1, "=") &&
+          !this.punct(j + 2, "=") &&
+          this.depthAt(j) === 0 &&
+          this.inDeclarationList(j))
+      )
         declared++;
       else if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j)) return false;
     }
     return declared === 1;
+  }
+
+  /** A parameter, local, `catch (…)` or block declaration of NAME around k binds it there. */
+  private shadowed(k: number, name: string): boolean {
+    return (
+      this.enclosingParam(k, name) ||
+      this.declaredLocally(k, name) ||
+      this.catchBinds(k, name) ||
+      this.innerDeclared(null, name, k)
+    );
+  }
+
+  /** def is the one binding of its name: `function NAME`, `const NAME = …`, declared once. */
+  private plainName(def: FnDef): boolean {
+    for (let j = def.paramsAt - 1; j >= 0 && j >= def.paramsAt - 4; j--)
+      if (this.is(j, "ident", def.name!))
+        return !this.punct(j - 1, ".") && this.declaredOnce(def.name!);
+    return false;
+  }
+
+  /**
+   * `this` at k is an instance of def's class: k is inside def's class body, and the innermost
+   * function around k that is no arrow is a method of that body, or lies outside the class (k is
+   * in a field initializer, `x = this.retrieve(…)`). Inside a plain `function` or a method of an
+   * object literal, `this` is something else.
+   */
+  private thisIsOwner(k: number, def: FnDef): boolean {
+    this.innermostBlock(0, null);
+    const parents = this.s.parents!;
+    const body = parents[def.paramsAt - 1]!;
+    const close = body === -1 ? -1 : this.match[body]!;
+    if (body === -1 || close === -1 || k <= body || k >= close) return false;
+    let f = this.enclosing(k);
+    for (let guard = 0; f?.arrow && guard < 64; guard++) f = this.enclosing(f.paramsAt - 1);
+    // a field initializer: `this` is an instance, or the class in a `static` field
+    if (!f || f.body[0] < body) return this.staticMember(k, body) === !!def.static;
+    return f.owner === def.owner && parents[f.paramsAt - 1] === body && !!f.static === !!def.static;
+  }
+
+  /**
+   * Whether the class member around k (k inside the class body that opens at `body`) is written
+   * `static …`: the member's first token, found by walking back over the body's own tokens to the
+   * `;`, `}` or `{` before it. Unknown (a member longer than the walk) counts as static, so no
+   * instance call is read from it.
+   */
+  private staticMember(k: number, body: number): boolean {
+    const parents = this.s.parents!;
+    let p = k;
+    for (let guard = 0; parents[p] !== body && guard < 256; guard++) p = parents[p]!;
+    if (parents[p] !== body) return true;
+    for (let j = p - 1, steps = 0; j > body; j--, steps++) {
+      if (steps > 4000) return true;
+      if (parents[j] !== body) continue;
+      if (this.punct(j, ";") || this.punct(j, "}")) return this.is(j + 1, "ident", "static");
+    }
+    return this.is(body + 1, "ident", "static");
+  }
+
+  /**
+   * A member named NAME is assigned somewhere in the file: `x.NAME = …`, `x["NAME"] = …`
+   * (also `A.prototype.NAME = …`), `Object.defineProperty(x, "NAME", …)`, or a key NAME of an
+   * object literal passed to `Object.assign(…)`, with a value that may be a function (see
+   * `assigns`). Then `x.NAME(…)` may call that instead of a
+   * method or object-literal function of the name, and its calls are not read. The positions of
+   * the name per name, and one pass over the file's strings for all names, kept.
+   */
+  private memberWritten(name: string): boolean {
+    const known = this.s.memberWrites.get(name);
+    if (known !== undefined) return known;
+    this.innermostBlock(0, null); // builds the table of brackets
+    const parents = this.s.parents!;
+    // `= <value>` where the value may be a function. A literal, an object or array literal or
+    // `!0` is none, so `e.save = "save"` (an enum) is no other `save` to call; nor is
+    // `R.save = new R(…)`, a class's own static instance (Monaco's icons, as Fiddle ships them).
+    // `new` of anything else (`new Proxy(f, {})`, `new Function(…)`) may be callable.
+    const assigns = (j: number, receiver: number): boolean => {
+      if (!this.punct(j, "=")) return false;
+      const v = this.tokens[j + 1];
+      if (!v) return false;
+      if (v.type === "string" || v.type === "number" || v.type === "template") return false;
+      if (v.type === "ident" && v.value === "new")
+        return !(
+          this.is(receiver, "ident") &&
+          this.is(j + 2, "ident", this.tokens[receiver]!.value) &&
+          this.punct(j + 3, "(")
+        );
+      if (v.type === "ident" && /^(true|false|null|void|undefined)$/.test(v.value)) return false;
+      return !(v.type === "punct" && /^(\{|\[|!|-)$/.test(v.value));
+    };
+    const inAssign = (j: number): boolean => {
+      const brace = parents[j]!;
+      if (brace === -1 || !this.punct(brace, "{")) return false;
+      const call = parents[brace]!;
+      return (
+        call > 2 &&
+        this.punct(call, "(") &&
+        this.is(call - 1, "ident", "assign") &&
+        this.punct(call - 2, ".") &&
+        this.is(call - 3, "ident", "Object")
+      );
+    };
+    let found = false;
+    for (const j of this.positions(name)) {
+      if (this.punct(j - 1, ".") && assigns(j + 1, j - 2)) found = true;
+      // `{ NAME: …`, `{ NAME, …`, `{ NAME(…) {…}` as an argument of Object.assign
+      else if (
+        (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
+        (this.punct(j + 1, ":") ||
+          this.punct(j + 1, ",") ||
+          this.punct(j + 1, "}") ||
+          this.punct(j + 1, "(")) &&
+        inAssign(j)
+      )
+        found = true;
+      if (found) break;
+    }
+    // names written through a string key: one pass over the file for all names
+    if (!this.s.stringWrites) {
+      const written = new Set<string>();
+      for (let j = 0; j < this.tokens.length; j++) {
+        const t = this.tokens[j]!;
+        if (t.type !== "string" || written.has(t.value)) continue;
+        if (
+          (this.punct(j - 1, "[") && this.punct(j + 1, "]") && assigns(j + 2, j - 2)) ||
+          (this.punct(j - 1, ",") &&
+            this.is(j - 4, "ident", "defineProperty") &&
+            this.punct(j - 5, ".")) ||
+          (this.punct(j + 1, ":") && inAssign(j))
+        )
+          written.add(t.value);
+      }
+      this.s.stringWrites = written;
+    }
+    if (this.s.stringWrites.has(name)) found = true;
+    this.s.memberWrites.set(name, found);
+    return found;
   }
 
   private callSites(def: FnDef): number[] {
@@ -3687,36 +3983,48 @@ export class ExpressionResolver {
     if (cached) return cached;
     const out: number[] = [];
     this.siteCache.set(def, out);
+    // a method or an object literal's function whose name is also assigned as a member
+    if ((def.owner || def.member) && this.memberWritten(def.name!)) return out;
     const tokens = this.tokens;
     const instances = new Set<string>(
       def.owner ? this.instancesOf(def.owner).map((x) => x.name) : [],
     );
+    let plain: boolean | null = null;
     for (const k of this.positions(def.name!)) {
       if (out.length >= MAX_SITES) break;
       if (!this.is(k, "ident", def.name!) || !this.punct(k + 1, "(") || k + 1 === def.paramsAt)
         continue;
       // a parameter or local of the same name at the call hides the function
-      if (!def.owner && (this.enclosingParam(k, def.name!) || this.declaredLocally(k, def.name!)))
-        continue;
+      if (!def.owner && this.shadowed(k, def.name!)) continue;
       const before = this.punct(k - 1, ".");
       if (!def.owner) {
         // a method of an object literal: `http.getJson(…)` for `const http = { getJson(url) {…} }`
         if (before) {
           const literal = def.member ? this.literalOwner(def) : null;
-          if (literal && this.is(k - 2, "ident", literal) && !this.punct(k - 3, "."))
+          // a parameter or local of the same name around the call is another object
+          if (
+            literal &&
+            this.is(k - 2, "ident", literal) &&
+            !this.punct(k - 3, ".") &&
+            !this.shadowed(k - 2, literal)
+          )
             out.push(k + 1);
           continue;
         }
         if (def.member || this.is(k - 1, "ident", "function")) continue;
-        out.push(k + 1);
+        // `name(…)` is a call of def only when def is what the name is bound to, once: not
+        // `exports.name = function …` (a property, not a binding), nor a name assigned again
+        if (plain === null) plain = this.plainName(def);
+        if (plain) out.push(k + 1);
         continue;
       }
       if (!before) continue;
       const receiver = tokens[k - 2];
-      if (
-        receiver?.type === "ident" &&
-        (instances.has(receiver.value) || receiver.value === "this")
-      ) {
+      if (receiver?.type === "ident" && receiver.value === "this") {
+        if (this.thisIsOwner(k - 2, def)) out.push(k + 1);
+        continue;
+      }
+      if (receiver?.type === "ident" && instances.has(receiver.value)) {
         out.push(k + 1);
         continue;
       }
@@ -3794,14 +4102,12 @@ export class ExpressionResolver {
     return this.depthAt(k);
   }
 
-  private paramDefs: Map<string, FnDef[]> | null = null;
-
   /**
    * Whether a function whose parameter list names NAME holds token k, in that list or in its
    * body: k is then that parameter or within its reach, whatever `binding` could tell.
    */
   paramAround(k: number, name: string): boolean {
-    if (!this.paramDefs) {
+    if (!this.s.paramDefs) {
       const byName = new Map<string, FnDef[]>();
       for (const d of this.functions())
         for (const n of paramNames(d.params)) {
@@ -3809,9 +4115,9 @@ export class ExpressionResolver {
           list.push(d);
           byName.set(n, list);
         }
-      this.paramDefs = byName;
+      this.s.paramDefs = byName;
     }
-    for (const d of this.paramDefs.get(name) ?? [])
+    for (const d of this.s.paramDefs.get(name) ?? [])
       if (d.paramsAt <= k && k <= d.body[1]) return true;
     return false;
   }
@@ -3930,19 +4236,17 @@ export class ExpressionResolver {
   private readonly directCache = new Map<string, Declarations>();
   private readonly listedCache = new Map<string, [number, number] | null | undefined>();
 
-  private parents: Int32Array | null = null;
-
   /** Whether a `catch (…)` whose parameter names NAME has a block around token k. */
   private catchBinds(k: number, name: string): boolean {
     this.innermostBlock(k, null); // builds the table of brackets
-    let p = this.parents![k] ?? -1;
+    let p = this.s.parents![k] ?? -1;
     for (let steps = 0; p > 0 && steps < 256; steps++) {
       if (this.punct(p, "{") && this.punct(p - 1, ")")) {
         const open = this.opener[p - 1]!;
         if (open > 0 && this.is(open - 1, "ident", "catch"))
           for (let j = open + 1; j < p - 1; j++) if (this.is(j, "ident", name)) return true;
       }
-      p = this.parents![p]!;
+      p = this.s.parents![p]!;
     }
     // deeper than that: not known
     return p > 0;
@@ -3954,7 +4258,7 @@ export class ExpressionResolver {
    * header with its body, else the bracket's extent.
    */
   private innermostBlock(j: number, d: FnDef | null): [number, number] | null {
-    if (!this.parents) {
+    if (!this.s.parents) {
       const parents = new Int32Array(this.tokens.length).fill(-1);
       const open: number[] = [];
       for (let i = 0; i < this.tokens.length; i++) {
@@ -3964,9 +4268,9 @@ export class ExpressionResolver {
         if (t.value === "{" || t.value === "(" || t.value === "[") open.push(i);
         else if (t.value === "}" || t.value === ")" || t.value === "]") open.pop();
       }
-      this.parents = parents;
+      this.s.parents = parents;
     }
-    const p = this.parents[j]!;
+    const p = this.s.parents[j]!;
     if (p === -1 || (d && p <= d.body[0])) return null;
     const close = this.match[p]!;
     if (this.punct(p, "(") && this.is(p - 1, "ident", "for") && close !== -1) {
@@ -4005,12 +4309,12 @@ export class ExpressionResolver {
     const inner: DeclEntry[] = [];
     if (found.byOpen.size) {
       this.innermostBlock(k, d); // builds the table of brackets
-      let p = this.parents![k]!;
+      let p = this.s.parents![k]!;
       for (let steps = 0; p !== -1 && (!d || p > d.body[0]); steps++) {
         if (steps >= 64) return "deep";
         for (const e of found.byOpen.get(p) ?? [])
           if (e.scope![0] < k && k < e.scope![1]) inner.push(e);
-        p = this.parents![p]!;
+        p = this.s.parents![p]!;
       }
     }
     return { whole: found.whole, inner };

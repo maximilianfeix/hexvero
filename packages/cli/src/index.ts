@@ -27,7 +27,9 @@ import {
   heading,
   hexdump,
   paint,
+  printable,
   table,
+  terminalSafe,
   toJson,
   type Io,
 } from "./format.js";
@@ -123,7 +125,7 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
         }
       }
       io.err(
-        `${paint(io, "red", "usage:")} ${error.message}${
+        `${paint(io, "red", "usage:")} ${printable(error.message)}${
           lines.length ? `\n\n${lines.join("\n")}` : ""
         }\n\n${paint(io, "dim", 'Run "hexvero --help" for all commands.')}`,
       );
@@ -143,9 +145,9 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
       else {
         const candidates = (error.details as { candidates?: unknown } | undefined)?.candidates;
         io.err(
-          `${paint(io, "red", `error (${error.code}):`)} ${error.message}${
+          `${paint(io, "red", `error (${error.code}):`)} ${printable(error.message)}${
             Array.isArray(candidates) && candidates.length
-              ? `\n  did you mean: ${candidates.slice(0, 5).join(", ")}`
+              ? `\n  did you mean: ${printable(candidates.slice(0, 5).join(", "))}`
               : ""
           }`,
         );
@@ -160,10 +162,8 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
     io.err(
       `${paint(io, "red", "error:")} ${
         error instanceof Error
-          ? process.env["HEXVERO_DEBUG"]
-            ? (error.stack ?? error.message)
-            : error.message
-          : String(error)
+          ? printable(process.env["HEXVERO_DEBUG"] ? (error.stack ?? error.message) : error.message)
+          : printable(String(error))
       }`,
     );
     return 1;
@@ -247,7 +247,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         return 0;
       }
       io.out(
-        `${heading(io, displayPath(target.info.path))}\n  ${paint(
+        `${heading(io, printable(displayPath(target.info.path)))}\n  ${paint(
           io,
           "dim",
           target.info.format === "directory"
@@ -255,7 +255,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             : `${target.info.format} · ${formatBytes(target.info.size)} · sha256 ${target.info.sha256.slice(0, 16)}… · ${analysis.durationMs} ms`,
         )}`,
       );
-      io.out(`\n${heading(io, "Summary")}\n  ${analysis.summary}`);
+      io.out(`\n${heading(io, "Summary")}\n  ${printable(analysis.summary)}`);
       if (coverage && !coverage.complete && coverage.remaining === 0)
         io.out(
           `\n${heading(io, "Coverage")}\n  ${paint(io, "yellow", "incomplete")}: ${coverage.skipped} of ${coverage.total} JavaScript files could not be read (see Limitations). Everything below covers the rest only.`,
@@ -272,7 +272,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           }${
             coverage.complete
               ? ""
-              : `\n  ${paint(io, "dim", `next: ${coverage.nextFiles.slice(0, 2).join(", ")}${coverage.remaining > 2 ? ", …" : ""}`)}\n  ${paint(io, "dim", "read more with --continue (next batch), --all, or --include <path>")}`
+              : `\n  ${paint(io, "dim", `next: ${printable(coverage.nextFiles.slice(0, 2).join(", "))}${coverage.remaining > 2 ? ", …" : ""}`)}\n  ${paint(io, "dim", "read more with --continue (next batch), --all, or --include <path>")}`
           }`,
         );
       }
@@ -293,7 +293,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             .map((step) => `  ${step.question}\n    ${paint(io, "cyan", step.cli)}`)
             .join("\n")}`,
         );
-      if (out) io.out(`\n${paint(io, "green", "✓")} exported to ${out}`);
+      if (out) io.out(`\n${paint(io, "green", "✓")} exported to ${printable(out)}`);
       return 0;
     }
     case "collection":
@@ -341,7 +341,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       );
       for (const s of page.items)
         io.out(
-          `  ${paint(io, "dim", s.offset.toString(16).padStart(8, "0"))}  ${s.value}${
+          `  ${paint(io, "dim", s.offset.toString(16).padStart(8, "0"))}  ${printable(s.value)}${
             s.length ? paint(io, "dim", `… (+${s.length - s.value.length} chars)`) : ""
           }${s.tags.length ? paint(io, "cyan", `  [${s.tags.join(",")}]`) : ""}`,
         );
@@ -410,7 +410,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         else {
           const { formatChanges } = await import("./demo.js");
           io.out(formatChanges(io, comparison).join("\n"));
-          io.out(`${paint(io, "green", "✓")} ${report} (${Buffer.byteLength(text)} bytes)`);
+          io.out(
+            `${paint(io, "green", "✓")} ${printable(report)} (${Buffer.byteLength(text)} bytes)`,
+          );
         }
         return 0;
       }
@@ -553,21 +555,21 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         if (lines++ < MAX_LINES) io.out(text);
       };
       for (const k of diff.added)
-        line(`  ${paint(io, "green", "+")} ${k || paint(io, "dim", "(empty)")}`);
+        line(`  ${paint(io, "green", "+")} ${printable(k) || paint(io, "dim", "(empty)")}`);
       for (const k of diff.removed)
-        line(`  ${paint(io, "red", "-")} ${k || paint(io, "dim", "(empty)")}`);
+        line(`  ${paint(io, "red", "-")} ${printable(k) || paint(io, "dim", "(empty)")}`);
       // Found on one side, in a file the other side did not read: neither added nor removed.
       for (const u of diff.unknown)
         line(
-          `  ${paint(io, "yellow", "?")} ${u.key || paint(io, "dim", "(empty)")}${paint(io, "dim", `  only in ${u.side}; ${u.file}: ${u.reason}`)}`,
+          `  ${paint(io, "yellow", "?")} ${printable(u.key) || paint(io, "dim", "(empty)")}${paint(io, "dim", `  only in ${u.side}; ${printable(`${u.file}: ${u.reason}`)}`)}`,
         );
       for (const c of diff.changed) {
         const detail = c.fields
           .slice(0, 4)
-          .map((f) => `${f.field}: ${show(f.before)} → ${show(f.after)}`)
+          .map((f) => printable(`${f.field}: ${show(f.before)} → ${show(f.after)}`))
           .join(", ");
         line(
-          `  ${paint(io, "yellow", "~")} ${c.key}${detail ? paint(io, "dim", `  ${detail}`) : ""}${
+          `  ${paint(io, "yellow", "~")} ${printable(c.key)}${detail ? paint(io, "dim", `  ${detail}`) : ""}${
             c.fields.length > 4 ? paint(io, "dim", ` … ${c.fields.length - 4} more fields`) : ""
           }`,
         );
@@ -577,7 +579,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       if (diff.relocated) {
         const sample = diff.relocatedSample[0];
         const example = sample?.fields[0]
-          ? `, e.g. ${sample.key} ${sample.fields[0].field} ${show(sample.fields[0].before)} → ${show(sample.fields[0].after)}`
+          ? `, e.g. ${printable(`${sample.key} ${sample.fields[0].field} ${show(sample.fields[0].before)} → ${show(sample.fields[0].after)}`)}`
           : "";
         io.out(
           paint(
@@ -636,7 +638,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       const target = await session.open(need(0, "path"));
       const result = await session.export(target.id, need(1, "out.json"), { overwrite: true });
       io.out(
-        json ? toJson(result) : `${paint(io, "green", "✓")} ${result.path} (${result.bytes} bytes)`,
+        json
+          ? toJson(result)
+          : `${paint(io, "green", "✓")} ${printable(result.path)} (${result.bytes} bytes)`,
       );
       return 0;
     }
@@ -713,10 +717,13 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           return 0;
         }
         io.out(
-          heading(io, `${provider} path ${root.node.name} → ${goal.node.name} · ${trace.status}`),
+          heading(
+            io,
+            `${provider} path ${printable(root.node.name)} → ${printable(goal.node.name)} · ${trace.status}`,
+          ),
         );
         if (trace.path)
-          trace.path.forEach((n, i) => io.out(`${"  ".repeat(i)}${i ? "└ " : ""}${n}`));
+          trace.path.forEach((n, i) => io.out(`${"  ".repeat(i)}${i ? "└ " : ""}${printable(n)}`));
         else io.out(paint(io, "yellow", `no path (${trace.explored} functions explored)`));
         if (trace.limitations.length)
           io.out(`\n${formatLimitations(io, trace.limitations).join("\n")}`);
@@ -736,7 +743,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       io.out(
         heading(
           io,
-          `${provider} ${hood.direction} of ${root.node.name} · ${hood.nodes.length} functions, ${hood.edges.length} edges · ${graphRun.durationMs} ms`,
+          `${provider} ${hood.direction} of ${printable(root.node.name)} · ${hood.nodes.length} functions, ${hood.edges.length} edges · ${graphRun.durationMs} ms`,
         ),
       );
       for (const level of hood.levels) {
@@ -744,9 +751,11 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         for (const id of level.ids) {
           const node = hood.nodes.find((n) => n.id === id);
           const address = node?.address && node.address !== node.name ? ` ${node.address}` : "";
-          const also = node?.aliases?.length ? ` = ${node.aliases.slice(0, 2).join(", ")}` : "";
+          const also = node?.aliases?.length
+            ? ` = ${printable(node.aliases.slice(0, 2).join(", "))}`
+            : "";
           io.out(
-            `  ${node?.name ?? id}${paint(io, "dim", `${also}${address}`)}${node?.external ? paint(io, "dim", " (external)") : ""}`,
+            `  ${printable(node?.name ?? id)}${paint(io, "dim", `${also}${printable(address)}`)}${node?.external ? paint(io, "dim", " (external)") : ""}`,
           );
         }
       }
@@ -773,7 +782,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         `${paint(io, "green", "✓")} ${result.written.length} files written to ${result.outputDir} (manifest ${result.manifest})`,
       );
       for (const w of result.written.slice(0, 30))
-        io.out(`  ${paint(io, "dim", String(w.bytes).padStart(8))}  ${w.path}`);
+        io.out(`  ${paint(io, "dim", String(w.bytes).padStart(8))}  ${printable(w.path)}`);
       if (result.written.length > 30)
         io.out(paint(io, "dim", `  … ${result.written.length - 30} more`));
       if (result.skipped.length)
@@ -895,8 +904,8 @@ function formatBytes(n: number): string {
 
 export function defaultIo(): Io {
   return {
-    out: (text) => process.stdout.write(`${text}\n`),
-    err: (text) => process.stderr.write(`${text}\n`),
+    out: (text) => process.stdout.write(`${terminalSafe(text)}\n`),
+    err: (text) => process.stderr.write(`${terminalSafe(text)}\n`),
     color: Boolean(process.stdout.isTTY) && !process.env["NO_COLOR"],
   };
 }

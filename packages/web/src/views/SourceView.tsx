@@ -1,9 +1,10 @@
 import type { ReactElement } from "react";
 import { useEffect, useRef } from "react";
-import { api } from "../lib/api.js";
+import { api, HttpError } from "../lib/api.js";
 import { navigate } from "../lib/route.js";
 import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
+import { LoadError } from "./LoadError.js";
 
 /**
  * The lines around a `file:line` a fact was read from. The text is target content: it is
@@ -56,9 +57,16 @@ export function SourceView({
       </div>
       {source.loading && <p className="empty">Reading {visible(file)}…</p>}
       {source.error && (
-        <p className="empty" role="alert" style={{ color: "var(--alert)" }}>
-          {source.error.message}
-        </p>
+        <LoadError
+          what={`${visible(file)}:${line}`}
+          error={source.error}
+          // 409: the build changed on disk since its analysis; only opening it again helps
+          onRetry={
+            source.error instanceof HttpError && source.error.status === 409
+              ? undefined
+              : source.retry
+          }
+        />
       )}
       {source.data && (
         <div className="source-lines" role="region" aria-label={`${file} around line ${line}`}>

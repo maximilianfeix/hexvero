@@ -11,6 +11,7 @@ import {
   type Place,
   type ReleaseComparison,
 } from "./report.js";
+import type { AnalysisError } from "./model.js";
 import type { Session } from "./session.js";
 import type { SourceWindow } from "./source.js";
 
@@ -92,7 +93,10 @@ export async function collectReleaseSources(
       try {
         const id = p.side === "a" ? r.a.id : r.b.id;
         out.set(key, await session.source(id, p.file, p.line, HTML_EXCERPT_CONTEXT));
-      } catch {
+      } catch (error) {
+        // A build that changed on disk since its analysis would give excerpts from another
+        // build than the one reported: the report is refused rather than mixed.
+        if ((error as AnalysisError).details?.["reason"] === "changed_on_disk") throw error;
         // not readable as source (not an app, not a file the analysis read): no excerpt
       }
     }

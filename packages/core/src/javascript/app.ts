@@ -2447,7 +2447,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 13;
+export const JS_SCAN_SCHEMA = 17;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -2910,7 +2910,15 @@ export interface FileTokenFacts {
   navigation: NavigationHandler[] | null;
 }
 
-export function readFileTokens(path: string, source: string): FileTokenFacts {
+export function readFileTokens(
+  path: string,
+  source: string,
+  /**
+   * Receives the file's token stream, so the scan can evaluate the file again on the same tokens
+   * (and the resolver tables built for them) instead of tokenizing it a second time.
+   */
+  keep?: (tokens: Token[]) => void,
+): FileTokenFacts {
   let ranges: WindowRange[] = [];
   let located: WindowRanges | null = null;
   /** Keys of a followed options object that are assigned after its declaration. */
@@ -2929,6 +2937,7 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
   let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
     onTokens: (tokens, truncated, context) => {
+      keep?.(tokens);
       if (source.includes("enableSandbox")) {
         // Read from tokens, so a comment or a string is no call. Only a statement at the top
         // of the file that no condition guards is certain to run.
@@ -3355,10 +3364,12 @@ export function analyzeJavaScriptTree(
       return modulesRead.get(target)?.resolver ?? null;
     },
   };
-  const moduleResolver = (path: string, text: string): ReadModule => {
+  const moduleResolver = (path: string, text: string, scanned?: Token[] | null): ReadModule => {
     const cached = modulesRead.get(path);
     if (cached) return cached;
-    const { tokens } = tokenize(text);
+    // The scan's own tokens of the file when it has them: the same stream (same tokenizer, same
+    // limit), and the resolver tables built on it during the scan are shared, not built again.
+    const tokens = scanned ?? tokenize(text).tokens;
     const constants = new Constants(tokens);
     const made = {
       tokens,
@@ -3398,7 +3409,11 @@ export function analyzeJavaScriptTree(
     }
     runBytes += file.size;
     bytes += file.size;
-    const tokenFacts = options.prepared?.get(file.path) ?? readFileTokens(file.path, source);
+    /** The file's tokens when this thread tokenized it (not when a worker did). */
+    let scanned: Token[] | null = null;
+    const tokenFacts =
+      options.prepared?.get(file.path) ??
+      readFileTokens(file.path, source, (tokens) => (scanned = tokens));
     const { scan, located, ranges, sandboxCall, settingsAt, braces } = tokenFacts;
     const ambient = tokenFacts.ambient;
     const mutated = new Set(tokenFacts.mutated);
@@ -3416,6 +3431,11 @@ export function analyzeJavaScriptTree(
     const cand = tokenFacts.candidates;
     if (cand) {
       if (cand.truncated) facts.candidatesCapped = true;
+      if (cand.wrappersSkipped && facts.limitations.length < 200)
+        facts.limitations.push({
+          code: "storage_wrappers_skipped",
+          message: `${file.path}: the file has more functions than storage wrappers are followed for (50,000); keys passed through a wrapper there are not read at each call (no rows with via).`,
+        });
       for (const [from, to] of [
         [cand.endpoints, facts.endpoints],
         [cand.storage, facts.storage],
@@ -3649,7 +3669,7 @@ export function analyzeJavaScriptTree(
     const evaluated = new Map<number, Set<string>>();
     const opaque = (located as WindowRanges | null)?.opaque;
     if (opaque?.size) {
-      const own = moduleResolver(file.path, source);
+      const own = moduleResolver(file.path, source, scanned);
       const tokens = own.tokens;
       for (const r of ranges) {
         if (r.window === null || r.inherited || r.at !== null || !opaque.has(r.window)) continue;
@@ -3717,7 +3737,7 @@ export function analyzeJavaScriptTree(
       located!.opaque.has(e.window),
     );
     if (externalBases.length) {
-      const own = moduleResolver(file.path, source);
+      const own = moduleResolver(file.path, source, scanned);
       for (const ext of externalBases) {
         const at = tokenAtOffset(own.tokens, ext.expr);
         const { values, partial } =
@@ -3806,6 +3826,20 @@ export function analyzeJavaScriptTree(
     if (sandboxCall === "always") facts.enableSandbox = "always";
     else if (sandboxCall === "maybe" && facts.enableSandbox !== "always")
       facts.enableSandbox = "maybe";
+    // A literal the evaluation of a window's options has placed (a base spread into a helper's
+    // `webPreferences`, an override passed to it) is that window's row; the same line without a
+    // window would list the one write twice. A window that is not fully known keeps its
+    // computed keys, so nothing it may take is hidden by this.
+    const placedLines = new Set(
+      found
+        .filter((o) => o.window !== null && o.definedIn === undefined)
+        .map((o) => `${o.key}\u0000${String(o.value)}\u0000${o.line}`),
+    );
+    for (let i = found.length - 1; i >= 0; i--) {
+      const o = found[i]!;
+      if (o.window === null && placedLines.has(`${o.key}\u0000${String(o.value)}\u0000${o.line}`))
+        found.splice(i, 1);
+    }
     for (const { inherited: _inherited, order, scope, group, groupOrder, ...pref } of found) {
       if (pref.window !== null) {
         // A whole `webPreferences` object that a later write of that key replaces: gone with

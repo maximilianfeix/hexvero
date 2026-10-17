@@ -1,0 +1,714 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.9.1",
+  "commit": "unknown",
+  "node": "v22.17.1",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  }
+ },
+ "totals": [
+  {
+   "set": "holdout6",
+   "class": "IPC channels",
+   "hit": 52,
+   "missed": 12,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "IPC senders and receivers",
+   "hit": 89,
+   "missed": 23,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "window settings",
+   "hit": 44,
+   "missed": 8,
+   "false": 15,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "bridge members",
+   "hit": 60,
+   "missed": 20,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "bridge member channel",
+   "hit": 60,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "endpoints",
+   "hit": 16,
+   "missed": 5,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "endpoint method",
+   "hit": 5,
+   "missed": 11,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "requests with an unknown URL shown",
+   "hit": 4,
+   "missed": 0,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "storage keys",
+   "hit": 18,
+   "missed": 23,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "storage read/write/delete",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in ipcChannels",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in contextBridge",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 1,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 1
+  }
+ ],
+ "rows": [
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "IPC channels",
+   "hit": 13,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed library:list",
+    "missed library:delete",
+    "missed prefs:set"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 23,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "library:reveal: receiver ipc.js missed",
+    "capture:start: receiver ipc.js missed",
+    "shot:open: sender preload-library.js missed",
+    "prefs:get: sender preload-library.js missed",
+    "prefs:get: receiver prefs.js missed"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "window settings",
+   "hit": 11,
+   "missed": 2,
+   "false": 4,
+   "notes": [
+    "missed windows.js preload=preload-library.js",
+    "missed windows.js preload=preload-annotator.js",
+    "false windows.js sandbox=true",
+    "false windows.js nodeIntegration=false",
+    "false windows.js contextIsolation=true",
+    "false windows.js sandbox=false"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "bridge members",
+   "hit": 15,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed snapdeck.listShots",
+    "missed snapdeck.deleteShot",
+    "missed snapdeck.openShot",
+    "missed snapdeck.getPrefs",
+    "missed snapdeck.setPrefs",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "bridge member channel",
+   "hit": 15,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "endpoints",
+   "hit": 4,
+   "missed": 1,
+   "false": 1,
+   "notes": [
+    "missed https://share.snapdeck.example/api/v3/shots/…",
+    "false ${…}/shots/${…}"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "https://releases.snapdeck.example/feed/stable.json: expected GET",
+    "https://gallery.snapdeck.example/api/trending?window=week: expected GET",
+    "https://cdn.snapdeck.example/stickers/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "storage keys",
+   "hit": 3,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed file snapdeck-library.json",
+    "missed file snapdeck-prefs.json",
+    "missed localStorage snapdeck:theme",
+    "missed localStorage snapdeck:gridSize",
+    "missed localStorage snapdeck:lastFolder",
+    "missed localStorage snapdeck:strokeWidth",
+    "missed localStorage annotator.recentColors"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "IPC channels",
+   "hit": 13,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed library:list",
+    "missed library:delete",
+    "missed prefs:set"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "library:reveal: receiver main.js missed",
+    "capture:start: receiver main.js missed",
+    "shot:open: sender preload-library.js missed",
+    "shot:save: receiver main.js missed",
+    "shot:share: receiver main.js missed",
+    "prefs:get: sender preload-library.js missed",
+    "prefs:get: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "window settings",
+   "hit": 11,
+   "missed": 2,
+   "false": 3,
+   "notes": [
+    "missed main.js preload=preload-library.js",
+    "missed main.js preload=preload-annotator.js",
+    "false main.js sandbox=true",
+    "false main.js nodeIntegration=false",
+    "false main.js contextIsolation=true"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "bridge members",
+   "hit": 15,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed snapdeck.listShots",
+    "missed snapdeck.deleteShot",
+    "missed snapdeck.openShot",
+    "missed snapdeck.getPrefs",
+    "missed snapdeck.setPrefs",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 15,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "https://releases.snapdeck.example/feed/stable.json: expected GET",
+    "https://gallery.snapdeck.example/api/trending?window=week: expected GET",
+    "https://cdn.snapdeck.example/stickers/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 6,
+   "false": 0,
+   "notes": [
+    "missed file snapdeck-library.json",
+    "missed file snapdeck-prefs.json",
+    "missed localStorage snapdeck:theme",
+    "missed localStorage snapdeck:gridSize",
+    "missed localStorage snapdeck:lastFolder",
+    "missed localStorage snapdeck:strokeWidth"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "IPC channels",
+   "hit": 13,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed library:list",
+    "missed library:delete",
+    "missed prefs:set"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 21,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "library:reveal: receiver main.js missed",
+    "capture:start: receiver main.js missed",
+    "shot:open: sender preload-library.js missed",
+    "shot:save: receiver main.js missed",
+    "shot:share: receiver main.js missed",
+    "prefs:get: sender preload-library.js missed",
+    "prefs:get: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "window settings",
+   "hit": 11,
+   "missed": 2,
+   "false": 3,
+   "notes": [
+    "missed main.js preload=preload-library.js",
+    "missed main.js preload=preload-annotator.js",
+    "false main.js sandbox=true",
+    "false main.js nodeIntegration=false",
+    "false main.js contextIsolation=true"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "bridge members",
+   "hit": 15,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed snapdeck.listShots",
+    "missed snapdeck.deleteShot",
+    "missed snapdeck.openShot",
+    "missed snapdeck.getPrefs",
+    "missed snapdeck.setPrefs",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "bridge member channel",
+   "hit": 15,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "endpoints",
+   "hit": 2,
+   "missed": 3,
+   "false": 2,
+   "notes": [
+    "missed https://share.snapdeck.example/api/v3/shots",
+    "missed https://share.snapdeck.example/api/v3/shots/…",
+    "missed https://gallery.snapdeck.example/api/trending?window=week",
+    "false ${…}/shots",
+    "false ${…}/shots/${…}"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "https://releases.snapdeck.example/feed/stable.json: expected GET",
+    "https://cdn.snapdeck.example/stickers/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "storage keys",
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file snapdeck-library.json",
+    "missed file snapdeck-prefs.json"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "IPC channels",
+   "hit": 13,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "missed library:list",
+    "missed library:delete",
+    "missed prefs:set"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 24,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "capture:start: receiver ipc.js missed",
+    "shot:open: sender preload-library.js missed",
+    "prefs:get: sender preload-library.js missed",
+    "prefs:get: receiver prefs.js missed"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "window settings",
+   "hit": 11,
+   "missed": 2,
+   "false": 5,
+   "notes": [
+    "missed windows.js preload=preload-library.js",
+    "missed windows.js preload=preload-annotator.js",
+    "false windows.js nodeIntegration=false",
+    "false windows.js sandbox=true",
+    "false windows.js nodeIntegration=true",
+    "false windows.js contextIsolation=true",
+    "false windows.js sandbox=false"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "bridge members",
+   "hit": 15,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed snapdeck.listShots",
+    "missed snapdeck.deleteShot",
+    "missed snapdeck.openShot",
+    "missed snapdeck.getPrefs",
+    "missed snapdeck.setPrefs",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "bridge member channel",
+   "hit": 15,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 1,
+   "notes": [
+    "missed https://share.snapdeck.example/api/v3/shots/…",
+    "false ${…}/shots/${…}"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "https://releases.snapdeck.example/feed/stable.json: expected GET",
+    "https://gallery.snapdeck.example/api/trending?window=week: expected GET",
+    "https://cdn.snapdeck.example/stickers/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "storage keys",
+   "hit": 3,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed file snapdeck-library.json",
+    "missed file snapdeck-prefs.json",
+    "missed localStorage snapdeck:theme",
+    "missed localStorage snapdeck:gridSize",
+    "missed localStorage snapdeck:lastFolder",
+    "missed localStorage snapdeck:strokeWidth",
+    "missed localStorage snapdeck:ocrLanguage",
+    "missed localStorage annotator.recentColors"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": [
+    "false +main/windows.js::null::nodeIntegration"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 1,
+   "false": 1,
+   "notes": [
+    "missed +localStorage snapdeck:ocrLanguage",
+    "false ~localStorage overlay.lastRegion"
+   ]
+  }
+ ]
+}

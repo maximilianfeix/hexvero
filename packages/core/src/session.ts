@@ -17,6 +17,7 @@ import {
   type CompareOptions,
   type CompareResult,
   type SideCoverage,
+  storageSlot,
   type UnresolvedFamily,
 } from "./compare.js";
 import { UnknownsLedger } from "./unknowns.js";
@@ -401,8 +402,9 @@ export class Session {
         unresolved.add("window", w.file);
     for (const row of [...app.endpoints, ...app.urls])
       if (computedValue(row.value)) unresolved.add("endpoint", row.file);
+    // per file and kind: an unread sessionStorage key cannot be a localStorage key
     for (const row of app.storage)
-      if (computedValue(row.value)) unresolved.add("storage", row.file);
+      if (computedValue(row.value)) unresolved.add("storage", storageSlot(row.file, row.kind));
     unresolved.fromLimitations(analysis.limitations);
     return {
       complete: app.coverage.complete,
@@ -551,7 +553,7 @@ export class Session {
         "invalid_input",
         "Source lines are available for Electron archives and application directories",
       );
-    const read = new Set(analysis.data.app.modules.map((m) => m.id));
+    const read = new Map(analysis.data.app.modules.map((m) => [m.id, m.size]));
     return sourceWindow(this.entry(id).loaded, read, file, line, context);
   }
 

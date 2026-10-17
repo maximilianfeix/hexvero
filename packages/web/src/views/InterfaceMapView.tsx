@@ -26,6 +26,7 @@ import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
 import { Toolbar } from "./CollectionView.js";
 import { PlaceLink } from "./CompareView.js";
+import { LoadError } from "./LoadError.js";
 
 /** Rows read for the map and the list; past this the page says how many were left unread. */
 export const MAX_LOAD = 10_000;
@@ -49,8 +50,22 @@ interface Loaded {
 /** Node ids hold target text; the DOM attribute carries them percent-encoded (ASCII only). */
 const domKey = (id: string): string => encodeURIComponent(id);
 
-const select = (id: string | null): void =>
-  updateQuery({ sel: id ?? undefined }, { replace: true });
+/** History marker of an entry made by opening a selection (as the compare view does). */
+const SELECTION_STATE = "hexveroMapSelection";
+
+/**
+ * Opening a selection is a history entry, so Back closes it and stays on the map; moving to
+ * another node replaces it; closing goes back to the entry before it where there is one.
+ */
+export const select = (id: string | null): void => {
+  const opened = new URLSearchParams(window.location.search).has("sel");
+  const ours = (history.state as Record<string, unknown> | null)?.[SELECTION_STATE] === true;
+  if (id === null) {
+    if (opened && ours) history.back();
+    else updateQuery({ sel: undefined }, { replace: true });
+  } else if (opened) updateQuery({ sel: id }, { replace: true, state: history.state });
+  else updateQuery({ sel: id }, { state: { [SELECTION_STATE]: true } });
+};
 
 /** Follows the pages of the collection (pages can be cut short by the byte budget). */
 async function loadAll(targetId: string): Promise<Loaded> {
@@ -92,7 +107,8 @@ export function InterfaceMapView({
   const filtered = useMemo(() => (rows ? filterRows(rows, text) : []), [rows, text]);
   const map = useMemo(() => buildMap(rows ?? [], filtered), [rows, filtered]);
 
-  if (loaded.error) return <p className="empty">{loaded.error.message}</p>;
+  if (loaded.error)
+    return <LoadError what="the interface map" error={loaded.error} onRetry={loaded.retry} />;
   if (!loaded.data || !rows) return <p className="empty">Reading the interface rows…</p>;
   if (rows.length === 0) return <p className="empty">No preload members were found to draw.</p>;
 

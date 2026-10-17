@@ -6,6 +6,81 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Performance
+
+- `analyze` of Discord is back to the time of 0.9.0 (852 ms median against 864 ms; 0.9.1 took
+  1,043 ms, 7 interleaved runs each, docs/benchmarks.md). Evaluating a window's options no longer
+  tokenizes the scanned file a second time and builds every resolver table again for the copy, and
+  five more tables that depend on a file's tokens alone are built once per file instead of once
+  per resolver. Results are unchanged.
+
+### Electron analysis
+
+- A window-option literal that the evaluation placed in a window (a base spread into a helper's
+  `webPreferences`, an override passed to it) is no longer listed a second time without a window
+  when another window's options are not fully known. Found by the blind measurement of the new
+  hold-out set `holdout6` (`corpus/results/round5/`): every window's rows were right, the extra
+  windowless copies counted as 15 false window settings over three builds; now 0 (development set
+  from then on).
+
+- Storage keys through wrapper methods and enums: a storage call whose key is a parameter of the function or method it is in (Electron Fiddle's `save(key, value)` / `retrieve(key)`) is read at each call of that wrapper in the same file, one row per call with that call's line and column and `via` naming the wrapper (`AppState.save`, `prefs.get`, `put`). Keys are read as literals, constants, templates and members of compiled TypeScript string enums (`c.GlobalSetting.theme` as webpack writes an import, the enum announced in tsc's `t.A = t.GlobalSetting = … = void 0` chain); a call whose key cannot be read keeps the storage call's unread row, nothing is guessed. A call counts only where the name means the wrapper: `this.name(…)` only in the wrapper's own class body (a method of that body, an arrow inside one, or a field initializer; not a plain `function`, an object literal's method or another class), `name(…)` only for a function declared once and never assigned again (not `exports.name = function`), not where a parameter, local, `catch` or block declaration of the name binds it, and for no method or object-literal function whose name is also assigned as a member anywhere in the file with a value that may be a function (`a.save = …`, `x["save"] = …`, `A.prototype.save = …`, `Object.defineProperty`, `Object.assign`; `new` counts unless it is `R.save = new R(…)`), and static and instance members are not mixed; the same rule now applies to the endpoint and IPC helpers that read parameters at their call sites (a method of the same name in another `exports.Name = class` gave a false key or endpoint before this was fixed in the sprint). A method is one of the class whose body is directly around it. For a storage key an enum member is read through `module.Enum.MEMBER` only when `module` is bound, where the chain stands and once, to a module object (`n(<id>)` with `n` the module function's require parameter, `require("…")`, `__toESM(require_x())`), not shadowed by a parameter or another binding; a member written outside the enum's definition makes the enum unread (for IPC channels too). A class written as `exports.Name = class {…}` is now a class for the resolver, and an object literal of helpers in a minifier's `var a = …, c = {…}` is followed. The resolver reads up to 60,000 functions per file (was 20,000: Fiddle's renderer bundle has 25,113, and its `AppState` came after the first 20,000); in a file with more than 50,000 `function`/`=>` tokens storage wrappers are not followed per call (limitation `storage_wrappers_skipped`, also for a single script). In `compare`, an unread storage key hides only items of its own kind in its file. Electron Fiddle 0.38.0 → 0.39.0: storage rows 10 / 10 (all unread) to 82 / 85, 27 / 28 keys read (every `GlobalSetting` and `WindowSpecificSetting` member, checked against the v0.39.0 source), and `compare` lists `isUsingSocketFirewall` as added (read, write, delete) with nothing else added or removed (miss M2 of the case study). holdout5 storage keys unchanged at 7 / 17 / 4 (its misses are wrappers called from another module and files). Not read: wrapper calls from another module, keys taken from `this`, constants in a minifier's declaration list (docs/electron-findings.md). Stored scans are read again.
+
+### Web UI
+
+- Text from the target is shown with invisible and direction-changing characters written out as
+  `⟨U+…⟩` in every view, not only in Compare, the evidence panel and the source view: finding
+  titles and details, limitations, table cells, module names in the graph, the target path above
+  the tabs and the target names in the sidebar. A right-to-left override in a channel list or a
+  file name (`…\u202Egpj.exe` read as `…exe.jpg`) no longer reorders what the reviewer reads.
+- A table, the strings list, the interface map, the module graph or the source lines that fail to
+  load (an error from the server, a timeout, a stopped server) say what failed, are announced to
+  screen readers and offer **Retry**; a failed table no longer reads "No rows match."
+- A link to a view the target does not have (the module graph or interface map of a plain
+  JavaScript file, an unknown tab) says so and offers the overview instead of the server's
+  "Unknown collection" message or an empty panel.
+- After a link or Back/Forward replaces the view, focus moves to the workspace instead of falling
+  to the page start; the "Reading …" line is announced while an analysis runs.
+- In the interface map, opening a node or edge is a history entry, as in Compare: Back closes the
+  evidence and stays on the map (it used to leave the map).
+
+### Robustness
+
+- The CLI no longer prints control characters from a target or a file name to the terminal: an
+  IPC channel, archive entry or output name carrying `ESC ]0;…` or `ESC [2J` showed up raw in
+  `analyze`, `compare` and error output. Every line now passes one filter that turns control
+  characters into `\u001b` escapes and keeps only the color codes hexvero writes. A C1 character
+  in `--json` output becomes its JSON escape, so the JSON stays the same value. Target text
+  printed inside a line (keys, names, file names, strings, messages) also has its line breaks and
+  tabs escaped, so a storage key with `\r\n` can no longer print a forged line of its own, and
+  bidi, zero-width and BOM characters show as `\u200b` at the terminal as in the reports.
+  Table columns are aligned by the printed width and cut between escapes.
+- Markdown reports cut long target text before escaping it, so a code span never ends inside a
+  `\u{…}` escape.
+- The interface map sorted every main-process end again for each context-bridge member: an archive
+  with 20,000 copies of one preload took 6 s in `hexvero check` and 75 s in a unit test of the
+  map alone; it now sorts each channel's ends once.
+- Source windows come only from the build that was analyzed. An archive rebuilt in place since it
+  was opened (size, modification time or inode differ), or an app-folder file whose size is not
+  the one analyzed, is refused with `<name> changed on disk since it was analyzed; open it again`
+  (`details.reason: "changed_on_disk"`; HTTP `409` from the local server; the web source view
+  shows it without a Retry button; `compare --report file.html` stops instead of mixing builds).
+- A policy or baseline nested deeper than the stack (`{"hexvero": [[[[…]]]]}`) is reported as an
+  invalid file (exit 2 in `hexvero check`, `invalid_input` over MCP, `400 invalid_policy` from the
+  local server) instead of a stack overflow.
+- ASAR headers with `null`, a string or a list where a node belongs, or a size that is not a
+  non-negative integer, are read: the entry is skipped, or listed but refused on reading with
+  `malformed`. They used to fail as `Cannot read properties of null`.
+- Archives with very many entries: looking a file up by path was a linear search, so analyzing an
+  ASAR with 100,000 entries ran past 10 s; an HTML report parsed the archive header again for each
+  of its up to 200 source excerpts (17 s for that archive, 1 s now).
+- Markdown reports show bidi marks, overrides and isolates, zero-width characters and the BOM from
+  a target as `\u{202e}`, as the HTML report already did (`⟨U+202E⟩`), so a name cannot read
+  reversed.
+- `scripts/fuzz.mjs`: a deterministic mutation harness (seeded, no new dependency) that runs
+  hostile archives, JavaScript, package.json, policy and baseline files and output paths through
+  the built CLI and checks for crashes, hangs, writes outside the requested path and output that
+  escapes its format.
+
 ## [0.9.1] - 2026-10-17
 
 ### Web UI

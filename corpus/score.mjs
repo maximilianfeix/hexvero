@@ -31,7 +31,17 @@ const arg = (name) => {
 const { tool, observations } = JSON.parse(readFileSync(file, "utf8"));
 const sets = arg("set")
   ? [arg("set")]
-  : ["dev", "validation", "holdout", "holdout2", "holdout3", "holdout4", "holdout5", "damaged"];
+  : [
+      "dev",
+      "validation",
+      "holdout",
+      "holdout2",
+      "holdout3",
+      "holdout4",
+      "holdout5",
+      "holdout6",
+      "damaged",
+    ];
 
 const rows = [];
 const add = (set, input, klass, counts, notes = []) =>

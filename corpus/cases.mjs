@@ -24,6 +24,7 @@ export function loadCases(
     "holdout3",
     "holdout4",
     "holdout5",
+    "holdout6",
     "damaged",
   ],
 ) {

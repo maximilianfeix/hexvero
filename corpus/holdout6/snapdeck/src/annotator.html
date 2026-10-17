@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Snapdeck</title>
+  </head>
+  <body>
+    <nav>
+      <button data-tool="arrow">Arrow</button>
+      <button data-tool="pen">Pen</button>
+      <button data-tool="box">Box</button>
+      <input id="color" type="color" />
+      <input id="width" type="range" min="1" max="16" />
+      <select id="stickers"><option value="basic">Basic</option><option value="ui">UI</option></select>
+      <input id="title" placeholder="Title" />
+      <button id="save">Save</button>
+      <button id="share">Share</button>
+      <span id="format"></span> <span id="status"></span>
+    </nav>
+    <canvas id="canvas"></canvas>
+    <div id="sticker-list"></div>
+    <script type="module" src="renderer-annotator.js"></script>
+  </body>
+</html>

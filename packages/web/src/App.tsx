@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { api, formatBytes, type TargetRecord } from "./lib/api.js";
 import { navigate, navigateCompare, useRoute } from "./lib/route.js";
+import { visible } from "./lib/text.js";
 import { CompareView } from "./views/CompareView.js";
 import { Workspace } from "./views/Workspace.js";
 
@@ -62,6 +63,22 @@ export function App(): ReactElement {
   const [dragging, setDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [theme, toggleTheme] = useTheme();
+  const mainRef = useRef<HTMLElement>(null);
+  const firstRoute = useRef(true);
+  // A link or Back/Forward that replaces the view removes the focused element with it; focus would
+  // fall to the page start. Put it on the workspace instead, so the next Tab continues there.
+  const viewKey = `${route.targetId ?? ""}/${route.tab}`;
+  useEffect(() => {
+    if (firstRoute.current) {
+      firstRoute.current = false;
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body) mainRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [viewKey]);
 
   const refresh = useCallback(async () => {
     try {
@@ -237,7 +254,7 @@ export function App(): ReactElement {
           Compare
         </button>
         <span className="status" aria-live="polite">
-          {busy ?? ""}
+          {visible(busy ?? "")}
         </span>
         <span className="spacer" />
         <button
@@ -260,7 +277,9 @@ export function App(): ReactElement {
                 aria-current={t.id === route.targetId}
                 onClick={() => (navigate(t.id, "overview"), setSidebarOpen(false))}
               >
-                <span className="name">{t.info.path.split(/[\\/]/).pop()}</span>
+                <span className="name" title={visible(t.info.path)}>
+                  {visible(t.info.path.split(/[\\/]/).pop() ?? "")}
+                </span>
                 <span className="meta">
                   {t.info.format} · {formatBytes(t.info.size)}
                 </span>
@@ -268,7 +287,7 @@ export function App(): ReactElement {
 
               <button
                 className="close"
-                aria-label={`Close ${t.info.path}`}
+                aria-label={`Close ${visible(t.info.path)}`}
                 onClick={() => void close(t.id)}
               >
                 ×
@@ -277,7 +296,9 @@ export function App(): ReactElement {
           ))}
         </ul>
         <div className={`dropzone${dragging ? " active" : ""}`}>
-          {busy ?? (
+          {busy !== null ? (
+            visible(busy)
+          ) : (
             <>
               Drop files here or press <strong>{MOD}O</strong>
             </>
@@ -285,7 +306,7 @@ export function App(): ReactElement {
         </div>
       </aside>
 
-      <main className="workspace">
+      <main className="workspace" ref={mainRef} tabIndex={-1}>
         {error && (
           <div
             className="empty"
@@ -298,7 +319,7 @@ export function App(): ReactElement {
               alignItems: "center",
             }}
           >
-            <span style={{ flex: 1 }}>{error}</span>
+            <span style={{ flex: 1 }}>{visible(error)}</span>
             <button type="button" className="btn quiet" onClick={() => setError(null)}>
               Dismiss
             </button>

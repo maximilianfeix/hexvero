@@ -225,6 +225,58 @@ both pairs (Claude → Discord and notesdesk 1.4.0 → 1.5.0) `compare` as text 
 `sarif`, and `export` of the first input. All 23 files are byte-identical after removing
 `openedAt`, `exportedAt` and `durationMs`, and every exit code is the same.
 
+## Scan time after 0.9.1 (2026-10-17)
+
+**Problem.** `analyze <discord> --json --fresh` was measured at 1,065 ms median for 0.9.1 against
+842 ms for 0.9.0 (7 interleaved runs, registry installs), over the budget of 15 % slower.
+
+**Cause, by profile.** Same machine as above (Apple M2, 8 GiB, Node 22.17.1). `node --cpu-prof` of
+one fresh analysis of Discord in one process, inclusive time (self where noted) averaged over 5 profiles before (load 6.0 to 16.8) and 4 after (load 13.4):
+
+| Function (packages/core/dist/javascript)                   | `c2b1020` | after  |
+| ---------------------------------------------------------- | --------- | ------ |
+| `moduleResolver` (app.js): evaluating window options again | 122 ms    | 30 ms  |
+| `tokenize` (scan.js), self                                 | 115 ms    | 45 ms  |
+| garbage collector                                          | 126 ms    | 57 ms  |
+| `windowRanges` (app.js), via `ExpressionResolver.binding`  | 212 ms    | 135 ms |
+| `enclosing` + `functions` (resolve.js), self               | 99 ms     | 34 ms  |
+
+The window-options evaluation added in 0.9.1 (`moduleResolver`, for a window whose options the
+ranges could not follow) tokenized the scanned file a second time. Discord's `bundle.js` (3.06 MB)
+was tokenized twice, and every per-file table of the resolver (brackets, functions, the innermost
+function per token, names, declarations) is kept per token array, so all of them were built a
+second time for the copy. The scan now hands its own token stream to that evaluation when the file
+was tokenized in the same thread (a worker's tokens stay in the worker; then it tokenizes as
+before). Besides, five more tables that depend on the tokens alone (the bracket parents, the export
+index, the webpack module table, function declarations and parameter names by name) were built per
+`ExpressionResolver` instance, and a file has several (scan, window ranges, bridge, navigation);
+they are now shared per token array like the others. One quadratic copy (`[...list, d]` per
+function declaration of the same name) is a push.
+
+**Result.** CLI, `analyze <app> --json --fresh`, a fresh process per run, an empty
+`HEXVERO_CACHE_DIR` per build, the three builds interleaved, 7 runs each (registry installs of 0.9.0
+and 0.9.1, this checkout's build):
+
+| Input   | Load (1 min) | 0.9.0 median, runs (ms)                   | 0.9.1                                              | after                                              |
+| ------- | ------------ | ----------------------------------------- | -------------------------------------------------- | -------------------------------------------------- |
+| Discord | 7.7 → 6.8    | 864: 995 872 802 796 772 966 864          | 1,043 (+20.7 %): 1043 1001 1025 1066 990 1278 1062 | 852 (−1.4 %): 852 880 844 834 849 898 863          |
+| Claude  | 6.6 → 13.4   | 7,222: 7222 7792 6405 7400 6471 7424 6711 | 6,946 (−3.8 %): 6874 6526 6965 6582 6991 6946 7547 | 7,192 (−0.4 %): 7192 6788 7000 7757 7181 7341 9648 |
+
+The scan alone (one `Session` analysis in a process, without CLI start), Discord, 7 interleaved
+runs at load 8.0 → 7.5: 0.9.0 (`03588ec`) median 689 ms (739 667 689 688 676 744 699), after 781 ms
+(841 769 770 782 836 781 778), +13 %; `c2b1020` was 974 to 1,286 ms in 5 runs at load 16.8 → 14.8.
+Claude is read by three token workers, which hid the extra work of 0.9.1 there.
+
+**Function cap.** The resolver's per-file cap raised from 20,000 to 200,000 functions (in
+`c2b1020`) shows no measurable cost on Claude: the same build with the cap set back to 20,000, 5
+interleaved runs of the scan at load 20.8 → 19.5, medians 7,646 ms (200,000: 8950 7503 7646 7646 6915) against 7,714 ms (20,000: 8536 6593 6272 7714 7714). The spread under that load is larger
+than any difference.
+
+**Same output.** From an empty cache, before (`c2b1020`) and after: `analyze --json --fresh` of
+Discord, Claude (also with `--all`), `examples/notesdesk-1.4.0.asar` and `notesdesk-1.5.0.asar`,
+and `corpus/observe-hexvero.mjs` over the corpus: identical after removing `openedAt` and
+`durationMs`. `npm run corpus`: none worse, `corpus/results` unchanged.
+
 ## Blind result on corpus/holdout3
 
 `corpus/holdout3` was written by an independent agent without access to hexvero's code or

@@ -1,7 +1,9 @@
 import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
 import { api } from "../lib/api.js";
+import { visible } from "../lib/text.js";
 import { useAsync } from "../lib/useAsync.js";
+import { LoadError } from "./LoadError.js";
 
 interface Module {
   id: string;
@@ -74,7 +76,16 @@ export function GraphView({ targetId }: { targetId: string }): ReactElement {
   }, [modules.data, edges.data]);
 
   if (modules.error || edges.error)
-    return <p className="empty">{(modules.error ?? edges.error)!.message}</p>;
+    return (
+      <LoadError
+        what="the module graph"
+        error={(modules.error ?? edges.error)!}
+        onRetry={() => {
+          if (modules.error) modules.retry();
+          if (edges.error) edges.retry();
+        }}
+      />
+    );
   if (!modules.data || !edges.data) return <p className="empty">Laying out modules…</p>;
   if (layout.columns.length === 0)
     return <p className="empty">No JavaScript modules were found to draw.</p>;
@@ -136,7 +147,8 @@ export function GraphView({ targetId }: { targetId: string }): ReactElement {
           {layout.columns.flatMap((c) =>
             c.items.map((m) => {
               const p = layout.pos.get(m.id)!;
-              const name = m.id.length > 30 ? `…${m.id.slice(-29)}` : m.id;
+              const id = visible(m.id);
+              const name = id.length > 30 ? `…${id.slice(-29)}` : id;
               return (
                 <g
                   key={m.id}
@@ -154,11 +166,11 @@ export function GraphView({ targetId }: { targetId: string }): ReactElement {
                   tabIndex={0}
                   role="button"
                   aria-pressed={selected === m.id}
-                  aria-label={`${m.id}, ${m.references} references`}
+                  aria-label={`${id}, ${m.references} references`}
                   style={{ cursor: "pointer" }}
                 >
                   <rect width={NODE_W} height={NODE_H} />
-                  <title>{`${m.id}\n${m.references} references · ${m.ipc} IPC calls · ${m.size} bytes`}</title>
+                  <title>{`${id}\n${m.references} references · ${m.ipc} IPC calls · ${m.size} bytes`}</title>
                   <text x={10} y={14}>
                     {name}
                   </text>

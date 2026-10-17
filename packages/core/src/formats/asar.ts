@@ -51,7 +51,7 @@ export function openAsar(bytes: Uint8Array): AsarArchive {
     headerSize,
     files,
     read,
-    find: (path) => files.find((f) => f.path === path.replace(/\\/g, "/")),
+    find: finder(files),
   };
 }
 
@@ -91,7 +91,7 @@ export function openAsarFile(path: string): AsarArchive {
     headerSize,
     files,
     read,
-    find: (p) => files.find((f) => f.path === p.replace(/\\/g, "/")),
+    find: finder(files),
   };
 }
 
@@ -126,6 +126,8 @@ export function readUnpacked(archivePath: string, file: AsarFile, maxBytes: numb
 }
 
 function checkReadable(file: AsarFile, maxBytes: number): void {
+  if (file.offset === null && !file.unpacked)
+    throw new AnalysisError("malformed", `${file.path} has no valid offset or size`);
   if (file.offset === null)
     throw new AnalysisError("not_found", `${file.path} is stored outside the archive (unpacked)`);
   if (file.size > maxBytes)
@@ -154,26 +156,52 @@ function parseHeader(
   }
   const files: AsarFile[] = [];
   const walk = (node: Node, prefixPath: string, depth: number): void => {
-    if (depth > 64 || !node.files) return;
+    // A forged header can put anything where a node or a directory belongs: only objects count.
+    if (depth > 64 || !isObject(node.files)) return;
     for (const [name, child] of Object.entries(node.files)) {
+      if (!isObject(child)) continue;
       const filePath = prefixPath ? `${prefixPath}/${name}` : name;
       if (child.files) {
         walk(child, filePath, depth + 1);
         continue;
       }
       if (child.link !== undefined) continue;
+      // a size that is not a non-negative safe integer leaves the file unreadable, not mis-sized
+      const size = safeSize(child.size);
       files.push({
         path: filePath,
-        size: child.size ?? 0,
-        offset: child.offset !== undefined && !child.unpacked ? safeOffset(child.offset) : null,
+        size: size ?? 0,
+        offset:
+          child.offset !== undefined && !child.unpacked && size !== null
+            ? safeOffset(child.offset)
+            : null,
         unpacked: Boolean(child.unpacked),
         executable: Boolean(child.executable),
-        integrity: child.integrity?.hash ?? null,
+        integrity: typeof child.integrity?.hash === "string" ? child.integrity.hash : null,
       });
     }
   };
-  walk(tree, "", 0);
+  walk(isObject(tree) ? tree : {}, "", 0);
   return { headerSize, files, dataStart: 8 + headerSize };
+}
+
+/**
+ * Lookup by path through a map: a linear search per lookup made reading every file of an archive
+ * with 100,000 entries quadratic (past 10 s). The first entry of a path wins, as with Array.find.
+ */
+function finder(files: readonly AsarFile[]): (path: string) => AsarFile | undefined {
+  const byPath = new Map<string, AsarFile>();
+  for (const f of files) if (!byPath.has(f.path)) byPath.set(f.path, f);
+  return (path) => byPath.get(path.replace(/\\/g, "/"));
+}
+
+const isObject = (v: unknown): v is Node =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Sizes are JSON numbers; a missing one is 0, anything else invalid is null. */
+function safeSize(raw: unknown): number | null {
+  if (raw === undefined) return 0;
+  return typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
 }
 
 /** ASAR offsets are JSON strings; anything but a non-negative safe integer is treated as absent. */

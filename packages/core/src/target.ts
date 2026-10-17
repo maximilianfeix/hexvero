@@ -11,7 +11,16 @@ export interface LoadedTarget {
   bytes: Uint8Array;
   /** Set for files above the in-memory limit that a streaming reader can still handle (ASAR). */
   lazy?: boolean;
+  /**
+   * For a lazy target: size, modification time and inode when it was opened. A later read from
+   * disk that finds other values refuses, so no excerpt comes from a build that was not analyzed.
+   */
+  stamp?: string;
 }
+
+/** What `stamp` records about a file on disk. */
+export const fileStamp = (s: { size: number; mtimeMs: number; ino: number }): string =>
+  `${s.size}:${s.mtimeMs}:${s.ino}`;
 
 /** Formats whose readers work from disk offsets and therefore have no size limit. */
 const LAZY_FORMATS = new Set<FormatId>(["asar"]);
@@ -25,8 +34,10 @@ export async function loadTarget(
 ): Promise<LoadedTarget> {
   const absolute = resolve(path);
   let size: number;
+  let stamp = "";
   try {
     const s = await stat(absolute);
+    stamp = fileStamp(s);
     if (s.isDirectory()) {
       return {
         info: { path: absolute, size: 0, sha256: "", format: "directory" },
@@ -62,6 +73,7 @@ export async function loadTarget(
       info: { path: absolute, size, sha256, format },
       bytes: new Uint8Array(),
       lazy: true,
+      stamp,
     };
   }
   const bytes = new Uint8Array(await readFile(absolute));
