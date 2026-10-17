@@ -278,12 +278,12 @@ jobs:
       - name: hexvero check
         run: |
           set +e
-          npx --yes hexvero@0.9.5 check previous/app.asar dist/app.asar \
+          npx --yes hexvero@0.9.6 check previous/app.asar dist/app.asar \
             --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
             --format sarif --out hexvero.sarif
           code=$?
           set -e
-          npx --yes hexvero@0.9.5 check previous/app.asar dist/app.asar \
+          npx --yes hexvero@0.9.6 check previous/app.asar dist/app.asar \
             --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
             --format markdown &gt;&gt; "$GITHUB_STEP_SUMMARY" || true
           exit "$code"

@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-10-17
+
 ### Performance
 
 - Analysis of large apps is faster than in 0.9.5, with identical results: a per-file text test, the
