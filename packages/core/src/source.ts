@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { readRegularFile } from "./binary/file.js";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "./formats/asar.js";
@@ -60,18 +60,29 @@ export function sourceWindow(
 
 /**
  * The parsed header of each archive, kept for the target's lifetime: an HTML report reads up to
- * 200 windows, and parsing the header of a 100,000-entry archive for each one took seconds.
+ * 200 windows, and parsing the header of a 100,000-entry archive for each one took seconds. An
+ * archive read from disk (lazy) is checked by size and modification time on every call: one
+ * rebuilt in place while the target is open is read again, so its new header gives the offsets.
  */
-const archives = new WeakMap<LoadedTarget, AsarArchive>();
+const archives = new WeakMap<LoadedTarget, { archive: AsarArchive; stamp: string }>();
 
 function readTargetFile(loaded: LoadedTarget, file: string): Uint8Array {
   const { info } = loaded;
   if (info.format === "asar") {
-    let archive = archives.get(loaded);
-    if (!archive) {
-      archive = loaded.lazy ? openAsarFile(info.path) : openAsar(loaded.bytes);
-      archives.set(loaded, archive);
+    let stamp = "";
+    if (loaded.lazy) {
+      const st = statSync(info.path);
+      stamp = `${st.size}:${st.mtimeMs}:${st.ino}`;
     }
+    let cached = archives.get(loaded);
+    if (!cached || cached.stamp !== stamp) {
+      cached = {
+        archive: loaded.lazy ? openAsarFile(info.path) : openAsar(loaded.bytes),
+        stamp,
+      };
+      archives.set(loaded, cached);
+    }
+    const { archive } = cached;
     const entry = archive.find(file);
     if (!entry) throw new AnalysisError("not_found", `${file} not in archive`);
     if (entry.size > MAX_SOURCE_BYTES)

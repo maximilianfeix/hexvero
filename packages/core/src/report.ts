@@ -481,7 +481,8 @@ export function visibleControls(text: string): string {
 }
 /** Text from a target, quoted so it cannot close the code span or start Markdown of its own. */
 const code = (text: string): string => {
-  const flat = visibleControls(text.replace(/[\r\n]+/g, " ")).slice(0, 300);
+  // cut first (by code point), then escape: a cut after escaping could split a `\u{…}`
+  const flat = visibleControls([...text.replace(/[\r\n]+/g, " ")].slice(0, 300).join(""));
   const longest = Math.max(0, ...(flat.match(/`+/g) ?? []).map((run) => run.length));
   const fence = "`".repeat(longest + 1);
   const pad = longest ? " " : "";

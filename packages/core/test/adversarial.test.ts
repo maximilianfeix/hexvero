@@ -2,11 +2,14 @@
  * Regression tests for inputs found by scripts/fuzz.mjs: each one used to end in a JavaScript
  * runtime error (a TypeError or a stack overflow) instead of a typed error or a result.
  */
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openAsar } from "../src/formats/asar.js";
 import { AnalysisError } from "../src/model.js";
 import { parseBaseline, parsePolicy, PolicyError } from "../src/policy.js";
-import { visibleControls } from "../src/report.js";
+import { compareReleases, renderReleaseReport, visibleControls } from "../src/report.js";
 import { Session } from "../src/session.js";
 import { targetFromBytes } from "../src/target.js";
 
@@ -134,5 +137,52 @@ describe("Markdown report text", () => {
       "evil\\u{202e}txt.exe\\u{200b}\\u{2066}\\u{feff}\\u{61c}",
     );
     expect(visibleControls("plain 日本語 é")).toBe("plain 日本語 é");
+  });
+});
+
+/** A script that writes the given localStorage keys. */
+const save = (keys: string[]) =>
+  new TextEncoder().encode(
+    `class S { save(k, v) { localStorage.setItem(k, v); } run() { ${keys.map((k) => `this.save(${JSON.stringify(k)}, 1);`).join(" ")} } }\nnew S().run();\n`,
+  );
+
+describe("Markdown report code spans", () => {
+  it("cut long target text before escaping it, never inside an escape", async () => {
+    const long = `${"x".repeat(270)}\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007`;
+    const session = new Session();
+    const a = session.register(targetFromBytes(save(["old"]), "a.js"));
+    const b = session.register(targetFromBytes(save(["old", long]), "b.js"));
+    const text = renderReleaseReport(await compareReleases(session, a.id, b.id));
+    expect(text).toContain("x".repeat(270));
+    // the cut counts 300 characters of text, so all ten escapes stay whole
+    expect(text).toMatch(/x{270}(\\u\{7\}){10}::writ`/);
+  });
+});
+
+describe("an archive rebuilt in place while it is open", () => {
+  it("is read again for source windows when its size or time changed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hexvero-rebuilt-"));
+    try {
+      const pkg = '{"name":"x","main":"main.js"}';
+      const asar = (main: string) =>
+        rawAsar(
+          `{"files":{"package.json":{"size":${pkg.length},"offset":"0"},"main.js":{"size":${Buffer.byteLength(main)},"offset":"${pkg.length}"}}}`,
+          pkg + main,
+        );
+      const path = join(dir, "app.asar");
+      const first = 'const { ipcMain } = require("electron");\nipcMain.handle("one", () => 1);\n';
+      writeFileSync(path, asar(first));
+      // maxBytes below the file size: the archive is read from disk on demand (lazy)
+      const session = new Session({ maxBytes: 64 });
+      const { id } = await session.open(path);
+      await session.analyze(id);
+      expect((await session.source(id, "main.js", 2)).lines.join("\n")).toContain('"one"');
+      const second = `// a longer header comment moves every offset\n${first.replace("one", "two")}`;
+      writeFileSync(path, asar(second));
+      utimesSync(path, new Date(), new Date(Date.now() + 5_000));
+      expect((await session.source(id, "main.js", 2)).lines.join("\n")).toContain('"two"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
