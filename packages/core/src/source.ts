@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { readRegularFile } from "./binary/file.js";
 import { isAbsolute, join, relative, sep } from "node:path";
-import { openAsar, openAsarFile, readUnpacked } from "./formats/asar.js";
+import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "./formats/asar.js";
 import { AnalysisError } from "./model.js";
 import type { LoadedTarget } from "./target.js";
 
@@ -58,10 +58,20 @@ export function sourceWindow(
   return { file, line, start, lines, totalLines: all.length, cut };
 }
 
+/**
+ * The parsed header of each archive, kept for the target's lifetime: an HTML report reads up to
+ * 200 windows, and parsing the header of a 100,000-entry archive for each one took seconds.
+ */
+const archives = new WeakMap<LoadedTarget, AsarArchive>();
+
 function readTargetFile(loaded: LoadedTarget, file: string): Uint8Array {
   const { info } = loaded;
   if (info.format === "asar") {
-    const archive = loaded.lazy ? openAsarFile(info.path) : openAsar(loaded.bytes);
+    let archive = archives.get(loaded);
+    if (!archive) {
+      archive = loaded.lazy ? openAsarFile(info.path) : openAsar(loaded.bytes);
+      archives.set(loaded, archive);
+    }
     const entry = archive.find(file);
     if (!entry) throw new AnalysisError("not_found", `${file} not in archive`);
     if (entry.size > MAX_SOURCE_BYTES)

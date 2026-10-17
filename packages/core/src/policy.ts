@@ -136,7 +136,13 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 /** A value from a policy file, quoted for an error message and cut short. */
 const quote = (v: unknown): string => {
-  const text = JSON.stringify(v) ?? String(v);
+  let text: string;
+  try {
+    text = JSON.stringify(v) ?? String(v);
+  } catch {
+    // JSON.parse reads nesting that JSON.stringify cannot write back (stack depth)
+    text = Array.isArray(v) ? "a nested list" : "a nested object";
+  }
   return text.length > 60 ? `${text.slice(0, 59)}…` : text;
 };
 
