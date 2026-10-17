@@ -5,6 +5,18 @@ export interface Io {
   out(text: string): void;
   err(text: string): void;
   color: boolean;
+  /** How the user started hexvero, for the commands it suggests (`npx hexvero` under npx). */
+  invocation?: string;
+}
+
+/** A command to suggest, written the way this process was started. */
+export function suggest(io: Io, rest: string): string {
+  return `${io.invocation ?? "hexvero"} ${rest}`;
+}
+
+/** `npx hexvero` when npm started this process for npx or `npm exec`, else `hexvero`. */
+export function invocationFrom(env: NodeJS.ProcessEnv): string {
+  return env["npm_command"] === "exec" ? "npx hexvero" : "hexvero";
 }
 
 const codes = {

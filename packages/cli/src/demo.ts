@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChangeRow, ReleaseComparison } from "@hexvero/core";
 import { UsageError } from "./args.js";
-import { heading, paint, printable, type Io } from "./format.js";
+import { heading, paint, printable, suggest, type Io } from "./format.js";
 
 /** The two example builds that ship with the package (built by scripts/build-examples.mjs). */
 export const DEMO_FILES = ["notesdesk-1.4.0.asar", "notesdesk-1.5.0.asar"] as const;
@@ -74,7 +74,7 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
     }
     if (shown++ >= maxPerCollection) {
       if (shown === maxPerCollection + 1)
-        out.push(paint(io, "dim", `    … more: hexvero compare <a> <b> ${current}`));
+        out.push(paint(io, "dim", `    … more: ${suggest(io, `compare <a> <b> ${current}`)}`));
       continue;
     }
     const [sign, color] = MARK[row.change];
@@ -144,10 +144,10 @@ export function formatDemo(io: Io, r: ReleaseComparison, a: string, b: string): 
   lines.push(
     "",
     paint(io, "bold", "  Next"),
-    `    hexvero compare ${q(a)} ${q(b)} interfaces`,
-    `    hexvero compare ${q(a)} ${q(b)} --report report.md`,
-    `    hexvero check ${q(a)} ${q(b)} --policy ${q(join(dirname(a), DEMO_POLICY))}`,
-    `    hexvero ui --demo --open`,
+    `    ${suggest(io, `compare ${q(a)} ${q(b)} interfaces`)}`,
+    `    ${suggest(io, `compare ${q(a)} ${q(b)} --report report.md`)}`,
+    `    ${suggest(io, `check ${q(a)} ${q(b)} --policy ${q(join(dirname(a), DEMO_POLICY))}`)}`,
+    `    ${suggest(io, "ui --demo --open")}`,
   );
   return lines.join("\n");
 }

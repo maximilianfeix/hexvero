@@ -22,10 +22,12 @@ import {
 } from "@hexvero/core";
 import { flagNumber, flagString, parseArgs, UsageError, type ParsedArgs } from "./args.js";
 import {
+  suggest,
   formatFindings,
   formatLimitations,
   heading,
   hexdump,
+  invocationFrom,
   paint,
   printable,
   table,
@@ -285,12 +287,15 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         .filter(([, n]) => n > 0)
         .map(([name, n]) => `${name} (${n})`);
       io.out(
-        `\n${heading(io, "Collections")}\n  ${lists.join(", ") || "(none)"}\n  ${paint(io, "dim", `hexvero collection <path> <name> to page through one`)}`,
+        `\n${heading(io, "Collections")}\n  ${lists.join(", ") || "(none)"}\n  ${paint(io, "dim", `${suggest(io, "collection <path> <name>")} to page through one`)}`,
       );
       if (next.length)
         io.out(
           `\n${heading(io, "Next")}\n${next
-            .map((step) => `  ${step.question}\n    ${paint(io, "cyan", step.cli)}`)
+            .map(
+              (step) =>
+                `  ${step.question}\n    ${paint(io, "cyan", suggest(io, step.cli.replace(/^hexvero /, "")))}`,
+            )
             .join("\n")}`,
         );
       if (out) io.out(`\n${paint(io, "green", "✓")} exported to ${printable(out)}`);
@@ -307,7 +312,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       }
       if (partial)
         io.out(
-          `${paint(io, "yellow", "partial")}: this list covers ${partial.scanned - partial.skipped} of ${partial.total} JavaScript files; "hexvero analyze <path> --all" reads the rest`,
+          `${paint(io, "yellow", "partial")}: this list covers ${partial.scanned - partial.skipped} of ${partial.total} JavaScript files; "${suggest(io, "analyze <path> --all")}" reads the rest`,
         );
       io.out(
         `${heading(io, `${page.collection} ${rangeLabel(page)}`)}${
@@ -485,7 +490,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             .map((n) => differing.find((c) => c.collection === n))
             .find(Boolean) ?? differing[0];
         if (first)
-          io.out(paint(io, "dim", `  details: hexvero compare <a> <b> ${first.collection}`));
+          io.out(
+            paint(io, "dim", `  details: ${suggest(io, `compare <a> <b> ${first.collection}`)}`),
+          );
         return 0;
       }
       const name = need(2, "collection");
@@ -618,14 +625,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       for (const [side, p] of Object.entries(partial))
         if (p)
           io.out(
-            `  ${paint(io, "yellow", "partial")}: ${side} was read only in part (${p.scanned - p.skipped} of ${p.total} JavaScript files). An item reported as added or removed may simply sit in a file that was not read on one side; run "hexvero analyze <path> --all" on both first.`,
+            `  ${paint(io, "yellow", "partial")}: ${side} was read only in part (${p.scanned - p.skipped} of ${p.total} JavaScript files). An item reported as added or removed may simply sit in a file that was not read on one side; run "${suggest(io, "analyze <path> --all")}" on both first.`,
           );
       if (!truncated && (limitsA || limitsB))
         io.out(
           paint(
             io,
             "dim",
-            `  analysis limitations apply (a: ${limitsA}, b: ${limitsB}); see "hexvero collection <path> limitations" before reading this as complete`,
+            `  analysis limitations apply (a: ${limitsA}, b: ${limitsB}); see "${suggest(io, "collection <path> limitations")}" before reading this as complete`,
           ),
         );
       return 0;
@@ -907,5 +914,6 @@ export function defaultIo(): Io {
     out: (text) => process.stdout.write(`${terminalSafe(text)}\n`),
     err: (text) => process.stderr.write(`${terminalSafe(text)}\n`),
     color: Boolean(process.stdout.isTTY) && !process.env["NO_COLOR"],
+    invocation: invocationFrom(process.env),
   };
 }

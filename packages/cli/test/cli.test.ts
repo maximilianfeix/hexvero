@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildAsar } from "../../core/test/fixtures/asar.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
-import { table, type Io } from "../src/format.js";
+import { invocationFrom, table, type Io } from "../src/format.js";
 import { main } from "../src/index.js";
 
 function capture(): Io & { stdout: string[]; stderr: string[] } {
@@ -47,6 +47,27 @@ describe("hexvero CLI", () => {
     const refused = capture();
     expect(await main(["demo", target], refused)).toBe(2);
     expect(refused.stderr.join("\n")).toContain("exists with other content");
+  });
+
+  it("suggests commands the way it was started (npx or installed)", async () => {
+    expect(invocationFrom({ npm_command: "exec" })).toBe("npx hexvero");
+    expect(invocationFrom({})).toBe("hexvero");
+    const target = join(dir, "demo-npx");
+    const npx = { ...capture(), invocation: "npx hexvero" };
+    expect(await main(["demo", target], npx)).toBe(0);
+    const demoText = npx.stdout.join("\n");
+    expect(demoText).toContain("    npx hexvero compare ");
+    expect(demoText).toContain("    npx hexvero ui --demo --open");
+    expect(demoText).not.toMatch(/^ {4}hexvero /m);
+    const analyzed = { ...capture(), invocation: "npx hexvero" };
+    expect(await main(["analyze", join(target, "notesdesk-1.4.0.asar")], analyzed)).toBe(0);
+    const analyzeText = analyzed.stdout.join("\n");
+    expect(analyzeText).toContain("    npx hexvero collection ");
+    expect(analyzeText).toContain("npx hexvero collection <path> <name> to page through one");
+    // installed: unchanged
+    const plain = capture();
+    expect(await main(["demo", target], plain)).toBe(0);
+    expect(plain.stdout.join("\n")).toMatch(/^ {4}hexvero compare /m);
   });
 
   it("shows a changed IPC payload with the target's key names escaped", async () => {
