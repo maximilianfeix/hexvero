@@ -15,11 +15,12 @@ any interruption or context compaction.
 
 ## Time log
 
-| Period (UTC) | Active work                                                                                                                                                                                                                                        | Notes         |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 22:44–23:25  | inventory, baseline, contracts, 8 agents launched; M, E, C, P, D, G integrated; integration fixes (bridge coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor reads, 503 on timeout)                                  | lead + agents |
-| 23:25–01:20  | integration of A, A2, B, C, D, D2, G, H, I, J, L, P; review R (21 findings) fixed; PR #136 squash `08f80c5`; release 0.9.0 (`03588ec`, tag v0.9.0, run 38990077564 green); npx hexvero@0.9.0 demo/check/report verified                            | lead + agents |
-| 01:20–02:10  | `sprint/091`: A3 window options (Object.assign, spreads, class fields), K bridge exposures + navigation handlers, report same-name note; review R2 (1 critical, 1 high, 3 medium, 5 low); #8 #10 fixed (`48b03ce`); #1 #2 #6 → A3, #3 #4 #5 #9 → K | lead + agents |
+| Period (UTC) | Active work                                                                                                                                                                                                                                                                | Notes         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 22:44–23:25  | inventory, baseline, contracts, 8 agents launched; M, E, C, P, D, G integrated; integration fixes (bridge coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor reads, 503 on timeout)                                                          | lead + agents |
+| 23:25–01:20  | integration of A, A2, B, C, D, D2, G, H, I, J, L, P; review R (21 findings) fixed; PR #136 squash `08f80c5`; release 0.9.0 (`03588ec`, tag v0.9.0, run 38990077564 green); npx hexvero@0.9.0 demo/check/report verified                                                    | lead + agents |
+| 01:20–02:10  | `sprint/091`: A3 window options (Object.assign, spreads, class fields), K bridge exposures + navigation handlers, report same-name note; review R2 (1 critical, 1 high, 3 medium, 5 low); #8 #10 fixed (`48b03ce`); #1 #2 #6 → A3, #3 #4 #5 #9 → K                         | lead + agents |
+| 02:10–02:55  | A3 `c466919` and K rounds `a23930a`, `02e6da4`, `5fe9263` integrated (security review found false negatives twice, then a fail-open path); scope memo `f3d9489` (hostile input > 280 s → 0.6 s); fair A/B shows no slowdown; CHANGELOG consolidated; claims N1–N6; PR #137 | lead + agents |
 
 ## Agents and branches
 
@@ -106,6 +107,11 @@ passed, e2e 13, corpus 298 rows none worse.
   `c466919`: no false safe value. Gates at `c466919`: check 663 passed | 1 skipped, e2e 13,
   corpus none worse.
 
+- Speed 0.9.1 (Discord `analyze --fresh`, 7 interleaved runs, both as worktree builds, load
+  9–11): 0.9.0 `03588ec` 1,123 ms, `41d732c` 1,053 ms. A checkout built differently
+  (`~/hexvero-sprint`) runs the same 0.9.0 code in 821–880 ms, so only like-for-like builds are
+  compared; the earlier "+24 %" was that artefact.
+
 ## Open risks
 
 - REA documents `compare_application_versions`; release comparison alone is not a differentiator (docs/competitive/matrix-2026-10-17.md).
@@ -120,7 +126,7 @@ Probe scripts: scratchpad/review2/t1–t8.mjs, dbg2.mjs. A false safe value is w
 - HIGH #2 (A3; FIXED `c466919` by not reading class fields): class-field options changed through alias, argument, Object.assign(this),
   Reflect.set, defineProperty, computed keys are reported literal. Rule: if not robust, class
   fields are not read at all.
-- MEDIUM #3 #4 #5, LOW #9 (K; merged `a23930a`, follow-up `sprint/k3` for false negatives found by the security review: allowlist of acting methods, file-wide write and loop-variable counts, accessor keys after `action`): false bridge exposures (reassigned name, loop
+- MEDIUM #3 #4 #5, LOW #9 (K; FIXED `a23930a`; security-review follow-ups `02e6da4` (decoys hid real exposures), `5fe9263` (budget/cache fail-open → kept and flagged `undecided`), `f3d9489` (lead: scope read once, DoS)): false bridge exposures (reassigned name, loop
   variable, arrow parameter, module methods), false `deny` with spread/computed key, navigation
   target through shadowing, compare key for minified receivers.
 - LOW #6, #7 (A3; FIXED `c466919`): limitation note for cross-module mutation; `__toESM(m, 1)` node mode. #8, #10: fixed
