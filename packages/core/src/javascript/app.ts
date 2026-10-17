@@ -7,7 +7,7 @@ import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
 import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
-import { ExpressionResolver, type ModuleHost, type Val } from "./resolve.js";
+import { type Binding, ExpressionResolver, type ModuleHost, type Val } from "./resolve.js";
 import {
   ALIAS_TARGETS,
   evaluatorFor,
@@ -357,8 +357,11 @@ const EVERYWHERE = Number.MAX_SAFE_INTEGER;
 /** The ranges of a file, and what could not be followed while locating them. */
 interface WindowRanges {
   ranges: WindowRange[];
-  /** Names of objects that were followed to their declaration as window options. */
-  traced: Set<string>;
+  /**
+   * Names of objects that were followed to their declaration as window options, each with the
+   * first token of the initializers it was followed to (-1: an imported name).
+   */
+  traced: Map<string, number[]>;
   /** Windows whose options come, in part, from such a named object. */
   viaName: Set<number>;
   /**
@@ -377,13 +380,20 @@ interface WindowRanges {
   hides: Map<number, number[]>;
 }
 
-/** One argument of `Object.assign(…)` as window options: an object of this file, or another module's. */
+/**
+ * One argument of `Object.assign(…)` as window options: an object of this file (`open`), another
+ * module's (`external`), or neither (`open` -1, no `external`): something that may write any key.
+ */
 interface PlanStep {
   open: number;
   at: number;
-  follow: string | null;
+  /** Names followed to reach the object, with the initializer each was followed to. */
+  follows: Array<{ name: string; decl: number }>;
   external?: { specifier: string; property: string; expr: number };
 }
+
+/** What a name is bound to where it is used (see `declOf` in `windowRanges`). */
+type Declared = number | "pattern" | "other" | null;
 
 /** A window base exported by another module, applied at `at` (a source offset). */
 interface ExternalBase {
@@ -406,14 +416,22 @@ function windowRanges(
   aliases: Map<number, string>,
   /** Built on first use: reads a factory's parameter from the arguments at its call sites. */
   resolver: () => ExpressionResolver,
-  /** For `X.prop` at token k with `X = require("…")`: the module and the member; else null. */
+  /**
+   * For `X.prop` at token k with `X = require("…")`, or a name at k imported from another
+   * module (`const { X } = require("…")`, `import { X } from "…"`): the module and the member;
+   * else null.
+   */
   externalOf: (k: number) => { specifier: string; property: string } | null = () => null,
-): WindowRanges {
-  const traced = new Set<string>();
+): WindowRanges & { declOf: (k: number) => Declared } {
+  const traced = new Map<string, Set<number>>();
   const viaName = new Set<number>();
-  const follow = (name: string, window: number | null): void => {
-    traced.add(name);
-    if (window !== null) viaName.add(window);
+  const follow = (name: string, decl: number, window: number | null): void => {
+    // what an object that belongs to no window holds decides no window's settings
+    if (window === null) return;
+    let decls = traced.get(name);
+    if (!decls) traced.set(name, (decls = new Set()));
+    decls.add(decl);
+    viaName.add(window);
   };
   const opaque = new Map<number, number>();
   /** Every place something unreadable was applied, per window; `opaque` holds the last one. */
@@ -426,15 +444,15 @@ function windowRanges(
     hides.set(window, places);
   };
   const externals: ExternalBase[] = [];
-  /** `X.prop` at k, as a whole argument or spread operand: recorded instead of hidden. */
+  /** A base of another module at k (`X.prop`, an imported name), as a whole argument or spread operand: recorded instead of hidden. */
   const external = (
     k: number,
     window: number | null,
     at: number,
     given?: { specifier: string; property: string; expr: number },
-    level: ExternalBase["level"] = "options",
+    level: ExternalBase["level"] | null = "options",
   ): boolean => {
-    if (window === null) return false;
+    if (window === null || level === null) return false;
     const ref = given ?? (k >= 0 ? externalOf(k) : null);
     if (!ref || externals.length >= 200) return false;
     externals.push({ window, at, expr: given ? given.expr : tokens[k]!.start, level, ...ref });
@@ -458,69 +476,105 @@ function windowRanges(
     }
     return -1;
   };
-  let declared: Map<string, number> | null = null;
-  /** `name = Object.assign(…)`: the index of the call's `(`. */
-  let assigned: Map<string, number> | null = null;
-  const objectOf = (name: string): number => {
-    if (!declared || !assigned) {
-      declared = new Map();
-      assigned = new Map();
-      for (let k = 0; k + 2 < tokens.length; k++) {
-        if (tokens[k]!.type !== "ident" || !is(k + 1, "=")) continue;
-        const key = tokens[k]!.value;
-        if (is(k + 2, "{") && !declared.has(key)) declared.set(key, k + 2);
-        // `SECURE = Object.freeze({ … })`: the frozen object is the object
-        else if (
-          tokens[k + 2]?.type === "ident" &&
-          tokens[k + 2]!.value === "Object" &&
-          is(k + 3, ".") &&
-          tokens[k + 4]?.value === "freeze" &&
-          is(k + 5, "(") &&
-          is(k + 6, "{") &&
-          !declared.has(key)
-        )
-          declared.set(key, k + 6);
-        else if (
-          tokens[k + 2]?.type === "ident" &&
-          tokens[k + 2]!.value === "Object" &&
-          is(k + 3, ".") &&
-          tokens[k + 4]?.value === "assign" &&
-          is(k + 5, "(") &&
-          !declared.has(key) &&
-          !assigned.has(key)
-        )
-          assigned.set(key, k + 5);
-      }
+  /**
+   * What the name at k is bound to where it is used, by scope (`ExpressionResolver.binding`,
+   * also when it is written later: those writes are read by the caller): the first token of the
+   * initializer of its declaration, `pattern` for a name taken from an object pattern or an
+   * import, `other` for a parameter, function or class, null when that is not known.
+   */
+  const declOf = (k: number): Declared => {
+    const t = tokens[k];
+    if (t?.type !== "ident") return null;
+    const bound = resolver().binding(k, t.value, true);
+    if (!bound) return resolver().paramAround(k, t.value) ? "other" : null;
+    if (bound.kind === "value") return bound.range[0];
+    return bound.kind === "pattern" ? "pattern" : "other";
+  };
+  /**
+   * An initializer as window options: an object literal, `Object.freeze({…})` around one, or
+   * `Object.assign(…)` (`assign`: `open` is the call's `(`).
+   */
+  const shapeAt = (init: number): { open: number; assign: boolean } | null => {
+    if (is(init, "{")) return { open: init, assign: false };
+    if (
+      tokens[init]?.type === "ident" &&
+      tokens[init]!.value === "Object" &&
+      is(init + 1, ".") &&
+      is(init + 3, "(")
+    ) {
+      const method = tokens[init + 2]?.value;
+      if (method === "freeze" && is(init + 4, "{")) return { open: init + 4, assign: false };
+      if (method === "assign") return { open: init + 3, assign: true };
     }
-    return declared.get(name) ?? -1;
+    return null;
+  };
+  /** The object the name at k is declared as, by scope; null when it is something else. */
+  const objectAt = (k: number): { open: number; assign: boolean; decl: number } | null => {
+    const decl = declOf(k);
+    if (typeof decl !== "number") return null;
+    const shape = shapeAt(decl);
+    return shape ? { ...shape, decl } : null;
+  };
+  /**
+   * Follows a name at k used as window options, applied at `at` (null: in place), at `level`:
+   * an object of this file, or an `Object.assign(…)` of them. False when it is neither (nothing
+   * is recorded then). `this.NAME` is never followed: a field of an object can be changed in
+   * more ways than a reading of the file's text sees (`Object.assign(this, …)`, `Reflect.set`,
+   * a computed key, an alias of a nested object, a prototype), so its settings are not known.
+   */
+  const followAt = (
+    k: number,
+    window: number | null,
+    inherited: boolean,
+    depth: number,
+    at: number | null,
+    level: ExternalBase["level"] | null,
+  ): boolean => {
+    if (tokens[k]?.value === "this") return false;
+    const named = objectAt(k);
+    if (!named) return false;
+    if (named.assign) {
+      if (!assignedVia(named.open, window, depth, at, level)) return false;
+    } else add(named.open, window, inherited, depth + 1, at, level);
+    follow(tokens[k]!.value, named.decl, window);
+    return true;
   };
   /**
    * `Object.assign(target, a, b, …)` read as `{ ...a, ...b }`: each argument is a base applied at
-   * its own place in the call, so a later one wins over an earlier one, as in JavaScript.
-   * Returns false when an argument cannot be read.
+   * its own place in the call, so a later one wins over an earlier one, as in JavaScript. Applied
+   * at `at` (a spread of the name), every argument is applied there. False when the call cannot
+   * be read at all.
    */
-  const assignedTo = (name: string, window: number | null, depth: number): boolean => {
-    const plan = assignPlan(name, depth);
+  const assignedVia = (
+    open: number,
+    window: number | null,
+    depth: number,
+    at: number | null,
+    level: ExternalBase["level"] | null,
+  ): boolean => {
+    const plan = planOfCall(open, depth);
     if (!plan) return false;
-    for (const step of plan) {
-      if (step.external) {
-        if (window === null || !external(-1, window, step.at, step.external)) hide(window, step.at);
+    // What comes before an argument that cannot be read may be replaced by it, key by key: it
+    // is not taken as a window's setting at all.
+    const unread = plan.findLastIndex((step) => step.open === -1 && !step.external);
+    for (const [index, step] of plan.entries()) {
+      const place = at ?? step.at;
+      for (const f of step.follows) follow(f.name, f.decl, window);
+      if (index < unread) continue;
+      if (step.open === -1) {
+        if (!step.external || !external(-1, window, place, step.external, level))
+          hide(window, place);
         continue;
       }
-      if (step.follow) follow(step.follow, window);
-      add(step.open, window, true, depth + 1, step.at);
+      add(step.open, window, true, depth + 1, place, level);
     }
-    follow(name, window);
     return true;
   };
-  /** What `name = Object.assign(…)` applies, in order; null when an argument cannot be read. */
-  const assignPlan = (name: string, depth: number): PlanStep[] | null => {
-    objectOf(name);
-    const open = assigned?.get(name);
-    if (open === undefined) return null;
-    return planOfCall(open, depth);
-  };
-  /** The steps of the `Object.assign(…)` call whose `(` is at `open`; null when one is unreadable. */
+  /**
+   * The steps of the `Object.assign(…)` call whose `(` is at `open`: an object of this file per
+   * argument, another module's base, or an argument that cannot be read (`open` -1 without
+   * `external`), which may write any key at its place. Null when the call is too deep or broken.
+   */
   const planOfCall = (open: number, depth: number): PlanStep[] | null => {
     if (depth > 3) return null;
     const end = close(open);
@@ -540,7 +594,9 @@ function windowRanges(
       // Just before the argument, inside the call: every argument is then applied in the same
       // enclosing object or block, one after the other.
       const at = first.start - 1;
-      if (is(from, "{") && close(from) === to - 1) plan.push({ open: from, at, follow: null });
+      const unread: PlanStep = { open: -1, at, follows: [] };
+      if (is(from, "{") && close(from) === to - 1) plan.push({ open: from, at, follows: [] });
+      else if (first.type === "ident" && first.value === "this") plan.push(unread);
       else if (
         first.type === "ident" &&
         to === from + 3 &&
@@ -551,18 +607,35 @@ function windowRanges(
         plan.push({
           open: -1,
           at,
-          follow: null,
+          follows: [],
           external: { ...externalOf(from)!, expr: first.start },
         });
       else if (first.type === "ident" && to === from + 1) {
-        const base = objectOf(first.value);
-        if (base !== -1) plan.push({ open: base, at, follow: first.value });
-        else {
-          const inner = assignPlan(first.value, depth + 1);
-          if (!inner) return null;
-          plan.push(...inner.map((step) => ({ ...step, at })));
+        const named = objectAt(from);
+        const follows = named ? [{ name: first.value, decl: named.decl }] : [];
+        if (named && !named.assign) plan.push({ open: named.open, at, follows });
+        else if (named) {
+          const inner = planOfCall(named.open, depth + 1);
+          plan.push(
+            ...(inner
+              ? inner.map((step) => ({ ...step, at, follows: [...step.follows, ...follows] }))
+              : [unread]),
+          );
+        } else {
+          // an imported name: evaluated with the other module once every module is known
+          const ref = declOf(from) !== "other" ? externalOf(from) : null;
+          plan.push(
+            ref
+              ? {
+                  open: -1,
+                  at,
+                  follows: [{ name: first.value, decl: -1 }],
+                  external: { ...ref, expr: first.start },
+                }
+              : unread,
+          );
         }
-      } else return null;
+      } else plan.push(unread);
       from = to + 1;
     }
     return plan;
@@ -576,7 +649,9 @@ function windowRanges(
     window: number | null,
     depth: number,
     at: number | null,
+    level: ExternalBase["level"] | null,
   ): boolean => {
+    if (declOf(k) !== "other") return false;
     const sites = resolver().argumentsFor(k);
     if (!sites?.length) return false;
     const objects: number[] = [];
@@ -591,11 +666,10 @@ function windowRanges(
       // it is the same object, and is not placed a second time.
       const start = tokens[site]!.start;
       if (ranges.some((r) => r.window === window && start >= r.start && start < r.end)) continue;
-      add(site, window, true, depth + 1, at ?? start);
+      add(site, window, true, depth + 1, at ?? start, level);
     }
     return true;
   };
-  /** The object literal a function of this file returns: `function f() { return {…} }`, `f = () => ({…})`. */
   /**
    * The object literal a function of this file returns: `function f() { return {…} }`,
    * `f = () => ({…})`. Function declarations are indexed once, however many are asked for.
@@ -639,6 +713,19 @@ function windowRanges(
     }
     return returned.get(name) ?? -1;
   };
+  /** The `{` right around token k inside [open, end), or -1. */
+  const braceAround = (k: number, open: number): number => {
+    for (let d = 0, j = k - 1; j >= open && j > k - 20_000; j--) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "}" || p.value === ")" || p.value === "]") d++;
+      else if (p.value === "{" || p.value === "(" || p.value === "[") {
+        if (d === 0) return p.value === "{" ? j : -1;
+        d--;
+      }
+    }
+    return -1;
+  };
   let work = 400_000;
   const add = (
     open: number,
@@ -646,6 +733,8 @@ function windowRanges(
     inherited = false,
     depth = 0,
     at: number | null = null,
+    /** What the object is: a window's options, its webPreferences, or not known (null). */
+    level: ExternalBase["level"] | null = "options",
   ): void => {
     if (ranges.length >= 2000 || work <= 0) return;
     const end = close(open);
@@ -663,30 +752,72 @@ function windowRanges(
       at,
     });
     if (depth >= 3) return;
+    // the object itself: `{`, or the one a constructor's `(` holds
+    const root = is(open, "(") && is(open + 1, "{") ? open + 1 : open;
+    /** The level of an object that holds token k: this one's, a webPreferences value's, or none. */
+    const levelAt = (k: number): ExternalBase["level"] | null => {
+      const brace = braceAround(k, open);
+      if (brace === root) return level;
+      return is(brace - 1, ":") && tokens[brace - 2]?.value === "webPreferences" ? "prefs" : null;
+    };
+    /** `webPreferences: NAME` or the shorthand `webPreferences`, with the name at n. */
+    const namedPrefs = (n: number): void => {
+      if (
+        !followAt(n, window, inherited, depth, at, "prefs") &&
+        !passedTo(n, window, depth, at, "prefs")
+      )
+        hide(window, EVERYWHERE); // an import, or a parameter not every caller fills in
+    };
     // Objects that are named, spread or returned by a helper inside belong to the same window.
     for (let k = open + 1; k < end; k++) {
       const t = tokens[k]!;
       const next = tokens[k + 1];
       if (is(k, "...")) {
-        // `...name`, `...helper()`; anything else (`...(dev ? a : b)`, `...opts.prefs`), or a
-        // name that is not an object of this file, may write any key at this place.
+        const place = at ?? t.start;
+        // `...name`, `...helper()`, `...this.name`; anything else (`...(dev ? a : b)`,
+        // `...opts.prefs`), or a name that is not an object of this file, may write any key at
+        // this place.
         const simple = next?.type === "ident" && !is(k + 2, ".") && !is(k + 2, "[");
-        const base = !simple ? -1 : is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
-        // Inside a base, everything is applied where that base is applied.
-        if (base !== -1) {
-          if (!is(k + 2, "(")) follow(next!.value, window);
-          add(base, window, true, depth + 1, at ?? t.start);
+        const field =
+          next?.type === "ident" &&
+          next.value === "this" &&
+          is(k + 2, ".") &&
+          tokens[k + 3]?.type === "ident" &&
+          (is(k + 4, ",") || is(k + 4, "}"));
+        if (simple && is(k + 2, "(")) {
+          const base = returnedBy(next.value);
+          if (base !== -1) add(base, window, true, depth + 1, place, levelAt(k));
+          else hide(window, place);
+        } else if (simple || field) {
+          if (
+            !followAt(k + 1, window, true, depth, place, levelAt(k)) &&
+            !(simple && passedTo(k + 1, window, depth, place, levelAt(k))) &&
+            !(
+              simple &&
+              declOf(k + 1) !== "other" &&
+              external(k + 1, window, place, undefined, levelAt(k)) &&
+              (follow(next.value, -1, window), true)
+            )
+          )
+            hide(window, place);
         } else if (
-          !(simple && !is(k + 2, "(") && assignedTo(next!.value, window, depth)) &&
-          !(simple && !is(k + 2, "(") && passedTo(k + 1, window, depth, at ?? t.start)) &&
           !(
             next?.type === "ident" &&
             is(k + 2, ".") &&
             (is(k + 4, ",") || is(k + 4, "}")) &&
-            external(k + 1, window, at ?? t.start)
+            external(k + 1, window, place, undefined, levelAt(k))
           )
         )
-          hide(window, at ?? t.start);
+          hide(window, place);
+      } else if (
+        t.type === "ident" &&
+        t.value === "webPreferences" &&
+        (is(k + 1, ",") || is(k + 1, "}")) &&
+        (is(k - 1, "{") || is(k - 1, ",")) &&
+        braceAround(k, open) === root
+      ) {
+        // the shorthand `{ webPreferences }`: the variable of that name, in scope here
+        namedPrefs(k);
       } else if (
         t.type === "ident" &&
         t.value === "webPreferences" &&
@@ -694,13 +825,15 @@ function windowRanges(
         tokens[k + 2]?.type === "ident"
       ) {
         const name = tokens[k + 2]!.value;
-        if (is(k + 3, ",") || is(k + 3, "}")) {
-          const named = objectOf(name);
-          if (named !== -1) {
-            follow(name, window);
-            add(named, window, inherited, depth + 1, at);
-          } else if (!assignedTo(name, window, depth) && !passedTo(k + 2, window, depth, at))
-            hide(window, EVERYWHERE);
+        if (is(k + 3, ",") || is(k + 3, "}")) namedPrefs(k + 2);
+        else if (
+          name === "this" &&
+          is(k + 3, ".") &&
+          tokens[k + 4]?.type === "ident" &&
+          (is(k + 5, ",") || is(k + 5, "}"))
+        ) {
+          // `webPreferences: this.prefs`, a field the class gives the object
+          if (!followAt(k + 2, window, inherited, depth, at, "prefs")) hide(window, EVERYWHERE);
         } else if (is(k + 3, "(")) {
           // `webPreferences: helper({ … })`: what the helper returns is the base, its argument
           // (inside this range already) is laid over it.
@@ -708,7 +841,7 @@ function windowRanges(
           // Applied at the very start of the argument object, so the argument's own keys,
           // which are laid over what the helper returns, come after it in the same object.
           const applied = is(k + 4, "{") ? tokens[k + 4]!.start + 1 : tokens[k + 2]!.start;
-          if (result !== -1) add(result, window, true, depth + 1, at ?? applied);
+          if (result !== -1) add(result, window, true, depth + 1, at ?? applied, "prefs");
           else hide(window, EVERYWHERE);
         } else if (
           name === "Object" &&
@@ -727,30 +860,29 @@ function windowRanges(
             // literal's keys when they come before it in the call and after them otherwise, so
             // the later of two writes of a key wins, as in JavaScript.
             const inside = (step: PlanStep): boolean => {
-              if (step.external) return false;
+              if (step.open === -1) return false;
               const start = tokens[step.open]!.start;
               return ranges.some((r) => r.window === window && start >= r.start && start < r.end);
             };
             const literal = plan.filter(inside).at(-1);
             for (const step of plan) {
-              if (step.external) {
-                const place = !literal
-                  ? step.at
-                  : step.at < tokens[literal.open]!.start
-                    ? tokens[literal.open]!.start + 1
-                    : tokens[close(literal.open)]!.start;
-                if (window === null || !external(-1, window, at ?? place, step.external, "prefs"))
-                  hide(window, at ?? place);
-                continue;
-              }
-              if (step.follow) follow(step.follow, window);
-              if (inside(step)) continue;
               const place = !literal
                 ? step.at
                 : step.at < tokens[literal.open]!.start
                   ? tokens[literal.open]!.start + 1
                   : tokens[close(literal.open)]!.start;
-              add(step.open, window, true, depth + 1, at ?? place);
+              for (const f of step.follows) follow(f.name, f.decl, window);
+              if (step.open === -1) {
+                if (
+                  !step.external ||
+                  window === null ||
+                  !external(-1, window, at ?? place, step.external, "prefs")
+                )
+                  hide(window, at ?? place);
+                continue;
+              }
+              if (inside(step)) continue;
+              add(step.open, window, true, depth + 1, at ?? place, "prefs");
             }
           }
         } else hide(window, EVERYWHERE); // `webPreferences: options.prefs`, `a ? b : c`
@@ -768,6 +900,8 @@ function windowRanges(
   let count = 0;
   const names = new Map<number, string>();
   const named = new Map<string, number>();
+  /** `webPreferences: {…}` objects outside any window's options, read once every window is. */
+  const loose: number[] = [];
   for (let k = 0; k + 2 < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
@@ -786,43 +920,45 @@ function windowRanges(
         named.set(target.value, seen);
         names.set(window, seen === 1 ? target.value : `${target.value}#${seen}`);
       }
-      // `new BrowserWindow(this.options)` with `options = {…}` a field of the class
+      const first = tokens[c + 2];
       if (
-        tokens[c + 2]?.type === "ident" &&
-        tokens[c + 2]!.value === "this" &&
+        // `new BrowserWindow(this.options)` with `options = {…}` a field of the class
+        first?.type === "ident" &&
+        first.value === "this" &&
         is(c + 3, ".") &&
         tokens[c + 4]?.type === "ident" &&
         is(c + 5, ")")
       ) {
-        const field = objectOf(tokens[c + 4]!.value);
-        if (field !== -1) {
-          follow(tokens[c + 4]!.value, window);
-          add(field, window);
-        } else hide(window, EVERYWHERE);
-        add(c + 1, window);
-        continue;
-      }
-      // `new BrowserWindow(options)` with the options object declared elsewhere
-      const first = tokens[c + 2];
-      if (first?.type === "ident" && is(c + 3, ")")) {
-        const at = objectOf(first.value);
-        if (at !== -1) {
-          follow(first.value, window);
-          add(at, window);
-        } else if (!assignedTo(first.value, window, 0) && !passedTo(c + 2, window, 0, null))
+        if (!followAt(c + 2, window, false, -1, null, "options")) hide(window, EVERYWHERE);
+      } else if (first?.type === "ident" && is(c + 3, ")")) {
+        // `new BrowserWindow(options)` with the options object declared elsewhere
+        if (
+          !followAt(c + 2, window, false, -1, null, "options") &&
+          !passedTo(c + 2, window, 0, null, "options")
+        )
           hide(window, EVERYWHERE); // an import, or a parameter not every caller fills in
       } else if (!is(c + 2, "{") && !is(c + 2, ")")) {
         // `new BrowserWindow(dev ? {…} : {…})`, `new BrowserWindow(makeOptions())`
         hide(window, EVERYWHERE);
       }
       add(c + 1, window);
-    } else if (t.value === "webPreferences" && is(k + 1, ":") && is(k + 2, "{")) {
-      const start = tokens[k + 2]!.start;
-      // Already inside a window's range: nothing to add.
-      if (!ranges.some((r) => start >= r.start && start < r.end)) add(k + 2, null);
-    }
+    } else if (t.value === "webPreferences" && is(k + 1, ":") && is(k + 2, "{")) loose.push(k + 2);
   }
-  return { ranges, traced, viaName, opaque, externals, hides };
+  // A `webPreferences: {…}` that is not part of a window's options; one met before the window
+  // that takes it (an options object assigned in a constructor, read by a method below) is.
+  for (const open of loose) {
+    const start = tokens[open]!.start;
+    if (!ranges.some((r) => start >= r.start && start < r.end)) add(open, null);
+  }
+  return {
+    ranges,
+    traced: new Map([...traced].map(([name, decls]) => [name, [...decls]])),
+    viaName,
+    opaque,
+    externals,
+    hides,
+    declOf,
+  };
 }
 
 /** One member a preload script exposes to the page through contextBridge. */
@@ -840,10 +976,518 @@ export interface BridgeMember {
   channelRef?: { specifier: string; property: string; before?: string; after?: string };
 }
 
+/**
+ * A privileged object or function handed to the page as it is through contextBridge: the value
+ * of an exposed member (or the whole exposed value) is `ipcRenderer`, one of its methods as a
+ * reference, `shell`, the `electron` module, a Node module object (`fs`, `child_process`, …),
+ * `process` or `require`. A member that wraps such a value in a function of its own is not one.
+ * See docs/electron-findings.md ("Privileged objects exposed through contextBridge").
+ */
+export interface BridgeExposure {
+  /** The key the API is exposed under: `window.<api>`. */
+  api: string;
+  /** The member whose value it is; null when the exposed value as a whole is the object. */
+  member: string | null;
+  /** What it is: `ipcRenderer`, `ipcRenderer.on`, `shell`, `electron`, `fs`, `process`, … */
+  exposed: string;
+  /** The value as written (shortened), e.g. `o.ipcRenderer.send` in a minified bundle. */
+  evidence: string;
+  world: "main" | "isolated";
+  file: string;
+  line: number;
+  /**
+   * Set when the scope of the name could not be read to the end (see `Undecided`): the row is
+   * kept rather than dropped, and the limitation `bridge_exposures_undecided` names it.
+   */
+  undecided?: Undecided;
+}
+
 /** What one source file exposes, and whether a cap or an unclosed literal cut the reading short. */
 export interface BridgeScan {
   members: BridgeMember[];
+  /** Members (or whole values) that are a privileged object itself, not a wrapper around it. */
+  exposures: BridgeExposure[];
   truncated: boolean;
+}
+
+/** Members of the `electron` module whose object handed to a page is a privileged API. */
+const PRIVILEGED_ELECTRON = new Set(["ipcRenderer", "shell"]);
+/**
+ * Node modules whose object handed to a page gives it file, process, network or code access.
+ * Helpers that only compute or inform (`path`, `url`, `util`, `events`, `os`, …) are not listed.
+ */
+const PRIVILEGED_BUILTINS = new Set([
+  "fs",
+  "fs/promises",
+  "child_process",
+  "net",
+  "dgram",
+  "http",
+  "https",
+  "http2",
+  "tls",
+  "vm",
+  "worker_threads",
+  "cluster",
+  "module",
+  "process",
+]);
+
+const ASSIGNMENT_OPERATORS = new Set([
+  "=",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "%=",
+  "**=",
+  "<<=",
+  ">>=",
+  ">>>=",
+  "&=",
+  "|=",
+  "^=",
+  "&&=",
+  "||=",
+  "??=",
+]);
+
+/**
+ * Members of a privileged Node module that only inform, so handing one to a page by reference
+ * (`fs.statSync`, `process.env`) is not this observation. Every other member is reported:
+ * reading every acting member of every module is not possible, so the list is of the harmless
+ * ones, and a module without an entry has none. The module object itself is always reported.
+ */
+const HARMLESS_MEMBERS: Readonly<Partial<Record<string, RegExp>>> = {
+  fs: /^(stat|statSync|lstat|lstatSync|exists|existsSync|access|accessSync|constants|realpath|realpathSync)$/,
+  "fs/promises": /^(stat|lstat|access|constants|realpath)$/,
+  process: /^(env|versions|platform|arch|version|pid|cwd|uptime)$/,
+};
+
+/** `electron`, a privileged Node module (without `node:`), or null for any other specifier. */
+function privilegedModule(specifier: string): string | null {
+  if (specifier === "electron") return "electron";
+  const bare = specifier.replace(/^node:/, "");
+  return PRIVILEGED_BUILTINS.has(bare) ? bare : null;
+}
+
+/** One binding's identity, as the resolver gives it. */
+const idOf = (b: Binding | null): string | null => {
+  if (!b) return null;
+  switch (b.kind) {
+    case "value":
+      return `v${b.range[0]}`;
+    case "pattern":
+      return `p${b.from[0]}:${b.key}`;
+    case "param":
+      return `a${b.def.paramsAt}:${b.index}`;
+    case "function":
+      return `f${b.def.paramsAt}`;
+    case "class":
+      return `c${b.start}`;
+  }
+};
+
+/**
+ * Why an exposure is listed without the scope of its name read to the end: `budget`, the
+ * resolver's work budget for the file ran out; `scope`, two declarations in one function (or more
+ * than are kept) leave open which one is meant; `writes`, more writes of the name than are kept.
+ */
+export type Undecided = "budget" | "scope" | "writes";
+/** What a name stands for, flagged when that rests on a part that was not decided. */
+interface Meaning {
+  meaning: string;
+  undecided?: Undecided;
+}
+/** Declarations and writes kept per name for the scope reading. */
+const MAX_PLACES = 200;
+
+/**
+ * What names of one file stand for, as far as privileged objects go: `electron`, `ipcRenderer`,
+ * `shell` or a Node module (`fs`). Read from declarations on the token stream:
+ * `x = require("electron")`, `x = __toESM(require("fs"))`, `{ ipcRenderer: r } = require(…)`,
+ * `import { shell as s } from "electron"`, `import * as fs from "fs"`, `y = x.ipcRenderer` and
+ * `y = x`. Which declaration a use means is read by scope (`ExpressionResolver.binding`): a local
+ * or parameter of the same name elsewhere changes nothing, and a write counts only where it
+ * resolves to the same binding. Where the scope cannot be read, only a name the file declares
+ * once is taken. `declared` holds every name declared at all, so `process` and `require` are taken
+ * as the globals only where the file declares (or writes) no such name.
+ */
+function privilegedBindings(
+  tokens: Token[],
+  resolver: () => ExpressionResolver,
+): {
+  /** What the name at token `at` stands for there, by scope; null when it is nothing privileged. */
+  meaningAt: (name: string, at: number) => Meaning | null;
+  declared: Map<string, number>;
+} {
+  const is = (i: number, value: string): boolean =>
+    tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  const ident = (i: number): string | null =>
+    tokens[i]?.type === "ident" ? tokens[i]!.value : null;
+  const declared = new Map<string, number>();
+  /** Where each name is declared (its token), for the scope reading below. */
+  const declaredAt = new Map<string, number[]>();
+  /**
+   * Declarations by `const` or `let`, visible only in their block; `pattern` for a name of a
+   * destructuring pattern, whose own `{` is no block.
+   */
+  const blockScoped = new Map<number, "name" | "pattern">();
+  const count = (name: string, at: number, block: false | "name" | "pattern" = false): void => {
+    if (block) blockScoped.set(at, block);
+    declared.set(name, (declared.get(name) ?? 0) + 1);
+    const places = declaredAt.get(name) ?? [];
+    if (places.length < MAX_PLACES) places.push(at);
+    declaredAt.set(name, places);
+  };
+  /** `require("S")` at i: the privileged meaning of S and the token after `)`; else null. */
+  const requireAt = (i: number): { meaning: string | null; next: number } | null =>
+    ident(i) === "require" && is(i + 1, "(") && tokens[i + 2]?.type === "string" && is(i + 3, ")")
+      ? { meaning: privilegedModule(tokens[i + 2]!.value), next: i + 4 }
+      : null;
+  /** The right-hand side at i: a module, a wrapped module, a name, or a member of one. */
+  type Rhs = { kind: "module"; meaning: string | null } | { kind: "path"; path: string[] };
+  const rhsAt = (i: number): Rhs | null => {
+    const direct = requireAt(i);
+    if (direct) {
+      if (is(direct.next, ".") && ident(direct.next + 1) && !is(direct.next + 2, ".")) {
+        const member = ident(direct.next + 1)!;
+        return {
+          kind: "module",
+          meaning: direct.meaning === "electron" && PRIVILEGED_ELECTRON.has(member) ? member : null,
+        };
+      }
+      return { kind: "module", meaning: direct.meaning };
+    }
+    // `__toESM(require("fs"))`, `l(require("fs"))`, as bundlers write a default import
+    if (ident(i) && is(i + 1, "(")) {
+      const inner = requireAt(i + 2);
+      if (inner && (is(inner.next, ")") || (is(inner.next, ",") && is(inner.next + 2, ")"))))
+        return { kind: "module", meaning: inner.meaning };
+      return null;
+    }
+    const path: string[] = [];
+    let k = i;
+    while (ident(k) && path.length < 3) {
+      path.push(ident(k)!);
+      if (!is(k + 1, ".")) break;
+      k += 2;
+    }
+    return path.length ? { kind: "path", path } : null;
+  };
+  /** `name = rhs` declarations: the name's token and where the initializer starts. */
+  const simple: Array<{ name: string; at: number; init: number; rhs: Rhs }> = [];
+  const patterns: Array<{ entries: Array<[string, string, number]>; init: number; rhs: Rhs }> = [];
+  const imports: Array<[string, string, number]> = [];
+  for (let k = 0; k + 2 < tokens.length; k++) {
+    const t = tokens[k]!;
+    const declares =
+      (t.type === "ident" && (t.value === "const" || t.value === "let" || t.value === "var")) ||
+      (t.type === "punct" && t.value === ",");
+    if (t.type === "ident" && (t.value === "function" || t.value === "class") && ident(k + 1))
+      count(ident(k + 1)!, k + 1);
+    if (t.type === "ident" && t.value === "import") {
+      // import X from "S" | import * as X from "S" | import X, { a, b as c } from "S" | import { … }
+      let j = k + 1;
+      const local: Array<[string, string | null, number]> = [];
+      if (ident(j) && ident(j) !== "from" && !is(j, "*") && !is(j, "{")) {
+        local.push([ident(j)!, null, j]);
+        j++;
+        if (is(j, ",")) j++;
+      }
+      if (is(j, "*") && ident(j + 1) === "as" && ident(j + 2)) {
+        local.push([ident(j + 2)!, null, j + 2]);
+        j += 3;
+      } else if (is(j, "{")) {
+        for (j++; j < tokens.length && j < k + 4000 && !is(j, "}"); j++) {
+          const name = ident(j);
+          if (!name) continue;
+          if (ident(j + 1) === "as" && ident(j + 2)) {
+            local.push([ident(j + 2)!, name, j + 2]);
+            j += 2;
+          } else local.push([name, name, j]);
+        }
+        j++;
+      }
+      if (ident(j) === "from" && tokens[j + 1]?.type === "string") {
+        const spec = privilegedModule(tokens[j + 1]!.value);
+        for (const [name, member, at] of local) {
+          count(name, at);
+          if (!spec) continue;
+          if (member === null) imports.push([name, spec, at]);
+          else if (spec === "electron" && PRIVILEGED_ELECTRON.has(member))
+            imports.push([name, member, at]);
+        }
+      }
+      continue;
+    }
+    // A loop variable (`for (const ipcRenderer of …)`) is not counted here: it binds only inside
+    // its loop, which the scope check where the value is written reads.
+    if (!declares) continue;
+    // `let ipcRenderer;`: a declaration without a value (after the keyword only; after a comma
+    // the same shape is an argument list)
+    if (t.type === "ident" && ident(k + 1) && (is(k + 2, ";") || is(k + 2, ","))) {
+      count(ident(k + 1)!, k + 1, (t.value === "const" || t.value === "let") && "name");
+      continue;
+    }
+    if (ident(k + 1) && is(k + 2, "=") && !is(k + 3, "=")) {
+      count(ident(k + 1)!, k + 1, (t.value === "const" || t.value === "let") && "name");
+      const rhs = rhsAt(k + 3);
+      if (rhs) simple.push({ name: ident(k + 1)!, at: k + 1, init: k + 3, rhs });
+      continue;
+    }
+    if (!is(k + 1, "{")) continue;
+    // `{ ipcRenderer, shell: s } = …`: one level of a destructuring pattern
+    const entries: Array<[string, string, number]> = [];
+    let j = k + 2;
+    let d = 0;
+    // as long as a real pattern gets: an `electron` pattern cut short would drop its names
+    for (; j < tokens.length && j < k + 4000; j++) {
+      if (is(j, "{") || is(j, "[") || is(j, "(")) d++;
+      else if (is(j, "}") || is(j, "]") || is(j, ")")) {
+        if (d === 0) break;
+        d--;
+      } else if (d === 0 && ident(j) && (is(j - 1, "{") || is(j - 1, ","))) {
+        const key = ident(j)!;
+        if (is(j + 1, ":") && ident(j + 2)) {
+          entries.push([key, ident(j + 2)!, j + 2]);
+          j += 2;
+        } else entries.push([key, key, j]);
+      }
+    }
+    // only a pattern that is assigned declares: `f("api", { ipc: r })` is an object argument
+    if (!is(j, "}") || !is(j + 1, "=") || is(j + 2, "=")) continue;
+    for (const [, local, at] of entries)
+      count(local, at, (t.value === "const" || t.value === "let") && "pattern");
+    const rhs = rhsAt(j + 2);
+    if (rhs) patterns.push({ entries, init: j + 2, rhs });
+  }
+  // Every write of a name: `r = …`, `r ||= …`, `r++`. A write counts against a declaration only
+  // where it resolves to the same binding (below), so a local of that name elsewhere is no write.
+  const writes = new Map<string, number[]>();
+  for (let k = 0; k + 1 < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident" || is(k - 1, ".") || is(k - 1, "?.")) continue;
+    const next = tokens[k + 1]!;
+    const written =
+      (next.type === "punct" && ASSIGNMENT_OPERATORS.has(next.value)) ||
+      is(k - 1, "++") ||
+      is(k - 1, "--") ||
+      is(k + 1, "++") ||
+      is(k + 1, "--");
+    if (!written) continue;
+    const places = writes.get(t.value) ?? [];
+    if (places.length < MAX_PLACES) places.push(k);
+    writes.set(t.value, places);
+  }
+  /** Privileged declarations per name: the name's token and what it stands for. */
+  /** `id`: the binding the resolver gives the declaration (`idOf`), known from its shape. */
+  const privileged = new Map<string, Array<{ at: number; id?: string } & Meaning>>();
+  const recorded = new Set<number>();
+  /** Answers per binding; cleared whenever a declaration is recorded, as an answer may change. */
+  const byBinding = new Map<string, Meaning | null>();
+  const add = (name: string, at: number, m: Meaning, id?: string): boolean => {
+    if (recorded.has(at)) return false;
+    recorded.add(at);
+    const decls = privileged.get(name) ?? [];
+    decls.push({
+      meaning: m.meaning,
+      ...(m.undecided ? { undecided: m.undecided } : {}),
+      at,
+      ...(id ? { id } : {}),
+    });
+    privileged.set(name, decls);
+    byBinding.clear();
+    return true;
+  };
+  for (const [name, m, at] of imports) add(name, at, { meaning: m });
+  const ids = new Map<string, string | null>();
+  /**
+   * Where the scope cannot be read to the end, the exposure is kept and flagged, never dropped:
+   * the token rule (the name's privileged declarations; several of different meaning are named
+   * together).
+   */
+  const undecided = (decls: Array<{ at: number } & Meaning>, why: Undecided): Meaning => ({
+    meaning: [...new Set(decls.map((d) => d.meaning))].toSorted().join(" or "),
+    undecided: why,
+  });
+  /** One answer, flagged when it rests on a part that was not decided. */
+  const flag = (m: Meaning, why: Undecided | undefined): Meaning => {
+    const undecidedWhy = m.undecided ?? why;
+    return undecidedWhy ? { meaning: m.meaning, undecided: undecidedWhy } : { meaning: m.meaning };
+  };
+  /**
+   * Read by blocks and functions where the resolver does not bind the name (its own reading of the top
+   * level gave up, e.g. over a name used thousands of times): the declaration a position sees is
+   * the one of the innermost function around it that declares the name.
+   */
+  /** The scope of a declaration depends only on its position: read once (a walk of up to 50,000 tokens). */
+  const scopes = new Map<number, [number, number]>();
+  const byFunctions = (
+    name: string,
+    decls: Array<{ at: number } & Meaning>,
+    at: number,
+    r: ExpressionResolver,
+  ): Meaning | null => {
+    const all = declaredAt.get(name) ?? [];
+    const capped = all.length >= MAX_PLACES;
+    /**
+     * Where the declaration at p is visible: its block for `const`/`let` (the innermost `{` open
+     * around it: a declaration cannot stand in an object literal), else its function.
+     */
+    const scopeOf = (p: number): [number, number] => {
+      let known = scopes.get(p);
+      if (!known) scopes.set(p, (known = readScope(p)));
+      return known;
+    };
+    const readScope = (p: number): [number, number] => {
+      const kind = blockScoped.get(p);
+      if (kind) {
+        let skip = kind === "pattern";
+        for (let j = p - 1, d = 0; j >= 0 && j > p - 50_000; j--) {
+          const t = tokens[j]!;
+          if (t.type !== "punct") continue;
+          if (t.value === "}" || t.value === ")" || t.value === "]") d++;
+          // an open `(` around it (`for (let i …)`) is passed: the block decides
+          else if (t.value === "(" || t.value === "[") d = Math.max(0, d - 1);
+          else if (t.value === "{") {
+            if (d > 0) d--;
+            else if (skip) skip = false;
+            else {
+              const close = r.closeOf(j);
+              return [j, close < 0 ? tokens.length : close];
+            }
+          }
+        }
+      }
+      const f = r.functionAt(p);
+      return f ? [f.body[0], f.body[1]] : [-1, tokens.length];
+    };
+    /** The declaration visible at pos, or "tie" when two in one scope leave it open. */
+    const visible = (pos: number): number | "tie" => {
+      let depth = -2;
+      let found: number | "tie" = -1;
+      for (const p of all) {
+        const [start, end] = scopeOf(p);
+        if (!(start <= pos && pos <= end)) continue;
+        if (start > depth) [depth, found] = [start, p];
+        else if (start === depth) found = "tie";
+      }
+      return found;
+    };
+    const seen = visible(at);
+    if (seen === "tie" || capped) return undecided(decls, "scope");
+    const decl = decls.find((d) => d.at === seen);
+    if (!decl) return null;
+    let why: Undecided | undefined =
+      (writes.get(name) ?? []).length >= MAX_PLACES ? "writes" : undefined;
+    for (const w of writes.get(name) ?? []) {
+      if (w === decl.at || r.paramAround(w, name)) continue;
+      const v = visible(w);
+      if (v === "tie") why ??= "scope";
+      else if (v === decl.at) return null;
+    }
+    return flag(decl, why);
+  };
+  const meaningAt = (name: string, at: number): Meaning | null => {
+    const decls = privileged.get(name);
+    if (!decls) return null;
+    const r = resolver();
+    const bound = r.binding(at, name, true);
+    // used up: a null is no answer, and the exposure is kept
+    if (!bound && r.exhausted()) return undecided(decls, "budget");
+    const here = idOf(bound);
+    if (here === null) return byFunctions(name, decls, at, r);
+    // the same binding gives the same answer at every use: read once
+    const key = `${name}\u0000${here}`;
+    const known = byBinding.get(key);
+    if (known !== undefined) return known;
+    let budget = false;
+    const idAt = (pos: number): string | null => {
+      const k = `${name}\u0000${pos}`;
+      if (!ids.has(k)) {
+        const b = r.binding(pos, name, true);
+        if (!b && r.exhausted()) {
+          budget = true;
+          return null;
+        }
+        ids.set(k, idOf(b));
+      }
+      return ids.get(k)!;
+    };
+    const match = decls.find((d) => d.id === here || (d.id === undefined && idAt(d.at) === here));
+    let answer: Meaning | null;
+    if (!match) {
+      // The use is bound to a declaration of known shape that is none of these: decided. Only a
+      // declaration whose binding is not known (an import) may still be the one meant.
+      const open = decls.some((d) => d.id === undefined && idAt(d.at) === null);
+      answer = budget ? undecided(decls, "budget") : open ? byFunctions(name, decls, at, r) : null;
+    } else {
+      // Written again where the same binding is meant (`let r = ipcRenderer; r = {…}`): it may
+      // be anything where it is used. A write that resolves to no binding is not counted; one
+      // the budget left unread keeps the exposure, flagged.
+      let why: Undecided | undefined =
+        (writes.get(name) ?? []).length >= MAX_PLACES ? "writes" : undefined;
+      answer = match;
+      for (const w of writes.get(name) ?? []) {
+        if (w === match.at) continue;
+        const id = idAt(w);
+        if (id === here) {
+          answer = null;
+          break;
+        }
+        if (budget) why ??= "budget";
+      }
+      if (answer) answer = flag(answer, why);
+    }
+    byBinding.set(key, answer);
+    return answer;
+  };
+  const ofPath = (path: string[], at: number): Meaning | null => {
+    const base = meaningAt(path[0]!, at);
+    if (!base) return null;
+    // `__toESM(require("fs")).default`, `import_electron.default`: the module itself
+    const rest = path[1] === "default" ? path.slice(2) : path.slice(1);
+    if (rest.length === 0) return base;
+    if (rest.length === 1 && base.meaning === "electron" && PRIVILEGED_ELECTRON.has(rest[0]!))
+      return flag({ meaning: rest[0]! }, base.undecided);
+    return null;
+  };
+  // Rounds up to a fixed point: `const ipc = r` after `{ ipcRenderer: r } = require("electron")`.
+  for (let round = 0; round < 8; round++) {
+    let grew = false;
+    const set = (name: string, at: number, m: Meaning | null, id: string): void => {
+      if (m && add(name, at, m, id)) grew = true;
+    };
+    for (const { name, at, init, rhs } of simple)
+      set(
+        name,
+        at,
+        rhs.kind === "module"
+          ? rhs.meaning
+            ? { meaning: rhs.meaning }
+            : null
+          : ofPath(rhs.path, init),
+        `v${init}`,
+      );
+    for (const { entries, init, rhs } of patterns) {
+      const source =
+        rhs.kind === "module"
+          ? rhs.meaning
+            ? { meaning: rhs.meaning }
+            : null
+          : ofPath(rhs.path, init);
+      if (source?.meaning !== "electron") continue;
+      for (const [key, local, at] of entries)
+        if (PRIVILEGED_ELECTRON.has(key))
+          set(local, at, flag({ meaning: key }, source.undecided), `p${init}:${key}`);
+    }
+    if (!grew) break;
+  }
+  // `process = …` or `require = …` anywhere: then no longer the global
+  for (const name of ["process", "require"])
+    if (writes.has(name)) declared.set(name, Math.max(2, declared.get(name) ?? 0));
+  return { meaningAt, declared };
 }
 
 const MAX_BRIDGE_PER_FILE = 500;
@@ -1002,6 +1646,104 @@ export function bridgeMembers(
     }
     return false;
   };
+  const exposures: BridgeExposure[] = [];
+  let bindings: ReturnType<typeof privilegedBindings> | null = null;
+  /**
+   * The privileged object the value from token `from` to `end` (exclusive) is, as a whole: a
+   * path such as `ipcRenderer`, `o.ipcRenderer.send` or `require("fs")`, optionally a method of
+   * one with `.bind(…)`. Anything else (a function, a call, an object, a property of an object
+   * of the file) is null: a wrapper around a privileged object is not that object.
+   */
+  /**
+   * Whether `name` at `from` is another binding than the file's declaration: a parameter or loop
+   * variable around the value or around the exposing call (`for (const ipcRenderer of …)`,
+   * `forEach(ipcRenderer => …)`, `catch (ipcRenderer)`).
+   */
+  const shadowed = (call: number, from: number, name: string): boolean => {
+    if (boundLocally(call, name) || boundLocally(from, name)) return true;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    return resolver.paramAround(from, name) || resolver.paramAround(call, name);
+  };
+  const privileged = (
+    call: number,
+    from: number,
+    end: number,
+  ): { what: string; undecided?: Undecided } | null => {
+    if (from >= end || end - from > 40) return null;
+    let stop = end;
+    // `ipcRenderer.on.bind(ipcRenderer)`: the method itself, bound
+    let bound = false;
+    if (is(stop - 1, ")")) {
+      const open = openOf(stop - 1);
+      if (open > from + 2 && tokens[open - 1]?.value === "bind" && is(open - 2, ".")) {
+        stop = open - 2;
+        bound = true;
+      }
+    }
+    bindings ??= privilegedBindings(
+      tokens,
+      () => (resolver ??= new ExpressionResolver(tokens, context.constants)),
+    );
+    const { declared } = bindings;
+    let k = from;
+    let base: string | null = null;
+    let open: Undecided | undefined;
+    const first = tokens[k];
+    if (first?.type !== "ident") return null;
+    if (
+      first.value === "require" &&
+      is(k + 1, "(") &&
+      tokens[k + 2]?.type === "string" &&
+      is(k + 3, ")")
+    ) {
+      if (declared.has("require")) return null;
+      base = privilegedModule(tokens[k + 2]!.value);
+      k += 4;
+    } else {
+      const name = first.value;
+      const global =
+        (name === "process" || name === "require") && !declared.has(name) && k + 1 === stop;
+      const meant = bindings.meaningAt(name, from);
+      base = meant?.meaning ?? null;
+      open = meant?.undecided;
+      // a parameter or loop variable where the value is written is another binding (asked only
+      // for a name that means something, as the walk back is the costly part)
+      if ((global || base) && shadowed(call, from, name)) return null;
+      if (global) return bound ? null : { what: name };
+      k += 1;
+    }
+    if (!base) return null;
+    const path: string[] = [];
+    while (k < stop) {
+      if (!is(k, ".") || tokens[k + 1]?.type !== "ident") return null;
+      path.push(tokens[k + 1]!.value);
+      k += 2;
+    }
+    // `import_electron.default.ipcRenderer`, `cp.default`: a bundler's default import is the
+    // module itself
+    if (path[0] === "default") path.shift();
+    if (path.length > 2) return null;
+    let what = base;
+    let member: string | null = null;
+    for (const p of path) {
+      if (what === "electron" && member === null && PRIVILEGED_ELECTRON.has(p)) what = p;
+      else if (member === null && what !== "electron") member = p;
+      else return null;
+    }
+    // a Node module's member unless it only informs (`fs.statSync`, `process.env`)
+    if (member !== null && HARMLESS_MEMBERS[what]?.test(member)) return null;
+    if (bound && member === null) return null;
+    const exposed = member === null ? what : `${what}.${member}`;
+    return open ? { what: exposed, undecided: open } : { what: exposed };
+  };
+  /** The value text as written, bounded. */
+  const evidenceOf = (from: number, end: number): string =>
+    short(
+      tokens
+        .slice(from, end)
+        .map((x) => (x.type === "string" ? JSON.stringify(x.value) : x.value))
+        .join(""),
+    );
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
     if (t.type !== "ident") continue;
@@ -1025,6 +1767,24 @@ export function bridgeMembers(
           line,
           ...(channelRef ? { channelRef } : {}),
         });
+    };
+    /** Records the value from `from` to `end` when it is a privileged object as it is. */
+    const expose = (member: string | null, from: number, end: number): void => {
+      // Every exposure is a member too, so past this cap the member cap has already marked the
+      // file's inventory as cut (`context_bridge_truncated`).
+      if (exposures.length >= MAX_BRIDGE_PER_FILE) return;
+      const found = privileged(i, from, end);
+      if (!found) return;
+      exposures.push({
+        api,
+        member,
+        exposed: found.what,
+        evidence: evidenceOf(from, end),
+        world,
+        file,
+        line: tokens[from]!.line,
+        ...(found.undecided ? { undecided: found.undecided } : {}),
+      });
     };
     let at = i + 2;
     if (world === "isolated") {
@@ -1121,6 +1881,29 @@ export function bridgeMembers(
         : null;
     if (!opens) {
       push(null, null, t.line);
+      // `exposeInMainWorld("ipc", ipcRenderer)`: the value as a whole, up to the call's end;
+      // also under a key that is not read (`exposeInMainWorld(prefix + "ipc", ipcRenderer)`)
+      let start = simple ? at + 2 : -1;
+      for (let j = at, d = 0; start < 0 && j < tokens.length && j < at + 400; j++) {
+        if (is(j, "(") || is(j, "[") || is(j, "{")) d++;
+        else if (is(j, ")") || is(j, "]") || is(j, "}")) {
+          if (d === 0) break;
+          d--;
+        } else if (d === 0 && is(j, ",")) start = j + 1;
+      }
+      if (start >= 0) {
+        let end = start;
+        for (let d = 0; end < tokens.length && end < start + 60; end++) {
+          const p = tokens[end]!;
+          if (p.type !== "punct") continue;
+          if (p.value === "(" || p.value === "[" || p.value === "{") d++;
+          else if (p.value === ")" || p.value === "]" || p.value === "}") {
+            if (d === 0) break;
+            d--;
+          } else if (p.value === "," && d === 0) break;
+        }
+        if (is(end, ")") || (is(end, ",") && is(end + 1, ")"))) expose(null, start, end);
+      }
       continue;
     }
     /** One member, from token `from` to `end` (its `,` or `}`), of the object at `objectOpen`. */
@@ -1154,6 +1937,9 @@ export function bridgeMembers(
           ? nameToken.value
           : textOf(nameToken);
       if (name === null) return push(null, null, first.line);
+      // `{ ipcRenderer }`, `ipc: ipcRenderer`, `api.ipc = ipcRenderer`: the value itself
+      if (s === from && s + 1 === end && nameToken.type === "ident") expose(name, s, end);
+      else if (s === from && (is(s + 1, ":") || is(s + 1, "="))) expose(name, s + 2, end);
       const channels = new Set<string>();
       const refs: Array<NonNullable<BridgeMember["channelRef"]>> = [];
       // `on(CH, f)` and `off(CH, f)` in one member name one channel
@@ -1260,7 +2046,318 @@ export function bridgeMembers(
         }
     }
   }
-  return { members, truncated };
+  return { members, exposures, truncated };
+}
+
+/**
+ * A navigation or new-window handler registered on a webContents: `setWindowOpenHandler(…)`, or a
+ * listener for `will-navigate` / `will-frame-navigate`. Whether it checks anything is not read.
+ */
+export interface NavigationHandler {
+  kind: "setWindowOpenHandler" | "will-navigate" | "will-frame-navigate";
+  /**
+   * Whose webContents: the window's name as `windows` gives it (`win` for
+   * `win.webContents.setWindowOpenHandler`), `app` for a handler inside
+   * `app.on("web-contents-created", …)`, else the receiver as written.
+   */
+  target: string;
+  /** `window`: a window located in this file; `app`: every webContents; else as written. */
+  targetKind: "window" | "app" | "webContents";
+  /**
+   * The window's name or `app`; null for `targetKind: webContents`. With `kind` and `targetKind`
+   * this is the row's identity in a comparison, so a receiver a minifier renames is no change.
+   */
+  window: string | null;
+  /**
+   * For `setWindowOpenHandler`: `deny` or `allow` only when every return of the handler is an
+   * object literal whose `action` is that string literal; else `unknown`.
+   */
+  returns?: "deny" | "allow" | "unknown";
+  /** The receiver and call as written, shortened. */
+  evidence: string;
+  file: string;
+  line: number;
+}
+
+const NAVIGATION_EVENTS = new Set(["will-navigate", "will-frame-navigate"]);
+const LISTEN_METHODS = new Set(["on", "once", "addListener", "prependListener"]);
+const MAX_NAVIGATION_PER_FILE = 200;
+const NAVIGATION_WALK_BUDGET = 2_000_000;
+const MAX_CONTENTS_CREATED = 50;
+
+/**
+ * Reads navigation and new-window handlers from one file's tokens, so a name in a comment or a
+ * string is no call. `windowNames` are the names of the windows located in the same file.
+ */
+export function navigationHandlers(
+  tokens: Token[],
+  file: string,
+  windowNames: ReadonlySet<string>,
+  /** Scope of names: a parameter or local of the window's name is another binding. */
+  resolver?: ExpressionResolver,
+): NavigationHandler[] {
+  const out: NavigationHandler[] = [];
+  const is = (i: number, value: string): boolean =>
+    tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  const ident = (i: number): string | null =>
+    tokens[i]?.type === "ident" ? tokens[i]!.value : null;
+  // One budget for every bracket walk of the file: unclosed or repeated handlers stay linear. A
+  // walk past it finds no end, so its handler `returns` unknown.
+  let work = NAVIGATION_WALK_BUDGET;
+  /** The matching closing bracket of the opening one at `open`, or -1. */
+  const closeOf = (open: number): number => {
+    for (let d = 0, j = open; j < tokens.length && j < open + 200_000; j++) {
+      if (--work < 0) return -1;
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "[" || p.value === "{") d++;
+      else if (p.value === ")" || p.value === "]" || p.value === "}") {
+        d--;
+        if (d === 0) return j;
+      }
+    }
+    return -1;
+  };
+  /** The parameters and body of a function written at `k`: `(a, b) => …`, `a => …`, `function (a) {…}`. */
+  const fnAt = (
+    k: number,
+  ): { params: string[]; paramsAt: number; body: number; end: number } | null => {
+    let j = k;
+    if (ident(j) === "async") j++;
+    if (ident(j) === "function") {
+      j++;
+      if (ident(j)) j++;
+    }
+    const params: string[] = [];
+    const paramsAt = j;
+    if (is(j, "(")) {
+      const close = closeOf(j);
+      if (close < 0) return null;
+      for (let p = j + 1; p < close; p++)
+        if (ident(p) && (is(p - 1, "(") || is(p - 1, ","))) params.push(ident(p)!);
+        else if (ident(p) === null && (is(p - 1, "(") || is(p - 1, ","))) params.push("");
+      j = close + 1;
+    } else if (ident(j) && is(j + 1, "=>")) {
+      params.push(ident(j)!);
+      j++;
+    } else return null;
+    if (is(j, "=>")) j++;
+    if (is(j, "{")) {
+      const end = closeOf(j);
+      return end < 0 ? null : { params, paramsAt, body: j, end };
+    }
+    // an expression body: up to the `,` or `)` that ends the argument
+    let end = j;
+    for (let d = 0; end < tokens.length && end < j + 2000; end++) {
+      const p = tokens[end]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "[" || p.value === "{") d++;
+      else if (p.value === ")" || p.value === "]" || p.value === "}") {
+        if (d === 0) break;
+        d--;
+      } else if (p.value === "," && d === 0) break;
+    }
+    return { params, paramsAt, body: j, end: end - 1 };
+  };
+  // `app.on("web-contents-created", (event, contents) => { … })`: the callback's extent and the
+  // name of the webContents parameter
+  const created: Array<{ start: number; end: number; name: string; paramsAt: number }> = [];
+  for (let k = 0; k + 4 < tokens.length && created.length < MAX_CONTENTS_CREATED; k++) {
+    if (
+      !(is(k, ".") && LISTEN_METHODS.has(ident(k + 1) ?? "") && is(k + 2, "(")) ||
+      tokens[k + 3]?.type !== "string" ||
+      tokens[k + 3]!.value !== "web-contents-created" ||
+      !is(k + 4, ",")
+    )
+      continue;
+    const fn = fnAt(k + 5);
+    if (fn && fn.params[1])
+      created.push({ start: fn.body, end: fn.end, name: fn.params[1], paramsAt: fn.paramsAt });
+  }
+  /** The receiver chain ending right before the `.` at `dot`: its first token index. */
+  const receiverStart = (dot: number): number => {
+    let j = dot - 1;
+    if (!ident(j)) return -1;
+    while (is(j - 1, ".") && ident(j - 2)) j -= 2;
+    return j;
+  };
+  /** Whose webContents the receiver from `from` to the `.` at `dot` is. */
+  const targetOf = (
+    from: number,
+    dot: number,
+  ): Pick<NavigationHandler, "target" | "targetKind" | "window"> => {
+    const chain: string[] = [];
+    for (let j = from; j < dot; j += 2) chain.push(ident(j)!);
+    const asWritten = {
+      target: short(chain.join(".")),
+      targetKind: "webContents" as const,
+      window: null,
+    };
+    if (chain.length === 1) {
+      const name = chain[0]!;
+      const inside = created.find((c) => c.name === name && from > c.start && from < c.end);
+      // the callback's own parameter, not one of a function inside it of the same name
+      const bound = inside && resolver ? resolver.binding(from, name, true) : null;
+      if (
+        inside &&
+        (!resolver || (bound?.kind === "param" && bound.def.paramsAt === inside.paramsAt))
+      )
+        return { target: "app", targetKind: "app", window: "app" };
+      return asWritten;
+    }
+    if (chain.at(-1) !== "webContents") return asWritten;
+    const owner = chain.at(-2)!;
+    if (!windowNames.has(owner)) return asWritten;
+    // `win.webContents`: `win` must be the file's window there, not a parameter or another local
+    // of that name. A member chain (`this.mainWindow.webContents`) is matched by its name.
+    if (chain.length === 2 && resolver) {
+      if (resolver.paramAround(from, owner)) return asWritten;
+      const bound = resolver.binding(from, owner, true);
+      if (bound && bound.kind !== "value") return asWritten;
+      if (bound?.kind === "value" && ident(bound.range[0]) !== "new") return asWritten;
+    }
+    return { target: owner, targetKind: "window", window: owner };
+  };
+  /** `deny`/`allow` when every return of the handler at `k` is `{ action: "<that>" … }`. */
+  const returnsOf = (k: number): NonNullable<NavigationHandler["returns"]> => {
+    const fn = fnAt(k);
+    if (!fn) return "unknown";
+    /** The `action` literal of the object literal at `open`, or null. */
+    const actionOf = (open: number): string | null => {
+      const close = closeOf(open);
+      if (close < 0) return null;
+      let found: string | null = null;
+      for (let j = open + 1, d = 0; j < close; j++) {
+        if (--work < 0) return null;
+        const key = d === 0 && (is(j - 1, "{") || is(j - 1, ","));
+        // A spread or a computed key after the action may replace it (`{ action: "deny",
+        // ...extra }`, `[k]: "allow"`); one before it is replaced by it.
+        if (key && (is(j, "...") || is(j, "[")) && found !== null) return null;
+        if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
+        else if (is(j, "}") || is(j, ")") || is(j, "]")) d--;
+        else if (key) {
+          const t = tokens[j]!;
+          const plain =
+            (t.type === "ident" || t.type === "string" || t.type === "number") && is(j + 1, ":");
+          if (!plain) {
+            // An accessor, a method or a generator (`get action() {}`, `action() {}`, `*m() {}`):
+            // one named action is not a literal that was read, and any of them after the action
+            // may replace it. A shorthand of another name (`{ action: "deny", url }`) cannot.
+            const named =
+              t.value === "action" ||
+              ((t.value === "get" || t.value === "set" || t.value === "async" || is(j, "*")) &&
+                tokens[j + 1]?.value === "action");
+            const shorthand = t.type === "ident" && (is(j + 1, ",") || j + 1 === close);
+            if (named || (found !== null && !shorthand)) return null;
+            continue;
+          }
+          if (t.value !== "action") continue;
+          const v = tokens[j + 2];
+          // the later of two literal keys wins, as in JavaScript; anything else is not read
+          if (!is(j + 1, ":") || v?.type !== "string" || !(is(j + 3, ",") || j + 3 === close))
+            return null;
+          found = v.value;
+        }
+      }
+      return found;
+    };
+    /**
+     * The `action` of the value from `start` to `stop` (inclusive): an object literal, or the last
+     * part of a comma sequence (`open(url), { action: "deny" }`, as minifiers write it).
+     */
+    const valueAction = (start: number, stop: number): string | null => {
+      let last = start;
+      for (let j = start, d = 0; j <= stop; j++) {
+        if (--work < 0) return null;
+        if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
+        else if (is(j, "}") || is(j, ")") || is(j, "]")) d--;
+        else if (d === 0 && is(j, ",")) last = j + 1;
+      }
+      return is(last, "{") && closeOf(last) === stop ? actionOf(last) : null;
+    };
+    const values = new Set<string | null>();
+    if (!is(fn.body, "{")) {
+      // `() => ({ action: "deny" })`, `() => (open(url), { action: "deny" })`
+      if (is(fn.body, "(") && closeOf(fn.body) === fn.end)
+        values.add(valueAction(fn.body + 1, fn.end - 1));
+      else return "unknown";
+    } else {
+      for (let j = fn.body + 1; j < fn.end; j++) {
+        if (--work < 0) return "unknown";
+        // a function inside may return something of its own: not decided here
+        if (ident(j) === "function" || is(j, "=>")) return "unknown";
+        if (ident(j) !== "return") continue;
+        // the returned value runs to the `;` or the `}` that ends the statement
+        let stop = j + 1;
+        for (let d = 0; stop < fn.end; stop++) {
+          if (--work < 0) return "unknown";
+          if (is(stop, "{") || is(stop, "(") || is(stop, "[")) d++;
+          else if (is(stop, "}") || is(stop, ")") || is(stop, "]")) {
+            if (d === 0) break;
+            d--;
+          } else if (d === 0 && is(stop, ";")) break;
+        }
+        values.add(stop > j + 1 ? valueAction(j + 1, stop - 1) : null);
+      }
+      // without a return the handler gives undefined: not a literal that was read
+      if (!values.size) return "unknown";
+      // A path that ends without a return gives undefined too: the last statement of the body
+      // must be a return (`if (ok) return { action: "deny" };` alone is not read as deny).
+      let last = -1;
+      for (let j = fn.body + 1, d = 0, next = fn.body + 1; j < fn.end; j++) {
+        if (j === next && !is(j, ";")) last = j;
+        if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
+        else if (is(j, "}") || is(j, ")") || is(j, "]")) {
+          d--;
+          if (d === 0 && is(j, "}")) next = j + 1;
+        } else if (d === 0 && is(j, ";")) next = j + 1;
+        else if (j === next && is(j, ";")) next = j + 1;
+      }
+      if (last === -1 || ident(last) !== "return") return "unknown";
+    }
+    if (values.size !== 1) return "unknown";
+    const [only] = [...values];
+    return only === "deny" || only === "allow" ? only : "unknown";
+  };
+  for (let k = 1; k + 2 < tokens.length && out.length < MAX_NAVIGATION_PER_FILE; k++) {
+    if (!is(k, ".") && !is(k, "?.")) continue;
+    const method = ident(k + 1);
+    if (!method || !is(k + 2, "(")) continue;
+    let kind: NavigationHandler["kind"] | null = null;
+    if (method === "setWindowOpenHandler") kind = "setWindowOpenHandler";
+    else if (
+      LISTEN_METHODS.has(method) &&
+      tokens[k + 3]?.type === "string" &&
+      NAVIGATION_EVENTS.has(tokens[k + 3]!.value) &&
+      is(k + 4, ",")
+    )
+      kind = tokens[k + 3]!.value as NavigationHandler["kind"];
+    if (!kind) continue;
+    const from = receiverStart(k);
+    if (from < 0) continue;
+    const { target, targetKind, window } = targetOf(from, k);
+    const call =
+      kind === "setWindowOpenHandler"
+        ? `${tokens
+            .slice(from, k + 2)
+            .map((x) => x.value)
+            .join("")}(…)`
+        : `${tokens
+            .slice(from, k + 2)
+            .map((x) => x.value)
+            .join("")}(${JSON.stringify(kind)}, …)`;
+    out.push({
+      kind,
+      target,
+      targetKind,
+      window,
+      ...(kind === "setWindowOpenHandler" ? { returns: returnsOf(k + 3) } : {}),
+      evidence: short(call),
+      file,
+      line: tokens[k + 1]!.line,
+    });
+  }
+  return out;
 }
 
 export interface JsEdge {
@@ -1298,6 +2395,10 @@ export interface JsAppInfo {
   windows: WindowSummary[];
   /** What preload scripts expose to pages through contextBridge, member by member. */
   contextBridge: BridgeMember[];
+  /** Exposed members (or values) that are a privileged object itself, not a wrapper. */
+  bridgeExposures: BridgeExposure[];
+  /** setWindowOpenHandler and will-navigate / will-frame-navigate handlers, with file and line. */
+  navigationHandlers: NavigationHandler[];
   ipcChannels: Array<{
     channel: string;
     senders: string[];
@@ -1346,7 +2447,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 7;
+export const JS_SCAN_SCHEMA = 13;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -1385,6 +2486,8 @@ export interface JsScanFacts {
    */
   enableSandbox: "always" | "maybe" | false;
   contextBridge: BridgeMember[];
+  bridgeExposures: BridgeExposure[];
+  navigationHandlers: NavigationHandler[];
   endpoints: AppCandidate[];
   storage: AppCandidate[];
   urls: AppCandidate[];
@@ -1401,6 +2504,8 @@ export interface JsScanFacts {
   candidatesCapped: boolean;
   /** A file had more calls on undeclared names than are kept for cross-file resolution. */
   ambientCapped: boolean;
+  /** A file or the app had more navigation handlers than are kept. */
+  navigationCapped?: boolean;
   /** Limitations that belong to single files (e.g. a token budget that ran out). */
   limitations: Limitation[];
 }
@@ -1420,6 +2525,8 @@ export function emptyJsScanFacts(): JsScanFacts {
     windows: [],
     enableSandbox: false,
     contextBridge: [],
+    bridgeExposures: [],
+    navigationHandlers: [],
     endpoints: [],
     storage: [],
     urls: [],
@@ -1800,6 +2907,7 @@ export interface FileTokenFacts {
   preferenceObjects: Array<[number, number]>;
   candidates: ReturnType<typeof findCandidates> | null;
   bridge: ReturnType<typeof bridgeMembers> | null;
+  navigation: NavigationHandler[] | null;
 }
 
 export function readFileTokens(path: string, source: string): FileTokenFacts {
@@ -1818,6 +2926,7 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
   let ambient: ReturnType<typeof collectAmbient> | null = null;
   let candidates: ReturnType<typeof findCandidates> | null = null;
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
+  let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
     onTokens: (tokens, truncated, context) => {
       if (source.includes("enableSandbox")) {
@@ -1859,45 +2968,92 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
         ambient = collectAmbient(tokens, context.aliases);
       if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source)) {
         let resolver: ExpressionResolver | null = null;
-        located = windowRanges(
+        const { declOf, ...where } = windowRanges(
           tokens,
           context.aliases,
           () => (resolver ??= new ExpressionResolver(tokens, context.constants)),
           (k) => {
             const name = tokens[k];
+            if (name?.type !== "ident") return null;
+            if (!(tokens[k + 1]?.type === "punct" && tokens[k + 1]!.value === "."))
+              return context.constants.importOf(name.value, k);
             const member = tokens[k + 2];
-            if (name?.type !== "ident" || member?.type !== "ident") return null;
-            if (!(tokens[k + 1]?.type === "punct" && tokens[k + 1]!.value === ".")) return null;
+            if (member?.type !== "ident") return null;
             const specifier = context.constants.requireOf(name.value, k);
             return specifier ? { specifier, property: member.value } : null;
           },
         );
+        located = where;
         ranges = located.ranges;
         // `prefs.sandbox = false`, `prefs["sandbox"] = false`, `Object.assign(prefs, …)` on an
         // object that was followed as window options: what the declaration says no longer
         // holds, so the key reads as computed.
-        const { traced } = located;
+        const traced = new Map([...located.traced].map(([name, decls]) => [name, new Set(decls)]));
         const is = (i: number, value: string): boolean =>
           tokens[i]?.type === "punct" && tokens[i]!.value === value;
         const everyKey = (): void => {
           for (const key of BOOLEAN_KEYS) mutated.add(key);
           mutated.add("preload");
         };
-        const declared = new Set<string>();
+        /** Whether the bracket right around token k opens the body of a class. */
+        const classBodyAround = (k: number): boolean => {
+          for (let d = 0, j = k - 1; j >= 0 && j > k - 20_000; j--) {
+            const p = tokens[j]!;
+            if (p.type !== "punct") continue;
+            if (p.value === "}" || p.value === ")" || p.value === "]") d++;
+            else if (p.value === "{" || p.value === "(" || p.value === "[") {
+              if (d > 0) {
+                d--;
+                continue;
+              }
+              return (
+                p.value === "{" &&
+                (resolver ??= new ExpressionResolver(tokens, context.constants))
+                  .classesOf()
+                  .some((c) => c.start === j)
+              );
+            }
+          }
+          return false;
+        };
+        /** NAME at k as an entry of a declaration's pattern or an import: `{ NAME } = …`, `{ NAME } from`. */
+        const inPattern = (k: number): boolean => {
+          const entry =
+            is(k - 1, "{") ||
+            is(k - 1, ",") ||
+            (is(k - 1, ":") && tokens[k - 2]?.type === "ident") ||
+            tokens[k - 1]?.value === "as";
+          if (!entry || !(is(k + 1, ",") || is(k + 1, "}"))) return false;
+          for (let d = 0, j = k + 1; j < tokens.length && j < k + 400; j++) {
+            if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
+            else if (is(j, ")") || is(j, "]")) d--;
+            else if (is(j, "}")) {
+              if (d === 0)
+                return (is(j + 1, "=") && !is(j + 2, "=")) || tokens[j + 1]?.value === "from";
+              d--;
+            }
+            if (d < 0) return false;
+          }
+          return false;
+        };
         for (let k = 0; traced.size && k + 1 < tokens.length; k++) {
           const t = tokens[k]!;
           if (t.type !== "ident" || !traced.has(t.value) || is(k - 1, ".")) continue;
-          // The declaration that was followed: `name = {` or `name = Object.freeze({`, once.
-          const frozen =
-            tokens[k + 2]?.value === "Object" &&
-            is(k + 3, ".") &&
-            tokens[k + 4]?.value === "freeze" &&
-            is(k + 5, "(") &&
-            is(k + 6, "{");
-          if (is(k + 1, "=") && (is(k + 2, "{") || frozen) && !declared.has(t.value)) {
-            declared.add(t.value);
-            continue;
-          }
+          // a key of an object literal (`{ webPreferences: … }`) is not a use of the name
+          if (is(k + 1, ":") && (is(k - 1, "{") || is(k - 1, ","))) continue;
+          // nor is a field of a class body (`webPreferences = { … }` in `class W { … }`)
+          if (is(k + 1, "=") && !is(k + 2, "=") && classBodyAround(k)) continue;
+          const decls = traced.get(t.value)!;
+          // Another binding of the same name (a parameter, a declaration in another function, as
+          // minifiers reuse short names) is another object. Where the binding is not known, the
+          // use counts.
+          const bound = declOf(k);
+          if (bound === "other") continue;
+          if (typeof bound === "number" && !decls.has(bound)) continue;
+          if (bound === "pattern" && !decls.has(-1)) continue;
+          // The declaration that was followed, or the pattern or import that binds the name.
+          if (is(k + 1, "=") && !is(k + 2, "=") && decls.has(k + 2)) continue;
+          if (decls.has(-1) && inPattern(k)) continue;
           // A source of `Object.assign(target, …, name, …)`: read, not changed. Only the first
           // argument, the target, is written to.
           if (is(k - 1, ",") && (is(k + 1, ",") || is(k + 1, ")"))) {
@@ -1937,7 +3093,12 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
                 (is(k - 3, ".") && tokens[k - 5]?.value === "new")) &&
               WINDOW_CLASSES.has(tokens[k - 2]?.value ?? "")) ||
             (inWindow &&
-              ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") || is(k - 1, "...")));
+              ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
+                is(k - 1, "...") ||
+                // the shorthand `{ webPreferences }`
+                (t.value === "webPreferences" &&
+                  (is(k - 1, "{") || is(k - 1, ",")) &&
+                  (is(k + 1, ",") || is(k + 1, "}")))));
           if (asOptions) continue;
           // A write to one key: `name.key =`, `name.webPreferences.key =`, `name["key"] =`.
           let at = k + 1;
@@ -2051,6 +3212,13 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
       if (CAN_HOLD_CANDIDATES.test(source)) {
         candidates = findCandidates(tokens, source, undefined, context.aliases, context.constants);
       }
+      if (/setWindowOpenHandler|will-navigate|will-frame-navigate/.test(source))
+        navigation = navigationHandlers(
+          tokens,
+          path,
+          new Set(ranges.flatMap((r) => (r.window !== null && r.name ? [r.name] : []))),
+          new ExpressionResolver(tokens, context.constants),
+        );
       if (!source.includes("exposeIn")) return;
       bridge = bridgeMembers({ tokens, truncated, context }, path);
     },
@@ -2068,6 +3236,7 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
     preferenceObjects: [...preferenceObjects],
     candidates,
     bridge,
+    navigation,
   };
 }
 
@@ -2266,6 +3435,20 @@ export function analyzeJavaScriptTree(
       const room = MAX_BRIDGE - contextBridge.length;
       contextBridge.push(...bridge.members.slice(0, room));
       if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
+      const exposures = (facts.bridgeExposures ??= []);
+      const left = MAX_BRIDGE - exposures.length;
+      exposures.push(...(bridge.exposures ?? []).slice(0, left));
+      if ((bridge.exposures ?? []).length > left) bridgeCapped = true;
+    }
+    if (tokenFacts.navigation?.length) {
+      const handlers = (facts.navigationHandlers ??= []);
+      const left = MAX_PREFS - handlers.length;
+      handlers.push(...tokenFacts.navigation.slice(0, left));
+      if (
+        tokenFacts.navigation.length > left ||
+        tokenFacts.navigation.length >= MAX_NAVIGATION_PER_FILE
+      )
+        facts.navigationCapped = true;
     }
     if (scan.wrappersCapped && facts.limitations.length < 200)
       facts.limitations.push({
@@ -2484,8 +3667,21 @@ export function analyzeJavaScriptTree(
         if (partial) for (const key of ["preload", ...BOOLEAN_KEYS]) read.unknown.add(key);
         const window = r.window;
         const windowLine = lineAt(r.start);
+        // Where the evaluation cannot read a key, the rows as written stay, and the key is not
+        // known for the window, unless the code writes it after the last place that could not
+        // be followed: then it stands, as for every located window below.
+        const hiddenUpTo = opaque.get(window)!;
+        const standing = found
+          .filter((o) => o.window === window && o.order > hiddenUpTo && read.unknown.has(o.key))
+          .map((o) => o.key);
+        const readKeys = new Set(read.settings.map((x) => x.key));
         for (let i = found.length - 1; i >= 0; i--)
-          if (found[i]!.window === window) found.splice(i, 1);
+          if (
+            found[i]!.window === window &&
+            (!read.unknown.has(found[i]!.key) || readKeys.has(found[i]!.key))
+          )
+            found.splice(i, 1);
+        for (const key of standing) read.unknown.delete(key);
         let order = 0;
         const seen = new Set<string>();
         for (const { key, value, src } of read.settings) {
@@ -2754,11 +3950,36 @@ export function analyzeJavaScriptTree(
       code: "context_bridge_truncated",
       message: `The contextBridge inventory is incomplete: a file exposes more than ${MAX_BRIDGE_PER_FILE} members, the app more than ${MAX_BRIDGE}, or an exposed object could not be read to its end.`,
     });
+  const bridgeExposures = facts.bridgeExposures ?? [];
+  const navigation = facts.navigationHandlers ?? [];
+  // An unreadable entry whose value is itself a privileged object is established as such; any
+  // other one may expose anything, which is said rather than reading "none exposed".
+  const unestablished = contextBridge.filter(
+    (b) =>
+      b.member === null &&
+      !bridgeExposures.some(
+        (x) => x.member === null && x.file === b.file && x.line === b.line && x.api === b.api,
+      ),
+  ).length;
   const bridgeUnread = contextBridge.filter((b) => b.member === null).length;
   if (bridgeUnread)
     limitations.push({
       code: "context_bridge_members_unreadable",
-      message: `${bridgeUnread} contextBridge ${bridgeUnread === 1 ? "entry is" : "entries are"} not a plain member of an object literal in the same file (a value built elsewhere, a spread or a computed key), so the exposed members are not all listed.`,
+      message: `${bridgeUnread} contextBridge ${bridgeUnread === 1 ? "entry is" : "entries are"} not a plain member of an object literal in the same file (a value built elsewhere, a spread or a computed key), so the exposed members are not all listed.${unestablished ? ` Whether ${unestablished === 1 ? "it exposes" : "they expose"} a privileged object directly (collection bridgeExposures) is not established.` : ""}`,
+    });
+  const undecidedExposures = bridgeExposures.filter((x) => x.undecided);
+  if (undecidedExposures.length)
+    limitations.push({
+      code: "bridge_exposures_undecided",
+      message: `${undecidedExposures.length} of the bridgeExposures ${undecidedExposures.length === 1 ? "row is" : "rows are"} listed although the scope of the exposed name could not be read to the end (field undecided: budget = the file's resolver budget ran out, scope = two declarations in one function, writes = more writes than are kept): ${list(
+        undecidedExposures.map((x) => `${x.exposed} at ${x.file}:${x.line} (${x.undecided})`),
+        5,
+      )}. Such a row may be another binding of the same name; it is kept so that no exposure is dropped.`,
+    });
+  if (facts.navigationCapped)
+    limitations.push({
+      code: "navigation_handlers_truncated",
+      message: `More navigation handlers exist than the ${MAX_NAVIGATION_PER_FILE} per file / ${MAX_PREFS} in total that are recorded.`,
     });
   if (prefsCapped)
     limitations.push({
@@ -3276,6 +4497,65 @@ export function analyzeJavaScriptTree(
         location: `${contextBridge[0]!.file}:${contextBridge[0]!.line}`,
       });
     }
+    if (bridgeExposures.length) {
+      const named = (x: BridgeExposure): string => {
+        const api = x.api.startsWith("[") ? `window${x.api}` : `window.${x.api}`;
+        return `${x.member === null ? api : `${api}.${x.member}`} (${x.exposed})`;
+      };
+      const first = bridgeExposures[0]!;
+      findings.push({
+        kind: "electron.bridge-exposure",
+        title:
+          bridgeExposures.length === 1
+            ? `${first.exposed} exposed to pages as it is through contextBridge: ${named(first)}`
+            : `${bridgeExposures.length} privileged objects exposed to pages as they are through contextBridge: ${list(bridgeExposures.map(named), 4)}`,
+        detail: `${list(
+          bridgeExposures.map((x) => `${x.evidence} at ${x.file}:${x.line}`),
+          4,
+        )}. Electron's security guide: "You should not directly expose Electron's APIs, especially IPC, to untrusted web content in your preload scripts." Page scripts get the object or method itself, not a function that narrows its use (collection bridgeExposures).`,
+        // the value is read as written; that the name is electron's or Node's is read from the
+        // file's declarations, not from a run
+        confidence: "inferred",
+        location: `${first.file}:${first.line}`,
+      });
+    }
+    if (navigation.length || (facts.windows ?? []).length) {
+      const opens = navigation.filter((h) => h.kind === "setWindowOpenHandler");
+      const navs = navigation.filter((h) => h.kind !== "setWindowOpenHandler");
+      const targets = (rows: NavigationHandler[], withReturns: boolean): string =>
+        list(
+          [
+            ...new Set(
+              rows.map((h) =>
+                withReturns ? `${h.target}, returns ${h.returns ?? "unknown"}` : h.target,
+              ),
+            ),
+          ],
+          4,
+        );
+      const read = `${coverage.scanned} of ${coverage.total} JavaScript files read`;
+      const firstRow = navigation[0];
+      const firstWindow = (facts.windows ?? [])[0];
+      findings.push({
+        kind: "electron.navigation",
+        title: `${
+          opens.length
+            ? `setWindowOpenHandler for ${targets(opens, true)}`
+            : "no setWindowOpenHandler found in the files read"
+        }; ${
+          navs.length
+            ? `${[...new Set(navs.map((h) => h.kind))].join("/")} listener for ${targets(navs, false)}`
+            : "no will-navigate or will-frame-navigate listener found in the files read"
+        }`,
+        detail: `Read from the code (collection navigationHandlers); whether a handler checks the URL or the sender is not read, and "returns deny" or "returns allow" is said only where the returned action is a literal. A handler that is not found may still exist: ${read}, and one registered through code hexvero does not follow (a computed event name, a helper that is handed the webContents) is not seen. Electron's security guide, sections 13 and 14: limit navigation with will-navigate, and register a window open handler to "deny any unexpected window creation".`,
+        confidence: "inferred",
+        location: firstRow
+          ? `${firstRow.file}:${firstRow.line}`
+          : firstWindow
+            ? `${firstWindow.file}:${firstWindow.line}`
+            : undefined,
+      });
+    }
     if (preloadScripts.size)
       findings.push({
         kind: "electron.preload",
@@ -3338,7 +4618,7 @@ export function analyzeJavaScriptTree(
   if (!coverage.complete)
     for (const finding of findings)
       if (
-        /^(electron\.(ipc|context-bridge|preload)|js\.(endpoints|storage|minified))$/.test(
+        /^(electron\.(ipc|context-bridge|bridge-exposure|navigation|preload)|js\.(endpoints|storage|minified))$/.test(
           finding.kind,
         )
       ) {
@@ -3362,6 +4642,8 @@ export function analyzeJavaScriptTree(
     webPreferences,
     windows,
     contextBridge,
+    bridgeExposures,
+    navigationHandlers: navigation,
     endpoints,
     storage,
     urls: facts.urls,

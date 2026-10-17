@@ -64,13 +64,12 @@ const externalBaseApp = (sandbox: string) => ({
   "main.js": [
     'import { BrowserWindow } from "electron";',
     'import windowConfig from "./config/windows.js";',
-    "class Main {",
-    "  options = {",
-    "    ...windowConfig.frame,",
-    `    webPreferences: Object.assign({ preload: "p.js" }, windowConfig.secure, { sandbox: ${sandbox} }),`,
-    "  };",
-    "  open() { this.window = new BrowserWindow(this.options); }",
-    "}",
+    // a module constant (a class field is not read: it can be changed in ways the text hides)
+    "const options = {",
+    "  ...windowConfig.frame,",
+    `  webPreferences: Object.assign({ preload: "p.js" }, windowConfig.secure, { sandbox: ${sandbox} }),`,
+    "};",
+    "export function open() { return new BrowserWindow(options); }",
   ].join("\n"),
 });
 

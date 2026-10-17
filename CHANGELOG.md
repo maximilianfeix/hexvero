@@ -6,6 +6,79 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Web UI
+
+- Release gate in the Compare view: a policy editor prefilled with `examples/policy.json`
+  (embedded at build time), **Run check**, the status as a word and a sign, each finding with
+  rule, key, places (linked to the source lines), basis and fingerprint, unknown findings marked,
+  undecidable rules with their gaps in plain words, and **Download SARIF** / **Download
+  Markdown**. An invalid policy lists every issue. Screenshots `docs/screenshots/ui-release-gate*.png`,
+  recording `docs/demo/ui-review.mp4`.
+
+### Server
+
+- `POST /api/check?a=<id>&b=<id>[&format=json|markdown|sarif]` (contract C7): the policy JSON is
+  the request body (at most 1 MiB, read with `parsePolicy`); the server reads no policy or
+  baseline path from the client. `400 invalid_policy` carries `details.issues`; Markdown and SARIF
+  are downloads with a file name. Behind the existing token, Host and Origin checks.
+- `MAX_POLICY_BYTES` is exported from `@hexvero/core`.
+
+### Electron analysis
+
+- Window options built from module constants and factories are read: `Object.assign({}, A, B, { … })` and `{ ...A, ...B, key: v }` with `A`, `B` constants of the same or another module (the later write wins), the shorthand `{ webPreferences }` (it was read as no webPreferences at all, so a version default could stand in for a value the code sets), and esbuild's `__toESM(require_x()).default` of a CommonJS module (by the helper's node-mode argument when it is a literal, or when the module does not mark itself as an ES module). A name is followed to the declaration it has where it is used, so a shadowing parameter, local, `catch (…)` binding or declaration in a block at the top of the file, or a minifier's short name reused in another function, no longer stands for it (the evaluation of options also read a top-level constant through such a block before), and a change to the base or to the merged object after the merge makes the value computed. An `Object.assign` argument that cannot be read makes the keys before it computed instead of hiding the whole call. Where the evaluation of a window's options cannot read a key, the rows as written stay. Options taken from a field of an object (`new BrowserWindow(this.options)`, `webPreferences: this.prefs`) are no longer followed at all, also not in the form earlier releases read by name (`options = {…}` in a class body): a field can be changed in more ways than a reading of the text sees (`Object.assign(this, …)`, `Reflect.set`, a computed key, an alias of a nested object), so those windows read as computed with `window_options_unresolved`. A change made to an imported options object in another module is not seen (docs/electron-findings.md, Not read). holdout5 (development set): window settings 17 / 35 / 0 to 32 / 20 / 0 over the four inputs (each 8 / 5 / 0: the editor and help windows read, the preview window's class field not), webPreferences changes v1 to v2 0 / 2 / 0 to 1 / 1 / 0. time-tracker window settings 11 / 0 / 0 (plain) and 8 / 3 / 0 (bundled, minified) to 7 / 4 / 0 each, its v1 to v2 webPreferences changes 2 / 0 / 0 to 1 / 1 / 0 (its main window takes a class field). A module that a minified bundle binds in a declaration list (`var a = …, u = h(S())`) is read as that module (not where gaps are shown); music-player minified: IPC channels 12 / 8 / 0 to 20 / 0 / 0, as in its plain and bundled builds. Stored scans are read again.
+
+- New collection `bridgeExposures` and finding `electron.bridge-exposure`: a preload that hands a
+  privileged object to pages as it is through contextBridge (`ipcRenderer`, a method of it such as
+  `ipcRenderer.on` passed as a reference or bound, `shell`, the `electron` module, a Node module
+  object such as `fs` or `child_process` or one of its members, `process`, `require`), with `api`,
+  `member`, `exposed`, the value as written (`evidence`), file and line. Every member of a Node
+  module counts except a short list that only informs (`fs.stat*`, `fs.exists*`, `process.env`,
+  …); `os` is not listed. Plain, esbuild-bundled and minified preloads give the same rows (also a
+  bundler's default import, `e.default.ipcRenderer`, and a value under a key that is not read). A
+  wrapper function, or a parameter, loop variable, `catch` binding or local of the same name, or a
+  name written again after its declaration, is not the privileged object; a declaration or write
+  of the same name in another function does not hide the real one.
+- No exposure is dropped where the analysis cannot decide: when the resolver's budget runs out,
+  two declarations in one scope leave the binding open, or there are more declarations or writes
+  than are kept, the row is kept with `undecided: budget | scope | writes`, and the new limitation
+  `bridge_exposures_undecided` lists it. An unreadable exposed value says "not established" through
+  `context_bridge_members_unreadable`. Each declaration's scope is read once, so hostile inputs stay
+  fast (198 nested blocks with 400 exposures: 0.6 s).
+- New collection `navigationHandlers` and finding `electron.navigation`: `setWindowOpenHandler`,
+  `will-navigate` and `will-frame-navigate` registrations per window (or `app` for
+  `web-contents-created`), with `returns: deny | allow` only where the returned `action` is a
+  literal and nothing next to it can replace it (a spread, a computed key, an accessor or method,
+  a path that ends without a return make it `unknown`). `win.webContents` through a parameter, and
+  `contents` of a function inside `web-contents-created`, read `targetKind: webContents`. Rows
+  carry `window` (name, `app` or null). Absence reads "no … found in the files read". New
+  limitation code `navigation_handlers_truncated`.
+- Both collections compare (identity without lines, lines as positions, the written evidence and a
+  minified receiver's name not a change of their own) and come after `windows` in release reports
+  and the compare view.
+  Stored scans are read again. Rules and sources:
+  docs/electron-findings.md.
+
+### Compare and reports
+
+- Imported modules (`externals`) are matched by specifier: a changed import count is one changed
+  row, not one removal and one addition (Electron Fiddle 0.38.0 → 0.39.0 on 0.9.0: 10 false
+  removals, now none).
+- When both builds have the same file name (two `app.asar`), the reproduce line uses
+  `<before>`/`<after>` and a note names both sha256 prefixes; reports still hold no directories.
+- Control characters in a name from the target (a heading, a table cell, the note) are shown as
+  `\u{…}` in Markdown reports, so an escape sequence does not reach a terminal.
+
+### Interface map
+
+- A row with more than 20 ends links to the target's ipc list for that channel, where every end
+  is listed ("1 of 30 ends shown; all of them are in the ipc list").
+
+### CLI
+
+- The MCP SDK is loaded only for `hexvero mcp`. Warm `compare`, `compare --report` and `check`
+  are 20–29 % faster (interleaved runs, 9 each, Claude.app vs Discord; docs/benchmarks.md);
+  outputs are byte-identical.
+
 ## [0.9.0] - 2026-10-17
 
 ### Electron analysis

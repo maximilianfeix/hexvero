@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.8.0",
-  "commit": "aa88007+uncommitted",
+  "version": "0.9.0",
+  "commit": "f39d2f1+uncommitted",
   "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
@@ -428,8 +428,8 @@
   {
    "set": "holdout",
    "class": "window settings",
-   "hit": 27,
-   "missed": 6,
+   "hit": 21,
+   "missed": 12,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -518,8 +518,8 @@
   {
    "set": "holdout",
    "class": "changes in webPreferences",
-   "hit": 2,
-   "missed": 0,
+   "hit": 1,
+   "missed": 1,
    "false": 0,
    "hedged": 0,
    "inputs": 1
@@ -545,8 +545,8 @@
   {
    "set": "holdout2",
    "class": "IPC channels",
-   "hit": 118,
-   "missed": 8,
+   "hit": 126,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -554,8 +554,8 @@
   {
    "set": "holdout2",
    "class": "IPC senders and receivers",
-   "hit": 219,
-   "missed": 17,
+   "hit": 230,
+   "missed": 22,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -563,8 +563,8 @@
   {
    "set": "holdout2",
    "class": "window settings",
-   "hit": 52,
-   "missed": 11,
+   "hit": 53,
+   "missed": 10,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -581,8 +581,8 @@
   {
    "set": "holdout2",
    "class": "bridge member channel",
-   "hit": 121,
-   "missed": 8,
+   "hit": 129,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -2118,10 +2118,16 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "window settings",
-   "hit": 11,
-   "missed": 0,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
-   "notes": []
+   "notes": [
+    "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "not scored: 1 row(s) with a computed value"
+   ]
   },
   {
    "set": "holdout",
@@ -2236,13 +2242,15 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "window settings",
-   "hit": 8,
-   "missed": 3,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
    "notes": [
     "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
     "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false"
+    "missed main.js nodeIntegration=false",
+    "not scored: 1 row(s) with a computed value"
    ]
   },
   {
@@ -2364,13 +2372,15 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "window settings",
-   "hit": 8,
-   "missed": 3,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
    "notes": [
     "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
     "missed main.js contextIsolation=true",
-    "missed main.js nodeIntegration=false"
+    "missed main.js nodeIntegration=false",
+    "not scored: 1 row(s) with a computed value"
    ]
   },
   {
@@ -2485,10 +2495,12 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
    "class": "changes in webPreferences",
-   "hit": 2,
-   "missed": 0,
+   "hit": 1,
+   "missed": 1,
    "false": 0,
-   "notes": []
+   "notes": [
+    "missed ~contextIsolation: true -> false"
+   ]
   },
   {
    "set": "holdout",
@@ -2543,7 +2555,9 @@
    "hit": 9,
    "missed": 0,
    "false": 0,
-   "notes": []
+   "notes": [
+    "not scored: 1 row(s) with a computed value"
+   ]
   },
   {
    "set": "holdout2",
@@ -2642,7 +2656,9 @@
    "hit": 9,
    "missed": 0,
    "false": 0,
-   "notes": []
+   "notes": [
+    "not scored: 1 row(s) with a computed value"
+   ]
   },
   {
    "set": "holdout2",
@@ -2737,11 +2753,11 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "window settings",
-   "hit": 8,
-   "missed": 1,
+   "hit": 9,
+   "missed": 0,
    "false": 0,
    "notes": [
-    "missed main.js preload=preload.js"
+    "not scored: 1 row(s) with a computed value"
    ]
   },
   {
@@ -3073,28 +3089,25 @@
    "set": "holdout2",
    "input": "holdout2/music-player.minified.asar",
    "class": "IPC channels",
-   "hit": 12,
-   "missed": 8,
+   "hit": 20,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed playlists:list",
-    "missed playlists:save",
-    "missed settings:get",
-    "missed settings:set",
-    "missed settings:changed",
-    "missed player:state-changed",
-    "missed player:state",
-    "missed mini:get-artwork"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/music-player.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 24,
-   "missed": 0,
+   "hit": 35,
+   "missed": 5,
    "false": 0,
-   "notes": []
+   "notes": [
+    "playlists:list: receiver main.js missed",
+    "playlists:save: receiver main.js missed",
+    "settings:get: receiver main.js missed",
+    "settings:set: receiver main.js missed",
+    "mini:get-artwork: receiver main.js missed"
+   ]
   },
   {
    "set": "holdout2",
@@ -3124,19 +3137,10 @@
    "set": "holdout2",
    "input": "holdout2/music-player.minified.asar",
    "class": "bridge member channel",
-   "hit": 14,
-   "missed": 8,
+   "hit": 22,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "cadence.listPlaylists: expected playlists:list, got null",
-    "cadence.savePlaylist: expected playlists:save, got null",
-    "cadence.reportState: expected player:state-changed, got null",
-    "cadence.getSettings: expected settings:get, got null",
-    "cadence.updateSettings: expected settings:set, got null",
-    "cadence.onSettingsChanged: expected settings:changed, got null",
-    "mini.onState: expected player:state, got null",
-    "mini.getArtwork: expected mini:get-artwork, got null"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",

@@ -142,6 +142,8 @@ const ORDER = [
   "contextBridge",
   "ipcChannels",
   "windows",
+  "bridgeExposures",
+  "navigationHandlers",
   "webPreferences",
   "endpoints",
   "storage",
@@ -455,9 +457,23 @@ export const CHANGE_SIGN: Record<ChangeRow["change"], string> = {
 };
 
 export const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
+/**
+ * Control characters from a target shown as `\u{…}`: an escape sequence must not reach a terminal
+ * that prints the report, and the name stays distinguishable from one without it.
+ */
+export function visibleControls(text: string): string {
+  return [...text]
+    .map((c) => {
+      const n = c.codePointAt(0)!;
+      const control =
+        (n < 32 && n !== 10 && n !== 13) || (n >= 0x7f && n < 0xa0) || n === 0x2028 || n === 0x2029;
+      return control ? `\\u{${n.toString(16)}}` : c;
+    })
+    .join("");
+}
 /** Text from a target, quoted so it cannot close the code span or start Markdown of its own. */
 const code = (text: string): string => {
-  const flat = text.replace(/[\r\n]+/g, " ").slice(0, 300);
+  const flat = visibleControls(text.replace(/[\r\n]+/g, " ")).slice(0, 300);
   const longest = Math.max(0, ...(flat.match(/`+/g) ?? []).map((run) => run.length));
   const fence = "`".repeat(longest + 1);
   const pad = longest ? " " : "";
@@ -465,7 +481,7 @@ const code = (text: string): string => {
 };
 /** Prose from a target (a file name, a limitation naming a channel): no Markdown of its own. */
 const cell = (text: string): string =>
-  text.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
+  visibleControls(text.replace(/[\r\n]+/g, " ")).replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
 /** A file name as one shell word: single-quoted unless it is plain. */
 const shellWord = (text: string): string => {
   const flat = [...text].filter((c) => c.charCodeAt(0) > 31 && c !== "\u007f").join("");
@@ -579,11 +595,34 @@ export function renderReleaseReport(r: ReleaseComparison): string {
   out.push("");
 
   out.push("## Reproduce", "");
+  const targets = reproduceTargets(r);
   out.push(
     "```bash",
-    `npx hexvero@${r.hexvero} compare ${shellWord(nameA)} ${shellWord(nameB)} --report report.md`,
+    `npx hexvero@${r.hexvero} compare ${targets.a} ${targets.b} --report report.md`,
     "```",
     "",
   );
+  if (targets.sameName !== undefined) out.push(sameNameNote(r, targets.sameName, cell), "");
   return out.join("\n");
+}
+
+/**
+ * The two targets as shell words for a reproduce line. Reports hold file names, not directories;
+ * when both builds have the same name (two `app.asar`), the names alone would not say which is
+ * which, so placeholders stand in and a note says so.
+ */
+export function reproduceTargets(r: ReleaseComparison): {
+  a: string;
+  b: string;
+  /** Set when both builds have the same file name: the raw name, for the renderer to escape. */
+  sameName?: string;
+} {
+  const [nameA, nameB] = [baseName(r.a.info.path), baseName(r.b.info.path)];
+  if (nameA !== nameB) return { a: shellWord(nameA), b: shellWord(nameB) };
+  return { a: "<before>", b: "<after>", sameName: nameA };
+}
+
+/** The note under a reproduce line with placeholders; `quote` escapes the name for the format. */
+export function sameNameNote(r: ReleaseComparison, name: string, quote: (s: string) => string) {
+  return `Both builds are named ${quote(visibleControls(name))}; pass their paths (sha256 ${r.a.info.sha256.slice(0, 12)}… before, ${r.b.info.sha256.slice(0, 12)}… after).`;
 }

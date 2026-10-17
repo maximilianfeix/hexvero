@@ -231,6 +231,7 @@ const GAPS: Record<string, string> = {
   files_unreadable: "some files could not be read",
   values_unresolved: "some values could not be resolved (computed at run time)",
   item_truncated: "an item was too large and was shortened",
+  collection_missing: "the list is missing from a build, so nothing in it could be compared",
 };
 
 export const gapWords = (code: string): string => GAPS[code] ?? `coverage gap: ${code}`;
@@ -267,6 +268,10 @@ export const MEANING: Record<string, string> = {
   contextBridge: "Members the preload script exposes to web content",
   ipcChannels: "IPC channels with their senders and receivers",
   windows: "BrowserWindow settings that decide what a page may do",
+  bridgeExposures:
+    "Privileged objects (ipcRenderer, shell, Node modules) a preload hands to pages as they are, not wrapped",
+  navigationHandlers:
+    "setWindowOpenHandler and will-navigate handlers as written; whether they check URLs is not read",
   webPreferences: "webPreferences keys as written in the code",
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",

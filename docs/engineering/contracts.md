@@ -80,6 +80,8 @@ CLI, UI, report and MCP must say "N of M shown" and how to get the rest; never "
 
 `InterfaceRow` gains `endsTotal: number` and `endsTruncated: boolean`. `direction` and `link`
 are computed from **all** matching ends; `ends` keeps the first 20 sorted ones as evidence.
+Every end is also a row of the `ipc` collection with the same channel; that is where the rest is
+(UI: "N of M ends shown; all of them are in the ipc list").
 
 ## C5. Policy result (owner: P, new `core/src/policy.ts`, `core/src/sarif.ts`)
 

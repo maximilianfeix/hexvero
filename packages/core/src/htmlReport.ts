@@ -4,6 +4,8 @@ import {
   CHANGE_SIGN,
   DEFAULT_RELEASE_ROWS,
   notEstablished,
+  reproduceTargets,
+  sameNameNote,
   summaryOf,
   type ChangeRow,
   type Place,
@@ -175,12 +177,6 @@ pre.cmd{background:var(--panel);border:1px solid var(--line);border-radius:6px;p
 footer{margin-top:48px;color:var(--ink-3);font-size:13px}
 @media (max-width:640px){main{padding:20px 16px 48px}.sides{grid-template-columns:1fr}}
 `;
-
-/** A file name as one shell word, shown as text: single-quoted unless it is plain. */
-const shellWord = (value: string): string => {
-  const flat = [...value].filter((c) => c.charCodeAt(0) > 31 && c !== "\u007f").join("");
-  return /^[\w./@:+-]+$/.test(flat) ? flat : `'${flat.replace(/'/g, "'\\''")}'`;
-};
 
 interface Budget {
   excerpts: number;
@@ -448,14 +444,15 @@ export function renderReleaseReportHtml(
       .join("")}</ul></section>`,
   );
 
+  const targets = reproduceTargets(r);
   const page =
     r.page.offset > 0 || r.page.limit !== DEFAULT_RELEASE_ROWS
       ? ` --offset ${r.page.offset} --limit ${r.page.limit}`
       : "";
   out.push(
     `<section id="reproduce"><h2>Reproduce</h2><pre class="cmd"><code>${escapeHtml(
-      `npx hexvero@${r.hexvero} compare ${shellWord(names.a)} ${shellWord(names.b)} --report ${reportName}${page}`,
-    )}</code></pre></section>`,
+      `npx hexvero@${r.hexvero} compare ${targets.a} ${targets.b} --report ${reportName}${page}`,
+    )}</code></pre>${targets.sameName !== undefined ? `<p class="note">${sameNameNote(r, targets.sameName, escapeHtml)}</p>` : ""}</section>`,
     `<footer>hexvero ${escapeHtml(r.hexvero)} · static analysis, nothing was run · this file loads nothing from the network</footer>`,
   );
 

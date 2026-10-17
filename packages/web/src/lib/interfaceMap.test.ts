@@ -153,7 +153,9 @@ describe("interface map layout", () => {
   });
 
   it("says when only some ends are listed", () => {
-    expect(endsNote(row({ endsTotal: 41, endsTruncated: true }))).toBe("1 of 41 ends shown");
+    expect(endsNote(row({ endsTotal: 41, endsTruncated: true }))).toBe(
+      "1 of 41 ends shown; all of them are in the ipc list",
+    );
     expect(endsNote(row({}))).toBe("");
   });
 });

@@ -306,4 +306,39 @@ describe("source lines", () => {
     const native = await session.open(join(dir, "outside.js"));
     await expect(session.source(native.id, "outside.js", 1)).rejects.toBeTruthy();
   });
+  it("uses placeholders in the reproduce line when both builds have the same name", async () => {
+    // two `app.asar` from two release folders: names alone would not say which is which
+    const session = new Session();
+    mkdirSync(join(dir, "r1"), { recursive: true });
+    mkdirSync(join(dir, "r2"), { recursive: true });
+    writeFileSync(join(dir, "r1", "app.asar"), buildAsar(app(false)));
+    writeFileSync(join(dir, "r2", "app.asar"), buildAsar(app(true)));
+    const a = await session.open(join(dir, "r1", "app.asar"));
+    const b = await session.open(join(dir, "r2", "app.asar"));
+    const r = await compareReleases(session, a.id, b.id);
+    const md = renderReleaseReport(r);
+    expect(md).toContain("compare <before> <after> --report report.md");
+    expect(md).toContain("Both builds are named app.asar; pass their paths");
+    expect(md).not.toContain(dir);
+    // the name is target data: no Markdown of its own in the note
+    const hostile = { ...r, a: { ...r.a, info: { ...r.a.info, path: "[x](y)<b>.asar" } } };
+    const named = {
+      ...hostile,
+      b: { ...r.b, info: { ...r.b.info, path: "[x](y)<b>.asar" } },
+    };
+    expect(renderReleaseReport(named)).toContain("named \\[x\\](y)\\<b\\>.asar;");
+    // control characters in the name neither break the line nor reach a terminal (the Markdown
+    // escapes the backslash, so it renders as \u{1b})
+    const ctl = "a\n## x\u001b[31m.asar";
+    const both = {
+      ...r,
+      a: { ...r.a, info: { ...r.a.info, path: ctl } },
+      b: { ...r.b, info: { ...r.b.info, path: ctl } },
+    };
+    const note = renderReleaseReport(both)
+      .split("\n")
+      .find((l) => l.startsWith("Both builds are named"));
+    expect(note).toContain("named a ## x\\\\u{1b}\\[31m.asar;");
+    expect(renderReleaseReport(both)).not.toContain("\u001b");
+  });
 });

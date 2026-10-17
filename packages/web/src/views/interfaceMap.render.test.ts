@@ -124,5 +124,7 @@ describe("interface map rendering", () => {
     expect(html).toContain('href="/targets/t_1/source?file=main.js&amp;line=9"');
     expect(html).toContain("1 of 30 ends shown");
     expect(html).toContain("via &lt;i&gt;via&lt;/i&gt;");
+    // the rest of the ends: the ipc list of the target, filtered by the channel
+    expect(html).toMatch(/all of them are in the ipc list <button[^>]*>Open the ipc list for /);
   });
 });

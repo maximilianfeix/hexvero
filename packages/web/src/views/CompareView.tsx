@@ -1,12 +1,6 @@
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  api,
-  type ChangeRow,
-  type Place,
-  type ReleaseComparison,
-  type TargetRecord,
-} from "../lib/api.js";
+import { api, type ChangeRow, type ReleaseComparison, type TargetRecord } from "../lib/api.js";
 import {
   basisValue,
   CHANGE,
@@ -27,6 +21,10 @@ import {
 import { navigate, navigateCompare, updateQuery } from "../lib/route.js";
 import { visible } from "../lib/text.js";
 import { EvidencePanel } from "./EvidencePanel.js";
+import { PlaceLink } from "./PlaceLink.js";
+import { ReleaseGate } from "./ReleaseGate.js";
+
+export { PlaceLink };
 
 const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
 const plural = (n: number, word: string): string =>
@@ -388,6 +386,17 @@ function Ready({
           >
             Download report (.md)
           </button>
+          <button
+            type="button"
+            className="btn quiet"
+            onClick={() => {
+              const gate = document.getElementById("release-gate-title");
+              gate?.scrollIntoView({ block: "start" });
+              gate?.focus({ preventScroll: true });
+            }}
+          >
+            Release gate ↓
+          </button>
         </div>
         {reportError && (
           <p role="alert" className="error-text">
@@ -583,6 +592,15 @@ function Ready({
             </li>
           </ul>
         </div>
+
+        <ReleaseGate
+          r={r}
+          onOpenRow={(id) => {
+            if (!rows.some((row) => row.id === id)) return false;
+            open(id);
+            return true;
+          }}
+        />
 
         <div className="section">
           <h3>Every list both builds have</h3>
@@ -858,29 +876,5 @@ function ChangeItem({
         )}
       </div>
     </li>
-  );
-}
-
-/** A file:line that opens the source lines around it in the target it was read from. */
-export function PlaceLink({ place, targetId }: { place: Place; targetId: string }): ReactElement {
-  const label = visible(`${place.file}${place.line === undefined ? "" : `:${place.line}`}`);
-  return (
-    <span className="place">
-      {place.role && <span className="role">{place.role}</span>}
-      {place.line === undefined ? (
-        <code>{label}</code>
-      ) : (
-        <a
-          href={`/targets/${targetId}/source?file=${encodeURIComponent(place.file)}&line=${place.line}`}
-          onClick={(e) => {
-            if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-            e.preventDefault();
-            navigate(targetId, "source", { file: place.file, line: String(place.line) });
-          }}
-        >
-          <code>{label}</code>
-        </a>
-      )}
-    </span>
   );
 }

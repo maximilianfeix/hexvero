@@ -91,7 +91,14 @@ export type Val =
    * A module a bundler wrapped into this file (esbuild's `__commonJS`): its members are what its
    * body assigns to `exports.NAME`.
    */
-  | { kind: "cjs"; exports: string; module: string | null; body: [number, number] }
+  | {
+      kind: "cjs";
+      exports: string;
+      module: string | null;
+      body: [number, number];
+      /** Passed through an interop helper (`__toESM`): its `default` is the module itself. */
+      interop?: true;
+    }
   /**
    * Only in an environment: a variable an evaluated body declared whose value is not known, so a
    * read of it is unknown instead of falling through to a binding of the same name outside.
@@ -270,6 +277,8 @@ interface Structure {
     Array<{ j: number; weight: number; init: boolean; scope: [number, number] | null }>
   >;
   topDecls: Map<string, [number, number] | null> | null;
+  /** The same declarations before later writes are taken into account (see `binding`). */
+  topDeclsLoose: Map<string, [number, number] | null> | null;
   topPatterns: Map<string, { key: string; from: [number, number] } | null>;
   classes: Array<{ name: string; start: number; end: number }> | null;
   /** Positions of every identifier by name. */
@@ -364,6 +373,7 @@ export class ExpressionResolver {
         defsByParams: null,
         declCache: new Map(),
         topDecls: null,
+        topDeclsLoose: null,
         topPatterns: new Map(),
         classes: null,
         names: null,
@@ -1329,13 +1339,19 @@ export class ExpressionResolver {
     ) {
       const close = this.match[start + 1]!;
       if (close === -1 || close >= end) return null;
-      const arg = this.evalRange(
-        start + 2,
-        Math.min(this.exprEnd(start + 2), close),
-        env,
-        depth + 1,
-      );
-      return this.chain(arg, close + 1, end, env, depth);
+      const firstEnd = Math.min(this.exprEnd(start + 2), close);
+      const arg = this.evalRange(start + 2, firstEnd, env, depth + 1);
+      // The helper's `default` is the module's `module.exports` when its second argument (node
+      // mode, `__toESM(m, 1)`) is true, or when the module does not mark itself as an ES module
+      // (no `__esModule`, no `__toCommonJS`, no `default` anywhere). A second argument that is
+      // not a literal leaves a marked module's `default` unknown.
+      const mode = firstEnd < close ? this.literalTruth(firstEnd + 1, close) : false;
+      let wrapped: Val | null = arg;
+      if (arg?.kind === "cjs") {
+        if (mode === true || !this.marksEsModule(arg)) wrapped = { ...arg, interop: true };
+        else if (mode === null) return null;
+      }
+      return this.chain(wrapped, close + 1, end, env, depth);
     }
     // `i(76675)`: webpack's require of a module of this file's module table
     if (
@@ -1362,6 +1378,17 @@ export class ExpressionResolver {
       if (close !== end - 1) return null;
       return this.evalRange(start + 4, close, env, depth + 1);
     }
+    // `Object.assign({…}, a, b, …)`: a new object, the sources' keys laid over it from left to
+    // right as spreads are. Only with an object literal as the target: an object the code holds
+    // elsewhere is changed by the call, and what else reads it is not followed.
+    if (
+      t.value === "Object" &&
+      this.punct(start + 1, ".") &&
+      this.is(start + 2, "ident", "assign") &&
+      this.punct(start + 3, "(") &&
+      this.punct(start + 4, "{")
+    )
+      return this.assignCall(start + 3, end, env, depth);
     // `require("./x")`: that module's exports, when it is a module of the application
     if (
       t.value === "require" &&
@@ -1513,6 +1540,38 @@ export class ExpressionResolver {
     return out;
   }
 
+  /** `Object.assign({…}, …)` with `(` at open, ending at `end`; see evalOperand. */
+  private assignCall(open: number, end: number, env: Env, depth: number): Val | null {
+    const close = this.match[open]!;
+    if (close !== end - 1) return null;
+    const targetEnd = this.match[open + 1]!;
+    if (targetEnd === -1 || this.exprEnd(open + 1) !== targetEnd + 1) return null;
+    const target = this.object(open + 1, targetEnd, env, depth + 1);
+    if (target.kind !== "obj") return null;
+    const props = new Map(target.props);
+    let unknown = target.open === true;
+    for (let from = targetEnd + 2; from < close;) {
+      const to = Math.min(this.exprEnd(from), close);
+      if (to <= from) return null;
+      // as `...source` in an object literal: something unknown may write any key here
+      const source = this.evalRange(from, to, env, depth + 1);
+      if (source?.kind === "obj") {
+        if (source.open) {
+          for (const key of props.keys()) props.set(key, null);
+          unknown = true;
+        }
+        for (const [key, v] of source.props) props.set(key, v);
+      } else if (source?.kind !== "undef") {
+        for (const key of props.keys()) props.set(key, null);
+        unknown = true;
+      }
+      if (props.size > 256) return this.stop("too many keys");
+      from = to + 1;
+    }
+    this.note("evaluated");
+    return unknown ? { kind: "obj", props, open: true } : { kind: "obj", props };
+  }
+
   private object(open: number, close: number, env: Env, depth: number): Val {
     const props = new Map<string, Val | null>();
     let unknown = false;
@@ -1570,6 +1629,10 @@ export class ExpressionResolver {
       return value.resolver.exportValue(property, Math.min(depth ?? MAX_DEPTH, MAX_DEPTH - 4));
     if (value.kind === "nsref" && this.reference)
       return { kind: "str", values: [this.reference(value.specifier, property)] };
+    if (value.kind === "cjs" && value.interop && property === "default") {
+      const { interop: _interop, ...mod } = value;
+      return mod;
+    }
     if (value.kind === "cjs")
       return this.wrappedExport(value, property, Math.min(depth ?? MAX_DEPTH, MAX_DEPTH - 2));
     // `links.upload` where links is another module's object: a reference to that key
@@ -1695,6 +1758,37 @@ export class ExpressionResolver {
   }
 
   /** `exports.NAME = <expr>` assigned once in the wrapped module's body (`= void 0` aside). */
+  /** Whether a wrapped module may say it is an ES module, so its `default` is its own export. */
+  /** The truth of a literal in [from, to): `1`, `0`, `true`, `false`, `!0`, `!1`; null otherwise. */
+  private literalTruth(from: number, to: number): boolean | null {
+    const t = this.tokens[from];
+    if (!t) return null;
+    if (to === from + 1) {
+      if (t.type === "number") return Number(t.value) !== 0;
+      if (this.is(from, "ident", "true")) return true;
+      if (this.is(from, "ident", "false")) return false;
+      return null;
+    }
+    if (to === from + 2 && this.punct(from, "!") && this.tokens[from + 1]?.type === "number")
+      return Number(this.tokens[from + 1]!.value) === 0;
+    return null;
+  }
+
+  private readonly esModules = new Map<number, boolean>();
+  private marksEsModule(mod: Extract<Val, { kind: "cjs" }>): boolean {
+    const known = this.esModules.get(mod.body[0]);
+    if (known !== undefined) return known;
+    let marks = false;
+    for (let j = mod.body[0]; j < mod.body[1] && !marks; j++) {
+      const t = this.tokens[j]!;
+      marks =
+        (t.type === "ident" || t.type === "string") &&
+        (t.value === "__esModule" || t.value === "__toCommonJS" || t.value === "default");
+    }
+    this.esModules.set(mod.body[0], marks);
+    return marks;
+  }
+
   private wrappedExport(
     mod: Extract<Val, { kind: "cjs" }>,
     property: string,
@@ -2484,6 +2578,9 @@ export class ExpressionResolver {
     // Only names declared once at the top of the file and never assigned again are followed;
     // a name that is also a parameter or local of the function around k is that one instead.
     if (this.enclosingParam(k, name) || this.declaredLocally(k, name)) return null;
+    // nor one a block at the top of the file declares around k (`{ const NAME = … }`, `if`,
+    // `for (const NAME of …)`, `switch`), nor a `catch (NAME)` around k
+    if (this.innerDeclared(null, name, k) || this.catchBinds(k, name)) return null;
     const decl = this.topDeclarations().get(name);
     if (decl)
       return this.unlessChanged(
@@ -2494,6 +2591,17 @@ export class ExpressionResolver {
         this.tokens.length,
         null,
       );
+    // `var a = 1, NAME = h(require_x())` at the top of the file, as minifiers write the
+    // modules a bundle wraps: that module (only a module; other values keep their own rules).
+    // Not where gaps are shown: a key or address with a gap read from such a module is not
+    // claimed by the bundle when the other builds read it whole.
+    if (!this.gaps && !this.topDeclarations().has(name)) {
+      const listed = this.topListed(name);
+      if (listed && !this.writtenElsewhere(name, listed[0] - 2)) {
+        const mod = this.evalRange(listed[0], listed[1], new Map(), depth + 1);
+        if (mod?.kind === "cjs") return mod;
+      }
+    }
     // a name another module defines, in a scan of this file alone: say so instead of nothing
     if (
       !this.host &&
@@ -2688,6 +2796,7 @@ export class ExpressionResolver {
       )
         assigned.add(t.value);
     }
+    this.s.topDeclsLoose = new Map(decls);
     for (const name of assigned) if (decls.has(name)) decls.set(name, null);
     this.s.topDecls = decls;
     return decls;
@@ -3685,6 +3794,28 @@ export class ExpressionResolver {
     return this.depthAt(k);
   }
 
+  private paramDefs: Map<string, FnDef[]> | null = null;
+
+  /**
+   * Whether a function whose parameter list names NAME holds token k, in that list or in its
+   * body: k is then that parameter or within its reach, whatever `binding` could tell.
+   */
+  paramAround(k: number, name: string): boolean {
+    if (!this.paramDefs) {
+      const byName = new Map<string, FnDef[]>();
+      for (const d of this.functions())
+        for (const n of paramNames(d.params)) {
+          const list = byName.get(n) ?? [];
+          list.push(d);
+          byName.set(n, list);
+        }
+      this.paramDefs = byName;
+    }
+    for (const d of this.paramDefs.get(name) ?? [])
+      if (d.paramsAt <= k && k <= d.body[1]) return true;
+    return false;
+  }
+
   /** The file's classes: `class Name {` and `var Name = class {`, with the bounds of the body. */
   classesOf(): ReadonlyArray<{ name: string; start: number; end: number }> {
     return this.classRanges();
@@ -3740,33 +3871,46 @@ export class ExpressionResolver {
    * k, a `const|let|var` declared once in a function around k (or at the top of the file) and
    * never assigned again, a function or class declared once there, or a name taken from an object
    * pattern (`var { KEY: NAME } = <expr>`). Null when the binding is not one of these, is declared
-   * more than once, or is not in the file.
+   * more than once, or is not in the file. `despiteWrites`: the declaration also when the name
+   * is assigned or changed after it (the caller reads those writes itself).
    */
-  binding(k: number, name: string): Binding | null {
+  /**
+   * Whether the file's work budget is used up. A null from `binding` then means "not read", not
+   * "no binding": a caller must not take it as an answer.
+   */
+  exhausted(): boolean {
+    return this.work <= 0;
+  }
+
+  binding(k: number, name: string, despiteWrites = false): Binding | null {
     // the scans below are charged to the file's work budget; used up, nothing is bound
     if (this.work <= 0) return null;
+    // `catch (NAME)` around k: a binding none of the scans below knows
+    if (this.catchBinds(k, name)) return null;
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       if (this.work <= 0) return null;
       // a declaration of an inner block around k shadows the parameters as well
       if (this.innerDeclared(d, name, k)) {
-        const declared = this.directDeclaration(d, name, k);
+        const declared = this.directDeclaration(d, name, k, despiteWrites);
         return declared && declared !== "ambiguous" ? declared : null;
       }
       const index = d.params.findIndex((p) => paramNames([p]).includes(name));
       if (index !== -1)
         return d.params[index]!.kind === "name" ? { kind: "param", def: d, index } : null;
-      const declared = this.directDeclaration(d, name, k);
+      const declared = this.directDeclaration(d, name, k, despiteWrites);
       if (declared) return declared === "ambiguous" ? null : declared;
       d = this.enclosing(d.paramsAt - 1);
     }
     // a `const`, `let` or `class` of a block at the top of the file, around k
     if (this.innerDeclared(null, name, k)) {
-      const declared = this.directDeclaration(null, name, k);
+      const declared = this.directDeclaration(null, name, k, despiteWrites);
       return declared && declared !== "ambiguous" ? declared : null;
     }
-    const decl = this.topDeclarations().get(name);
+    this.topDeclarations();
+    const top = despiteWrites ? this.s.topDeclsLoose! : this.topDeclarations();
+    const decl = top.get(name);
     if (decl) return { kind: "value", range: decl };
-    if (this.topDeclarations().has(name)) return null;
+    if (top.has(name)) return null;
     const listed = this.topListed(name);
     if (listed !== undefined) return listed ? { kind: "value", range: listed } : null;
     const part = this.topPattern(name);
@@ -3787,6 +3931,22 @@ export class ExpressionResolver {
   private readonly listedCache = new Map<string, [number, number] | null | undefined>();
 
   private parents: Int32Array | null = null;
+
+  /** Whether a `catch (…)` whose parameter names NAME has a block around token k. */
+  private catchBinds(k: number, name: string): boolean {
+    this.innermostBlock(k, null); // builds the table of brackets
+    let p = this.parents![k] ?? -1;
+    for (let steps = 0; p > 0 && steps < 256; steps++) {
+      if (this.punct(p, "{") && this.punct(p - 1, ")")) {
+        const open = this.opener[p - 1]!;
+        if (open > 0 && this.is(open - 1, "ident", "catch"))
+          for (let j = open + 1; j < p - 1; j++) if (this.is(j, "ident", name)) return true;
+      }
+      p = this.parents![p]!;
+    }
+    // deeper than that: not known
+    return p > 0;
+  }
 
   /**
    * The block a declaration at j is visible in, as `blockScope` reads it, from the innermost open
@@ -3860,13 +4020,14 @@ export class ExpressionResolver {
     d: FnDef | null,
     name: string,
     k: number,
+    despiteWrites = false,
   ): Binding | "ambiguous" | null {
     const v = this.visibleAt(d, name, k);
     if (v === "deep") return "ambiguous";
     // a declaration of an inner block counts only for a use inside that block
     const visible = [...v.whole, ...v.inner];
     if (!visible.length) return null;
-    return visible.length === 1 && !this.declarationsOf(d, name).written
+    return visible.length === 1 && (despiteWrites || !this.declarationsOf(d, name).written)
       ? visible[0]!.binding
       : "ambiguous";
   }

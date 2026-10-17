@@ -215,6 +215,8 @@ describe("ASAR", () => {
       "electron.context-isolation",
       "electron.ipc",
       "electron.context-bridge",
+      // windows exist and no handler was found in the files read
+      "electron.navigation",
       "electron.preload",
     ]);
     // `ipcMain.on(channelName, …)`: the call is listed, its channel is not readable
@@ -323,6 +325,7 @@ describe("directory analysis", () => {
       "electron.context-isolation @ main.js:4",
       "electron.sandbox @ main.js:5",
       "electron.ipc @ main.js:7",
+      "electron.navigation @ main.js:2",
       "electron.preload @ main.js:3",
     ]);
   });

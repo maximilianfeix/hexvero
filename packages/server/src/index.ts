@@ -7,12 +7,19 @@ import { tmpdir } from "node:os";
 import { basename, extname, join, normalize, sep } from "node:path";
 import {
   AnalysisError,
+  checkRelease,
   compact,
   compareReleases,
+  CORE_VERSION,
   detectProviders,
+  MAX_POLICY_BYTES,
+  parsePolicy,
+  PolicyError,
+  renderPolicyMarkdown,
   renderReleaseReport,
   Session,
   targetFromBytes,
+  toSarif,
 } from "@hexvero/core";
 
 export interface ServerOptions {
@@ -76,6 +83,17 @@ const json = (res: ServerResponse, status: number, body: unknown): void => {
 };
 
 const fail = (res: ServerResponse, error: unknown): void => {
+  if (error instanceof PolicyError) {
+    // The first line names the problem; `issues` lists each one with its JSON path.
+    json(res, 400, {
+      error: {
+        code: "invalid_policy",
+        message: error.message.split("\n")[0],
+        details: { issues: error.issues },
+      },
+    });
+    return;
+  }
   if (error instanceof AnalysisError) {
     const status =
       error.code === "not_found"
@@ -120,6 +138,11 @@ async function readBody(req: IncomingMessage, max: number): Promise<Uint8Array> 
   }
   return new Uint8Array(Buffer.concat(chunks));
 }
+
+/** Formats of `POST /api/check`; markdown and sarif are downloads like the report. */
+const CHECK_FORMATS = ["json", "markdown", "sarif"] as const;
+/** The name the policy carries in the result: it came in the request body, not from a file. */
+const POLICY_NAME = "policy.json";
 
 /** Rows per comparison response at most (contract C3: the server pages at 500). */
 const COMPARE_MAX_ROWS = 500;
@@ -276,6 +299,50 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         if (limit < 1) throw new AnalysisError("invalid_input", "limit must be at least 1");
         return json(res, 200, await comparePage(session, a, b, offset, limit));
       }
+    }
+    if (parts[0] === "check" && parts.length === 1) {
+      // Contract C7: the policy is the request body. The server never reads a policy or a
+      // baseline path from the client, so a page cannot make it open a file of its choosing.
+      if (req.method !== "POST")
+        return json(res, 405, {
+          error: { code: "method", message: "POST the policy JSON to /api/check?a=…&b=…" },
+        });
+      const [a, b] = [q.get("a"), q.get("b")];
+      if (!a || !b) throw new AnalysisError("invalid_input", "a and b (target ids) are required");
+      if (a === b) throw new AnalysisError("invalid_input", "pick two different targets");
+      const format = q.get("format") ?? "json";
+      if (!(CHECK_FORMATS as readonly string[]).includes(format))
+        throw new AnalysisError(
+          "invalid_input",
+          `format must be one of ${CHECK_FORMATS.join(", ")}, got "${format.slice(0, 40)}"`,
+        );
+      const body = await readBody(req, MAX_POLICY_BYTES);
+      let text: string;
+      try {
+        text = new TextDecoder("utf-8", { fatal: true }).decode(body);
+      } catch {
+        throw new PolicyError("the policy is not UTF-8 text", ["send the policy as UTF-8 JSON"]);
+      }
+      const policy = parsePolicy(text, POLICY_NAME);
+      session.get(a);
+      session.get(b);
+      const result = await checkRelease(session, a, b, policy);
+      if (format === "json") return json(res, 200, result);
+      const name = `${stem(result.a.path)}-to-${stem(result.b.path)}.hexvero-check`;
+      const markdown = format === "markdown";
+      res.writeHead(200, {
+        "content-type": markdown
+          ? "text/markdown; charset=utf-8"
+          : "application/sarif+json; charset=utf-8",
+        "cache-control": "no-store",
+        "content-disposition": `attachment; filename="${name}.${markdown ? "md" : "sarif"}"`,
+      });
+      res.end(
+        markdown
+          ? renderPolicyMarkdown(result)
+          : `${JSON.stringify(toSarif(result, { version: CORE_VERSION, unknown: policy.policy.unknown }), null, 2)}\n`,
+      );
+      return;
     }
     if (req.method === "POST" && parts[0] === "uploads") {
       const name = (q.get("name") ?? "upload.bin").replace(/[^\w.@()-]+/g, "_");
