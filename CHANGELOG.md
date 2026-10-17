@@ -18,6 +18,15 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Release policies
 
+- Review fixes: `window-more-permissive` also judges new and renamed windows by their own
+  settings (a removed window with the same setting makes it unknown); hosts and members the
+  before build already had (another file, another path) are not new; a target that is not a
+  JavaScript application, or two of different kinds, is refused with exit 1 instead of passing;
+  SARIF paths start with `hexvero-build/<side>/<archive>/` so they cannot land on repository
+  files; URL values lose control characters as in WHATWG URL before their host is read;
+  unknown findings get their own fingerprints; a baseline written for another policy or before
+  build is reported; a check compares the builds once however many pages it reads.
+
 - `hexvero check <before> <after> --policy <file>` applies a JSON release policy to the
   comparison of two builds: `new-interface-member` (a member pages can call that is new),
   `new-external-host` (a new host outside the `allow` list; exact names and `*.domain`), and

@@ -3,9 +3,13 @@ import { join } from "node:path";
 import { Ajv } from "ajv";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import {
+  AnalysisError,
   checkRelease,
+  comparisonForCheck,
   createBaseline,
   evaluatePolicy,
   fingerprintOf,
@@ -18,10 +22,12 @@ import {
   Session,
   toSarif,
   type ChangeRow,
+  type CheckSides,
   type LoadedPolicy,
   type ReleaseComparison,
 } from "../src/index.js";
 import type { CollectionComparison, WindowChange } from "../src/session.js";
+import { buildAsar } from "./fixtures/asar.js";
 
 const root = join(import.meta.dirname, "..", "..", "..");
 const addFormats = addFormatsModule as unknown as (ajv: Ajv | Ajv2020) => void;
@@ -46,6 +52,8 @@ function comparison(
     changes?: ChangeRow[];
     windowChanges?: WindowChange[];
     limitations?: ReleaseComparison["limitations"];
+    /** Coverage gaps per collection, as the comparison reports them (C1). */
+    gaps?: Record<string, string[]>;
     partial?: string[];
     partialScan?: { a: boolean; b: boolean };
     completeness?: Record<string, { complete: boolean; gaps: string[] }>;
@@ -77,8 +85,30 @@ function comparison(
     changes: parts.changes ?? [],
     cut: [],
     limitations: parts.limitations ?? { a: [], b: [] },
-    ...(parts.completeness ? { completeness: parts.completeness } : {}),
+    completeness: parts.completeness ?? completenessFrom(parts),
+    page: { offset: 0, limit: 5000, total: (parts.changes ?? []).length, next: null },
   } as ReleaseComparison;
+}
+
+/** The completeness B's comparison reports, built from the parts a test names. */
+function completenessFrom(parts: {
+  gaps?: Record<string, string[]>;
+  partial?: string[];
+  partialScan?: { a: boolean; b: boolean };
+}): ReleaseComparison["completeness"] {
+  const out: ReleaseComparison["completeness"] = {};
+  for (const collection of Object.keys(KEYS)) {
+    const gaps = new Set(parts.gaps?.[collection] ?? []);
+    if ((parts.partial ?? []).includes(collection)) gaps.add("budget");
+    if (parts.partialScan?.a || parts.partialScan?.b) gaps.add("scan_partial");
+    out[collection] = {
+      compared: { a: 1, b: 1 },
+      total: { a: 1, b: 1 },
+      complete: gaps.size === 0,
+      gaps: [...gaps].toSorted(),
+    };
+  }
+  return out;
 }
 
 const member = (name: string, line: number, change: ChangeRow["change"] = "added"): ChangeRow => ({
@@ -623,10 +653,7 @@ describe("evaluating a policy", () => {
     it("coverage gaps make a rule undecidable: incomplete under fail, listed under warn", () => {
       const c = comparison({
         partial: ["endpoints"],
-        limitations: {
-          a: [],
-          b: [{ code: "context_bridge_members_unreadable", message: "members not readable" }],
-        },
+        gaps: { contextBridge: ["values_unresolved"] },
       });
       const r = evaluatePolicy(c, policy());
       expect(r.status).toBe("incomplete");
@@ -655,7 +682,7 @@ describe("evaluating a policy", () => {
       // which members a preload exposes is read from the bridge, not from channel names
       const r = evaluatePolicy(
         comparison({
-          limitations: { a: [], b: [{ code: "ipc_channel_unresolved", message: "1 IPC call" }] },
+          gaps: { interfaces: ["values_unresolved"] },
         }),
         policy(),
       );
@@ -681,8 +708,14 @@ describe("evaluating a policy", () => {
     });
     it("uses the comparison's own completeness once it carries one (contract C1/C3)", () => {
       const c = comparison({
-        partialScan: { a: true, b: true },
-        completeness: { endpoints: { complete: false, gaps: ["budget"] } },
+        completeness: {
+          endpoints: {
+            compared: { a: 1, b: 1 },
+            total: { a: 2, b: 2 },
+            complete: false,
+            gaps: ["budget"],
+          },
+        },
       });
       expect(evaluatePolicy(c, policy()).incomplete).toEqual([
         { rule: "new-external-host", collection: "endpoints", gaps: ["budget"] },
@@ -805,7 +838,7 @@ describe("hostile data from the target", () => {
     const uri = log.runs[0]!.results[0]!["locations"][0].physicalLocation.artifactLocation
       .uri as string;
     expect(uri).not.toMatch(/[\s<>`|]/);
-    expect(uri.startsWith("dir/")).toBe(true);
+    expect(uri.startsWith("hexvero-build/after/app-2.asar/dir/")).toBe(true);
   });
 });
 
@@ -858,7 +891,9 @@ describe("SARIF", () => {
     // no invented line: a place without a line has no region; no place has a logical location
     const noLine = run.results.find((x: any) => x.properties.key === "api.noLine");
     expect(noLine.locations[0].physicalLocation.region).toBeUndefined();
-    expect(noLine.locations[0].physicalLocation.artifactLocation.uri).toBe("%2E%2E/outside.js");
+    expect(noLine.locations[0].physicalLocation.artifactLocation.uri).toBe(
+      "hexvero-build/after/app-2.asar/%2E%2E/outside.js",
+    );
     const noPlace = run.results.find((x: any) => x.properties.key === "api.noPlace");
     expect(noPlace.locations[0].logicalLocations[0].name).toBe("api.noPlace");
     // the unknown host is a warning when unknown is "warn"
@@ -907,5 +942,325 @@ describe("the example builds", () => {
     // accepted in a baseline, the same builds pass
     const baseline = parseBaseline(JSON.stringify(createBaseline(r)), "b.json");
     expect((await checkRelease(session, a.id, b.id, loaded, { baseline })).status).toBe("pass");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Regression tests for the independent review (H3, H4, M4, M5, L2, L6, L7, L9, L11)
+// ---------------------------------------------------------------------------------------------
+
+const SAFE = {
+  nodeIntegrationInEffect: "off",
+  contextIsolationInEffect: "on",
+  sandboxInEffect: "on",
+  pageRequire: "no",
+};
+const OPEN = {
+  nodeIntegrationInEffect: "on",
+  contextIsolationInEffect: "off",
+  sandboxInEffect: "off",
+  pageRequire: "yes",
+};
+const win = (name: string, settings: Record<string, string>, line = 2) => ({
+  file: "main.js",
+  windowName: name,
+  window: 1,
+  line,
+  ...settings,
+});
+const sides = (
+  a: Record<string, unknown[]>,
+  b: Record<string, unknown[]>,
+  kind: { a: string; b: string } = { a: "javascript-app", b: "javascript-app" },
+): CheckSides => ({ kind, items: { a, b } });
+const windowRow = (change: ChangeRow["change"], name: string, line = 2): ChangeRow => ({
+  collection: "windows",
+  change,
+  key: `main.js::${name}`,
+  where: [{ side: change === "removed" ? "a" : "b", file: "main.js", line }],
+});
+
+describe("review H3: windows that are not matched by name", () => {
+  it("flags a window renamed while it turned permissive (win → mainWindow)", () => {
+    const r = evaluatePolicy(
+      comparison({ changes: [windowRow("added", "mainWindow"), windowRow("removed", "win")] }),
+      policy(),
+      { sides: sides({ windows: [win("win", SAFE)] }, { windows: [win("mainWindow", OPEN)] }) },
+    );
+    expect(r.status).toBe("fail");
+    expect(r.findings.map((f) => [f.key, f.unknown])).toEqual([
+      ["main.js::mainWindow contextIsolationInEffect", false],
+      ["main.js::mainWindow nodeIntegrationInEffect", false],
+      ["main.js::mainWindow pageRequire", false],
+      ["main.js::mainWindow sandboxInEffect", false],
+    ]);
+    expect(r.findings[0]!.where).toEqual([{ side: "b", file: "main.js", line: 2 }]);
+  });
+
+  it("flags a brand-new permissive window and ignores a new safe one", () => {
+    const r = evaluatePolicy(
+      comparison({ changes: [windowRow("added", "extra", 9), windowRow("added", "about", 20)] }),
+      policy(),
+      {
+        sides: sides(
+          { windows: [] },
+          {
+            windows: [
+              win("extra", { ...SAFE, sandboxInEffect: "default off" }, 9),
+              win("about", SAFE, 20),
+            ],
+          },
+        ),
+      },
+    );
+    expect(r.findings.map((f) => [f.key, f.unknown, f.where[0]!.line])).toEqual([
+      ["main.js::extra sandboxInEffect", false, 9],
+    ]);
+    expect(r.status).toBe("fail");
+  });
+
+  it("an added window as permissive as a removed one may be a rename: unknown, incomplete", () => {
+    const r = evaluatePolicy(
+      comparison({ changes: [windowRow("added", "mainWindow"), windowRow("removed", "win")] }),
+      policy(),
+      { sides: sides({ windows: [win("win", OPEN)] }, { windows: [win("mainWindow", OPEN)] }) },
+    );
+    expect(r.findings).toHaveLength(4);
+    expect(r.findings.every((f) => f.unknown)).toBe(true);
+    expect(r.status).toBe("incomplete");
+  });
+
+  it("an unknown window row, or an added window whose settings are unknown, is unknown", () => {
+    const r = evaluatePolicy(
+      comparison({
+        changes: [
+          { ...windowRow("unknown", "w1"), reason: "file not read on the other side" },
+          windowRow("added", "w2"),
+        ],
+      }),
+      policy(),
+      {
+        sides: sides(
+          { windows: [] },
+          {
+            windows: [win("w1", OPEN), win("w2", { ...SAFE, nodeIntegrationInEffect: "unknown" })],
+          },
+        ),
+      },
+    );
+    expect(r.findings.length).toBeGreaterThan(0);
+    expect(r.findings.every((f) => f.unknown)).toBe(true);
+    expect(r.findings.map((f) => f.key)).toContain("main.js::w2 nodeIntegrationInEffect");
+    expect(r.status).toBe("incomplete");
+  });
+
+  it("an added window whose item cannot be found is unknown, never a pass", () => {
+    const r = evaluatePolicy(comparison({ changes: [windowRow("added", "ghost")] }), policy(), {
+      sides: sides({ windows: [] }, { windows: [] }),
+    });
+    expect(r.findings.map((f) => [f.key, f.unknown])).toEqual([["main.js::ghost", true]]);
+    expect(r.status).toBe("incomplete");
+  });
+});
+
+describe("review H4: a target of another kind never passes", () => {
+  it("marks every rule collection_missing when the analyses differ in kind", () => {
+    const c = comparison();
+    c.b = { ...c.b, info: { ...c.b.info, format: "json" } };
+    const r = evaluatePolicy(c, policy());
+    expect(r.status).toBe("incomplete");
+    expect(r.incomplete.map((i) => [i.collection, i.gaps])).toEqual([
+      ["interfaces", ["collection_missing"]],
+      ["contextBridge", ["collection_missing"]],
+      ["endpoints", ["collection_missing"]],
+      ["urls", ["collection_missing"]],
+      ["windows", ["collection_missing"]],
+    ]);
+  });
+
+  it("two bundles: the host rule decides, the bridge and window rules are collection_missing", () => {
+    const r = evaluatePolicy(comparison(), policy(), {
+      sides: sides({}, {}, { a: "javascript", b: "javascript" }),
+    });
+    expect(r.incomplete.map((i) => i.collection)).toEqual([
+      "interfaces",
+      "contextBridge",
+      "windows",
+    ]);
+    expect(r.incomplete.every((i) => i.gaps.includes("collection_missing"))).toBe(true);
+    expect(r.status).toBe("incomplete");
+  });
+
+  it("checkRelease refuses (exit 1) a target that is not a JavaScript application", async () => {
+    const session = new Session();
+    const a = await session.open(join(root, "examples", "notesdesk-1.4.0.asar"));
+    const loaded = parsePolicy(readFileSync(join(root, "examples", "policy.json"), "utf8"), "p");
+    for (const other of ["README.md", "policy.json", "notesdesk-1.5.0.bundle.js"]) {
+      const b = await session.open(join(root, "examples", other));
+      await expect(checkRelease(session, a.id, b.id, loaded), other).rejects.toBeInstanceOf(
+        AnalysisError,
+      );
+    }
+  });
+});
+
+describe("review M4: what already existed in the before build is not new", () => {
+  it("a host the before build already named (renamed chunk, other path) is no finding", () => {
+    const r = evaluatePolicy(
+      comparison({
+        changes: [
+          endpoint("https://updates.example.net/v2/latest.json", 3, "chunk-9f8e.js"),
+          endpoint("https://new.example.net/", 4, "chunk-9f8e.js"),
+        ],
+      }),
+      policy(),
+      {
+        sides: sides(
+          {
+            endpoints: [
+              {
+                file: "chunk-1a2b.js",
+                kind: "fetch",
+                value: "https://updates.example.net/v1/latest.json",
+              },
+            ],
+            urls: [],
+          },
+          { endpoints: [], urls: [] },
+        ),
+      },
+    );
+    expect(r.findings.map((f) => f.key)).toEqual(["new.example.net"]);
+  });
+
+  it("a member the before build exposed from another preload file is no finding", () => {
+    const r = evaluatePolicy(
+      comparison({
+        changes: [
+          { ...member("checkUpdate", 3), key: "bridge/preload.js::api::checkUpdate" },
+          member("brandNew", 4),
+        ],
+      }),
+      policy(),
+      {
+        sides: sides(
+          {
+            interfaces: [{ file: "preload.js", api: "api", member: "checkUpdate" }],
+            contextBridge: [],
+          },
+          { interfaces: [], contextBridge: [] },
+        ),
+      },
+    );
+    expect(r.findings.map((f) => f.key)).toEqual(["api.brandNew"]);
+  });
+
+  it("without the item lists, the removed rows of the comparison still count as before", () => {
+    const r = evaluatePolicy(
+      comparison({
+        changes: [
+          { ...endpoint("https://updates.example.net/a", 1, "old.js"), change: "removed" },
+          endpoint("https://updates.example.net/a", 1, "new.js"),
+          { ...member("x", 1), key: "old/preload.js::api::x", change: "removed" },
+          { ...member("x", 1), key: "new/preload.js::api::x" },
+        ],
+      }),
+      policy(),
+    );
+    expect(r.findings).toEqual([]);
+  });
+});
+
+describe("review L2: hosts are read after WHATWG's control-character stripping", () => {
+  it("strips leading and trailing C0 controls and spaces and every tab, LF and CR", () => {
+    expect(hostOf("\u0001https://evil.example/x")).toEqual({ kind: "host", host: "evil.example" });
+    expect(hostOf("ht\ttps://evil2.example")).toEqual({ kind: "host", host: "evil2.example" });
+    expect(hostOf(" https://ev\nil3.example/ \u001f")).toEqual({
+      kind: "host",
+      host: "evil3.example",
+    });
+    for (const v of ["\u0001https://evil.example/x", "ht\ttps://evil2.example"])
+      expect(hostOf(v)).toEqual({ kind: "host", host: new URL(v).hostname });
+  });
+});
+
+describe("review L7: a baselined unknown does not cover a later definite finding", () => {
+  it("gives unknown findings their own fingerprints", () => {
+    const maybe = evaluatePolicy(comparison({ changes: [member("x", 1, "unknown")] }), policy());
+    const definite = evaluatePolicy(comparison({ changes: [member("x", 1)] }), policy());
+    expect(maybe.findings[0]!.fingerprint).not.toBe(definite.findings[0]!.fingerprint);
+    const baseline = parseBaseline(JSON.stringify(createBaseline(maybe)), "b.json");
+    const later = evaluatePolicy(comparison({ changes: [member("x", 1)] }), policy(), { baseline });
+    expect(later.findings[0]!.state).toBe("new");
+    expect(later.status).toBe("fail");
+  });
+});
+
+describe("review L6: a baseline written for something else says so", () => {
+  it("warns when the policy or the before build differs from the baseline's", () => {
+    const c = comparison({ changes: [member("x", 1)] });
+    const written = createBaseline(evaluatePolicy(c, policy()));
+    const same = evaluatePolicy(c, policy(), {
+      baseline: parseBaseline(JSON.stringify(written), "b"),
+    });
+    expect(same.baseline!.warnings).toBeUndefined();
+    const other = { ...written, policy: "0".repeat(64), a: "1".repeat(64) };
+    const r = evaluatePolicy(c, policy(), { baseline: parseBaseline(JSON.stringify(other), "b") });
+    expect(r.baseline!.warnings).toEqual([
+      "the baseline was written for another policy (sha256 000000000000…)",
+      "the baseline was written against another before build (sha256 111111111111…)",
+    ]);
+  });
+});
+
+describe("review M5: SARIF locations cannot land on files of the repository", () => {
+  it("prefixes each path with hexvero-build/<side>/<archive>/ and gives the bases file:/// URIs", () => {
+    const r = evaluatePolicy(comparison({ changes: [member("x", 1)] }), policy());
+    const log = toSarif(r, { version: "0.8.0", unknown: "fail" }) as any;
+    const run = log.runs[0];
+    expect(run.results[0].locations[0].physicalLocation.artifactLocation).toEqual({
+      uri: "hexvero-build/after/app-2.asar/preload.js",
+      uriBaseId: "HEXVERO_TARGET_B",
+    });
+    expect(run.originalUriBaseIds.HEXVERO_TARGET_B.uri).toBe("file:///");
+    expect(run.originalUriBaseIds.HEXVERO_TARGET_A.uri).toBe("file:///");
+  });
+});
+
+const bigApp = (n: number): string =>
+  [
+    'const { app, ipcMain } = require("electron");',
+    ...Array.from(
+      { length: n },
+      (_, i) =>
+        `fetch("https://h${i}.example.net/x"); localStorage.getItem("k${i}"); ipcMain.handle("c${i}", () => 1);`,
+    ),
+  ].join("\n");
+describe("review L9 and L11: one comparison per check, completeness from the comparison", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hexvero-policy-pages-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const write = (name: string, n: number): string => {
+    const path = join(dir, name);
+    writeFileSync(
+      path,
+      buildAsar({
+        "package.json": JSON.stringify({ name: "big", version: "1.0.0", main: "main.js" }),
+        "main.js": bigApp(n),
+      }),
+    );
+    return path;
+  };
+  it("reads every page of a large comparison but compares the builds only once", async () => {
+    const session = new Session();
+    const a = await session.open(write("a.asar", 1));
+    const b = await session.open(write("b.asar", 2000));
+    const spy = vi.spyOn(session, "compareAll");
+    const r = await comparisonForCheck(session, a.id, b.id);
+    expect(r.changes.length).toBeGreaterThan(5000);
+    expect(r.page.next).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
+    const loaded = parsePolicy(policyText(), "p.json");
+    const result = await checkRelease(session, a.id, b.id, loaded);
+    expect(result.findings.filter((f) => f.rule === "new-external-host")).toHaveLength(1999);
   });
 });

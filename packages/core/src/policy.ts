@@ -19,6 +19,7 @@
  *   refused with a message, never matched silently.
  */
 import { createHash } from "node:crypto";
+import { AnalysisError } from "./model.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
 import type { Session, TargetRecord } from "./session.js";
 
@@ -91,7 +92,8 @@ export interface PolicyResult {
   findings: PolicyFinding[];
   /** Coverage gaps that made the check undecidable for a rule. */
   incomplete: Array<{ rule: string; collection: string; gaps: string[] }>;
-  baseline?: { file: string; created: string; matched: number };
+  /** `warnings`: the baseline was written for another policy or another before build. */
+  baseline?: { file: string; created: string; matched: number; warnings?: string[] };
   policy: { file: string; sha256: string };
   a: TargetRecord["info"];
   b: TargetRecord["info"];
@@ -380,60 +382,48 @@ interface Completeness {
   gaps: string[];
 }
 
-/** Limitation codes of the JavaScript analysis and the C1 gap each one means, per collection. */
-const LIMITATION_GAPS: Record<string, { gap: string; collections: readonly string[] | "all" }> = {
-  js_files_truncated: { gap: "files_unread", collections: "all" },
-  js_files_skipped: { gap: "files_unreadable", collections: "all" },
-  scan_truncated: { gap: "files_unreadable", collections: "all" },
-  file_truncated: { gap: "files_unreadable", collections: "all" },
-  ipc_channel_unresolved: {
-    gap: "values_unresolved",
-    collections: ["ipcChannels", "ipc", "interfaces"],
-  },
-  ipc_receiver_unresolved: {
-    gap: "values_unresolved",
-    collections: ["ipcChannels", "ipc", "interfaces"],
-  },
-  window_options_unresolved: {
-    gap: "values_unresolved",
-    collections: ["windows", "webPreferences"],
-  },
-  webpreferences_computed: { gap: "values_unresolved", collections: ["windows", "webPreferences"] },
-  web_preferences_truncated: { gap: "item_truncated", collections: ["windows", "webPreferences"] },
-  context_bridge_truncated: { gap: "item_truncated", collections: ["contextBridge", "interfaces"] },
-  context_bridge_members_unreadable: {
-    gap: "values_unresolved",
-    collections: ["contextBridge", "interfaces"],
-  },
-};
-
 /**
- * Completeness of one collection of the comparison.
- * TODO(C3): `r.completeness[collection]` is used when present; the local reading below is the
- * stand-in until B's comparison carries it, and is removed then.
+ * Completeness of one list of the comparison, as the comparison reports it (C1). A list the
+ * comparison names no completeness for exists on neither side: nothing was found, which is
+ * complete unless an application was read only in part.
  */
 export function completenessOf(r: ReleaseComparison, collection: string): Completeness {
-  const given = (r as ReleaseComparison & { completeness?: Record<string, Completeness> })
-    .completeness;
-  if (given && isRecord(given)) {
-    const c = given[collection];
-    return c ? { complete: c.complete, gaps: [...c.gaps] } : { complete: true, gaps: [] };
-  }
-  const gaps = new Set<string>();
-  const c = r.overview.collections.find((x) => x.collection === collection);
-  if (c?.partial) gaps.add("budget");
-  if (r.cut.some((x) => x.collection === collection)) gaps.add("budget");
-  if (r.overview.partialScan.a || r.overview.partialScan.b) gaps.add("scan_partial");
-  for (const l of [...r.limitations.a, ...r.limitations.b]) {
-    const m = LIMITATION_GAPS[l.code];
-    if (m && (m.collections === "all" || m.collections.includes(collection))) gaps.add(m.gap);
-  }
-  return { complete: gaps.size === 0, gaps: [...gaps].toSorted() };
+  const c = r.completeness[collection];
+  if (c) return { complete: c.complete, gaps: [...c.gaps] };
+  return r.overview.partialScan.a || r.overview.partialScan.b
+    ? { complete: false, gaps: ["scan_partial"] }
+    : { complete: true, gaps: [] };
+}
+
+/** The lists the rules read that each kind of analysis produces. */
+const KIND_LISTS: Record<string, ReadonlySet<string>> = {
+  "javascript-app": new Set(["interfaces", "contextBridge", "windows", "endpoints", "urls"]),
+  javascript: new Set(["endpoints", "urls"]),
+};
+/** The kind of analysis a format gives, for a comparison evaluated without `sides`. */
+const FORMAT_KIND: Record<string, string> = {
+  asar: "javascript-app",
+  directory: "javascript-app",
+  javascript: "javascript",
+};
+
+/** True when `kind` is an analysis `hexvero check` can apply a policy to. */
+export function checkableKind(kind: string): boolean {
+  return kind in KIND_LISTS;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Semantic identities
 // ---------------------------------------------------------------------------------------------
+
+/** The identity a list is matched by when the overview does not name one (a list one side has). */
+const DEFAULT_KEYS: Record<string, string> = {
+  interfaces: "file+api+member",
+  contextBridge: "api+member",
+  windows: "file+windowName",
+  endpoints: "file+kind+value",
+  urls: "file+value",
+};
 
 /** Fields that say where an item sits, not what it is. */
 const POSITION_FIELDS = new Set(["line", "column", "offset", "lines", "location", "window"]);
@@ -452,7 +442,9 @@ function fieldsOf(r: ReleaseComparison, row: ChangeRow): Record<string, unknown>
       // not JSON after all: fall through to the key reading
     }
   }
-  const key = r.overview.collections.find((c) => c.collection === row.collection)?.key;
+  const key =
+    r.overview.collections.find((c) => c.collection === row.collection)?.key ??
+    DEFAULT_KEYS[row.collection];
   if (!key) return null;
   const names = key.split("+");
   const parts = row.key.split("::");
@@ -487,8 +479,23 @@ function valueOf(r: ReleaseComparison, row: ChangeRow): string {
   const f = fieldsOf(r, row);
   if (f && typeof f["value"] === "string") return f["value"];
   if (f && typeof f["url"] === "string") return f["url"];
-  const m = /[a-z][a-z0-9+.-]*:\/\/.*$/i.exec(row.key) ?? /\$\{.*$/.exec(row.key);
+  const key = urlInput(row.key);
+  const m = /[a-z][a-z0-9+.-]*:\/\/.*$/i.exec(key) ?? /\$\{.*$/.exec(key);
   return m ? m[0] : row.key;
+}
+
+/**
+ * A URL string as the WHATWG URL parser reads it: leading and trailing C0 controls and spaces
+ * removed, and every tab, line feed and carriage return removed wherever it is, so
+ * `"\u0001https://evil.example"` and `"ht\ttps://evil.example"` are the hosts fetch would use.
+ */
+const removable = (c: string): boolean => c.charCodeAt(0) <= 0x20;
+function urlInput(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && removable(value[start]!)) start++;
+  while (end > start && removable(value[end - 1]!)) end--;
+  return value.slice(start, end).replace(/[\t\n\r]/g, "");
 }
 
 const NETWORK_SCHEMES = new Set(["http:", "https:", "ws:", "wss:", "ftp:"]);
@@ -504,7 +511,7 @@ export type HostReading =
  * (`https://${region}.api.example.com`) or cannot be read; a template is never a pass.
  */
 export function hostOf(value: string): HostReading {
-  const v = value.trim();
+  const v = urlInput(value);
   if (v.startsWith("${") || v.startsWith("`"))
     return { kind: "unknown", why: "the start of the URL is computed at run time" };
   // Read the authority the way a WHATWG URL parser does for special schemes: any run of slashes
@@ -574,8 +581,22 @@ export function plain(text: string): string {
   return flat.length > 300 ? `${flat.slice(0, 299)}…` : flat;
 }
 
+/**
+ * What a check knows about each build beyond the comparison: the kind of analysis and every item
+ * of the lists the rules read. Without it, the kind follows the format and the before build's
+ * items are only those the comparison lists as removed.
+ */
+export interface CheckSides {
+  kind: { a: string; b: string };
+  items: {
+    a: Partial<Record<string, readonly unknown[]>>;
+    b: Partial<Record<string, readonly unknown[]>>;
+  };
+}
+
 export interface EvaluateOptions {
   baseline?: LoadedBaseline | undefined;
+  sides?: CheckSides | undefined;
   /** The day suppressions are judged against; default now. */
   now?: Date | undefined;
 }
@@ -651,12 +672,63 @@ function collect(drafts: Draft[]): Draft[] {
   return [...by.values()];
 }
 
-function interfaceDrafts(r: ReleaseComparison, collection: string): Draft[] {
+/**
+ * The items of `collection` on side a: every item when the check has them, else the ones the
+ * comparison lists as removed (read back from their labels).
+ */
+function beforeItems(
+  r: ReleaseComparison,
+  collection: string,
+  sides: CheckSides | undefined,
+): Array<Record<string, unknown>> {
+  const all = sides?.items.a[collection];
+  if (all) return all.filter(isRecord);
+  return r.changes
+    .filter((row) => row.collection === collection && row.change === "removed")
+    .map((row) => fieldsOf(r, row) ?? { label: row.key });
+}
+
+/** `member\0api\0member` of every member the before build exposes. */
+function beforeMembers(r: ReleaseComparison, sides: CheckSides | undefined): Set<string> {
+  const out = new Set<string>();
+  for (const collection of ["interfaces", "contextBridge"])
+    for (const item of beforeItems(r, collection, sides))
+      if (typeof item["api"] === "string" && item["member"] !== undefined)
+        out.add(`member\0${item["api"]}\0${String(item["member"])}`);
+  return out;
+}
+
+/** Hosts and raw values of every request target the before build names. */
+function beforeTargets(
+  r: ReleaseComparison,
+  sides: CheckSides | undefined,
+): { hosts: Set<string>; values: Set<string> } {
+  const hosts = new Set<string>();
+  const values = new Set<string>();
+  for (const collection of ["endpoints", "urls"])
+    for (const item of beforeItems(r, collection, sides)) {
+      const v = item["value"] ?? item["url"];
+      if (typeof v !== "string") continue;
+      values.add(v);
+      const reading = hostOf(v);
+      if (reading.kind === "host") hosts.add(reading.host);
+    }
+  return { hosts, values };
+}
+
+function interfaceDrafts(
+  r: ReleaseComparison,
+  collection: string,
+  sides: CheckSides | undefined,
+): Draft[] {
   const out: Draft[] = [];
+  const before = beforeMembers(r, sides);
   for (const row of r.changes) {
     if (row.collection !== collection || (row.change !== "added" && row.change !== "unknown"))
       continue;
     const { id, label } = memberIdentity(r, row);
+    // exposed before from another file (a moved preload, a renamed chunk): not new
+    if (before.has(id)) continue;
     const unknown = row.change === "unknown";
     out.push({
       rule: "new-interface-member",
@@ -673,8 +745,14 @@ function interfaceDrafts(r: ReleaseComparison, collection: string): Draft[] {
   return out;
 }
 
-function hostDrafts(r: ReleaseComparison, allow: readonly string[]): Draft[] {
+function hostDrafts(
+  r: ReleaseComparison,
+  allow: readonly string[],
+  sides: CheckSides | undefined,
+): Draft[] {
   const out: Draft[] = [];
+  // A host the before build already named, in any file or with any path, is not a new host.
+  const before = beforeTargets(r, sides);
   for (const row of r.changes) {
     if (row.collection !== "endpoints" && row.collection !== "urls") continue;
     if (row.change !== "added" && row.change !== "unknown") continue;
@@ -682,6 +760,7 @@ function hostDrafts(r: ReleaseComparison, allow: readonly string[]): Draft[] {
     const reading = hostOf(value);
     if (reading.kind === "none") continue;
     if (reading.kind === "unknown") {
+      if (before.values.has(value)) continue;
       // Without a host the value itself (minus where it sits) is what the finding is about.
       out.push({
         rule: "new-external-host",
@@ -694,7 +773,7 @@ function hostDrafts(r: ReleaseComparison, allow: readonly string[]): Draft[] {
       });
       continue;
     }
-    if (hostAllowed(reading.host, allow)) continue;
+    if (hostAllowed(reading.host, allow) || before.hosts.has(reading.host)) continue;
     const unknown = row.change === "unknown";
     out.push({
       rule: "new-external-host",
@@ -711,7 +790,7 @@ function hostDrafts(r: ReleaseComparison, allow: readonly string[]): Draft[] {
   return out;
 }
 
-function windowDrafts(r: ReleaseComparison): Draft[] {
+function windowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
   const out: Draft[] = [];
   for (const w of r.overview.windowChanges) {
     if (w.direction === "less permissive") continue;
@@ -737,6 +816,95 @@ function windowDrafts(r: ReleaseComparison): Draft[] {
       where: row.where,
       unknown,
     });
+  }
+  out.push(...unmatchedWindowDrafts(r, sides));
+  return out;
+}
+
+/** For each derived window setting, the values under which a page can do more. */
+const PERMISSIVE: Record<string, readonly string[]> = {
+  nodeIntegrationInEffect: ["on", "default on"],
+  contextIsolationInEffect: ["off", "default off"],
+  sandboxInEffect: ["off", "default off"],
+  pageRequire: ["yes", "yes by default"],
+};
+
+/** The window item behind a row of `windows`, from its label or the side's items. */
+function windowItem(
+  r: ReleaseComparison,
+  row: ChangeRow,
+  side: "a" | "b",
+  sides: CheckSides | undefined,
+): Record<string, unknown> | null {
+  const f = fieldsOf(r, row);
+  if (f && Object.keys(PERMISSIVE).some((k) => k in f)) return f;
+  if (!f) return null;
+  const list = (sides?.items[side]["windows"] ?? []).filter(isRecord);
+  return (
+    list.find(
+      (w) => w["file"] === f["file"] && String(w["windowName"]) === String(f["windowName"]),
+    ) ?? null
+  );
+}
+
+/**
+ * Windows the comparison could not match by file and name: a window that is new, renamed, or
+ * on a side that was not read. An added window is judged by its own settings. When a removed
+ * window was already as permissive on a setting, the added one may be that window renamed, so
+ * the finding is unknown; so is an unknown row, and a window whose settings cannot be read.
+ */
+function unmatchedWindowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const removed = r.changes
+    .filter((row) => row.collection === "windows" && row.change === "removed")
+    .map((row) => ({ row, item: windowItem(r, row, "a", sides) }));
+  const removedOpen = (setting: string): string | undefined => {
+    for (const { row, item } of removed)
+      if (!item || PERMISSIVE[setting]!.includes(String(item[setting] ?? "unknown")))
+        return row.key;
+    return undefined;
+  };
+  for (const row of r.changes) {
+    if (row.collection !== "windows" || (row.change !== "added" && row.change !== "unknown"))
+      continue;
+    const side = row.change === "unknown" && row.where[0]?.side === "a" ? "a" : "b";
+    const item = windowItem(r, row, side, sides);
+    const label = plain(row.key);
+    if (!item) {
+      out.push({
+        rule: "window-more-permissive",
+        identity: `window\0${row.key}`,
+        row,
+        key: row.key,
+        message: `Window ${label} is ${row.change === "added" ? "new" : "not matched"} and its settings could not be read.`,
+        where: row.where,
+        unknown: true,
+      });
+      continue;
+    }
+    for (const setting of Object.keys(PERMISSIVE)) {
+      const value = String(item[setting] ?? "unknown");
+      const open = PERMISSIVE[setting]!.includes(value);
+      if (!open && value !== "unknown") continue;
+      const twin = open && row.change === "added" ? removedOpen(setting) : undefined;
+      const unknown = row.change === "unknown" || value === "unknown" || twin !== undefined;
+      out.push({
+        rule: "window-more-permissive",
+        identity: `window\0${row.key}\0${setting}\0${value}`,
+        row,
+        key: `${row.key} ${setting}`,
+        message:
+          row.change === "unknown"
+            ? `Window ${label} may be new (${plain(row.reason ?? "the comparison could not tell")}): ${setting} is ${plain(value)}.`
+            : value === "unknown"
+              ? `New window ${label}: whether ${setting} lets its pages do more is not known.`
+              : twin !== undefined
+                ? `New window ${label} has ${setting} ${plain(value)}; it may be ${plain(twin)} renamed, which had it too.`
+                : `New window ${label} lets its pages do more: ${setting} is ${plain(value)}.`,
+        where: row.where,
+        unknown,
+      });
+    }
   }
   return out;
 }
@@ -764,8 +932,15 @@ export function evaluatePolicy(
 ): PolicyResult {
   const { policy } = loaded;
   const now = options.now ?? new Date();
+  const { sides } = options;
   const drafts: Draft[] = [];
   const incomplete: PolicyResult["incomplete"] = [];
+  const kind = (side: "a" | "b"): string =>
+    sides?.kind[side] ?? FORMAT_KIND[r[side].info.format] ?? r[side].info.format;
+  const [kindA, kindB] = [kind("a"), kind("b")];
+  /** A list a rule needs that one of the analyses cannot produce: nothing can be decided. */
+  const missing = (collection: string): boolean =>
+    kindA !== kindB || !(KIND_LISTS[kindA]?.has(collection) ?? false);
   for (const rule of POLICY_RULES) {
     const cfg = policy.rules[rule];
     if (cfg.level === "off") continue;
@@ -773,11 +948,12 @@ export function evaluatePolicy(
     for (const collection of new Set([...collections, ...RULE_COVERAGE[rule](r)])) {
       const ignore = IRRELEVANT_GAPS[rule]?.[collection] ?? [];
       const gaps = completenessOf(r, collection).gaps.filter((g) => !ignore.includes(g));
+      if (missing(collection)) gaps.unshift("collection_missing");
       if (gaps.length) incomplete.push({ rule, collection, gaps });
     }
-    if (rule === "new-interface-member") drafts.push(...interfaceDrafts(r, collections[0]!));
-    if (rule === "new-external-host") drafts.push(...hostDrafts(r, cfg.allow ?? []));
-    if (rule === "window-more-permissive") drafts.push(...windowDrafts(r));
+    if (rule === "new-interface-member") drafts.push(...interfaceDrafts(r, collections[0]!, sides));
+    if (rule === "new-external-host") drafts.push(...hostDrafts(r, cfg.allow ?? [], sides));
+    if (rule === "window-more-permissive") drafts.push(...windowDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -785,7 +961,9 @@ export function evaluatePolicy(
   );
   let matched = 0;
   const findings: PolicyFinding[] = collect(drafts).map((d) => {
-    const fingerprint = fingerprintOf(d.rule, d.identity);
+    // An unknown ("may be new") has its own fingerprint, so accepting it never accepts the same
+    // item once it is known to be new.
+    const fingerprint = fingerprintOf(d.rule, d.unknown ? `maybe\0${d.identity}` : d.identity);
     const level = policy.rules[d.rule].level as "fail" | "warn";
     const sup = policy.suppressions.find((s) => s.rule === d.rule && s.fingerprint === fingerprint);
     let state: PolicyFinding["state"] = "new";
@@ -834,13 +1012,7 @@ export function evaluatePolicy(
     findings,
     incomplete,
     ...(options.baseline
-      ? {
-          baseline: {
-            file: options.baseline.file,
-            created: options.baseline.baseline.created,
-            matched,
-          },
-        }
+      ? { baseline: baselineSummary(options.baseline, loaded, r, matched) }
       : {}),
     policy: { file: loaded.file, sha256: loaded.sha256 },
     a: r.a.info,
@@ -848,10 +1020,63 @@ export function evaluatePolicy(
   };
 }
 
+function baselineSummary(
+  loaded: LoadedBaseline,
+  policy: LoadedPolicy,
+  r: ReleaseComparison,
+  matched: number,
+): NonNullable<PolicyResult["baseline"]> {
+  const warnings: string[] = [];
+  if (loaded.baseline.policy !== policy.sha256)
+    warnings.push(
+      `the baseline was written for another policy (sha256 ${loaded.baseline.policy.slice(0, 12)}…)`,
+    );
+  if (loaded.baseline.a !== r.a.info.sha256)
+    warnings.push(
+      `the baseline was written against another before build (sha256 ${loaded.baseline.a.slice(0, 12)}…)`,
+    );
+  return {
+    file: loaded.file,
+    created: loaded.baseline.created,
+    matched,
+    ...(warnings.length ? { warnings } : {}),
+  };
+}
+
 /** Rows a check reads at most; past this the collection is reported as not decidable. */
 export const CHECK_MAX_ROWS = 100_000;
 /** The core's largest page of rows. */
 const CHECK_PAGE_ROWS = 5000;
+
+/**
+ * The session as `compareReleases` sees it during one check: the comparison and the item lists
+ * are computed once and every later page reuses them, so reading N pages costs one comparison,
+ * not N. (`compareReleases` pages its rows; its signature stays as it is.)
+ */
+function memoized(session: Session): Session {
+  const cache = new Map<string, unknown>();
+  const once = new Set([
+    "compareAll",
+    "compareCollection",
+    "items",
+    "coverage",
+    "collections",
+    "analyze",
+  ]);
+  return new Proxy(session, {
+    get(target, name, receiver) {
+      const value: unknown = Reflect.get(target, name, receiver);
+      if (typeof value !== "function") return value;
+      const fn = value as (...args: unknown[]) => unknown;
+      if (typeof name !== "string" || !once.has(name)) return fn.bind(target);
+      return (...args: unknown[]) => {
+        const key = `${name}\0${JSON.stringify(args)}`;
+        if (!cache.has(key)) cache.set(key, fn.apply(target, args));
+        return cache.get(key);
+      };
+    },
+  });
+}
 
 /**
  * The whole comparison a check needs: every row, not the first page a reader is shown. Pages of
@@ -864,15 +1089,17 @@ export async function comparisonForCheck(
   idA: string,
   idB: string,
 ): Promise<ReleaseComparison> {
-  const first = await compareReleases(session, idA, idB, { offset: 0, limit: CHECK_PAGE_ROWS });
+  const once = memoized(session);
+  const first = await compareReleases(once, idA, idB, { offset: 0, limit: CHECK_PAGE_ROWS });
   const changes = [...first.changes];
   let next = first.page.next;
   while (next !== null && changes.length < CHECK_MAX_ROWS) {
-    const more = await compareReleases(session, idA, idB, { offset: next, limit: CHECK_PAGE_ROWS });
+    const more = await compareReleases(once, idA, idB, { offset: next, limit: CHECK_PAGE_ROWS });
     changes.push(...more.changes);
     next = more.page.next;
   }
-  if (next === null) return { ...first, changes, page: { ...first.page, offset: 0, next: null } };
+  const page = { ...first.page, offset: 0, limit: changes.length, next };
+  if (next === null) return { ...first, changes, cut: [], page };
   // Rows left unread: mark every collection incomplete so no rule can pass on a part.
   const completeness = Object.fromEntries(
     Object.entries(first.completeness).map(([name, c]) => [
@@ -880,10 +1107,29 @@ export async function comparisonForCheck(
       { ...c, complete: false, gaps: [...new Set([...c.gaps, "budget"])].toSorted() },
     ]),
   );
-  return { ...first, changes, completeness, page: { ...first.page, offset: 0, next } };
+  return { ...first, changes, completeness, page };
 }
 
-/** Compares two opened targets and applies the policy: `hexvero check` without the printing. */
+/** The lists the rules read, per side, for `CheckSides.items`. */
+const RULE_LISTS = ["interfaces", "contextBridge", "windows", "endpoints", "urls"];
+
+async function sidesOf(session: Session, idA: string, idB: string): Promise<CheckSides> {
+  const side = async (id: string) => {
+    const [analysis, lists] = await Promise.all([session.analyze(id), session.collections(id)]);
+    const items: Partial<Record<string, readonly unknown[]>> = {};
+    for (const name of RULE_LISTS) items[name] = name in lists ? await session.items(id, name) : [];
+    return { kind: analysis.data.kind as string, items };
+  };
+  const [a, b] = await Promise.all([side(idA), side(idB)]);
+  return { kind: { a: a.kind, b: b.kind }, items: { a: a.items, b: b.items } };
+}
+
+/**
+ * Compares two opened targets and applies the policy: `hexvero check` without the printing.
+ * Both must be JavaScript applications (an Electron archive or app directory) or both
+ * JavaScript bundles; anything else is refused with an `invalid_input` error (CLI exit 1)
+ * rather than passed for lack of anything to check.
+ */
 export async function checkRelease(
   session: Session,
   idA: string,
@@ -891,7 +1137,20 @@ export async function checkRelease(
   policy: LoadedPolicy,
   options: EvaluateOptions = {},
 ): Promise<PolicyResult> {
-  return evaluatePolicy(await comparisonForCheck(session, idA, idB), policy, options);
+  const sides = await sidesOf(session, idA, idB);
+  for (const side of ["a", "b"] as const)
+    if (!checkableKind(sides.kind[side]))
+      throw new AnalysisError(
+        "invalid_input",
+        `hexvero check compares two builds of a JavaScript application (an Electron .asar, an app directory or a bundle); ${side === "a" ? "before" : "after"} is ${sides.kind[side]} (${session.get(side === "a" ? idA : idB).info.format})`,
+      );
+  if (sides.kind.a !== sides.kind.b)
+    throw new AnalysisError(
+      "invalid_input",
+      `hexvero check compares two builds of the same kind; before is ${sides.kind.a}, after is ${sides.kind.b}`,
+    );
+  const comparison = await comparisonForCheck(session, idA, idB);
+  return evaluatePolicy(comparison, policy, { ...options, sides: options.sides ?? sides });
 }
 
 /** Exit codes of `hexvero check` (contract C6). */

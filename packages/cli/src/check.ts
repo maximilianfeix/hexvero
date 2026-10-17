@@ -101,6 +101,7 @@ export function formatCheck(io: Io, r: PolicyResult): string {
         "dim",
         `  baseline ${safe(r.baseline.file)}: ${r.baseline.matched} finding(s) matched`,
       ),
+      ...(r.baseline.warnings ?? []).map((w) => `  ${paint(io, "yellow", "!")} ${safe(w)}`),
     );
   if (r.status === "fail" || r.status === "incomplete")
     lines.push(
@@ -220,5 +221,9 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
       `${paint(io, "bold", "hexvero check")} ${STATUS_TEXT[result.status]} · ${result.findings.length} finding(s) · ${safe(out)}`,
     );
   } else io.out(text);
+  // Text output lists them itself; with another format they go to stderr, not into the data.
+  if (format !== "text" || out)
+    for (const w of result.baseline?.warnings ?? [])
+      io.err(`${paint(io, "yellow", "warning:")} ${safe(w)}`);
   return CHECK_EXIT[result.status];
 }

