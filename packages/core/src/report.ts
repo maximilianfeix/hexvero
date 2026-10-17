@@ -141,6 +141,8 @@ const ORDER = [
   "interfaces",
   "contextBridge",
   "ipcChannels",
+  // a call whose payload shape changed (the only `ipc` rows listed)
+  "ipc",
   "windows",
   "bridgeExposures",
   "navigationHandlers",
@@ -151,7 +153,8 @@ const ORDER = [
 ];
 /**
  * Not listed row by row: findings restate the lists in sentences, `ipc` repeats `ipcChannels`
- * call by call, `modules` and `edges` change with every edit.
+ * call by call (except a call whose payload shape changed, see below), `modules` and `edges`
+ * change with every edit.
  */
 const SUMMARY_ONLY = new Set(["findings", "ipc", "modules", "edges", "limitations"]);
 /** What hexvero writes about a build (its findings, what it could not read), not app content. */
@@ -184,7 +187,13 @@ function callsByChannel(ipc: readonly unknown[]): Map<string, Item[]> {
 function placesOf(item: unknown, side: "a" | "b", ipc: ReadonlyMap<string, Item[]>): Place[] {
   if (!isItem(item)) return [];
   const out: Place[] = [];
-  const file = typeof item["file"] === "string" ? item["file"] : undefined;
+  // an IPC call names its file as `module`
+  const file =
+    typeof item["file"] === "string"
+      ? item["file"]
+      : typeof item["module"] === "string" && typeof item["api"] === "string"
+        ? item["module"]
+        : undefined;
   const line = typeof item["line"] === "number" ? item["line"] : undefined;
   if (file) out.push(line === undefined ? { side, file } : { side, file, line });
   else if (typeof item["location"] === "string") {
@@ -329,6 +338,17 @@ export async function compareReleases(
         whereBefore: placesOf(c.before, "a", ipcA),
       });
     unknownRows(collection, diff.unknown, items.unknown);
+  }
+  // A call whose payload shape changed (`args`): `ipcChannels` names the channel, not what is
+  // sent on it, so these changed calls are listed; the rest of `ipc` stays summary only.
+  if (overview.collections.some((c) => c.collection === "ipc" && c.changed)) {
+    const { diff } = await session.compareCollection(idA, idB, "ipc");
+    for (const c of diff.changed)
+      if (c.fields.some((f) => f.field === "args"))
+        add("ipc", "changed", c.key, c.after, "b", {
+          fields: c.fields,
+          whereBefore: placesOf(c.before, "a", ipcA),
+        });
   }
   // A list one build does not have at all (the first endpoint, the first storage key): every
   // item is added or removed, unless the other build may hold it where it was not read.

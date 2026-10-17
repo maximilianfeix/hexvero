@@ -410,6 +410,47 @@ applies). Not read: modules a bundler refers to by number (webpack's `r = n(6569
 versions), a client passed around as a value (`const l = net.request; l(url)`), wrappers called
 from another module, and `fetch(new Request(url))`.
 
+## Payload shape of an IPC call (`ipc`, field `args`)
+
+A new field in what a renderer sends on an existing channel does not change the channel list, so
+the `ipc` row of a call that sends also records the shape of the arguments after the channel, as
+written at the call: `ipcRenderer.send`, `invoke`, `sendSync`, `postMessage`, `webContents.send`,
+`event.reply` and `event.sender.send` (also under another name, with a channel from a constant or
+resolved, and the rows of a table of channels). Receivers (`on`, `handle`) have no `args`.
+
+| written after the channel                 | `args`                         |
+| ----------------------------------------- | ------------------------------ |
+| nothing                                   | `()`                           |
+| `{ dir, packageManager }, ...names`       | `({dir, packageManager}, ...)` |
+| `{ b: 1, a, m() {}, "c-d": 2 }`           | `({a, b, "c-d", m})`           |
+| `{ a, ...rest }`, `{ [k]: 1, a }`         | `({a, …})`                     |
+| `id, () => x`, `f({ a })`, `{ a } \|\| b` | `(_, _)`, `(_)`, `(_)`         |
+
+An object literal argument (exactly `{…}`, nothing after it) gives its property names, sorted by
+code unit, shorthand, `key: value`, methods and accessors alike; a name that is not an identifier
+or an integer is quoted. A `...spread` or a computed key leaves names unknown: the list then ends
+in `…`, and nothing is guessed. A `...spread` argument is `...` (the number of arguments at run
+time is not known); any other argument is `_`, a value that is not described further. At most 32
+arguments and 64 names per object are written, with `… +N more` for the rest. A call whose
+brackets do not close (a file read only in part) is `not read`.
+
+`args` is compared as content; the identity of the row stays `module+api+channel`, so a changed
+payload is one changed call, never a removed and an added one. Calls of one channel that repeat in
+a file are paired by content first; those that then differ only in `args` are still paired, one to
+one when there is one per side, otherwise as one changed item that lists every side's shapes. The
+release report lists the `ipc` calls whose `args` changed (other `ipc` rows stay summary only,
+as `ipcChannels` names them).
+
+Electron Fiddle 0.38.0 → 0.39.0: `compare … ipc` gives `0 added, 0 removed, 1 changed`, the call
+`.webpack/renderer/main_window/preload.js::ipcRenderer.invoke::NPM_ADD_MODULES` with `args:
+"({dir, packageManager}, ...)" → "({dir, packageManager, useSocketFirewall}, ...)"`; its
+`src/preload/preload.ts` diff is exactly that field. Before, all 157 rows were unchanged.
+
+Not read: the payload of a call through a wrapper method or a channel-forwarding helper (`via:
+wrapper`) or through a name another file defines (`via: global`): those rows have no `args`, as
+the arguments of the wrapper are not necessarily what it sends. Keys are taken as written, not normalised: `{1.5: x}` and `{"1.5": x}`, `{0x10: x}` and `{16: x}`, `{["a"]: 1}` and `{a: 1}` give different shapes, as does a transpiler's spread helper (`_objectSpread({}, o, {a})` is `(_)`) against `{...o, a}`; `__proto__: p` counts as an unknown name. A comparison with an export written by 0.9.4 shows `args` on every sending call, as those rows have none. What a value argument holds (`_`),
+the keys of an object held in a variable, and what the receiver reads from the payload.
+
 ## Not read
 
 Electron fuses, Content Security Policy, what a navigation or window-open handler checks,

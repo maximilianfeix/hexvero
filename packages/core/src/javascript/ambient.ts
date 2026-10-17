@@ -16,6 +16,7 @@
  * on one page's own channel object (`webContents.ipc.on`), replies through `event.sender.send`
  * in listeners registered under another name, and `webContents.postMessage`.
  */
+import { PayloadReader } from "./payload.js";
 import type { IpcUsage, Token } from "./scan.js";
 
 export type IpcTarget = "ipcMain" | "ipcRenderer";
@@ -92,11 +93,13 @@ const literal = (t: Token | undefined): string | null =>
 
 /**
  * What one file defines for others, the IPC-shaped calls it makes on names it does not bind, and
- * the IPC rows only this reader sees. `aliases` is the file's own alias resolution.
+ * the IPC rows only this reader sees. `aliases` is the file's own alias resolution; `source` is
+ * the text the tokens were read from (for the payload shape of a reply).
  */
 export function collectAmbient(
   tokens: Token[],
   aliases: Map<number, string>,
+  source: string,
 ): { facts: AmbientFacts; ipc: IpcUsage[]; truncated: boolean } {
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
@@ -155,6 +158,7 @@ export function collectAmbient(
   const own: Array<AmbientCall & { bindings: number }> = [];
   const ipc: IpcUsage[] = [];
   const replies: IpcUsage[] = [];
+  let payload: PayloadReader | undefined;
   let truncated = false;
   const room = <T>(list: T[]): boolean => {
     if (list.length < MAX_PER_FILE) return true;
@@ -239,7 +243,13 @@ export function collectAmbient(
             ? "webContents.postMessage"
             : null;
       const channel = api ? literal(tokens[i + 2]) : null;
-      if (api && channel !== null && room(replies)) replies.push({ api, channel, line: t.line });
+      if (api && channel !== null && room(replies))
+        replies.push({
+          api,
+          channel,
+          line: t.line,
+          args: (payload ??= new PayloadReader(tokens, source)).shapeAt(i + 1),
+        });
     }
     if (property) continue;
 
