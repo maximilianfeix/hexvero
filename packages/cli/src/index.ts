@@ -62,7 +62,8 @@ Commands
                                                 .html/.htm writes one offline page with source
                                                 excerpts and filters, anything else Markdown
   check <before> <after> --policy <file>        Apply a release policy (new interface members, new
-        [--baseline file] [--update-baseline]   external hosts, more permissive windows); exit 0
+        [--baseline file] [--update-baseline]   external hosts, more permissive windows, privileged
+                                                objects handed to pages); exit 0
         [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
         [--out file] [--force]                  the result (never over a file without --force)
   export <path> <out.json>                      Write the complete analysis to a file

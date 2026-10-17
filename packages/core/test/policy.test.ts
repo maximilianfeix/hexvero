@@ -1403,3 +1403,70 @@ describe("new-bridge-exposure", () => {
     expect(r.status).toBe("incomplete");
   });
 });
+
+/** The release check of two build files under a policy that lists the exposure rule at fail. */
+const checkFiles = async (a: string, b: string) => {
+  const session = new Session();
+  const ta = await session.open(a);
+  const tb = await session.open(b);
+  return checkRelease(session, ta.id, tb.id, listed("fail"));
+};
+
+describe("new-bridge-exposure through checkRelease (the lists of both builds are loaded)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hexvero-policy-exposure-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const hdr = 'const { contextBridge, ipcRenderer } = require("electron");\n';
+  const ex = (body: string) =>
+    `contextBridge.exposeInMainWorld("api", { ping: () => ipcRenderer.send("ping")${body} });\n`;
+  const mainFor = (preloads: string[]) =>
+    `const { BrowserWindow } = require("electron");\n${preloads
+      .map(
+        (p) =>
+          `new BrowserWindow({ webPreferences: { preload: "${p}", contextIsolation: true, sandbox: true } });`,
+      )
+      .join("\n")}\n`;
+  const write = (name: string, files: Record<string, string>, preloads = ["preload.js"]) => {
+    const path = join(dir, `${name}.asar`);
+    writeFileSync(
+      path,
+      buildAsar({
+        "package.json": JSON.stringify({
+          name,
+          main: "main.js",
+          devDependencies: { electron: "^38.0.0" },
+        }),
+        "main.js": mainFor(preloads),
+        ...files,
+      }),
+    );
+    return path;
+  };
+  const hostile = Array.from(
+    { length: 250 },
+    (_, i) => `function f${i}(){var ipcRenderer=${i};ipcRenderer=ipcRenderer+1;return ipcRenderer}`,
+  ).join("\n");
+
+  it("reads an exposure hexvero could not decide as one that may be new (maybe fingerprint)", async () => {
+    const r = await checkFiles(
+      write("base", { "preload.js": hdr + ex("") }),
+      write("undecided", { "preload.js": `${hdr}${hostile}\n${ex(", ipc: ipcRenderer")}` }),
+    );
+    const f = r.findings.filter((x) => x.rule === "new-bridge-exposure");
+    expect(f.map((x) => [x.key, x.unknown])).toEqual([["api.ipc", true]]);
+  });
+
+  it("does not report the same exposure in a second preload as new", async () => {
+    const r = await checkFiles(
+      write("one", { "preload.js": hdr + ex(", ipc: ipcRenderer") }),
+      write(
+        "two",
+        {
+          "preload.js": hdr + ex(", ipc: ipcRenderer"),
+          "preload2.js": hdr + ex(", ipc: ipcRenderer"),
+        },
+        ["preload.js", "preload2.js"],
+      ),
+    );
+    expect(r.findings.filter((x) => x.rule === "new-bridge-exposure")).toEqual([]);
+  });
+});

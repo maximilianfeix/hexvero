@@ -14,6 +14,9 @@ All notable changes to hexvero are listed here. The format follows
   the before build is not new; an exposure hexvero could not decide is an unknown finding. A
   policy that does not list the rule runs it at `warn`, so upgrading never turns a passing check
   red; `examples/policy.json` lists it at `fail`. SARIF rule `NewBridgeExposure`, schema updated.
+  hexvero 0.9.6 and older reject a policy that lists the rule (exit 2, unknown rule); keep it
+  out of a policy that an older pinned version reads. A narrowed exposure (`ipcRenderer` →
+  `ipcRenderer.send`) is a different object and is reported as new.
 
 ### CLI
 

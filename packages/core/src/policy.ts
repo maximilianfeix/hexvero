@@ -1206,7 +1206,7 @@ export async function comparisonForCheck(
 }
 
 /** The lists the rules read, per side, for `CheckSides.items`. */
-const RULE_LISTS = ["interfaces", "contextBridge", "windows", "endpoints", "urls"];
+const RULE_LISTS = ["interfaces", "contextBridge", "bridgeExposures", "windows", "endpoints", "urls"];
 
 async function sidesOf(session: Session, idA: string, idB: string): Promise<CheckSides> {
   const side = async (id: string) => {
