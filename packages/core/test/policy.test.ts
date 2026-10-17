@@ -1019,6 +1019,18 @@ describe("review H3: windows that are not matched by name", () => {
     expect(r.status).toBe("fail");
   });
 
+  it("judges every window of the same file and name, so a safe one cannot hide a permissive one", () => {
+    // two `win` variables in two functions of main.js; the safe one is listed first
+    const r = evaluatePolicy(comparison({ changes: [windowRow("added", "win", 9)] }), policy(), {
+      sides: sides(
+        { windows: [] },
+        { windows: [win("win", SAFE, 9), win("win", { ...SAFE, sandboxInEffect: "off" }, 40)] },
+      ),
+    });
+    expect(r.findings.map((f) => f.key)).toEqual(["main.js::win sandboxInEffect"]);
+    expect(r.status).toBe("fail");
+  });
+
   it("an added window as permissive as a removed one may be a rename: unknown, incomplete", () => {
     const r = evaluatePolicy(
       comparison({ changes: [windowRow("added", "mainWindow"), windowRow("removed", "win")] }),

@@ -840,11 +840,20 @@ function windowItem(
   if (f && Object.keys(PERMISSIVE).some((k) => k in f)) return f;
   if (!f) return null;
   const list = (sides?.items[side]["windows"] ?? []).filter(isRecord);
-  return (
-    list.find(
-      (w) => w["file"] === f["file"] && String(w["windowName"]) === String(f["windowName"]),
-    ) ?? null
+  const matches = list.filter(
+    (w) => w["file"] === f["file"] && String(w["windowName"]) === String(f["windowName"]),
   );
+  if (matches.length <= 1) return matches[0] ?? null;
+  // Several windows share the file and variable name (two `win` in two functions): judge them
+  // together, so the most permissive value of each setting counts and a safe first match cannot
+  // hide a permissive second one. Values that differ without one being permissive are unknown.
+  const merged: Record<string, unknown> = { ...matches[0] };
+  for (const [setting, open] of Object.entries(PERMISSIVE)) {
+    const values = [...new Set(matches.map((m) => String(m[setting])))];
+    merged[setting] =
+      values.find((v) => open.includes(v)) ?? (values.length === 1 ? values[0] : "unknown");
+  }
+  return merged;
 }
 
 /**
