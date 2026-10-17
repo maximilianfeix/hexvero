@@ -68,7 +68,7 @@ What changed between notesdesk-1.4.0.asar and notesdesk-1.5.0.asar
     ! b: 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ipcMain.handle at main.js:33 (evaluation stopped: runtime value: process). (ipc_channel_unresolved)
 ```
 
-The commands hexvero suggests (`Next`) are written as `hexvero …`; without a global install (`npm install -g hexvero`), put `npx` in front: `npx hexvero compare …`.
+The commands hexvero suggests (`Next`) are written the way you started it: `npx hexvero …` under npx, `hexvero …` after `npm install -g hexvero`.
 
 1.5.0 adds `checkUpdate`, a member pages can call, whose handler at `main.js:30` fetches a new host. `shell:open` exists only in 1.4.0, but 1.5.0 registers channels whose names come from an environment variable at `main.js:33`, so hexvero reports it as `?` unknown, not as removed.
 

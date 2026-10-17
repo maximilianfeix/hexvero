@@ -6,6 +6,12 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### CLI
+
+- Commands hexvero suggests (`Next` after `demo` and `analyze`, the hints under lists and
+  comparisons) are written as `npx hexvero …` when npx started it, so they can be pasted as they
+  are; `--json` output is unchanged. Found by a first-time-user run of 0.9.4.
+
 ### Web UI
 
 - The compare view explains the `ipc` group (the calls whose payload changed on an existing
