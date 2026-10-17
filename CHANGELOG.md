@@ -6,6 +6,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Performance
+
+- Analysis of large apps is faster than in 0.9.5, with identical results: a per-file text test, the
+  `URL` constructor table, class-field owners and scoped enums are read once per file instead of per
+  call or per resolver. Discord `analyze --fresh` 995 → 953 ms, Claude.app 8.4 → 7.5 s (median,
+  interleaved, registry 0.9.5 against this build; docs/benchmarks.md has the method).
+
 ## [0.9.5] - 2026-10-17
 
 ### Electron analysis
