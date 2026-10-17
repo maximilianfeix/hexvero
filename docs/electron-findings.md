@@ -387,8 +387,12 @@ of the modules opened plus that work), the methods of that name of every wrapper
 replaced, and the limitation says "a member write not read within the replacement budget … at
 file:line"; a module not read at all once the application's budget is used up makes every method
 of the wrappers it imports count as replaced ("… imports it and was not read within the
-replacement budget of the application"). Calls of a wrapper whose methods all count as replaced
-are not read. A write to another object of the same method name (`srv.handle = f`, lodash's
+replacement budget of the application"). That holds for storage keys; for IPC wrapper methods
+the calls are read as before the check existed, and the limitation `wrapper_replacements_unchecked`
+names the modules not checked. Modules are read in an order that does not depend on their names:
+the modules that define wrappers, then the calling files the call stage reads, then the rest, each
+group smallest first, the path only as the last tie-break. Calls of a wrapper whose methods all
+count as replaced are not read. A write to another object of the same method name (`srv.handle = f`, lodash's
 `_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
 so a call there may still be read although the method was replaced: a replacement through a
 global (`window.__s.save = f` with `window.__s` set elsewhere), through `require.cache`, through

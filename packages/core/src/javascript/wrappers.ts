@@ -1299,6 +1299,8 @@ export interface WrapperModule {
   /** The names the module exports itself (scan.ts), not through `export *`. */
   exports?: readonly string[];
   wrappers?: WrapperFacts;
+  /** Bytes of the file: the order modules are read in (smallest first), not their names. */
+  size?: number;
   reexports?: Record<string, { specifier: string; property: string }>;
   starExports?: string[];
   /** Every `module.exports = require("…")`, also uncertain ones: read for replacements only. */
@@ -1327,9 +1329,16 @@ export function linkWrappers(input: {
   resolve(from: string, specifier: string): string | null;
   open(path: string): ReadModule | null;
   maxFiles?: number;
-}): { rows: Map<string, WrapperRow[]>; capped: string[]; replaced: Replaced[] } {
+}): {
+  rows: Map<string, WrapperRow[]>;
+  capped: string[];
+  replaced: Replaced[];
+  unchecked: string[];
+} {
   return linkWrapperCalls({
     ...input,
+    // past the replacement budget, IPC calls are read without the check (as before it existed)
+    keepPastBudget: true,
     read: (reader, onlySeeded) => reader.rows(onlySeeded),
     same: (x, row) => x.at === row.at && x.usage.api === row.usage.api,
   });
@@ -1345,7 +1354,12 @@ export function linkKeyWrappers(input: {
   resolve(from: string, specifier: string): string | null;
   open(path: string): ReadModule | null;
   maxFiles?: number;
-}): { rows: Map<string, KeyCall[]>; capped: string[]; replaced: Replaced[] } {
+}): {
+  rows: Map<string, KeyCall[]>;
+  capped: string[];
+  replaced: Replaced[];
+  unchecked: string[];
+} {
   return linkWrapperCalls({
     ...input,
     read: (reader, onlySeeded) => reader.keyCalls(onlySeeded),
@@ -1361,7 +1375,12 @@ function linkWrapperCalls<R>(input: {
   maxFiles?: number;
   read(reader: WrapperReader, onlySeeded: boolean): R[];
   same(a: R, b: R): boolean;
-}): { rows: Map<string, R[]>; capped: string[]; replaced: Replaced[] } {
+  /**
+   * Past the replacement budget, keep the calls (and name the modules not checked) instead of
+   * counting every method as replaced.
+   */
+  keepPastBudget?: boolean;
+}): { rows: Map<string, R[]>; capped: string[]; replaced: Replaced[]; unchecked: string[] } {
   const out = new Map<string, R[]>();
   const capped: string[] = [];
   const byId = new Map(input.modules.map((m) => [m.id, m]));
@@ -1372,7 +1391,8 @@ function linkWrapperCalls<R>(input: {
   );
   const replaced = new Set<string>();
   const replacedAt: Replaced[] = [];
-  if (!providers.size) return { rows: out, capped, replaced: replacedAt };
+  const unchecked: string[] = [];
+  if (!providers.size) return { rows: out, capped, replaced: replacedAt, unchecked };
   // classes of other modules, one object per class so that identity holds across readers
   const known = new Map<string, WrapperClass>();
   const classOf = (file: string, id: string): WrapperClass | null => {
@@ -1462,9 +1482,12 @@ function linkWrapperCalls<R>(input: {
       )
         looseProviders.add(e.from);
     }
+  /** Smallest first, the path only as the last tie-break: a renamed copy reads the same. */
+  const bySize = (a: string, b: string): number =>
+    (byId.get(a)?.size ?? 0) - (byId.get(b)?.size ?? 0) || (a < b ? -1 : a > b ? 1 : 0);
   const allImporters = [
     ...new Set(input.edges.filter((e) => e.resolved && providers.has(e.to)).map((e) => e.from)),
-  ].toSorted();
+  ].toSorted(bySize);
   const importers = allImporters.slice(0, input.maxFiles ?? 200);
   capped.push(...allImporters.slice(importers.length));
   const readers = new Map<string, WrapperReader | null>();
@@ -1501,7 +1524,7 @@ function linkWrapperCalls<R>(input: {
   // there): read in every module that imports a provider, and in the providers, before any call
   // is read. A write to another object of the same method name is none.
   // (no module calls a provider's wrappers: nothing to read)
-  if (!importers.length) return { rows: out, capped, replaced: replacedAt };
+  if (!importers.length) return { rows: out, capped, replaced: replacedAt, unchecked };
   const looseImporters = input.edges
     .filter((e) => e.resolved && looseProviders.has(e.to))
     .map((e) => e.from);
@@ -1523,7 +1546,22 @@ function linkWrapperCalls<R>(input: {
     walk(file, 0);
     return seen;
   };
-  for (const file of [...new Set([...looseProviders, ...looseImporters])].toSorted()) {
+  // the modules that define wrappers, then the calling files the call stage reads, then the
+  // rest; each group smallest first, never by name
+  const defining = [...looseProviders].filter((f) => byId.get(f)?.wrappers).toSorted(bySize);
+  const first = new Set([...defining, ...importers]);
+  const order = [
+    ...defining,
+    ...importers.filter((f) => !defining.includes(f)),
+    ...[...new Set([...looseProviders, ...looseImporters])]
+      .filter((f) => !first.has(f))
+      .toSorted(bySize),
+  ];
+  for (const file of order) {
+    if (left <= 0 && input.keepPastBudget) {
+      unchecked.push(file);
+      continue;
+    }
     if (left <= 0) {
       const ids = reached(file);
       if (looseProviders.has(file)) ids.add(file);
@@ -1553,6 +1591,10 @@ function linkWrapperCalls<R>(input: {
     const found = reader.replacements(Math.max(1, Math.min(REPLACEMENT_WORK, left)));
     left -= reader.replacementWork;
     for (const { cls, method, at, budget } of found) {
+      if (budget && input.keepPastBudget) {
+        if (!unchecked.includes(file)) unchecked.push(file);
+        continue;
+      }
       const key = methodKey(cls, method);
       if (replaced.has(key)) continue;
       replaced.add(key);
@@ -1602,7 +1644,7 @@ function linkWrapperCalls<R>(input: {
   }
   for (const [file, reader] of readers)
     if ((reader?.capped || reader?.keyCallsCut) && !capped.includes(file)) capped.push(file);
-  return { rows: out, capped, replaced: replacedAt };
+  return { rows: out, capped, replaced: replacedAt, unchecked };
 }
 
 /**

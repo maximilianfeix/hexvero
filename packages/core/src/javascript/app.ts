@@ -4487,6 +4487,7 @@ export function analyzeJavaScriptTree(
     linkKeyWrappers({
       modules: modules.map((m) => ({
         id: m.id,
+        size: m.size,
         exports: m.exports,
         ...(m.keyWrappers ? { wrappers: m.keyWrappers } : {}),
         ...(m.reexports ? { reexports: m.reexports } : {}),
@@ -4514,6 +4515,12 @@ export function analyzeJavaScriptTree(
       message: `${parts.join("; ")}. Keys passed through the further calls are not read at each call.`,
     });
   }
+  // Modules whose replacements of IPC wrapper methods were not checked (the budget ran out).
+  if (linked.unchecked.length)
+    limitations.push({
+      code: "wrapper_replacements_unchecked",
+      message: `${linked.unchecked.length} module(s) that import an IPC wrapper were not checked for replacements of its methods within the replacement budget of the application (${list(linked.unchecked, 5)}); calls of IPC wrapper methods are read without that check, so a method replaced there would not be seen.`,
+    });
   // Wrapper methods another module replaces: their calls give no row.
   const replaced = [...linked.replaced, ...keyLinked.replaced];
   if (replaced.length)

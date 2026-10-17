@@ -104,6 +104,20 @@ const falseOnes = (files: Record<string, string>): string[] => {
   ];
 };
 
+/** Wrappers and the result of an app for the replacement-budget tests. */
+const ROUTER_OF = (n: string): string =>
+  `const { ipcMain } = require("electron");\nclass ${n} { handle(ch, f) { ipcMain.handle(ch, f); } }\nmodule.exports = { ${n}, inst: new ${n}() };\n`;
+const STORE_OF = (n: string): string =>
+  `class ${n} { save(k, v) { localStorage.setItem("${n}." + k, v); } }\nmodule.exports = { ${n}, inst: new ${n}() };\n`;
+const result = (info: JsAppInfo): string[] => [
+  ...info.ipcChannels.map((c) => c.channel).toSorted(),
+  ...info.storage.flatMap((r) => (r.via ? [`${r.file} ${r.value}`] : [])).toSorted(),
+  ...info.limitations
+    .map((l) => l.code)
+    .filter((c) => /wrapper/.test(c))
+    .toSorted(),
+];
+
 /** IPC channels and whole storage keys of the analysis, sorted. */
 const found = (files: Record<string, string>): string[] => {
   const info = analyze(files);
@@ -658,6 +672,44 @@ local.get("x");
     // flagged and the method counts as replaced
     if (!read) expect(lim?.message).toMatch(/replacement budget/);
     else expect(lim).toBeUndefined();
+  });
+
+  describe("past the application's replacement budget (R5)", () => {
+    const filler = Array.from({ length: 70_000 }, (_, i) => `o.a${i % 50} = ${i};`).join("\n");
+    /** Ten big modules importing the first wrapper, named with the prefix. */
+    const bigs = (prefix: string, mod: string): Record<string, string> =>
+      Object.fromEntries(
+        Array.from({ length: 10 }, (_, i) => [
+          `${prefix}${i}.js`,
+          `const m = require("./${mod}");\nconst o = {};\n${filler}\n`,
+        ]),
+      );
+    const app = (prefix: string): Record<string, string> => ({
+      "r1.js": ROUTER_OF("One"),
+      "r2.js": ROUTER_OF("Two"),
+      "s1.js": STORE_OF("First"),
+      "s2.js": STORE_OF("Second"),
+      "c1.js": `const { inst } = require("./r1");\ninst.handle("ch_one", () => 0);\nconst a = require("./s1").inst;\na.save("k1", 1);\n`,
+      "c2.js": `const { inst } = require("./r2");\ninst.handle("ch_two", () => 0);\nconst b = require("./s2").inst;\nb.save("k2", 1);\n`,
+      ...bigs(prefix, "r1"),
+      ...bigs(`${prefix}s`, "s1"),
+    });
+    it("IPC keeps its rows and says the replacements were not checked; storage stays conservative", () => {
+      const info = analyze(app("a_big"));
+      expect(info.ipcChannels.map((c) => c.channel).toSorted()).toEqual(["ch_one", "ch_two"]);
+      expect(
+        info.limitations.find((l) => l.code === "wrapper_replacements_unchecked")?.message,
+      ).toMatch(/not checked for replacements/);
+      // the store the unread modules import counts as replaced, the other one is read
+      const viaKeys = info.storage.flatMap((r) => (r.via ? [r.value] : []));
+      expect(viaKeys).not.toContain("First.k1");
+      expect(viaKeys).toContain("Second.k2");
+    });
+    it("a renamed copy of the app gives the same result", () => {
+      const first = result(analyze(app("a_big")));
+      const renamed = result(analyze(app("z_big")));
+      expect(renamed).toEqual(first);
+    });
   });
 
   it("folds the per-file storage_wrappers_capped entries into one", () => {
