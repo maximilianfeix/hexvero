@@ -170,6 +170,16 @@ L4 (table widths, `code()` cut inside an escape), L6 (stale header cache) → X 
 Sound: kind-aware compare rule, budgets, ASAR validation, policy nesting, report escaping,
 fuzz.mjs, web retry/focus/tabs/history, paint token (no bypass found).
 
+R3 re-review (14:40Z, 220a949..672bba3): H1, M1, M2, L1–L6 fixed (probes re-run; L3 checked
+through a real TTY). New low: N1 (plain .js never reports `storage_wrappers_skipped`), N2
+(module-object rule for enums file-wide and loose), N3 (`new Proxy` taken as non-callable), N4
+(static method taken for `this.m()`) → S (`sprint/s4`); N5 (an excerpt of an archive rebuilt
+after the analysis comes from the new build) → X (`sprint/x3`). Sound: P2's shared tables (token-
+only, no budget), the 50,000 skip path, escaping.
+
+Working time so far: 22:44–03:44Z (5 h 00) + 14:00–14:40Z (0 h 40) = 5 h 40; ten hours of work
+are reached at about 18:20Z if work continues without a break.
+
 ## Next steps / resume instructions
 
 1. On hand-back of S, X, U: cherry-pick or merge onto a branch from main, run the gates (check,
