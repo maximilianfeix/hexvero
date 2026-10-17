@@ -87,6 +87,13 @@ passed, e2e 13, corpus 298 rows none worse.
 - Benchmark (Node 22.17.1, M2, load 15–20 during agents): Claude.app 7.14 → 7.92 s median,
   ChatGPT.app 14.18 → 13.70 s, peak RSS 796 → 787 MiB; Discord median 0.75 → 1.45 s (first run
   0.76 s both) to be re-measured at lower load.
+- Interleaved A/B at the same load (00:53Z, load 13–19; 841b6db vs 2ef9ceb, 7 fresh runs each,
+  `analyze --json --fresh`, script scratchpad/ab.sh): Discord median 771 → 825 ms (+7 %, the
+  extra wrapper/registry resolution), Claude.app 7.28 → 6.77 s (noise). The earlier Discord
+  1.45 s was load. Budget: ≤ 15 % slower on real apps; met.
+- A2 (IPC wrapper classes): Electron Fiddle members linked to a main-process end 0 → 45 of 46
+  (both versions, checked against v0.39.0 source, none false); holdout5 development numbers
+  IPC channels 63/9/0 → 72/0/0, senders/receivers 81/45/0 → 131/9/0.
 
 ## Open risks
 
