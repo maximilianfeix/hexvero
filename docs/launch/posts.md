@@ -6,6 +6,24 @@ News forbids generated or AI-edited text and automated posting
 as an outline of facts and order, not as text to paste there. One channel, one story; no
 identical cross-posts, no vote requests.
 
+## X: 0.9.6 (draft; 0.9.6 is on npm since 2026-10-17)
+
+> One Electron update, Fiddle 0.38 → 0.39, read without running either build. hexvero 0.9.6 finds
+> the four changes that matter: a new field in an IPC payload (`useSocketFirewall`), a new
+> persisted setting behind the app's own wrapper, a request to api.github.com from a bundled CLI,
+> and that CLI's file. Each with file and line.
+>
+> npx hexvero compare old/app.asar new/app.asar ipc
+>
+> github.com/maximilianfeix/hexvero
+
+Attach a screenshot of the three lines (`ipc … NPM_ADD_MODULES args: … → …useSocketFirewall…`,
+`storage … isUsingSocketFirewall`, `endpoints … sfw.mjs … api.github.com`). Reply with the limits:
+0.8.0 missed all four on the same pair; the newest blind set has 15 false window rows (duplicates,
+fixed after the measurement); a scan is about 24 % slower than 0.8.0. Every fact:
+[claims.md](claims.md) B1, F1, F2, G1, G2. Publishing is the maintainer's click; check
+`npx hexvero@0.9.6` on the day you post.
+
 ## X: 0.9.2 (draft; 0.9.2 is on npm since 2026-10-17)
 
 > Electron Fiddle 0.39.0 added a persisted setting, `isUsingSocketFirewall`, stored through the
