@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { Finding, Limitation } from "@hexvero/core";
 
 export interface Io {
@@ -18,8 +19,43 @@ const codes = {
 };
 type Color = keyof typeof codes;
 
+/**
+ * paint() marks the codes it writes with a token made for this process, which text from a target
+ * cannot contain by chance or design; terminalSafe() keeps marked codes as color and escapes any
+ * other control character, including a color code that came from a target.
+ */
+const TOKEN = `\u0000${randomBytes(8).toString("hex")}`;
+
 export function paint(io: Io, color: Color, text: string): string {
-  return io.color ? `${codes[color]}${text}${codes.reset}` : text;
+  return io.color ? `${TOKEN}${codes[color]}${text}${TOKEN}${codes.reset}` : text;
+}
+
+/**
+ * Text that did not come from hexvero itself (a file name, an error naming an archive entry) as
+ * one terminal-safe string: control characters other than newline and tab become `\u001b`, so
+ * a name cannot move the cursor, retitle the window or recolor the output. The escape is the JSON
+ * one, so a C1 character that JSON.stringify leaves as it is stays the same character in JSON.
+ */
+export function printable(text: string): string {
+  return text.replace(CONTROL, escapeControl);
+}
+
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+const escapeControl = (c: string): string => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+// eslint-disable-next-line no-control-regex
+const OWN_CONTROL = new RegExp(
+  `${TOKEN}(\u001b\\[\\d+m)|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]`,
+  "g",
+);
+
+/**
+ * What reaches the terminal: printable(), except for the color codes paint() marked. Target text
+ * (IPC channel names, file names, strings) is printed by many commands; filtering here covers
+ * them all.
+ */
+export function terminalSafe(text: string): string {
+  return text.replace(OWN_CONTROL, (match, own: string | undefined) => own ?? escapeControl(match));
 }
 
 export function heading(io: Io, text: string): string {

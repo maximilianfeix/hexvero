@@ -27,7 +27,9 @@ import {
   heading,
   hexdump,
   paint,
+  printable,
   table,
+  terminalSafe,
   toJson,
   type Io,
 } from "./format.js";
@@ -123,7 +125,7 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
         }
       }
       io.err(
-        `${paint(io, "red", "usage:")} ${error.message}${
+        `${paint(io, "red", "usage:")} ${printable(error.message)}${
           lines.length ? `\n\n${lines.join("\n")}` : ""
         }\n\n${paint(io, "dim", 'Run "hexvero --help" for all commands.')}`,
       );
@@ -143,9 +145,9 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
       else {
         const candidates = (error.details as { candidates?: unknown } | undefined)?.candidates;
         io.err(
-          `${paint(io, "red", `error (${error.code}):`)} ${error.message}${
+          `${paint(io, "red", `error (${error.code}):`)} ${printable(error.message)}${
             Array.isArray(candidates) && candidates.length
-              ? `\n  did you mean: ${candidates.slice(0, 5).join(", ")}`
+              ? `\n  did you mean: ${printable(candidates.slice(0, 5).join(", "))}`
               : ""
           }`,
         );
@@ -160,10 +162,8 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
     io.err(
       `${paint(io, "red", "error:")} ${
         error instanceof Error
-          ? process.env["HEXVERO_DEBUG"]
-            ? (error.stack ?? error.message)
-            : error.message
-          : String(error)
+          ? printable(process.env["HEXVERO_DEBUG"] ? (error.stack ?? error.message) : error.message)
+          : printable(String(error))
       }`,
     );
     return 1;
@@ -410,7 +410,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         else {
           const { formatChanges } = await import("./demo.js");
           io.out(formatChanges(io, comparison).join("\n"));
-          io.out(`${paint(io, "green", "✓")} ${report} (${Buffer.byteLength(text)} bytes)`);
+          io.out(
+            `${paint(io, "green", "✓")} ${printable(report)} (${Buffer.byteLength(text)} bytes)`,
+          );
         }
         return 0;
       }
@@ -636,7 +638,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       const target = await session.open(need(0, "path"));
       const result = await session.export(target.id, need(1, "out.json"), { overwrite: true });
       io.out(
-        json ? toJson(result) : `${paint(io, "green", "✓")} ${result.path} (${result.bytes} bytes)`,
+        json
+          ? toJson(result)
+          : `${paint(io, "green", "✓")} ${printable(result.path)} (${result.bytes} bytes)`,
       );
       return 0;
     }
@@ -895,8 +899,8 @@ function formatBytes(n: number): string {
 
 export function defaultIo(): Io {
   return {
-    out: (text) => process.stdout.write(`${text}\n`),
-    err: (text) => process.stderr.write(`${text}\n`),
+    out: (text) => process.stdout.write(`${terminalSafe(text)}\n`),
+    err: (text) => process.stderr.write(`${terminalSafe(text)}\n`),
     color: Boolean(process.stdout.isTTY) && !process.env["NO_COLOR"],
   };
 }
