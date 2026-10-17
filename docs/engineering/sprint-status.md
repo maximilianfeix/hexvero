@@ -9,18 +9,19 @@ any interruption or context compaction.
 | not_before     | 2026-10-17T08:44:36Z (10 h later)                                                                                                       |
 | base commit    | `841b6db` (origin/main, README: 22-second launch video #130), packages 0.8.0                                                            |
 | npm            | `hexvero@0.9.0` published 2026-10-17 01:20Z (latest), run 38990077564 green; base was 0.8.0                                             |
-| working branch | `sprint/10h` (0.9.0, merged #136), now `sprint/091` in `~/hexvero-091`                                                                  |
+| working branch | `sprint/10h` (0.9.0, #136), `sprint/091` (0.9.1, #137); round three on branches from main `c3e037a`                                     |
 | toolchain      | Node 22.17.1 (`.nvmrc` 22) for gates; Node 25.2.1 system; npm 10/11; Claude Code 2.1.302; vhs, ffmpeg, Playwright MCP, Chrome extension |
 | authorization  | user, 2026-10-17: full rights on PC, GitHub and websites incl. issues, PRs, merges, releases                                            |
 
 ## Time log
 
-| Period (UTC) | Active work                                                                                                                                                                                                                                                                | Notes         |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 22:44–23:25  | inventory, baseline, contracts, 8 agents launched; M, E, C, P, D, G integrated; integration fixes (bridge coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor reads, 503 on timeout)                                                          | lead + agents |
-| 23:25–01:20  | integration of A, A2, B, C, D, D2, G, H, I, J, L, P; review R (21 findings) fixed; PR #136 squash `08f80c5`; release 0.9.0 (`03588ec`, tag v0.9.0, run 38990077564 green); npx hexvero@0.9.0 demo/check/report verified                                                    | lead + agents |
-| 01:20–02:10  | `sprint/091`: A3 window options (Object.assign, spreads, class fields), K bridge exposures + navigation handlers, report same-name note; review R2 (1 critical, 1 high, 3 medium, 5 low); #8 #10 fixed (`48b03ce`); #1 #2 #6 → A3, #3 #4 #5 #9 → K                         | lead + agents |
-| 02:10–02:55  | A3 `c466919` and K rounds `a23930a`, `02e6da4`, `5fe9263` integrated (security review found false negatives twice, then a fail-open path); scope memo `f3d9489` (hostile input > 280 s → 0.6 s); fair A/B shows no slowdown; CHANGELOG consolidated; claims N1–N6; PR #137 | lead + agents |
+| Period (UTC) | Active work                                                                                                                                                                                                                                                                                                                 | Notes         |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 22:44–23:25  | inventory, baseline, contracts, 8 agents launched; M, E, C, P, D, G integrated; integration fixes (bridge coverage, WHATWG host parsing, unpacked ASAR entries, scan-cache key, descriptor reads, 503 on timeout)                                                                                                           | lead + agents |
+| 23:25–01:20  | integration of A, A2, B, C, D, D2, G, H, I, J, L, P; review R (21 findings) fixed; PR #136 squash `08f80c5`; release 0.9.0 (`03588ec`, tag v0.9.0, run 38990077564 green); npx hexvero@0.9.0 demo/check/report verified                                                                                                     | lead + agents |
+| 01:20–02:10  | `sprint/091`: A3 window options (Object.assign, spreads, class fields), K bridge exposures + navigation handlers, report same-name note; review R2 (1 critical, 1 high, 3 medium, 5 low); #8 #10 fixed (`48b03ce`); #1 #2 #6 → A3, #3 #4 #5 #9 → K                                                                          | lead + agents |
+| 02:10–02:55  | A3 `c466919` and K rounds `a23930a`, `02e6da4`, `5fe9263` integrated (security review found false negatives twice, then a fail-open path); scope memo `f3d9489` (hostile input > 280 s → 0.6 s); fair A/B shows no slowdown; CHANGELOG consolidated; claims N1–N6; PR #137                                                  | lead + agents |
+| 02:55–03:15  | PR #137 squash `337ad51`; release 0.9.1 (`3c187a3`, run 38996747203 green; npm latest, GitHub release, MCP registry isLatest, Pages); npx hexvero@0.9.1 verified from an empty cache; #139 launch status; #141 CI example pin (release.mjs bumps it, release-verify checks it); round three started (S, X, U); report draft | lead + agents |
 
 ## Agents and branches
 
@@ -132,13 +133,21 @@ Probe scripts: scratchpad/review2/t1–t8.mjs, dbg2.mjs. A false safe value is w
 - LOW #6, #7 (A3; FIXED `c466919`): limitation note for cross-module mutation; `__toESM(m, 1)` node mode. #8, #10: fixed
   `48b03ce` (control characters in Markdown report heading and note shown as `\u{…}`).
 
+## Round three (from 03:05Z, branches from main `c3e037a`)
+
+| Agent | Branch / worktree                            | Task                                                                    |
+| ----- | -------------------------------------------- | ----------------------------------------------------------------------- |
+| S     | `sprint/s-storage` `~/hexvero-10h-s-storage` | storage keys through wrapper methods and enums (Fiddle M2)              |
+| X     | `sprint/x-robust` `~/hexvero-10h-x-robust`   | seeded fuzzing of readers/exports, hostile policy JSON, output paths    |
+| U     | `sprint/u-states` `~/hexvero-10h-u-states`   | UI browser states (loading/empty/error/large/hostile, keyboard, widths) |
+
 ## Next steps / resume instructions
 
-1. On hand-back of A3 (`sprint/a3b`) and K (`sprint/k2`): cherry-pick onto `sprint/091`, rerun
-   R2's probes (all must give computed/unknown or no fact), gates check/e2e/corpus,
-   `node scripts/build-site-demo.mjs --check`.
-2. CHANGELOG Unreleased, claims re-run, PR `sprint/091` → main, CI, squash merge; in
-   `~/hexvero-sprint` (main): `npm run release -- 0.9.1`, `git push --atomic origin main v0.9.1`,
-   watch the Release workflow, verify `npx hexvero@0.9.1 demo` from an empty cache.
-3. Backlog until not_before (08:44:36Z): storage through wrapper methods (Fiddle M2), endpoints
-   through parameters (M3), interface-ends paging, contributor tasks, final report (brief §14).
+1. On hand-back of S, X, U: cherry-pick or merge onto a branch from main, run the gates (check,
+   e2e, corpus, `build-site-demo --check`), run an independent review (second reader + security
+   review) before any release; fix findings with regression tests.
+2. Release 0.9.2 only if round three changes behaviour users see: PR → CI → squash merge →
+   `npm run release -- 0.9.2` in `~/hexvero-sprint` → `git push --atomic origin main v0.9.2` →
+   watch the Release workflow → `npx hexvero@0.9.2` from an empty cache → status.json.
+3. Fill the OPEN entries in [sprint-report.md](sprint-report.md) at the end (runtime, final
+   gates, round three, next five tasks). Do not stop before not_before (08:44:36Z).
