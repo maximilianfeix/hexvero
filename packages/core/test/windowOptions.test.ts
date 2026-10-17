@@ -280,6 +280,33 @@ describe("window options built from constants, fields and factories", () => {
         ),
         change,
       ).not.toContain("not written true true null not written");
+    // reached by a computed member access: the field's name as a key, or a key not known
+    for (const change of [
+      'loosen() { this["prefs"].nodeIntegration = true; }',
+      'reset() { this["prefs"] = { nodeIntegration: true }; }',
+      "set(key, v) { this[key] = v; }",
+      "static patch(obj, k) { obj[k].nodeIntegration = true; }",
+      'static name() { return ["prefs"]; }',
+    ]) {
+      const info = one(
+        `class W {\n  prefs = { nodeIntegration: false, contextIsolation: true };\n  open() { this.win = new BrowserWindow({ webPreferences: this.prefs }); }\n  ${change}\n}`,
+      );
+      expect(states(info), change).toEqual(["computed computed computed null computed"]);
+      expect(
+        info.webPreferences.filter((p) => p.value !== null),
+        change,
+      ).toEqual([]);
+    }
+    // a write into a list or object the code creates there, a pattern or a list literal is none
+    const fresh = one(
+      "class W {\n  prefs = { nodeIntegration: false };\n  open() { this.win = new BrowserWindow({ webPreferences: this.prefs }); }\n}\nfunction f(k, list) { const seen = {}; seen[k] = 1; const [first] = list; return [first]; }",
+    );
+    expect(states(fresh)).toEqual(["false not written not written null not written"]);
+    // the same through the constructor's `this.options = …`, changed from outside
+    const outer = one(
+      'class W {\n  constructor() { this.options = { webPreferences: { nodeIntegration: false } }; }\n  open() { this.win = new BrowserWindow(this.options); }\n}\nconst w = new W();\nw["options"].webPreferences.nodeIntegration = true;',
+    );
+    expect(states(outer)).toEqual(["computed computed computed null computed"]);
     // changed from outside, through an instance
     const outside = one(
       "class W {\n  prefs = { sandbox: true };\n  open() { this.win = new BrowserWindow({ webPreferences: this.prefs }); }\n}\nconst w = new W();\nw.prefs.sandbox = false;",

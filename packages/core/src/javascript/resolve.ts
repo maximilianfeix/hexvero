@@ -142,6 +142,30 @@ export interface FnDef {
   arrow?: true;
 }
 
+/** Words after which `[` opens a list or a pattern, not a computed member access. */
+const KEYWORDS_BEFORE_BRACKET: ReadonlySet<string> = new Set([
+  "const",
+  "let",
+  "var",
+  "return",
+  "typeof",
+  "case",
+  "in",
+  "of",
+  "delete",
+  "void",
+  "throw",
+  "new",
+  "await",
+  "yield",
+  "else",
+  "do",
+  "instanceof",
+  "export",
+  "import",
+  "extends",
+]);
+
 /** What may follow `object.key` when the key is only read (no write, call or deeper access). */
 const KEY_READ_FOLLOWERS: ReadonlySet<string> = new Set([
   ")",
@@ -1642,6 +1666,97 @@ export class ExpressionResolver {
     return found;
   }
 
+  private computedWrites: boolean | null = null;
+
+  /** Whether the name at k is bound to an object or list literal, `new Map()` and the like. */
+  private freshObject(k: number): boolean {
+    const t = this.tokens[k];
+    if (t?.type !== "ident" || this.punct(k - 1, ".")) return false;
+    const bound = this.binding(k, t.value);
+    if (bound?.kind !== "value") return false;
+    const init = bound.range[0];
+    if ((this.punct(init, "{") || this.punct(init, "[")) && this.match[init] === bound.range[1] - 1)
+      return true;
+    return (
+      this.is(init, "ident", "new") &&
+      this.is(init + 1, "ident") &&
+      /^(Map|Set|WeakMap|WeakSet|Array|Object)$/.test(this.tokens[init + 1]!.value)
+    );
+  }
+
+  /**
+   * Whether the file has a computed member access `[…]` with NAME as its key (a string or a
+   * template without parts), or one with a key that is not a literal and is either on `this`
+   * or written through (`x[k] = …`, `x[k].y = …`, `x[k]++`, `delete x[k]`).
+   */
+  private computedAccessTo(name: string): boolean {
+    const tokens = this.tokens;
+    const literal = (j: number): boolean => {
+      const t = tokens[j];
+      return (
+        !!t &&
+        (t.type === "string" ||
+          t.type === "number" ||
+          (t.type === "template" && !t.value.includes("${"))) &&
+        this.punct(j + 1, "]")
+      );
+    };
+    for (let j = 1; j < tokens.length; j++) {
+      if (!this.punct(j, "[")) continue;
+      const t = tokens[j + 1];
+      if (
+        t &&
+        (t.type === "string" || t.type === "template") &&
+        t.value === name &&
+        this.punct(j + 2, "]")
+      )
+        return true;
+    }
+    if (this.computedWrites !== null) return this.computedWrites;
+    let found = false;
+    for (let j = 1; j < tokens.length && !found; j++) {
+      if (!this.punct(j, "[") || literal(j + 1)) continue;
+      const before = tokens[j - 1]!;
+      // a member access, not an array literal: after a name, `)`, `]` or `?.`
+      // a member access, not an array literal or a pattern: after a name that is not a
+      // keyword, `)`, `]` or `?.`
+      const member =
+        (before.type === "ident" && !KEYWORDS_BEFORE_BRACKET.has(before.value)) ||
+        (before.type === "punct" &&
+          (before.value === ")" || before.value === "]" || before.value === "?."));
+      if (!member) continue;
+      if (this.is(j - 1, "ident", "this")) {
+        found = true;
+        break;
+      }
+      // the receiver's start, for a `delete` or `++` before it
+      let start = j - 1;
+      while (start > 1 && this.punct(start - 1, ".") && this.is(start - 2, "ident")) start -= 2;
+      if (/^(delete|\+\+|--)$/.test(tokens[start - 1]?.value ?? "")) {
+        found = true;
+        break;
+      }
+      // the chain after `[…]`: `.key`, `?.key`, `[…]`, then an assignment
+      let e = this.match[j] ?? -1;
+      if (e === -1) continue;
+      for (let guard = 0; guard < 64; guard++) {
+        if ((this.punct(e + 1, ".") || this.punct(e + 1, "?.")) && this.is(e + 2, "ident")) e += 2;
+        else if (this.punct(e + 1, "[") && (this.match[e + 1] ?? -1) !== -1) e = this.match[e + 1]!;
+        else break;
+      }
+      const after = tokens[e + 1];
+      // `x[k] = …` on an object or list the code creates right there (`const all = {}`): no
+      // instance's field. Through anything else, or deeper (`x[k].y = …`), it may be one.
+      const direct = e === this.match[j];
+      if (direct && start === j - 1 && this.freshObject(j - 1)) continue;
+      found =
+        after?.type === "punct" &&
+        /^(?:=|\+\+|--|[-+*/%&|^]=|\*\*=|<<=|>>>?=|&&=|\|\|=|\?\?=)$/.test(after.value);
+    }
+    this.computedWrites = found;
+    return found;
+  }
+
   private classFieldOf(
     cls: { start: number; end: number },
     name: string,
@@ -1653,6 +1768,10 @@ export class ExpressionResolver {
       this.innermostBlock(j, null); // builds the table of brackets
       return this.parents![j]!;
     };
+    // A computed member access can reach the field without naming it as `.NAME`: its name as
+    // a key (`this["prefs"]`, `w["prefs"]`), or a key that is not known (`this[key] = …`,
+    // `obj[k].x = …`). Either may change the options, so the field is not read.
+    if (this.computedAccessTo(name)) return null;
     let found: [number, number] | null = null;
     let writes = 0;
     const positions = this.occurrences(name, 0, this.tokens.length);
