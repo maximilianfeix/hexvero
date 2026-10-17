@@ -315,6 +315,38 @@ describe("lists longer than the evaluation reads", () => {
   });
 });
 
+describe("hostile input stays bounded", () => {
+  it("charges every `api[…] =` occurrence before reading it, and says the inventory is cut", () => {
+    // 100 statements, each 600 `api[` deep: walking each bracket again would be quadratic
+    const one = `${"api[".repeat(600)}0${"]".repeat(600)} = 1;`;
+    const info = analyze({
+      "main.js": "",
+      "preload.js": `const { contextBridge } = require("electron");\nconst api = {};\n${Array(100).fill(one).join("\n")}\ncontextBridge.exposeInMainWorld("x", api);\n`,
+    });
+    expect(info.contextBridge.length).toBeLessThan(100);
+    expect(info.limitations.map((l) => l.code)).toContain("context_bridge_truncated");
+  });
+
+  it("reads a bounded number of calls with a computed method per file, the rest unresolved", () => {
+    const loops = Array.from(
+      { length: 300 },
+      (_, i) => `for (const r of R) ipcMain[r.kind](r.channel, f${i});`,
+    ).join("\n");
+    const info = analyze({
+      "main.js": `const { ipcMain } = require("electron");\nconst R = [{ channel: "r:a", kind: "handle" }, { channel: "r:b", kind: "on" }];\n${loops}\n`,
+    });
+    const ipc = info.modules.flatMap((m) => m.ipc);
+    // 256 calls read, two rows each; the 44 after them without a channel, and said why
+    expect(ipc.filter((u) => u.channel !== null).length).toBe(512);
+    const unread = ipc.filter((u) => u.channel === null);
+    expect(unread.length).toBe(44);
+    expect(
+      unread.every((u) => u.api === "ipcMain.[unknown]" && /computed method/.test(u.reason ?? "")),
+    ).toBe(true);
+    expect(info.limitations.map((l) => l.code)).toContain("ipc_channel_unresolved");
+  });
+});
+
 describe("a call whose method is not read, in a release comparison", () => {
   it("is placed as neither the sender nor the receiver of its channel", async () => {
     const dirOf = mkdtempSync(join(dir, "cmp-"));

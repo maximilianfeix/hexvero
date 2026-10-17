@@ -592,7 +592,11 @@ The list must be a `const` array literal read whole: a spread in it (`[...BASE, 
 object, a channel from `process.env`) give one row without a channel (`ipc_channel_unresolved`;
 for the computed form with api `ipcMain.[unknown]`). A channel named by a constant of another
 module (`Channels.LIBRARY_LIST` with `const { Channels } = require("../shared/channels")`) is a
-reference filled in once that module is read. A table there with computed entries
+reference filled in once that module is read. At most 256 such calls are read per element of a
+list in one file; the later ones stay without a channel (the computed form as
+`ipcMain.[unknown]`, with a reason) and are named in `ipc_channel_unresolved`. Writes of the form
+`api[…] = …` to an exposed object are charged to the bridge walk's budget before they are read;
+past it the file's members are marked as cut (`context_bridge_truncated`). A table there with computed entries
 (`Object.freeze({ LIST: PREFIX + "list", OPEN: "doc:open" })`) now exports those entries too, read
 by evaluation (listed in `evaluated`); up to this release only its literal entries were.
 

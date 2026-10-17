@@ -1759,6 +1759,12 @@ const MAX_BRIDGE_PER_FILE = 500;
 const MAX_BRIDGE = 2000;
 /** Tokens walked inside exposed objects per file; keeps repeated or unclosed calls linear. */
 const BRIDGE_WALK_BUDGET = 400_000;
+/** Charged per `api[…]` occurrence of a step-by-step object, before anything is read for it. */
+const BRIDGE_STEP_COST = 8;
+/** Charged per `api[k] = …` whose scope and loop rounds are read. */
+const BRIDGE_ROUND_COST = 2000;
+/** Charged per `api.x = …` whose scope is read. */
+const BRIDGE_SCOPE_COST = 50;
 const BRIDGE_MODIFIERS = new Set(["async", "get", "set", "static"]);
 const CHANNEL_CALLS = new Set([
   "invoke",
@@ -1880,19 +1886,6 @@ export function bridgeMembers(
       if (p.type !== "punct") continue;
       if (p.value === ")" || p.value === "]" || p.value === "}") d++;
       else if (p.value === "(" || p.value === "[" || p.value === "{") {
-        d--;
-        if (d === 0) return j;
-      }
-    }
-    return -1;
-  };
-  /** The closing bracket of the opening one at `open`, within 2,000 tokens, or -1. */
-  const openClose = (open: number): number => {
-    for (let d = 0, j = open; j < tokens.length && j < open + 2000; j++) {
-      const p = tokens[j]!;
-      if (p.type !== "punct") continue;
-      if (p.value === "(" || p.value === "[" || p.value === "{") d++;
-      else if (p.value === ")" || p.value === "]" || p.value === "}") {
         d--;
         if (d === 0) return j;
       }
@@ -2361,13 +2354,25 @@ export function bridgeMembers(
             !is(k - 1, ".") &&
             is(k + 1, "[")
           ) {
-            const close = openClose(k + 1);
+            // every occurrence is charged before anything is read for it: many `x[…]` stay
+            // linear, and past the budget the object's inventory is marked as cut
+            if (budget <= 0) {
+              truncated = true;
+              break;
+            }
+            budget -= BRIDGE_STEP_COST;
+            resolver ??= new ExpressionResolver(tokens, context.constants);
+            // the bracket's match from the resolver's table, not a walk
+            const close = resolver.closeOf(k + 1);
             if (close === -1 || !is(close + 1, "=") || is(close + 2, "=")) continue;
+            budget -= BRIDGE_ROUND_COST;
+            if (budget <= 0) {
+              truncated = true;
+              break;
+            }
             // only a write to the exposed object itself
             if (sameObject(k) !== "same") continue;
-            resolver ??= new ExpressionResolver(tokens, context.constants);
-            budget -= 2000;
-            const rounds = budget > 0 ? resolver.loopAssignments(k) : null;
+            const rounds = resolver.loopAssignments(k);
             if (!rounds) push(null, null, tokens[k]!.line);
             else
               for (const { key, value: round } of rounds) {
@@ -2396,7 +2401,13 @@ export function bridgeMembers(
             } else if (p.value === ";" && d === 0) break;
           }
           // a write to another binding of the same name (`function (e) { e.A = 1 }` in a file
-          // whose exposed object is a `const e` elsewhere) is no member
+          // whose exposed object is a `const e` elsewhere) is no member; the scope is read
+          // within the walk's budget
+          budget -= BRIDGE_SCOPE_COST;
+          if (budget <= 0) {
+            truncated = true;
+            break;
+          }
           if (sameObject(k) === "other") continue;
           readMember(k + 2, end, 0, -1);
         }

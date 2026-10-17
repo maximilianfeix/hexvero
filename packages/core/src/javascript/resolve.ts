@@ -3759,6 +3759,8 @@ export class ExpressionResolver {
     depth: number,
   ): { envs: Env[]; line: number; at: number } | null {
     for (let j = start - 1; j >= 0 && j > start - 4000; j--) {
+      // the walk back is charged to the file's work, so the questions together stay bounded
+      if (this.work-- <= 0) return null;
       if (!this.is(j, "ident", "for") || !this.punct(j + 1, "(")) continue;
       const close = this.match[j + 1]!;
       if (close === -1) continue;
@@ -3817,8 +3819,10 @@ export class ExpressionResolver {
       if (this.work <= 0) return null;
       this.begin(20_000);
       let cb = this.enclosing(k);
-      for (let guard = 0; cb && guard < 4 && !(cb.calledBy && cb.name === null); guard++)
+      for (let guard = 0; cb && guard < 4 && !(cb.calledBy && cb.name === null); guard++) {
+        this.work--;
         cb = this.enclosing(cb.paramsAt - 1);
+      }
       if (cb && !(cb.calledBy && cb.name === null)) cb = null;
       const end = Math.max(...ranges.map(([, b]) => b), k + 1);
       this.partial = false;

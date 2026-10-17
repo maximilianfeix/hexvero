@@ -311,6 +311,11 @@ const OBJECT_METHODS: ReadonlySet<string> = new Set([
   "postMessage",
 ]);
 const OBJECT_SENDS: ReadonlySet<string> = new Set(["send", "invoke", "sendSync", "postMessage"]);
+/**
+ * IPC calls read once per element of a list of routes (`ipcMain[r.kind](r.channel, …)`, and the
+ * loops the fast scan leaves open), per file. The later ones stay without a channel.
+ */
+const MAX_ROUTE_READS = 256;
 /** Calls on names that may be such a parameter, read per file. */
 const MAX_OBJECT_CALLS = 2000;
 /** Objects a class field may hold that the scan reads IPC calls on. */
@@ -1148,10 +1153,14 @@ export function scanJavaScript(
    * is not read whole.
    */
   let routeResolver: ExpressionResolver | null = null;
+  /** Calls read per element of a list so far in this file (see MAX_ROUTE_READS). */
+  let routeReads = 0;
   const perRoute = (
     k: number,
     ranges: Array<[number, number]>,
   ): { rows: Array<Array<Val | null>>; line: number } | null => {
+    if (routeReads >= MAX_ROUTE_READS) return null;
+    routeReads++;
     routeResolver ??= new ExpressionResolver(tokens, constants, "", null, routeRef, false, true);
     return routeResolver.perElement(k, ranges);
   };
@@ -1163,6 +1172,10 @@ export function scanJavaScript(
     resolver ??= new ExpressionResolver(tokens, constants);
     const argEnd = resolver.endOf(arg);
     if (argEnd <= arg) return [unread];
+    if (routeReads >= MAX_ROUTE_READS) {
+      unread.reason = `more calls with a computed method than are read per file (${MAX_ROUTE_READS})`;
+      return [unread];
+    }
     const found = perRoute(k, [
       [k + 2, close],
       [arg, argEnd],
