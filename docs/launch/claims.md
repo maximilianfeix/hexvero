@@ -121,3 +121,10 @@ windows: B1 has 15, all duplicates of rows that were right (see the round 5 READ
 | E3  | Discord `analyze --fresh`, 7 interleaved runs, fresh cache per run: registry 0.9.2 929 ms, 0.9.3 code 955 ms (load 6–9)                                                                                                                 | `npm i hexvero@0.9.2` vs the branch build                                                    | verified (lead)                           |
 
 Known false endpoint rows that 0.9.2 also reports are listed in issue #157.
+
+## 0.9.5 (released 2026-10-17, `627a48a`; re-run on the published package)
+
+| ID  | Claim                                                                                                                                                     | Command / source                                                                                                            | Result                            |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| F1  | Electron Fiddle 0.38.0 → 0.39.0: `NPM_ADD_MODULES` is the one changed IPC call, its payload gains `useSocketFirewall` (`args`); 156 calls unchanged       | `npx hexvero@0.9.5 compare fiddle-0.38.0.asar fiddle-0.39.0.asar ipc`; `git diff v0.38.0 v0.39.0 -- src/preload/preload.ts` | verified on the published package |
+| F2  | All four changes the 0.8.0 run missed in Fiddle 0.38 → 0.39 (payload field, storage key, endpoint of the bundled CLI, added module) are reported by 0.9.5 | case study sections "0.9.2", "0.9.3", "0.9.5"                                                                               | verified                          |

@@ -476,6 +476,21 @@ The lone archives in `asar/` give no such row: without `app.asar.unpacked` next 
 is not read (limit 7). Still missed: two requests in dependency code that binds the modules
 through webpack ids (`r = i(65692)`).
 
+## 0.9.5: the new payload field (M1)
+
+`npx hexvero@0.9.5` on the lone archives (the same on the full apps), 2026-10-17:
+
+```text
+ipc: 0 added, 0 removed, 1 changed, 156 unchanged · matched by module+api+channel
+  ~ .webpack/renderer/main_window/preload.js::ipcRenderer.invoke::NPM_ADD_MODULES  args: "({dir, packageManager}, ...)" → "({dir, packageManager, useSocketFirewall}, ...)"
+```
+
+M1 is found. `git diff v0.38.0 v0.39.0 -- src/preload/preload.ts` changes exactly the parameter and
+the argument `{ dir, packageManager }` → `{ dir, packageManager, useSocketFirewall }`; no other
+call's shape changed. With 0.9.5 the four misses of the 0.8.0 run (M1–M4) are all reported: M1
+here, M2 (storage) since 0.9.2, M3 (endpoint, with `app.asar.unpacked`) since 0.9.3, M4 (the added
+module, on the full app) since 0.9.0. What the receiving handler reads from the payload is not read.
+
 ## Limitations of the study
 
 - One app, one pair of versions, one platform build (darwin-arm64). Other platforms ship the same asar content in principle, but this was not checked.
