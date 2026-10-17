@@ -357,8 +357,11 @@ const EVERYWHERE = Number.MAX_SAFE_INTEGER;
 /** The ranges of a file, and what could not be followed while locating them. */
 interface WindowRanges {
   ranges: WindowRange[];
-  /** Names of objects that were followed to their declaration as window options. */
-  traced: Set<string>;
+  /**
+   * Names of objects that were followed to their declaration as window options, each with the
+   * first token of the initializers it was followed to (-1: an imported name).
+   */
+  traced: Map<string, number[]>;
   /** Windows whose options come, in part, from such a named object. */
   viaName: Set<number>;
   /**
@@ -377,13 +380,20 @@ interface WindowRanges {
   hides: Map<number, number[]>;
 }
 
-/** One argument of `Object.assign(…)` as window options: an object of this file, or another module's. */
+/**
+ * One argument of `Object.assign(…)` as window options: an object of this file (`open`), another
+ * module's (`external`), or neither (`open` -1, no `external`): something that may write any key.
+ */
 interface PlanStep {
   open: number;
   at: number;
-  follow: string | null;
+  /** Names followed to reach the object, with the initializer each was followed to. */
+  follows: Array<{ name: string; decl: number }>;
   external?: { specifier: string; property: string; expr: number };
 }
+
+/** What a name is bound to where it is used (see `declOf` in `windowRanges`). */
+type Declared = number | "pattern" | "other" | null;
 
 /** A window base exported by another module, applied at `at` (a source offset). */
 interface ExternalBase {
@@ -406,13 +416,19 @@ function windowRanges(
   aliases: Map<number, string>,
   /** Built on first use: reads a factory's parameter from the arguments at its call sites. */
   resolver: () => ExpressionResolver,
-  /** For `X.prop` at token k with `X = require("…")`: the module and the member; else null. */
+  /**
+   * For `X.prop` at token k with `X = require("…")`, or a name at k imported from another
+   * module (`const { X } = require("…")`, `import { X } from "…"`): the module and the member;
+   * else null.
+   */
   externalOf: (k: number) => { specifier: string; property: string } | null = () => null,
-): WindowRanges {
-  const traced = new Set<string>();
+): WindowRanges & { declOf: (k: number) => Declared } {
+  const traced = new Map<string, Set<number>>();
   const viaName = new Set<number>();
-  const follow = (name: string, window: number | null): void => {
-    traced.add(name);
+  const follow = (name: string, decl: number, window: number | null): void => {
+    let decls = traced.get(name);
+    if (!decls) traced.set(name, (decls = new Set()));
+    decls.add(decl);
     if (window !== null) viaName.add(window);
   };
   const opaque = new Map<number, number>();
@@ -426,15 +442,15 @@ function windowRanges(
     hides.set(window, places);
   };
   const externals: ExternalBase[] = [];
-  /** `X.prop` at k, as a whole argument or spread operand: recorded instead of hidden. */
+  /** A base of another module at k (`X.prop`, an imported name), as a whole argument or spread operand: recorded instead of hidden. */
   const external = (
     k: number,
     window: number | null,
     at: number,
     given?: { specifier: string; property: string; expr: number },
-    level: ExternalBase["level"] = "options",
+    level: ExternalBase["level"] | null = "options",
   ): boolean => {
-    if (window === null) return false;
+    if (window === null || level === null) return false;
     const ref = given ?? (k >= 0 ? externalOf(k) : null);
     if (!ref || externals.length >= 200) return false;
     externals.push({ window, at, expr: given ? given.expr : tokens[k]!.start, level, ...ref });
@@ -458,69 +474,111 @@ function windowRanges(
     }
     return -1;
   };
-  let declared: Map<string, number> | null = null;
-  /** `name = Object.assign(…)`: the index of the call's `(`. */
-  let assigned: Map<string, number> | null = null;
-  const objectOf = (name: string): number => {
-    if (!declared || !assigned) {
-      declared = new Map();
-      assigned = new Map();
-      for (let k = 0; k + 2 < tokens.length; k++) {
-        if (tokens[k]!.type !== "ident" || !is(k + 1, "=")) continue;
-        const key = tokens[k]!.value;
-        if (is(k + 2, "{") && !declared.has(key)) declared.set(key, k + 2);
-        // `SECURE = Object.freeze({ … })`: the frozen object is the object
-        else if (
-          tokens[k + 2]?.type === "ident" &&
-          tokens[k + 2]!.value === "Object" &&
-          is(k + 3, ".") &&
-          tokens[k + 4]?.value === "freeze" &&
-          is(k + 5, "(") &&
-          is(k + 6, "{") &&
-          !declared.has(key)
-        )
-          declared.set(key, k + 6);
-        else if (
-          tokens[k + 2]?.type === "ident" &&
-          tokens[k + 2]!.value === "Object" &&
-          is(k + 3, ".") &&
-          tokens[k + 4]?.value === "assign" &&
-          is(k + 5, "(") &&
-          !declared.has(key) &&
-          !assigned.has(key)
-        )
-          assigned.set(key, k + 5);
-      }
+  /**
+   * What the name at k is bound to where it is used, by scope (`ExpressionResolver.binding`,
+   * also when it is written later: those writes are read by the caller): the first token of the
+   * initializer of its declaration, `pattern` for a name taken from an object pattern or an
+   * import, `other` for a parameter, function or class, null when that is not known.
+   */
+  const declOf = (k: number): Declared => {
+    const t = tokens[k];
+    if (t?.type !== "ident") return null;
+    const bound = resolver().binding(k, t.value, true);
+    if (!bound) return resolver().paramAround(k, t.value) ? "other" : null;
+    if (bound.kind === "value") return bound.range[0];
+    return bound.kind === "pattern" ? "pattern" : "other";
+  };
+  /**
+   * An initializer as window options: an object literal, `Object.freeze({…})` around one, or
+   * `Object.assign(…)` (`assign`: `open` is the call's `(`).
+   */
+  const shapeAt = (init: number): { open: number; assign: boolean } | null => {
+    if (is(init, "{")) return { open: init, assign: false };
+    if (
+      tokens[init]?.type === "ident" &&
+      tokens[init]!.value === "Object" &&
+      is(init + 1, ".") &&
+      is(init + 3, "(")
+    ) {
+      const method = tokens[init + 2]?.value;
+      if (method === "freeze" && is(init + 4, "{")) return { open: init + 4, assign: false };
+      if (method === "assign") return { open: init + 3, assign: true };
     }
-    return declared.get(name) ?? -1;
+    return null;
+  };
+  /** The object the name at k is declared as, by scope; null when it is something else. */
+  const objectAt = (k: number): { open: number; assign: boolean; decl: number } | null => {
+    const decl = declOf(k);
+    if (typeof decl !== "number") return null;
+    const shape = shapeAt(decl);
+    return shape ? { ...shape, decl } : null;
+  };
+  /**
+   * `this.NAME` at k (k is `this`): the object a class field or the constructor assigns, when
+   * nothing else may change the field (`ExpressionResolver.classFieldInit`).
+   */
+  const fieldAt = (k: number): { open: number; assign: boolean } | null => {
+    const init = resolver().classFieldInit(k);
+    return init ? shapeAt(init[0]) : null;
+  };
+  /**
+   * Follows a name or `this.NAME` at k used as window options, applied at `at` (null: in place),
+   * at `level`: an object of this file, or an `Object.assign(…)` of them. False when it is
+   * neither (nothing is recorded then).
+   */
+  const followAt = (
+    k: number,
+    window: number | null,
+    inherited: boolean,
+    depth: number,
+    at: number | null,
+    level: ExternalBase["level"] | null,
+  ): boolean => {
+    const self = tokens[k]?.value === "this";
+    const named = self ? fieldAt(k) : objectAt(k);
+    if (!named) return false;
+    if (named.assign) {
+      if (!assignedVia(named.open, window, depth, at, level)) return false;
+    } else add(named.open, window, inherited, depth + 1, at, level);
+    if (!self && "decl" in named) follow(tokens[k]!.value, named.decl as number, window);
+    return true;
   };
   /**
    * `Object.assign(target, a, b, …)` read as `{ ...a, ...b }`: each argument is a base applied at
-   * its own place in the call, so a later one wins over an earlier one, as in JavaScript.
-   * Returns false when an argument cannot be read.
+   * its own place in the call, so a later one wins over an earlier one, as in JavaScript. Applied
+   * at `at` (a spread of the name), every argument is applied there. False when the call cannot
+   * be read at all.
    */
-  const assignedTo = (name: string, window: number | null, depth: number): boolean => {
-    const plan = assignPlan(name, depth);
+  const assignedVia = (
+    open: number,
+    window: number | null,
+    depth: number,
+    at: number | null,
+    level: ExternalBase["level"] | null,
+  ): boolean => {
+    const plan = planOfCall(open, depth);
     if (!plan) return false;
-    for (const step of plan) {
-      if (step.external) {
-        if (window === null || !external(-1, window, step.at, step.external)) hide(window, step.at);
+    // What comes before an argument that cannot be read may be replaced by it, key by key: it
+    // is not taken as a window's setting at all.
+    const unread = plan.findLastIndex((step) => step.open === -1 && !step.external);
+    for (const [index, step] of plan.entries()) {
+      const place = at ?? step.at;
+      for (const f of step.follows) follow(f.name, f.decl, window);
+      if (index < unread) continue;
+      if (step.open === -1) {
+        if (!step.external || !external(-1, window, place, step.external, level))
+          hide(window, place);
         continue;
       }
-      if (step.follow) follow(step.follow, window);
-      add(step.open, window, true, depth + 1, step.at);
+      add(step.open, window, true, depth + 1, place, level);
     }
-    follow(name, window);
     return true;
   };
-  /** What `name = Object.assign(…)` applies, in order; null when an argument cannot be read. */
-  const assignPlan = (name: string, depth: number): PlanStep[] | null => {
-    objectOf(name);
-    const open = assigned?.get(name);
-    if (open === undefined) return null;
-    return planOfCall(open, depth);
-  };
-  /** The steps of the `Object.assign(…)` call whose `(` is at `open`; null when one is unreadable. */
+  /**
+   * The steps of the `Object.assign(…)` call whose `(` is at `open`: an object of this file per
+   * argument, another module's base, or an argument that cannot be read (`open` -1 without
+   * `external`), which may write any key at its place. Null when the call is too deep or broken.
+   */
   const planOfCall = (open: number, depth: number): PlanStep[] | null => {
     if (depth > 3) return null;
     const end = close(open);
@@ -540,8 +598,23 @@ function windowRanges(
       // Just before the argument, inside the call: every argument is then applied in the same
       // enclosing object or block, one after the other.
       const at = first.start - 1;
-      if (is(from, "{") && close(from) === to - 1) plan.push({ open: from, at, follow: null });
+      const unread: PlanStep = { open: -1, at, follows: [] };
+      if (is(from, "{") && close(from) === to - 1) plan.push({ open: from, at, follows: [] });
       else if (
+        first.type === "ident" &&
+        to === from + 3 &&
+        is(from + 1, ".") &&
+        tokens[from + 2]?.type === "ident" &&
+        first.value === "this"
+      ) {
+        const field = fieldAt(from);
+        if (!field) plan.push(unread);
+        else if (!field.assign) plan.push({ open: field.open, at, follows: [] });
+        else {
+          const inner = planOfCall(field.open, depth + 1);
+          plan.push(...(inner ? inner.map((step) => ({ ...step, at })) : [unread]));
+        }
+      } else if (
         first.type === "ident" &&
         to === from + 3 &&
         is(from + 1, ".") &&
@@ -551,18 +624,35 @@ function windowRanges(
         plan.push({
           open: -1,
           at,
-          follow: null,
+          follows: [],
           external: { ...externalOf(from)!, expr: first.start },
         });
       else if (first.type === "ident" && to === from + 1) {
-        const base = objectOf(first.value);
-        if (base !== -1) plan.push({ open: base, at, follow: first.value });
-        else {
-          const inner = assignPlan(first.value, depth + 1);
-          if (!inner) return null;
-          plan.push(...inner.map((step) => ({ ...step, at })));
+        const named = objectAt(from);
+        const follows = named ? [{ name: first.value, decl: named.decl }] : [];
+        if (named && !named.assign) plan.push({ open: named.open, at, follows });
+        else if (named) {
+          const inner = planOfCall(named.open, depth + 1);
+          plan.push(
+            ...(inner
+              ? inner.map((step) => ({ ...step, at, follows: [...step.follows, ...follows] }))
+              : [unread]),
+          );
+        } else {
+          // an imported name: evaluated with the other module once every module is known
+          const ref = declOf(from) !== "other" ? externalOf(from) : null;
+          plan.push(
+            ref
+              ? {
+                  open: -1,
+                  at,
+                  follows: [{ name: first.value, decl: -1 }],
+                  external: { ...ref, expr: first.start },
+                }
+              : unread,
+          );
         }
-      } else return null;
+      } else plan.push(unread);
       from = to + 1;
     }
     return plan;
@@ -576,7 +666,9 @@ function windowRanges(
     window: number | null,
     depth: number,
     at: number | null,
+    level: ExternalBase["level"] | null,
   ): boolean => {
+    if (declOf(k) !== "other") return false;
     const sites = resolver().argumentsFor(k);
     if (!sites?.length) return false;
     const objects: number[] = [];
@@ -591,11 +683,10 @@ function windowRanges(
       // it is the same object, and is not placed a second time.
       const start = tokens[site]!.start;
       if (ranges.some((r) => r.window === window && start >= r.start && start < r.end)) continue;
-      add(site, window, true, depth + 1, at ?? start);
+      add(site, window, true, depth + 1, at ?? start, level);
     }
     return true;
   };
-  /** The object literal a function of this file returns: `function f() { return {…} }`, `f = () => ({…})`. */
   /**
    * The object literal a function of this file returns: `function f() { return {…} }`,
    * `f = () => ({…})`. Function declarations are indexed once, however many are asked for.
@@ -639,6 +730,19 @@ function windowRanges(
     }
     return returned.get(name) ?? -1;
   };
+  /** The `{` right around token k inside [open, end), or -1. */
+  const braceAround = (k: number, open: number): number => {
+    for (let d = 0, j = k - 1; j >= open && j > k - 20_000; j--) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "}" || p.value === ")" || p.value === "]") d++;
+      else if (p.value === "{" || p.value === "(" || p.value === "[") {
+        if (d === 0) return p.value === "{" ? j : -1;
+        d--;
+      }
+    }
+    return -1;
+  };
   let work = 400_000;
   const add = (
     open: number,
@@ -646,6 +750,8 @@ function windowRanges(
     inherited = false,
     depth = 0,
     at: number | null = null,
+    /** What the object is: a window's options, its webPreferences, or not known (null). */
+    level: ExternalBase["level"] | null = "options",
   ): void => {
     if (ranges.length >= 2000 || work <= 0) return;
     const end = close(open);
@@ -663,30 +769,72 @@ function windowRanges(
       at,
     });
     if (depth >= 3) return;
+    // the object itself: `{`, or the one a constructor's `(` holds
+    const root = is(open, "(") && is(open + 1, "{") ? open + 1 : open;
+    /** The level of an object that holds token k: this one's, a webPreferences value's, or none. */
+    const levelAt = (k: number): ExternalBase["level"] | null => {
+      const brace = braceAround(k, open);
+      if (brace === root) return level;
+      return is(brace - 1, ":") && tokens[brace - 2]?.value === "webPreferences" ? "prefs" : null;
+    };
+    /** `webPreferences: NAME` or the shorthand `webPreferences`, with the name at n. */
+    const namedPrefs = (n: number): void => {
+      if (
+        !followAt(n, window, inherited, depth, at, "prefs") &&
+        !passedTo(n, window, depth, at, "prefs")
+      )
+        hide(window, EVERYWHERE); // an import, or a parameter not every caller fills in
+    };
     // Objects that are named, spread or returned by a helper inside belong to the same window.
     for (let k = open + 1; k < end; k++) {
       const t = tokens[k]!;
       const next = tokens[k + 1];
       if (is(k, "...")) {
-        // `...name`, `...helper()`; anything else (`...(dev ? a : b)`, `...opts.prefs`), or a
-        // name that is not an object of this file, may write any key at this place.
+        const place = at ?? t.start;
+        // `...name`, `...helper()`, `...this.name`; anything else (`...(dev ? a : b)`,
+        // `...opts.prefs`), or a name that is not an object of this file, may write any key at
+        // this place.
         const simple = next?.type === "ident" && !is(k + 2, ".") && !is(k + 2, "[");
-        const base = !simple ? -1 : is(k + 2, "(") ? returnedBy(next.value) : objectOf(next.value);
-        // Inside a base, everything is applied where that base is applied.
-        if (base !== -1) {
-          if (!is(k + 2, "(")) follow(next!.value, window);
-          add(base, window, true, depth + 1, at ?? t.start);
+        const field =
+          next?.type === "ident" &&
+          next.value === "this" &&
+          is(k + 2, ".") &&
+          tokens[k + 3]?.type === "ident" &&
+          (is(k + 4, ",") || is(k + 4, "}"));
+        if (simple && is(k + 2, "(")) {
+          const base = returnedBy(next.value);
+          if (base !== -1) add(base, window, true, depth + 1, place, levelAt(k));
+          else hide(window, place);
+        } else if (simple || field) {
+          if (
+            !followAt(k + 1, window, true, depth, place, levelAt(k)) &&
+            !(simple && passedTo(k + 1, window, depth, place, levelAt(k))) &&
+            !(
+              simple &&
+              declOf(k + 1) !== "other" &&
+              external(k + 1, window, place, undefined, levelAt(k)) &&
+              (follow(next.value, -1, window), true)
+            )
+          )
+            hide(window, place);
         } else if (
-          !(simple && !is(k + 2, "(") && assignedTo(next!.value, window, depth)) &&
-          !(simple && !is(k + 2, "(") && passedTo(k + 1, window, depth, at ?? t.start)) &&
           !(
             next?.type === "ident" &&
             is(k + 2, ".") &&
             (is(k + 4, ",") || is(k + 4, "}")) &&
-            external(k + 1, window, at ?? t.start)
+            external(k + 1, window, place, undefined, levelAt(k))
           )
         )
-          hide(window, at ?? t.start);
+          hide(window, place);
+      } else if (
+        t.type === "ident" &&
+        t.value === "webPreferences" &&
+        (is(k + 1, ",") || is(k + 1, "}")) &&
+        (is(k - 1, "{") || is(k - 1, ",")) &&
+        braceAround(k, open) === root
+      ) {
+        // the shorthand `{ webPreferences }`: the variable of that name, in scope here
+        namedPrefs(k);
       } else if (
         t.type === "ident" &&
         t.value === "webPreferences" &&
@@ -694,13 +842,15 @@ function windowRanges(
         tokens[k + 2]?.type === "ident"
       ) {
         const name = tokens[k + 2]!.value;
-        if (is(k + 3, ",") || is(k + 3, "}")) {
-          const named = objectOf(name);
-          if (named !== -1) {
-            follow(name, window);
-            add(named, window, inherited, depth + 1, at);
-          } else if (!assignedTo(name, window, depth) && !passedTo(k + 2, window, depth, at))
-            hide(window, EVERYWHERE);
+        if (is(k + 3, ",") || is(k + 3, "}")) namedPrefs(k + 2);
+        else if (
+          name === "this" &&
+          is(k + 3, ".") &&
+          tokens[k + 4]?.type === "ident" &&
+          (is(k + 5, ",") || is(k + 5, "}"))
+        ) {
+          // `webPreferences: this.prefs`, a field the class gives the object
+          if (!followAt(k + 2, window, inherited, depth, at, "prefs")) hide(window, EVERYWHERE);
         } else if (is(k + 3, "(")) {
           // `webPreferences: helper({ … })`: what the helper returns is the base, its argument
           // (inside this range already) is laid over it.
@@ -708,7 +858,7 @@ function windowRanges(
           // Applied at the very start of the argument object, so the argument's own keys,
           // which are laid over what the helper returns, come after it in the same object.
           const applied = is(k + 4, "{") ? tokens[k + 4]!.start + 1 : tokens[k + 2]!.start;
-          if (result !== -1) add(result, window, true, depth + 1, at ?? applied);
+          if (result !== -1) add(result, window, true, depth + 1, at ?? applied, "prefs");
           else hide(window, EVERYWHERE);
         } else if (
           name === "Object" &&
@@ -727,30 +877,29 @@ function windowRanges(
             // literal's keys when they come before it in the call and after them otherwise, so
             // the later of two writes of a key wins, as in JavaScript.
             const inside = (step: PlanStep): boolean => {
-              if (step.external) return false;
+              if (step.open === -1) return false;
               const start = tokens[step.open]!.start;
               return ranges.some((r) => r.window === window && start >= r.start && start < r.end);
             };
             const literal = plan.filter(inside).at(-1);
             for (const step of plan) {
-              if (step.external) {
-                const place = !literal
-                  ? step.at
-                  : step.at < tokens[literal.open]!.start
-                    ? tokens[literal.open]!.start + 1
-                    : tokens[close(literal.open)]!.start;
-                if (window === null || !external(-1, window, at ?? place, step.external, "prefs"))
-                  hide(window, at ?? place);
-                continue;
-              }
-              if (step.follow) follow(step.follow, window);
-              if (inside(step)) continue;
               const place = !literal
                 ? step.at
                 : step.at < tokens[literal.open]!.start
                   ? tokens[literal.open]!.start + 1
                   : tokens[close(literal.open)]!.start;
-              add(step.open, window, true, depth + 1, at ?? place);
+              for (const f of step.follows) follow(f.name, f.decl, window);
+              if (step.open === -1) {
+                if (
+                  !step.external ||
+                  window === null ||
+                  !external(-1, window, at ?? place, step.external, "prefs")
+                )
+                  hide(window, at ?? place);
+                continue;
+              }
+              if (inside(step)) continue;
+              add(step.open, window, true, depth + 1, at ?? place, "prefs");
             }
           }
         } else hide(window, EVERYWHERE); // `webPreferences: options.prefs`, `a ? b : c`
@@ -768,6 +917,8 @@ function windowRanges(
   let count = 0;
   const names = new Map<number, string>();
   const named = new Map<string, number>();
+  /** `webPreferences: {…}` objects outside any window's options, read once every window is. */
+  const loose: number[] = [];
   for (let k = 0; k + 2 < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
@@ -786,43 +937,45 @@ function windowRanges(
         named.set(target.value, seen);
         names.set(window, seen === 1 ? target.value : `${target.value}#${seen}`);
       }
-      // `new BrowserWindow(this.options)` with `options = {…}` a field of the class
+      const first = tokens[c + 2];
       if (
-        tokens[c + 2]?.type === "ident" &&
-        tokens[c + 2]!.value === "this" &&
+        // `new BrowserWindow(this.options)` with `options = {…}` a field of the class
+        first?.type === "ident" &&
+        first.value === "this" &&
         is(c + 3, ".") &&
         tokens[c + 4]?.type === "ident" &&
         is(c + 5, ")")
       ) {
-        const field = objectOf(tokens[c + 4]!.value);
-        if (field !== -1) {
-          follow(tokens[c + 4]!.value, window);
-          add(field, window);
-        } else hide(window, EVERYWHERE);
-        add(c + 1, window);
-        continue;
-      }
-      // `new BrowserWindow(options)` with the options object declared elsewhere
-      const first = tokens[c + 2];
-      if (first?.type === "ident" && is(c + 3, ")")) {
-        const at = objectOf(first.value);
-        if (at !== -1) {
-          follow(first.value, window);
-          add(at, window);
-        } else if (!assignedTo(first.value, window, 0) && !passedTo(c + 2, window, 0, null))
+        if (!followAt(c + 2, window, false, -1, null, "options")) hide(window, EVERYWHERE);
+      } else if (first?.type === "ident" && is(c + 3, ")")) {
+        // `new BrowserWindow(options)` with the options object declared elsewhere
+        if (
+          !followAt(c + 2, window, false, -1, null, "options") &&
+          !passedTo(c + 2, window, 0, null, "options")
+        )
           hide(window, EVERYWHERE); // an import, or a parameter not every caller fills in
       } else if (!is(c + 2, "{") && !is(c + 2, ")")) {
         // `new BrowserWindow(dev ? {…} : {…})`, `new BrowserWindow(makeOptions())`
         hide(window, EVERYWHERE);
       }
       add(c + 1, window);
-    } else if (t.value === "webPreferences" && is(k + 1, ":") && is(k + 2, "{")) {
-      const start = tokens[k + 2]!.start;
-      // Already inside a window's range: nothing to add.
-      if (!ranges.some((r) => start >= r.start && start < r.end)) add(k + 2, null);
-    }
+    } else if (t.value === "webPreferences" && is(k + 1, ":") && is(k + 2, "{")) loose.push(k + 2);
   }
-  return { ranges, traced, viaName, opaque, externals, hides };
+  // A `webPreferences: {…}` that is not part of a window's options; one met before the window
+  // that takes it (an options object assigned in a constructor, read by a method below) is.
+  for (const open of loose) {
+    const start = tokens[open]!.start;
+    if (!ranges.some((r) => start >= r.start && start < r.end)) add(open, null);
+  }
+  return {
+    ranges,
+    traced: new Map([...traced].map(([name, decls]) => [name, [...decls]])),
+    viaName,
+    opaque,
+    externals,
+    hides,
+    declOf,
+  };
 }
 
 /** One member a preload script exposes to the page through contextBridge. */
@@ -1346,7 +1499,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 7;
+export const JS_SCAN_SCHEMA = 8;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -1859,45 +2012,92 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
         ambient = collectAmbient(tokens, context.aliases);
       if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source)) {
         let resolver: ExpressionResolver | null = null;
-        located = windowRanges(
+        const { declOf, ...where } = windowRanges(
           tokens,
           context.aliases,
           () => (resolver ??= new ExpressionResolver(tokens, context.constants)),
           (k) => {
             const name = tokens[k];
+            if (name?.type !== "ident") return null;
+            if (!(tokens[k + 1]?.type === "punct" && tokens[k + 1]!.value === "."))
+              return context.constants.importOf(name.value, k);
             const member = tokens[k + 2];
-            if (name?.type !== "ident" || member?.type !== "ident") return null;
-            if (!(tokens[k + 1]?.type === "punct" && tokens[k + 1]!.value === ".")) return null;
+            if (member?.type !== "ident") return null;
             const specifier = context.constants.requireOf(name.value, k);
             return specifier ? { specifier, property: member.value } : null;
           },
         );
+        located = where;
         ranges = located.ranges;
         // `prefs.sandbox = false`, `prefs["sandbox"] = false`, `Object.assign(prefs, …)` on an
         // object that was followed as window options: what the declaration says no longer
         // holds, so the key reads as computed.
-        const { traced } = located;
+        const traced = new Map([...located.traced].map(([name, decls]) => [name, new Set(decls)]));
         const is = (i: number, value: string): boolean =>
           tokens[i]?.type === "punct" && tokens[i]!.value === value;
         const everyKey = (): void => {
           for (const key of BOOLEAN_KEYS) mutated.add(key);
           mutated.add("preload");
         };
-        const declared = new Set<string>();
+        /** Whether the bracket right around token k opens the body of a class. */
+        const classBodyAround = (k: number): boolean => {
+          for (let d = 0, j = k - 1; j >= 0 && j > k - 20_000; j--) {
+            const p = tokens[j]!;
+            if (p.type !== "punct") continue;
+            if (p.value === "}" || p.value === ")" || p.value === "]") d++;
+            else if (p.value === "{" || p.value === "(" || p.value === "[") {
+              if (d > 0) {
+                d--;
+                continue;
+              }
+              return (
+                p.value === "{" &&
+                (resolver ??= new ExpressionResolver(tokens, context.constants))
+                  .classesOf()
+                  .some((c) => c.start === j)
+              );
+            }
+          }
+          return false;
+        };
+        /** NAME at k as an entry of a declaration's pattern or an import: `{ NAME } = …`, `{ NAME } from`. */
+        const inPattern = (k: number): boolean => {
+          const entry =
+            is(k - 1, "{") ||
+            is(k - 1, ",") ||
+            (is(k - 1, ":") && tokens[k - 2]?.type === "ident") ||
+            tokens[k - 1]?.value === "as";
+          if (!entry || !(is(k + 1, ",") || is(k + 1, "}"))) return false;
+          for (let d = 0, j = k + 1; j < tokens.length && j < k + 400; j++) {
+            if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
+            else if (is(j, ")") || is(j, "]")) d--;
+            else if (is(j, "}")) {
+              if (d === 0)
+                return (is(j + 1, "=") && !is(j + 2, "=")) || tokens[j + 1]?.value === "from";
+              d--;
+            }
+            if (d < 0) return false;
+          }
+          return false;
+        };
         for (let k = 0; traced.size && k + 1 < tokens.length; k++) {
           const t = tokens[k]!;
           if (t.type !== "ident" || !traced.has(t.value) || is(k - 1, ".")) continue;
-          // The declaration that was followed: `name = {` or `name = Object.freeze({`, once.
-          const frozen =
-            tokens[k + 2]?.value === "Object" &&
-            is(k + 3, ".") &&
-            tokens[k + 4]?.value === "freeze" &&
-            is(k + 5, "(") &&
-            is(k + 6, "{");
-          if (is(k + 1, "=") && (is(k + 2, "{") || frozen) && !declared.has(t.value)) {
-            declared.add(t.value);
-            continue;
-          }
+          // a key of an object literal (`{ webPreferences: … }`) is not a use of the name
+          if (is(k + 1, ":") && (is(k - 1, "{") || is(k - 1, ","))) continue;
+          // nor is a field of a class body (`webPreferences = { … }` in `class W { … }`)
+          if (is(k + 1, "=") && !is(k + 2, "=") && classBodyAround(k)) continue;
+          const decls = traced.get(t.value)!;
+          // Another binding of the same name (a parameter, a declaration in another function, as
+          // minifiers reuse short names) is another object. Where the binding is not known, the
+          // use counts.
+          const bound = declOf(k);
+          if (bound === "other") continue;
+          if (typeof bound === "number" && !decls.has(bound)) continue;
+          if (bound === "pattern" && !decls.has(-1)) continue;
+          // The declaration that was followed, or the pattern or import that binds the name.
+          if (is(k + 1, "=") && !is(k + 2, "=") && decls.has(k + 2)) continue;
+          if (decls.has(-1) && inPattern(k)) continue;
           // A source of `Object.assign(target, …, name, …)`: read, not changed. Only the first
           // argument, the target, is written to.
           if (is(k - 1, ",") && (is(k + 1, ",") || is(k + 1, ")"))) {
@@ -1937,7 +2137,12 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
                 (is(k - 3, ".") && tokens[k - 5]?.value === "new")) &&
               WINDOW_CLASSES.has(tokens[k - 2]?.value ?? "")) ||
             (inWindow &&
-              ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") || is(k - 1, "...")));
+              ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
+                is(k - 1, "...") ||
+                // the shorthand `{ webPreferences }`
+                (t.value === "webPreferences" &&
+                  (is(k - 1, "{") || is(k - 1, ",")) &&
+                  (is(k + 1, ",") || is(k + 1, "}")))));
           if (asOptions) continue;
           // A write to one key: `name.key =`, `name.webPreferences.key =`, `name["key"] =`.
           let at = k + 1;
@@ -2484,8 +2689,21 @@ export function analyzeJavaScriptTree(
         if (partial) for (const key of ["preload", ...BOOLEAN_KEYS]) read.unknown.add(key);
         const window = r.window;
         const windowLine = lineAt(r.start);
+        // Where the evaluation cannot read a key, the rows as written stay, and the key is not
+        // known for the window, unless the code writes it after the last place that could not
+        // be followed: then it stands, as for every located window below.
+        const hiddenUpTo = opaque.get(window)!;
+        const standing = found
+          .filter((o) => o.window === window && o.order > hiddenUpTo && read.unknown.has(o.key))
+          .map((o) => o.key);
+        const readKeys = new Set(read.settings.map((x) => x.key));
         for (let i = found.length - 1; i >= 0; i--)
-          if (found[i]!.window === window) found.splice(i, 1);
+          if (
+            found[i]!.window === window &&
+            (!read.unknown.has(found[i]!.key) || readKeys.has(found[i]!.key))
+          )
+            found.splice(i, 1);
+        for (const key of standing) read.unknown.delete(key);
         let order = 0;
         const seen = new Set<string>();
         for (const { key, value, src } of read.settings) {

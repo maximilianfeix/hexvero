@@ -36,6 +36,16 @@ A setting also reads as `computed` where the code next to the window does not de
   This is a reading of the file's text, not a data-flow analysis: it concerns windows that take
   options from a named object, and it errs towards `computed`.
 
+Options are followed where they are built from objects the code names: a constant of the file or
+of another module (`Object.assign({}, BASE, { … })`, `{ ...BASE, sandbox: false }`,
+`Object.freeze({ … })`), the shorthand `{ webPreferences }`, a class field or a single
+`this.options = { … }` at the top of the constructor read through `this.options` (only when
+nothing else in the file writes that field or hands it on), and a factory function that returns
+such an object. A name is followed to the declaration it has where it is used, so a parameter
+or an inner declaration of the same name (and a minifier's short name reused in another
+function) is not taken for it. An argument of `Object.assign` that cannot be read makes every key
+of the arguments before it computed.
+
 Within one object the later write of a key wins, as in JavaScript, also when one of the two is in
 an object that is spread into it (`{ sandbox: true, ...base }` takes `base`'s value) or returned
 by a helper whose argument is laid over it. The same holds one level up: `webPreferences` is a

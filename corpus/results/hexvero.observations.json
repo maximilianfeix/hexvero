@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.8.0",
-  "commit": "aa88007+uncommitted",
+  "commit": "57d0ed4+uncommitted",
   "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
@@ -2163,21 +2163,6 @@
       "file": "main.js"
      },
      {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
       "key": "nodeIntegration",
       "value": true,
       "file": "main.js"
@@ -2195,6 +2180,21 @@
      {
       "key": "webSecurity",
       "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
       "file": "main.js"
      }
     ],
@@ -4585,7 +4585,8 @@
     "complete": true,
     "limitations": [
      "context_bridge_members_unreadable",
-     "ipc_channel_unresolved"
+     "ipc_channel_unresolved",
+     "webpreferences_computed"
     ],
     "ipcChannels": [
      {
@@ -4784,8 +4785,28 @@
     ],
     "webPreferences": [
      {
+      "key": "sandbox",
+      "value": null,
+      "file": "main.js"
+     },
+     {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
       "file": "main.js"
      },
      {
@@ -4820,21 +4841,6 @@
      },
      {
       "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
       "value": true,
       "file": "main.js"
      }
@@ -5152,7 +5158,8 @@
     "limitations": [
      "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "window_options_unresolved",
+     "webpreferences_computed"
     ],
     "ipcChannels": [
      {
@@ -5353,8 +5360,28 @@
     ],
     "webPreferences": [
      {
+      "key": "sandbox",
+      "value": null,
+      "file": "main.js"
+     },
+     {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
       "file": "main.js"
      },
      {
@@ -5723,7 +5750,8 @@
     "limitations": [
      "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "window_options_unresolved",
+     "webpreferences_computed"
     ],
     "ipcChannels": [
      {
@@ -5885,8 +5913,28 @@
     ],
     "webPreferences": [
      {
+      "key": "sandbox",
+      "value": null,
+      "file": "main.js"
+     },
+     {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
       "file": "main.js"
      },
      {
@@ -6291,10 +6339,10 @@
      "added": [],
      "removed": [],
      "changed": [
-      "sandbox: false -> true",
-      "contextIsolation: true -> false"
+      "contextIsolation: true -> false",
+      "sandbox: false -> true"
      ],
-     "relocated": 9,
+     "relocated": 10,
      "unchanged": 0
     },
     "endpoints": {
@@ -6329,7 +6377,8 @@
     "limitations": [
      "webpreferences_unattached",
      "context_bridge_members_unreadable",
-     "ipc_channel_unresolved"
+     "ipc_channel_unresolved",
+     "webpreferences_computed"
     ],
     "ipcChannels": [
      {
@@ -6536,6 +6585,11 @@
      {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": null,
       "file": "main.js"
      },
      {
@@ -6814,7 +6868,8 @@
     "limitations": [
      "webpreferences_unattached",
      "context_bridge_members_unreadable",
-     "ipc_channel_unresolved"
+     "ipc_channel_unresolved",
+     "webpreferences_computed"
     ],
     "ipcChannels": [
      {
@@ -7021,6 +7076,11 @@
      {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": null,
       "file": "main.js"
      },
      {
@@ -7305,7 +7365,8 @@
     "limitations": [
      "webpreferences_unattached",
      "context_bridge_members_unreadable",
-     "ipc_channel_unresolved"
+     "ipc_channel_unresolved",
+     "webpreferences_computed"
     ],
     "ipcChannels": [
      {
@@ -7510,6 +7571,16 @@
      {
       "key": "preload",
       "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": null,
       "file": "main.js"
      },
      {
@@ -7786,7 +7857,7 @@
      "changed": [
       "sandbox: true -> false"
      ],
-     "relocated": 8,
+     "relocated": 9,
      "unchanged": 0
     },
     "endpoints": {
@@ -8792,8 +8863,7 @@
    "electron": {
     "complete": true,
     "limitations": [
-     "ipc_channel_unresolved",
-     "window_options_unresolved"
+     "ipc_channel_unresolved"
     ],
     "ipcChannels": [
      {
@@ -8860,6 +8930,13 @@
       ]
      },
      {
+      "channel": "mini:get-artwork",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "mini:toggle",
       "senders": [
        "preload.js"
@@ -8878,6 +8955,24 @@
       ]
      },
      {
+      "channel": "player:state",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "player:state-changed",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "playlists:export",
       "senders": [
        "preload.js"
@@ -8885,6 +8980,43 @@
       "receivers": [
        "main.js"
       ]
+     },
+     {
+      "channel": "playlists:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "playlists:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": []
      },
      {
       "channel": "window:minimize",
@@ -8922,13 +9054,13 @@
       "file": "main.js"
      },
      {
-      "key": "contextIsolation",
-      "value": true,
+      "key": "nodeIntegration",
+      "value": false,
       "file": "main.js"
      },
      {
-      "key": "nodeIntegration",
-      "value": false,
+      "key": "contextIsolation",
+      "value": true,
       "file": "main.js"
      },
      {
@@ -8961,12 +9093,12 @@
      {
       "api": "cadence",
       "member": "listPlaylists",
-      "channel": null
+      "channel": "playlists:list"
      },
      {
       "api": "cadence",
       "member": "savePlaylist",
-      "channel": null
+      "channel": "playlists:save"
      },
      {
       "api": "cadence",
@@ -8976,7 +9108,7 @@
      {
       "api": "cadence",
       "member": "reportState",
-      "channel": null
+      "channel": "player:state-changed"
      },
      {
       "api": "cadence",
@@ -9001,17 +9133,17 @@
      {
       "api": "cadence",
       "member": "getSettings",
-      "channel": null
+      "channel": "settings:get"
      },
      {
       "api": "cadence",
       "member": "updateSettings",
-      "channel": null
+      "channel": "settings:set"
      },
      {
       "api": "cadence",
       "member": "onSettingsChanged",
-      "channel": null
+      "channel": "settings:changed"
      },
      {
       "api": "cadence",
@@ -9041,12 +9173,12 @@
      {
       "api": "mini",
       "member": "onState",
-      "channel": null
+      "channel": "player:state"
      },
      {
       "api": "mini",
       "member": "getArtwork",
-      "channel": null
+      "channel": "mini:get-artwork"
      },
      {
       "api": "mini",
@@ -9100,19 +9232,7 @@
     ],
     "endpointsUnreadable": 2,
     "ipcUnreadable": [
-     "webContents.send at undefined:1",
-     "webContents.send at undefined:2",
-     "ipcMain.on at undefined:2",
-     "webContents.send at undefined:2",
-     "ipcMain.handle at undefined:2",
-     "ipcRenderer.invoke at undefined:1",
-     "ipcRenderer.invoke at undefined:1",
-     "ipcRenderer.send at undefined:1",
-     "ipcRenderer.invoke at undefined:1",
-     "ipcRenderer.invoke at undefined:1",
-     "ipcRenderer.on at undefined:1",
-     "ipcRenderer.on at undefined:1",
-     "ipcRenderer.invoke at undefined:1"
+     "ipcMain.handle at undefined:2"
     ],
     "storage": [
      {
@@ -11980,9 +12100,12 @@
      "key": "file+windowName+key",
      "added": [],
      "removed": [],
-     "changed": [],
+     "changed": [
+      "sandbox: true -> false",
+      "webSecurity: false -> true"
+     ],
      "relocated": 0,
-     "unchanged": 3
+     "unchanged": 11
     },
     "endpoints": {
      "key": "file+kind+value",

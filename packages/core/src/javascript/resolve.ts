@@ -91,7 +91,14 @@ export type Val =
    * A module a bundler wrapped into this file (esbuild's `__commonJS`): its members are what its
    * body assigns to `exports.NAME`.
    */
-  | { kind: "cjs"; exports: string; module: string | null; body: [number, number] }
+  | {
+      kind: "cjs";
+      exports: string;
+      module: string | null;
+      body: [number, number];
+      /** Passed through an interop helper (`__toESM`): its `default` is the module itself. */
+      interop?: true;
+    }
   /**
    * Only in an environment: a variable an evaluated body declared whose value is not known, so a
    * read of it is unknown instead of falling through to a binding of the same name outside.
@@ -134,6 +141,28 @@ export interface FnDef {
   /** An arrow function: it has no `this` of its own. */
   arrow?: true;
 }
+
+/** What may follow `object.key` when the key is only read (no write, call or deeper access). */
+const KEY_READ_FOLLOWERS: ReadonlySet<string> = new Set([
+  ")",
+  ",",
+  ";",
+  "}",
+  "]",
+  "?",
+  ":",
+  "&&",
+  "||",
+  "??",
+  "===",
+  "!==",
+  "==",
+  "!=",
+  "<",
+  ">",
+  "<=",
+  ">=",
+]);
 
 const MAX_VALUES = 64;
 const MAX_DEPTH = 10;
@@ -270,6 +299,8 @@ interface Structure {
     Array<{ j: number; weight: number; init: boolean; scope: [number, number] | null }>
   >;
   topDecls: Map<string, [number, number] | null> | null;
+  /** The same declarations before later writes are taken into account (see `binding`). */
+  topDeclsLoose: Map<string, [number, number] | null> | null;
   topPatterns: Map<string, { key: string; from: [number, number] } | null>;
   classes: Array<{ name: string; start: number; end: number }> | null;
   /** Positions of every identifier by name. */
@@ -364,6 +395,7 @@ export class ExpressionResolver {
         defsByParams: null,
         declCache: new Map(),
         topDecls: null,
+        topDeclsLoose: null,
         topPatterns: new Map(),
         classes: null,
         names: null,
@@ -1335,7 +1367,11 @@ export class ExpressionResolver {
         env,
         depth + 1,
       );
-      return this.chain(arg, close + 1, end, env, depth);
+      // A CommonJS module that does not mark itself as an ES module (no `__esModule`, no
+      // `__toCommonJS`, no `default` anywhere): the helper's `default` is its `module.exports`.
+      const wrapped: Val | null =
+        arg?.kind === "cjs" && !this.marksEsModule(arg) ? { ...arg, interop: true } : arg;
+      return this.chain(wrapped, close + 1, end, env, depth);
     }
     // `i(76675)`: webpack's require of a module of this file's module table
     if (
@@ -1361,6 +1397,29 @@ export class ExpressionResolver {
       const close = this.match[start + 3]!;
       if (close !== end - 1) return null;
       return this.evalRange(start + 4, close, env, depth + 1);
+    }
+    // `Object.assign({…}, a, b, …)`: a new object, the sources' keys laid over it from left to
+    // right as spreads are. Only with an object literal as the target: an object the code holds
+    // elsewhere is changed by the call, and what else reads it is not followed.
+    if (
+      t.value === "Object" &&
+      this.punct(start + 1, ".") &&
+      this.is(start + 2, "ident", "assign") &&
+      this.punct(start + 3, "(") &&
+      this.punct(start + 4, "{")
+    )
+      return this.assignCall(start + 3, end, env, depth);
+    // `this.NAME` outside a call that binds `this`: the value the class gives the field
+    if (
+      t.value === "this" &&
+      !env.has("this") &&
+      this.punct(start + 1, ".") &&
+      this.is(start + 2, "ident")
+    ) {
+      const init = this.classFieldInit(start);
+      if (!init) return null;
+      const field = this.evalRange(init[0], init[1], new Map(), depth + 1);
+      return this.chain(field, start + 3, end, env, depth);
     }
     // `require("./x")`: that module's exports, when it is a module of the application
     if (
@@ -1513,6 +1572,136 @@ export class ExpressionResolver {
     return out;
   }
 
+  /** `Object.assign({…}, …)` with `(` at open, ending at `end`; see evalOperand. */
+  private assignCall(open: number, end: number, env: Env, depth: number): Val | null {
+    const close = this.match[open]!;
+    if (close !== end - 1) return null;
+    const targetEnd = this.match[open + 1]!;
+    if (targetEnd === -1 || this.exprEnd(open + 1) !== targetEnd + 1) return null;
+    const target = this.object(open + 1, targetEnd, env, depth + 1);
+    if (target.kind !== "obj") return null;
+    const props = new Map(target.props);
+    let unknown = target.open === true;
+    for (let from = targetEnd + 2; from < close;) {
+      const to = Math.min(this.exprEnd(from), close);
+      if (to <= from) return null;
+      // as `...source` in an object literal: something unknown may write any key here
+      const source = this.evalRange(from, to, env, depth + 1);
+      if (source?.kind === "obj") {
+        if (source.open) {
+          for (const key of props.keys()) props.set(key, null);
+          unknown = true;
+        }
+        for (const [key, v] of source.props) props.set(key, v);
+      } else if (source?.kind !== "undef") {
+        for (const key of props.keys()) props.set(key, null);
+        unknown = true;
+      }
+      if (props.size > 256) return this.stop("too many keys");
+      from = to + 1;
+    }
+    this.note("evaluated");
+    return unknown ? { kind: "obj", props, open: true } : { kind: "obj", props };
+  }
+
+  /**
+   * `this.NAME` at k (k is `this`), in a method of a class (or an arrow function inside one):
+   * the initializer the class gives the field, a field `NAME = …` of the class body or one
+   * `this.NAME = …` at the top level of the constructor. Null unless that is the only write of
+   * the field in the file, no other class declares a field or method of that name, and every
+   * use of `.NAME` (this one too) is one that cannot change it: a read of one of its keys
+   * (`this.NAME.key` followed by the end of an expression or a comparison), or the whole value
+   * passed to the constructor of a library (`new BrowserWindow(this.NAME)`, also nested in an
+   * object literal there). A static method, a getter or a setter of the name, a write through
+   * an instance (`w.NAME.key = …`), an alias, or passing it to a function is anything else.
+   */
+  private readonly fieldCache = new Map<string, [number, number] | null>();
+
+  classFieldInit(k: number): [number, number] | null {
+    if (!this.is(k, "ident", "this") || !this.punct(k + 1, ".") || !this.is(k + 2, "ident"))
+      return null;
+    const name = this.tokens[k + 2]!.value;
+    const methodOf = (j: number): { def: FnDef; cls: { start: number; end: number } } | null => {
+      let d = this.enclosing(j);
+      for (let guard = 0; d?.arrow && guard < 20; guard++) d = this.enclosing(d.paramsAt - 1);
+      if (!d || d.owner === null) return null;
+      const cls = this.classOfMethod(d);
+      if (!cls) return null;
+      const before = d.paramsAt - 1;
+      for (let b = before - 1; b >= before - 2; b--) if (this.is(b, "ident", "static")) return null;
+      return { def: d, cls };
+    };
+    const own = methodOf(k);
+    if (!own) return null;
+    // the answer is the class's for the name, the same at every use
+    const key = `${own.cls.start}:${name}`;
+    const cached = this.fieldCache.get(key);
+    if (cached !== undefined) return cached;
+    const found = this.classFieldOf(own.cls, name, methodOf);
+    this.fieldCache.set(key, found);
+    return found;
+  }
+
+  private classFieldOf(
+    cls: { start: number; end: number },
+    name: string,
+    methodOf: (j: number) => { def: FnDef; cls: { start: number; end: number } } | null,
+  ): [number, number] | null {
+    const own = { cls };
+    const classes = this.classRanges();
+    const bodyOf = (j: number): number => {
+      this.innermostBlock(j, null); // builds the table of brackets
+      return this.parents![j]!;
+    };
+    let found: [number, number] | null = null;
+    let writes = 0;
+    const positions = this.occurrences(name, 0, this.tokens.length);
+    if (positions.length > 4000) return null;
+    for (const j of positions) {
+      if (this.work-- <= 0) return null;
+      const assigns = this.punct(j + 1, "=") && !this.punct(j + 2, "=");
+      if (!this.punct(j - 1, ".")) {
+        // a field, method, getter or setter of a class body
+        const body = bodyOf(j);
+        if (!classes.some((c) => c.start === body)) continue;
+        if (this.punct(j - 1, "#")) continue;
+        if (body !== own.cls.start) return null;
+        if (!assigns || this.is(j - 1, "ident", "static")) return null;
+        writes++;
+        found = [j + 2, this.exprEnd(j + 2)];
+        continue;
+      }
+      const self = this.is(j - 2, "ident", "this");
+      const there = self ? methodOf(j - 2) : null;
+      if (self && there && there.cls.start === own.cls.start) {
+        const isConstructor = this.is(there.def.paramsAt - 1, "ident", "constructor");
+        if (assigns) {
+          // `this.NAME = …` directly in the constructor's body, not behind a condition
+          if (!isConstructor || bodyOf(j - 2) !== there.def.body[0]) return null;
+          writes++;
+          found = [j + 2, this.exprEnd(j + 2)];
+          continue;
+        }
+      } else if (assigns) return null;
+      if (this.punct(j - 3, "++") || this.punct(j - 3, "--") || this.is(j - 3, "ident", "delete"))
+        return null;
+      // a call of a method of that name: not this field (another class's method, or the field's
+      // value called, which cannot reassign the field)
+      if (this.punct(j + 1, "(")) continue;
+      // a key read: `x.NAME.key` followed by the end of an expression or a comparison
+      if (this.punct(j + 1, ".") && this.is(j + 2, "ident")) {
+        const follower = this.tokens[j + 3];
+        if (!follower || (follower.type === "punct" && KEY_READ_FOLLOWERS.has(follower.value)))
+          continue;
+        return null;
+      }
+      // the whole value, read by a library's constructor
+      if (self && this.externalConstructorArgument(j - 2)) continue;
+      return null;
+    }
+    return writes === 1 ? found : null;
+  }
+
   private object(open: number, close: number, env: Env, depth: number): Val {
     const props = new Map<string, Val | null>();
     let unknown = false;
@@ -1570,6 +1759,10 @@ export class ExpressionResolver {
       return value.resolver.exportValue(property, Math.min(depth ?? MAX_DEPTH, MAX_DEPTH - 4));
     if (value.kind === "nsref" && this.reference)
       return { kind: "str", values: [this.reference(value.specifier, property)] };
+    if (value.kind === "cjs" && value.interop && property === "default") {
+      const { interop: _interop, ...mod } = value;
+      return mod;
+    }
     if (value.kind === "cjs")
       return this.wrappedExport(value, property, Math.min(depth ?? MAX_DEPTH, MAX_DEPTH - 2));
     // `links.upload` where links is another module's object: a reference to that key
@@ -1695,6 +1888,22 @@ export class ExpressionResolver {
   }
 
   /** `exports.NAME = <expr>` assigned once in the wrapped module's body (`= void 0` aside). */
+  /** Whether a wrapped module may say it is an ES module, so its `default` is its own export. */
+  private readonly esModules = new Map<number, boolean>();
+  private marksEsModule(mod: Extract<Val, { kind: "cjs" }>): boolean {
+    const known = this.esModules.get(mod.body[0]);
+    if (known !== undefined) return known;
+    let marks = false;
+    for (let j = mod.body[0]; j < mod.body[1] && !marks; j++) {
+      const t = this.tokens[j]!;
+      marks =
+        (t.type === "ident" || t.type === "string") &&
+        (t.value === "__esModule" || t.value === "__toCommonJS" || t.value === "default");
+    }
+    this.esModules.set(mod.body[0], marks);
+    return marks;
+  }
+
   private wrappedExport(
     mod: Extract<Val, { kind: "cjs" }>,
     property: string,
@@ -2494,6 +2703,17 @@ export class ExpressionResolver {
         this.tokens.length,
         null,
       );
+    // `var a = 1, NAME = h(require_x())` at the top of the file, as minifiers write the
+    // modules a bundle wraps: that module (only a module; other values keep their own rules).
+    // Not where gaps are shown: a key or address with a gap read from such a module is not
+    // claimed by the bundle when the other builds read it whole.
+    if (!this.gaps && !this.topDeclarations().has(name)) {
+      const listed = this.topListed(name);
+      if (listed && !this.writtenElsewhere(name, listed[0] - 2)) {
+        const mod = this.evalRange(listed[0], listed[1], new Map(), depth + 1);
+        if (mod?.kind === "cjs") return mod;
+      }
+    }
     // a name another module defines, in a scan of this file alone: say so instead of nothing
     if (
       !this.host &&
@@ -2688,6 +2908,7 @@ export class ExpressionResolver {
       )
         assigned.add(t.value);
     }
+    this.s.topDeclsLoose = new Map(decls);
     for (const name of assigned) if (decls.has(name)) decls.set(name, null);
     this.s.topDecls = decls;
     return decls;
@@ -3685,6 +3906,28 @@ export class ExpressionResolver {
     return this.depthAt(k);
   }
 
+  private paramDefs: Map<string, FnDef[]> | null = null;
+
+  /**
+   * Whether a function whose parameter list names NAME holds token k, in that list or in its
+   * body: k is then that parameter or within its reach, whatever `binding` could tell.
+   */
+  paramAround(k: number, name: string): boolean {
+    if (!this.paramDefs) {
+      const byName = new Map<string, FnDef[]>();
+      for (const d of this.functions())
+        for (const n of paramNames(d.params)) {
+          const list = byName.get(n) ?? [];
+          list.push(d);
+          byName.set(n, list);
+        }
+      this.paramDefs = byName;
+    }
+    for (const d of this.paramDefs.get(name) ?? [])
+      if (d.paramsAt <= k && k <= d.body[1]) return true;
+    return false;
+  }
+
   /** The file's classes: `class Name {` and `var Name = class {`, with the bounds of the body. */
   classesOf(): ReadonlyArray<{ name: string; start: number; end: number }> {
     return this.classRanges();
@@ -3740,33 +3983,36 @@ export class ExpressionResolver {
    * k, a `const|let|var` declared once in a function around k (or at the top of the file) and
    * never assigned again, a function or class declared once there, or a name taken from an object
    * pattern (`var { KEY: NAME } = <expr>`). Null when the binding is not one of these, is declared
-   * more than once, or is not in the file.
+   * more than once, or is not in the file. `despiteWrites`: the declaration also when the name
+   * is assigned or changed after it (the caller reads those writes itself).
    */
-  binding(k: number, name: string): Binding | null {
+  binding(k: number, name: string, despiteWrites = false): Binding | null {
     // the scans below are charged to the file's work budget; used up, nothing is bound
     if (this.work <= 0) return null;
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       if (this.work <= 0) return null;
       // a declaration of an inner block around k shadows the parameters as well
       if (this.innerDeclared(d, name, k)) {
-        const declared = this.directDeclaration(d, name, k);
+        const declared = this.directDeclaration(d, name, k, despiteWrites);
         return declared && declared !== "ambiguous" ? declared : null;
       }
       const index = d.params.findIndex((p) => paramNames([p]).includes(name));
       if (index !== -1)
         return d.params[index]!.kind === "name" ? { kind: "param", def: d, index } : null;
-      const declared = this.directDeclaration(d, name, k);
+      const declared = this.directDeclaration(d, name, k, despiteWrites);
       if (declared) return declared === "ambiguous" ? null : declared;
       d = this.enclosing(d.paramsAt - 1);
     }
     // a `const`, `let` or `class` of a block at the top of the file, around k
     if (this.innerDeclared(null, name, k)) {
-      const declared = this.directDeclaration(null, name, k);
+      const declared = this.directDeclaration(null, name, k, despiteWrites);
       return declared && declared !== "ambiguous" ? declared : null;
     }
-    const decl = this.topDeclarations().get(name);
+    this.topDeclarations();
+    const top = despiteWrites ? this.s.topDeclsLoose! : this.topDeclarations();
+    const decl = top.get(name);
     if (decl) return { kind: "value", range: decl };
-    if (this.topDeclarations().has(name)) return null;
+    if (top.has(name)) return null;
     const listed = this.topListed(name);
     if (listed !== undefined) return listed ? { kind: "value", range: listed } : null;
     const part = this.topPattern(name);
@@ -3860,13 +4106,14 @@ export class ExpressionResolver {
     d: FnDef | null,
     name: string,
     k: number,
+    despiteWrites = false,
   ): Binding | "ambiguous" | null {
     const v = this.visibleAt(d, name, k);
     if (v === "deep") return "ambiguous";
     // a declaration of an inner block counts only for a use inside that block
     const visible = [...v.whole, ...v.inner];
     if (!visible.length) return null;
-    return visible.length === 1 && !this.declarationsOf(d, name).written
+    return visible.length === 1 && (despiteWrites || !this.declarationsOf(d, name).written)
       ? visible[0]!.binding
       : "ambiguous";
   }
