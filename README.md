@@ -68,6 +68,8 @@ What changed between notesdesk-1.4.0.asar and notesdesk-1.5.0.asar
     ! b: 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ipcMain.handle at main.js:33 (evaluation stopped: runtime value: process). (ipc_channel_unresolved)
 ```
 
+The commands hexvero suggests (`Next`) are written as `hexvero …`; without a global install (`npm install -g hexvero`), put `npx` in front: `npx hexvero compare …`.
+
 1.5.0 adds `checkUpdate`, a member pages can call, whose handler at `main.js:30` fetches a new host. `shell:open` exists only in 1.4.0, but 1.5.0 registers channels whose names come from an environment variable at `main.js:33`, so hexvero reports it as `?` unknown, not as removed.
 
 ### 2. The change, with the evidence of both builds: `compare`
@@ -135,10 +137,13 @@ If hexvero told you something true about a release, a star helps other people fi
 
 ### A single build in detail
 
-A real run on one build of the example app:
+A real run of 0.9.4 on one build of the example app (after `npx hexvero demo`):
 
 ```text
-$ hexvero analyze examples/notesdesk-1.4.0.asar
+$ npx hexvero analyze hexvero-demo/notesdesk-1.4.0.asar
+hexvero-demo/notesdesk-1.4.0.asar
+  asar · 6.1 KiB (6222 bytes) · sha256 875c2bb7fb7eebcd… · 24 ms
+
 Summary
   Electron ASAR: 4 JavaScript modules, 6 IPC channels
 
@@ -151,21 +156,23 @@ Findings
       app:quit, notes:list, notes:save, settings:get, settings:set, shell:open (collections ipcChannels, ipc)
   ● 6 members exposed to pages as window.notesdesk  @ preload.js:4
       getSetting, setSetting, listNotes, saveNote, quit, openInShell (collection contextBridge)
+  ○ setWindowOpenHandler for win, returns deny; no will-navigate or will-frame-navigate listener found in the files read  @ main.js:19
+      …
   ○ 2 network endpoints read from the code  @ renderer/app.bundle.js:11
-      ${…}/notes/sync, https://telemetry.notesdesk.example/collect (collection endpoints)
+      https://api.notesdesk.example/v1/notes/sync, https://telemetry.notesdesk.example/collect (collection endpoints)
   ● 1 storage key read from the code  @ renderer/app.bundle.js:10
       notesdesk.token (collection storage)
   … (preload script, list of collections)
 
 Next
   Which IPC channels can a page reach, and who handles them?
-    hexvero collection examples/notesdesk-1.4.0.asar ipcChannels
+    hexvero collection hexvero-demo/notesdesk-1.4.0.asar ipcChannels
   What does the preload script expose to web content?
-    hexvero collection examples/notesdesk-1.4.0.asar contextBridge
+    hexvero collection hexvero-demo/notesdesk-1.4.0.asar contextBridge
   … (two more)
 ```
 
-A filled dot is a fact read from the file, a hollow dot an inference from a pattern; `@ main.js:14` is where it was read. Settings are reported as written, never as assumed Electron defaults. `${…}` marks the part of an address that is computed at run time. The `windows` collection puts each window's `nodeIntegration`, `contextIsolation` and `sandbox` side by side as `true`, `false`, `computed` or `not written` and says what follows from them together; a value that rests on Electron's default for the version in `package.json` is marked `default on` / `default off`. The rules and their sources are in [docs/electron-findings.md](docs/electron-findings.md). The IPC finding is a filled dot only when every IPC-shaped call could be traced; otherwise the limitations name the calls that could not, with file and line.
+A filled dot is a fact read from the file, a hollow dot an inference from a pattern; `@ main.js:14` is where it was read. Settings are reported as written, never as assumed Electron defaults. Where a part of an address is computed at run time, `${…}` stands for that part (in this build both addresses are read whole). The `windows` collection puts each window's `nodeIntegration`, `contextIsolation` and `sandbox` side by side as `true`, `false`, `computed` or `not written` and says what follows from them together; a value that rests on Electron's default for the version in `package.json` is marked `default on` / `default off`. The rules and their sources are in [docs/electron-findings.md](docs/electron-findings.md). The IPC finding is a filled dot only when every IPC-shaped call could be traced; otherwise the limitations name the calls that could not, with file and line.
 
 <a id="use-cases"></a>
 
@@ -190,36 +197,40 @@ main
 **2. Compare two versions.** What changed between two builds, list by list, with the item as evidence. Code that only moved is not reported as changed. Without a list name, `compare` counts the differences in every list both builds have, so you know where to look:
 
 ```text
-$ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar
-14 shared collection(s), 12 with differences
-  collection      added  removed  changed  unchanged
-  --------------  -----  -------  -------  ---------
-  findings        4      6        0        1
-  limitations     1      0        0        0
-  modules         0      0        3        1
+$ npx hexvero compare hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar
+15 shared collection(s), 10 with differences in the app (plus hexvero's own findings and limitations)
+  collection          added  removed  changed  unknown  unchanged  partial
+  ------------------  -----  -------  -------  -------  ---------  -------
+  findings            1      3        3                 2
+  limitations         1      0        0                 0
+  modules             0      0        3                 1
   …
-  webPreferences  0      0        2        2
-  windows         0      0        1        0
-  contextBridge   1      1        0        5
-  interfaces      1      1        0        5
+  ipcChannels         1      0        0        1        5          yes
+  webPreferences      0      0        2                 2
+  windows             0      0        1                 0
+  contextBridge       1      1        0                 5
+  interfaces          1      1        0                 5          yes
   …
   window settings that changed what pages may do (to review):
       main.js::win nodeIntegrationInEffect: on → off (less permissive)
       main.js::win sandboxInEffect: off → on (less permissive)
+  ! ipcChannels partial: values_unresolved (compared 6 of 6 (a), 6 of 6 (b))
+  ! interfaces partial: values_unresolved (compared 6 of 6 (a), 6 of 6 (b))
+  ! ipc partial: values_unresolved (compared 13 of 13 (a), 14 of 14 (b))
   details: hexvero compare <a> <b> interfaces
 
-$ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar webPreferences
+$ npx hexvero compare hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar webPreferences
 webPreferences: 0 added, 0 removed, 2 changed, 2 unchanged · matched by file+windowName+key
   ~ main.js::win::nodeIntegration  value: true → false
   ~ main.js::win::sandbox  value: false → true
   analysis limitations apply (a: 0, b: 1); see "hexvero collection <path> limitations" before reading this as complete
 
-$ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar windows
+$ npx hexvero compare hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar windows
 windows: 0 added, 0 removed, 1 changed, 0 unchanged · matched by file+windowName
   ~ main.js::win  nodeIntegration: true → false, nodeIntegrationInEffect: "on" → "off", sandbox: false → true, sandboxInEffect: "off" → "on"
   analysis limitations apply (a: 0, b: 1); see "hexvero collection <path> limitations" before reading this as complete
 
-$ hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar contextBridge
+$ npx hexvero compare hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar contextBridge
 contextBridge: 1 added, 1 removed, 0 changed, 5 unchanged · matched by api+member
   + notesdesk::checkUpdate
   - notesdesk::openInShell
@@ -299,7 +310,7 @@ hexvero compare <a> <b> --report report.md|report.html [--force]
                                                       release report: summary, changes with file:line, what was
                                                       not established (.html: one offline page with the source
                                                       lines of both builds); never overwrites without --force
-hexvero check <a> <b> --policy policy.json [--baseline f] [--update-baseline] [--format text|json|markdown|sarif]
+hexvero check <a> <b> --policy policy.json [--baseline f] [--update-baseline] [--format text|json|markdown|sarif] [--out file] [--force]
                                                       release policy over the comparison; exit 0 pass, 3 violated,
                                                       4 not decidable
 hexvero export <path> <out.json>                      the complete analysis
@@ -346,7 +357,7 @@ In Claude Code the server and the skill also come as one plugin:
 /plugin install hexvero@hexvero
 ```
 
-`setup` knows 18 clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf, Gemini CLI, Antigravity, VS Code, Trae, OpenCode, GitHub Copilot CLI, Qwen Code, Qoder, Devin, Pi, Kiro, Amp, Zed) and writes each one's own config dialect, keeping comments in files that have them. The [client table](docs/mcp.md#detected-clients) says for every row what was checked against the client's documentation and which three were read back by the client itself; one row (Trae) is unverified. Any other client can run `npx -y hexvero mcp` over stdio.
+`setup` knows 18 clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf, Gemini CLI, Antigravity, VS Code, Trae, OpenCode, GitHub Copilot CLI, Qwen Code, Qoder, Devin, Pi, Kiro, Amp, Zed) and writes each one's own config dialect, keeping comments in files that have them. The [client table](docs/mcp.md#detected-clients) says for every row what was checked against the client's documentation and which three were read back by the client itself; one row (Trae) is unverified. Any other client can run `npx -y hexvero mcp` over stdio; pin a version for reproducible results (`npx -y hexvero@0.9.4 mcp`).
 
 | Tool                                         | Purpose                                                                                    |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------ |

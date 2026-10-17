@@ -25,12 +25,15 @@ is executed. The command, the policy file and the exit codes are described in
 3. Run the check once locally and accept what is already there:
 
    ```bash
-   npx hexvero@latest check previous/app.asar dist/app.asar \
+   npx hexvero@0.9.4 check previous/app.asar dist/app.asar \
      --policy .hexvero/policy.json --baseline .hexvero/baseline.json --update-baseline
    ```
 
    Commit `.hexvero/baseline.json`. From then on only new findings fail the check. CI never
-   writes the baseline; accepting a finding is always an explicit commit.
+   writes the baseline; accepting a finding is always an explicit commit. The workflow below
+   passes `--baseline`: without the committed file both of its steps stop with exit 2
+   (`baseline … does not exist`). To check without a baseline, remove
+   `--baseline .hexvero/baseline.json` from both commands.
 
 4. Add the workflow below.
 
@@ -101,7 +104,8 @@ jobs:
           category: hexvero-check
 ```
 
-This repository runs the same steps on its two synthetic example builds in
+This repository runs the same two commands (from its own build, without a baseline) on its two
+synthetic example builds in
 [`.github/workflows/check-example.yml`](../.github/workflows/check-example.yml) (expected exit:
 `3`), and `npm run e2e` runs that workflow's command and validates its SARIF output against the
 SARIF 2.1.0 schema.
