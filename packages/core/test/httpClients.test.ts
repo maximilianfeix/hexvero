@@ -252,6 +252,83 @@ describe("HTTP client modules", () => {
     ]);
   });
 
+  it("keeps the client's requests where another binding of its name is elsewhere", () => {
+    const H = 'const https = require("https");\n';
+    const cases: Array<[string, string[]]> = [
+      [
+        H +
+          'function a() { const https = fake; return https; }\nhttps.get("https://real-otherfn.example/");',
+        ["http-client GET https://real-otherfn.example/ [literal]"],
+      ],
+      [
+        H +
+          'function f() { { let https = fake; } https.get("https://real-after-block.example/"); }',
+        ["http-client GET https://real-after-block.example/ [literal]"],
+      ],
+      [
+        H +
+          'if (x) { const https = fake; https.get("https://fake-inblock.example/") } https.get("https://real-after-if.example/");',
+        ["http-client GET https://real-after-if.example/ [literal]"],
+      ],
+      [
+        H + 'function f(){{const https=fake}https.get("https://real-edge.example/")}',
+        ["http-client GET https://real-edge.example/ [literal]"],
+      ],
+      [
+        H + 'function f(){https.get("https://real-before.example/");{const https=fake}}',
+        ["http-client GET https://real-before.example/ [literal]"],
+      ],
+      [
+        H +
+          'class A { https = fake; m() { return https.get("https://real-classfield.example/"); } }',
+        ["http-client GET https://real-classfield.example/ [literal]"],
+      ],
+      [
+        H + 'class A { https = 1 }\nhttps.get("https://real-classfield2.example/");',
+        ["http-client GET https://real-classfield2.example/ [literal]"],
+      ],
+      [
+        H +
+          'const g = function https() { return 1; };\nhttps.get("https://real-after-fnexpr.example/");',
+        ["http-client GET https://real-after-fnexpr.example/ [literal]"],
+      ],
+      [
+        '1:function(e,t,n){const https=n(5);https.get("https://wp1.example/")},\n2:function(e,t,n){const https=require("https");https.get("https://wp2.example/")}',
+        [
+          "http-client GET https://wp1.example/ [literal]",
+          "http-client GET https://wp2.example/ [literal]",
+        ],
+      ],
+      [
+        'const axios = require("axios");\nfunction t() { const axios = mock; }\naxios.get("https://axios-real.example/");',
+        ["http-client GET https://axios-real.example/ [literal]"],
+      ],
+      [
+        'let h = require("https");\nfunction t() { let h = 1; h = 2; }\nh.get("https://h-real.example/");',
+        ["http-client GET https://h-real.example/ [literal]"],
+      ],
+      // shadowed where it is used: another object
+      [H + 'function f(https, a = https.get("https://fake-param-default.example/")) {}', []],
+      [H + 'function f() { https.get("https://fake-hoisted.example/"); var https = fake; }', []],
+      [H + 'try {} catch (https) { https.get("https://fake-catch.example/"); }', []],
+    ];
+    for (const [source, rows] of cases) expect(show(source)).toEqual(rows);
+  });
+
+  it("reads calls past the check cap by the name rule, and folds unknown rows", () => {
+    const source =
+      'const https = require("https");\nfunction m() {\n' +
+      Array.from({ length: 2100 }, (_, i) => `x.on(z${i}, () => https.get(x${i}));`).join("\n") +
+      '\nhttps.get("https://after-cap.example/");\nhttps.request("https://after-cap-req.example/");\n}';
+    const found = find(source);
+    expect(found.clientsSkipped).toBe(true);
+    expect(found.endpoints.filter((e) => e.value !== null).map((e) => e.value)).toEqual([
+      "https://after-cap.example/",
+      "https://after-cap-req.example/",
+    ]);
+    expect(found.endpoints.filter((e) => e.value === null).length).toBeLessThanOrEqual(201);
+  });
+
   it("reads options merged over a URL only when every part they set is known", () => {
     const H = 'const https = require("https");\n';
     expect(
@@ -262,6 +339,7 @@ describe("HTTP client modules", () => {
           'https.request("https://a.example/x", { hostname: host });',
           'https.request("https://a.example/x", { port: 8443 });',
           'https.request("https://a.example/x", { ...defaults });',
+          'https.request("https://a.example/x", { host: "b.example:99" });',
           'https.get("https://a.example/z", { headers: { accept: "json" } });',
           'https.request({ hostname: "a.example", defaultPort: 8443, path: "/p" });',
           'https.request({ hostname: "a.example", lookup: myLookup, path: "/p" });',
@@ -273,6 +351,7 @@ describe("HTTP client modules", () => {
       "http-client ?options.hostname [unknown]",
       "http-client ?options.port [unknown]",
       "http-client ?<options> [unknown]",
+      "http-client ?options.host [unknown]",
       "http-client GET https://a.example/z [literal]",
       "http-client ?options.defaultPort [unknown]",
       "http-client ?options.lookup [unknown]",
@@ -318,7 +397,9 @@ describe("HTTP client modules", () => {
     }
     const capped = find(shapes[0]!);
     expect(capped.clientsSkipped).toBe(true);
+    // past the cap the literal addresses are still read, by the name rule
     expect(capped.endpoints).toHaveLength(2000);
+    expect(capped.truncated).toBe(true);
   });
 
   it("stays linear on hostile input", () => {

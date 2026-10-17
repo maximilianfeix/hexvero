@@ -119,6 +119,8 @@ export interface Candidates {
 
 /** HTTP client calls per file whose binding is checked (see `clients` in findCandidates). */
 const MAX_CLIENT_CALLS = 2000;
+/** Unknown http-client rows per file before further ones are folded into one. */
+const MAX_UNKNOWN_CLIENT_ROWS = 200;
 
 /**
  * Functions (`function` and `=>`) a file may have for storage wrappers to be followed in it. The
@@ -560,6 +562,8 @@ export function findCandidates(
   // is the module's only where its name means that declaration (`refersTo`), and a name that is
   // assigned again anywhere is no client at all.
   const clients = new Map<string, Array<{ module: ClientModule; at: number }>>();
+  /** Every name bound to a client module, as 0.9.2 read it: its rule applies where no binding is proven. */
+  const legacyClients = new Set<string>();
   const functions = new Map<string, Array<{ module: ClientModule; verb: string; at: number }>>();
   if (/require\(|import\b/.test(source)) {
     const bind = (name: string, module: ClientModule, at: number): void => {
@@ -658,22 +662,45 @@ export function findCandidates(
       if (open !== -1)
         for (const [imported, name] of pairs(open, close, "as")) named(name, imported, module, k);
     }
-    // a name that is assigned again is not known to hold the module
+    // A binding that is assigned again is not known to hold the module: an assignment whose
+    // name means that binding (`h = mock`) removes it. A declaration of the name elsewhere, a
+    // parameter default or a class field is no assignment; it shadows only where it is visible
+    // (`refersTo`). Such a name is still a client by the rule of 0.9.2 (`legacyClients`).
     const declared = new Set([...clients.keys(), ...functions.keys()]);
+    for (const name of declared) legacyClients.add(name);
+    let writes = 0;
     if (declared.size)
       for (let k = 1; k + 1 < tokens.length; k++) {
         const t = tokens[k]!;
         if (t.type !== "ident" || !declared.has(t.value) || is(tokens[k - 1], "punct", "."))
           continue;
         const after = tokens[k + 1]!;
+        const before = tokens[k - 1]!;
         if (
-          after.type === "punct" &&
-          /^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) &&
-          !(clients.get(t.value) ?? []).some((c) => c.at === k)
-        ) {
-          clients.delete(t.value);
-          functions.delete(t.value);
+          !(
+            (after.type === "punct" &&
+              (/^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) ||
+                after.value === "++" ||
+                after.value === "--")) ||
+            (before.type === "punct" && (before.value === "++" || before.value === "--"))
+          )
+        )
+          continue;
+        const binder = (wrapperResolver ??= makeResolver());
+        // more writes than are checked: the names are no proven clients (0.9.2's rule applies)
+        if (writes++ >= MAX_CLIENT_CALLS) {
+          clients.clear();
+          functions.clear();
+          break;
         }
+        const keep = <T extends { at: number }>(list: T[] | undefined): T[] =>
+          (list ?? []).filter((c) => !binder.writesTo(k, t.value, c.at));
+        const c = keep(clients.get(t.value));
+        const f = keep(functions.get(t.value));
+        if (c.length) clients.set(t.value, c);
+        else clients.delete(t.value);
+        if (f.length) functions.set(t.value, f);
+        else functions.delete(t.value);
       }
   }
   // Calls checked against the bindings per file; above the cap, client calls are not read
@@ -681,6 +708,7 @@ export function findCandidates(
   let clientChecks = 0;
   const refers = (j: number, at: number): boolean => {
     if (clientChecks++ >= MAX_CLIENT_CALLS) {
+      // above the cap, calls are read by 0.9.2's name rule (see the verb branch below)
       out.clientsSkipped = true;
       return false;
     }
@@ -688,6 +716,36 @@ export function findCandidates(
   };
   const means = (j: number, list: Array<{ at: number }> | undefined): boolean =>
     !!list?.some((c) => refers(j, c.at));
+  /**
+   * The declaration at `site` (name token, keyword) is initialised with a module object:
+   * `require("…")`, `n(<number>)` (webpack's require), `f(require("…"))` (an interop helper),
+   * also through a destructuring pattern (`const { https } = require("./deps")`).
+   */
+  const moduleInit = (site: { name: number; word: number }, at: number): boolean => {
+    let eq = site.name + 1;
+    if (site.word !== site.name - 1) {
+      const close = (wrapperResolver ??= makeResolver()).closeOf(site.word + 1);
+      if (close === -1) return false;
+      eq = close + 1;
+    }
+    if (!is(tokens[eq], "punct", "=")) return false;
+    const a = eq + 1;
+    const required = (j: number): boolean =>
+      is(tokens[j], "ident", "require") &&
+      is(tokens[j + 1], "punct", "(") &&
+      tokens[j + 2]?.type === "string" &&
+      is(tokens[j + 3], "punct", ")");
+    return (
+      required(a) ||
+      (is(tokens[a], "ident") && is(tokens[a + 1], "punct", "(") && required(a + 2)) ||
+      // `const https = n(5)` with n the webpack module function's require parameter
+      (site.word === site.name - 1 &&
+        is(tokens[a], "ident") &&
+        is(tokens[a + 1], "punct", "(") &&
+        tokens[a + 2]?.type === "number" &&
+        (wrapperResolver ??= makeResolver()).moduleBinding(at, tokens[at]!.value))
+    );
+  };
   /** The client module the verb at k is called on, when it is one of the bindings above. */
   const clientAt = (k: number): { module: ClientModule; verb: string } | null => {
     const t = tokens[k]!;
@@ -854,7 +912,11 @@ export function findCandidates(
         return unknownRead(`options.${sets[0]}`);
       }
       const protocol = part("protocol") ?? url.protocol;
-      const host = part("hostname") ?? part("host") ?? url.host;
+      const given = part("hostname") ?? part("host");
+      // Node takes `hostname` and `host` as a bare name; a port is its own option
+      if (given !== undefined && given !== null && !/^[a-z0-9.-]+$/i.test(given))
+        return unknownRead(`options.${part("hostname") !== undefined ? "hostname" : "host"}`);
+      const host = given ?? url.host;
       const path = part("path") ?? `${url.pathname}${url.search}`;
       if (!/^https?:$/.test(protocol)) return unknownRead("options.protocol");
       if (!/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return unknownRead("options.hostname");
@@ -864,11 +926,19 @@ export function findCandidates(
     const [first, ...rest] = values;
     return { value: first!, evidence: "inferred", ...(rest.length ? { more: rest } : {}) };
   };
+  // Unknown client rows per file: past this many, they are folded into one `<expression>` row
+  // (with its count), so they cannot crowd known addresses out of the list.
+  let unknownClientRows = 0;
+  const pushClient = (r: Read, t: Token, method: { method?: string }): void => {
+    if (r.value === null && unknownClientRows++ >= MAX_UNKNOWN_CLIENT_ROWS)
+      r = { value: null, evidence: "unknown", expression: "<expression>" };
+    push(out.endpoints, "http-client", r, t, method);
+  };
   const clientRequest = (t: Token, open: number, module: ClientModule, name: string): void => {
     const at = open + 1;
     const method = name === "request" ? verb(open) : { method: name.toUpperCase() };
     if (is(tokens[at], "punct", "{")) {
-      push(out.endpoints, "http-client", optionsAddress(at, module), t, method);
+      pushClient(optionsAddress(at, module), t, method);
       return;
     }
     let r = readArg(at, true);
@@ -882,12 +952,10 @@ export function findCandidates(
       if (merged) r = { ...merged, ...(r.partial ? { partial: true as const } : {}) };
     }
     if (r.value !== null && ADDRESS_START.test(r.value)) {
-      push(out.endpoints, "http-client", r, t, method);
+      pushClient(r, t, method);
       // a call site that could not be read keeps the unread row too, so nothing unread is hidden
       if (r.partial)
-        push(
-          out.endpoints,
-          "http-client",
+        pushClient(
           { value: null, evidence: "unknown", expression: read(at)?.expression ?? "<expression>" },
           t,
           method,
@@ -895,9 +963,7 @@ export function findCandidates(
       return;
     }
     // not shaped like an address (`${…}/x`, an error text a wrapper passes): not read
-    push(
-      out.endpoints,
-      "http-client",
+    pushClient(
       {
         value: null,
         evidence: "unknown",
@@ -987,12 +1053,24 @@ export function findCandidates(
       // A declaration, pattern or `for … of` of the name (`const { https } = o`), and a member
       // of another object (`this.https`), are other objects: then only the shape counts.
       const named =
-        is(owner, "ident") && HTTP_CLIENTS.has(owner!.value) && !is(tokens[k - 3], "punct", ".");
-      const bound = named
-        ? (wrapperResolver ??= makeResolver()).boundAround(k - 2, owner!.value)
-        : null;
-      const client = named && bound !== "local";
-      const local = bound === "param";
+        is(owner, "ident") &&
+        (HTTP_CLIENTS.has(owner!.value) || legacyClients.has(owner!.value)) &&
+        !is(tokens[k - 3], "punct", ".");
+      let client = named;
+      let local = false;
+      if (named && clientChecks++ < MAX_CLIENT_CALLS) {
+        const bound = (wrapperResolver ??= makeResolver()).boundAround(k - 2, owner!.value);
+        // A parameter of the name: where the file binds that name to the module, the parameter
+        // is another object (`function f(https, a = https.get(…))`); where it does not, a
+        // parameter named like a client is taken as one (`login(axios, body)`), read at the call.
+        if (bound?.kind === "param") {
+          if (legacyClients.has(owner!.value)) client = false;
+          else local = true;
+        }
+        // a local of the name is another object, unless it is bound to a module itself
+        // (`const https = n(5)` in a webpack module, `const https = require("https")`)
+        else if (bound?.kind === "local") client = !!bound.site && moduleInit(bound.site, k - 2);
+      } else if (named) out.clientsSkipped = true;
       // `net.request({ url: "https://…", method: "POST" })`: the address is an option.
       const url = is(tokens[k + 2], "punct", "{") ? option(k + 1, "url") : null;
       if (url !== null) {

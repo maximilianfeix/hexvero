@@ -315,12 +315,25 @@ read as a `fetch` URL is, when the name it is made on is bound to that module:
   `import_electron.net.request(…)`).
 
 The name must mean that binding at the call: a parameter of the name in a function between the
-call and the binding, a `catch` binding, or any other declaration of the name visible at the call
+call and the binding (also in the parameter list the call stands in, `function f(https, a =
+https.get(…))`), a `catch` binding, or another declaration of the name visible at the call
 (`const|let|var|function|class NAME`, a destructuring pattern, `const { get } = o`, `[get] = o`,
-a `for (const https of …)` head) is another object, and a name assigned again anywhere in the file
-(`h = mock`) is no client at all. The declarations of a name are read once per file into ranges,
-so the check is linear; at most 2,000 client calls are checked per file, and the further ones give
-no rows (limitation `client_calls_skipped`). The request libraries named by
+a `for (const https of …)` head; a named function expression binds its name inside itself only)
+is another object. A declaration of the name in another function or block shadows only there,
+and a class field (`class A { https = 1 }`) or an object key binds nothing. An assignment whose
+name means the binding (`h = mock`) makes it no proven client. The declarations of a name are
+read once per file into ranges, so the check is linear.
+
+Where no binding is proven, the rule of 0.9.2 applies: a call on `http`, `https`, `axios`, `got`,
+`ky`, `superagent`, `needle`, `$http` or a name bound to one of those modules anywhere in the file
+is a request when its URL is read as an address, without unknown rows. This also holds for a
+local that is itself bound to a module (`const https = n(5)` in a webpack module, `const https =
+require("https")` in another module of a bundle); a local bound to anything else, and a parameter
+of a name the file binds to a client module, is another object. At most 2,000 client calls are
+checked per file (limitation `client_calls_skipped`); the further ones are read by that rule, so
+a literal address past the cap is still a row. Unknown client rows past 200 per file are folded
+into one `<expression>` row with its count, so they cannot push known addresses out of the list
+(2,000 rows per list). The request libraries named by
 `require` (`axios`, `got`, `ky`, `superagent`, `needle`) count the same way. The method is `GET`
 for `get`, `POST` etc. for the verb methods, and for `request` the `method` option when the call
 writes one.
@@ -355,7 +368,7 @@ written: Node then sends the request to localhost, which is not taken for an add
 object with a spread of something unknown. Node merges an options object over a URL
 (`https.request(url, { hostname })`): when the second argument is an object literal that sets
 `protocol`, `hostname`, `host` or `path`, those parts replace the URL's, and only when each is
-known; one of the options above, a spread or a part that is not known makes the row unknown. An
+known (a `host` or `hostname` with a port is unknown: Node takes it as a bare name); one of the options above, a spread or a part that is not known makes the row unknown. An
 options object passed as a name there is not read (the URL is kept). An argument that cannot be read is an unknown row with
 the argument as `expression`; nothing is guessed.
 

@@ -4153,13 +4153,47 @@ export class ExpressionResolver {
       if (word === -1) continue;
       const kind = this.tokens[word]!.value;
       let range: [number, number];
-      if (kind === "var" || kind === "function") {
+      const own = kind === "function" ? this.functionWithParamsAt(j + 1) : null;
+      if (own && !this.declarationStart(word)) {
+        // `const g = function https() {…}`: the name is bound inside that function only
+        range = [j + 1, own.body[1]];
+      } else if (kind === "var" || kind === "function") {
         const d = this.enclosing(word);
         range = d ? [d.body[0], d.body[1]] : [0, n];
       } else range = this.innermostBlock(word, null) ?? [0, n];
       out.push({ name: j, word, from: range[0], to: range[1] });
     }
     return out;
+  }
+
+  /** The `function` (or `async function`) at k starts a statement: a declaration, not an expression. */
+  private declarationStart(k: number): boolean {
+    const at = this.is(k - 1, "ident", "async") ? k - 1 : k;
+    const before = this.tokens[at - 1];
+    return (
+      !before ||
+      (before.type === "punct" &&
+        (before.value === ";" || before.value === "{" || before.value === "}")) ||
+      (before.type === "ident" && (before.value === "export" || before.value === "default"))
+    );
+  }
+
+  /**
+   * k stands in the parameter list of a function (a default value, `function f(https, a =
+   * https.get(…))`) that has a parameter of the name: that parameter is meant there.
+   */
+  private parameterListBinds(k: number, name: string): boolean {
+    this.innermostBlock(0, null);
+    const parents = this.s.parents!;
+    let p = parents[k] ?? -1;
+    for (let steps = 0; p >= 0 && steps < 32; steps++) {
+      if (this.punct(p, "(")) {
+        const d = this.functionWithParamsAt(p);
+        if (d && this.paramIndex(d, name) !== -1) return true;
+      }
+      p = parents[p] ?? -1;
+    }
+    return false;
   }
 
   /** A declaration of the name other than `decl` (its name or pattern token) is visible at k. */
@@ -4195,7 +4229,7 @@ export class ExpressionResolver {
    * many calls stays linear.
    */
   refersTo(k: number, name: string, decl: number): boolean {
-    if (this.catchBinds(k, name)) return false;
+    if (this.catchBinds(k, name) || this.parameterListBinds(k, name)) return false;
     const home = this.enclosing(decl);
     for (let d = this.enclosing(k), guard = 0; d !== home; guard++) {
       if (!d || guard >= 64) return false;
@@ -4206,15 +4240,66 @@ export class ExpressionResolver {
   }
 
   /**
-   * How the name at k is bound around it: `param` (a parameter of a function around k), `local`
-   * (a declaration, pattern, `for … of` head or `catch` visible at k), or null (not bound here).
+   * How the name at k is bound around it: `param` (a parameter of a function around k, also in a
+   * parameter list k stands in), `local` (a declaration, pattern, `for … of` head or `catch`
+   * visible at k; `site` is the innermost such declaration, absent for `catch`), or null.
    */
-  boundAround(k: number, name: string): "param" | "local" | null {
+  boundAround(
+    k: number,
+    name: string,
+  ): { kind: "param" } | { kind: "local"; site?: { name: number; word: number } } | null {
+    if (this.parameterListBinds(k, name)) return { kind: "param" };
     for (let d = this.enclosing(k), guard = 0; d && guard < 64; guard++) {
-      if (this.paramIndex(d, name) !== -1) return "param";
+      if (this.paramIndex(d, name) !== -1) return { kind: "param" };
       d = this.enclosing(d.paramsAt - 1);
     }
-    return this.catchBinds(k, name) || this.covered(k, name, -2) ? "local" : null;
+    if (this.catchBinds(k, name)) return { kind: "local" };
+    if (!this.covered(k, name, -2)) return null;
+    let best: { name: number; word: number; from: number; to: number } | null = null;
+    for (const b of this.bindingSites(name))
+      if (b.from <= k && k <= b.to && (!best || b.from >= best.from)) best = b;
+    return best ? { kind: "local", site: { name: best.name, word: best.word } } : { kind: "local" };
+  }
+
+  /**
+   * The token at j writes to the declaration at `decl`: an assignment (`NAME = …`, `NAME += …`,
+   * `NAME++`) that is no declaration, parameter default, class field or pattern binding of its
+   * own, where the name means that declaration.
+   */
+  writesTo(j: number, name: string, decl: number): boolean {
+    if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) return false;
+    const after = this.tokens[j + 1];
+    const before = this.tokens[j - 1];
+    const writes =
+      (after?.type === "punct" &&
+        (/^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) ||
+          after.value === "++" ||
+          after.value === "--")) ||
+      (before?.type === "punct" && (before.value === "++" || before.value === "--"));
+    if (!writes) return false;
+    if (before?.type === "ident" && /^(const|let|var)$/.test(before.value)) return false;
+    if (this.bindingSites(name).some((b) => b.name === j)) return false;
+    this.innermostBlock(0, null);
+    const p = this.s.parents![j] ?? -1;
+    // a parameter default (`function f(https = x)`)
+    if (p >= 0 && this.punct(p, "(") && this.functionWithParamsAt(p)) return false;
+    // a class field (`class A { https = 1 }`)
+    if (p >= 0 && this.punct(p, "{") && this.classRanges().some((c) => c.start === p)) return false;
+    // `var a = 1, https = x`: a declaration list
+    if (this.punct(j - 1, ",")) {
+      for (let m = j - 2, depth = 0; m >= 0 && m > j - 400; m--) {
+        const t = this.tokens[m]!;
+        if (t.type === "punct") {
+          if (t.value === ")" || t.value === "]" || t.value === "}") depth++;
+          else if (t.value === "(" || t.value === "[" || t.value === "{") {
+            if (depth === 0) break;
+            depth--;
+          } else if (depth === 0 && t.value === ";") break;
+        } else if (depth === 0 && t.type === "ident" && /^(const|let|var)$/.test(t.value))
+          return false;
+      }
+    }
+    return this.refersTo(j, name, decl);
   }
 
   private callSites(def: FnDef): number[] {
