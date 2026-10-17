@@ -30,39 +30,31 @@ All notable changes to hexvero are listed here. The format follows
 - New collection `bridgeExposures` and finding `electron.bridge-exposure`: a preload that hands a
   privileged object to pages as it is through contextBridge (`ipcRenderer`, a method of it such as
   `ipcRenderer.on` passed as a reference or bound, `shell`, the `electron` module, a Node module
-  object such as `fs` or `child_process`, `process`, `require`), with `api`, `member`, `exposed`,
-  the value as written (`evidence`), file and line. Plain, esbuild-bundled and minified preloads
-  give the same rows; a wrapper function, a parameter or a local of the same name is not one. An
-  unreadable exposed value says "not established" through `context_bridge_members_unreadable`.
+  object such as `fs` or `child_process` or one of its members, `process`, `require`), with `api`,
+  `member`, `exposed`, the value as written (`evidence`), file and line. Every member of a Node
+  module counts except a short list that only informs (`fs.stat*`, `fs.exists*`, `process.env`,
+  …); `os` is not listed. Plain, esbuild-bundled and minified preloads give the same rows (also a
+  bundler's default import, `e.default.ipcRenderer`, and a value under a key that is not read). A
+  wrapper function, or a parameter, loop variable, `catch` binding or local of the same name, or a
+  name written again after its declaration, is not the privileged object; a declaration or write
+  of the same name in another function does not hide the real one.
+- No exposure is dropped where the analysis cannot decide: when the resolver's budget runs out,
+  two declarations in one scope leave the binding open, or there are more declarations or writes
+  than are kept, the row is kept with `undecided: budget | scope | writes`, and the new limitation
+  `bridge_exposures_undecided` lists it. An unreadable exposed value says "not established" through
+  `context_bridge_members_unreadable`. Each declaration's scope is read once, so hostile inputs stay
+  fast (198 nested blocks with 400 exposures: 0.6 s).
 - New collection `navigationHandlers` and finding `electron.navigation`: `setWindowOpenHandler`,
   `will-navigate` and `will-frame-navigate` registrations per window (or `app` for
   `web-contents-created`), with `returns: deny | allow` only where the returned `action` is a
-  literal, else `unknown`. Absence reads "no … found in the files read". New limitation code
-  `navigation_handlers_truncated`.
-- Review fixes to both (each was a false fact): a name written again after its declaration, a
-  loop, catch or parenthesis-less arrow parameter of the same name is not the privileged object;
-  a Node module's method counts only where it acts (`fs.readFileSync`, `child_process.spawn`;
-  not `os.platform`, `fs.statSync`), and `os` is no longer listed; `returns` is `unknown` when a
-  spread or computed key follows the action or a path ends without a return; `win.webContents`
-  through a parameter of the window's name, and `contents` of a function inside
-  `web-contents-created`, read `targetKind: webContents`. Rows carry `window` (name, `app` or
-  null) and compare by file, kind, `targetKind` and `window`, so a renamed minified receiver is
-  not removed and added. `JS_SCAN_SCHEMA` 10.
-- Security review of those fixes (each hid a real exposure): every member of a privileged Node
-  module is listed except a short list of members that only inform (`fs.stat*`, `fs.exists*`,
-  `process.env`, …), so `fs.promises`, `fs.createWriteStream`, `net.Socket` and `module.require`
-  are shown; a declaration, parameter, loop variable or write of the same name in another
-  function no longer hides the real binding (writes count only where they resolve to it); an
-  accessor, method or generator next to the `action` literal makes `returns` unknown. `JS_SCAN_SCHEMA` 12.
-- No exposure is dropped where the analysis cannot decide: when the resolver's budget runs out,
-  two declarations in one function leave the binding open, or more declarations or writes exist
-  than are kept, the `bridgeExposures` row is kept with `undecided: budget | scope | writes`, and
-  the new limitation `bridge_exposures_undecided` lists it. An answer read before a later round
-  recorded a derived declaration (`var r = ipc` after `var ipc = q`) is read again. A value under a key
-  that is not read (`exposeInMainWorld(prefix + "ipc", ipcRenderer)`) and a bundler's default
-  import (`e.default.ipcRenderer`) are read. `JS_SCAN_SCHEMA` 13.
-- Both collections compare (identity without lines, lines as positions, the written evidence not a
-  change of its own) and come after `windows` in release reports and the compare view.
+  literal and nothing next to it can replace it (a spread, a computed key, an accessor or method,
+  a path that ends without a return make it `unknown`). `win.webContents` through a parameter, and
+  `contents` of a function inside `web-contents-created`, read `targetKind: webContents`. Rows
+  carry `window` (name, `app` or null). Absence reads "no … found in the files read". New
+  limitation code `navigation_handlers_truncated`.
+- Both collections compare (identity without lines, lines as positions, the written evidence and a
+  minified receiver's name not a change of their own) and come after `windows` in release reports
+  and the compare view.
   Stored scans are read again. Rules and sources:
   docs/electron-findings.md.
 
@@ -75,6 +67,11 @@ All notable changes to hexvero are listed here. The format follows
   `<before>`/`<after>` and a note names both sha256 prefixes; reports still hold no directories.
 - Control characters in a name from the target (a heading, a table cell, the note) are shown as
   `\u{…}` in Markdown reports, so an escape sequence does not reach a terminal.
+
+### Interface map
+
+- A row with more than 20 ends links to the target's ipc list for that channel, where every end
+  is listed ("1 of 30 ends shown; all of them are in the ipc list").
 
 ### CLI
 
