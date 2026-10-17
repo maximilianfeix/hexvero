@@ -33,6 +33,7 @@ const root = join(import.meta.dirname, "..", "..", "..");
 const addFormats = addFormatsModule as unknown as (ajv: Ajv | Ajv2020) => void;
 
 const KEYS: Record<string, string> = {
+  bridgeExposures: "file+api+member+exposed",
   interfaces: "file+api+member",
   contextBridge: "api+member",
   endpoints: "file+kind+value",
@@ -660,6 +661,8 @@ describe("evaluating a policy", () => {
       expect(r.incomplete).toEqual([
         { rule: "new-interface-member", collection: "contextBridge", gaps: ["values_unresolved"] },
         { rule: "new-external-host", collection: "endpoints", gaps: ["budget"] },
+        // an unreadable bridge value may hide an exposure; the rule is at warn when not listed
+        { rule: "new-bridge-exposure", collection: "contextBridge", gaps: ["values_unresolved"] },
       ]);
       expect(evaluatePolicy(c, policy({ unknown: "warn" }))).toMatchObject({
         status: "pass",
@@ -704,6 +707,8 @@ describe("evaluating a policy", () => {
         "endpoints",
         "urls",
         "windows",
+        "bridgeExposures",
+        "contextBridge",
       ]);
     });
     it("uses the comparison's own completeness once it carries one (contract C1/C3)", () => {
@@ -1087,6 +1092,8 @@ describe("review H4: a target of another kind never passes", () => {
       ["endpoints", ["collection_missing"]],
       ["urls", ["collection_missing"]],
       ["windows", ["collection_missing"]],
+      ["bridgeExposures", ["collection_missing"]],
+      ["contextBridge", ["collection_missing"]],
     ]);
   });
 
@@ -1098,6 +1105,8 @@ describe("review H4: a target of another kind never passes", () => {
       "interfaces",
       "contextBridge",
       "windows",
+      "bridgeExposures",
+      "contextBridge",
     ]);
     expect(r.incomplete.every((i) => i.gaps.includes("collection_missing"))).toBe(true);
     expect(r.status).toBe("incomplete");
@@ -1274,5 +1283,111 @@ describe("review L9 and L11: one comparison per check, completeness from the com
     const loaded = parsePolicy(policyText(), "p.json");
     const result = await checkRelease(session, a.id, b.id, loaded);
     expect(result.findings.filter((f) => f.rule === "new-external-host")).toHaveLength(1999);
+  });
+});
+
+const exposure = (
+  change: ChangeRow["change"],
+  name: string,
+  exposed: string,
+  file = "preload.js",
+  line = 4,
+): ChangeRow => ({
+  collection: "bridgeExposures",
+  change,
+  key: `${file}::api::${name}::${exposed}`,
+  where: [{ side: change === "removed" ? "a" : "b", file, line }],
+});
+const exposureItem = (name: string, exposed: string, file = "preload.js", extra = {}) => ({
+  file,
+  api: "api",
+  member: name,
+  exposed,
+  line: 4,
+  ...extra,
+});
+
+/** A policy that lists the exposure rule at `level`. */
+const listed = (level: string) =>
+  policy({
+    rules: {
+      "new-interface-member": { level: "fail" },
+      "new-external-host": { level: "fail", allow: [] },
+      "window-more-permissive": { level: "fail" },
+      "new-bridge-exposure": { level },
+    },
+  });
+
+describe("new-bridge-exposure", () => {
+  it("fails on a privileged object newly handed to pages, with the place", () => {
+    const r = evaluatePolicy(
+      comparison({ changes: [exposure("added", "ipc", "ipcRenderer")] }),
+      listed("fail"),
+      {
+        sides: sides(
+          { bridgeExposures: [] },
+          { bridgeExposures: [exposureItem("ipc", "ipcRenderer")] },
+        ),
+      },
+    );
+    expect(r.status).toBe("fail");
+    expect(r.findings.map((f) => [f.rule, f.key, f.level, f.unknown])).toEqual([
+      ["new-bridge-exposure", "api.ipc", "fail", false],
+    ]);
+    expect(r.findings[0]!.message).toBe(
+      "Pages get ipcRenderer as window.api.ipc, handed over as it is, not wrapped.",
+    );
+    expect(r.findings[0]!.where).toEqual([{ side: "b", file: "preload.js", line: 4 }]);
+  });
+
+  it("warns, not fails, under a policy written before the rule existed", () => {
+    const r = evaluatePolicy(comparison({ changes: [exposure("added", "fs", "fs")] }), policy(), {
+      sides: sides({ bridgeExposures: [] }, { bridgeExposures: [exposureItem("fs", "fs")] }),
+    });
+    expect(r.status).toBe("pass");
+    expect(r.findings.map((f) => [f.rule, f.level])).toEqual([["new-bridge-exposure", "warn"]]);
+  });
+
+  it("does not report an exposure that only moved to another preload file", () => {
+    const r = evaluatePolicy(
+      comparison({
+        changes: [
+          exposure("added", "ipc", "ipcRenderer", "preload-2.js"),
+          exposure("removed", "ipc", "ipcRenderer"),
+        ],
+      }),
+      listed("fail"),
+      {
+        sides: sides(
+          { bridgeExposures: [exposureItem("ipc", "ipcRenderer")] },
+          { bridgeExposures: [exposureItem("ipc", "ipcRenderer", "preload-2.js")] },
+        ),
+      },
+    );
+    expect(r.findings).toEqual([]);
+    expect(r.status).toBe("pass");
+  });
+
+  it("reports an exposure hexvero could not decide as one that may be new", () => {
+    const r = evaluatePolicy(
+      comparison({ changes: [exposure("added", "r", "ipcRenderer")] }),
+      listed("fail"),
+      {
+        sides: sides(
+          { bridgeExposures: [] },
+          {
+            bridgeExposures: [
+              exposureItem("r", "ipcRenderer", "preload.js", { undecided: "budget" }),
+            ],
+          },
+        ),
+      },
+    );
+    expect(r.findings.map((f) => [f.key, f.unknown])).toEqual([["api.r", true]]);
+    expect(r.findings[0]!.message).toBe(
+      "Pages may get ipcRenderer as window.api.r: not decided (budget).",
+    );
+    // unknown: fail makes the check undecidable, not a plain fail
+    expect(r.status).toBe("incomplete");
   });
 });

@@ -27,8 +27,12 @@ export const POLICY_RULES = [
   "new-interface-member",
   "new-external-host",
   "window-more-permissive",
+  "new-bridge-exposure",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
+
+/** Rules added after 0.9.6: they run at warn when a policy does not list them. */
+const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set(["new-bridge-exposure"]);
 
 export type RuleLevel = "fail" | "warn" | "off";
 export type UnknownHandling = "fail" | "warn" | "allow";
@@ -198,7 +202,9 @@ export function parsePolicy(text: string, file: string): LoadedPolicy {
     issues.push(`$schema: must be a string`);
 
   const rules = {} as Record<PolicyRuleId, RuleConfig>;
-  for (const id of POLICY_RULES) rules[id] = { level: "fail" };
+  // A rule a policy does not list runs at fail, except rules added after a policy could have been
+  // written for them: they start at warn, so an upgrade never turns a passing check red.
+  for (const id of POLICY_RULES) rules[id] = { level: LATER_RULES.has(id) ? "warn" : "fail" };
   const rawRules = raw["rules"];
   if (rawRules === undefined) issues.push(`rules: missing (an object with one entry per rule)`);
   else if (!isRecord(rawRules)) issues.push(`rules: must be an object`);
@@ -403,7 +409,14 @@ export function completenessOf(r: ReleaseComparison, collection: string): Comple
 
 /** The lists the rules read that each kind of analysis produces. */
 const KIND_LISTS: Record<string, ReadonlySet<string>> = {
-  "javascript-app": new Set(["interfaces", "contextBridge", "windows", "endpoints", "urls"]),
+  "javascript-app": new Set([
+    "interfaces",
+    "contextBridge",
+    "bridgeExposures",
+    "windows",
+    "endpoints",
+    "urls",
+  ]),
   javascript: new Set(["endpoints", "urls"]),
 };
 /** The kind of analysis a format gives, for a comparison evaluated without `sides`. */
@@ -424,6 +437,7 @@ export function checkableKind(kind: string): boolean {
 
 /** The identity a list is matched by when the overview does not name one (a list one side has). */
 const DEFAULT_KEYS: Record<string, string> = {
+  bridgeExposures: "file+api+member+exposed",
   interfaces: "file+api+member",
   contextBridge: "api+member",
   windows: "file+windowName",
@@ -631,6 +645,7 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   },
   "new-external-host": () => ["endpoints", "urls"],
   "window-more-permissive": () => ["windows"],
+  "new-bridge-exposure": () => ["bridgeExposures"],
 };
 
 /**
@@ -641,6 +656,8 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   "new-interface-member": () => ["contextBridge"],
   "new-external-host": () => [],
   "window-more-permissive": () => [],
+  // what a preload hands to pages is read from the bridge: an unreadable member is a gap here too
+  "new-bridge-exposure": () => ["contextBridge"],
 };
 
 /**
@@ -790,6 +807,54 @@ function hostDrafts(
       message: unknown
         ? `Host ${plain(reading.host)} may be new (${plain(value)}): ${plain(row.reason ?? "the comparison could not tell")}.`
         : `New external host ${plain(reading.host)}, not in the allow list (${plain(value)}).`,
+      where: row.where,
+      unknown,
+    });
+  }
+  return out;
+}
+
+/**
+ * A privileged object a preload newly hands to pages as it is (`bridgeExposures`): `ipcRenderer`, a
+ * method of it, `shell`, the `electron` module, a Node module or `process`. The same exposure in
+ * another file of the before build (a moved preload) is not new. An exposure hexvero kept but
+ * could not decide (`undecided`: a budget, an open scope) is a finding that may be new.
+ */
+/** An exposure's identity: what is handed to which name, without the file it sits in. */
+const exposureIdentity = (f: Record<string, unknown>): string =>
+  `exposure\0${String(f["api"])}\0${String(f["member"])}\0${String(f["exposed"])}`;
+
+function exposureDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const identityOf = exposureIdentity;
+  const before = new Set(beforeItems(r, "bridgeExposures", sides).map(identityOf));
+  const after = (sides?.items.b["bridgeExposures"] ?? []).filter(isRecord);
+  for (const row of r.changes) {
+    if (
+      row.collection !== "bridgeExposures" ||
+      (row.change !== "added" && row.change !== "unknown")
+    )
+      continue;
+    const f = fieldsOf(r, row);
+    if (!f || typeof f["api"] !== "string" || f["exposed"] === undefined) continue;
+    const identity = identityOf(f);
+    if (before.has(identity)) continue;
+    const item = after.find(
+      (i) => String(i["file"]) === String(f["file"]) && identityOf(i) === identity,
+    );
+    const undecided = typeof item?.["undecided"] === "string" ? String(item["undecided"]) : null;
+    const unknown = row.change === "unknown" || undecided !== null;
+    const member = f["member"] === null || f["member"] === "null" ? null : String(f["member"]);
+    const label = member === null ? `window.${f["api"]}` : `window.${f["api"]}.${member}`;
+    const exposed = plain(String(f["exposed"]));
+    out.push({
+      rule: "new-bridge-exposure",
+      identity,
+      row,
+      key: `${f["api"]}${member === null ? "" : `.${member}`}`,
+      message: unknown
+        ? `Pages may get ${exposed} as ${plain(label)}: ${plain(undecided ? `not decided (${undecided})` : (row.reason ?? "the comparison could not tell"))}.`
+        : `Pages get ${exposed} as ${plain(label)}, handed over as it is, not wrapped.`,
       where: row.where,
       unknown,
     });
@@ -970,6 +1035,7 @@ export function evaluatePolicy(
     if (rule === "new-interface-member") drafts.push(...interfaceDrafts(r, collections[0]!, sides));
     if (rule === "new-external-host") drafts.push(...hostDrafts(r, cfg.allow ?? [], sides));
     if (rule === "window-more-permissive") drafts.push(...windowDrafts(r, sides));
+    if (rule === "new-bridge-exposure") drafts.push(...exposureDrafts(r, sides));
   }
 
   const accepted = new Set(

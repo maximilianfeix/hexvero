@@ -184,7 +184,7 @@ describe("hexvero_check", () => {
     expect(error.message).toBe("invalid policy inline");
     expect(error.details.issues).toEqual([
       "version: this hexvero reads policy version 1, got 2",
-      "rules.new-hosts: unknown rule (known: new-interface-member, new-external-host, window-more-permissive)",
+      "rules.new-hosts: unknown rule (known: new-interface-member, new-external-host, window-more-permissive, new-bridge-exposure)",
     ]);
     const both = await call("hexvero_check", {
       targetA: a,

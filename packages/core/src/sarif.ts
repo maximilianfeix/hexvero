@@ -50,6 +50,12 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       full: "A BrowserWindow present in both builds changed nodeIntegration, contextIsolation, sandbox or page access to require in a direction that lets its pages do more. When the direction cannot be told, the finding is unknown.",
       help: "Whether this matters depends on what the window loads. Review the window's settings and the content it shows.",
     },
+    "new-bridge-exposure": {
+      name: "NewBridgeExposure",
+      short: "A preload hands a privileged object to pages as it is.",
+      full: "The preload script exposes a privileged object to web content through contextBridge without wrapping it (ipcRenderer or one of its methods, shell, the electron module, a Node module such as fs or child_process, process, require), and the previous build did not. Pages can then use the whole object, not only the calls the app meant to offer. An exposure hexvero could not decide is reported as unknown.",
+      help: 'Expose a function that does the one thing pages need (e.g. `send: (msg) => ipcRenderer.send("channel", msg)`) instead of the object. If the exposure is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.',
+    },
   };
 
 const uriOf = (file: string): string =>

@@ -7,8 +7,12 @@
   "additionalProperties": false,
   "required": ["hexvero", "version", "rules"],
   "properties": {
-    "$schema": { "type": "string" },
-    "hexvero": { "const": "policy" },
+    "$schema": {
+      "type": "string"
+    },
+    "hexvero": {
+      "const": "policy"
+    },
     "version": {
       "const": 1,
       "description": "Policy format version. Fingerprints are defined for version 1."
@@ -16,23 +20,34 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "description": "One entry per rule. A rule that is not listed runs at level fail.",
+      "description": "One entry per rule. A rule that is not listed runs at level fail, except new-bridge-exposure (added in 0.9.7), which runs at warn when not listed.",
       "properties": {
-        "new-interface-member": { "$ref": "#/$defs/rule" },
+        "new-interface-member": {
+          "$ref": "#/$defs/rule"
+        },
         "new-external-host": {
           "type": "object",
           "additionalProperties": false,
           "required": ["level"],
           "properties": {
-            "level": { "$ref": "#/$defs/level" },
+            "level": {
+              "$ref": "#/$defs/level"
+            },
             "allow": {
               "type": "array",
               "description": "Hosts that may appear: an exact host name, *.domain for every subdomain of domain (not domain itself), an IPv4 address or a bracketed IPv6 address. Lower case, no scheme, port or path.",
-              "items": { "$ref": "#/$defs/allowEntry" }
+              "items": {
+                "$ref": "#/$defs/allowEntry"
+              }
             }
           }
         },
-        "window-more-permissive": { "$ref": "#/$defs/rule" }
+        "window-more-permissive": {
+          "$ref": "#/$defs/rule"
+        },
+        "new-bridge-exposure": {
+          "$ref": "#/$defs/rule"
+        }
       }
     },
     "unknown": {
@@ -48,10 +63,23 @@
         "required": ["rule", "fingerprint", "reason"],
         "properties": {
           "rule": {
-            "enum": ["new-interface-member", "new-external-host", "window-more-permissive"]
+            "enum": [
+              "new-interface-member",
+              "new-external-host",
+              "window-more-permissive",
+              "new-bridge-exposure"
+            ]
           },
-          "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
-          "reason": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "\\S" },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S"
+          },
           "expires": {
             "type": "string",
             "format": "date",
@@ -63,18 +91,26 @@
     }
   },
   "$defs": {
-    "level": { "enum": ["fail", "warn", "off"] },
+    "level": {
+      "enum": ["fail", "warn", "off"]
+    },
     "rule": {
       "type": "object",
       "additionalProperties": false,
       "required": ["level"],
-      "properties": { "level": { "$ref": "#/$defs/level" } }
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/level"
+        }
+      }
     },
     "allowEntry": {
       "type": "string",
       "maxLength": 253,
       "anyOf": [
-        { "pattern": "^\\[[0-9a-f:.]+\\]$" },
+        {
+          "pattern": "^\\[[0-9a-f:.]+\\]$"
+        },
         {
           "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
         },

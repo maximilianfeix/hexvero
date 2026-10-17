@@ -22,6 +22,8 @@ export const RULE: Record<string, string> = {
   "new-interface-member": "a member pages can call that the before build did not have",
   "new-external-host": "a host the after build talks to that is not in the allow list",
   "window-more-permissive": "a window setting that became more permissive",
+  "new-bridge-exposure":
+    "a privileged object (ipcRenderer, shell, a Node module) handed to pages as it is",
 };
 
 const STATE: Record<PolicyFinding["state"], string> = {
