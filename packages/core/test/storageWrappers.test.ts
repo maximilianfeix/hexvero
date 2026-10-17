@@ -694,7 +694,7 @@ local.get("x");
       ...bigs(prefix, "r1"),
       ...bigs(`${prefix}s`, "s1"),
     });
-    it("IPC keeps its rows and says the replacements were not checked; storage stays conservative", () => {
+    it("IPC keeps its rows and says the replacements were not checked; storage stays conservative, flagged", () => {
       const info = analyze(app("a_big"));
       expect(info.ipcChannels.map((c) => c.channel).toSorted()).toEqual(["ch_one", "ch_two"]);
       expect(
@@ -703,12 +703,32 @@ local.get("x");
       // the store the unread modules import counts as replaced, the other one is read
       const viaKeys = info.storage.flatMap((r) => (r.via ? [r.value] : []));
       expect(viaKeys).not.toContain("First.k1");
-      expect(viaKeys).toContain("Second.k2");
+      expect(info.limitations.find((l) => l.code === "wrapper_method_replaced")?.message).toMatch(
+        /First\.save/,
+      );
     });
-    it("a renamed copy of the app gives the same result", () => {
-      const first = result(analyze(app("a_big")));
-      const renamed = result(analyze(app("z_big")));
-      expect(renamed).toEqual(first);
+    it("an importer growing between two builds changes no row", () => {
+      const before = app("a_big");
+      const after = { ...before, "a_big3.js": `${before["a_big3.js"]}${"// grown\n".repeat(500)}` };
+      expect(result(analyze(after))).toEqual(result(analyze(before)));
+    });
+    it("over 200 calling files: the same 200 by path in both builds, whatever their sizes", () => {
+      const ROUTER = `const { ipcMain } = require("electron");\nclass Router { handle(ch, f) { ipcMain.handle(ch, f); } }\nmodule.exports = { router: new Router() };\n`;
+      const build = (grown: number): Record<string, string> => {
+        const files: Record<string, string> = { "router.js": ROUTER };
+        for (let i = 0; i < 260; i++) {
+          const n = String(i).padStart(3, "0");
+          files[`c${n}.js`] =
+            `const { router } = require("./router");\nrouter.handle("ch_${n}", () => 0);\n` +
+            "// pad\n".repeat(i === grown ? 500 : 260 - i);
+        }
+        return files;
+      };
+      const first = analyze(build(-1)).ipcChannels.map((c) => c.channel);
+      expect(first).toEqual(
+        Array.from({ length: 200 }, (_, i) => `ch_${String(i).padStart(3, "0")}`),
+      );
+      expect(analyze(build(5)).ipcChannels.map((c) => c.channel)).toEqual(first);
     });
   });
 

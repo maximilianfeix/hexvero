@@ -389,9 +389,9 @@ file:line"; a module not read at all once the application's budget is used up ma
 of the wrappers it imports count as replaced ("… imports it and was not read within the
 replacement budget of the application"). That holds for storage keys; for IPC wrapper methods
 the calls are read as before the check existed, and the limitation `wrapper_replacements_unchecked`
-names the modules not checked. Modules are read in an order that does not depend on their names:
-the modules that define wrappers, then the calling files the call stage reads, then the rest, each
-group smallest first, the path only as the last tie-break. Calls of a wrapper whose methods all
+names the modules not checked. Modules are read in an order that a file growing between two
+builds does not change: the modules that define wrappers, then the rest, each by path; the 200
+calling files whose calls are read are the first 200 by path. Calls of a wrapper whose methods all
 count as replaced are not read. A write to another object of the same method name (`srv.handle = f`, lodash's
 `_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
 so a call there may still be read although the method was replaced: a replacement through a

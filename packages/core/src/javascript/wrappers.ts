@@ -1299,8 +1299,6 @@ export interface WrapperModule {
   /** The names the module exports itself (scan.ts), not through `export *`. */
   exports?: readonly string[];
   wrappers?: WrapperFacts;
-  /** Bytes of the file: the order modules are read in (smallest first), not their names. */
-  size?: number;
   reexports?: Record<string, { specifier: string; property: string }>;
   starExports?: string[];
   /** Every `module.exports = require("…")`, also uncertain ones: read for replacements only. */
@@ -1482,12 +1480,10 @@ function linkWrapperCalls<R>(input: {
       )
         looseProviders.add(e.from);
     }
-  /** Smallest first, the path only as the last tie-break: a renamed copy reads the same. */
-  const bySize = (a: string, b: string): number =>
-    (byId.get(a)?.size ?? 0) - (byId.get(b)?.size ?? 0) || (a < b ? -1 : a > b ? 1 : 0);
+  // by path: sizes change from build to build, paths rarely do
   const allImporters = [
     ...new Set(input.edges.filter((e) => e.resolved && providers.has(e.to)).map((e) => e.from)),
-  ].toSorted(bySize);
+  ].toSorted();
   const importers = allImporters.slice(0, input.maxFiles ?? 200);
   capped.push(...allImporters.slice(importers.length));
   const readers = new Map<string, WrapperReader | null>();
@@ -1546,16 +1542,14 @@ function linkWrapperCalls<R>(input: {
     walk(file, 0);
     return seen;
   };
-  // the modules that define wrappers, then the calling files the call stage reads, then the
-  // rest; each group smallest first, never by name
-  const defining = [...looseProviders].filter((f) => byId.get(f)?.wrappers).toSorted(bySize);
-  const first = new Set([...defining, ...importers]);
+  // the modules that define wrappers, then the rest, each by path: an order that a file
+  // growing between two builds does not change
+  const defining = [...looseProviders].filter((f) => byId.get(f)?.wrappers).toSorted();
   const order = [
     ...defining,
-    ...importers.filter((f) => !defining.includes(f)),
     ...[...new Set([...looseProviders, ...looseImporters])]
-      .filter((f) => !first.has(f))
-      .toSorted(bySize),
+      .filter((f) => !defining.includes(f))
+      .toSorted(),
   ];
   for (const file of order) {
     if (left <= 0 && input.keepPastBudget) {

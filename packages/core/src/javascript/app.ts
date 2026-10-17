@@ -4487,7 +4487,6 @@ export function analyzeJavaScriptTree(
     linkKeyWrappers({
       modules: modules.map((m) => ({
         id: m.id,
-        size: m.size,
         exports: m.exports,
         ...(m.keyWrappers ? { wrappers: m.keyWrappers } : {}),
         ...(m.reexports ? { reexports: m.reexports } : {}),
