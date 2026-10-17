@@ -231,6 +231,16 @@ A change to an options object made in another module is not seen: a window that 
 imports the same object and changes it (`SECURE.sandbox = false`, `Object.assign(SECURE, …)`)
 is not looked at. Only changes in the window's own file make a value computed.
 
+Bridge exposures that can be missed without a flag: a privileged declaration in a destructuring
+pattern longer than 4,000 tokens or reached through more than 8 aliases is not recorded, and in
+`let a, b;` only `a` counts as declared there, so a later write to `b` can be taken for a write
+to an outer binding of that name.
+
+Navigation handlers are read by method name: any object with a `setWindowOpenHandler` method
+gives a row (with `targetKind: webContents` when the receiver is not a known window). When the
+same window registers a handler twice, both rows are listed; at run time the later registration
+replaces the earlier one, and which one runs last is not established.
+
 [bc]: https://www.electronjs.org/docs/latest/breaking-changes
 [wp]: https://www.electronjs.org/docs/latest/api/structures/web-preferences
 [sb]: https://www.electronjs.org/docs/latest/tutorial/sandbox
