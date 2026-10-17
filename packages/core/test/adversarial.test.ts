@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { openAsar } from "../src/formats/asar.js";
 import { AnalysisError } from "../src/model.js";
 import { parseBaseline, parsePolicy, PolicyError } from "../src/policy.js";
+import { visibleControls } from "../src/report.js";
 import { Session } from "../src/session.js";
 import { targetFromBytes } from "../src/target.js";
 
@@ -124,5 +125,14 @@ describe("policy and baseline files nested deeper than the stack", () => {
     expect(issues).toContain("rules.__proto__: unknown rule");
     expect(issues).toContain("rules.constructor: unknown rule");
     expect(({} as Record<string, unknown>)["unknown"]).toBeUndefined();
+  });
+});
+
+describe("Markdown report text", () => {
+  it("shows bidi and zero-width characters as escapes, as the HTML report does", () => {
+    expect(visibleControls("evil\u202etxt.exe\u200b\u2066\ufeff\u061c")).toBe(
+      "evil\\u{202e}txt.exe\\u{200b}\\u{2066}\\u{feff}\\u{61c}",
+    );
+    expect(visibleControls("plain 日本語 é")).toBe("plain 日本語 é");
   });
 });

@@ -44,6 +44,9 @@ All notable changes to hexvero are listed here. The format follows
 - Archives with very many entries: looking a file up by path was a linear search, so analyzing an
   ASAR with 100,000 entries ran past 10 s; an HTML report parsed the archive header again for each
   of its up to 200 source excerpts (17 s for that archive, 1 s now).
+- Markdown reports show bidi marks, overrides and isolates, zero-width characters and the BOM from
+  a target as `\u{202e}`, as the HTML report already did (`⟨U+202E⟩`), so a name cannot read
+  reversed.
 - `scripts/fuzz.mjs`: a deterministic mutation harness (seeded, no new dependency) that runs
   hostile archives, JavaScript, package.json, policy and baseline files and output paths through
   the built CLI and checks for crashes, hangs, writes outside the requested path and output that

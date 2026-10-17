@@ -459,14 +459,22 @@ export const CHANGE_SIGN: Record<ChangeRow["change"], string> = {
 export const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
 /**
  * Control characters from a target shown as `\u{…}`: an escape sequence must not reach a terminal
- * that prints the report, and the name stays distinguishable from one without it.
+ * that prints the report, and the name stays distinguishable from one without it. Bidi marks,
+ * embeddings, overrides and isolates, zero-width characters and the BOM are shown the same way
+ * (as in the HTML report), so `evil\u{202e}txt.exe` cannot read as `evilexe.txt`.
  */
 export function visibleControls(text: string): string {
   return [...text]
     .map((c) => {
       const n = c.codePointAt(0)!;
       const control =
-        (n < 32 && n !== 10 && n !== 13) || (n >= 0x7f && n < 0xa0) || n === 0x2028 || n === 0x2029;
+        (n < 32 && n !== 10 && n !== 13) ||
+        (n >= 0x7f && n < 0xa0) ||
+        n === 0x061c ||
+        (n >= 0x200b && n <= 0x200f) ||
+        (n >= 0x2028 && n <= 0x202e) ||
+        (n >= 0x2060 && n <= 0x2069) ||
+        n === 0xfeff;
       return control ? `\\u{${n.toString(16)}}` : c;
     })
     .join("");
