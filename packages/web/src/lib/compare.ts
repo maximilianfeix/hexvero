@@ -267,6 +267,8 @@ export const MEANING: Record<string, string> = {
   interfaces: "What pages can call: preload members with their channel and main-process handler",
   contextBridge: "Members the preload script exposes to web content",
   ipcChannels: "IPC channels with their senders and receivers",
+  // the only `ipc` rows a comparison lists: calls whose payload shape (`args`) changed
+  ipc: "IPC calls whose payload changed: what a call sends on an existing channel",
   windows: "BrowserWindow settings that decide what a page may do",
   bridgeExposures:
     "Privileged objects (ipcRenderer, shell, Node modules) a preload hands to pages as they are, not wrapped",

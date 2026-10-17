@@ -7,6 +7,7 @@ import {
   type ReleaseComparison,
 } from "./api.js";
 import {
+  MEANING,
   completenessWords,
   filterQuery,
   matches,
@@ -189,5 +190,25 @@ describe("visible text", () => {
     expect(hasInvisible(`x${RLO}`)).toBe(true);
     // the global pattern keeps no state between calls
     expect(hasInvisible(`x${RLO}`)).toBe(true);
+  });
+});
+
+describe("list meanings", () => {
+  it("explains every list a release comparison can show, also the changed ipc calls", () => {
+    // the lists core's release report orders (packages/core/src/report.ts ORDER)
+    for (const list of [
+      "interfaces",
+      "contextBridge",
+      "ipcChannels",
+      "ipc",
+      "windows",
+      "bridgeExposures",
+      "navigationHandlers",
+      "webPreferences",
+      "endpoints",
+      "storage",
+      "urls",
+    ])
+      expect(MEANING[list], list).toBeTruthy();
   });
 });
