@@ -16,7 +16,7 @@ npx hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0
 ```
 
 Verify both commands from an empty directory on the release you link before posting (latest:
-0.9.2, checked 2026-10-17 15:25Z).
+0.9.3, checked 2026-10-17 16:34Z).
 
 ## Facts you can state (each with its source)
 
@@ -55,7 +55,9 @@ Verify both commands from an empty directory on the release you link before post
   these instead of, or mixed with, the blind 49 of 54 above.
 - Cost: Discord `analyze` median about +7 % (771 → 825 ms; a re-run gave 812 → 879 ms), Claude.app
   within noise; interleaved runs against 0.8.0 on one Apple M2 with other load.
-- Verify every row in `docs/launch/claims.md` (A1, A6–A8, N1–N6, B1–B5) on the release you link.
+- Verify every row in `docs/launch/claims.md` (A1, A6–A8, N1–N6, B1–B5, E1–E3) on the release you link.
+- 0.9.3 also finds the request of the CLI Fiddle 0.39.0 bundles (`sfw.mjs` → api.github.com),
+  through `node:https` and two wrapper functions: claims E1.
 - 0.9.2 finds the new Electron Fiddle setting `isUsingSocketFirewall` (stored through the app's
   own `save`/`retrieve` wrappers): claims B3.
 - 0.9.1 adds two observations: privileged objects a preload hands to pages (`bridgeExposures`)

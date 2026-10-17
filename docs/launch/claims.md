@@ -111,3 +111,13 @@ change them that the scan does not see; a false safe value is worse than compute
 
 Never quote B2 or N2 instead of, or mixed with, B1 or A1/A2. "No false reports" is not claimed for
 windows: B1 has 15, all duplicates of rows that were right (see the round 5 README).
+
+## 0.9.3 (released 2026-10-17, `022b504`; re-run on the published package)
+
+| ID  | Claim                                                                                                                                                                                                                                   | Command / source                                                                             | Result                                    |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| E1  | Electron Fiddle 0.38.0 → 0.39.0 (full apps with `app.asar.unpacked`): the bundled `sfw` CLI's request to `https://api.github.com/repos/SocketDev/sfw-free/releases/latest` is an added endpoint, plus one unknown row for the same call | `npx hexvero@0.9.3 compare <0.38>/app.asar <0.39>/app.asar endpoints`; the text of `sfw.mjs` | verified on the published package         |
+| E2  | Corpus: holdout3 endpoints 18/3/0 → 21/0/0 (a template constant across modules); holdout5 and holdout6 endpoint rows unchanged, 0 new false (development sets)                                                                          | `node corpus/score.mjs <obs> --set holdout3`, `--set holdout5`, `--set holdout6`             | verified (agent M3, lead re-ran the gate) |
+| E3  | Discord `analyze --fresh`, 7 interleaved runs, fresh cache per run: registry 0.9.2 929 ms, 0.9.3 code 955 ms (load 6–9)                                                                                                                 | `npm i hexvero@0.9.2` vs the branch build                                                    | verified (lead)                           |
+
+Known false endpoint rows that 0.9.2 also reports are listed in issue #157.
