@@ -649,6 +649,30 @@ describe("review regressions, undecided scope", () => {
     expect(info.limitations.some((l) => l.code === "bridge_exposures_undecided")).toBe(true);
   });
 
+  it("nested blocks that declare and write the name again stay linear (each scope read once)", () => {
+    // 198 blocks, each far from its `{`, each declaring and writing the name: without reading a
+    // declaration's scope once, every exposure walked every scope for every write (> 280 s)
+    const pad = "x(1,2,3);".repeat(800);
+    const source = [
+      'const { contextBridge: c, ipcRenderer } = require("electron");',
+      Array.from(
+        { length: 198 },
+        (_, i) => `{ ${pad} let ipcRenderer = ${i}; ipcRenderer = ${i + 1};`,
+      ).join("\n"),
+      "}".repeat(198),
+      Array.from({ length: 400 }, (_, i) => `c.exposeInMainWorld("a${i}", { ipcRenderer });`).join(
+        "\n",
+      ),
+    ].join("\n");
+    const started = performance.now();
+    const info = analyze({ "main.js": "", "preload.js": source });
+    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(info.bridgeExposures).toHaveLength(400);
+    expect(info.bridgeExposures.every((x) => x.exposed === "ipcRenderer" && x.undecided)).toBe(
+      true,
+    );
+  });
+
   it("an alias of the import, also in a function, is the import", () => {
     for (const body of [
       'var r = ipcRenderer;\ncontextBridge.exposeInMainWorld("api", { r });',

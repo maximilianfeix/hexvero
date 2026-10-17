@@ -1321,6 +1321,8 @@ function privilegedBindings(
    * level gave up, e.g. over a name used thousands of times): the declaration a position sees is
    * the one of the innermost function around it that declares the name.
    */
+  /** The scope of a declaration depends only on its position: read once (a walk of up to 50,000 tokens). */
+  const scopes = new Map<number, [number, number]>();
   const byFunctions = (
     name: string,
     decls: Array<{ at: number } & Meaning>,
@@ -1334,6 +1336,11 @@ function privilegedBindings(
      * around it: a declaration cannot stand in an object literal), else its function.
      */
     const scopeOf = (p: number): [number, number] => {
+      let known = scopes.get(p);
+      if (!known) scopes.set(p, (known = readScope(p)));
+      return known;
+    };
+    const readScope = (p: number): [number, number] => {
       const kind = blockScoped.get(p);
       if (kind) {
         let skip = kind === "pattern";
