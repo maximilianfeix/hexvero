@@ -15,7 +15,12 @@
  * A URL that merely occurs as a string is not an endpoint. Those go to `urls`.
  */
 import { Constants, resolveAliases } from "./aliases.js";
-import { builtIdentifierIndex, ExpressionResolver, type WrapperCalls } from "./resolve.js";
+import {
+  builtIdentifierIndex,
+  ExpressionResolver,
+  type FnDef,
+  type WrapperCalls,
+} from "./resolve.js";
 import type { Token } from "./scan.js";
 
 const OWN_TARGETS: ReadonlySet<string> = new Set(["fetch", "localStorage", "sessionStorage"]);
@@ -129,6 +134,22 @@ const MAX_OPEN_KEYS = 64;
 
 /** HTTP client calls per file whose binding is checked (see `clients` in findCandidates). */
 const MAX_CLIENT_CALLS = 2000;
+/**
+ * The functions around token k, innermost first, then null (the top of the file): the only
+ * places a declaration that the name at k can mean is in (`refersTo` follows the same 64 levels).
+ */
+const homesAround = (binder: ExpressionResolver, k: number): Array<FnDef | null> => {
+  const out: Array<FnDef | null> = [];
+  let d = binder.functionAt(k);
+  for (let guard = 0; guard < 64; guard++) {
+    out.push(d);
+    if (!d) return out;
+    d = binder.outerOf(d);
+  }
+  return out;
+};
+/** Questions whether a write means a client declaration, per file (see the write loop). */
+const MAX_WRITE_QUESTIONS = 16 * MAX_CLIENT_CALLS;
 /** Unknown http-client rows per file before further ones are folded into one. */
 const MAX_UNKNOWN_CLIENT_ROWS = 200;
 
@@ -157,12 +178,48 @@ const HTTP_CLIENTS = new Set([
  * addresses that scheme), Electron (a client through `net`), its `net`, or a request library
  * whose options give the address as `url`.
  */
-type ClientModule = "http" | "https" | "electron" | "net" | "lib";
+type Library = "axios" | "got" | "ky" | "superagent" | "needle";
+/** `lib`: a request library that is not known to be one of them (a name assigned two of them). */
+type ClientModule = "http" | "https" | "electron" | "net" | "lib" | Library;
+const LIBRARIES: ReadonlySet<string> = new Set(["axios", "got", "ky", "superagent", "needle"]);
+const isLibrary = (m: ClientModule): boolean => m === "lib" || LIBRARIES.has(m);
 const clientModule = (spec: Token | undefined): ClientModule | null => {
   if (spec?.type !== "string") return null;
   if (spec.value === "electron") return "electron";
   const m = /^(?:node:)?(https?|axios|got|ky|superagent|needle)$/.exec(spec.value);
-  return !m ? null : m[1] === "http" || m[1] === "https" ? m[1] : "lib";
+  return !m ? null : (m[1] as ClientModule);
+};
+/**
+ * An instance of a request library with its defaults (`axios.create({ baseURL })`,
+ * `got.extend({ prefixUrl })`, `ky.create({ prefixUrl })`): `base` the one known base URL,
+ * `method` the default method (null: written, not known), `unread` what makes every request of
+ * it an unknown row (the defaults could not be read, or the binding is written again).
+ */
+interface Instance {
+  base?: string;
+  method?: string | null;
+  unread?: string;
+}
+/** What creates an instance of each library. */
+const INSTANCE_MAKERS: Record<string, ReadonlySet<string>> = {
+  axios: new Set(["create"]),
+  got: new Set(["extend"]),
+  ky: new Set(["create", "extend"]),
+};
+/** The option that gives an instance its base URL. */
+const BASE_OPTION: Record<string, string> = { axios: "baseURL", got: "prefixUrl", ky: "prefixUrl" };
+/**
+ * Options that change the address in ways not read here: their call or instance is an unknown
+ * row. got before 10 had `baseUrl`; ky 2 renamed `prefixUrl` to `prefix` and added `baseUrl`;
+ * `allowAbsoluteUrls` changes whether an absolute URL bypasses the base.
+ */
+const ADDRESS_OPTIONS: Record<string, readonly string[]> = {
+  axios: ["baseURL", "allowAbsoluteUrls", "socketPath", "url"],
+  got: ["prefixUrl", "baseUrl", "allowAbsoluteUrls", "url"],
+  ky: ["prefixUrl", "prefix", "baseUrl", "url"],
+  superagent: [],
+  needle: [],
+  lib: [],
 };
 /** Words that start an expression; an argument starting with one is no name. */
 const OPERATOR_WORDS = new Set([
@@ -631,12 +688,18 @@ export function findCandidates(
     }
     return webpackIds.get(id);
   };
-  const clients = new Map<string, Array<{ module: ClientModule; at: number }>>();
+  const clients = new Map<
+    string,
+    Array<{ module: ClientModule; at: number; instance?: Instance; unread?: string }>
+  >();
   /** Every name bound to a client module, as 0.9.2 read it: its rule applies where no binding is proven. */
   const legacyClients = new Set<string>();
   /** Declarations of client names that an assignment writes to: no client where they are meant. */
   const reassignedClients = new Map<string, number[]>();
-  const functions = new Map<string, Array<{ module: ClientModule; verb: string; at: number }>>();
+  const functions = new Map<
+    string,
+    Array<{ module: ClientModule; verb: string; at: number; unread?: string }>
+  >();
   if (/require\(|import\b|\.exports\b/.test(source)) {
     const bind = (name: string, module: ClientModule, at: number): void => {
       const list = clients.get(name) ?? [];
@@ -697,10 +760,25 @@ export function findCandidates(
       ) {
         const module = clientModule(tokens[k + 2]);
         if (!module) continue;
-        // `X = require(…)`, `X = f(require(…))`
-        if (is(tokens[k - 1], "punct", "=") && is(tokens[k - 2], "ident"))
-          bind(tokens[k - 2]!.value, module, k - 2);
-        else if (
+        // `X = require(…)`, `X = f(require(…))`; `X = require(…).member` is that member:
+        // `.default` the module (an interop object), Electron's `.net`, `http(s)`'s `.get` and
+        // `.request` a request function; anything else (`.create(…)`, see `derive`) no module
+        if (is(tokens[k - 1], "punct", "=") && is(tokens[k - 2], "ident")) {
+          const member =
+            is(tokens[k + 4], "punct", ".") && is(tokens[k + 5], "ident")
+              ? tokens[k + 5]!.value
+              : null;
+          const ends =
+            !is(tokens[k + 6], "punct", ".") &&
+            !is(tokens[k + 6], "punct", "?.") &&
+            !is(tokens[k + 6], "punct", "(") &&
+            !is(tokens[k + 6], "punct", "[") &&
+            tokens[k + 6]?.type !== "template";
+          if (member === null) bind(tokens[k - 2]!.value, module, k - 2);
+          else if (ends && member === "default" && module !== "electron")
+            bind(tokens[k - 2]!.value, module, k - 2);
+          else if (ends) named(tokens[k - 2]!.value, member, module, k - 2);
+        } else if (
           is(tokens[k - 1], "punct", "(") &&
           is(tokens[k - 2], "ident") &&
           is(tokens[k - 3], "punct", "=") &&
@@ -759,6 +837,14 @@ export function findCandidates(
     const declared = new Set([...clients.keys(), ...functions.keys()]);
     for (const name of declared) legacyClients.add(name);
     let writes = 0;
+    let writeChecks = 0;
+    /** Each name's declarations by the function they are in (null: the top of the file). */
+    const byHome = new Map<
+      string,
+      Map<FnDef | null, Array<{ at: number; module: ClientModule }>>
+    >();
+    const removed = new Set<{ at: number; module: ClientModule }>();
+    const changed = new Set<string>();
     // Where the file's identifier index is already built (resolve.ts, shared by every resolver of
     // these tokens), only the places of the declared names are visited, in token order: the same
     // tokens the walk below stops at. Without one, or for names used too often, the walk.
@@ -808,28 +894,79 @@ export function findCandidates(
           !is(tokens[k + 6], "punct", "[")
             ? clientModule(tokens[k + 4])
             : null;
-        const keep = <T extends { at: number; module?: ClientModule }>(
-          list: T[] | undefined,
-        ): T[] =>
-          (list ?? []).filter((c) => {
-            if (!binder.writesTo(k, t.value, c.at)) return true;
-            if (another && another !== "electron" && c.module && c.module !== "electron") {
-              if (c.module !== another) c.module = "lib";
-              return true;
+        // A write can only mean a declaration in one of the functions around it (or at the top
+        // of the file): only those are asked about, through an index of each name's
+        // declarations by function, and the questions are bounded too (past the bound, 0.9.2's
+        // rule), so many declarations of one name written many times stay linear.
+        let homes = byHome.get(t.value);
+        if (!homes) {
+          homes = new Map();
+          for (const list of [clients.get(t.value), functions.get(t.value)])
+            for (const c of list ?? []) {
+              const home = binder.functionAt(c.at);
+              const at = homes.get(home) ?? [];
+              at.push(c);
+              homes.set(home, at);
             }
+          byHome.set(t.value, homes);
+        }
+        let over = false;
+        for (const home of homesAround(binder, k))
+          for (const c of homes.get(home) ?? []) {
+            if (removed.has(c)) continue;
+            if (writeChecks++ >= MAX_WRITE_QUESTIONS) {
+              over = true;
+              break;
+            }
+            if (!binder.writesTo(k, t.value, c.at)) continue;
+            if (another && another !== "electron" && c.module !== "electron") {
+              if (c.module !== another) c.module = "lib";
+              continue;
+            }
+            removed.add(c);
+            changed.add(t.value);
             const gone = reassignedClients.get(t.value) ?? [];
             gone.push(c.at);
             reassignedClients.set(t.value, gone);
-            return false;
-          });
-        const c = keep(clients.get(t.value));
-        const f = keep(functions.get(t.value));
-        if (c.length) clients.set(t.value, c);
-        else clients.delete(t.value);
-        if (f.length) functions.set(t.value, f);
-        else functions.delete(t.value);
+          }
+        if (over) {
+          clients.clear();
+          functions.clear();
+          break;
+        }
       }
+    for (const name of changed) {
+      const c = clients.get(name)?.filter((x) => !removed.has(x)) ?? [];
+      const f = functions.get(name)?.filter((x) => !removed.has(x)) ?? [];
+      if (c.length) clients.set(name, c);
+      else clients.delete(name);
+      if (f.length) functions.set(name, f);
+      else functions.delete(name);
+    }
   }
+  /** Reassigned declarations of each name by the function they are in (see `reassignedAt`). */
+  let reassignedByHome: Map<string, Map<FnDef | null, number[]>> | null = null;
+  /** The name at j means a declaration of it that an assignment writes to. */
+  const reassignedAt = (j: number, name: string): boolean => {
+    const all = reassignedClients.get(name);
+    if (!all) return false;
+    const binder = (wrapperResolver ??= makeResolver());
+    reassignedByHome ??= new Map();
+    let index = reassignedByHome.get(name);
+    if (!index) {
+      index = new Map();
+      for (const at of all) {
+        const home = binder.functionAt(at);
+        const list = index.get(home) ?? [];
+        list.push(at);
+        index.set(home, list);
+      }
+      reassignedByHome.set(name, index);
+    }
+    for (const home of homesAround(binder, j))
+      for (const at of index.get(home) ?? []) if (binder.refersTo(j, name, at)) return true;
+    return false;
+  };
   // Calls checked against the bindings per file; above the cap, client calls are not read
   // (limitation `client_calls_skipped`), so no input makes the check slow.
   let clientChecks = 0;
@@ -886,39 +1023,465 @@ export function findCandidates(
     }
     return null;
   };
-  /** The client module the verb at k is called on, when it is one of the bindings above. */
-  const clientAt = (k: number): { module: ClientModule; verb: string } | null => {
+  type ClientEntry = { module: ClientModule; at: number; instance?: Instance; unread?: string };
+  /** The binding of `clients` the name at j means, or null. */
+  const entryAt = (j: number): ClientEntry | null => {
+    const list = clients.get(tokens[j]!.value);
+    // bounded by the callers (MAX_CLIENT_CALLS declarations; instances made at a call count as
+    // client calls there), so it does not take from the calls' budget
+    return (
+      list?.find((c) => (wrapperResolver ??= makeResolver()).refersTo(j, tokens[j]!.value, c.at)) ??
+      null
+    );
+  };
+  /**
+   * `key: value` pairs at the top level of the object literal that opens at `objectAt`, with the
+   * token each value starts at and where it ends. `spread`: the literal has a part that is not
+   * read (a spread, a computed key, a method). Null for a literal longer than 300 tokens.
+   */
+  const literalKeys = (
+    objectAt: number,
+  ): { keys: Map<string, { at: number; end: number }>; spread: boolean } | null => {
+    const close = (wrapperResolver ??= makeResolver()).closeOf(objectAt);
+    if (close === -1 || close - objectAt > 300) return null;
+    const keys = new Map<string, { at: number; end: number }>();
+    let spread = false;
+    for (let j = objectAt + 1; j < close;) {
+      const end = Math.min(wrapperResolver.endOf(j), close);
+      const a = tokens[j]!;
+      if ((a.type === "ident" || a.type === "string") && is(tokens[j + 1], "punct", ":"))
+        keys.set(a.value, { at: j + 2, end });
+      else if (a.type === "ident" && end === j + 1) keys.set(a.value, { at: j, end });
+      else spread = true;
+      if (end <= j) return null;
+      j = end + 1;
+    }
+    return { keys, spread };
+  };
+  /** A method written as one string literal at `value`: upper case, or null when it is not one. */
+  const methodAt = (value: { at: number; end: number }): string | null => {
+    const m = tokens[value.at]!;
+    return value.end === value.at + 1 &&
+      (m.type === "string" || (m.type === "template" && !m.value.includes("${"))) &&
+      /^[A-Za-z]{3,7}$/.test(m.value)
+      ? m.value.toUpperCase()
+      : null;
+  };
+  /** One known string at `value`: a literal or a constant, written as nothing else. */
+  const oneString = (value: { at: number; end: number }): string | null => {
+    if (value.end !== value.at + 1) return null;
+    const r = readArg(value.at, true);
+    if (!r || r.value === null || r.more || r.partial) return null;
+    return r.value.includes("${…}") || r.value.includes(REF_OPEN) ? null : r.value;
+  };
+  /**
+   * The instance the `create`/`extend` call at w makes (`axios.create({ baseURL })`, also on an
+   * interop object, `X.default.create(…)`, and on `require("axios")` itself), when the object it
+   * is called on is a proven binding of that library. Its defaults are read only from an object
+   * literal; anything else makes its requests unknown rows.
+   */
+  const instanceAt = (
+    w: number,
+  ): { module: ClientModule; instance: Instance; unread?: string } | null => {
+    if (!is(tokens[w - 1], "punct", ".") || !is(tokens[w + 1], "punct", "(")) return null;
+    let end = w - 2;
+    const viaDefault = is(tokens[end], "ident", "default") && is(tokens[end - 1], "punct", ".");
+    if (viaDefault) end -= 2;
+    let module: ClientModule | null = null;
+    let parent = false;
+    if (is(tokens[end], "punct", ")")) {
+      if (
+        is(tokens[end - 3], "ident", "require") &&
+        is(tokens[end - 2], "punct", "(") &&
+        !is(tokens[end - 4], "punct", ".")
+      )
+        module = clientModule(tokens[end - 1]);
+    } else if (
+      is(tokens[end], "ident") &&
+      !is(tokens[end - 1], "punct", ".") &&
+      !is(tokens[end - 1], "punct", "?.")
+    ) {
+      const e = entryAt(end);
+      if (e && !(viaDefault && e.instance)) {
+        module = e.module;
+        parent = !!e.instance || !!e.unread;
+      }
+    }
+    if (!module || !INSTANCE_MAKERS[module]?.has(tokens[w]!.value)) return null;
+    // an instance made from an instance: what it keeps of the first one's defaults is not read
+    if (parent) return { module, instance: {}, unread: "<expression>" };
+    const open = w + 1;
+    const res = (wrapperResolver ??= makeResolver());
+    const close = res.closeOf(open);
+    if (close === open + 1) return { module, instance: {} };
+    if (!is(tokens[open + 1], "punct", "{") || res.closeOf(open + 1) + 1 !== close)
+      return { module, instance: {}, unread: "<options>" };
+    const lit = literalKeys(open + 1);
+    if (!lit || lit.spread) return { module, instance: {}, unread: "<options>" };
+    const baseKey = BASE_OPTION[module]!;
+    for (const key of ADDRESS_OPTIONS[module] ?? [])
+      if (key !== baseKey && lit.keys.has(key))
+        return { module, instance: {}, unread: `options.${key}` };
+    const instance: Instance = {};
+    const m = lit.keys.get("method");
+    if (m) instance.method = methodAt(m);
+    const b = lit.keys.get(baseKey);
+    if (b) {
+      const base = oneString(b);
+      // got and ky join the prefix and the input as text; got refuses a query or fragment in it
+      const usable =
+        base !== null &&
+        (ABSOLUTE.test(base) || /^\/(?!\/)/.test(base)) &&
+        !(module === "got" && /[?#]/.test(base));
+      if (!usable) return { module, instance, unread: `options.${baseKey}` };
+      instance.base = base;
+    }
+    return { module, instance };
+  };
+
+  // Bindings made from a client binding: an instance with its defaults (`const api =
+  // axios.create({ baseURL })`, `got.extend({ prefixUrl })`, `ky.create(…)`), a request function
+  // held as a value (`const req = https.request`, `const l = net.request`, `const l =
+  // E.net.request`, `const { get } = https`) and Electron's `net` taken from the module object
+  // (`const { net } = E`). Each must be a declaration (`const|let|var NAME = …`) whose value is
+  // that one expression; a name that an assignment writes to gives unknown rows where it is meant.
+  let writeShapes: Map<string, number[]> | null = null;
+  let derivedWrites = 0;
+  const writtenAgain = (name: string, decl: number): boolean => {
+    if (!writeShapes) {
+      writeShapes = new Map();
+      for (let j = 1; j + 1 < tokens.length; j++) {
+        const x = tokens[j]!;
+        if (x.type !== "ident" || is(tokens[j - 1], "punct", ".")) continue;
+        const after = tokens[j + 1]!;
+        const before = tokens[j - 1]!;
+        if (
+          (after.type === "punct" &&
+            (WRITE_OPERATORS.has(after.value) || after.value === "++" || after.value === "--")) ||
+          (before.type === "punct" && (before.value === "++" || before.value === "--"))
+        ) {
+          const list = writeShapes.get(x.value);
+          if (list) list.push(j);
+          else writeShapes.set(x.value, [j]);
+        }
+      }
+    }
+    const list = writeShapes.get(name) ?? [];
+    // only writes inside the function the declaration is in can mean it (positions are in order)
+    const res = (wrapperResolver ??= makeResolver());
+    const home = res.functionAt(decl);
+    const [from, to] = home ? home.body : [0, tokens.length];
+    let lo = 0;
+    let hi = list.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid]! < from) lo = mid + 1;
+      else hi = mid;
+    }
+    for (let i = lo; i < list.length && list[i]! < to; i++) {
+      const j = list[i]!;
+      // more writes than are checked: the binding is not proven
+      if (derivedWrites++ >= MAX_CLIENT_CALLS) return true;
+      if (j !== decl && res.writesTo(j, name, decl)) return true;
+    }
+    return false;
+  };
+  /** The name at j is declared there: `const|let|var NAME = …`, also later in a list. */
+  const declaresAt = (j: number): boolean => {
+    if (/^(const|let|var)$/.test(tokens[j - 1]?.value ?? ""))
+      return tokens[j - 1]!.type === "ident";
+    if (!is(tokens[j - 1], "punct", ",")) return false;
+    // `var a = r(x), NAME = …`: back over the list at its own depth to the keyword
+    for (let m = j - 2, depth = 0; m >= 0 && m > j - 400; m--) {
+      const x = tokens[m]!;
+      // a line break outside a list's commas may end a statement (ASI)
+      if (
+        depth === 0 &&
+        x.line !== tokens[m + 1]!.line &&
+        !is(x, "punct", ",") &&
+        !is(tokens[m + 1], "punct", ",")
+      )
+        return false;
+      if (x.type === "punct") {
+        if (x.value === ")" || x.value === "]" || x.value === "}") depth++;
+        else if (x.value === "(" || x.value === "[" || x.value === "{") {
+          if (depth === 0) return false;
+          depth--;
+        } else if (depth === 0 && x.value === ";") return false;
+      } else if (depth === 0 && x.type === "ident" && /^(const|let|var)$/.test(x.value))
+        return true;
+    }
+    return false;
+  };
+  let derived = 0;
+  const scopes = (): ExpressionResolver => (wrapperResolver ??= makeResolver());
+  const derive = (): void => {
+    if (!clients.size && !/require\(\s*["'`](?:axios|got|ky)["'`]\s*\)\s*\./.test(source)) return;
+    for (let k = 1; k + 3 < tokens.length; k++) {
+      if (!is(tokens[k + 1], "punct", "=")) continue;
+      const v = k + 2;
+      const head = tokens[v];
+      if (head?.type !== "ident") continue;
+      const name = tokens[k]!;
+      // `const { get, request: r } = https`, `const { net } = electron`
+      if (is(name, "punct", "}")) {
+        const open = scopes().openOf(k);
+        if (
+          open === -1 ||
+          !/^(const|let|var)$/.test(tokens[open - 1]?.value ?? "") ||
+          scopes().endOf(v) !== v + 1 ||
+          !clients.has(head.value)
+        )
+          continue;
+        if (derived++ >= MAX_CLIENT_CALLS) {
+          out.clientsSkipped = true;
+          return;
+        }
+        const e = entryAt(v);
+        if (!e || e.instance || e.unread) continue;
+        for (let j = open + 1; j < k;) {
+          const end = Math.min(scopes().endOf(j), k);
+          const a = tokens[j]!;
+          let local = -1;
+          if (a.type === "ident" && end === j + 1) local = j;
+          else if (
+            a.type === "ident" &&
+            is(tokens[j + 1], "punct", ":") &&
+            is(tokens[j + 2], "ident") &&
+            end === j + 3
+          )
+            local = j + 2;
+          if (local !== -1) {
+            const unread = writtenAgain(tokens[local]!.value, local) ? "<expression>" : undefined;
+            if ((e.module === "http" || e.module === "https") && /^(get|request)$/.test(a.value)) {
+              const list = functions.get(tokens[local]!.value) ?? [];
+              list.push({
+                module: e.module,
+                verb: a.value,
+                at: local,
+                ...(unread ? { unread } : {}),
+              });
+              functions.set(tokens[local]!.value, list);
+            } else if (e.module === "electron" && a.value === "net") {
+              const list = clients.get(tokens[local]!.value) ?? [];
+              list.push({ module: "net", at: local, ...(unread ? { unread } : {}) });
+              clients.set(tokens[local]!.value, list);
+            }
+          }
+          if (end <= j) break;
+          j = end + 1;
+        }
+        continue;
+      }
+      if (name.type !== "ident" || is(tokens[k - 1], "punct", ".")) continue;
+      // the shapes first (token reads only), the bindings only then
+      let w = -1;
+      let fn: { owner: number; verb: string; net: boolean; via: number } | null = null;
+      if (is(tokens[v + 1], "punct", ".") && is(tokens[v + 2], "ident")) {
+        const m = tokens[v + 2]!.value;
+        if ((m === "create" || m === "extend") && is(tokens[v + 3], "punct", "(")) w = v + 2;
+        else if (
+          m === "default" &&
+          is(tokens[v + 3], "punct", ".") &&
+          /^(create|extend)$/.test(tokens[v + 4]?.value ?? "") &&
+          is(tokens[v + 5], "punct", "(")
+        )
+          w = v + 4;
+        else if ((m === "request" || m === "get") && clients.has(head.value))
+          fn = { owner: v, verb: m, net: false, via: 3 };
+        else if (
+          m === "default" &&
+          is(tokens[v + 3], "punct", ".") &&
+          /^(request|get)$/.test(tokens[v + 4]?.value ?? "") &&
+          clients.has(head.value)
+        )
+          fn = { owner: v, verb: tokens[v + 4]!.value, net: false, via: 5 };
+        else if (
+          m === "net" &&
+          is(tokens[v + 3], "punct", ".") &&
+          is(tokens[v + 4], "ident", "request") &&
+          clients.has(head.value)
+        )
+          fn = { owner: v, verb: "request", net: true, via: 5 };
+      } else if (
+        head.value === "require" &&
+        is(tokens[v + 1], "punct", "(") &&
+        tokens[v + 2]?.type === "string" &&
+        is(tokens[v + 3], "punct", ")") &&
+        is(tokens[v + 4], "punct", ".")
+      ) {
+        if (/^(create|extend)$/.test(tokens[v + 5]?.value ?? "") && is(tokens[v + 6], "punct", "("))
+          w = v + 5;
+        else if (
+          is(tokens[v + 5], "ident", "default") &&
+          is(tokens[v + 6], "punct", ".") &&
+          /^(create|extend)$/.test(tokens[v + 7]?.value ?? "") &&
+          is(tokens[v + 8], "punct", "(")
+        )
+          w = v + 7;
+      }
+      if (w === -1 && !fn) continue;
+      // on a name only where the file binds that name to a module
+      if (w !== -1 && head.value !== "require" && !clients.has(head.value)) continue;
+      // the value must be that expression alone
+      const valueEnd = scopes().endOf(v);
+      const expected = fn
+        ? v + fn.via
+        : scopes().closeOf(w + 1) === -1
+          ? -2
+          : scopes().closeOf(w + 1) + 1;
+      if (valueEnd !== expected) continue;
+      if (!declaresAt(k)) continue;
+      if (derived++ >= MAX_CLIENT_CALLS) {
+        out.clientsSkipped = true;
+        return;
+      }
+      const unread = writtenAgain(name.value, k) ? "<expression>" : undefined;
+      if (fn) {
+        const e = entryAt(fn.owner);
+        if (!e || e.instance || e.unread) continue;
+        const ok = fn.net
+          ? e.module === "electron"
+          : e.module === "net"
+            ? fn.verb === "request" && fn.via === 3
+            : e.module === "http" || e.module === "https";
+        if (!ok) continue;
+        const list = functions.get(name.value) ?? [];
+        list.push({
+          module: fn.net ? "net" : e.module,
+          verb: fn.verb,
+          at: k,
+          ...(unread ? { unread } : {}),
+        });
+        functions.set(name.value, list);
+        continue;
+      }
+      const made = instanceAt(w);
+      if (!made) continue;
+      const list = clients.get(name.value) ?? [];
+      const why = unread ?? made.unread;
+      list.push({
+        module: made.module,
+        at: k,
+        instance: made.instance,
+        ...(why ? { unread: why } : {}),
+      });
+      clients.set(name.value, list);
+    }
+  };
+  derive();
+
+  /** What the call at k is a request of, when it is one of the bindings above. */
+  /**
+   * The bindings of `name` that the name at j can mean: those declared in a function around j or
+   * at the top of the file (`refersTo` asks the same). A name declared in many functions is
+   * indexed by function once, so a call costs the functions around it, not every declaration.
+   */
+  const nearIndex = new Map<string, Map<FnDef | null, Array<{ at: number }>>>();
+  const near = <T extends { at: number }>(
+    j: number,
+    map: Map<string, T[]>,
+    tag: string,
+    name: string,
+  ): T[] | undefined => {
+    const list = map.get(name);
+    if (!list || list.length <= 8) return list;
+    const binder = (wrapperResolver ??= makeResolver());
+    let index = nearIndex.get(tag + name) as Map<FnDef | null, T[]> | undefined;
+    if (!index) {
+      index = new Map();
+      for (const c of list) {
+        const home = binder.functionAt(c.at);
+        const at = index.get(home) ?? [];
+        at.push(c);
+        index.set(home, at);
+      }
+      nearIndex.set(tag + name, index);
+    }
+    const found: T[] = [];
+    for (const home of homesAround(binder, j)) for (const c of index.get(home) ?? []) found.push(c);
+    return found;
+  };
+  const clientAt = (
+    k: number,
+  ): { module: ClientModule; verb: string; instance?: Instance; unread?: string } | null => {
     const t = tokens[k]!;
     if (!is(tokens[k - 1], "punct", ".") && !is(tokens[k - 1], "punct", "?.")) {
-      const list = functions.get(t.value);
-      if (!list || is(tokens[k - 1], "ident", "function")) return null;
-      const hit = list.find((c) => refers(k, c.at));
-      return hit ? { module: hit.module, verb: hit.verb } : null;
+      if (is(tokens[k - 1], "ident", "function")) return null;
+      const list = near(k, functions, "f", t.value);
+      const hit = list?.find((c) => refers(k, c.at));
+      if (hit)
+        return {
+          module: hit.module,
+          verb: hit.verb,
+          ...(hit.unread ? { unread: hit.unread } : {}),
+        };
+      // a request library or an instance of one called itself: `axios(url)`, `api(url)`
+      const libs = near(k, clients, "c", t.value)?.filter((c) => isLibrary(c.module));
+      const lib = libs?.length ? libs.find((c) => refers(k, c.at)) : undefined;
+      return lib
+        ? {
+            module: lib.module,
+            verb: "call",
+            ...(lib.instance ? { instance: lib.instance } : {}),
+            ...(lib.unread ? { unread: lib.unread } : {}),
+          }
+        : null;
+    }
+    const owner = tokens[k - 2];
+    // `(0, X.default)(…)`, `X.default(…)`: a bundler's interop object of a library, called
+    if (t.value === "default") {
+      if (owner?.type !== "ident" || is(tokens[k - 3], "punct", ".")) return null;
+      const libs = near(k - 2, clients, "c", owner.value)?.filter(
+        (c) => isLibrary(c.module) && !c.instance && !c.unread,
+      );
+      const lib = libs?.length ? libs.find((c) => refers(k - 2, c.at)) : undefined;
+      return lib ? { module: lib.module, verb: "call" } : null;
     }
     if (!HTTP_VERBS.has(t.value)) return null;
-    const owner = tokens[k - 2];
+    // `axios.create({ baseURL }).get(…)`: an instance made where it is used
+    if (is(owner, "punct", ")")) {
+      const open = (wrapperResolver ??= makeResolver()).openOf(k - 2);
+      if (open < 2 || !/^(create|extend)$/.test(tokens[open - 1]?.value ?? "")) return null;
+      if (clientChecks++ >= MAX_CLIENT_CALLS) {
+        out.clientsSkipped = true;
+        return null;
+      }
+      const made = instanceAt(open - 1);
+      return made
+        ? {
+            module: made.module,
+            verb: t.value,
+            instance: made.instance,
+            ...(made.unread ? { unread: made.unread } : {}),
+          }
+        : null;
+    }
     if (owner?.type !== "ident") return null;
     if (!is(tokens[k - 3], "punct", ".")) {
-      const list = clients.get(owner.value)?.filter((c) => c.module !== "electron");
-      if (list?.length && means(k - 2, list)) {
-        const module = list[0]!.module;
-        return module === "net" && t.value !== "request" ? null : { module, verb: t.value };
-      }
-      return null;
+      const list = near(k - 2, clients, "c", owner.value)?.filter((c) => c.module !== "electron");
+      const hit = list?.length ? list.find((c) => refers(k - 2, c.at)) : undefined;
+      if (!hit) return null;
+      if (hit.module === "net" && t.value !== "request") return null;
+      return {
+        module: hit.module,
+        verb: t.value,
+        ...(hit.instance ? { instance: hit.instance } : {}),
+        ...(hit.unread ? { unread: hit.unread } : {}),
+      };
     }
     // `X.default.get(…)` (a bundler's interop object), `X.net.request(…)` (Electron)
     const root = tokens[k - 4];
     if (root?.type !== "ident" || is(tokens[k - 5], "punct", ".")) return null;
-    const list = clients.get(root.value);
+    const list = near(k - 4, clients, "c", root.value)?.filter((c) => !c.instance && !c.unread);
     if (owner.value === "net" && t.value === "request") {
       const electron = list?.filter((c) => c.module === "electron");
       return electron?.length && means(k - 4, electron) ? { module: "net", verb: "request" } : null;
     }
     if (owner.value !== "default") return null;
     const modules = list?.filter((c) => c.module !== "electron" && c.module !== "net");
-    return modules?.length && means(k - 4, modules)
-      ? { module: modules[0]!.module, verb: t.value }
-      : null;
+    const hit = modules?.length ? modules.find((c) => refers(k - 4, c.at)) : undefined;
+    return hit ? { module: hit.module, verb: t.value } : null;
   };
 
   // Variables that hold an XMLHttpRequest: only their open() is a request.
@@ -977,12 +1540,12 @@ export function findCandidates(
     };
     if (v.props.has("url")) {
       // Node's http and https take no `url` option: the request goes elsewhere
-      const url = module === "net" || module === "lib" ? part("url") : null;
+      const url = module === "net" || isLibrary(module) ? part("url") : null;
       return url && ABSOLUTE.test(url)
         ? { value: url, evidence: "inferred" }
         : unknownRead("options.url");
     }
-    if (module === "lib") return unknownRead("<options>");
+    if (isLibrary(module)) return unknownRead("<options>");
     // a port or a socket changes where the request goes; neither is read
     for (const key of ADDRESS_OVERRIDES) if (v.props.has(key)) return unknownRead(`options.${key}`);
     const protocol = part("protocol");
@@ -1074,7 +1637,140 @@ export function findCandidates(
       r = { value: null, evidence: "unknown", expression: "<expression>" };
     push(out.endpoints, "http-client", r, t, method);
   };
-  const clientRequest = (t: Token, open: number, module: ClientModule, name: string): void => {
+  /**
+   * A request of a library (axios, got, ky, superagent, needle) or of an instance of one. The
+   * address is the URL argument, or the `url` option of a config object written as the first
+   * argument, joined to the instance's base by that library's rule. A config object written at
+   * the call that sets an option changing the address (or spreads something) is an unknown row;
+   * a config passed as a name is not read (the address is kept, the method is not known).
+   */
+  const libraryRequest = (
+    t: Token,
+    open: number,
+    module: ClientModule,
+    name: string,
+    instance: Instance | undefined,
+  ): void => {
+    const res = (wrapperResolver ??= makeResolver());
+    const arg = (i: number): number | null => {
+      const a = res.argumentAt(open, i);
+      return a === null || is(tokens[a], "punct", ")") ? null : a;
+    };
+    /** An object literal that is the whole argument at a. */
+    const literal = (a: number | null): boolean =>
+      a !== null && is(tokens[a], "punct", "{") && res.endOf(a) === res.closeOf(a) + 1;
+    const verbMethod = HTTP_VERBS.has(name) && name !== "request" ? name.toUpperCase() : undefined;
+    let urlAt: number | null = null;
+    let configAt: number | null = null;
+    let fromConfig = false;
+    /** undefined: the library's default; null: not known. */
+    let method: string | null | undefined = verbMethod;
+    if (
+      (module === "needle" || module === "superagent") &&
+      (name === "call" || (module === "needle" && name === "request"))
+    ) {
+      // `needle(method, url, …)`, `superagent(method, url)`, `superagent(url)` (GET)
+      const a0 = arg(0);
+      const a1 = arg(1);
+      if (a0 === null) return;
+      if (module === "superagent" && a1 === null) {
+        urlAt = a0;
+        method = "GET";
+      } else {
+        urlAt = a1;
+        method = methodAt({ at: a0, end: res.endOf(a0) });
+      }
+    } else if (module === "needle" || module === "superagent" || module === "lib") {
+      urlAt = arg(0);
+      if (method === undefined) method = null;
+    } else if (name === "call" || name === "request") {
+      const a0 = arg(0);
+      if (literal(a0)) {
+        configAt = a0;
+        fromConfig = true;
+      } else {
+        urlAt = a0;
+        configAt = arg(1);
+      }
+    } else {
+      urlAt = arg(0);
+      // axios: `post(url, data, config)`; got and ky: `post(url, options)`
+      configAt = module === "axios" && /^(post|put|patch)$/.test(name) ? arg(2) : arg(1);
+    }
+    const unknown = (expression: string): void =>
+      pushClient(unknownRead(expression), t, method ? { method } : {});
+    if (configAt !== null) {
+      if (literal(configAt)) {
+        const lit = literalKeys(configAt);
+        if (!lit || lit.spread) return unknown("<options>");
+        for (const key of ADDRESS_OPTIONS[module] ?? [])
+          if (!(fromConfig && key === "url") && lit.keys.has(key)) return unknown(`options.${key}`);
+        const m = lit.keys.get("method");
+        if (method === undefined && m) method = methodAt(m);
+        if (fromConfig) {
+          const u = lit.keys.get("url");
+          if (!u) return unknown("options.url");
+          urlAt = u.at;
+        }
+      } else if (method === undefined) method = null;
+    }
+    if (method === undefined)
+      method = instance && instance.method !== undefined ? instance.method : "GET";
+    if (urlAt === null) return;
+    const r = readArg(urlAt, true);
+    if (!r) return;
+    if (r.value === null) return unknown(r.expression ?? "<expression>");
+    const base = instance?.base;
+    /** The address the library makes of the input `v`, or null when it is not known. */
+    const join = (v: string): string | null => {
+      if (base === undefined) return v;
+      if (v.includes(REF_OPEN) || v.startsWith("${…}")) return null;
+      if (module === "axios") {
+        // axios' buildFullPath and combineURLs
+        if (/^([a-z][a-z\d+\-.]*:)?\/\//i.test(v)) return v;
+        return v ? `${base.replace(/\/?\/$/, "")}/${v.replace(/^\/+/, "")}` : base;
+      }
+      // got and ky (1.x) prepend the prefix to a relative input and refuse a leading slash; what
+      // they do with an absolute input differs between versions
+      if (v.startsWith("/") || /^[a-z][\d+\-.a-z]*:/i.test(v)) return null;
+      return `${base.endsWith("/") ? base : `${base}/`}${v}`;
+    };
+    let unread = !!r.partial;
+    for (const [i, v] of [r.value, ...(r.more ?? [])].entries()) {
+      const value = join(v);
+      if (value === null || !ADDRESS_START.test(value)) {
+        unread = true;
+        continue;
+      }
+      pushClient(
+        {
+          value,
+          evidence: i === 0 && value === v ? r.evidence : resolvedEvidence(value),
+        },
+        t,
+        method ? { method } : {},
+      );
+    }
+    if (unread) unknown(r.partial ? (read(urlAt)?.expression ?? "<expression>") : "<expression>");
+  };
+  const clientRequest = (
+    t: Token,
+    open: number,
+    c: { module: ClientModule; verb: string; instance?: Instance; unread?: string },
+  ): void => {
+    const { module, verb: name } = c;
+    if (c.unread) {
+      pushClient(
+        unknownRead(c.unread),
+        t,
+        HTTP_VERBS.has(name) && name !== "request" ? { method: name.toUpperCase() } : {},
+      );
+      return;
+    }
+    if (isLibrary(module)) {
+      libraryRequest(t, open, module, name, c.instance);
+      return;
+    }
     const at = open + 1;
     const method = name === "request" ? verb(open) : { method: name.toUpperCase() };
     if (is(tokens[at], "punct", "{")) {
@@ -1112,6 +1808,65 @@ export function findCandidates(
       t,
       method,
     );
+  };
+
+  // `fetch(new Request(url, init))`, and `fetch(r)` with `const r = new Request(…)` declared
+  // before the call and never written again: the request's URL and method. `Request` must be the
+  // global one (no binding of the name in the file is visible at the call).
+  let requestQuestions = 0;
+  const mentionsRequest = source.includes("Request");
+  const globalRequest = (j: number): boolean =>
+    (wrapperResolver ??= makeResolver()).boundAround(j, "Request") === null;
+  /** `new Request(` whose `(` is at `open - 0`, written as the whole expression at `at`. */
+  const newRequest = (at: number): number | null => {
+    if (
+      !is(tokens[at], "ident", "new") ||
+      !is(tokens[at + 1], "ident", "Request") ||
+      !is(tokens[at + 2], "punct", "(")
+    )
+      return null;
+    const res = (wrapperResolver ??= makeResolver());
+    const close = res.closeOf(at + 2);
+    return close !== -1 && res.endOf(at) === close + 1 && globalRequest(at + 1) ? at + 2 : null;
+  };
+  /** The `(` of the `new Request(` the fetch argument at `at` is, or null. */
+  const requestAt = (at: number): number | null => {
+    if (!mentionsRequest) return null;
+    const direct = newRequest(at);
+    if (direct !== null) return direct;
+    const name = tokens[at];
+    if (name?.type !== "ident" || OPERATOR_WORDS.has(name.value)) return null;
+    const res = (wrapperResolver ??= makeResolver());
+    if (res.endOf(at) !== at + 1 || requestQuestions++ >= 64) return null;
+    const b = res.boundAround(at, name.value);
+    if (b?.kind !== "local" || !b.site) return null;
+    const { name: decl, word } = b.site;
+    if (
+      word !== decl - 1 ||
+      decl >= at ||
+      !/^(const|let|var)$/.test(tokens[word]?.value ?? "") ||
+      !is(tokens[decl + 1], "punct", "=")
+    )
+      return null;
+    const open = newRequest(decl + 2);
+    return open !== null && !writtenAgain(name.value, decl) ? open : null;
+  };
+  /** The method of `fetch(request, init)`: init's own, else the one the request was made with. */
+  const requestMethod = (fetchOpen: number, requestOpen: number): { method?: string } => {
+    const res = (wrapperResolver ??= makeResolver());
+    const init = res.argumentAt(fetchOpen, 1);
+    if (init !== null && !is(tokens[init], "punct", ")")) {
+      // an init that is not read may set the method
+      if (!is(tokens[init], "punct", "{") || res.endOf(init) !== res.closeOf(init) + 1) return {};
+      const lit = literalKeys(init);
+      if (!lit || lit.spread) return {};
+      const m = lit.keys.get("method");
+      if (m) {
+        const own = methodAt(m);
+        return own ? { method: own } : {};
+      }
+    }
+    return verb(requestOpen);
   };
 
   /** True when the parenthesis at `open` closes right before a `{`: a definition, not a call. */
@@ -1159,7 +1914,7 @@ export function findCandidates(
           : -1;
       const c = open !== -1 && !(called && definesMethod(open)) ? clientAt(k) : null;
       if (c) {
-        clientRequest(t, open, c.module, c.verb);
+        clientRequest(t, open, c);
         continue;
       }
     }
@@ -1172,12 +1927,22 @@ export function findCandidates(
         continue;
       // `{ fetch(key) { … } }` defines a method of that name: a parameter list followed by a body.
       if (definesMethod(k + 1)) continue;
-      const r = readArg(k + 2, true);
-      if (r) push(out.endpoints, "fetch", r, t, verb(k + 1));
+      const q = requestAt(k + 2);
+      const r = q ? readArg(q + 1, true) : readArg(k + 2, true);
+      if (r) push(out.endpoints, "fetch", r, t, q ? requestMethod(k + 1, q) : verb(k + 1));
     } else if (called && !member && aliases.get(k) === "fetch") {
       // Another name for fetch (`const request = fetch`): a request, but known by inference.
-      const r = readArg(k + 2, true);
-      if (r)
+      const q = requestAt(k + 2);
+      const r = q ? readArg(q + 1, true) : readArg(k + 2, true);
+      if (r && q)
+        push(
+          out.endpoints,
+          "fetch",
+          { ...r, evidence: r.evidence === "literal" ? "inferred" : r.evidence },
+          t,
+          requestMethod(k + 1, q),
+        );
+      else if (r)
         push(
           out.endpoints,
           "fetch",
@@ -1231,12 +1996,7 @@ export function findCandidates(
         }
         // A declaration that an assignment writes to may hold something else at the call:
         // which object is called is not known, so the call is an unknown row, not the address.
-        if (
-          client &&
-          reassignedClients
-            .get(owner!.value)
-            ?.some((at) => (wrapperResolver ??= makeResolver()).refersTo(k - 2, owner!.value, at))
-        ) {
+        if (client && reassignedAt(k - 2, owner!.value)) {
           pushClient(
             { value: null, evidence: "unknown", expression: "<expression>" },
             t,

@@ -23,7 +23,7 @@ const bundle = (source: string, minify: boolean): string =>
     minify,
     platform: "node",
     format: "cjs",
-    external: ["electron"],
+    external: ["electron", "axios", "got", "ky", "needle", "superagent"],
     write: false,
     logLevel: "silent",
   }).outputFiles[0]!.text;
@@ -482,5 +482,377 @@ describe("HTTP client modules", () => {
     // generous: the point is linear against quadratic, and test machines are busy
     expect(performance.now() - started).toBeLessThan(15_000);
     expect(found.endpoints.length).toBeLessThanOrEqual(2000);
+  });
+});
+
+describe("request libraries, instances and Request objects", () => {
+  it("reads direct calls of a request library bound by require or import", () => {
+    expect(
+      show(
+        [
+          'const axios = require("axios");',
+          'const got = require("got");',
+          'import ky from "ky";',
+          'const needle = require("needle");',
+          'const superagent = require("superagent");',
+          'axios("https://ax.example/1");',
+          'axios("https://ax.example/2", { method: "post", data });',
+          'axios({ url: "https://ax.example/3", method: "PUT" });',
+          'got("https://got.example/1");',
+          'got("https://got.example/2", { method: "PATCH" });',
+          'got({ url: "https://got.example/3" });',
+          'ky("https://ky.example/1");',
+          'needle("post", "https://needle.example/1", body);',
+          'needle.request("put", "https://needle.example/2", body);',
+          'superagent("DELETE", "https://sa.example/1");',
+          'superagent("https://sa.example/2");',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client GET https://ax.example/1 [literal]",
+      "http-client POST https://ax.example/2 [literal]",
+      "http-client PUT https://ax.example/3 [literal]",
+      "http-client GET https://got.example/1 [literal]",
+      "http-client PATCH https://got.example/2 [literal]",
+      "http-client GET https://got.example/3 [literal]",
+      "http-client GET https://ky.example/1 [literal]",
+      "http-client POST https://needle.example/1 [literal]",
+      "http-client PUT https://needle.example/2 [literal]",
+      "http-client DELETE https://sa.example/1 [literal]",
+      "http-client GET https://sa.example/2 [literal]",
+    ]);
+  });
+
+  it("does not guess the method or the address of a direct call it cannot read", () => {
+    expect(
+      show(
+        [
+          'const axios = require("axios");',
+          'const needle = require("needle");',
+          "axios(url, config);",
+          'axios("https://ax.example/cfg", cfg);',
+          'axios({ url: "https://ax.example/spread", ...rest });',
+          'axios("https://ax.example/o", { url: "https://other.example/" });',
+          'axios("https://ax.example/b", { baseURL: "https://other.example/" });',
+          'axios({ method: "POST" });',
+          'needle(m, "https://needle.example/m");',
+          // a name that is not bound to a library is not one (`got` is a common word)
+          'function f() { const got = seen.get(x); got("https://not-a-client.example/"); }',
+          'function g(axios) { const ky = mock; ky("https://not-ky.example/"); }',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client ?url [unknown]",
+      "http-client https://ax.example/cfg [literal]",
+      "http-client ?<options> [unknown]",
+      "http-client ?options.url [unknown]",
+      "http-client ?options.baseURL [unknown]",
+      "http-client POST ?options.url [unknown]",
+      "http-client https://needle.example/m [literal]",
+    ]);
+  });
+
+  it("joins an instance's base URL by each library's rule", () => {
+    expect(
+      show(
+        [
+          'const axios = require("axios");',
+          'const got = require("got");',
+          'const ky = require("ky");',
+          'const BASE = "https://api.example/v1/";',
+          "const api = axios.create({ baseURL: BASE });",
+          'api.get("/users");',
+          'api.post("items", body, { headers });',
+          'api("https://other.example/abs");',
+          'api({ url: "me", method: "delete" });',
+          "api.get(`users/${id}`);",
+          'const g = got.extend({ prefixUrl: "https://got.example/api" });',
+          'g("users");',
+          'g.post("/leading-slash");',
+          'g.get("https://absolute.example/");',
+          'const k = ky.create({ prefixUrl: "https://ky.example" });',
+          'k.get("me");',
+          'const k2 = ky.extend({ prefixUrl: "https://ky2.example/" });',
+          'k2("me");',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client GET https://api.example/v1/users [inferred]",
+      "http-client POST https://api.example/v1/items [inferred]",
+      "http-client GET https://other.example/abs [literal]",
+      "http-client DELETE https://api.example/v1/me [inferred]",
+      "http-client GET https://api.example/v1/users/${…} [template]",
+      "http-client GET https://got.example/api/users [inferred]",
+      "http-client POST ?<expression> [unknown]",
+      "http-client GET ?<expression> [unknown]",
+      "http-client GET https://ky.example/me [inferred]",
+      "http-client GET https://ky2.example/me [inferred]",
+    ]);
+  });
+
+  it("reads an instance only when its binding is proven and its base is one known string", () => {
+    const H = 'const axios = require("axios");\n';
+    const cases: Array<[string, string[]]> = [
+      // written again: which object is called is not known
+      [
+        H +
+          'let api = axios.create({ baseURL: "https://x.example" });\napi = mock;\napi.get("/p");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        H + 'const api = axios.create({ baseURL: process.env.API });\napi.get("/p");',
+        ["http-client GET ?options.baseURL [unknown]"],
+      ],
+      [
+        H + 'const api = axios.create({ baseURL: `${host}/v1` });\napi.get("/p");',
+        ["http-client GET ?options.baseURL [unknown]"],
+      ],
+      [
+        H +
+          'const api = axios.create({ ...defaults, baseURL: "https://x.example" });\napi.get("/p");',
+        ["http-client GET ?<options> [unknown]"],
+      ],
+      [
+        H + 'const api = axios.create(config);\napi.get("/p");',
+        ["http-client GET ?<options> [unknown]"],
+      ],
+      [
+        H +
+          'const api = axios.create({ baseURL: "https://x.example", allowAbsoluteUrls: false });\napi.get("/p");',
+        ["http-client GET ?options.allowAbsoluteUrls [unknown]"],
+      ],
+      // a base given at the call replaces the instance's: not read
+      [
+        H +
+          'const api = axios.create({ baseURL: "https://x.example" });\napi.get("/p", { baseURL: "https://y.example" });',
+        ["http-client GET ?options.baseURL [unknown]"],
+      ],
+      // got refuses a prefix with a query; ky 2 has `prefix` and `baseUrl` instead
+      [
+        'const got = require("got");\nconst g = got.extend({ prefixUrl: "https://g.example/?a=1" });\ng.get("x");',
+        ["http-client GET ?options.prefixUrl [unknown]"],
+      ],
+      [
+        'const ky = require("ky");\nconst k = ky.create({ prefix: "https://k.example/" });\nk.get("x");',
+        ["http-client GET ?options.prefix [unknown]"],
+      ],
+      // an instance of an instance: what it keeps is not read
+      [
+        'const ky = require("ky");\nconst k = ky.create({ prefixUrl: "https://k.example" });\nk.extend({ headers }).get("x");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      // another binding of the name where it is used: another object
+      [
+        H +
+          'const api = axios.create({ baseURL: "https://x.example" });\nfunction f(api) { return api.get("/param"); }',
+        [],
+      ],
+      [
+        H +
+          'const api = axios.create({ baseURL: "https://x.example" });\nfunction f() { const api = other; api.get("/local"); }',
+        [],
+      ],
+      // not a library: no instance
+      [
+        'const lib = require("./lib");\nconst api = lib.create({ baseURL: "https://x.example" });\napi.get("/p");',
+        [],
+      ],
+      [H + 'const api = axios.extend({ baseURL: "https://x.example" });\napi.get("/p");', []],
+      // made where it is used, and on `require("axios")` itself; the default method of the instance
+      [
+        H + 'axios.create({ baseURL: "https://c.example/api", method: "post" }).get("/x");',
+        ["http-client GET https://c.example/api/x [inferred]"],
+      ],
+      [
+        'const api = require("axios").create({ baseURL: "https://r.example", method: "post" });\napi("/y");',
+        ["http-client POST https://r.example/y [inferred]"],
+      ],
+    ];
+    for (const [source, rows] of cases) expect(show(source), source).toEqual(rows);
+  });
+
+  it("reads each module's instance where many modules of a bundle use the same name", () => {
+    // every call is checked against the declarations in the functions around it only, so 300
+    // modules with an `api` each stay within the 2,000 checks per file
+    const n = 300;
+    const source =
+      'const axios = require("axios");\n' +
+      Array.from(
+        { length: n },
+        (_, i) =>
+          `function m${i}() { const api = axios.create({ baseURL: "https://h${i}.example" }); return api.get("/x"); }`,
+      ).join("\n");
+    const found = find(source);
+    expect(found.clientsSkipped).toBeUndefined();
+    expect(found.endpoints.map((e) => e.value)).toEqual(
+      Array.from({ length: n }, (_, i) => `https://h${i}.example/x`),
+    );
+  });
+
+  for (const minify of [false, true])
+    it(`reads libraries and instances in an esbuild bundle${minify ? ", minified" : ""}`, () => {
+      const source = bundle(
+        [
+          'import axios from "axios";',
+          'import got from "got";',
+          'import ky from "ky";',
+          'import https from "node:https";',
+          'import { net } from "electron";',
+          'const api = axios.create({ baseURL: "https://b.example/v1" });',
+          'const g = got.extend({ prefixUrl: "https://g.example/api" });',
+          'const k = ky.create({ prefixUrl: "https://k.example" });',
+          "const send = https.request;",
+          "const l = net.request;",
+          "export async function f(id) {",
+          '  await axios("https://ax.example/1");',
+          '  await axios({ url: "https://ax.example/2", method: "POST" });',
+          '  await got("https://g.example/direct");',
+          '  await ky("https://k.example/direct");',
+          '  await api.get("/p");',
+          "  await g.post(`items/${id}`);",
+          '  await k.get("me");',
+          '  send("https://send.example/");',
+          '  l("https://net.example/");',
+          '  return fetch(new Request("https://r.example/", { method: "PATCH" }));',
+          "}",
+        ].join("\n"),
+        minify,
+      );
+      expect(show(source)).toEqual([
+        "http-client GET https://ax.example/1 [literal]",
+        "http-client POST https://ax.example/2 [literal]",
+        "http-client GET https://g.example/direct [literal]",
+        "http-client GET https://k.example/direct [literal]",
+        "http-client GET https://b.example/v1/p [inferred]",
+        "http-client POST https://g.example/api/items/${…} [template]",
+        "http-client GET https://k.example/me [inferred]",
+        "http-client https://send.example/ [literal]",
+        "http-client https://net.example/ [literal]",
+        "fetch PATCH https://r.example/ [literal]",
+      ]);
+    });
+
+  it("reads fetch of a Request: written in the call, or a declaration never written again", () => {
+    expect(
+      show(
+        [
+          'fetch(new Request("https://r.example/1", { method: "POST" }));',
+          'globalThis.fetch(new Request("https://r.example/2"), { method: "put" });',
+          "function save(entry) {",
+          '  const request = new Request("https://r.example/3", { method: "POST", body: entry });',
+          "  return fetch(request);",
+          "}",
+          'const r4 = new Request("https://r.example/4", { method: "DELETE" });',
+          "fetch(r4, { headers });",
+          "fetch(r4, init);",
+          'let r5 = new Request("https://r.example/5");',
+          "r5 = other;",
+          "fetch(r5);",
+          "function shadow(r4) { return fetch(r4); }",
+          'function own() { const Request = Mine; return fetch(new Request("https://mine.example/")); }',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "fetch POST https://r.example/1 [literal]",
+      "fetch PUT https://r.example/2 [literal]",
+      "fetch POST https://r.example/3 [literal]",
+      "fetch DELETE https://r.example/4 [literal]",
+      "fetch https://r.example/4 [literal]",
+      "fetch ?r5 [unknown]",
+      "fetch ?r4 [unknown]",
+      "fetch ?<expression> [unknown]",
+    ]);
+  });
+
+  it("reads a request function held as a value only where its binding is proven", () => {
+    expect(
+      show(
+        [
+          'const https = require("https");',
+          'const electron = require("electron");',
+          'const { net } = require("electron");',
+          "const req = https.request;",
+          'req("https://q.example/1");',
+          "const l = net.request;",
+          'l({ url: "https://net.example/1", method: "POST" });',
+          "const e = electron.net.request;",
+          'e("https://net.example/2");',
+          "const { get, request: r } = https;",
+          'get("https://d.example/1");',
+          'r({ hostname: "o.example", path: "/x" });',
+          'const g2 = require("https").get;',
+          'g2("https://g2.example/");',
+          "let w = https.request;",
+          "w = fake;",
+          'w("https://written.example/");',
+          'function f(https) { const p = https.request; p("https://param.example/"); }',
+          'const o = cache.request;\no("https://not-a-client.example/");',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client https://q.example/1 [literal]",
+      "http-client POST https://net.example/1 [inferred]",
+      "http-client https://net.example/2 [literal]",
+      "http-client GET https://d.example/1 [literal]",
+      "http-client https://o.example/x [inferred]",
+      "http-client GET https://g2.example/ [literal]",
+      "http-client ?<expression> [unknown]",
+    ]);
+  });
+
+  it("stays linear on many instances, direct calls, Request objects and written names", () => {
+    const n = 20_000;
+    const shapes = [
+      'const axios = require("axios");\nconst api = axios.create({ baseURL: "https://x.example/v1" });\nfunction m() {\n' +
+        Array.from({ length: n }, (_, i) => `api.get("/p${i}");`).join("\n") +
+        "\n}",
+      'const axios = require("axios");\nfunction m() {\n' +
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `const a${i} = axios.create({ baseURL: "https://h${i}.example" }); a${i}.get("/x");`,
+        ).join("\n") +
+        "\n}",
+      'const axios = require("axios");\nvar o = r(require("got"));\nfunction m() {\n' +
+        Array.from(
+          { length: n },
+          (_, i) => `axios(u${i}, { method: "post" }); (0, o.default)(v${i});`,
+        ).join("\n") +
+        "\n}",
+      'const axios = require("axios");\nfunction m() {\n' +
+        Array.from(
+          { length: n },
+          (_, i) => `axios.create({ baseURL: "https://c${i}.example" }).get("/x");`,
+        ).join("\n") +
+        "\n}",
+      "function m() {\n" +
+        Array.from({ length: n }, (_, i) => `const r${i} = new Request(u${i}); fetch(r${i});`).join(
+          "\n",
+        ) +
+        "\n}",
+      'const https = require("https");\n' +
+        Array.from(
+          { length: n },
+          (_, i) => `let q${i} = https.request; q${i} = f; q${i}(x${i});`,
+        ).join("\n"),
+      // one name declared and written in every function: 340 s in 0.9.7
+      Array.from(
+        { length: n },
+        (_, i) => `function f${i}() { let h = require("https"); h = 1; h.get("/x"); }`,
+      ).join("\n"),
+      'const axios = require("axios");\n' +
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `function f${i}() { let api = axios.create({ baseURL: "https://h.example" }); api = 1; api.get("/x"); }`,
+        ).join("\n"),
+    ];
+    for (const source of shapes) {
+      const started = performance.now();
+      const found = find(source);
+      // generous: the point is linear against quadratic, and test machines are busy
+      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(found.endpoints.length).toBeLessThanOrEqual(2000);
+    }
   });
 });

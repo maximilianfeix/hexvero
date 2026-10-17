@@ -6,6 +6,18 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Electron analysis
+
+- Requests of the HTTP request libraries are read where the library is bound by `require` or `import`, under the same binding rules as Node's `http`/`https` (shadowing, a written name gives unknown rows, the 2,000-call cap, folded unknown rows): direct calls `axios(url)`, `axios(url, config)`, `axios({ url, method })`, `got(url)`, `got(url, options)`, `got({ url })`, `ky(url)`, `needle(method, url)`, `superagent(method, url)` and `superagent(url)`, also esbuild's `(0, import_axios.default)(url)`, plain and minified. The method is the verb, the method argument or the `method` option written at the call, else the library's default (`GET`); a config passed as a name gives no method. A config written at the call that changes the address (`baseURL`, `prefixUrl`, `url` next to a URL argument, a spread) is an unknown row naming the option.
+- Instances with a base URL: `axios.create({ baseURL })`, `got.extend({ prefixUrl })`, `ky.create({ prefixUrl })` and `ky.extend(…)` (also on esbuild's interop object, on `require("axios")`, and made where they are used), then `api.get("/p")` gives `https://x/p`, joined by each library's rule (axios: an absolute input replaces the base; got and ky 1: the input must be relative without a leading slash, otherwise an unknown row). Only for a declaration never written again whose base is one known string; anything else is an unknown row (`options.baseURL`, `options.prefixUrl`, `<options>`, `<expression>`). Up to 0.9.7 `const api = require("axios").create({ baseURL })` bound `api` as the library itself, and `api.get("/p")` gave the row `/p`; `X = require("m").member` now binds only `.default` (the module), Electron's `.net` and `http(s)`'s `.get`/`.request`.
+- `fetch(new Request(url, init))`, also `globalThis.fetch(…)`, and `fetch(r)` with `const r = new Request(…)` declared before and never written again: the URL and method of the request (`fetch`'s own init `method` first). `Request` must be the global one.
+- A request function held as a value: `const req = https.request`, `const g = require("https").get`, `const { get, request: r } = https`, `const l = net.request`, `const l = E.net.request`, `const { net } = E`, esbuild's `var send = import_https.default.request`; a name written again gives unknown rows.
+- holdout (time-tracker, plain, bundled and minified): `fetch(request)` of `const request = new Request("https://api.punchclock.example/v3/entries", { method: "POST" })` is now read, endpoints 36 → 39 of 42 and endpoint method 12 → 15, 0 false; holdout5's `new Request(TELEMETRY_URL, { method: "POST" })` is now a POST row whose URL stays unknown (`new URL(…).href`), score unchanged; dev, validation, holdout2–4 and holdout6 unchanged. Electron Fiddle 0.38.0 → 0.39.0 endpoints identical to 0.9.7. Stored scans are read again (JS_SCAN_SCHEMA 22; 21 is taken by another change).
+
+### Performance
+
+- A file that declares the same HTTP client name in many functions and assigns it in each (`function fN() { let h = require("https"); h = 1; h.get(…) }`) is read in linear time: a write is matched only with the declarations in the functions around it. 20,000 such functions took 340 s in 0.9.7 and take about 1.3 s; results are unchanged below the bound of 32,000 such questions per file (past it, the name rule of 0.9.2 applies, as past 2,000 writes before).
+
 ## [0.9.8] - 2026-10-17
 
 ### Electron analysis
