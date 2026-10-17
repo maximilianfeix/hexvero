@@ -4078,6 +4078,10 @@ export class ExpressionResolver {
           (this.punct(j - 1, ",") &&
             this.is(j - 4, "ident", "defineProperty") &&
             this.punct(j - 5, ".")) ||
+          (this.punct(j - 1, ",") &&
+            this.is(j - 4, "ident", "set") &&
+            this.punct(j - 5, ".") &&
+            this.is(j - 6, "ident", "Reflect")) ||
           (this.punct(j + 1, ":") && inAssign(j))
         )
           written.add(t.value);
@@ -4437,6 +4441,8 @@ export class ExpressionResolver {
         if (this.thisIsOwner(k - 2, def)) out.push(k + 1);
         continue;
       }
+      // a `static` method is called on the class, never on an instance
+      if (def.static) continue;
       if (receiver?.type === "ident" && instances.has(receiver.value)) {
         out.push(k + 1);
         continue;

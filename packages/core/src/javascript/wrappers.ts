@@ -91,6 +91,10 @@ export interface WrapperRow {
 export type ExternalLookup = (specifier: string, key: string) => WrapperValue | null;
 
 const MAX_SITES = 64;
+/** Tokens of an argument of a key-forwarding wrapper call the resolver reads, at most. */
+const MAX_ARGUMENT_TOKENS = 64;
+/** Calls of key-forwarding wrappers read per file. */
+export const MAX_KEY_CALLS_PER_FILE = 256;
 const MAX_KEY_POSITIONS = 2000;
 const MAX_DEPTH = 12;
 
@@ -165,6 +169,17 @@ export class WrapperReader {
     return this.is(k, "punct", value);
   }
 
+  /**
+   * Member names some module of the application assigns (cross-file stage, `memberWriteNames`):
+   * a call of a wrapper method of such a name may call that other function, and gives no row.
+   * Null: every name may be written.
+   */
+  written: ReadonlySet<string> | null | undefined = undefined;
+
+  private writtenElsewhere(method: string): boolean {
+    return this.written === null || !!this.written?.has(method);
+  }
+
   /** Known wrappers of another module (cross-file stage): reachable as classes of this reader. */
   adopt(cls: WrapperClass): void {
     if (!this.classes.includes(cls)) this.classes.push(cls);
@@ -223,6 +238,8 @@ export class WrapperReader {
   private register(def: FnDef, forward: Forward): boolean {
     const { r } = this;
     if (def.name === null || /^(constructor|__proto__)$/.test(def.name)) return false;
+    // a `static` method is called on the class, never on an instance: no wrapper method
+    if (def.static) return false;
     let start: number | null = null;
     let name = "";
     if (def.owner !== null && !def.arrow) {
@@ -429,11 +446,12 @@ export class WrapperReader {
       }
     // no binding the resolver can read: a parameter, local, pattern, `for … of` head or `catch`
     // of the name around k is something else than the import
-    if (this.r.boundAround(k, name)) return null;
     const imported = this.constants.importOf(name, k);
+    const required = imported ? null : this.constants.requireOf(name, k);
+    if (!imported && !required) return null;
+    if (this.r.boundAround(k, name)) return null;
     if (imported) return this.external?.(imported.specifier, imported.property) ?? null;
-    const required = this.constants.requireOf(name, k);
-    return required ? { kind: "module", specifier: required } : null;
+    return { kind: "module", specifier: required! };
   }
 
   private readonly assignedCache = new Map<string, boolean>();
@@ -661,6 +679,11 @@ export class WrapperReader {
 
   /** What a parameter of def can be: what its every readable call site passes, or a seed. */
   private paramValues(def: FnDef, index: number, depth: number): WrapperValue[] {
+    // a parameter the function assigns (`s = new Map()`) is not what the callers pass
+    const p = def.params[index];
+    if (p?.kind !== "name" || this.declares(def, p.name, true)) return [];
+    // a call of another module passes something that is no instance for it
+    if (this.opaque.get(def)?.has(index)) return [];
     const seeded = this.seeds.get(def)?.get(index);
     if (seeded) return seeded;
     const out: WrapperValue[] = [];
@@ -673,8 +696,18 @@ export class WrapperReader {
     return out;
   }
 
-  /** What another module passes for parameter `index` of def (cross-file stage). */
+  /** Parameters some call of another module passes something else than an instance for. */
+  private readonly opaque = new Map<FnDef, Set<number>>();
+
+  /** What another module passes for parameter `index` of def (cross-file stage); none: not an instance. */
   seed(def: FnDef, index: number, values: WrapperValue[]): void {
+    if (!values.length) {
+      const set = this.opaque.get(def) ?? new Set<number>();
+      set.add(index);
+      this.opaque.set(def, set);
+      this.chains.clear();
+      return;
+    }
     const by = this.seeds.get(def) ?? new Map<number, WrapperValue[]>();
     const have = by.get(index) ?? [];
     for (const v of values) if (!have.some((h) => same(h, v))) have.push(v);
@@ -764,7 +797,8 @@ export class WrapperReader {
   rows(onlySeeded = false): WrapperRow[] {
     const out: WrapperRow[] = [];
     const { r } = this;
-    for (const method of this.methodNames())
+    for (const method of this.methodNames()) {
+      if (this.writtenElsewhere(method)) continue;
       for (const j of r.namePositions(method)) {
         if (this.work-- <= 0) break;
         if (this.work <= 0) return out;
@@ -799,6 +833,7 @@ export class WrapperReader {
           }
         }
       }
+    }
     return out;
   }
 
@@ -809,11 +844,13 @@ export class WrapperReader {
    * parameter another module passes an instance for. With `skipThis`, no call on `this` (or a
    * chain from it): the resolver's in-file rules decide those (static against instance).
    */
-  keyCalls(onlySeeded = false, skipThis = false): KeyCall[] {
+  keyCalls(onlySeeded = false, skipThis = false, max = MAX_KEY_CALLS_PER_FILE): KeyCall[] {
     this.keyCallsOnly = true;
     this.chains.clear();
     try {
-      return this.keyCallsIn(onlySeeded, skipThis);
+      const out = this.keyCallsIn(onlySeeded, skipThis, max);
+      if (out.length > max || this.work <= 0) this.keyCallsCut = true;
+      return out.slice(0, max);
     } finally {
       this.keyCallsOnly = false;
       this.chains.clear();
@@ -823,7 +860,10 @@ export class WrapperReader {
   /** Set while `keyCalls` reads: a bundle's module object is followed to its `module.exports`. */
   private keyCallsOnly = false;
 
-  private keyCallsIn(onlySeeded: boolean, skipThis: boolean): KeyCall[] {
+  /** A `keyCalls` stopped at its limit or at the work budget: calls may be missing. */
+  keyCallsCut = false;
+
+  private keyCallsIn(onlySeeded: boolean, skipThis: boolean, max: number): KeyCall[] {
     const out: KeyCall[] = [];
     const { r } = this;
     const names = new Set<string>();
@@ -831,7 +871,7 @@ export class WrapperReader {
       for (const [m, forwards] of Object.entries(cls.methods))
         if (forwards.some((f) => f.key)) names.add(m);
     for (const method of names) {
-      if (this.r.memberAssigned(method)) continue;
+      if (this.r.memberAssigned(method) || this.writtenElsewhere(method)) continue;
       for (const j of r.namePositions(method)) {
         if (this.work-- <= 0) return out;
         if (!(this.punct(j - 1, ".") || this.punct(j - 1, "?.")) || !this.punct(j + 1, "("))
@@ -859,6 +899,7 @@ export class WrapperReader {
             if (!forward.key) continue;
             const arg = r.argumentAt(j + 1, forward.index);
             if (arg === null || this.punct(arg, ")")) continue;
+            if (out.length > max) return out;
             out.push({
               at: j,
               arg,
@@ -890,7 +931,12 @@ export class WrapperReader {
       values: WrapperValue[];
     }> = [];
     const { r, tokens } = this;
-    for (let j = 0; j + 1 < tokens.length && out.length < 256 && this.work > 0; j++) {
+    this.passesCapped = false;
+    for (let j = 0; j + 1 < tokens.length && this.work > 0; j++) {
+      if (out.length >= 256) {
+        this.passesCapped = true;
+        break;
+      }
       if (tokens[j]!.type !== "ident" || !this.punct(j + 1, "(")) continue;
       if (this.is(j - 1, "ident", "function")) continue;
       let callee: WrapperValue | null = null;
@@ -903,12 +949,18 @@ export class WrapperReader {
       for (let index = 0; index < 6; index++) {
         const arg = r.argumentAt(j + 1, index);
         if (arg === null || this.punct(arg, ")")) break;
+        // also what is no instance, so that a parameter some call passes something else for
+        // is none (`use(new Store()); use(new Map())`)
         const values = this.receiverValues(arg, r.endOf(arg));
-        if (values.length) out.push({ file: callee.file, key: callee.key, index, values });
+        out.push({ file: callee.file, key: callee.key, index, values });
       }
     }
+    if (this.work <= 0) this.passesCapped = true;
     return out;
   }
+
+  /** The last `passes()` did not read every call: what it found is not all that is passed. */
+  passesCapped = false;
 
   /** The export keys of this file that name one of its wrappers or an instance of one. */
   facts(): WrapperFacts | null {
@@ -989,6 +1041,8 @@ export class WrapperReader {
 /** A module as the cross-file stage reads it. */
 export interface WrapperModule {
   id: string;
+  /** The names the module exports itself (scan.ts), not through `export *`. */
+  exports?: readonly string[];
   wrappers?: WrapperFacts;
   reexports?: Record<string, { specifier: string; property: string }>;
   starExports?: string[];
@@ -1012,6 +1066,8 @@ export interface ReadModule {
  */
 export function linkWrappers(input: {
   modules: readonly WrapperModule[];
+  /** Member names some module assigns (`memberWriteNames`); null: any. */
+  written?: ReadonlySet<string> | null;
   edges: ReadonlyArray<{ from: string; to: string; resolved: boolean }>;
   resolve(from: string, specifier: string): string | null;
   open(path: string): ReadModule | null;
@@ -1030,6 +1086,8 @@ export function linkWrappers(input: {
  */
 export function linkKeyWrappers(input: {
   modules: readonly WrapperModule[];
+  /** Member names some module assigns (`memberWriteNames`); null: any. */
+  written?: ReadonlySet<string> | null;
   edges: ReadonlyArray<{ from: string; to: string; resolved: boolean }>;
   resolve(from: string, specifier: string): string | null;
   open(path: string): ReadModule | null;
@@ -1044,6 +1102,7 @@ export function linkKeyWrappers(input: {
 
 function linkWrapperCalls<R>(input: {
   modules: readonly WrapperModule[];
+  written?: ReadonlySet<string> | null;
   edges: ReadonlyArray<{ from: string; to: string; resolved: boolean }>;
   resolve(from: string, specifier: string): string | null;
   open(path: string): ReadModule | null;
@@ -1090,12 +1149,39 @@ function linkWrapperCalls<R>(input: {
         const v = lookup(m.id)(passed.specifier, passed.property, depth + 1);
         if (v) return v;
       }
-      for (const star of m.starExports ?? []) {
-        const v = lookup(m.id)(star, key, depth + 1);
-        if (v && v.kind !== "xfn") return v;
+      // the module's own export of the name wins over `export *`; a name that two `export *`
+      // sources give is ambiguous (ECMAScript leaves it out), and none counts
+      if (key && m.exports?.includes(key)) return { kind: "xfn", file: m.id, key };
+      if (key && key !== "default" && m.starExports?.length) {
+        let found: WrapperValue | null = null;
+        let sources = 0;
+        for (const star of m.starExports) {
+          const starTarget = input.resolve(m.id, star);
+          const t = starTarget ? byId.get(starTarget) : undefined;
+          // a star source that cannot be read may export the name as well
+          if (!t) return null;
+          const v = lookup(m.id)(star, key, depth + 1);
+          if (!v) continue;
+          if (v.kind === "xfn" && !exportsName(t, key, depth + 1)) continue;
+          sources++;
+          found = v;
+        }
+        if (sources > 1) return null;
+        if (found) return found;
       }
       return key ? { kind: "xfn", file: m.id, key } : null;
     };
+  /** Whether module m exports the name, itself or passed on (a few modules deep). */
+  const exportsName = (m: WrapperModule, key: string, depth: number): boolean => {
+    if (depth > 4) return true;
+    if (m.exports?.includes(key) || m.reexports?.[key] || m.wrappers?.exports[key]) return true;
+    for (const star of m.starExports ?? []) {
+      const target = input.resolve(m.id, star);
+      const t = target ? byId.get(target) : undefined;
+      if (!t || exportsName(t, key, depth + 1)) return true;
+    }
+    return false;
+  };
   // modules that pass a provider's exports on are providers as well
   for (let round = 0; round < 3; round++)
     for (const e of input.edges) {
@@ -1115,6 +1201,7 @@ function linkWrapperCalls<R>(input: {
     const reader = read
       ? new WrapperReader(read.tokens, read.resolver, read.constants, lookup(file), file)
       : null;
+    if (reader && input.written !== undefined) reader.written = input.written;
     readers.set(file, reader);
     return reader;
   };
@@ -1137,13 +1224,20 @@ function linkWrapperCalls<R>(input: {
     index: number;
     values: WrapperValue[];
   }> = [];
+  let passesCut = false;
   for (const file of importers) {
     const reader = readerOf(file);
     if (!reader) continue;
     for (const cls of everyClass) reader.adopt(cls);
     add(file, input.read(reader, false));
     passes.push(...reader.passes());
+    if (reader.passesCapped) {
+      passesCut = true;
+      if (!capped.includes(file)) capped.push(file);
+    }
   }
+  // a call not read may pass something else: then no parameter is taken for an instance
+  if (passesCut) passes.length = 0;
   for (const pass of passes) {
     const reader = readerOf(pass.file);
     if (!reader) continue;
@@ -1152,12 +1246,12 @@ function linkWrapperCalls<R>(input: {
     for (const cls of everyClass) reader.adopt(cls);
     reader.seed(def, pass.index, pass.values);
   }
-  for (const file of new Set(passes.map((p) => p.file)).values()) {
+  for (const file of new Set(passes.filter((p) => p.values.length).map((p) => p.file)).values()) {
     const reader = readers.get(file);
     if (reader) add(file, input.read(reader, true));
   }
   for (const [file, reader] of readers)
-    if (reader?.capped && !capped.includes(file)) capped.push(file);
+    if ((reader?.capped || reader?.keyCallsCut) && !capped.includes(file)) capped.push(file);
   return { rows: out, capped };
 }
 
@@ -1174,8 +1268,19 @@ export function keyCallRows(
   calls: readonly KeyCall[],
   open: (file: string) => ReadModule | null,
   lookUp: ((ref: { specifier: string; property: string }) => string | null) | null,
+  options: {
+    /**
+     * Kinds whose unknown rows the caller drops (it has one already): a call of such a kind whose
+     * argument is no literal or constant is passed over instead of read through the resolver.
+     * Kinds of the unknown rows made here are added.
+     */
+    unknownKinds?: Set<string>;
+    /** Keys already evaluated, by wrapper module, key token and value (shared across calls). */
+    keys?: Map<string, string[] | null>;
+  } = {},
 ): Array<Candidate & { unread?: true }> {
   const { tokens, constants, resolver } = caller;
+  const cache = options.keys ?? new Map<string, string[] | null>();
   const out: Array<Candidate & { unread?: true }> = [];
   const seen = new Map<string, Candidate>();
   const source = caller.source;
@@ -1189,7 +1294,9 @@ export function keyCallRows(
     else if (named && "ref" in named) {
       const found = !named.ref.before && !named.ref.after && lookUp ? lookUp(named.ref) : null;
       values = found === null ? null : [found];
-    } else {
+    } else if (options.unknownKinds?.has(call.forward.api)) continue;
+    // a long argument (a call nested in calls) is not followed: an unknown row
+    else if (resolver.endOf(call.arg) - call.arg <= MAX_ARGUMENT_TOKENS) {
       const found = resolver.resolveArgument(call.arg);
       if (
         found &&
@@ -1206,7 +1313,12 @@ export function keyCallRows(
       const at = call.forward.key.at;
       const def = provider.resolver.functionAt(at);
       for (const v of values!) {
-        const got = def ? provider.resolver.keyWith(at, def, call.forward.index, v) : null;
+        const id = `${call.cls.file}\u0000${at}\u0000${call.forward.index}\u0000${v}`;
+        let got = cache.get(id);
+        if (got === undefined) {
+          got = def ? provider.resolver.keyWith(at, def, call.forward.index, v) : null;
+          cache.set(id, got);
+        }
         if (!got) {
           unread = true;
           break;
@@ -1250,7 +1362,98 @@ export function keyCallRows(
       };
       seen.set(id, row);
       out.push(row);
+      if (unread) options.unknownKinds?.add(kind);
     }
   }
   return out;
+}
+
+/** Member names a module records for the other modules' wrapper calls, at most. */
+const MAX_MEMBER_WRITES = 20_000;
+
+/**
+ * The member names a module assigns a value to that may be a function, for the cross-module
+ * stage (a third module can replace a wrapper's method: `Store.prototype.get = f`, `s.get = f`):
+ * `x.NAME = v`, `x["NAME"] = v`, the keys of an object literal passed to `Object.assign` or
+ * `Object.defineProperties`, and the name given to `Object.defineProperty`,
+ * `Reflect.defineProperty` or `Reflect.set`. As in the resolver's in-file rule, a literal, an
+ * object or array literal, `!0` or `-1` is no function. Writes on `this`, `exports` and
+ * `module.exports` define the module's own objects and are left out. Linear in the tokens; null
+ * when more names than MAX_MEMBER_WRITES are written (then every name counts as written).
+ */
+export function memberWriteNames(tokens: readonly Token[]): string[] | null {
+  const names = new Set<string>();
+  const punct = (k: number, v: string): boolean =>
+    tokens[k]?.type === "punct" && tokens[k]!.value === v;
+  const ident = (k: number, v?: string): boolean =>
+    tokens[k]?.type === "ident" && (v === undefined || tokens[k]!.value === v);
+  const mayBeFunction = (j: number): boolean => {
+    const v = tokens[j];
+    if (!v) return false;
+    if (v.type === "string" || v.type === "number" || v.type === "template") return false;
+    if (v.type === "ident" && /^(true|false|null|void|undefined)$/.test(v.value)) return false;
+    return !(v.type === "punct" && /^(\{|\[|!|-)$/.test(v.value));
+  };
+  const assigns = (j: number): boolean =>
+    tokens[j]?.type === "punct" && tokens[j]!.value === "=" && mayBeFunction(j + 1);
+  /** `this.`, `exports.`, `module.exports.` in front of the member at k. */
+  const own = (k: number): boolean =>
+    ident(k - 2, "this") ||
+    (ident(k - 2, "exports") && !punct(k - 3, ".")) ||
+    (ident(k - 2, "exports") && punct(k - 3, ".") && ident(k - 4, "module"));
+  // open brackets: whether a `{` holds the keys of an Object.assign / defineProperties argument
+  const stack: Array<{ value: string; keys: boolean; call: boolean }> = [];
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type === "punct") {
+      if (t.value === "(" || t.value === "[" || t.value === "{") {
+        const call =
+          t.value === "(" &&
+          (ident(k - 1, "assign") || ident(k - 1, "defineProperties")) &&
+          punct(k - 2, ".") &&
+          ident(k - 3, "Object");
+        const keys = t.value === "{" && !!stack.at(-1)?.call;
+        stack.push({ value: t.value, keys, call });
+        // `Object.defineProperty(x, "NAME"`, `Reflect.set(x, "NAME"`: the second argument
+        if (
+          t.value === "(" &&
+          punct(k - 2, ".") &&
+          ((ident(k - 1, "defineProperty") &&
+            (ident(k - 3, "Object") || ident(k - 3, "Reflect"))) ||
+            ((ident(k - 1, "set") || ident(k - 1, "defineProperty")) && ident(k - 3, "Reflect")))
+        ) {
+          let depth = 0;
+          for (let j = k + 1; j < tokens.length && j < k + 400; j++) {
+            const x = tokens[j]!;
+            if (x.type === "punct" && /^[([{]$/.test(x.value)) depth++;
+            else if (x.type === "punct" && /^[)\]}]$/.test(x.value)) {
+              if (depth-- === 0) break;
+            } else if (depth === 0 && x.type === "punct" && x.value === ",") {
+              const name = tokens[j + 1];
+              // a computed name is not known (a limit, see docs/electron-findings.md)
+              if (name?.type === "string") names.add(name.value);
+              break;
+            }
+          }
+        }
+      } else if (t.value === ")" || t.value === "]" || t.value === "}") stack.pop();
+      continue;
+    }
+    if (t.type === "string") {
+      if (punct(k - 1, "[") && punct(k + 1, "]") && assigns(k + 2)) names.add(t.value);
+      else if (stack.at(-1)?.keys && (punct(k - 1, "{") || punct(k - 1, ",")) && punct(k + 1, ":"))
+        names.add(t.value);
+      continue;
+    }
+    if (t.type !== "ident") continue;
+    if (punct(k - 1, ".") && assigns(k + 1) && !own(k)) names.add(t.value);
+    else if (
+      stack.at(-1)?.keys &&
+      (punct(k - 1, "{") || punct(k - 1, ",")) &&
+      (punct(k + 1, ":") || punct(k + 1, ",") || punct(k + 1, "}") || punct(k + 1, "("))
+    )
+      names.add(t.value);
+    if (names.size > MAX_MEMBER_WRITES) return null;
+  }
+  return [...names].toSorted();
 }

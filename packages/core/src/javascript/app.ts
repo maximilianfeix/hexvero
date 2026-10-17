@@ -23,6 +23,8 @@ import { summarizeSourceMap } from "./sourcemap.js";
 import {
   keyCallRows,
   linkKeyWrappers,
+  MAX_KEY_CALLS_PER_FILE,
+  memberWriteNames,
   linkWrappers,
   type ReadModule,
   type WrapperFacts,
@@ -71,6 +73,10 @@ export interface JsModule {
   wrappers?: WrapperFacts;
   /** Storage-key wrapper classes and objects the file exports, for calls in other files. */
   keyWrappers?: WrapperFacts;
+  /** Member names the file assigns a possible function to (wrappers.ts `memberWriteNames`). */
+  memberWrites?: string[];
+  /** More member names are assigned than are kept, so every name may be written. */
+  memberWritesAll?: true;
 }
 
 /** How far back a setting may be from `webPreferences` / `BrowserWindow` to count as a window option. */
@@ -2917,6 +2923,8 @@ export interface FileTokenFacts {
   candidates: ReturnType<typeof findCandidates> | null;
   /** Storage-key wrappers the file exports (wrappers.ts), from its storage calls with an open key. */
   keyWrappers: WrapperFacts | null;
+  /** `memberWriteNames` of the file; null: more than are kept. */
+  memberWrites: string[] | null;
   bridge: ReturnType<typeof bridgeMembers> | null;
   navigation: NavigationHandler[] | null;
 }
@@ -2945,11 +2953,13 @@ export function readFileTokens(
   let ambient: ReturnType<typeof collectAmbient> | null = null;
   let candidates: ReturnType<typeof findCandidates> | null = null;
   let keyWrappers: WrapperFacts | null = null;
+  let memberWrites: string[] | null = [];
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
   let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
     onTokens: (tokens, truncated, context) => {
       keep?.(tokens);
+      memberWrites = memberWriteNames(tokens);
       if (source.includes("enableSandbox")) {
         // Read from tokens, so a comment or a string is no call. Only a statement at the top
         // of the file that no condition guards is certain to run.
@@ -3232,33 +3242,33 @@ export function readFileTokens(
       // Endpoints, storage and URL literals: only where the text can contain one at all.
       if (CAN_HOLD_CANDIDATES.test(source)) {
         candidates = findCandidates(tokens, source, undefined, context.aliases, context.constants);
-        // storage wrappers other modules may call: only an exported class or object counts
-        if (candidates.openKeys?.length && /export|module\.exports|exports\./.test(source)) {
-          const reader = new WrapperReader(
-            tokens,
-            new ExpressionResolver(tokens, context.constants),
-            context.constants,
-          );
-          reader.findKeyWrappers(candidates.openKeys);
-          keyWrappers = reader.facts();
-        }
-        // and calls of the file's own ones on proven instances (one bundle: esbuild, webpack)
-        // that the resolver's in-file reading did not give
+        // Storage wrappers: the ones other modules may call (only an exported class or object
+        // counts), and calls of the file's own ones on proven instances (one bundle: esbuild,
+        // webpack) that the resolver's in-file reading did not give. One reader for both.
         if (candidates.openKeys?.length) {
           const resolver = new ExpressionResolver(tokens, context.constants);
           const reader = new WrapperReader(tokens, resolver, context.constants);
           reader.findKeyWrappers(candidates.openKeys);
-          const calls = reader.classes.length ? reader.keyCalls(false, true) : [];
-          if (calls.length)
-            addOwnKeyRows(
-              candidates,
-              keyCallRows(
-                { source, tokens, constants: context.constants, resolver },
-                calls,
-                () => null,
-                null,
-              ),
-            );
+          if (reader.classes.length) {
+            if (/export|module\.exports|exports\./.test(source)) keyWrappers = reader.facts();
+            const calls = reader.keyCalls(false, true);
+            if (reader.keyCallsCut) candidates.keyCallsCapped = true;
+            if (calls.length) {
+              const unknownKinds = new Set<string>(
+                candidates.storage.filter((r) => r.value === null).map((r) => r.kind),
+              );
+              addOwnKeyRows(
+                candidates,
+                keyCallRows(
+                  { source, tokens, constants: context.constants, resolver },
+                  calls,
+                  () => null,
+                  null,
+                  { unknownKinds: new Set(unknownKinds) },
+                ),
+              );
+            }
+          }
         }
         delete candidates.openKeys;
       }
@@ -3286,6 +3296,7 @@ export function readFileTokens(
     preferenceObjects: [...preferenceObjects],
     candidates,
     keyWrappers,
+    memberWrites,
     bridge,
     navigation,
   };
@@ -3478,6 +3489,11 @@ export function analyzeJavaScriptTree(
         facts.limitations.push({
           code: "client_calls_skipped",
           message: `${file.path}: more than 2,000 calls of HTTP client modules (node:https, node:http, Electron's net) were checked; the further ones give no endpoint rows.`,
+        });
+      if (cand.keyCallsCapped && facts.limitations.length < 200)
+        facts.limitations.push({
+          code: "storage_wrappers_capped",
+          message: `${file.path}: more calls of the file's own storage wrappers than the ${MAX_KEY_CALLS_PER_FILE} per file that are read (or the reader's work budget ran out); keys passed through the further calls are not read at each call.`,
         });
       if (cand.wrappersSkipped && facts.limitations.length < 200)
         facts.limitations.push({
@@ -3956,6 +3972,11 @@ export function analyzeJavaScriptTree(
       ...(scan.unevaluated ? { unevaluated: scan.unevaluated } : {}),
       ...(scan.wrappers ? { wrappers: scan.wrappers } : {}),
       ...(tokenFacts.keyWrappers ? { keyWrappers: tokenFacts.keyWrappers } : {}),
+      ...(tokenFacts.memberWrites === null
+        ? { memberWritesAll: true as const }
+        : tokenFacts.memberWrites.length
+          ? { memberWrites: tokenFacts.memberWrites }
+          : {}),
       ...(open && (open.facts.defines || open.facts.calls || open.facts.replies)
         ? { ambient: open.facts }
         : {}),
@@ -4103,8 +4124,13 @@ export function analyzeJavaScriptTree(
     }
     return modulesRead.get(path) ?? null;
   };
+  // Member names any module assigns: a wrapper method of such a name may be replaced there.
+  const assignedMembers: Set<string> | null = modules.some((m) => m.memberWritesAll)
+    ? null
+    : new Set(modules.flatMap((m) => m.memberWrites ?? []));
   const linked = linkWrappers({
     modules,
+    written: assignedMembers,
     edges,
     resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
     open: openModule,
@@ -4295,8 +4321,10 @@ export function analyzeJavaScriptTree(
   // row at the call. Nothing is read when no module exports such a wrapper.
   const keyRows = linkedKeyRows(
     linkKeyWrappers({
+      written: assignedMembers,
       modules: modules.map((m) => ({
         id: m.id,
+        exports: m.exports,
         ...(m.keyWrappers ? { wrappers: m.keyWrappers } : {}),
         ...(m.reexports ? { reexports: m.reexports } : {}),
         ...(m.starExports ? { starExports: m.starExports } : {}),
@@ -4778,8 +4806,13 @@ function linkedKeyRows(
   limitations: Limitation[],
 ): AppCandidate[] {
   const out: AppCandidate[] = [];
+  const keys = new Map<string, string[] | null>();
   let capped = linked.capped.length > 0;
   for (const [file, calls] of [...linked.rows].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
+    if (out.length >= MAX_KEY_CALLS) {
+      capped = true;
+      break;
+    }
     const caller = open(file);
     if (!caller) continue;
     const rows = keyCallRows(
@@ -4787,6 +4820,9 @@ function linkedKeyRows(
       calls,
       (f) => open(f),
       (ref) => lookUp(file, ref),
+      {
+        keys,
+      },
     );
     for (const row of rows) {
       if (out.length >= MAX_KEY_CALLS) {

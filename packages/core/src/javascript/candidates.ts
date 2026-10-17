@@ -119,6 +119,8 @@ export interface Candidates {
    * Storage calls whose key could not be read where it is written (at most MAX_OPEN_KEYS): the
    * token the key starts at, for the wrappers other modules call (wrappers.ts).
    */
+  /** More calls of the file's own storage wrappers than are read (app.ts). */
+  keyCallsCapped?: true;
   openKeys?: Array<{ at: number; kind: Candidate["kind"]; op?: NonNullable<Candidate["op"]> }>;
 }
 

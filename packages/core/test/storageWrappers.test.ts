@@ -95,6 +95,15 @@ const ESM_KEYS = [
   "localStorage write app.fontSize",
 ];
 
+/** Keys and channels of the analysis that the fixture marks as false (`F_…`). */
+const falseOnes = (files: Record<string, string>): string[] => {
+  const info = analyze(files);
+  return [
+    ...info.storage.flatMap((r) => (r.value?.includes("F_") ? [r.value] : [])),
+    ...info.ipcChannels.flatMap((c) => (c.channel.includes("F_") ? [c.channel] : [])),
+  ];
+};
+
 /** The rows read at calls in renderer.js. */
 const look = (renderer: string, store = WEB_STORE): string[] =>
   via(analyze({ "web-store.js": store, "renderer.js": renderer })).filter((r) =>
@@ -272,6 +281,141 @@ local.get("x");
 `),
       ).toEqual([]);
     });
+  });
+
+  describe("look-alikes found in review (R5), shared with the IPC wrappers", () => {
+    const STORE_CJS = `class Store { get(k) { return localStorage.getItem("app." + k); } }\nmodule.exports = { Store };\n`;
+    const ESTORE = `export class Store { get(k) { return localStorage.getItem("app." + k); } }\n`;
+    const ROUTER = `const { ipcMain } = require("electron");\nclass Router { handle(ch, f) { ipcMain.handle(ch, f); } }\nmodule.exports = { Router };\n`;
+    it("a static method is no method of an instance", () => {
+      expect(
+        falseOnes({
+          "store.js": `class Store { static get(k) { return localStorage.getItem("app." + k); } get(k) { return k; } }\nmodule.exports = { Store };\n`,
+          "r.js": `const { Store } = require("./store");\nnew Store().get("F_static");\n`,
+        }),
+      ).toEqual([]);
+      expect(
+        falseOnes(
+          bundled(
+            {
+              "a.js": `export class Store { static get(k) { return localStorage.getItem("app." + k); } get(k) { return k; } }\n`,
+              "entry.js": `import { Store } from "./a.js";\nnew Store().get("F_static_inst");\n`,
+            },
+            "entry.js",
+            true,
+          ),
+        ),
+      ).toEqual([]);
+      expect(
+        falseOnes({
+          "router.js": `const { ipcMain } = require("electron");\nclass Router { static handle(ch, f) { ipcMain.handle(ch, f); } handle(ch, f) { return ch; } }\nmodule.exports = { Router };\n`,
+          "m.js": `const { Router } = require("./router");\nnew Router().handle("F_static_inst", 1);\n`,
+        }),
+      ).toEqual([]);
+    });
+    it("a method replaced from a third module", () => {
+      expect(
+        falseOnes({
+          "store.js": STORE_CJS,
+          "patch.js": `const { Store } = require("./store");\nStore.prototype.get = function (k) { return k; };\n`,
+          "r.js": `require("./patch");\nconst { Store } = require("./store");\nnew Store().get("F_proto_third");\n`,
+        }),
+      ).toEqual([]);
+      expect(
+        falseOnes({
+          "store.js": `class Store { get(k) { return localStorage.getItem("app." + k); } }\nmodule.exports = new Store();\n`,
+          "patch.js": `const s = require("./store");\ns.get = (k) => k;\n`,
+          "r.js": `require("./patch");\nconst s = require("./store");\ns.get("F_inst_third");\n`,
+        }),
+      ).toEqual([]);
+      expect(
+        falseOnes({
+          "store.js": STORE_CJS,
+          "r.js": `const { Store } = require("./store");\nconst s = new Store();\nReflect.set(s, "get", (k) => k);\ns.get("F_reflect");\n`,
+        }),
+      ).toEqual([]);
+      expect(
+        falseOnes({
+          "router.js": ROUTER,
+          "patch.js": `const { Router } = require("./router");\nRouter.prototype.handle = function (c) { return c; };\n`,
+          "m.js": `require("./patch");\nconst { Router } = require("./router");\nnew Router().handle("F_proto", 1);\n`,
+        }),
+      ).toEqual([]);
+    });
+    it("export *: the module's own export wins, two sources of one name are ambiguous", () => {
+      expect(
+        falseOnes({
+          "store.js": ESTORE,
+          "index.js": `export * from "./store.js";\nexport class Store { get(k) { return k; } }\n`,
+          "r.js": `import { Store } from "./index.js";\nnew Store().get("F_star_local_wins");\n`,
+        }),
+      ).toEqual([]);
+      expect(
+        falseOnes({
+          "store.js": ESTORE,
+          "other.js": `export class Store { get(k) { return k; } }\n`,
+          "index.js": `export * from "./store.js";\nexport * from "./other.js";\n`,
+          "r.js": `import { Store } from "./index.js";\nnew Store().get("F_star_ambiguous");\n`,
+        }),
+      ).toEqual([]);
+      // one source only still counts
+      expect(
+        keys(
+          analyze({
+            "store.js": ESTORE,
+            "index.js": `export * from "./store.js";\n`,
+            "r.js": `import { Store } from "./index.js";\nnew Store().get("star_ok");\n`,
+          }),
+        ),
+      ).toContain("localStorage read app.star_ok");
+    });
+    it("a parameter the callee assigns, or that other calls pass something else for", () => {
+      expect(
+        falseOnes({
+          "store.js": STORE_CJS,
+          "use.js": `exports.use = function (s) { s = new Map(); s.get("F_seed_reassigned"); };\n`,
+          "r.js": `const { Store } = require("./store");\nconst { use } = require("./use");\nuse(new Store());\n`,
+        }),
+      ).toEqual([]);
+      expect(
+        falseOnes({
+          "store.js": STORE_CJS,
+          "use.js": `exports.use = function (s) { s.get("F_mixed"); };\n`,
+          "r.js": `const { Store } = require("./store");\nconst { use } = require("./use");\nuse(new Store());\nuse(new Map());\n`,
+        }),
+      ).toEqual([]);
+      expect(
+        falseOnes({
+          "router.js": ROUTER,
+          "use.js": `exports.use = function (r) { r = new Map(); r.handle("F_ipc_seed_reassigned", 1); };\n`,
+          "m.js": `const { Router } = require("./router");\nconst { use } = require("./use");\nuse(new Router());\n`,
+        }),
+      ).toEqual([]);
+      // the plain seeded case still reads
+      expect(
+        keys(
+          analyze({
+            "store.js": STORE_CJS,
+            "use.js": `exports.use = function (s) { s.get("seed_ok"); };\n`,
+            "r.js": `const { Store } = require("./store");\nconst { use } = require("./use");\nuse(new Store());\n`,
+          }),
+        ),
+      ).toContain("localStorage read app.seed_ok");
+    });
+  });
+
+  it("caps the calls of a file's own wrappers and says so", () => {
+    const names = Array.from({ length: 16 }, (_, i) => `m${i}`);
+    const source =
+      `class S { ${names.map((m) => `${m}(k) { return localStorage.getItem("p." + k + window.z); }`).join(" ")} }\nexport default S;\n` +
+      Array.from(
+        { length: 400 },
+        (_, i) => `const s${i} = new S(); ${names.map((m) => `s${i}.${m}(q${i});`).join(" ")}`,
+      ).join("\n");
+    const started = performance.now();
+    const info = analyze({ "e.js": source });
+    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(info.limitations.map((l) => l.code)).toContain("storage_wrappers_capped");
   });
 
   it("stays linear and says so when calls are capped", () => {

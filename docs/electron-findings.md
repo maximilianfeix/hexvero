@@ -328,8 +328,19 @@ same). A method
 name another class also defines counts only on such an instance. The name must mean the import at
 the call: a parameter, local, destructuring pattern, `for … of` head or `catch` binding of it in
 between is something else, and gives no row. A method whose name is assigned as a member in the
-calling module or in the wrapper's (`local.get = f`, `Object.assign(x, { get })`) gives no row in
-that module.
+calling module or in the wrapper's (`local.get = f`, `Object.assign(x, { get })`, `Reflect.set(x,
+"get", f)`) gives no row in that module, and one that any other module of the application assigns
+(`Store.prototype.get = f` or `s.get = f` in a third module, a key of `Object.assign` or
+`Object.defineProperties`, the name of `Object.defineProperty`, `Reflect.defineProperty` or
+`Reflect.set`) gives no row anywhere: each module keeps the names it assigns a value that may be a
+function to (not on `this`, `exports` or `module.exports`; up to 20,000, beyond that every name
+counts as assigned). A name computed at run time (`Reflect.set(s, name, f)`) is not seen. A
+`static` method is called on the class, never on an instance, and is no wrapper method (this also
+holds for IPC wrappers and for the in-file rules above). Of `export *`, the module's own export of
+a name wins, and a name two `export *` sources give is ambiguous and not followed. A parameter of
+another module's function counts as an instance only when every call the calling modules make
+passes one, and the function does not assign the parameter (`use(s) { s = new Map(); … }`); when
+a calling module's calls are not all read, no parameter counts.
 
 The argument is read in the calling module (a literal, a constant, another module's constant such
 as a member of a compiled string enum, `StorageKey.Theme`, or what the resolver reads through
@@ -340,9 +351,12 @@ that value for the parameter (`key(name)` above, also when the minifier declares
 not read whole is an unknown row at the call with the argument's name as `expression` (in one
 bundle only when the file has no unknown row of that kind already: the storage call inside the
 wrapper keeps its own unread row, as before). Calls on `this` stay with the in-file rules above.
-Bounds: the storage calls with an unread key of at most 64 per file are looked at, the readers'
-work budget per file, at most 200 calling files and 2,000 such rows per application; past them
-the limitation `storage_wrappers_capped` says so. Not followed across modules: a plain function as
+Bounds: the storage calls with an unread key of at most 64 per file are looked at, at most 256
+wrapper calls per file are read (an argument longer than 64 tokens is not followed through the
+resolver: an unknown row), within the readers' work budget per file, at most 200 calling files and
+2,000 such rows per application; past them the limitation `storage_wrappers_capped` says so. In
+one bundle, a call whose argument is no literal or constant is not read through the resolver once
+the file has an unknown row of its kind. Not followed across modules: a plain function as
 the wrapper (`exports.save = (key, v) => localStorage.setItem(key, v)`, `import { save }`), an
 electron-store instance a wrapper module holds, and HTTP requests made through a wrapper of
 another module (endpoints below).
