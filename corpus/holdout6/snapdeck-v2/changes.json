@@ -1,0 +1,141 @@
+{
+  "from": "../snapdeck/src",
+  "prependCommentLines": 3,
+  "edits": [
+    {
+      "file": "shared/channels.js",
+      "find": "  LIBRARY_REVEAL: LIBRARY + \"reveal\",\n",
+      "replace": ""
+    },
+    {
+      "file": "shared/channels.js",
+      "find": "  SHOT_SHARE: \"shot:share\",\n",
+      "replace": "  SHOT_SHARE: \"shot:share\",\n  SHOT_OCR: \"shot:ocr\",\n"
+    },
+    {
+      "file": "shared/channels.js",
+      "find": "  PREFS_GET: \"prefs:get\",\n  PREFS_SET: \"prefs:set\",\n",
+      "replace": "  PREFERENCES_GET: \"prefs:get\",\n  PREFERENCES_SET: \"prefs:set\",\n"
+    },
+    {
+      "file": "shared/channels.js",
+      "find": "ANNOTATOR_DIRTY: \"annotator:dirty\"",
+      "replace": "ANNOTATOR_DIRTY: \"annotator:modified\""
+    },
+    {
+      "file": "main/prefs.js",
+      "find": "ipc.handle(Channels.PREFS_GET,",
+      "replace": "ipc.handle(Channels.PREFERENCES_GET,"
+    },
+    {
+      "file": "main/prefs.js",
+      "find": "ipc.handle(Channels.PREFS_SET,",
+      "replace": "ipc.handle(Channels.PREFERENCES_SET,"
+    },
+    {
+      "file": "main/ipc.js",
+      "find": "const ROUTES = [\n  { channel: Channels.LIBRARY_LIST, kind: \"handle\", fn: () => library.list() },\n  { channel: Channels.LIBRARY_DELETE, kind: \"handle\", fn: (_event, id) => library.remove(id) },\n  { channel: Channels.LIBRARY_REVEAL, kind: \"on\", fn: (_event, id) => library.reveal(id) },\n  { channel: Channels.CAPTURE_START, kind: \"on\", fn: () => capture.start() },\n",
+      "replace": "const ROUTES = [\n  { channel: Channels.CAPTURE_START, kind: \"on\", fn: () => capture.start() },\n  { channel: Channels.LIBRARY_LIST, kind: \"handle\", fn: () => library.list() },\n  { channel: Channels.LIBRARY_DELETE, kind: \"handle\", fn: (_event, id) => library.remove(id) },\n"
+    },
+    {
+      "file": "main/ipc.js",
+      "find": "  handleSafe(Channels.SHOT_SHARE, (id) => services.shareShot(id));\n",
+      "replace": "  handleSafe(Channels.SHOT_SHARE, (id) => services.shareShot(id));\n  handleSafe(Channels.SHOT_OCR, (id) => services.recognizeText(id));\n"
+    },
+    {
+      "file": "main/library.js",
+      "find": "const { app, shell } = require(\"electron\");",
+      "replace": "const { app } = require(\"electron\");"
+    },
+    {
+      "file": "main/library.js",
+      "find": "function reveal(id) {\n  const shot = get(id);\n  if (shot) shell.showItemInFolder(shot.file);\n}\n\nmodule.exports = { list, get, save, addCapture, remove, reveal };",
+      "replace": "module.exports = { list, get, save, addCapture, remove };"
+    },
+    {
+      "file": "main/services.js",
+      "find": "const SHARE_API = \"https://share.snapdeck.example/api/v3\";\n",
+      "replace": "const SHARE_API = \"https://share.snapdeck.example/api/v3\";\nconst OCR_ENDPOINT = \"https://ocr.textlens.example/v2/recognize\";\n"
+    },
+    {
+      "file": "main/services.js",
+      "find": "module.exports = { ShareClient, shareShot, SHARE_API };",
+      "replace": "/** Sends the capture to the text recognition service and returns the recognized text. */\nasync function recognizeText(id) {\n  const library = require(\"./library\");\n  const shot = library.get(id);\n  if (!shot) throw new Error(`no capture ${id}`);\n  const response = await fetch(OCR_ENDPOINT, {\n    method: \"POST\",\n    headers: { \"content-type\": \"image/png\" },\n    body: fs.readFileSync(shot.file),\n  });\n  if (!response.ok) throw new Error(`recognition failed: ${response.status}`);\n  return (await response.json()).text;\n}\n\nmodule.exports = { ShareClient, shareShot, recognizeText, SHARE_API };"
+    },
+    {
+      "file": "main/windows.js",
+      "find": "  // The annotator preload reads the PNG with fs, which a sandboxed preload cannot do.\n  const options = windowOptions(\"preload-annotator.js\", { sandbox: false }, { width: 1280, height: 860 });",
+      "replace": "  // The annotator preload reads the PNG with fs, which a sandboxed preload cannot do.\n  // The blur and pixelate tools load the native image module in the page itself.\n  const options = windowOptions(\n    \"preload-annotator.js\",\n    { sandbox: false, nodeIntegration: true },\n    { width: 1280, height: 860 },\n  );"
+    },
+    {
+      "file": "main/windows.js",
+      "find": "let libraryWindow = null;\n",
+      "replace": "const OVERLAY_PREFS = {\n  preload: appFile(\"preload-overlay.js\"),\n  contextIsolation: true,\n  nodeIntegration: false,\n  sandbox: true,\n  // The magnifier draws the file:// frame into a canvas and reads it back with\n  // getImageData; with web security on, the canvas is tainted and that throws.\n  webSecurity: false,\n};\n\nlet libraryWindow = null;\n"
+    },
+    {
+      "file": "main/windows.js",
+      "find": "  const webPreferences = {\n    preload: appFile(\"preload-overlay.js\"),\n    contextIsolation: true,\n    nodeIntegration: false,\n    sandbox: true,\n    // The magnifier draws the file:// frame into a canvas and reads it back with\n    // getImageData; with web security on, the canvas is tainted and that throws.\n    webSecurity: false,\n  };\n  const overlayWindow",
+      "replace": "  const overlayWindow"
+    },
+    {
+      "file": "main/windows.js",
+      "find": "    skipTaskbar: true,\n    webPreferences,\n",
+      "replace": "    skipTaskbar: true,\n    webPreferences: OVERLAY_PREFS,\n"
+    },
+    {
+      "file": "preload-library.js",
+      "find": "const api = {\n  platform: process.platform,\n  ...invokers(INVOKE),\n",
+      "replace": "const api = {\n  ...invokers(INVOKE),\n"
+    },
+    {
+      "file": "preload-library.js",
+      "find": "  revealShot: (id) => ipcRenderer.send(\"library:reveal\", id),\n",
+      "replace": ""
+    },
+    {
+      "file": "preload-library.js",
+      "find": "    return () => ipcRenderer.removeListener(\"menu:command\", listener);\n  },\n};",
+      "replace": "    return () => ipcRenderer.removeListener(\"menu:command\", listener);\n  },\n  platform: process.platform,\n};"
+    },
+    {
+      "file": "preload-annotator.js",
+      "find": "ipcRenderer.invoke(Channels.PREFS_GET)",
+      "replace": "ipcRenderer.invoke(Channels.PREFERENCES_GET)"
+    },
+    {
+      "file": "preload-annotator.js",
+      "find": "  shareShot: (id) => request(Channels.SHOT_SHARE, id),\n",
+      "replace": "  shareShot: (id) => request(Channels.SHOT_SHARE, id),\n  recognizeText: (id) => request(Channels.SHOT_OCR, id),\n"
+    },
+    {
+      "file": "renderer/settings.js",
+      "find": "  StorageKey[\"StrokeWidth\"] = \"snapdeck:strokeWidth\";\n",
+      "replace": "  StorageKey[\"StrokeWidth\"] = \"snapdeck:strokeWidth\";\n  StorageKey[\"OcrLanguage\"] = \"snapdeck:ocrLanguage\";\n"
+    },
+    {
+      "file": "renderer-annotator.js",
+      "find": "document.querySelector(\"#share\").addEventListener(\"click\", share);\n",
+      "replace": "document.querySelector(\"#share\").addEventListener(\"click\", share);\ndocument.querySelector(\"#ocr-language\").value = settings.get(StorageKey.OcrLanguage, \"eng\");\ndocument.querySelector(\"#ocr-language\").addEventListener(\"change\", (event) => {\n  settings.set(StorageKey.OcrLanguage, event.target.value);\n});\ndocument.querySelector(\"#ocr\").addEventListener(\"click\", async () => {\n  status.textContent = \"Reading text…\";\n  const text = await bridge.recognizeText(shot.id);\n  await navigator.clipboard.writeText(text);\n  status.textContent = \"Text copied\";\n});\n"
+    },
+    {
+      "file": "annotator.html",
+      "find": "      <button id=\"share\">Share</button>\n",
+      "replace": "      <button id=\"share\">Share</button>\n      <select id=\"ocr-language\"><option value=\"eng\">English</option><option value=\"deu\">Deutsch</option></select>\n      <button id=\"ocr\">Copy text</button>\n"
+    },
+    {
+      "file": "renderer-library.js",
+      "find": "    button(\"Show in folder\", () => api.revealShot(shot.id)),\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer-overlay.js",
+      "find": "const box = document.querySelector(\"#selection\");\nlet rect = JSON.parse(localStorage.getItem(\"overlay.lastRegion\") || \"null\");",
+      "replace": "const LAST_REGION_KEY = \"overlay.lastRegion\";\nconst box = document.querySelector(\"#selection\");\nlet rect = JSON.parse(localStorage.getItem(LAST_REGION_KEY) || \"null\");"
+    },
+    {
+      "file": "renderer-overlay.js",
+      "find": "localStorage.setItem(\"overlay.lastRegion\", JSON.stringify(rect));",
+      "replace": "localStorage.setItem(LAST_REGION_KEY, JSON.stringify(rect));"
+    }
+  ]
+}

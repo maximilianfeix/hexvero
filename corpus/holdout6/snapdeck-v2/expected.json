@@ -1,0 +1,1519 @@
+{
+  "case": "snapdeck-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "inputs": [
+    "holdout6/snapdeck-v2.plain.asar"
+  ],
+  "base": "holdout6/snapdeck.plain.asar",
+  "method": "Every expectation was written from the sources by reading them. No analysis tool was run on them, and no tool's detectors, source code or output were looked at. Line numbers were looked up by a scratch script that finds the line of a given piece of text and fails unless it occurs exactly once. A second scratch script ran main.js, capture, share and delete flows and all three preloads in Node against a stand-in for the electron module (plus a stub fetch) and printed every ipcMain registration, webContents.send, new BrowserWindow with its merged webPreferences, request, and the channel each exposed member invokes, sends on or listens to, each with its stack of file:line; its output agreed with the expectations. main.js, the preloads and the modules in main/ and shared/ are CommonJS; renderer-library.js, renderer-annotator.js and renderer-overlay.js are ES modules that import from renderer/. FILE ATTRIBUTION (as in holdout5): facts are attributed to the source file a reader sees them in. The route table ROUTES, its registration loop and the handleSafe helper are all in main/ipc.js, so those receivers name main/ipc.js; prefs:get / prefs:set are attached in main/prefs.js (PrefsService.register, called from main.js with ipcMain as argument); annotator:dirty is received in main/windows.js; the overlay channels are received with ipcMain.once in main/capture.js; menu:command is sent from main/menu.js, shot:loaded from main/windows.js, overlay:frame from main/capture.js. Every window is created in main/windows.js. In the bundled and minified inputs these modules are bundled into their entry file; bundledFiles maps each module to the file it ends up in (line numbers then do not apply). Channel names come from the frozen Channels object in shared/channels.js (some built as LIBRARY + \"list\" with LIBRARY = \"library:\") and, in the two sandboxed preloads, from literals; the library preload builds five members from the table INVOKE (member -> channel) through invokers(). No channel name is chosen at run time, so ipcChannels has no unknown field; the helpers handleSafe, invokers, listen and request pass channels from their callers, all of them resolvable by reading. webPreferences lists preload, contextIsolation, nodeIntegration, sandbox and webSecurity, one entry per window and key the code writes (also through SECURE_DEFAULTS and the windowOptions helper); count in an absent entry is one more than the number of windows that have that value, as in holdout4 and holdout5. storage is not exhaustive: main/library.js also writes and deletes one PNG per capture at a path made at run time (pictures/Snapdeck/<id>.png); such a file has no fixed name and is not listed, and reporting it is neither a hit nor (unless it matches an absent entry) false. navigation is an extra, unscored class. interfaceLinks follows holdout5: a receiver reached through a helper or table has the line of the ipcMain call as line and entryFile/entryLine where the channel is handed over. For this case: snapdeck/src with changes.json applied the way derive() in corpus/build.mjs applies it, including the three comment lines in front of every .js file; line numbers are those of the derived files. changes lists what differs from snapdeck (plain); unchangedMoves lists facts that only moved and must not be reported as changes.",
+  "bundledFiles": {
+    "main/ipc.js": "main.js",
+    "main/library.js": "main.js",
+    "main/services.js": "main.js",
+    "main/prefs.js": "main.js",
+    "main/windows.js": "main.js",
+    "main/capture.js": "main.js",
+    "main/menu.js": "main.js",
+    "main/updates.js": "main.js",
+    "main/navigation.js": "main.js",
+    "main/policy.js": "main.js",
+    "shared/channels.js": "main.js, preload-annotator.js",
+    "renderer/settings.js": "renderer-library.js, renderer-annotator.js",
+    "renderer/gallery.js": "renderer-library.js"
+  },
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "library:list",
+          "receivers": [
+            "main/ipc.js"
+          ],
+          "senders": [
+            "preload-library.js"
+          ],
+          "why": "main/ipc.js ROUTES row { channel: Channels.LIBRARY_LIST, kind: \"handle\", ... } with LIBRARY_LIST = LIBRARY + \"list\" (LIBRARY = \"library:\"), registered by registerRoutes: for (const route of ROUTES) ipcMain[route.kind](route.channel, route.fn), i.e. ipcMain.handle. registerRoutes is called from main.js. preload-library.js: INVOKE.listShots = \"library:list\", turned into (...args) => ipcRenderer.invoke(channel, ...args) by invokers(INVOKE), spread into api"
+        },
+        {
+          "channel": "library:delete",
+          "receivers": [
+            "main/ipc.js"
+          ],
+          "senders": [
+            "preload-library.js"
+          ],
+          "why": "ROUTES row LIBRARY_DELETE, kind handle; preload-library.js INVOKE.deleteShot through invokers"
+        },
+        {
+          "channel": "capture:start",
+          "receivers": [
+            "main/ipc.js"
+          ],
+          "senders": [
+            "preload-library.js"
+          ],
+          "why": "ROUTES row CAPTURE_START, kind \"on\"; preload-library.js startCapture: ipcRenderer.send(\"capture:start\")"
+        },
+        {
+          "channel": "shot:open",
+          "receivers": [
+            "main.js"
+          ],
+          "senders": [
+            "preload-library.js"
+          ],
+          "why": "main.js ipcMain.handle(Channels.SHOT_OPEN, ...) directly; preload-library.js INVOKE.openShot = \"shot:open\" through invokers"
+        },
+        {
+          "channel": "shot:save",
+          "receivers": [
+            "main/ipc.js"
+          ],
+          "senders": [
+            "preload-annotator.js"
+          ],
+          "why": "main/ipc.js handleSafe(Channels.SHOT_SAVE, ...), handleSafe being a function in the same file whose body calls ipcMain.handle(channel, ...); preload-annotator.js saveShot: request(Channels.SHOT_SAVE, shot), request calling ipcRenderer.invoke(channel, ...args)"
+        },
+        {
+          "channel": "shot:share",
+          "receivers": [
+            "main/ipc.js"
+          ],
+          "senders": [
+            "preload-annotator.js"
+          ],
+          "why": "handleSafe(Channels.SHOT_SHARE, ...); preload-annotator.js shareShot: request(Channels.SHOT_SHARE, id)"
+        },
+        {
+          "channel": "shot:loaded",
+          "receivers": [
+            "preload-annotator.js"
+          ],
+          "senders": [
+            "main/windows.js"
+          ],
+          "why": "main/windows.js openAnnotator: annotatorWindow.webContents.send(Channels.SHOT_LOADED, shot) inside webContents.once(\"did-finish-load\"); preload-annotator.js onShotLoaded: listen(Channels.SHOT_LOADED), listen returning a function that calls ipcRenderer.on(channel, listener)"
+        },
+        {
+          "channel": "prefs:get",
+          "receivers": [
+            "main/prefs.js"
+          ],
+          "senders": [
+            "preload-library.js",
+            "preload-annotator.js"
+          ],
+          "why": "main/prefs.js PrefsService.register(ipc): ipc.handle(Channels.PREFERENCES_GET, ...), where ipc is ipcMain handed in by main.js prefs.register(ipcMain). Two senders: preload-library.js INVOKE.getPrefs = \"prefs:get\" and preload-annotator.js getPrefs: ipcRenderer.invoke(Channels.PREFERENCES_GET) (v2: the constant's key was renamed, the value is the same)"
+        },
+        {
+          "channel": "prefs:set",
+          "receivers": [
+            "main/prefs.js"
+          ],
+          "senders": [
+            "preload-library.js"
+          ],
+          "why": "PrefsService.register: ipc.handle(Channels.PREFERENCES_SET, ...); preload-library.js INVOKE.setPrefs (v2: the constant's key was renamed, the value is the same)"
+        },
+        {
+          "channel": "menu:command",
+          "receivers": [
+            "preload-library.js",
+            "preload-annotator.js"
+          ],
+          "senders": [
+            "main/menu.js"
+          ],
+          "why": "main/menu.js sendCommand: BrowserWindow.getFocusedWindow() ... win.webContents.send(Channels.MENU_COMMAND, command), called from the click handlers of the menu template. Two receivers: preload-library.js onMenuCommand ipcRenderer.on(\"menu:command\", listener) (and removeListener) and preload-annotator.js onMenuCommand: listen(Channels.MENU_COMMAND)"
+        },
+        {
+          "channel": "app:version",
+          "receivers": [
+            "main.js"
+          ],
+          "senders": [
+            "preload-library.js"
+          ],
+          "why": "main.js ipcMain.on(\"app:version\", (event) => { event.returnValue = ... }), a synchronous message; preload-library.js appVersion: ipcRenderer.sendSync(\"app:version\")"
+        },
+        {
+          "channel": "overlay:select",
+          "receivers": [
+            "main/capture.js"
+          ],
+          "senders": [
+            "preload-overlay.js"
+          ],
+          "why": "main/capture.js start: ipcMain.once(\"overlay:select\", ...) inside a Promise executor (ipcMain.removeAllListeners on the same channel afterwards is no new registration); preload-overlay.js select: ipcRenderer.send(\"overlay:select\", rect)"
+        },
+        {
+          "channel": "overlay:cancel",
+          "receivers": [
+            "main/capture.js"
+          ],
+          "senders": [
+            "preload-overlay.js"
+          ],
+          "why": "main/capture.js ipcMain.once(\"overlay:cancel\", ...); preload-overlay.js cancel: ipcRenderer.send(\"overlay:cancel\")"
+        },
+        {
+          "channel": "overlay:frame",
+          "receivers": [
+            "preload-overlay.js"
+          ],
+          "senders": [
+            "main/capture.js"
+          ],
+          "why": "main/capture.js: overlay.webContents.send(\"overlay:frame\", {...}) in webContents.once(\"did-finish-load\"), overlay being the window returned by windows.openOverlay; preload-overlay.js onFrame: ipcRenderer.on(\"overlay:frame\", ...)"
+        },
+        {
+          "channel": "shot:ocr",
+          "receivers": [
+            "main/ipc.js"
+          ],
+          "senders": [
+            "preload-annotator.js"
+          ],
+          "why": "v2: handleSafe(Channels.SHOT_OCR, ...) in main/ipc.js, SHOT_OCR = \"shot:ocr\"; preload-annotator.js recognizeText: request(Channels.SHOT_OCR, id)"
+        },
+        {
+          "channel": "annotator:modified",
+          "receivers": [
+            "main/windows.js"
+          ],
+          "senders": [
+            "preload-annotator.js"
+          ],
+          "why": "v2: Channels.ANNOTATOR_DIRTY now has the value \"annotator:modified\"; both ends still use the constant (the key name did not change)"
+        }
+      ],
+      "absent": [
+        {
+          "channel": "capture:done",
+          "why": "shared/channels.js CAPTURE_DONE: a constant nothing sends or receives (its comment says so)"
+        },
+        {
+          "channel": "library:export",
+          "why": "main/ipc.js: only in a comment below the ROUTES rows"
+        },
+        {
+          "channel": "capture:region",
+          "why": "main/menu.js: the id of a menu item; the item's click sends menu:command with the value \"capture\""
+        },
+        {
+          "channel": "library:refresh",
+          "why": "renderer-library.js and renderer-annotator.js: the name of a DOM BroadcastChannel between the windows' pages, not Electron IPC"
+        },
+        {
+          "channel": "library:",
+          "why": "shared/channels.js LIBRARY (exported as LIBRARY_PREFIX): only the start of the library channels"
+        },
+        {
+          "channel": "upload:progress",
+          "why": "main/services.js: an event of the EventEmitter ShareClient (this.emit / client.on), inside the main process"
+        },
+        {
+          "channel": "capture",
+          "why": "main/menu.js: a command value sent ON menu:command (so are save, undo, and refresh nowhere)"
+        },
+        {
+          "channel": "did-finish-load",
+          "why": "main/windows.js and main/capture.js: webContents events (so are ready-to-show and closed, window events)"
+        },
+        {
+          "channel": "web-contents-created",
+          "why": "main/navigation.js app.on, an application event (so are window-all-closed and activate in main.js; will-navigate is a webContents event)"
+        },
+        {
+          "channel": "response",
+          "why": "main/updates.js: events of the net.request ClientRequest (so are error, data, end)"
+        },
+        {
+          "channel": "message",
+          "why": "renderer-library.js: refresh.addEventListener(\"message\"), the BroadcastChannel event; DOM events (click, change, input, scroll, dragstart, pointerdown, pointermove, pointerup, keydown) likewise"
+        },
+        {
+          "channel": "library:reveal",
+          "why": "v2 removed the constant, the route and the member"
+        },
+        {
+          "channel": "annotator:dirty",
+          "why": "v2 renamed the channel to annotator:modified; the string no longer occurs"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload-library.js",
+          "file": "main/windows.js",
+          "window": "libraryWindow",
+          "why": "openLibrary: new BrowserWindow(windowOptions(\"preload-library.js\", {}, { title: \"Snapdeck\" })); windowOptions returns { ..., webPreferences: { ...SECURE_DEFAULTS, preload: appFile(preload), ...prefs } }, appFile joining app.getAppPath()"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "libraryWindow",
+          "why": "from SECURE_DEFAULTS through the windowOptions helper"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "libraryWindow",
+          "why": "from SECURE_DEFAULTS"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "libraryWindow",
+          "why": "from SECURE_DEFAULTS; prefs is {}"
+        },
+        {
+          "key": "preload",
+          "value": "preload-annotator.js",
+          "file": "main/windows.js",
+          "window": "annotatorWindow",
+          "why": "openAnnotator: options = windowOptions(\"preload-annotator.js\", { sandbox: false, nodeIntegration: true }, {...}); new BrowserWindow(options)"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "annotatorWindow",
+          "why": "from SECURE_DEFAULTS"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "annotatorWindow",
+          "why": "v2: the prefs argument now also has nodeIntegration: true, spread after SECURE_DEFAULTS"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "annotatorWindow",
+          "why": "the prefs argument { sandbox: false } is spread after SECURE_DEFAULTS and overrides sandbox: true (the preload needs fs)"
+        },
+        {
+          "key": "preload",
+          "value": "preload-overlay.js",
+          "file": "main/windows.js",
+          "window": "overlayWindow",
+          "why": "openOverlay: webPreferences: OVERLAY_PREFS, a module-level object (v2 moved it there from a local variable; same values)"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "overlayWindow",
+          "why": "written in the overlay's own webPreferences object"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "overlayWindow",
+          "why": "written in the overlay's object"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "overlayWindow",
+          "why": "written in the overlay's object"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "overlayWindow",
+          "why": "the deliberately permissive setting: webSecurity: false so the magnifier can read a file:// image back from a canvas"
+        }
+      ],
+      "absent": [
+        {
+          "key": "preload",
+          "value": "preload-library.js",
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window loads it"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 4,
+          "why": "exactly three windows have it; SECURE_DEFAULTS itself is no window"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main/windows.js",
+          "why": "no window has it"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 3,
+          "why": "exactly two windows have it in v2 (libraryWindow, overlayWindow)"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window has it in v2, annotatorWindow"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 3,
+          "why": "exactly two windows have it, libraryWindow and overlayWindow"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window has it, annotatorWindow"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main/windows.js",
+          "why": "no window writes webSecurity: true; libraryWindow and annotatorWindow write no webSecurity at all"
+        },
+        {
+          "key": "webSecurity",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window has it, overlayWindow"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/policy.js",
+          "why": "main/policy.js EXPECTED = { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true }: the values auditWindow compares getLastWebPreferences() against in development; it configures no window"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/policy.js",
+          "why": "EXPECTED, see above"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/policy.js",
+          "why": "EXPECTED, see above"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main/policy.js",
+          "why": "EXPECTED, see above"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "snapdeck",
+          "member": "listShots",
+          "channel": "library:list",
+          "why": "one of five members made by ...invokers(INVOKE): Object.fromEntries over the table INVOKE (member -> channel), each value (...args) => ipcRenderer.invoke(channel, ...args)"
+        },
+        {
+          "api": "snapdeck",
+          "member": "deleteShot",
+          "channel": "library:delete",
+          "why": "invokers(INVOKE)"
+        },
+        {
+          "api": "snapdeck",
+          "member": "openShot",
+          "channel": "shot:open",
+          "why": "invokers(INVOKE)"
+        },
+        {
+          "api": "snapdeck",
+          "member": "getPrefs",
+          "channel": "prefs:get",
+          "why": "invokers(INVOKE)"
+        },
+        {
+          "api": "snapdeck",
+          "member": "setPrefs",
+          "channel": "prefs:set",
+          "why": "invokers(INVOKE)"
+        },
+        {
+          "api": "snapdeck",
+          "member": "startCapture",
+          "channel": "capture:start",
+          "why": "ipcRenderer.send"
+        },
+        {
+          "api": "snapdeck",
+          "member": "appVersion",
+          "channel": "app:version",
+          "why": "ipcRenderer.sendSync"
+        },
+        {
+          "api": "snapdeck",
+          "member": "onMenuCommand",
+          "channel": "menu:command",
+          "why": "a method in the object literal: ipcRenderer.on, and the returned function calls removeListener on the same channel"
+        },
+        {
+          "api": "snapdeck",
+          "member": "platform",
+          "channel": null,
+          "why": "process.platform; v2 moved it to the end of the object"
+        },
+        {
+          "api": "annotator",
+          "member": "loadImage",
+          "channel": null,
+          "why": "fs.promises.readFile(file): exposes reading any file the page names, not an IPC call (the preload is not sandboxed). preload-annotator.js exposes an object literal inside exposeInMainWorld(\"annotator\", {...})"
+        },
+        {
+          "api": "annotator",
+          "member": "saveShot",
+          "channel": "shot:save",
+          "why": "request(Channels.SHOT_SAVE, shot), request being a helper that invokes the channel and unwraps { ok, value }"
+        },
+        {
+          "api": "annotator",
+          "member": "shareShot",
+          "channel": "shot:share",
+          "why": "request(Channels.SHOT_SHARE, id)"
+        },
+        {
+          "api": "annotator",
+          "member": "recognizeText",
+          "channel": "shot:ocr",
+          "why": "v2: request(Channels.SHOT_OCR, id)"
+        },
+        {
+          "api": "annotator",
+          "member": "getPrefs",
+          "channel": "prefs:get",
+          "why": "ipcRenderer.invoke directly"
+        },
+        {
+          "api": "annotator",
+          "member": "setDirty",
+          "channel": "annotator:modified",
+          "why": "ipcRenderer.send(Channels.ANNOTATOR_DIRTY, dirty); in v2 the constant's value is \"annotator:modified\""
+        },
+        {
+          "api": "annotator",
+          "member": "onShotLoaded",
+          "channel": "shot:loaded",
+          "why": "listen(Channels.SHOT_LOADED): the helper returns the subscribe function"
+        },
+        {
+          "api": "annotator",
+          "member": "onMenuCommand",
+          "channel": "menu:command",
+          "why": "listen(Channels.MENU_COMMAND)"
+        },
+        {
+          "api": "overlay",
+          "member": "select",
+          "channel": "overlay:select",
+          "why": "preload-overlay.js: exposeInMainWorld(\"overlay\", {...}) with literal channel names"
+        },
+        {
+          "api": "overlay",
+          "member": "cancel",
+          "channel": "overlay:cancel"
+        },
+        {
+          "api": "overlay",
+          "member": "onFrame",
+          "channel": "overlay:frame",
+          "why": "ipcRenderer.on"
+        }
+      ],
+      "absent": [
+        {
+          "api": "snapdeck",
+          "member": "invokers",
+          "why": "a helper of preload-library.js; not exposed"
+        },
+        {
+          "api": "snapdeck",
+          "member": "INVOKE",
+          "why": "the table the invokers are built from; not exposed"
+        },
+        {
+          "api": "api",
+          "member": "listShots",
+          "why": "api is the variable holding the object; the page sees it as window.snapdeck"
+        },
+        {
+          "api": "snapdeck",
+          "member": "listener",
+          "why": "a local of onMenuCommand"
+        },
+        {
+          "api": "annotator",
+          "member": "listen",
+          "why": "a helper of preload-annotator.js (so is request)"
+        },
+        {
+          "api": "annotator",
+          "member": "request",
+          "why": "a helper of preload-annotator.js"
+        },
+        {
+          "api": "snapdeck",
+          "member": "loadImage",
+          "why": "a member of the annotator API, not of snapdeck"
+        },
+        {
+          "api": "snapdeck",
+          "member": "revealShot",
+          "why": "removed in v2"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://releases.snapdeck.example/feed/stable.json",
+          "method": "GET",
+          "why": "main/updates.js checkForUpdates: net.request(FEED_URL), FEED_URL = `${RELEASES}/feed/stable.json`, RELEASES = \"https://releases.snapdeck.example\"; net.request with a string is a GET. Called from main.js on ready"
+        },
+        {
+          "value": "https://share.snapdeck.example/api/v3/shots",
+          "method": "POST",
+          "why": "main/services.js ShareClient.upload: fetch(`${this.base}/shots`, { method: \"POST\", ... }), this.base from the constructor default SHARE_API; ShareClient is only ever constructed without an argument. Called by shareShot (shot:share)"
+        },
+        {
+          "prefix": "https://share.snapdeck.example/api/v3/shots/",
+          "method": "DELETE",
+          "why": "ShareClient.revoke: fetch(`${this.base}/shots/${encodeURIComponent(shareId)}`, { method: \"DELETE\" }), called by library.remove for a shared capture; the id comes from the index at run time"
+        },
+        {
+          "value": "https://gallery.snapdeck.example/api/trending?window=week",
+          "method": "GET",
+          "why": "renderer/gallery.js loadTrending: fetch(TRENDING_URL, ...), TRENDING_URL = `${GALLERY_API}/trending?window=week`; called from renderer-library.js showTrending"
+        },
+        {
+          "prefix": "https://cdn.snapdeck.example/stickers/",
+          "method": "GET",
+          "why": "renderer-annotator.js loadStickerPack: fetch(`${STICKER_CDN}/${encodeURIComponent(pack)}/index.json`), the pack from a select at run time"
+        },
+        {
+          "value": "https://ocr.textlens.example/v2/recognize",
+          "method": "POST",
+          "why": "v2 main/services.js recognizeText: fetch(OCR_ENDPOINT, { method: \"POST\", ... }), called by the shot:ocr handler; a new external host"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "main/services.js notifyWebhook: fetch(url, { method: \"POST\", ... }) with url = prefs.read().webhookUrl, an address the user types into the library window; called from shareShot when it is set",
+      "absent": [
+        {
+          "value": "https://docs.snapdeck.example/shortcuts",
+          "why": "main/menu.js DOCS_URL: only given to shell.openExternal"
+        },
+        {
+          "value": "https://share.snapdeck.example/s/",
+          "why": "renderer/gallery.js SHARE_PAGE / shareUrl: the share address is shown as text and copied to the clipboard, never requested by the app"
+        },
+        {
+          "value": "https://share.snapdeck.example/api/v3",
+          "why": "SHARE_API, the base; requests go to paths below it"
+        },
+        {
+          "value": "https://releases.snapdeck.example",
+          "why": "RELEASES, the base of FEED_URL"
+        },
+        {
+          "value": "https://gallery.snapdeck.example/api",
+          "why": "GALLERY_API, the base of TRENDING_URL"
+        },
+        {
+          "value": "https://gallery.snapdeck.example",
+          "why": "library.html: the connect-src of the Content-Security-Policy meta tag"
+        },
+        {
+          "value": "https://cdn.snapdeck.example/stickers",
+          "why": "STICKER_CDN without a pack; only the template below it is requested"
+        },
+        {
+          "value": "https://snapdeck.example/",
+          "why": "main/navigation.js ALLOWED_EXTERNAL: prefixes checked in setWindowOpenHandler before shell.openExternal (so is https://docs.snapdeck.example/)"
+        },
+        {
+          "value": "https://snapdeck.example/help",
+          "why": "library.html: a link with target=_blank; the window open handler hands it to the system browser"
+        },
+        {
+          "value": "https://hooks.example.com/snapdeck",
+          "why": "library.html: the placeholder of the webhook field"
+        },
+        {
+          "value": "library.html",
+          "why": "main/windows.js loadFile (so are annotator.html, overlay.html)"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": false,
+      "present": [
+        {
+          "kind": "file",
+          "value": "snapdeck-library.json",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "main/library.js readIndex / writeIndex: fs.readFileSync / fs.writeFileSync of the whole index at path.join(app.getPath(\"userData\"), INDEX_FILE). Kind file as in holdout4 and holdout5"
+        },
+        {
+          "kind": "file",
+          "value": "snapdeck-prefs.json",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "main/prefs.js PrefsService, constructed with the file name in module.exports = new PrefsService(\"snapdeck-prefs.json\"); read() and write() through the getter file"
+        },
+        {
+          "kind": "localStorage",
+          "value": "snapdeck:theme",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "renderer-library.js settings.get(StorageKey.Theme, ...) in start, settings.set on the theme select; settings (renderer/settings.js) wraps localStorage.getItem / setItem / removeItem, and StorageKey is a TypeScript-compiled string enum: StorageKey[\"Theme\"] = \"snapdeck:theme\""
+        },
+        {
+          "kind": "localStorage",
+          "value": "snapdeck:gridSize",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "settings.get(StorageKey.GridSize) in start, settings.set on the range input"
+        },
+        {
+          "kind": "localStorage",
+          "value": "snapdeck:lastFolder",
+          "ops": [
+            "read",
+            "write",
+            "delete"
+          ],
+          "why": "settings.get in render and start, settings.set on the folder select, settings.forget (localStorage.removeItem) on Reset view"
+        },
+        {
+          "kind": "localStorage",
+          "value": "snapdeck:strokeWidth",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "renderer-annotator.js settings.get(StorageKey.StrokeWidth, 4), settings.set on the width input"
+        },
+        {
+          "kind": "localStorage",
+          "value": "snapdeck:ocrLanguage",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "v2: StorageKey[\"OcrLanguage\"]; renderer-annotator.js settings.get on load and settings.set on the language select"
+        },
+        {
+          "kind": "localStorage",
+          "value": "annotator.recentColors",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "renderer-annotator.js settings.get(RECENT_COLORS, ...) and settings.set(RECENT_COLORS, ...), RECENT_COLORS = \"annotator.recentColors\", a key constant passed to the same wrapper"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "library.scrollTop",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "renderer-library.js sessionStorage.getItem in render, setItem on scroll, directly"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "annotator.activeTool",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "renderer-annotator.js sessionStorage.getItem at start, setItem in selectTool, directly"
+        },
+        {
+          "kind": "localStorage",
+          "value": "overlay.lastRegion",
+          "ops": [
+            "read",
+            "write"
+          ],
+          "why": "renderer-overlay.js, now through the constant LAST_REGION_KEY = \"overlay.lastRegion\""
+        }
+      ],
+      "absent": [
+        {
+          "value": "snapdeck:layout",
+          "why": "renderer/settings.js StorageKey[\"LegacyLayout\"]: an enum member nothing reads, writes or removes"
+        },
+        {
+          "value": "Theme",
+          "why": "an enum member name; the stored key is its value snapdeck:theme (so are GridSize, LastFolder, StrokeWidth)"
+        },
+        {
+          "value": "StorageKey",
+          "why": "the enum's name"
+        },
+        {
+          "value": "userData",
+          "why": "the argument of app.getPath (so is pictures)"
+        },
+        {
+          "value": "Snapdeck",
+          "why": "main/library.js: the folder under pictures that holds the PNG captures, whose names are made at run time"
+        },
+        {
+          "value": "trending",
+          "why": "renderer/gallery.js: the key of an in-memory Map (memo.get / memo.set), not storage"
+        },
+        {
+          "value": "webhookUrl",
+          "why": "a field of snapdeck-prefs.json (so are format, copyAfterCapture); the file is the storage entry"
+        },
+        {
+          "value": "text/uri-list",
+          "why": "renderer-library.js: the format of dataTransfer.setData during drag"
+        },
+        {
+          "value": "x-snapdeck-title",
+          "why": "main/services.js: a request header (so is content-type)"
+        },
+        {
+          "value": "library:refresh",
+          "why": "the BroadcastChannel name"
+        }
+      ]
+    },
+    "navigation": {
+      "present": [
+        {
+          "file": "main/navigation.js",
+          "line": 12,
+          "handler": "setWindowOpenHandler",
+          "outcome": "deny; https URLs starting with https://snapdeck.example/ or https://docs.snapdeck.example/ are opened with shell.openExternal",
+          "why": "registered for every webContents from app.on(\"web-contents-created\")"
+        },
+        {
+          "file": "main/navigation.js",
+          "line": 16,
+          "handler": "will-navigate",
+          "outcome": "preventDefault for every URL that does not start with file://",
+          "why": "same listener"
+        }
+      ]
+    },
+    "interfaceLinks": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "snapdeck",
+          "member": "platform",
+          "channel": null,
+          "preload": "preload-library.js",
+          "memberLine": 33,
+          "ends": [],
+          "resolvable": true,
+          "why": "no IPC"
+        },
+        {
+          "api": "snapdeck",
+          "member": "listShots",
+          "channel": "library:list",
+          "preload": "preload-library.js",
+          "memberLine": 11,
+          "ends": [
+            {
+              "file": "main/ipc.js",
+              "line": 32,
+              "api": "ipcMain.handle",
+              "entryFile": "main/ipc.js",
+              "entryLine": 15
+            }
+          ],
+          "resolvable": true,
+          "why": "memberLine is the INVOKE row; the member is created by ...invokers(INVOKE), whose ipcRenderer.invoke is on line 20. The receiver is the computed ipcMain[route.kind] call of the loop, entryLine the ROUTES row"
+        },
+        {
+          "api": "snapdeck",
+          "member": "deleteShot",
+          "channel": "library:delete",
+          "preload": "preload-library.js",
+          "memberLine": 12,
+          "ends": [
+            {
+              "file": "main/ipc.js",
+              "line": 32,
+              "api": "ipcMain.handle",
+              "entryFile": "main/ipc.js",
+              "entryLine": 16
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "snapdeck",
+          "member": "openShot",
+          "channel": "shot:open",
+          "preload": "preload-library.js",
+          "memberLine": 13,
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 17,
+              "api": "ipcMain.handle"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "snapdeck",
+          "member": "getPrefs",
+          "channel": "prefs:get",
+          "preload": "preload-library.js",
+          "memberLine": 14,
+          "ends": [
+            {
+              "file": "main/prefs.js",
+              "line": 38,
+              "api": "ipcMain.handle",
+              "entryFile": "main.js",
+              "entryLine": 29
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "snapdeck",
+          "member": "setPrefs",
+          "channel": "prefs:set",
+          "preload": "preload-library.js",
+          "memberLine": 15,
+          "ends": [
+            {
+              "file": "main/prefs.js",
+              "line": 39,
+              "api": "ipcMain.handle",
+              "entryFile": "main.js",
+              "entryLine": 29
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "snapdeck",
+          "member": "startCapture",
+          "channel": "capture:start",
+          "preload": "preload-library.js",
+          "memberLine": 26,
+          "ends": [
+            {
+              "file": "main/ipc.js",
+              "line": 32,
+              "api": "ipcMain.on",
+              "entryFile": "main/ipc.js",
+              "entryLine": 14
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "snapdeck",
+          "member": "appVersion",
+          "channel": "app:version",
+          "preload": "preload-library.js",
+          "memberLine": 27,
+          "ends": [
+            {
+              "file": "main.js",
+              "line": 23,
+              "api": "ipcMain.on"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "snapdeck",
+          "member": "onMenuCommand",
+          "channel": "menu:command",
+          "preload": "preload-library.js",
+          "memberLine": 28,
+          "ends": [
+            {
+              "file": "main/menu.js",
+              "line": 13,
+              "api": "webContents.send"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "annotator",
+          "member": "loadImage",
+          "channel": null,
+          "preload": "preload-annotator.js",
+          "memberLine": 28,
+          "ends": [],
+          "resolvable": true,
+          "why": "fs, no IPC"
+        },
+        {
+          "api": "annotator",
+          "member": "saveShot",
+          "channel": "shot:save",
+          "preload": "preload-annotator.js",
+          "memberLine": 29,
+          "ends": [
+            {
+              "file": "main/ipc.js",
+              "line": 22,
+              "api": "ipcMain.handle",
+              "entryFile": "main/ipc.js",
+              "entryLine": 33
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "annotator",
+          "member": "shareShot",
+          "channel": "shot:share",
+          "preload": "preload-annotator.js",
+          "memberLine": 30,
+          "ends": [
+            {
+              "file": "main/ipc.js",
+              "line": 22,
+              "api": "ipcMain.handle",
+              "entryFile": "main/ipc.js",
+              "entryLine": 34
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "annotator",
+          "member": "recognizeText",
+          "channel": "shot:ocr",
+          "preload": "preload-annotator.js",
+          "memberLine": 31,
+          "ends": [
+            {
+              "file": "main/ipc.js",
+              "line": 22,
+              "api": "ipcMain.handle",
+              "entryFile": "main/ipc.js",
+              "entryLine": 35
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "annotator",
+          "member": "getPrefs",
+          "channel": "prefs:get",
+          "preload": "preload-annotator.js",
+          "memberLine": 32,
+          "ends": [
+            {
+              "file": "main/prefs.js",
+              "line": 38,
+              "api": "ipcMain.handle",
+              "entryFile": "main.js",
+              "entryLine": 29
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "annotator",
+          "member": "setDirty",
+          "channel": "annotator:modified",
+          "preload": "preload-annotator.js",
+          "memberLine": 33,
+          "ends": [
+            {
+              "file": "main/windows.js",
+              "line": 94,
+              "api": "ipcMain.on",
+              "entryFile": "main.js",
+              "entryLine": 30
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "annotator",
+          "member": "onShotLoaded",
+          "channel": "shot:loaded",
+          "preload": "preload-annotator.js",
+          "memberLine": 34,
+          "ends": [
+            {
+              "file": "main/windows.js",
+              "line": 71,
+              "api": "webContents.send"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "annotator",
+          "member": "onMenuCommand",
+          "channel": "menu:command",
+          "preload": "preload-annotator.js",
+          "memberLine": 35,
+          "ends": [
+            {
+              "file": "main/menu.js",
+              "line": 13,
+              "api": "webContents.send"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "overlay",
+          "member": "select",
+          "channel": "overlay:select",
+          "preload": "preload-overlay.js",
+          "memberLine": 8,
+          "ends": [
+            {
+              "file": "main/capture.js",
+              "line": 22,
+              "api": "ipcMain.once"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "overlay",
+          "member": "cancel",
+          "channel": "overlay:cancel",
+          "preload": "preload-overlay.js",
+          "memberLine": 9,
+          "ends": [
+            {
+              "file": "main/capture.js",
+              "line": 23,
+              "api": "ipcMain.once"
+            }
+          ],
+          "resolvable": true
+        },
+        {
+          "api": "overlay",
+          "member": "onFrame",
+          "channel": "overlay:frame",
+          "preload": "preload-overlay.js",
+          "memberLine": 10,
+          "ends": [
+            {
+              "file": "main/capture.js",
+              "line": 14,
+              "api": "webContents.send"
+            }
+          ],
+          "resolvable": true
+        }
+      ],
+      "absent": [
+        {
+          "api": null,
+          "member": null,
+          "file": "shared/channels.js",
+          "line": 21,
+          "why": "an unused channel constant"
+        },
+        {
+          "api": null,
+          "member": null,
+          "file": "main/ipc.js",
+          "line": 17,
+          "why": "a comment"
+        },
+        {
+          "api": null,
+          "member": null,
+          "file": "main/menu.js",
+          "line": 22,
+          "why": "a menu item id"
+        },
+        {
+          "api": null,
+          "member": null,
+          "file": "main/capture.js",
+          "line": 26,
+          "why": "removes the listener; not an end (so does the next line for overlay:cancel)"
+        }
+      ]
+    },
+    "changes": {
+      "ipcChannels": {
+        "added": [
+          {
+            "channel": "shot:ocr",
+            "why": "new constant SHOT_OCR, new handleSafe registration in main/ipc.js, new member annotator.recognizeText"
+          },
+          {
+            "channel": "annotator:modified",
+            "why": "the value of Channels.ANNOTATOR_DIRTY changed from annotator:dirty; the two call sites are unchanged"
+          }
+        ],
+        "removed": [
+          {
+            "channel": "library:reveal",
+            "why": "constant, ROUTES row and member snapdeck.revealShot removed"
+          },
+          {
+            "channel": "annotator:dirty",
+            "why": "renamed to annotator:modified (see added)"
+          }
+        ],
+        "absent": [
+          {
+            "channel": "prefs:get",
+            "why": "the constant's key was renamed PREFS_GET -> PREFERENCES_GET in shared/channels.js, main/prefs.js and preload-annotator.js; the channel string, its receiver and senders are the same (so for prefs:set)"
+          },
+          {
+            "channel": "capture:start",
+            "why": "its ROUTES row moved from the last to the first row; same registration"
+          },
+          {
+            "channel": "library:list",
+            "why": "its ROUTES row moved down by one (so did library:delete)"
+          },
+          {
+            "channel": "menu:command",
+            "why": "unchanged, only moved by the three comment lines"
+          }
+        ]
+      },
+      "contextBridge": {
+        "added": [
+          {
+            "api": "annotator",
+            "member": "recognizeText",
+            "channel": "shot:ocr"
+          }
+        ],
+        "removed": [
+          {
+            "api": "snapdeck",
+            "member": "revealShot",
+            "channel": "library:reveal"
+          }
+        ],
+        "changed": [
+          {
+            "api": "annotator",
+            "member": "setDirty",
+            "from": "annotator:dirty",
+            "to": "annotator:modified",
+            "why": "the member is the same line of code, but the constant it sends on now has another value, so it forwards to another channel"
+          }
+        ],
+        "absent": [
+          {
+            "api": "snapdeck",
+            "member": "platform",
+            "why": "moved from the first to the last member of api; same value"
+          },
+          {
+            "api": "annotator",
+            "member": "getPrefs",
+            "why": "now written Channels.PREFERENCES_GET; same channel prefs:get"
+          },
+          {
+            "api": "snapdeck",
+            "member": "listShots",
+            "why": "unchanged (the INVOKE table did not change)"
+          }
+        ]
+      },
+      "webPreferences": {
+        "changed": [
+          {
+            "window": "annotatorWindow",
+            "key": "nodeIntegration",
+            "from": false,
+            "to": true,
+            "direction": "more permissive",
+            "file": "main/windows.js",
+            "why": "the prefs argument of windowOptions for the annotator now also writes nodeIntegration: true"
+          }
+        ],
+        "absent": [
+          {
+            "window": "overlayWindow",
+            "key": "webSecurity",
+            "why": "still false: the object moved from a local variable in openOverlay to the module constant OVERLAY_PREFS, with the same values (so for all overlayWindow keys)"
+          },
+          {
+            "window": "annotatorWindow",
+            "key": "sandbox",
+            "why": "still false; the call was reformatted over several lines"
+          }
+        ]
+      },
+      "endpoints": {
+        "added": [
+          {
+            "value": "https://ocr.textlens.example/v2/recognize",
+            "method": "POST",
+            "why": "main/services.js recognizeText, a new external host"
+          }
+        ],
+        "removed": [],
+        "absent": [
+          {
+            "value": "https://share.snapdeck.example/api/v3/shots",
+            "why": "unchanged; main/services.js gained lines above and below it"
+          }
+        ]
+      },
+      "storage": {
+        "added": [
+          {
+            "kind": "localStorage",
+            "value": "snapdeck:ocrLanguage",
+            "ops": [
+              "read",
+              "write"
+            ],
+            "why": "new StorageKey member OcrLanguage, read and written in renderer-annotator.js"
+          }
+        ],
+        "removed": [],
+        "absent": [
+          {
+            "kind": "localStorage",
+            "value": "overlay.lastRegion",
+            "why": "renderer-overlay.js now names it through the constant LAST_REGION_KEY; same key, same operations"
+          }
+        ]
+      }
+    },
+    "unchangedMoves": [
+      {
+        "file": "main/ipc.js",
+        "what": "capture:start ROUTES row (moved to the top)",
+        "fromLine": 14,
+        "toLine": 14
+      },
+      {
+        "file": "main/ipc.js",
+        "what": "library:list ROUTES row",
+        "fromLine": 11,
+        "toLine": 15
+      },
+      {
+        "file": "main/ipc.js",
+        "what": "library:delete ROUTES row",
+        "fromLine": 12,
+        "toLine": 16
+      },
+      {
+        "file": "main/ipc.js",
+        "what": "route registration loop",
+        "fromLine": 30,
+        "toLine": 32
+      },
+      {
+        "file": "main/ipc.js",
+        "what": "handleSafe ipcMain.handle",
+        "fromLine": 20,
+        "toLine": 22
+      },
+      {
+        "file": "main/ipc.js",
+        "what": "shot:save registration",
+        "fromLine": 31,
+        "toLine": 33
+      },
+      {
+        "file": "main/ipc.js",
+        "what": "shot:share registration",
+        "fromLine": 32,
+        "toLine": 34
+      },
+      {
+        "file": "main.js",
+        "what": "shot:open handler",
+        "fromLine": 14,
+        "toLine": 17
+      },
+      {
+        "file": "main.js",
+        "what": "app:version listener",
+        "fromLine": 20,
+        "toLine": 23
+      },
+      {
+        "file": "main/prefs.js",
+        "what": "prefs:get registration (constant key renamed)",
+        "fromLine": 35,
+        "toLine": 38
+      },
+      {
+        "file": "main/prefs.js",
+        "what": "prefs:set registration (constant key renamed)",
+        "fromLine": 36,
+        "toLine": 39
+      },
+      {
+        "file": "main/menu.js",
+        "what": "menu:command send",
+        "fromLine": 10,
+        "toLine": 13
+      },
+      {
+        "file": "main/windows.js",
+        "what": "shot:loaded send",
+        "fromLine": 53,
+        "toLine": 71
+      },
+      {
+        "file": "main/windows.js",
+        "what": "annotator listener (same line of code, the constant's value changed)",
+        "fromLine": 85,
+        "toLine": 94
+      },
+      {
+        "file": "main/windows.js",
+        "what": "libraryWindow creation",
+        "fromLine": 31,
+        "toLine": 44
+      },
+      {
+        "file": "main/windows.js",
+        "what": "overlay webPreferences object (moved to the module constant OVERLAY_PREFS)",
+        "fromLine": 62,
+        "toLine": 30
+      },
+      {
+        "file": "main/windows.js",
+        "what": "overlayWindow creation",
+        "fromLine": 71,
+        "toLine": 80
+      },
+      {
+        "file": "main/capture.js",
+        "what": "overlay:select listener",
+        "fromLine": 19,
+        "toLine": 22
+      },
+      {
+        "file": "main/capture.js",
+        "what": "overlay:frame send",
+        "fromLine": 11,
+        "toLine": 14
+      },
+      {
+        "file": "main/services.js",
+        "what": "share upload request",
+        "fromLine": 18,
+        "toLine": 22
+      },
+      {
+        "file": "main/updates.js",
+        "what": "update feed request",
+        "fromLine": 10,
+        "toLine": 13
+      },
+      {
+        "file": "preload-library.js",
+        "what": "member platform (moved to the end)",
+        "fromLine": 22,
+        "toLine": 33
+      },
+      {
+        "file": "preload-library.js",
+        "what": "member startCapture",
+        "fromLine": 25,
+        "toLine": 26
+      },
+      {
+        "file": "preload-library.js",
+        "what": "member onMenuCommand",
+        "fromLine": 27,
+        "toLine": 28
+      },
+      {
+        "file": "preload-annotator.js",
+        "what": "member getPrefs (constant key renamed)",
+        "fromLine": 28,
+        "toLine": 32
+      },
+      {
+        "file": "preload-annotator.js",
+        "what": "member setDirty",
+        "fromLine": 29,
+        "toLine": 33
+      },
+      {
+        "file": "preload-overlay.js",
+        "what": "member select",
+        "fromLine": 5,
+        "toLine": 8
+      },
+      {
+        "file": "renderer-overlay.js",
+        "what": "overlay.lastRegion read (literal replaced by a constant)",
+        "fromLine": 2,
+        "toLine": 6
+      },
+      {
+        "file": "renderer-library.js",
+        "what": "snapdeck:lastFolder delete",
+        "fromLine": 94,
+        "toLine": 96
+      },
+      {
+        "file": "renderer/gallery.js",
+        "what": "trending request",
+        "fromLine": 10,
+        "toLine": 13
+      }
+    ]
+  }
+}

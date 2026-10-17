@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file:; connect-src https://gallery.snapdeck.example" />
+    <title>Snapdeck</title>
+  </head>
+  <body>
+    <header>
+      <button id="capture">Capture</button>
+      <select id="folders"><option value="all">All</option><option value="inbox">Inbox</option></select>
+      <select id="theme"><option>system</option><option>light</option><option>dark</option></select>
+      <input id="grid-size" type="range" min="140" max="360" />
+      <button id="reset-view">Reset view</button>
+    </header>
+    <main id="grid"></main>
+    <aside>
+      <h2>Trending in the gallery</h2>
+      <ol id="trending"></ol>
+      <label>Webhook after sharing <input id="webhook" placeholder="https://hooks.example.com/snapdeck" /></label>
+    </aside>
+    <footer><span id="version"></span> · <a href="https://snapdeck.example/help" target="_blank">Help</a></footer>
+    <script type="module" src="renderer-library.js"></script>
+  </body>
+</html>

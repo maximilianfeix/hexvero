@@ -1,0 +1,9 @@
+{
+  "name": "snapdeck",
+  "productName": "Snapdeck",
+  "version": "1.4.0",
+  "description": "Capture, annotate and share screenshots",
+  "main": "main.js",
+  "license": "MIT",
+  "private": true
+}
