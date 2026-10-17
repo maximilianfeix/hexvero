@@ -501,6 +501,19 @@ export class Constants {
    * file share with different contents: nothing is resolved through it.
    */
   private readonly enums = new Map<string, Map<string, string> | null>();
+  /** `(E || (exports.K = E = {}))`: the CommonJS export key of an enum, by enum name (tsc's emit). */
+  private readonly enumExports = new Map<string, string>();
+  /**
+   * Enums under a minifier's one- or two-letter name (`var i; (function (e) { … })(i || (i = {}))`
+   * in a webpack module): known only inside the block that declares the name, and only where the
+   * name means nothing else anywhere in that block (it is read as `i.MEMBER` and nothing else).
+   */
+  private readonly scopedEnums: Array<{
+    name: string;
+    members: Map<string, string>;
+    from: number;
+    to: number;
+  }> = [];
 
   /** Reads the compiled string enums of the file into `enums`. */
   private readEnums(): void {
@@ -547,6 +560,7 @@ export class Constants {
       if (is(tokens[open], "punct", ")")) open++;
       if (!is(tokens[open], "punct", "(")) continue;
       const names = new Set<string>();
+      const short = new Set<string>();
       let argumentsEnd = open + 1;
       for (let a = open + 1, depth = 1; a < tokens.length && a < open + 24 && depth > 0; a++) {
         argumentsEnd = a;
@@ -560,9 +574,28 @@ export class Constants {
         // other function of the bundle, so the enum is not known by it.
         if (t.type === "ident" && is(tokens[a + 1], "punct", "=") && t.value.length > 2)
           names.add(t.value);
+        else if (
+          t.type === "ident" &&
+          is(tokens[a + 1], "punct", "=") &&
+          !is(tokens[a - 1], "punct", ".") &&
+          is(tokens[a + 2], "punct", "{")
+        )
+          short.add(t.value);
+        // `exports.K = E = {}`: tsc's CommonJS export of the enum
+        if (
+          t.type === "ident" &&
+          t.value === this.exportsName &&
+          !is(tokens[a - 1], "punct", ".") &&
+          is(tokens[a + 1], "punct", ".") &&
+          is(tokens[a + 2], "ident") &&
+          is(tokens[a + 3], "punct", "=") &&
+          is(tokens[a + 4], "ident")
+        )
+          this.enumExports.set(tokens[a + 4]!.value, tokens[a + 2]!.value);
       }
       if (parameter.length > 2) names.add(parameter);
       spans.push([k, argumentsEnd]);
+      for (const name of short) this.scopeEnum(name, members, k, argumentsEnd);
       for (const name of names) {
         const known = this.enums.get(name);
         if (known === undefined) {
@@ -613,13 +646,85 @@ export class Constants {
   }
 
   /**
+   * Records an enum under a short name for the block around its definition (span [k, end]), if
+   * the name means the enum everywhere in that block: declared with `var name;` and otherwise
+   * only read as `name.MEMBER`. The block is bounded, so this stays linear.
+   */
+  private scopeEnum(name: string, members: Map<string, string>, k: number, end: number): void {
+    const tokens = this.tokens;
+    let open = -1;
+    let back = k - 1;
+    for (let depth = 0; back >= 0 && back > k - 20_000; back--) {
+      const t = tokens[back]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "}") depth++;
+      else if (t.value === "{") {
+        if (depth === 0) {
+          open = back;
+          break;
+        }
+        depth--;
+      }
+    }
+    // too far back to tell which block it is in
+    if (open === -1 && back >= 0) return;
+    // at the top of the file (a scope-hoisting bundler's output): the whole file is the block
+    let close = open === -1 ? tokens.length : -1;
+    for (let j = open + 1, depth = 0; open !== -1 && j < tokens.length && j < open + 200_000; j++) {
+      const t = tokens[j]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "{") depth++;
+      else if (t.value === "}") {
+        if (depth === 0) {
+          close = j;
+          break;
+        }
+        depth--;
+      }
+    }
+    if (close === -1) return;
+    let declared = false;
+    for (let j = open + 1; j < close; j++) {
+      if (j >= k && j <= end) {
+        j = end;
+        continue;
+      }
+      const t = tokens[j]!;
+      if (t.type !== "ident" || t.value !== name || is(tokens[j - 1], "punct", ".")) continue;
+      if (
+        is(tokens[j - 1], "ident", "var") &&
+        (is(tokens[j + 1], "punct", ";") || is(tokens[j + 1], "punct", ","))
+      ) {
+        if (declared) return;
+        declared = true;
+        continue;
+      }
+      if (
+        is(tokens[j + 1], "punct", ".") &&
+        is(tokens[j + 2], "ident") &&
+        !is(tokens[j + 3], "punct", "=")
+      )
+        continue;
+      return; // anything else: a parameter, a declaration, a write, a bare use
+    }
+    if (declared) this.scopedEnums.push({ name, members, from: open, to: close });
+  }
+
+  /** A member of an enum known under a short name in the block around token k. */
+  private scopedMember(name: string, member: string, k: number): string | null {
+    for (const e of this.scopedEnums)
+      if (e.name === name && k > e.from && k < e.to) return e.members.get(member) ?? null;
+    return null;
+  }
+
+  /**
    * The value of `Enum.MEMBER` or `anything.Enum.MEMBER` used as an argument at token `k`.
    * The object in front of the enum name is whatever the module was imported as and is not
    * looked at: the enum name and the member decide.
    */
   private enumMember(k: number): string | null {
     const tokens = this.tokens;
-    if (!this.enums.size || tokens[k]?.type !== "ident") return null;
+    if ((!this.enums.size && !this.scopedEnums.length) || tokens[k]?.type !== "ident") return null;
     const chain = [tokens[k]!.value];
     let at = k + 1;
     while (chain.length < 3 && is(tokens[at], "punct", ".") && is(tokens[at + 1], "ident")) {
@@ -629,7 +734,10 @@ export class Constants {
     if (chain.length < 2 || (!is(tokens[at], "punct", ",") && !is(tokens[at], "punct", ")")))
       return null;
     const [name, member] = chain.slice(-2) as [string, string];
-    return this.enums.get(name)?.get(member) ?? null;
+    return (
+      this.enums.get(name)?.get(member) ??
+      (chain.length === 2 && this.scopedEnums.length ? this.scopedMember(name, member, k) : null)
+    );
   }
 
   constructor(private readonly tokens: Token[]) {
@@ -1082,6 +1190,9 @@ export class Constants {
       const name = tokens[k + 2]!.value;
       for (const [key, v] of this.enums.get(name) ?? []) this.exported[`${name}.${key}`] = v;
     }
+    // `(E || (exports.E = E = {}))`, as tsc compiles an exported enum to CommonJS
+    for (const [name, exportKey] of this.enumExports)
+      for (const [key, v] of this.enums.get(name) ?? []) this.exported[`${exportKey}.${key}`] = v;
     for (const { key, at } of this.exportNames) {
       if (key in this.exported) continue;
       const name = tokens[at]!.value;
@@ -1294,6 +1405,10 @@ export class Constants {
 
   /** The string value of `NAME.PROPERTY` in a table of this file, as used at token k. */
   memberOf(name: string, property: string, k?: number): string | null {
+    if (k !== undefined && this.scopedEnums.length) {
+      const scoped = this.scopedMember(name, property, k);
+      if (scoped !== null) return scoped;
+    }
     if (
       !this.sees(k, name) ||
       this.reassigned.has(name) ||

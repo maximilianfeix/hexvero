@@ -314,6 +314,11 @@ describe("hostile input stays fast", () => {
       "const a=x=>(".repeat(120_000),
       "new BrowserWindow({".repeat(120_000),
       `new BrowserWindow({webPreferences:{${Array.from({ length: 4000 }, (_, i) => `...h${i}()`).join(",")}}});${"filler(1);".repeat(240_000)}`,
+      // IPC wrapper classes (wrappers.ts): many same-named functions with a receiver parameter,
+      // a property key defined over and over, a chain of methods that return this
+      `class C{handle(c,f){ipcMain.handle(c,f);return this}}${'function g(r){r.handle("x",f)}g(new C);'.repeat(30_000)}`,
+      `class C{handle(c,f){ipcMain.handle(c,f)}}${'a.k=new C;a.k.handle("x",f);'.repeat(60_000)}`,
+      `class C{handle(c,f){ipcMain.handle(c,f);return this}}new C()${'.handle("a",f)'.repeat(60_000)};`,
     ]) {
       const started = performance.now();
       analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);

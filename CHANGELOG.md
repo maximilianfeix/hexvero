@@ -6,6 +6,27 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Electron analysis
+
+- IPC wrapper classes and objects: a method that passes one of its parameters on, whole, as the
+  channel of `ipcMain.handle/on/once/handleOnce` or `ipcRenderer.invoke/send/…`
+  (`handle(channel, fn) { ipcMain.handle(channel, fn) }`) is a wrapper, and each call of it on an
+  instance is an IPC row at the call, `via: "wrapper"`, with the new field `wrapper`
+  (`IpcMainManager.handle`); interface ends carry it too and their link is `resolved`. Instances
+  are read through `new`, names and property keys bound once, `this`, chains of methods that
+  return `this`, parameters whose call sites pass one, and across modules (`require`/`import`,
+  re-exports, webpack `i(id)` and esbuild module wrappers). A method that changes or builds the
+  channel is no wrapper. Electron Fiddle 0.39.0: 45 of 46 `ElectronFiddle` members are linked to
+  a main-process end (was 0); see the case study.
+- webpack 5 module functions written as methods (`{ 76675(e, n, i) { … } }`) and webpack's
+  `i(id)` are read; TypeScript enums exported to CommonJS (`exports.E = E = {}`) and enums under
+  a minifier's one-letter name (in the block that declares it, when the name means nothing else
+  there) give channel names; `forEach((e => …))` callbacks in parentheses are read.
+- The resolver no longer reads a parameter the function assigns to (`channel = "x:" + channel`)
+  as what the call sites pass; it reads `var { K: name } = …` patterns inside functions.
+- New limitation code `ipc_wrappers_capped` when the search for wrapper calls runs out of its
+  budget. Stored scans of the earlier format are read again (`JS_SCAN_SCHEMA` 7).
+
 ### MCP
 
 - `hexvero_check` (16th tool, read-only): the release policy check over MCP with an inline
