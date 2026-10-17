@@ -597,6 +597,9 @@ const LATER_MEMBERS = [
   "const EVIL = { webPreferences: { nodeIntegration: true, contextIsolation: false } };\nfunction inherits() {\n  return new BrowserWindow({ width: 1, __proto__: EVIL });\n}",
   // a prototype of webPreferences: what it does not write itself may come from there
   "function prefsProto(x) {\n  return new BrowserWindow({ webPreferences: { __proto__: x, sandbox: true } });\n}",
+  // the same prototypes written with a quoted key ("__proto__": x sets the prototype as well)
+  'function inheritsQuoted() {\n  return new BrowserWindow({ width: 1, "__proto__": EVIL });\n}',
+  'function prefsProtoQuoted(x) {\n  return new BrowserWindow({ webPreferences: { "__proto__": x, sandbox: true } });\n}',
   // a prototype never replaces an own key, also after a spread
   "function proto(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, __proto__: o });\n}",
 ].join("\n");
@@ -610,12 +613,14 @@ const LATER_STATES = [
   "computed computed computed null computed",
   "computed computed computed null computed",
   "computed computed true null computed",
+  "computed computed computed null computed",
+  "computed computed true null computed",
   "false true true null not written",
 ];
 
 describe("a member after the settings that may replace them", () => {
   it("hides them unless its key is known to be another one", () => {
-    const main = `const { BrowserWindow } = require("electron");\n${LATER_MEMBERS}\nmodule.exports = { param, other, same, getter, method, asyncGen, numbered, inherits, prefsProto, proto };`;
+    const main = `const { BrowserWindow } = require("electron");\n${LATER_MEMBERS}\nmodule.exports = { param, other, same, getter, method, asyncGen, numbered, inherits, prefsProto, inheritsQuoted, prefsProtoQuoted, proto };`;
     expect(states(analyze({ "main.js": main }))).toEqual(LATER_STATES);
     for (const minify of [false, true])
       expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(

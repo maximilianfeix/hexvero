@@ -848,8 +848,9 @@ function windowRanges(
       // so a key the literal does not write is taken from x. In a window's options that matters
       // for `webPreferences` unless the literal writes its own; in a webPreferences object every
       // key it does not write may come from x, while the ones it writes stand.
+      // Quoted, too: `"__proto__": x` sets the prototype as well; only `["__proto__"]` does not.
       if (
-        t.type === "ident" &&
+        (t.type === "ident" || t.type === "string") &&
         t.value === "__proto__" &&
         is(k + 1, ":") &&
         (is(k - 1, "{") || is(k - 1, ","))
