@@ -1412,19 +1412,20 @@ const checkFiles = async (a: string, b: string) => {
   return checkRelease(session, ta.id, tb.id, listed("fail"));
 };
 
+const hdr = 'const { contextBridge, ipcRenderer } = require("electron");\n';
+const ex = (body: string) =>
+  `contextBridge.exposeInMainWorld("api", { ping: () => ipcRenderer.send("ping")${body} });\n`;
+const mainFor = (preloads: string[]) =>
+  `const { BrowserWindow } = require("electron");\n${preloads
+    .map(
+      (p) =>
+        `new BrowserWindow({ webPreferences: { preload: "${p}", contextIsolation: true, sandbox: true } });`,
+    )
+    .join("\n")}\n`;
+
 describe("new-bridge-exposure through checkRelease (the lists of both builds are loaded)", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-policy-exposure-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
-  const hdr = 'const { contextBridge, ipcRenderer } = require("electron");\n';
-  const ex = (body: string) =>
-    `contextBridge.exposeInMainWorld("api", { ping: () => ipcRenderer.send("ping")${body} });\n`;
-  const mainFor = (preloads: string[]) =>
-    `const { BrowserWindow } = require("electron");\n${preloads
-      .map(
-        (p) =>
-          `new BrowserWindow({ webPreferences: { preload: "${p}", contextIsolation: true, sandbox: true } });`,
-      )
-      .join("\n")}\n`;
   const write = (name: string, files: Record<string, string>, preloads = ["preload.js"]) => {
     const path = join(dir, `${name}.asar`);
     writeFileSync(
