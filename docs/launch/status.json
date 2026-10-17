@@ -55,7 +55,7 @@
       "status": "draft",
       "url": null,
       "date": "2026-10-17",
-      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md). Updated for 0.9.0 facts on 2026-10-17 (holdout5, check); verify npx hexvero@0.9.0 demo/check before posting."
+      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md). Updated for 0.9.0 facts on 2026-10-17 (holdout5, check); verify npx hexvero@0.9.0 demo/check before posting. Fiddle bridge links (0 → 45 of 46) and holdout5 development-set numbers added, kept apart from the blind result."
     },
     {
       "channel": "punkpeye/awesome-mcp-servers",
@@ -95,7 +95,7 @@
       "status": "draft",
       "url": null,
       "date": "2026-10-17",
-      "evidence": "docs/launch/release-notes-0.9.0.md and CHANGELOG Unreleased; every claim in docs/launch/claims.md, run on f964a0f."
+      "evidence": "docs/launch/release-notes-0.9.0.md and CHANGELOG Unreleased; claims re-run on 57d0ed4 (docs/launch/claims.md, 'Changed on 57d0ed4')."
     },
     {
       "channel": "Website",
@@ -103,7 +103,7 @@
       "status": "ready",
       "url": null,
       "date": "2026-10-17",
-      "evidence": "site/ on branch sprint/f-launch; node scripts/build-site-demo.mjs --check passes; checked at 1440 and 390 px, light and dark, no horizontal scroll (Playwright). Deploys on merge to main."
+      "evidence": "site/ on branch sprint/f-launch; node scripts/build-site-demo.mjs --check passes; checked at 1440 and 390 px, light and dark, no horizontal scroll (Playwright). Deploys on merge to main. Re-checked on 57d0ed4: development-set and Fiddle bridge-link facts added; site/demo unchanged (--check passes)."
     },
     {
       "channel": "Official MCP registry",

@@ -127,7 +127,6 @@ because which members a preload exposes is read from the bridge itself.
 ## 5. Accepting what is there
 
 ```bash
-mkdir -p .hexvero   # the baseline's directory must exist
 npx hexvero@0.9.0 check $A $B --policy hexvero-demo/policy.json \
   --baseline .hexvero/baseline.json --update-baseline
 ```
@@ -174,11 +173,16 @@ never mapped onto your repository's files, because a bundled `main.js` is not yo
   of 39 window settings, and both expected window-setting changes to the next version were
   missed: the options were built with `Object.assign({}, BASE_PREFS, …)` across a binding
   ([round 4](https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round4/README.md)).
-  A window rule that cannot read the settings is exactly where exit 4 matters.
+  A window rule that cannot read the settings is exactly where exit 4 matters. The same set, now
+  a development set after the misses were worked on, gives 72 of 72 channels but still 17 of 52
+  window settings; that number is not blind and is not a substitute for the one above.
 - On a real app, Electron Fiddle 0.38.0 → 0.39.0, a check with 0.8.0 found no false change but
   missed a new field in an IPC payload and a new storage key behind a wrapper
   ([case study](https://github.com/maximilianfeix/hexvero/blob/main/docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md)).
-  Payload shapes are not compared in 0.9.0 either.
+  Payload shapes are not compared in 0.9.0 either. What 0.9.0 does read there is Fiddle's IPC
+  wrapper class (`ipcMainManager.handle`): 45 of its 46 bridge members with a channel are now
+  linked to a main-process handler, against none with 0.8.0, which is what
+  `new-interface-member` needs to name the handler of a new member.
 - Other tools compare versions too (REA documents `compare_application_versions`) and
   Electronegativity writes SARIF for single-build checks. What this adds is the Electron release
   delta with the line behind each change, unknowns kept apart, and a policy with baselines on
