@@ -10,7 +10,8 @@ with file and line; for native binaries imports, libraries, symbols and hardenin
 What the program does at run time: whether code is reached, which values computed at run time
 take, whether anything is exploitable. Channel names or URLs built at run time are listed as
 unresolved or shown as `${…}`. It also misses things it could read in principle: on the newest
-blind set it found 12 of 57 IPC channels (`corpus/holdout4/README.md`).
+blind set it found 49 of 54 IPC channels but only 14 of 39 window settings
+(`corpus/results/round4/README.md`).
 
 **Do I need an analysis engine installed?**
 No. Everything above works with Node.js 22.12 or newer. radare2, rizin or Ghidra are optional

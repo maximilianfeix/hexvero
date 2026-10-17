@@ -205,6 +205,11 @@ pre.cmd {
   font-size: 14px;
   line-height: 1.6;
 }
+pre.cmd code {
+  display: block;
+  white-space: pre;
+  overflow-x: visible;
+}
 pre.cmd code::before {
   content: none;
 }
