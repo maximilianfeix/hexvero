@@ -315,6 +315,52 @@ describe("HTTP client modules", () => {
     for (const [source, rows] of cases) expect(show(source)).toEqual(rows);
   });
 
+  it("does not fall back to the name rule for a reassigned client or another module (#157)", () => {
+    const cases: Array<[string, string[]]> = [
+      // reassigned where the call means the binding: no row
+      ['let h = require("https");\nh = fake;\nh.get("https://fake-reassigned.example/");', []],
+      [
+        'let https = require("https");\nhttps = fake;\nhttps.get("https://fake-reassigned.example/");',
+        [],
+      ],
+      // a webpack module whose id is not known to be a client: an unknown row at most
+      [
+        '2:function(e,t,n){const r=require("https")},\n3:function(e,t,n){const r=n(7);r.request("https://fake-other-module.example/")}',
+        ["http-client ?<expression> [unknown]"],
+      ],
+      // the module id is a client module of the same bundle: a request
+      [
+        '7:function(e){"use strict";e.exports=require("https")},\n2:function(e,t,n){const r=require("https")},\n3:function(e,t,n){const r=n(7);r.request("https://wp-known.example/")}',
+        ["http-client https://wp-known.example/ [literal]"],
+      ],
+      [
+        '{7(e){"use strict";e.exports=require("node:https")},3(e,t,n){const r=n(7);r.get("https://wp-known2.example/")},9(e){e.exports=require("https")}}',
+        ["http-client GET https://wp-known2.example/ [literal]"],
+      ],
+      // the module id is known to be something else: no client
+      [
+        '7:function(e){e.exports=require("fs")},\n2:function(e,t,n){const r=require("https")},\n3:function(e,t,n){const r=n(7);r.request("https://fake-fs.example/")}',
+        [],
+      ],
+      // a local bound to another module by require
+      [
+        'function a(){ const h = require("https"); h.get("https://real-a.example/"); }\nfunction b(){ const h = require("./cache"); return h.get("https://fake-cache.example/"); }',
+        ["http-client GET https://real-a.example/ [literal]"],
+      ],
+      // a wrapper module under a client's own name stays a client by name (0.9.2)
+      [
+        'const axios = require("./http");\naxios.post("https://api.example/wrapped");',
+        ["http-client POST https://api.example/wrapped [literal]"],
+      ],
+      // the client's own name stays a client by name (0.9.2), whatever module n(5) is
+      [
+        '1:function(e,t,n){const https=n(5);https.get("https://wp-n.example/")}',
+        ["http-client GET https://wp-n.example/ [literal]"],
+      ],
+    ];
+    for (const [source, rows] of cases) expect(show(source)).toEqual(rows);
+  });
+
   it("reads calls past the check cap by the name rule, and folds unknown rows", () => {
     const source =
       'const https = require("https");\nfunction m() {\n' +

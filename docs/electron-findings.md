@@ -326,10 +326,23 @@ read once per file into ranges, so the check is linear.
 
 Where no binding is proven, the rule of 0.9.2 applies: a call on `http`, `https`, `axios`, `got`,
 `ky`, `superagent`, `needle`, `$http` or a name bound to one of those modules anywhere in the file
-is a request when its URL is read as an address, without unknown rows. This also holds for a
-local that is itself bound to a module (`const https = n(5)` in a webpack module, `const https =
-require("https")` in another module of a bundle); a local bound to anything else, and a parameter
-of a name the file binds to a client module, is another object. At most 2,000 client calls are
+is a request when its URL is read as an address, without unknown rows. A local of such a name
+counts by what it is bound to:
+
+- `require("<client module>")`, also through an interop call or a pattern, and webpack's
+  `n(<id>)` where module `<id>` of the same file only passes a client module on (`7(e) {
+  e.exports = require("https") }`, also `7: function (e) {…}`): the client. Such an `n(<id>)`
+  binding is a proven client under any name.
+- Another module (`require("./cache")`, `n(<id>)` of a module that passes `fs` on): that module,
+  no row; under a client's own name (`const axios = require("./http")`, a wrapper module) the
+  name rule still holds.
+- `n(<id>)` of a module this file does not show: under a client's own name (`const https =
+  n(5)`) the name rule holds; under another name (`const r = n(7)`) the object is not known, and
+  the call is an unknown row (`<expression>`), never the address.
+- Anything else, and a parameter of a name the file binds to a client module: another object.
+
+A declaration that an assignment writes to (`let h = require("https"); h = fake;`) holds
+something else by then: a call where the name means that declaration gives no row. At most 2,000 client calls are
 checked per file (limitation `client_calls_skipped`); the further ones are read by that rule, so
 a literal address past the cap is still a row. Unknown client rows past 200 per file are folded
 into one `<expression>` row with its count, so they cannot push known addresses out of the list
