@@ -1,6 +1,7 @@
-# Channels for 0.9.0
+# Channels for 0.9.x (current release 0.9.6)
 
-Re-checked 2026-10-17 (about 00:45 UTC) unless noted. "Rules" quotes the channel's own page;
+Re-checked 2026-10-17 (about 00:45 UTC) unless noted; the status of each channel is kept in
+[status.json](status.json). "Rules" quotes the channel's own page;
 where that page could not be read from here, the row says **UNVERIFIED** and the rules must be
 read by hand before posting. Ten channels at most; one story per channel, no identical
 cross-posts, no vote requests. Posting is the maintainer's job (docs/launch/README.md).

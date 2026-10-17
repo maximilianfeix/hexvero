@@ -455,6 +455,42 @@ value, a possible operation, not a confirmed one. hexvero also says that 0.39.0 
 IndexedDB). M1 (IPC argument shapes) and M3 (an endpoint whose URL is a parameter of an HTTP
 client method) are still missed.
 
+## 0.9.3: the request in the bundled CLI (M3)
+
+`npx hexvero@0.9.3` on the full apps (each `app.asar` next to its `app.asar.unpacked`, where the
+bundled `sfw` CLI lives), 2026-10-17:
+
+```text
+endpoints: 2 added, 0 removed, 0 changed, 2 unchanged, 6 relocated · matched by file+kind+value
+  + .webpack/sfw/dist/sfw.mjs::http-client::https://api.github.com/repos/SocketDev/sfw-free/releases/latest
+  + .webpack/sfw/dist/sfw.mjs::http-client::null
+```
+
+M3 is found. In `sfw.mjs` the URL is passed through two functions and an immediately called
+function to `kt.get(new Nt(t), …)`, with `import kt from"node:https"` and
+`import{URL as Nt}from"node:url"` (read in the file). The second row is the same `kt.get` call,
+reached also by a redirect and a range download whose URLs exist only at run time, so it is an
+unknown address, not a second host. The 0.38.0 list is unchanged, and Fiddle's own `src` makes no
+`https`/`http`/`net.request` call at v0.39.0 (`git grep`), so nothing of the app is missed there.
+The lone archives in `asar/` give no such row: without `app.asar.unpacked` next to them the file
+is not read (limit 7). Still missed: two requests in dependency code that binds the modules
+through webpack ids (`r = i(65692)`).
+
+## 0.9.5: the new payload field (M1)
+
+`npx hexvero@0.9.5` on the lone archives (the same on the full apps), 2026-10-17:
+
+```text
+ipc: 0 added, 0 removed, 1 changed, 156 unchanged · matched by module+api+channel
+  ~ .webpack/renderer/main_window/preload.js::ipcRenderer.invoke::NPM_ADD_MODULES  args: "({dir, packageManager}, ...)" → "({dir, packageManager, useSocketFirewall}, ...)"
+```
+
+M1 is found. `git diff v0.38.0 v0.39.0 -- src/preload/preload.ts` changes exactly the parameter and
+the argument `{ dir, packageManager }` → `{ dir, packageManager, useSocketFirewall }`; no other
+call's shape changed. With 0.9.5 the four misses of the 0.8.0 run (M1–M4) are all reported: M1
+here, M2 (storage) since 0.9.2, M3 (endpoint, with `app.asar.unpacked`) since 0.9.3, M4 (the added
+module, on the full app) since 0.9.0. What the receiving handler reads from the payload is not read.
+
 ## Limitations of the study
 
 - One app, one pair of versions, one platform build (darwin-arm64). Other platforms ship the same asar content in principle, but this was not checked.
