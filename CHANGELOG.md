@@ -6,6 +6,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Web UI
+
+- The compare view explains the `ipc` group (the calls whose payload changed on an existing
+  channel), like every other list; before, the group had no line saying what it lists.
+
 ## [0.9.6] - 2026-10-17
 
 ### Performance
