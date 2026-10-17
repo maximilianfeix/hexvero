@@ -151,8 +151,11 @@ export interface FnDef {
 }
 
 const MAX_VALUES = 64;
-/** Functions read per file (a large bundle has some tens of thousands). */
-const MAX_FUNCTIONS = 200_000;
+/**
+ * Functions read per file. Electron Fiddle's renderer bundle has 25,113 (its storage wrapper
+ * class comes after the first 20,000); the tables grow with this number, so it stays bounded.
+ */
+const MAX_FUNCTIONS = 60_000;
 const MAX_DEPTH = 10;
 const MAX_SITES = 64;
 /** Rounds of one loop, `forEach` or `map`, and keys an evaluated object may get. */
@@ -550,11 +553,7 @@ export class ExpressionResolver {
           ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
         )
           return null;
-    const range = def.owner ? this.classRanges().find((c) => c.name === def.owner) : null;
-    const sites = this.callSites(def).filter(
-      (open) =>
-        !this.is(open - 3, "ident", "this") || (!!range && open > range.start && open < range.end),
-    );
+    const sites = this.callSites(def);
     if (!sites.length) return null;
     const out: WrapperCalls["sites"] = [];
     for (const open of sites) {
@@ -3043,11 +3042,13 @@ export class ExpressionResolver {
     if (this.s.defs) return this.s.defs;
     const defs: FnDef[] = [];
     const tokens = this.tokens;
-    const classes = this.classRanges();
-    const classAt = (k: number): string | null => {
-      for (const c of classes) if (k > c.start && k < c.end) return c.name;
-      return null;
-    };
+    // A method belongs to the class whose body is the innermost bracket around its name: a
+    // method of an object literal inside a method (`m() { const o = { save(z) {…} } }`) is not
+    // one of the class, nor is a method of a class nested in it.
+    const classStarts = new Map(this.classRanges().map((c) => [c.start, c.name]));
+    this.innermostBlock(0, null); // builds the table of brackets
+    const parents = this.s.parents!;
+    const classAt = (k: number): string | null => classStarts.get(parents[k]!) ?? null;
     for (let k = 0; k < tokens.length && defs.length < MAX_FUNCTIONS; k++) {
       const t = tokens[k]!;
       // function NAME ( … ) {   /   function ( … ) {
@@ -3785,6 +3786,42 @@ export class ExpressionResolver {
     return declared === 1;
   }
 
+  /** A parameter, local, `catch (…)` or block declaration of NAME around k binds it there. */
+  private shadowed(k: number, name: string): boolean {
+    return (
+      this.enclosingParam(k, name) ||
+      this.declaredLocally(k, name) ||
+      this.catchBinds(k, name) ||
+      this.innerDeclared(null, name, k)
+    );
+  }
+
+  /** def is the one binding of its name: `function NAME`, `const NAME = …`, declared once. */
+  private plainName(def: FnDef): boolean {
+    for (let j = def.paramsAt - 1; j >= 0 && j >= def.paramsAt - 4; j--)
+      if (this.is(j, "ident", def.name!))
+        return !this.punct(j - 1, ".") && this.declaredOnce(def.name!);
+    return false;
+  }
+
+  /**
+   * `this` at k is an instance of def's class: k is inside def's class body, and the innermost
+   * function around k that is no arrow is a method of that body, or lies outside the class (k is
+   * in a field initializer, `x = this.retrieve(…)`). Inside a plain `function` or a method of an
+   * object literal, `this` is something else.
+   */
+  private thisIsOwner(k: number, def: FnDef): boolean {
+    this.innermostBlock(0, null);
+    const parents = this.s.parents!;
+    const body = parents[def.paramsAt - 1]!;
+    const close = body === -1 ? -1 : this.match[body]!;
+    if (body === -1 || close === -1 || k <= body || k >= close) return false;
+    let f = this.enclosing(k);
+    for (let guard = 0; f?.arrow && guard < 64; guard++) f = this.enclosing(f.paramsAt - 1);
+    if (!f || f.body[0] < body) return true;
+    return f.owner === def.owner && parents[f.paramsAt - 1] === body;
+  }
+
   private callSites(def: FnDef): number[] {
     const cached = this.siteCache.get(def);
     if (cached) return cached;
@@ -3794,13 +3831,13 @@ export class ExpressionResolver {
     const instances = new Set<string>(
       def.owner ? this.instancesOf(def.owner).map((x) => x.name) : [],
     );
+    let plain: boolean | null = null;
     for (const k of this.positions(def.name!)) {
       if (out.length >= MAX_SITES) break;
       if (!this.is(k, "ident", def.name!) || !this.punct(k + 1, "(") || k + 1 === def.paramsAt)
         continue;
       // a parameter or local of the same name at the call hides the function
-      if (!def.owner && (this.enclosingParam(k, def.name!) || this.declaredLocally(k, def.name!)))
-        continue;
+      if (!def.owner && this.shadowed(k, def.name!)) continue;
       const before = this.punct(k - 1, ".");
       if (!def.owner) {
         // a method of an object literal: `http.getJson(…)` for `const http = { getJson(url) {…} }`
@@ -3811,22 +3848,25 @@ export class ExpressionResolver {
             literal &&
             this.is(k - 2, "ident", literal) &&
             !this.punct(k - 3, ".") &&
-            !this.enclosingParam(k - 2, literal) &&
-            !this.declaredLocally(k - 2, literal)
+            !this.shadowed(k - 2, literal)
           )
             out.push(k + 1);
           continue;
         }
         if (def.member || this.is(k - 1, "ident", "function")) continue;
-        out.push(k + 1);
+        // `name(…)` is a call of def only when def is what the name is bound to, once: not
+        // `exports.name = function …` (a property, not a binding), nor a name assigned again
+        if (plain === null) plain = this.plainName(def);
+        if (plain) out.push(k + 1);
         continue;
       }
       if (!before) continue;
       const receiver = tokens[k - 2];
-      if (
-        receiver?.type === "ident" &&
-        (instances.has(receiver.value) || receiver.value === "this")
-      ) {
+      if (receiver?.type === "ident" && receiver.value === "this") {
+        if (this.thisIsOwner(k - 2, def)) out.push(k + 1);
+        continue;
+      }
+      if (receiver?.type === "ident" && instances.has(receiver.value)) {
         out.push(k + 1);
         continue;
       }

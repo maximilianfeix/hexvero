@@ -667,8 +667,46 @@ export class Constants {
           !(next && next.line !== t.line) &&
           // `Name:` is an object key or a ternary branch, never a new binding of Name
           (is(next, "punct", ",") || is(next, "punct", ")") || is(next, "punct", "}")));
-      if (rebound) this.enums.set(t.value, null);
+      // `Name.MEMBER = …` or `Name["MEMBER"] = …` outside the definition: the member changes
+      const at = is(next, "punct", ".") ? k + 3 : is(next, "punct", "[") ? k + 4 : -1;
+      const member =
+        !property &&
+        at !== -1 &&
+        (is(tokens[k + 2], "ident") || tokens[k + 2]?.type === "string") &&
+        (at === k + 3 || is(tokens[k + 3], "punct", "]")) &&
+        is(tokens[at], "punct", "=");
+      if (rebound || member) this.enums.set(t.value, null);
     }
+  }
+
+  /**
+   * Names bound to a module object: `c = n(33271)` (webpack), `x = require("./x")`,
+   * `i = __toESM(require_x())`. Only through such a name is `name.Enum.MEMBER` read as the
+   * enum of the file; `other.Enum.MEMBER` on any other object may be anything.
+   */
+  private moduleNames: Set<string> | null = null;
+  private isModuleName(name: string): boolean {
+    if (!this.moduleNames) {
+      const tokens = this.tokens;
+      const out = new Set<string>();
+      for (let k = 0; k + 5 < tokens.length; k++) {
+        if (
+          !is(tokens[k], "ident") ||
+          !is(tokens[k + 1], "punct", "=") ||
+          !is(tokens[k + 2], "ident") ||
+          !is(tokens[k + 3], "punct", "(")
+        )
+          continue;
+        const arg = tokens[k + 4];
+        const direct =
+          (arg?.type === "number" || arg?.type === "string") && is(tokens[k + 5], "punct", ")");
+        const wrapped =
+          is(arg, "ident") && is(tokens[k + 5], "punct", "(") && is(tokens[k + 6], "punct", ")");
+        if (direct || wrapped) out.add(tokens[k]!.value);
+      }
+      this.moduleNames = out;
+    }
+    return this.moduleNames.has(name);
   }
 
   /**
@@ -771,9 +809,10 @@ export class Constants {
   /**
    * The value of `Enum.MEMBER` or `anything.Enum.MEMBER` used as an argument at token `k`.
    * The object in front of the enum name is whatever the module was imported as and is not
-   * looked at: the enum name and the member decide.
+   * looked at: the enum name and the member decide. `strict` (storage keys, see `enumAt`): the
+   * object must be a name the file binds to a module object (`isModuleName`).
    */
-  private enumMember(k: number, endAt?: number): string | null {
+  private enumMember(k: number, endAt?: number, strict = false): string | null {
     const tokens = this.tokens;
     if ((!this.enums.size && !this.scopedEnums.size) || tokens[k]?.type !== "ident") return null;
     const chain = [tokens[k]!.value];
@@ -789,6 +828,7 @@ export class Constants {
         : at !== endAt)
     )
       return null;
+    if (strict && chain.length === 3 && !this.isModuleName(chain[0]!)) return null;
     const [name, member] = chain.slice(-2) as [string, string];
     return (
       this.enums.get(name)?.get(member) ??
@@ -797,12 +837,13 @@ export class Constants {
   }
 
   /**
-   * The value of `Enum.MEMBER` or `anything.Enum.MEMBER` when that chain is exactly the tokens
-   * [k, end): for the resolver, which reads expressions of any extent (an argument bound at a
-   * call site, a key inside a wrapper). The same rules as `enumMember`.
+   * The value of `Enum.MEMBER` or `module.Enum.MEMBER` when that chain is exactly the tokens
+   * [k, end): for storage keys and the resolver, which reads expressions of any extent (an
+   * argument bound at a call site, a key inside a wrapper). The rules of `enumMember`, strict:
+   * `module` must be bound to a module object (`c = n(33271)`, `x = require("./x")`).
    */
   enumAt(k: number, end: number): string | null {
-    return this.enumMember(k, end);
+    return this.enumMember(k, end, true);
   }
 
   constructor(private readonly tokens: Token[]) {

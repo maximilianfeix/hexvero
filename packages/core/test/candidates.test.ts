@@ -415,6 +415,85 @@ describe("storage through wrapper methods and enums", () => {
     ).toEqual(["localStorage read ?<expression> [unknown] @3:1"]);
   });
 
+  it("takes a call for the wrapper's only where the name means the wrapper there (R3)", () => {
+    const cases: Array<[string, string[]]> = [
+      // H1: another class's method of the same name, classes written as `t.Name = class`
+      [
+        '1(e,t){t.AppState=class{save(e,n){localStorage.setItem(e,n)}}},\n2(e,t){t.Doc=class{save(e){return e}run(){this.save("not-a-storage-key")}}}',
+        ["localStorage write ?e [unknown] @1:35"],
+      ],
+      [
+        'class A{ get(k){ return localStorage.getItem(k) } } class B{ get(k){ return k } run(){ this.get("not-a-key-B") } }',
+        ["localStorage read ?k [unknown] @1:25"],
+      ],
+      // M1: `this` inside an object literal's method, or inside a plain function, is not the class
+      [
+        'class A{ save(k){ localStorage.setItem(k,1) } m(){ const o = { save(z){ return z }, f(){ this.save("not-a-key") } }; o.f(); } }',
+        ["localStorage write ?k [unknown] @1:19"],
+      ],
+      [
+        'class A{ save(k){ localStorage.setItem(k,1) } m(){ [1].forEach(function(){ this.save("not-a-key-fn") }); } }',
+        ["localStorage write ?k [unknown] @1:19"],
+      ],
+      // ... but inside an arrow function it is
+      [
+        'class A{ save(k){ localStorage.setItem(k,1) } m(){ [1].forEach(() => this.save("arrow-ok")); } }',
+        ["localStorage write arrow-ok [inferred] via A.save @1:75"],
+      ],
+      // M2: a name assigned again, bound by catch or for-of, or a property `exports.save`
+      [
+        'let put = function(n){ localStorage.setItem(n, 1) };\nput("a");\nput = function(p){ return p };\nput("not-a-key");',
+        ["localStorage write ?n [unknown] @1:24"],
+      ],
+      [
+        'function put(n){ localStorage.setItem(n,1) }\nput("a");\ntry{}catch(put){ put("nope-catch") }',
+        ["localStorage write a [inferred] via put @2:1"],
+      ],
+      [
+        'function put(n){ localStorage.setItem(n,1) }\nput("a");\nfor (const put of fns) put("nope-for");',
+        ["localStorage write ?n [unknown] @1:18"],
+      ],
+      [
+        'exports.save = function(k){ localStorage.setItem(k, 1) };\nfunction save(k){ return k }\nsave("not-a-key");',
+        ["localStorage write ?k [unknown] @1:29"],
+      ],
+      // L1: an enum member written later; L2: an enum name read through an object that is no module
+      [
+        '(function (S) { S.theme = "theme"; })(Setting || (exports.Setting = Setting = {}));\nSetting.theme = "other";\nlocalStorage.getItem(Setting.theme);',
+        ["localStorage read ?<expression> [unknown] @3:1"],
+      ],
+      [
+        '(function (S) { S.theme = "theme"; })(Setting || (exports.Setting = Setting = {}));\nlocalStorage.getItem(other.Setting.theme);',
+        ["localStorage read ?<expression> [unknown] @2:1"],
+      ],
+      [
+        '(function (S) { S.theme = "theme"; })(Setting || (exports.Setting = Setting = {}));\nconst m = require("./s");\nlocalStorage.getItem(m.Setting.theme);',
+        ["localStorage read theme [inferred] @3:1"],
+      ],
+    ];
+    for (const [source, expected] of cases)
+      expect([source, rows(source)]).toEqual([source, expected]);
+    // the same rule for endpoints, which read helper parameters at their call sites as well
+    const api =
+      '1(e,t){t.Api=class{get(u){return fetch(u)}}},\n2(e,t){t.Doc=class{get(e){return e}run(){this.get("https://not.an.endpoint/")}}}';
+    expect(find(api).endpoints.map((r) => r.value ?? `?${r.expression}`)).toEqual(["?u"]);
+  });
+
+  it("follows no wrapper per call in a file with more functions than it follows wrappers for", () => {
+    const source = [
+      "function put(k) { localStorage.setItem(k, 1); }",
+      'put("a");',
+      ...Array.from({ length: 50_001 }, (_, i) => `function g${i}(a){return a}`),
+    ].join("\n");
+    const found = find(source);
+    expect(found.wrappersSkipped).toBe(true);
+    // no row per call: the resolver's own reading of the parameter, at the storage call
+    expect(rows(source)).toEqual(["localStorage write a [inferred] @1:19"]);
+    expect(find('function put(k) { localStorage.setItem(k, 1); }\nput("a");').wrappersSkipped).toBe(
+      undefined,
+    );
+  });
+
   it("stays linear on many wrapper calls and long export chains", () => {
     const calls = 20_000;
     const source = [

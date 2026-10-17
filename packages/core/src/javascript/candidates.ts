@@ -108,7 +108,19 @@ export interface Candidates {
   urls: Candidate[];
   /** True when a list hit its cap; the caller reports it as a limitation. */
   truncated: boolean;
+  /**
+   * The file has more functions than storage wrappers are followed for (MAX_WRAPPER_FUNCTIONS):
+   * keys passed through a wrapper there are not read at each call. The caller reports it.
+   */
+  wrappersSkipped?: true;
 }
+
+/**
+ * Functions (`function` and `=>`) a file may have for storage wrappers to be followed in it. The
+ * resolver's tables grow with the functions of a file; Electron Fiddle's renderer bundle has
+ * about 15,400 such tokens (25,113 functions with methods).
+ */
+const MAX_WRAPPER_FUNCTIONS = 50_000;
 
 const MAX_PER_LIST = 2000;
 const HTTP_VERBS = new Set(["get", "post", "put", "delete", "patch", "head", "options", "request"]);
@@ -385,6 +397,8 @@ export function findCandidates(
   // A resolver of its own: its work budget is not the one the endpoint questions used up.
   let wrapperResolver: ExpressionResolver | null = null;
   let wrapperQuestions = 0;
+  /** `function` and `=>` tokens of the file, counted at the first wrapper question. */
+  let functionTokens = -1;
   const wrappers = new Map<number, WrapperCalls | null>();
   const storageKey = (
     kind: Candidate["kind"],
@@ -396,7 +410,22 @@ export function findCandidates(
     const fast = read(k);
     const open = !fast || fast.value === null || fast.value.includes("${…}");
     let calls = wrappers.get(k);
-    if (open && calls === undefined && wrapperQuestions++ < 64) {
+    if (open && calls === undefined && functionTokens === -1) {
+      functionTokens = 0;
+      for (const x of tokens)
+        if (
+          (x.type === "ident" && x.value === "function") ||
+          (x.type === "punct" && x.value === "=>")
+        )
+          functionTokens++;
+      if (functionTokens > MAX_WRAPPER_FUNCTIONS) out.wrappersSkipped = true;
+    }
+    if (
+      open &&
+      calls === undefined &&
+      functionTokens <= MAX_WRAPPER_FUNCTIONS &&
+      wrapperQuestions++ < 64
+    ) {
       wrapperResolver ??= makeResolver();
       calls = wrapperResolver.wrapperCalls(k);
       wrappers.set(k, calls);

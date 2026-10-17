@@ -2447,7 +2447,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 14;
+export const JS_SCAN_SCHEMA = 15;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -3431,6 +3431,11 @@ export function analyzeJavaScriptTree(
     const cand = tokenFacts.candidates;
     if (cand) {
       if (cand.truncated) facts.candidatesCapped = true;
+      if (cand.wrappersSkipped && facts.limitations.length < 200)
+        facts.limitations.push({
+          code: "storage_wrappers_skipped",
+          message: `${file.path}: the file has more functions than storage wrappers are followed for (50,000); keys passed through a wrapper there are not read at each call (no rows with via).`,
+        });
       for (const [from, to] of [
         [cand.endpoints, facts.endpoints],
         [cand.storage, facts.storage],
