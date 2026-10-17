@@ -97,6 +97,15 @@ passed, e2e 13, corpus 298 rows none worse.
   (both versions, checked against v0.39.0 source, none false); holdout5 development numbers
   IPC channels 63/9/0 → 72/0/0, senders/receivers 81/45/0 → 131/9/0.
 
+- 0.9.1 window options (A3, after R2; holdout5 is a development set): window settings over 4
+  inputs 17/35/0 (0.9.0) → 42/10/0 (with class fields) → **32/20/0** (`c466919`, class fields no
+  longer read: R2 kept finding unseen ways to change a field, and a false safe value is worse than
+  computed). v1→v2 webPreferences changes 0/2/0 → 1/1/0 (missed: preview window's
+  `sandbox: true → false`, set through a class field). Committed corpus: time-tracker window
+  settings 11/0/0 → 7/4/0 per build, re-accepted. R2 probes t1–t4, t7, t8, dbg2 re-run on
+  `c466919`: no false safe value. Gates at `c466919`: check 663 passed | 1 skipped, e2e 13,
+  corpus none worse.
+
 ## Open risks
 
 - REA documents `compare_application_versions`; release comparison alone is not a differentiator (docs/competitive/matrix-2026-10-17.md).
@@ -106,15 +115,15 @@ passed, e2e 13, corpus 298 rows none worse.
 
 Probe scripts: scratchpad/review2/t1–t8.mjs, dbg2.mjs. A false safe value is worse than "computed".
 
-- CRITICAL #1 (A3, branch `sprint/a3b`): top-level block/if/switch/for/catch shadow reports the
+- CRITICAL #1 (A3; FIXED `c466919`): top-level block/if/switch/for/catch shadow reports the
   outer options (resolve.ts `lookup` falls through to topDeclarations). Regression against 0.9.0.
-- HIGH #2 (A3): class-field options changed through alias, argument, Object.assign(this),
+- HIGH #2 (A3; FIXED `c466919` by not reading class fields): class-field options changed through alias, argument, Object.assign(this),
   Reflect.set, defineProperty, computed keys are reported literal. Rule: if not robust, class
   fields are not read at all.
-- MEDIUM #3 #4 #5, LOW #9 (K, branch `sprint/k2`): false bridge exposures (reassigned name, loop
+- MEDIUM #3 #4 #5, LOW #9 (K; merged `a23930a`, follow-up `sprint/k3` for false negatives found by the security review: allowlist of acting methods, file-wide write and loop-variable counts, accessor keys after `action`): false bridge exposures (reassigned name, loop
   variable, arrow parameter, module methods), false `deny` with spread/computed key, navigation
   target through shadowing, compare key for minified receivers.
-- LOW #6 (A3): limitation note for cross-module mutation. #7 __toESM check: open. #8, #10: fixed
+- LOW #6, #7 (A3; FIXED `c466919`): limitation note for cross-module mutation; `__toESM(m, 1)` node mode. #8, #10: fixed
   `48b03ce` (control characters in Markdown report heading and note shown as `\u{…}`).
 
 ## Next steps / resume instructions
