@@ -49,6 +49,9 @@ All notable changes to hexvero are listed here. The format follows
   Table columns are aligned by the printed width and cut between escapes.
 - Markdown reports cut long target text before escaping it, so a code span never ends inside a
   `\u{…}` escape.
+- The interface map sorted every main-process end again for each context-bridge member: an archive
+  with 20,000 copies of one preload took 6 s in `hexvero check` and 75 s in a unit test of the
+  map alone; it now sorts each channel's ends once.
 - Source windows come only from the build that was analyzed. An archive rebuilt in place since it
   was opened (size, modification time or inode differ), or an app-folder file whose size is not
   the one analyzed, is refused with `<name> changed on disk since it was analyzed; open it again`

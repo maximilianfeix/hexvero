@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openAsar } from "../src/formats/asar.js";
 import { collectReleaseSources } from "../src/htmlReport.js";
+import { interfaceMap } from "../src/javascript/interfaces.js";
 import { AnalysisError } from "../src/model.js";
 import { parseBaseline, parsePolicy, PolicyError } from "../src/policy.js";
 import { compareReleases, renderReleaseReport, visibleControls } from "../src/report.js";
@@ -240,5 +241,44 @@ describe("a target rebuilt on disk after it was analyzed", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("interface map of an archive with thousands of copies of one preload", () => {
+  it("maps every bridge member without sorting every end for each one", () => {
+    const n = 20_000;
+    const modules = Array.from({ length: n }, (_, i) => ({
+      id: `p${i}.js`,
+      ipc: [{ api: "ipcMain.handle", channel: "ping", line: 1 }],
+    }));
+    const contextBridge = modules.map((m) => ({
+      api: "contextBridge.exposeInMainWorld",
+      member: "ping",
+      world: "api",
+      file: m.id,
+      line: 2,
+      channel: "ping",
+    }));
+    const started = performance.now();
+    const rows = interfaceMap(
+      {
+        modules,
+        contextBridge,
+        windows: [],
+        coverage: { complete: true },
+      } as unknown as Parameters<typeof interfaceMap>[0],
+      [],
+    );
+    // a filter and sort of all 20,000 ends per member took 75 s
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(rows).toHaveLength(n);
+    expect(rows[0]).toMatchObject({ direction: "to-main", endsTotal: n - 1, endsTruncated: true });
+    expect(rows[0]!.ends.map((e) => e.file)).toEqual(
+      modules
+        .slice(1)
+        .map((m) => m.id)
+        .toSorted((x, y) => x.localeCompare(y))
+        .slice(0, 20),
+    );
   });
 });
