@@ -487,7 +487,8 @@ function valueOf(r: ReleaseComparison, row: ChangeRow): string {
   const f = fieldsOf(r, row);
   if (f && typeof f["value"] === "string") return f["value"];
   if (f && typeof f["url"] === "string") return f["url"];
-  const m = /[a-z][a-z0-9+.-]*:\/\/.*$/i.exec(row.key) ?? /\$\{.*$/.exec(row.key);
+  // `s`: a URL literal may hold a line break (an escaped `\n`), which `.` alone would stop at
+  const m = /[a-z][a-z0-9+.-]*:\/\/.*$/is.exec(row.key) ?? /\$\{.*$/s.exec(row.key);
   return m ? m[0] : row.key;
 }
 

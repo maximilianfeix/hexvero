@@ -55,6 +55,13 @@ All notable changes to hexvero are listed here. The format follows
   are named with that reason. The evaluation is bounded on hostile input: regular expressions
   with at most one quantified atom, strings of at most 1,000 characters, at most 64 nested
   blocks, and an exception inside it ends that question with a reason, not the analysis.
+  It also stops, rather than guess, when an expression it cannot read may have effects (a call,
+  an assignment, `delete`), at `var` inside a block, at `async` functions and generators, at
+  integer-like and `__proto__` keys, and when a built table is aliased, `delete`d or passed to
+  code that may change it; keys keep the order JavaScript gives them, and a block's `const` no
+  longer reaches past its block.
+- String and template literals decode `\x41`, `\u0041`, `\u{41}`, `\0`, octal escapes and line
+  continuations as JavaScript does (before, `"a\x41"` was read as `ax41`).
 - Interface rows (C4) compute `direction` and `link` from every matching end and say how many
   there are: `endsTotal`, `endsTruncated`; `ends` keeps the first 20 as evidence.
 - Hold-out results improved with no new false report: window settings read through bundled
