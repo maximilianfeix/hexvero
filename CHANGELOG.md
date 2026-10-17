@@ -27,7 +27,7 @@ All notable changes to hexvero are listed here. The format follows
 - New limitation code `ipc_wrappers_capped` when the search for wrapper calls runs out of its
   budget. Short-named enums are checked in one pass per file under a budget (at most 256 per
   file), and the scope lookups behind the wrapper search are cached and charged to the
-  resolver's budget, so hostile inputs stay linear (`completeness.test.ts`). Stored scans of the earlier format are read again (`JS_SCAN_SCHEMA` 7).
+  resolver's budget, so hostile inputs stay linear (`completeness.test.ts`). The scope lookup behind it is block-aware: a `const`, `let` or `class` of an inner block (also at the top of the file) is visible only inside that block and shadows a parameter there; a `var`, a function declaration or a declarator list inside an inner block is not followed. Stored scans of the earlier format are read again (`JS_SCAN_SCHEMA` 7).
 
 ### Comparing releases
 

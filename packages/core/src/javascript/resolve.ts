@@ -3127,8 +3127,9 @@ export class ExpressionResolver {
    * Where a `const`, `let` or `class` declared at j is visible: null at the function's own block
    * level, else the block it is in (for a `for (…)` header, the header and the loop body).
    */
-  private blockScope(j: number, d: FnDef): [number, number] | null {
-    for (let i = j - 1, steps = 0; i > d.body[0] && steps < 20_000; i--, steps++) {
+  private blockScope(j: number, d: FnDef | null): [number, number] | null {
+    const start = d ? d.body[0] : -1;
+    for (let i = j - 1, steps = 0; i > start && steps < 20_000; i--, steps++) {
       const t = this.tokens[i]!;
       if (t.type !== "punct") continue;
       if (t.value === ")" || t.value === "]" || t.value === "}") {
@@ -3746,14 +3747,22 @@ export class ExpressionResolver {
     if (this.work <= 0) return null;
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       if (this.work <= 0) return null;
+      // a declaration of an inner block around k shadows the parameters as well
+      if (this.innerDeclared(d, name, k)) {
+        const declared = this.directDeclaration(d, name, k);
+        return declared && declared !== "ambiguous" ? declared : null;
+      }
       const index = d.params.findIndex((p) => paramNames([p]).includes(name));
       if (index !== -1)
         return d.params[index]!.kind === "name" ? { kind: "param", def: d, index } : null;
-      const declared = this.directDeclaration(d, name);
+      const declared = this.directDeclaration(d, name, k);
       if (declared) return declared === "ambiguous" ? null : declared;
-      const part = this.patternIn(d, name);
-      if (part !== undefined) return part;
       d = this.enclosing(d.paramsAt - 1);
+    }
+    // a `const`, `let` or `class` of a block at the top of the file, around k
+    if (this.innerDeclared(null, name, k)) {
+      const declared = this.directDeclaration(null, name, k);
+      return declared && declared !== "ambiguous" ? declared : null;
     }
     const decl = this.topDeclarations().get(name);
     if (decl) return { kind: "value", range: decl };
@@ -3774,24 +3783,130 @@ export class ExpressionResolver {
    * counts unless that function binds the name itself). "ambiguous" for anything else; null when
    * d does not declare it.
    */
-  private readonly directCache = new Map<string, Binding | "ambiguous" | null>();
-  private readonly patternCache = new Map<string, Binding | null | undefined>();
+  private readonly directCache = new Map<string, Declarations>();
   private readonly listedCache = new Map<string, [number, number] | null | undefined>();
 
-  private directDeclaration(d: FnDef, name: string): Binding | "ambiguous" | null {
-    const key = `${d.paramsAt}:${name}`;
-    if (this.directCache.has(key)) return this.directCache.get(key)!;
-    const found = this.directDeclarationIn(d, name);
-    this.directCache.set(key, found);
+  private parents: Int32Array | null = null;
+
+  /**
+   * The block a declaration at j is visible in, as `blockScope` reads it, from the innermost open
+   * bracket around j (one table for the file, built once): null at d's own level, a `for (…)`
+   * header with its body, else the bracket's extent.
+   */
+  private innermostBlock(j: number, d: FnDef | null): [number, number] | null {
+    if (!this.parents) {
+      const parents = new Int32Array(this.tokens.length).fill(-1);
+      const open: number[] = [];
+      for (let i = 0; i < this.tokens.length; i++) {
+        parents[i] = open.at(-1) ?? -1;
+        const t = this.tokens[i]!;
+        if (t.type !== "punct") continue;
+        if (t.value === "{" || t.value === "(" || t.value === "[") open.push(i);
+        else if (t.value === "}" || t.value === ")" || t.value === "]") open.pop();
+      }
+      this.parents = parents;
+    }
+    const p = this.parents[j]!;
+    if (p === -1 || (d && p <= d.body[0])) return null;
+    const close = this.match[p]!;
+    if (this.punct(p, "(") && this.is(p - 1, "ident", "for") && close !== -1) {
+      const body = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
+      return [p, Math.max(close, body)];
+    }
+    return [p, close];
+  }
+
+  /** Whether a declaration of NAME in an inner block of d (null: the top level) is visible at k. */
+  private innerDeclared(d: FnDef | null, name: string, k: number): boolean {
+    const v = this.visibleAt(d, name, k);
+    return v === "deep" || v.inner.length > 0;
+  }
+
+  private declarationsOf(d: FnDef | null, name: string): Declarations {
+    const key = `${d ? d.paramsAt : -1}:${name}`;
+    let found = this.directCache.get(key);
+    if (!found) {
+      found = this.directDeclarationsIn(d, name);
+      this.directCache.set(key, found);
+    }
     return found;
   }
 
-  private directDeclarationIn(d: FnDef, name: string): Binding | "ambiguous" | null {
-    let count = 0;
-    let found: Binding | "ambiguous" = "ambiguous";
+  /**
+   * The declarations of NAME in d visible at k: those of d's own level, and those of the blocks
+   * around k, found by walking up the brackets around k (at most 64; "deep" beyond).
+   */
+  private visibleAt(
+    d: FnDef | null,
+    name: string,
+    k: number,
+  ): { whole: DeclEntry[]; inner: DeclEntry[] } | "deep" {
+    const found = this.declarationsOf(d, name);
+    const inner: DeclEntry[] = [];
+    if (found.byOpen.size) {
+      this.innermostBlock(k, d); // builds the table of brackets
+      let p = this.parents![k]!;
+      for (let steps = 0; p !== -1 && (!d || p > d.body[0]); steps++) {
+        if (steps >= 64) return "deep";
+        for (const e of found.byOpen.get(p) ?? [])
+          if (e.scope![0] < k && k < e.scope![1]) inner.push(e);
+        p = this.parents![p]!;
+      }
+    }
+    return { whole: found.whole, inner };
+  }
+
+  private directDeclaration(
+    d: FnDef | null,
+    name: string,
+    k: number,
+  ): Binding | "ambiguous" | null {
+    const v = this.visibleAt(d, name, k);
+    if (v === "deep") return "ambiguous";
+    // a declaration of an inner block counts only for a use inside that block
+    const visible = [...v.whole, ...v.inner];
+    if (!visible.length) return null;
+    return visible.length === 1 && !this.declarationsOf(d, name).written
+      ? visible[0]!.binding
+      : "ambiguous";
+  }
+
+  /**
+   * The declarations of NAME directly in the body of d (not in a function nested in it), each
+   * with the block it is visible in (null: the whole body), and whether the name is written
+   * anywhere besides (a write in a nested function counts unless that function binds the name
+   * itself). A `var`, a function declaration or a declarator list inside an inner block is read
+   * as ambiguous everywhere in d.
+   */
+  private directDeclarationsIn(d: FnDef | null, name: string): Declarations {
+    const whole: DeclEntry[] = [];
+    const byOpen = new Map<number, DeclEntry[]>();
     let written = false;
-    for (const j of this.occurrences(name, d.body[0], d.body[1])) {
-      if (this.work <= 0) return "ambiguous";
+    // a declaration at the body's own level needs no search for its block
+    const level = d ? this.depthAt(d.body[0]) + 1 : 0;
+    const add = (binding: Binding | "ambiguous", at: number, blockScoped: boolean): void => {
+      const scope = this.depthAt(at) === level ? null : this.innermostBlock(at, d);
+      // a `for (let x …) …` without a block body: not followed (where it ends is not indexed)
+      const loose =
+        scope !== null && this.punct(scope[0], "(") && !this.punct(this.match[scope[0]]! + 1, "{");
+      if (!scope || !blockScoped || loose)
+        whole.push({ binding: scope ? "ambiguous" : binding, scope: null });
+      else {
+        // a `for (let x …) { … }`: also visible in the body block
+        const opens = this.punct(scope[0], "(")
+          ? [scope[0], this.match[scope[0]]! + 1]
+          : [scope[0]];
+        for (const o of opens) {
+          const list = byOpen.get(o) ?? [];
+          list.push({ binding, scope });
+          byOpen.set(o, list);
+        }
+      }
+    };
+    const [from, to] = d ? d.body : [0, this.tokens.length];
+    for (const j of this.occurrences(name, from, to)) {
+      if (this.work <= 0)
+        return { whole: [{ binding: "ambiguous", scope: null }], byOpen, written };
       if (this.punct(j - 1, ".")) continue;
       const inner = this.enclosing(j);
       const before = this.tokens[j - 1];
@@ -3801,35 +3916,73 @@ export class ExpressionResolver {
         continue;
       }
       const word = before?.type === "ident" ? before.value : null;
-      if (word === "const" || word === "let" || word === "var") {
-        count++;
-        found = this.punct(j + 1, "=")
-          ? { kind: "value", range: [j + 2, this.exprEnd(j + 2)] }
-          : "ambiguous";
-      } else if (word === "function") {
-        count++;
+      if (word === "const" || word === "let" || word === "var")
+        add(
+          this.punct(j + 1, "=")
+            ? { kind: "value", range: [j + 2, this.exprEnd(j + 2)] }
+            : "ambiguous",
+          j,
+          word !== "var",
+        );
+      else if (word === "function") {
         const def = this.functionWithParamsAt(j + 1);
-        found = def ? { kind: "function", def } : "ambiguous";
+        add(def ? { kind: "function", def } : "ambiguous", j, false);
       } else if (word === "class") {
-        count++;
         const range = this.classRanges().find((c) => this.classKeyword(c.start) === j - 1);
-        found = range ? { kind: "class", ...range } : "ambiguous";
+        add(range ? { kind: "class", ...range } : "ambiguous", j, true);
       } else if (
         this.punct(j - 1, ",") &&
         this.punct(j + 1, "=") &&
         !this.punct(j + 2, "=") &&
         this.inDeclarationList(j)
-      ) {
-        count++;
-        found = { kind: "value", range: [j + 2, this.exprEnd(j + 2)] };
+      )
+        add({ kind: "value", range: [j + 2, this.exprEnd(j + 2)] }, j, false);
+      else if (this.patternAt(j, d)) {
+        const part = this.patternAt(j, d)!;
+        add(part.binding, part.open, part.blockScoped);
       } else if (assigns) written = true;
     }
-    if (!count) return null;
-    return count === 1 && !written ? found : "ambiguous";
+    return { whole, byOpen, written };
+  }
+
+  /**
+   * NAME at j as a binding of an object pattern of a declaration (`const { KEY: NAME } = …`,
+   * also in a declarator list), with the `{` of the pattern; null when it is none.
+   */
+  private patternAt(
+    j: number,
+    d: FnDef | null,
+  ): { binding: Binding; open: number; blockScoped: boolean } | null {
+    if (!this.punct(j + 1, ",") && !this.punct(j + 1, "}")) return null;
+    const renamed = this.punct(j - 1, ":") && this.is(j - 2, "ident");
+    if (!renamed && !this.punct(j - 1, "{") && !this.punct(j - 1, ",")) return null;
+    let open = j - 1;
+    while (
+      open > (d ? d.body[0] : 0) &&
+      open > j - 400 &&
+      !(this.punct(open, "{") && this.match[open]! > j)
+    )
+      open--;
+    if (!this.punct(open, "{")) return null;
+    const close = this.match[open]!;
+    if (!this.punct(close + 1, "=") || this.punct(close + 2, "=")) return null;
+    const word = this.is(open - 1, "ident") ? this.tokens[open - 1]!.value : null;
+    const listed = this.punct(open - 1, ",") && this.inDeclarationList(open);
+    if (!(word && /^(const|let|var)$/.test(word)) && !listed) return null;
+    return {
+      binding: {
+        kind: "pattern",
+        key: renamed ? this.tokens[j - 2]!.value : this.tokens[j]!.value,
+        from: [close + 2, this.exprEnd(close + 2)],
+      },
+      open,
+      // a declarator list's keyword is not looked up: inside an inner block it is ambiguous
+      blockScoped: word === "const" || word === "let",
+    };
   }
 
   /** Whether a function from `inner` out to (not including) `outer` binds NAME itself. */
-  private bindsBetween(inner: FnDef | null, outer: FnDef, name: string): boolean {
+  private bindsBetween(inner: FnDef | null, outer: FnDef | null, name: string): boolean {
     for (let x = inner, guard = 0; x && x !== outer && guard < 20; guard++) {
       if (this.bindsOwn(x, name)) return true;
       x = this.enclosing(x.paramsAt - 1);
@@ -3865,8 +4018,8 @@ export class ExpressionResolver {
   private localPattern(k: number, name: string): { key: string; from: [number, number] } | null {
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       if (d.params.some((p) => paramNames([p]).includes(name))) return null;
-      const part = this.patternIn(d, name);
-      if (part !== undefined) return part?.kind === "pattern" ? part : null;
+      const part = this.directDeclaration(d, name, k);
+      if (part) return part !== "ambiguous" && part.kind === "pattern" ? part : null;
       if (this.declarationIn(d, name, k)) return null;
       d = this.enclosing(d.paramsAt - 1);
     }
@@ -3934,46 +4087,20 @@ export class ExpressionResolver {
    * NAME bound by an object pattern of a declaration directly in d (`var { KEY: NAME } = …`,
    * also in a declarator list): undefined when there is none, null when there are several.
    */
-  private patternIn(d: FnDef, name: string): Binding | null | undefined {
-    const key = `${d.paramsAt}:${name}`;
-    if (this.patternCache.has(key)) return this.patternCache.get(key);
-    const found = this.patternInUncached(d, name);
-    this.patternCache.set(key, found);
-    return found;
-  }
+}
 
-  private patternInUncached(d: FnDef, name: string): Binding | null | undefined {
-    let found: Binding | null = null;
-    let bound = 0;
-    for (const j of this.occurrences(name, d.body[0], d.body[1])) {
-      if (this.punct(j - 1, ".") || this.enclosing(j) !== d) continue;
-      if (!this.punct(j + 1, ",") && !this.punct(j + 1, "}")) continue;
-      const renamed = this.punct(j - 1, ":") && this.is(j - 2, "ident");
-      if (!renamed && !this.punct(j - 1, "{") && !this.punct(j - 1, ",")) continue;
-      let open = j - 1;
-      while (
-        open > d.body[0] &&
-        open > j - 400 &&
-        !(this.punct(open, "{") && this.match[open]! > j)
-      )
-        open--;
-      if (!this.punct(open, "{")) continue;
-      const close = this.match[open]!;
-      if (!this.punct(close + 1, "=") || this.punct(close + 2, "=")) continue;
-      const declares =
-        (this.is(open - 1, "ident") && /^(const|let|var)$/.test(this.tokens[open - 1]!.value)) ||
-        (this.punct(open - 1, ",") && this.inDeclarationList(open));
-      if (!declares || this.depthAt(open) !== this.depthAt(d.body[0]) + 1) continue;
-      bound++;
-      found = {
-        kind: "pattern",
-        key: renamed ? this.tokens[j - 2]!.value : name,
-        from: [close + 2, this.exprEnd(close + 2)],
-      };
-    }
-    if (!bound) return undefined;
-    return bound === 1 ? found : null;
-  }
+/** A declaration of a name in a function, with the block it is visible in (null: all of it). */
+interface DeclEntry {
+  binding: Binding | "ambiguous";
+  scope: [number, number] | null;
+}
+
+/** The declarations of a name directly in one function: of its own level, and by inner block. */
+interface Declarations {
+  whole: DeclEntry[];
+  /** Keyed by the `{` (or `for (`) that opens the block they are visible in. */
+  byOpen: Map<number, DeclEntry[]>;
+  written: boolean;
 }
 
 /** What a name is bound to where it is used (see `ExpressionResolver.binding`). */

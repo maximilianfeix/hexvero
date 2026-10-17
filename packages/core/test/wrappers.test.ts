@@ -583,3 +583,59 @@ describe("enums under a minifier's one-letter name", () => {
     }
   });
 });
+
+describe("block scope of the names a wrapper call goes through", () => {
+  const router = `class Router { handle(channel, fn) { ipcMain.handle(channel, fn); } }\n`;
+
+  it("does not take an inner block's const for the outer name used outside the block", () => {
+    for (const outer of ['const ipc = require("./other");', 'import { ipc } from "./other";'])
+      for (const inner of ["const ipc = new Router();", "let ipc = new Router();"]) {
+        const info = analyze({
+          "other.js": "exports.ipc = { handle() {} };\n",
+          "main.js": `const { ipcMain } = require("electron");\n${outer}\n${router}function setup() {
+  {
+    ${inner}
+    ipc.handle("in:block", f);
+  }
+  ipc.handle("out:block", f);
+}
+`,
+        });
+        expect(wrapperEnds(info)).toEqual(["in:block main.js ipcMain.handle Router.handle"]);
+      }
+  });
+
+  it("does not take the outer name for an inner block's const of the same name, at the top too", () => {
+    const info = analyze({
+      "main.js": `const { ipcMain } = require("electron");\n${router}const ipc = new Router();
+ipc.handle("outer:top", f);
+if (ready) {
+  const ipc = new Map();
+  ipc.handle("no:inner-map", f);
+}
+`,
+    });
+    expect(wrapperEnds(info)).toEqual(["outer:top main.js ipcMain.handle Router.handle"]);
+  });
+
+  it("does not take a pattern of an inner block for the name outside it, nor a var there", () => {
+    const info = analyze({
+      "main.js": `const { ipcMain } = require("electron");\n${router}x.ipc = new Router();
+function setup(ipc) {
+  if (ready) {
+    const { ipc } = load(1);
+    ipc.handle("in:pattern", f);
+  }
+  ipc.handle("out:param", f);
+}
+setup(other);
+function loose() {
+  if (ready) { var r = new Router(); }
+  r.handle("var:in-block", f);
+}
+`,
+    });
+    // the var declared in a block is not followed (it is ambiguous where it is set)
+    expect(wrapperEnds(info)).toEqual(["in:pattern main.js ipcMain.handle Router.handle"]);
+  });
+});
