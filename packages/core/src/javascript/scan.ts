@@ -816,7 +816,7 @@ export function scanJavaScript(
   };
   /** IPC calls whose channel argument is neither a literal nor a constant: resolved below. */
   const open: Array<{ usage: IpcUsage; at: number }> = [];
-  const payload = new PayloadReader(tokens);
+  const payload = new PayloadReader(tokens, source);
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;

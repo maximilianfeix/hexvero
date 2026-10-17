@@ -93,11 +93,13 @@ const literal = (t: Token | undefined): string | null =>
 
 /**
  * What one file defines for others, the IPC-shaped calls it makes on names it does not bind, and
- * the IPC rows only this reader sees. `aliases` is the file's own alias resolution.
+ * the IPC rows only this reader sees. `aliases` is the file's own alias resolution; `source` is
+ * the text the tokens were read from (for the payload shape of a reply).
  */
 export function collectAmbient(
   tokens: Token[],
   aliases: Map<number, string>,
+  source: string,
 ): { facts: AmbientFacts; ipc: IpcUsage[]; truncated: boolean } {
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
@@ -246,7 +248,7 @@ export function collectAmbient(
           api,
           channel,
           line: t.line,
-          args: (payload ??= new PayloadReader(tokens)).shapeAt(i + 1),
+          args: (payload ??= new PayloadReader(tokens, source)).shapeAt(i + 1),
         });
     }
     if (property) continue;

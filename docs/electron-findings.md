@@ -448,7 +448,7 @@ Electron Fiddle 0.38.0 → 0.39.0: `compare … ipc` gives `0 added, 0 removed, 
 
 Not read: the payload of a call through a wrapper method or a channel-forwarding helper (`via:
 wrapper`) or through a name another file defines (`via: global`): those rows have no `args`, as
-the arguments of the wrapper are not necessarily what it sends. What a value argument holds (`_`),
+the arguments of the wrapper are not necessarily what it sends. Keys are taken as written, not normalised: `{1.5: x}` and `{"1.5": x}`, `{0x10: x}` and `{16: x}`, `{["a"]: 1}` and `{a: 1}` give different shapes, as does a transpiler's spread helper (`_objectSpread({}, o, {a})` is `(_)`) against `{...o, a}`; `__proto__: p` counts as an unknown name. A comparison with an export written by 0.9.4 shows `args` on every sending call, as those rows have none. What a value argument holds (`_`),
 the keys of an object held in a variable, and what the receiver reads from the payload.
 
 ## Not read

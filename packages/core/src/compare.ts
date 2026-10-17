@@ -751,10 +751,10 @@ export function compareItems(
   };
 
   /**
-   * Pairs the repeats left over after content matching that differ only in shape fields. A class
-   * with one item per side is one changed item; several per side cannot be told apart, so they
-   * are one changed item whose shape fields list every side's values (sorted), and the items
-   * beyond the smaller side stay one-sided. Returns both rests.
+   * Pairs the repeats left over after content matching that differ only in shape fields. One
+   * pair is one changed item; several pairs cannot be told apart, so they are one changed item
+   * whose shape fields list the paired items' values (sorted). The items beyond the smaller side
+   * stay one-sided and are not in the changed item. Returns both rests.
    */
   function pairShapes(
     as: unknown[],
@@ -771,8 +771,11 @@ export function compareItems(
       restA.push(...itemsA.slice(n));
       restB.push(...itemsB.slice(n));
       if (n === 0) continue;
-      if (itemsA.length === 1 && itemsB.length === 1) {
-        diffOne(shown, itemsA[0], itemsB[0]);
+      // only the paired items: the ones beyond the smaller side are one-sided, listed there
+      const pairedA = itemsA.slice(0, n);
+      const pairedB = itemsB.slice(0, n);
+      if (n === 1) {
+        diffOne(shown, pairedA[0], pairedB[0]);
         continue;
       }
       const values = (list: unknown[], f: string): unknown[] =>
@@ -781,11 +784,11 @@ export function compareItems(
           .toSorted((p, q) => String(canonical(p)).localeCompare(String(canonical(q))));
       const fields: FieldChange[] = [];
       for (const f of shapes) {
-        const before = values(itemsA, f);
-        const after = values(itemsB, f);
+        const before = values(pairedA, f);
+        const after = values(pairedB, f);
         if (canonical(before) !== canonical(after)) fields.push({ field: f, before, after });
       }
-      changed.push({ key: shown, fields, before: itemsA, after: itemsB });
+      changed.push({ key: shown, fields, before: pairedA, after: pairedB });
     }
     for (const [c, itemsB] of mb) if (!ma.has(c)) restB.push(...itemsB);
     return [restA, restB];

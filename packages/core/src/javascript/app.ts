@@ -2974,7 +2974,7 @@ export function readFileTokens(
           source,
         )
       )
-        ambient = collectAmbient(tokens, context.aliases);
+        ambient = collectAmbient(tokens, context.aliases, source);
       if (/webPreferences|BrowserWindow|BrowserView|WebContentsView/.test(source)) {
         let resolver: ExpressionResolver | null = null;
         const { declOf, ...where } = windowRanges(

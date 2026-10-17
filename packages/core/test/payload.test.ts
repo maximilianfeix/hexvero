@@ -30,7 +30,7 @@ function shape(code: string): string {
   const open = tokens.findIndex(
     (t, i) => t.value === "(" && tokens[i - 1]?.value === "send" && t.type === "punct",
   );
-  return new PayloadReader(tokens).shapeAt(open);
+  return new PayloadReader(tokens, code).shapeAt(open);
 }
 
 describe("payload shape of one call", () => {
@@ -64,6 +64,23 @@ describe("payload shape of one call", () => {
 
   it("says not read when the call's brackets do not close", () => {
     expect(shape(`send("c", { a, b`)).toBe(NOT_READ);
+  });
+
+  it("says not read when brackets of different kinds meet (a file cut off or misread)", () => {
+    expect(shape(`send("c", ( ], { a })`)).toBe(NOT_READ);
+    expect(shape(`send("c", [ ), { a } ]`)).toBe(NOT_READ);
+    expect(shape(`send("c", x ], { a })`)).toBe(NOT_READ);
+    expect(shape(`send("c", { a ) }`)).toBe(NOT_READ);
+  });
+
+  it("reads a template literal as one argument, commas in its gaps included", () => {
+    expect(shape("send(`c`, `${a, b}`, { k })")).toBe("(_, {k})");
+    expect(shape("send(`c`, `x${a, b}y${c, d}z`, e)")).toBe("(_, _)");
+    expect(shape("send(`c`, `${`in${a, b}`}`, { k })")).toBe("(_, {k})");
+    expect(shape("send(`c`, `${ {x: 1}.x }`, y)")).toBe("(_, _)");
+    expect(shape("send(`c`, { a: `${p, q}`, b })")).toBe("({a, b})");
+    // an escaped `${` is text, not a gap
+    expect(shape("send(`c`, `\\${a, b}`)")).toBe("(_)");
   });
 
   it("keeps a long list short and says how much it left out", () => {
@@ -154,6 +171,12 @@ const repeated = (v2: boolean): Record<string, string> => ({
   ].join("\n"),
 });
 
+/** One preload file with these calls. */
+const rows = (calls: string[]): JsAppInfo =>
+  analyze({
+    "preload.js": ['const { ipcRenderer } = require("electron");', ...calls].join("\n"),
+  });
+
 describe("a new payload field on an existing channel", () => {
   const variants: Array<[string, (third: boolean) => Record<string, string>]> = [
     ["plain", preload],
@@ -217,6 +240,27 @@ describe("a new payload field on an existing channel", () => {
     expect(diff.unchanged).toBe(3);
     expect(diff.changed.map((c) => c.fields)).toEqual([
       [{ field: "args", before: "({level})", after: "({level, source})" }],
+    ]);
+  });
+
+  it("does not count a removed repeat in the changed row as well", () => {
+    const diff = compareIpc(
+      rows(['ipcRenderer.send("c", { a });', 'ipcRenderer.send("c", { a });']),
+      rows(['ipcRenderer.send("c", { b });']),
+    );
+    expect(diff.removed).toEqual(["preload.js::ipcRenderer.send::c"]);
+    expect(diff.added).toEqual([]);
+    expect(diff.changed.map((c) => c.fields)).toEqual([
+      [{ field: "args", before: "({a})", after: "({b})" }],
+    ]);
+    // several per side: the changed row lists the paired calls only
+    const many = compareIpc(
+      rows(Array.from({ length: 3 }, () => 'ipcRenderer.send("c", { a });')),
+      rows(Array.from({ length: 2 }, () => 'ipcRenderer.send("c", { b });')),
+    );
+    expect(many.removed).toEqual(["preload.js::ipcRenderer.send::c"]);
+    expect(many.changed.map((c) => c.fields)).toEqual([
+      [{ field: "args", before: ["({a})", "({a})"], after: ["({b})", "({b})"] }],
     ]);
   });
 

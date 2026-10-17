@@ -12,7 +12,7 @@
  * `(_, ...)` is a call with one value and a spread after the channel. When the call's brackets
  * cannot be matched (a file read only in part) the shape is `not read`.
  *
- * Linear time: brackets are matched once per file, and each call or object literal walks only
+ * Linear time: brackets (and template literals with gaps) are matched once per file, and each call or object literal walks only
  * its own top-level tokens, jumping over nested brackets.
  */
 
@@ -32,19 +32,45 @@ const isPunct = (t: Token | undefined, value: string): boolean =>
 export class PayloadReader {
   private match: Int32Array | null = null;
 
-  constructor(private readonly tokens: readonly Token[]) {}
+  /** `source` is the text the tokens were read from: it tells a template's gaps apart. */
+  constructor(
+    private readonly tokens: readonly Token[],
+    private readonly source: string,
+  ) {}
 
+  /**
+   * Brackets matched once per file. A closing bracket of another kind than the open one leaves
+   * both unmatched, so a call around them is `not read`. A template literal with gaps (`${…}`) is
+   * matched from its first part to its last, so commas inside the gaps stay inside it.
+   */
   private matches(): Int32Array {
     if (this.match) return this.match;
-    const match = new Int32Array(this.tokens.length).fill(-1);
+    const { tokens, source } = this;
+    const match = new Int32Array(tokens.length).fill(-1);
     const open: number[] = [];
-    for (let j = 0; j < this.tokens.length; j++) {
-      const p = this.tokens[j]!;
+    const CLOSES: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+    for (let j = 0; j < tokens.length; j++) {
+      const p = tokens[j]!;
+      if (p.type === "template") {
+        // a part that ends in `${` opens a gap; one that starts at the `}` of a gap continues it
+        const gap = source.slice(p.end - 2, p.end) === "${";
+        const continues = source[p.start] === "}";
+        if (continues) {
+          const at = open.at(-1);
+          if (at === undefined || tokens[at]!.type !== "template") continue;
+          if (!gap) {
+            open.pop();
+            match[at] = j;
+          }
+        } else if (gap) open.push(j);
+        continue;
+      }
       if (p.type !== "punct") continue;
       if (p.value === "{" || p.value === "(" || p.value === "[") open.push(j);
       else if (p.value === "}" || p.value === ")" || p.value === "]") {
         const at = open.pop();
-        if (at !== undefined) match[at] = j;
+        if (at === undefined) continue;
+        if (tokens[at]!.value === CLOSES[p.value] && tokens[at]!.type === "punct") match[at] = j;
       }
     }
     this.match = match;
@@ -63,11 +89,22 @@ export class PayloadReader {
     let start = open + 1;
     for (let j = open + 1; j < close; j++) {
       const t = this.tokens[j]!;
+      if (t.type === "template") {
+        // a template with gaps: up to its last part
+        if (this.source.slice(t.end - 2, t.end) !== "${") continue;
+        const end = match[j] ?? -1;
+        if (end === -1 || end > close) return null;
+        j = end;
+        continue;
+      }
       if (t.type !== "punct") continue;
       if (t.value === "{" || t.value === "(" || t.value === "[") {
         const end = match[j] ?? -1;
         if (end === -1 || end > close) return null;
         j = end;
+      } else if (t.value === "}" || t.value === ")" || t.value === "]") {
+        // a closing bracket that matched nothing: the brackets here cannot be trusted
+        return null;
       } else if (t.value === ",") {
         out.push([start, j]);
         start = j + 1;
