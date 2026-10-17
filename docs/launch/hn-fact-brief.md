@@ -15,7 +15,8 @@ npx hexvero demo
 npx hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --policy hexvero-demo/policy.json
 ```
 
-Verify both commands from an empty directory on the release you link before posting.
+Verify both commands from an empty directory on the release you link before posting (latest:
+0.9.1, checked 2026-10-17 03:00Z).
 
 ## Facts you can state (each with its source)
 
@@ -43,11 +44,15 @@ Verify both commands from an empty directory on the release you link before post
   main-process handler in both builds (0.8.0: 0). Command:
   `node scripts/case-study/bridge-links.mjs packages/core ElectronFiddle <a.asar> <b.asar>`.
 - holdout5 after the sprint is a **development set**, not blind (its misses were worked on): IPC
-  channels 72/0/0, senders and receivers 131/9/0, window settings 17/35/0 over 4 inputs. Never
-  quote these instead of, or mixed with, the blind 49 of 54 above.
+  channels 72/0/0, senders and receivers 131/9/0, window settings 17/35/0 over 4 inputs (0.9.0);
+  0.9.1: window settings 32/20/0, window-setting changes v1→v2 1 of 2 (claims N2). Never quote
+  these instead of, or mixed with, the blind 49 of 54 above.
 - Cost: Discord `analyze` median about +7 % (771 → 825 ms; a re-run gave 812 → 879 ms), Claude.app
   within noise; interleaved runs against 0.8.0 on one Apple M2 with other load.
-- Verify every row in `docs/launch/claims.md` (A1, A6–A8) on the release you link.
+- Verify every row in `docs/launch/claims.md` (A1, A6–A8, N1–N6) on the release you link.
+- 0.9.1 adds two observations: privileged objects a preload hands to pages (`bridgeExposures`)
+  and navigation/new-window handlers (`navigationHandlers`, `returns: deny` only where it is a
+  literal). Where the analysis cannot decide, an exposure is kept and flagged, never dropped.
 
 ## Do not say
 

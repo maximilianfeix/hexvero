@@ -7,7 +7,7 @@
       "status": "published",
       "url": "https://www.npmjs.com/package/hexvero",
       "date": "2026-10-16",
-      "evidence": "Release workflow run 38963762429 green; npx hexvero@0.8.0 demo from an empty cache"
+      "evidence": "Release workflow run 38963762429 green; npx hexvero@0.8.0 demo from an empty cache. Followed by 0.9.0 and 0.9.1 on 2026-10-17."
     },
     {
       "channel": "GitHub release",
@@ -23,7 +23,7 @@
       "status": "published",
       "url": "https://maximilianfeix.github.io/hexvero/",
       "date": "2026-10-16",
-      "evidence": "Pages workflow green; /demo/report.md names hexvero 0.8.0"
+      "evidence": "Pages workflow green; /demo/report.md named hexvero 0.8.0 then. Now the 0.9.x page (next Website row)."
     },
     {
       "channel": "DEV",
@@ -55,7 +55,7 @@
       "status": "draft",
       "url": null,
       "date": "2026-10-17",
-      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md). Updated for 0.9.0 facts on 2026-10-17 (holdout5, check); verify npx hexvero@0.9.0 demo/check before posting. Fiddle bridge links (0 → 45 of 46) and holdout5 development-set numbers added, kept apart from the blind result."
+      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md). Updated for 0.9.0 facts on 2026-10-17 (holdout5, check); verify npx hexvero@0.9.0 demo/check before posting. Fiddle bridge links (0 → 45 of 46) and holdout5 development-set numbers added, kept apart from the blind result. 0.9.1 (2026-10-17): verify with npx hexvero@0.9.1; its development-set numbers are claims N2 (docs/launch/claims.md), never mixed with the blind A1/A2."
     },
     {
       "channel": "punkpeye/awesome-mcp-servers",
@@ -83,35 +83,35 @@
     },
     {
       "channel": "npm",
-      "item": "hexvero 0.9.0",
-      "status": "blocked",
-      "url": null,
+      "item": "hexvero 0.9.0 and 0.9.1",
+      "status": "published",
+      "url": "https://www.npmjs.com/package/hexvero",
       "date": "2026-10-17",
-      "evidence": "Not released: waits for the merge of sprint/10h and npm run release -- 0.9.0 (lead). npx hexvero@0.8.0 check answers 'unknown command \"check\"'."
+      "evidence": "0.9.0: release run 38990077564 green (01:20Z). 0.9.1: release run 38996747203 green (03:00Z); npm dist-tag latest = 0.9.1; npx hexvero@0.9.1 --version, demo, check (exit 3, the demo policy is violated on purpose) and compare --report (33,298 bytes) from an empty cache."
     },
     {
       "channel": "GitHub release",
-      "item": "v0.9.0 notes",
-      "status": "draft",
-      "url": null,
+      "item": "v0.9.0, v0.9.1",
+      "status": "published",
+      "url": "https://github.com/maximilianfeix/hexvero/releases/tag/v0.9.1",
       "date": "2026-10-17",
-      "evidence": "docs/launch/release-notes-0.9.0.md and CHANGELOG Unreleased; claims re-run on 57d0ed4 (docs/launch/claims.md, 'Changed on 57d0ed4')."
+      "evidence": "gh release view v0.9.0 / v0.9.1: draft=false; notes from CHANGELOG."
     },
     {
       "channel": "Website",
       "item": "0.9.0 landing page: release gate, interface map, HTML report example",
-      "status": "ready",
-      "url": null,
+      "status": "published",
+      "url": "https://maximilianfeix.github.io/hexvero/",
       "date": "2026-10-17",
-      "evidence": "site/ on branch sprint/f-launch; node scripts/build-site-demo.mjs --check passes; checked at 1440 and 390 px, light and dark, no horizontal scroll (Playwright). Deploys on merge to main. Re-checked on 57d0ed4: development-set and Fiddle bridge-link facts added; site/demo unchanged (--check passes)."
+      "evidence": "Pages workflow green on main; /demo/report.md names hexvero 0.9.1."
     },
     {
       "channel": "Official MCP registry",
-      "item": "server.json 0.9.0",
-      "status": "blocked",
+      "item": "server.json 0.9.1",
+      "status": "published",
       "url": "https://registry.modelcontextprotocol.io/v0/servers?search=hexvero",
       "date": "2026-10-17",
-      "evidence": "0.8.0 is listed as latest; 0.9.0 is published by the mcp-registry workflow after the release."
+      "evidence": "Registry search lists 0.9.1 with isLatest true (MCP registry workflow green on main)."
     },
     {
       "channel": "X",
@@ -119,7 +119,7 @@
       "status": "draft",
       "url": null,
       "date": "2026-10-17",
-      "evidence": "docs/launch/posts.md section 'X: 0.9.0'; video docs/demo/release-gate.mp4 (25.2 s). Post after 0.9.0 is on npm; publishing is the maintainer's click."
+      "evidence": "docs/launch/posts.md section 'X: 0.9.0'; video docs/demo/release-gate.mp4 (25.2 s). 0.9.0 and 0.9.1 are on npm; publishing is the maintainer's click."
     },
     {
       "channel": "Second technical article",
