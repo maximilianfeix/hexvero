@@ -293,8 +293,8 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
     ["kind", "value"],
   ],
   urls: [["file", "value"], ["value"]],
-  // An imported module stays the same import when its count changes (another file imports it
-  // too); matched by content, a count change read as one removal and one addition.
+  // An imported module is identified by its specifier alone, so a changed import count (another
+  // file imports it too) is one changed row, not one removal and one addition.
   externals: [["specifier"]],
   // hexvero's own findings: what it found and where, not how the title words it ("… in the
   // scanned part" is added when a scan is partial), so a reworded title is a change

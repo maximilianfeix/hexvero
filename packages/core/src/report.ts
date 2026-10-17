@@ -457,9 +457,23 @@ export const CHANGE_SIGN: Record<ChangeRow["change"], string> = {
 };
 
 export const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
+/**
+ * Control characters from a target shown as `\u{…}`: an escape sequence must not reach a terminal
+ * that prints the report, and the name stays distinguishable from one without it.
+ */
+export function visibleControls(text: string): string {
+  return [...text]
+    .map((c) => {
+      const n = c.codePointAt(0)!;
+      const control =
+        (n < 32 && n !== 10 && n !== 13) || (n >= 0x7f && n < 0xa0) || n === 0x2028 || n === 0x2029;
+      return control ? `\\u{${n.toString(16)}}` : c;
+    })
+    .join("");
+}
 /** Text from a target, quoted so it cannot close the code span or start Markdown of its own. */
 const code = (text: string): string => {
-  const flat = text.replace(/[\r\n]+/g, " ").slice(0, 300);
+  const flat = visibleControls(text.replace(/[\r\n]+/g, " ")).slice(0, 300);
   const longest = Math.max(0, ...(flat.match(/`+/g) ?? []).map((run) => run.length));
   const fence = "`".repeat(longest + 1);
   const pad = longest ? " " : "";
@@ -467,7 +481,7 @@ const code = (text: string): string => {
 };
 /** Prose from a target (a file name, a limitation naming a channel): no Markdown of its own. */
 const cell = (text: string): string =>
-  text.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
+  visibleControls(text.replace(/[\r\n]+/g, " ")).replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
 /** A file name as one shell word: single-quoted unless it is plain. */
 const shellWord = (text: string): string => {
   const flat = [...text].filter((c) => c.charCodeAt(0) > 31 && c !== "\u007f").join("");
@@ -610,5 +624,5 @@ export function reproduceTargets(r: ReleaseComparison): {
 
 /** The note under a reproduce line with placeholders; `quote` escapes the name for the format. */
 export function sameNameNote(r: ReleaseComparison, name: string, quote: (s: string) => string) {
-  return `Both builds are named ${quote(name)}; pass their paths (sha256 ${r.a.info.sha256.slice(0, 12)}… before, ${r.b.info.sha256.slice(0, 12)}… after).`;
+  return `Both builds are named ${quote(visibleControls(name))}; pass their paths (sha256 ${r.a.info.sha256.slice(0, 12)}… before, ${r.b.info.sha256.slice(0, 12)}… after).`;
 }

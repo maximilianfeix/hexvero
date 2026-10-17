@@ -327,5 +327,18 @@ describe("source lines", () => {
       b: { ...r.b, info: { ...r.b.info, path: "[x](y)<b>.asar" } },
     };
     expect(renderReleaseReport(named)).toContain("named \\[x\\](y)\\<b\\>.asar;");
+    // control characters in the name neither break the line nor reach a terminal (the Markdown
+    // escapes the backslash, so it renders as \u{1b})
+    const ctl = "a\n## x\u001b[31m.asar";
+    const both = {
+      ...r,
+      a: { ...r.a, info: { ...r.a.info, path: ctl } },
+      b: { ...r.b, info: { ...r.b.info, path: ctl } },
+    };
+    const note = renderReleaseReport(both)
+      .split("\n")
+      .find((l) => l.startsWith("Both builds are named"));
+    expect(note).toContain("named a ## x\\\\u{1b}\\[31m.asar;");
+    expect(renderReleaseReport(both)).not.toContain("\u001b");
   });
 });
