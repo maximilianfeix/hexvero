@@ -4,6 +4,8 @@ A check of what `hexvero compare` reports for two published builds of a real Ele
 
 **Short version:** hexvero reported no changes to IPC channels, contextBridge members, windows, webPreferences, endpoints or storage keys. For channel names, member names and window settings, the source agrees. But three real changes in these areas were not reported: a new field in an IPC payload, a new localStorage key, and a new network endpoint in a JavaScript file shipped outside the archive. Most of the "changes" hexvero did report (58 of 82) are changes in its own analysis wording, not in the code. The two reported items that do matter, a new URL and a JavaScript file that could not be read, are both real and both point at the main feature of this release.
 
+**Re-run on hexvero 0.9.0** (see [0.9.0](#090)): 46 reported rows instead of 82, none of them hexvero's own wording. The new endpoint's URL and the new module in `app.asar.unpacked` are now reported; the new IPC payload field and the new storage key still are not. The sections between here and [0.9.0](#090) describe the 0.8.0 run and are kept as history.
+
 ## Why this app
 
 - **License:** MIT ([LICENSE](https://github.com/electron/fiddle/blob/v0.39.0/LICENSE)), so short code quotes are fine.
@@ -237,6 +239,196 @@ were read as opaque in 0.39.0 only. After: both builds are read the same way, `w
 and `windows` show no difference (the source has none), and the summary is `findings` 6 changed,
 `limitations` 1 added, `modules` 22 changed, `urls` 1 added, everything else unchanged
 (`ipcChannels` 64, `interfaces` 71, `ipc` 157).
+
+## 0.9.0
+
+The same two builds, read again with hexvero 0.9.0 (npm `hexvero@0.9.0`, built from this
+repository at `03588ec`, Node 22.17.1, macOS arm64). Since 0.8.0, a change in hexvero's own
+wording is no longer counted as a change, files in `app.asar.unpacked/` are read, and IPC wrapper
+classes are followed (previous section).
+
+The archives are the ones described under [Versions and artifacts](#versions-and-artifacts); their
+sha256 were checked again and match. This time hexvero was pointed at the `app.asar` inside each
+extracted `Electron Fiddle.app/Contents/Resources/`, so the `app.asar.unpacked/` directory of
+0.39.0 sits next to it.
+
+```bash
+A="x-0.38.0/Electron Fiddle.app/Contents/Resources/app.asar"
+B="x-0.39.0/Electron Fiddle.app/Contents/Resources/app.asar"
+hexvero analyze "$A" --fresh
+hexvero analyze "$B" --fresh
+hexvero compare "$A" "$B"
+for c in interfaces contextBridge ipcChannels windows webPreferences endpoints storage modules \
+         findings limitations urls ipc externals; do
+  hexvero compare "$A" "$B" $c
+done
+hexvero compare "$A" "$B" --report report.md
+hexvero compare "$A" "$B" --report report.html
+hexvero check "$A" "$B" --policy policy-warn.json   # the three rules at fail, "unknown": "warn"
+hexvero check "$A" "$B" --policy policy-fail.json   # the same with "unknown": "fail"
+```
+
+### What 0.9.0 reported
+
+`analyze` 0.39.0 no longer says "incomplete": 71 of 71 JavaScript files read, `sfw.mjs` among
+them. Both builds: 64 IPC channels, 71 contextBridge members, 9 webPreferences rows, 23 window
+items, 8 endpoints (4 with an unreadable value), 10 storage calls with an unreadable key.
+
+```text
+15 shared collection(s), 3 with differences in the app (plus hexvero's own findings)
+  collection      added  removed  changed  relocated  unchanged  partial
+  --------------  -----  -------  -------  ---------  ---------  -------
+  findings        0      0        1                   6
+  limitations     0      0        0                   3
+  modules         1      0        22                  48
+  edges           0      0        0                   7
+  externals       10     10       0                   24
+  ipcChannels     0      0        0                   64         yes
+  webPreferences  0      0        0                   9
+  windows         0      0        0                   23
+  contextBridge   0      0        0                   71
+  interfaces      0      0        0                   71         yes
+  ipc             0      0        0                   157        yes
+  endpoints       0      0        0        6          2          yes
+  storage         0      0        0        10         0          yes
+  urls            2      0        0        1441       11         yes
+  sourceMaps      0      0        0                   1
+```
+
+`partial` here means `values_unresolved`: some rows have a value that could not be read (the four
+unreadable `fetch` arguments, the ten storage keys, the ten IPC calls without a channel). Every
+row was compared ("compared 64 of 64 (a), 64 of 64 (b)" and so on).
+
+The generated reports: [Markdown](electron-fiddle-0.38.0-to-0.39.0.0.9.0.report.md),
+[HTML](electron-fiddle-0.38.0-to-0.39.0.0.9.0.report.html) (23 KB, one offline page).
+
+### Reported changes, 0.9.0
+
+| #     | hexvero reported                                                                                                                  | verdict                            | evidence                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | `urls` **+** `https://github.com/SocketDev/sfw-free` in `.webpack/renderer/183/index.js`                                          | **confirmed**                      | As item 1 of the 0.8.0 run: [`settings-execution.tsx:371`](https://github.com/electron/fiddle/blob/v0.39.0/src/renderer/components/settings-execution.tsx#L371), the only URL added in `git diff v0.38.0 v0.39.0 -- src`.                                                                                                                                                                                                           |
+| 2     | `urls` **+** `https://api.github.com/repos/SocketDev/sfw-free/releases/latest` in `.webpack/sfw/dist/sfw.mjs:2`                   | **confirmed**                      | The only URL in `app.asar.unpacked/.webpack/sfw/dist/sfw.mjs` (31601 bytes, 2 lines), from `sfw` 2.0.4 ([`package.json:75`](https://github.com/electron/fiddle/blob/v0.39.0/package.json#L75)). It is a request: `async function Gt(){const t=await Rt("https://api.github.com/…/releases/latest",{userAgent:Ft});…}`, and `Rt` → `Mt` → `kt.get(new URL(t),…)` with `kt` from `node:https`.                                        |
+| 3     | `modules` **+** `.webpack/sfw/dist/sfw.mjs`                                                                                       | **confirmed**                      | The asar header entry is new in 0.39.0 and marked `"unpacked": true` (`asar-files.mjs`); copied in by [`webpack.main.config.ts:35-36`](https://github.com/electron/fiddle/blob/v0.39.0/tools/webpack/webpack.main.config.ts#L35), unpacked by [`forge.config.ts:76`](https://github.com/electron/fiddle/blob/v0.39.0/forge.config.ts#L76).                                                                                          |
+| 4–25  | `modules` **~** 22 JavaScript files changed in size, 48 unchanged                                                                 | **confirmed** (22 items)           | `asar-files.mjs` again: 22 JS files differ in integrity hash or size, 48 are identical. Same 22 files as in the 0.8.0 run. The row of `.webpack/main/index.js` also lists `wrappers.classes` and `wrappers.exports.ipcMainManager` as changed: the class id `l@491340` became `l@488382`. That id is the class's offset in the file, so this part of the row is hexvero's own data moving with the code, not a change of the class. |
+| 26    | `findings` **~** "24 minified bundles" → "25 minified bundles"                                                                    | **confirmed**                      | The 25th is `sfw.mjs` (minified, 2 lines). The summary files this under "hexvero's own findings … not a change in the app"; here the number did change because the app gained a file.                                                                                                                                                                                                                                               |
+| 27–36 | `externals` **+** 10 rows: `path` 16, `fs` 7, `url` 5, `child_process`, `crypto`, `https`, `module`, `util`, `process` 3, `tty` 2 | **confirmed** (10 items)           | The new counts are the old ones plus the imports of `sfw.mjs`: it has `import … from "node:path"` ×2, `"node:fs"` ×3, `"node:url"` ×3 and one each of `node:child_process`, `node:crypto`, `node:https`, `module`, `node:util`, `node:process`, `node:tty`. Every difference matches.                                                                                                                                               |
+| 37–46 | `externals` **−** 10 rows: the same ten specifiers with the 0.38.0 counts                                                         | **refuted as removals** (10 items) | No import was removed: each "removed" row is the old count of a specifier that is still imported, paired with its "added" row above. `externals` is matched by full content, so a changed `count` shows as one removal and one addition. Read as pairs, items 27–46 are 10 changed counts, all true.                                                                                                                                |
+
+**Totals, 0.9.0:** 46 reported rows. 36 confirmed (2 URLs, 1 added module, 22 module size
+changes, 1 finding count, 10 import counts), 10 refuted (the "removed" halves of the
+`externals` count changes; nothing in the code is removed), 0 cannot tell. Rows that are only
+hexvero's own wording: **0** (0.8.0: 58).
+
+### Reported "no change", 0.9.0
+
+| collection       | hexvero                            | verdict                                                       | evidence                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------- | ---------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `interfaces`     | 71 unchanged                       | **confirmed for members and links**, but see M1               | No member added, removed or renamed in `src/preload/preload.ts`. The links are the same on both sides: `ElectronFiddle.addModules` → `NPM_ADD_MODULES`, with an `ipcMain.handle` end via `ipcMainManager.handle` and an `ipcMain.on` end in both builds. The 52 `reason` rows of 0.8.0 are gone.                                                                      |
+| `contextBridge`  | 71 unchanged                       | **confirmed for member names**                                | As in 0.8.0.                                                                                                                                                                                                                                                                                                                                                          |
+| `ipcChannels`    | 64 unchanged                       | **confirmed**                                                 | `src/ipc-events.ts` and `src/main/ipc.ts` are identical between the tags. 64 = the 63 of 0.8.0 plus `WEBCONTENTS_READY_FOR_IPC_SIGNAL`, now read through webpack's module `57755` (previous section).                                                                                                                                                                 |
+| `windows`        | 23 unchanged                       | **confirmed**                                                 | `src/main/windows.ts` is identical between the tags; the main window is read as `computed: preload`, nodeIntegration, contextIsolation and sandbox "not written", which matches [`getMainWindowOptions`](https://github.com/electron/fiddle/blob/v0.39.0/src/main/windows.ts#L39): its `webPreferences` sets only `preload`.                                          |
+| `webPreferences` | 9 unchanged                        | **confirmed**                                                 | Same file. The main window's `webPreferences` object is no longer a row (0.8.0 had 10); both builds instead list it as `webpreferences_unattached`, "a webPreferences object at line 2 that no window in the file takes". The window does take it, through the return value of `getMainWindowOptions()`. Both sides read the same, so the comparison is not affected. |
+| `endpoints`      | 0 added / 0 removed (6 relocated)  | **wrong for the build as shipped** (M3, now partly found)     | The request to the GitHub API in `sfw.mjs` is not an endpoint row; its URL is in `urls` (item 2).                                                                                                                                                                                                                                                                     |
+| `storage`        | 0 added / 0 removed (10 relocated) | **cannot tell from hexvero; the source shows a new key** (M2) | Unchanged from 0.8.0.                                                                                                                                                                                                                                                                                                                                                 |
+
+### The four misses of 0.8.0, again
+
+| #   | change                                                         | 0.9.0                                       | why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --- | -------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1  | new payload field `useSocketFirewall` on `NPM_ADD_MODULES`     | **still missed**                            | The `interfaces` row now links the member to both of its main-process ends, but it records channel, direction and ends, not the shape of the arguments. Nothing in the row differs between the builds; the preload grew by 32 bytes and shows only as a `modules` size change (item 4–25).                                                                                                                                                                                                                  |
+| M2  | new localStorage key `isUsingSocketFirewall`                   | **still missed**                            | The key reaches `localStorage.setItem(key, …)` / `getItem(key)` as a parameter of the class's private `save(key, value)` and `retrieve(key)` ([`state.ts:1195-1222`](https://github.com/electron/fiddle/blob/v0.39.0/src/renderer/state.ts#L1195)). Wrappers are followed for IPC calls only, not for storage calls, so the ten calls stay "value could not be read" on both sides and there is nothing to diff.                                                                                            |
+| M3  | the new request to `api.github.com/…/sfw-free/releases/latest` | **partly found**: as a URL, not an endpoint | `sfw.mjs` is now read, and the URL is reported as an added `urls` row with file and line (item 2). The request itself is `kt.get(c, a, …)` inside `Mt(t)`, where `c = new URL(t)` and `t` is a parameter passed in from `Rt(t)` and `Gt()`. hexvero does not follow arguments through function parameters, and a client call whose URL it cannot read is not kept as an endpoint row (unlike `fetch`, which keeps an unknown row). So `endpoints` has no row for `sfw.mjs` at all, not even an unknown one. |
+| M4  | new JavaScript file `.webpack/sfw/dist/sfw.mjs`                | **found**                                   | `modules` **+** `.webpack/sfw/dist/sfw.mjs` (item 3). The `compare` overview counts it; the generated reports list `modules` in the summary table only, not as a row under "Changes", by design (`modules` and `edges` change with every edit).                                                                                                                                                                                                                                                             |
+
+### Before and after
+
+|                                          | 0.8.0 (`9efca3b`) | 0.9.0 (`03588ec`)                                   |
+| ---------------------------------------- | ----------------- | --------------------------------------------------- |
+| reported change rows                     | 82                | 46 (36 if each `externals` count change is one row) |
+| confirmed                                | 24                | 36                                                  |
+| refuted                                  | 58                | 10                                                  |
+| cannot tell                              | 0                 | 0                                                   |
+| rows that are only hexvero's own wording | 58                | 0                                                   |
+| misses (of the four known)               | 4                 | 2 (M1, M2), plus M3 found only as a URL             |
+| `sfw.mjs` read                           | no (wrong reason) | yes                                                 |
+| `ElectronFiddle` members linked to main  | 0 of 46           | 45 of 46                                            |
+
+The 10 refuted rows of 0.9.0 are of a different kind than the 58 of 0.8.0: they describe a true
+change (an import count), only split into a removal and an addition.
+
+### check
+
+Policy (the three rules at `fail`; no `allow` list):
+
+```json
+{
+  "hexvero": "policy",
+  "version": 1,
+  "rules": {
+    "new-interface-member": { "level": "fail" },
+    "new-external-host": { "level": "fail" },
+    "window-more-permissive": { "level": "fail" }
+  },
+  "unknown": "warn",
+  "suppressions": []
+}
+```
+
+| `unknown` | status       | exit code | findings | not decidable                                                                          |
+| --------- | ------------ | --------- | -------- | -------------------------------------------------------------------------------------- |
+| `warn`    | `pass`       | 0         | none     | `new-external-host` on `endpoints` and on `urls`: `values_unresolved`                  |
+| `fail`    | `incomplete` | 4         | none     | the same two; hexvero suggests a baseline or a suppression to accept what is there now |
+
+Checked against the source:
+
+- **new-interface-member: none.** Correct; no member was added (`src/preload/preload.ts`).
+- **window-more-permissive: none.** Correct; `src/main/windows.ts` is identical and no window was added.
+- **new-external-host: none.** Correct for what was read: the two new `urls` rows name
+  `github.com` and `api.github.com`, and 0.38.0 already names both (`https://api.github.com` in
+  `.webpack/renderer/main_window/index.js`, `https://github.com` in
+  `.webpack/static/show-me/net/main.js`). A new path on a known host is not a new host.
+- **Not decidable** is also right. Both builds have four `fetch` calls whose URL is not
+  readable, so a new host could hide there. And `sfw.mjs` downloads the asset named in the GitHub
+  API answer and follows redirects (`c.location`), so the hosts it reaches at run time cannot be
+  read from the file. That request is not one of the unknown rows, though (M3): the gap is flagged
+  for the old `fetch` calls, not for this one.
+
+### Timings, 0.9.0
+
+| step                                        | wall time                                                              |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| `analyze --fresh` 0.38.0                    | 2.6–2.7 s (user about 9 s); 8.5 s on the very first run of the session |
+| `analyze --fresh` 0.39.0                    | 2.6–3.6 s (user about 9–10 s)                                          |
+| `analyze` again (cached scan)               | 0.22 s                                                                 |
+| `compare` overview                          | 0.25 s                                                                 |
+| `compare --report report.md`                | 0.39 s                                                                 |
+| `compare --report report.html`              | 0.32 s                                                                 |
+| `check`                                     | 0.27 s                                                                 |
+| manual check of the 46 rows and four misses | roughly 45 min                                                         |
+
+### Limits seen in 0.9.0
+
+1. **IPC argument shapes are not compared** (M1, unchanged).
+2. **Storage keys behind a wrapper are not read** (M2). The wrapper following of 0.9.0 covers
+   IPC calls only.
+3. **A request whose URL arrives as a parameter is not an endpoint row**, not even an unknown
+   one, when it is made with an HTTP client method (`https.get(url)`) rather than `fetch` (M3). The
+   URL still shows up in `urls`, and `new-external-host` does read `urls`, so the check would
+   have caught a new host there.
+4. **A changed count in `externals` is a removal plus an addition** (10 + 10 rows here for 10
+   changes), because the list is matched by full content.
+5. **The reports leave the module list out of "Changes".** The added `sfw.mjs` is only a count in
+   the summary table; `compare … modules` lists it.
+6. **The main window's `webPreferences` is listed as unattached** in both builds, although the
+   window takes it through a helper's return value. It does not affect this comparison.
+7. **Without the `.unpacked` directory**, the lone archive copies (`asar/fiddle-0.39.0.asar`)
+   still show the file as unread, now with the right reason ("stored outside the archive in its
+   .unpacked directory, which was not found next to it"). In that case `findings` shows 6 changed
+   rows of hexvero's own wording ("… in the scanned part (71 of 71 files)"); the overview files
+   them apart from the app's differences ("2 with differences in the app (plus hexvero's own
+   findings and limitations)").
+8. The reports' "Reproduce" line reads `compare app.asar app.asar`, since both files have the
+   same name; it does not say which directory each came from.
 
 ## Limitations of the study
 
