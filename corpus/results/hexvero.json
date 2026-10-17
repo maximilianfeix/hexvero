@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.8.0",
-  "commit": "57d0ed4+uncommitted",
+  "version": "0.9.0",
+  "commit": "f39d2f1+uncommitted",
   "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
@@ -428,8 +428,8 @@
   {
    "set": "holdout",
    "class": "window settings",
-   "hit": 33,
-   "missed": 0,
+   "hit": 21,
+   "missed": 12,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -518,8 +518,8 @@
   {
    "set": "holdout",
    "class": "changes in webPreferences",
-   "hit": 2,
-   "missed": 0,
+   "hit": 1,
+   "missed": 1,
    "false": 0,
    "hedged": 0,
    "inputs": 1
@@ -2118,10 +2118,14 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "window settings",
-   "hit": 11,
-   "missed": 0,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
    "notes": [
+    "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
     "not scored: 1 row(s) with a computed value"
    ]
   },
@@ -2238,10 +2242,14 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "window settings",
-   "hit": 11,
-   "missed": 0,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
    "notes": [
+    "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
     "not scored: 1 row(s) with a computed value"
    ]
   },
@@ -2364,10 +2372,14 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "window settings",
-   "hit": 11,
-   "missed": 0,
+   "hit": 7,
+   "missed": 4,
    "false": 0,
    "notes": [
+    "missed main.js sandbox=true",
+    "missed main.js preload=preload.js",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
     "not scored: 1 row(s) with a computed value"
    ]
   },
@@ -2483,10 +2495,12 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar → holdout/time-tracker-v2.plain.asar",
    "class": "changes in webPreferences",
-   "hit": 2,
-   "missed": 0,
+   "hit": 1,
+   "missed": 1,
    "false": 0,
-   "notes": []
+   "notes": [
+    "missed ~contextIsolation: true -> false"
+   ]
   },
   {
    "set": "holdout",

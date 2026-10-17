@@ -142,52 +142,6 @@ export interface FnDef {
   arrow?: true;
 }
 
-/** Words after which `[` opens a list or a pattern, not a computed member access. */
-const KEYWORDS_BEFORE_BRACKET: ReadonlySet<string> = new Set([
-  "const",
-  "let",
-  "var",
-  "return",
-  "typeof",
-  "case",
-  "in",
-  "of",
-  "delete",
-  "void",
-  "throw",
-  "new",
-  "await",
-  "yield",
-  "else",
-  "do",
-  "instanceof",
-  "export",
-  "import",
-  "extends",
-]);
-
-/** What may follow `object.key` when the key is only read (no write, call or deeper access). */
-const KEY_READ_FOLLOWERS: ReadonlySet<string> = new Set([
-  ")",
-  ",",
-  ";",
-  "}",
-  "]",
-  "?",
-  ":",
-  "&&",
-  "||",
-  "??",
-  "===",
-  "!==",
-  "==",
-  "!=",
-  "<",
-  ">",
-  "<=",
-  ">=",
-]);
-
 const MAX_VALUES = 64;
 const MAX_DEPTH = 10;
 const MAX_SITES = 64;
@@ -1385,16 +1339,18 @@ export class ExpressionResolver {
     ) {
       const close = this.match[start + 1]!;
       if (close === -1 || close >= end) return null;
-      const arg = this.evalRange(
-        start + 2,
-        Math.min(this.exprEnd(start + 2), close),
-        env,
-        depth + 1,
-      );
-      // A CommonJS module that does not mark itself as an ES module (no `__esModule`, no
-      // `__toCommonJS`, no `default` anywhere): the helper's `default` is its `module.exports`.
-      const wrapped: Val | null =
-        arg?.kind === "cjs" && !this.marksEsModule(arg) ? { ...arg, interop: true } : arg;
+      const firstEnd = Math.min(this.exprEnd(start + 2), close);
+      const arg = this.evalRange(start + 2, firstEnd, env, depth + 1);
+      // The helper's `default` is the module's `module.exports` when its second argument (node
+      // mode, `__toESM(m, 1)`) is true, or when the module does not mark itself as an ES module
+      // (no `__esModule`, no `__toCommonJS`, no `default` anywhere). A second argument that is
+      // not a literal leaves a marked module's `default` unknown.
+      const mode = firstEnd < close ? this.literalTruth(firstEnd + 1, close) : false;
+      let wrapped: Val | null = arg;
+      if (arg?.kind === "cjs") {
+        if (mode === true || !this.marksEsModule(arg)) wrapped = { ...arg, interop: true };
+        else if (mode === null) return null;
+      }
       return this.chain(wrapped, close + 1, end, env, depth);
     }
     // `i(76675)`: webpack's require of a module of this file's module table
@@ -1433,18 +1389,6 @@ export class ExpressionResolver {
       this.punct(start + 4, "{")
     )
       return this.assignCall(start + 3, end, env, depth);
-    // `this.NAME` outside a call that binds `this`: the value the class gives the field
-    if (
-      t.value === "this" &&
-      !env.has("this") &&
-      this.punct(start + 1, ".") &&
-      this.is(start + 2, "ident")
-    ) {
-      const init = this.classFieldInit(start);
-      if (!init) return null;
-      const field = this.evalRange(init[0], init[1], new Map(), depth + 1);
-      return this.chain(field, start + 3, end, env, depth);
-    }
     // `require("./x")`: that module's exports, when it is a module of the application
     if (
       t.value === "require" &&
@@ -1626,199 +1570,6 @@ export class ExpressionResolver {
     }
     this.note("evaluated");
     return unknown ? { kind: "obj", props, open: true } : { kind: "obj", props };
-  }
-
-  /**
-   * `this.NAME` at k (k is `this`), in a method of a class (or an arrow function inside one):
-   * the initializer the class gives the field, a field `NAME = …` of the class body or one
-   * `this.NAME = …` at the top level of the constructor. Null unless that is the only write of
-   * the field in the file, no other class declares a field or method of that name, and every
-   * use of `.NAME` (this one too) is one that cannot change it: a read of one of its keys
-   * (`this.NAME.key` followed by the end of an expression or a comparison), or the whole value
-   * passed to the constructor of a library (`new BrowserWindow(this.NAME)`, also nested in an
-   * object literal there). A static method, a getter or a setter of the name, a write through
-   * an instance (`w.NAME.key = …`), an alias, or passing it to a function is anything else.
-   */
-  private readonly fieldCache = new Map<string, [number, number] | null>();
-
-  classFieldInit(k: number): [number, number] | null {
-    if (!this.is(k, "ident", "this") || !this.punct(k + 1, ".") || !this.is(k + 2, "ident"))
-      return null;
-    const name = this.tokens[k + 2]!.value;
-    const methodOf = (j: number): { def: FnDef; cls: { start: number; end: number } } | null => {
-      let d = this.enclosing(j);
-      for (let guard = 0; d?.arrow && guard < 20; guard++) d = this.enclosing(d.paramsAt - 1);
-      if (!d || d.owner === null) return null;
-      const cls = this.classOfMethod(d);
-      if (!cls) return null;
-      const before = d.paramsAt - 1;
-      for (let b = before - 1; b >= before - 2; b--) if (this.is(b, "ident", "static")) return null;
-      return { def: d, cls };
-    };
-    const own = methodOf(k);
-    if (!own) return null;
-    // the answer is the class's for the name, the same at every use
-    const key = `${own.cls.start}:${name}`;
-    const cached = this.fieldCache.get(key);
-    if (cached !== undefined) return cached;
-    const found = this.classFieldOf(own.cls, name, methodOf);
-    this.fieldCache.set(key, found);
-    return found;
-  }
-
-  private computedWrites: boolean | null = null;
-
-  /** Whether the name at k is bound to an object or list literal, `new Map()` and the like. */
-  private freshObject(k: number): boolean {
-    const t = this.tokens[k];
-    if (t?.type !== "ident" || this.punct(k - 1, ".")) return false;
-    const bound = this.binding(k, t.value);
-    if (bound?.kind !== "value") return false;
-    const init = bound.range[0];
-    if ((this.punct(init, "{") || this.punct(init, "[")) && this.match[init] === bound.range[1] - 1)
-      return true;
-    return (
-      this.is(init, "ident", "new") &&
-      this.is(init + 1, "ident") &&
-      /^(Map|Set|WeakMap|WeakSet|Array|Object)$/.test(this.tokens[init + 1]!.value)
-    );
-  }
-
-  /**
-   * Whether the file has a computed member access `[…]` with NAME as its key (a string or a
-   * template without parts), or one with a key that is not a literal and is either on `this`
-   * or written through (`x[k] = …`, `x[k].y = …`, `x[k]++`, `delete x[k]`).
-   */
-  private computedAccessTo(name: string): boolean {
-    const tokens = this.tokens;
-    const literal = (j: number): boolean => {
-      const t = tokens[j];
-      return (
-        !!t &&
-        (t.type === "string" ||
-          t.type === "number" ||
-          (t.type === "template" && !t.value.includes("${"))) &&
-        this.punct(j + 1, "]")
-      );
-    };
-    for (let j = 1; j < tokens.length; j++) {
-      if (!this.punct(j, "[")) continue;
-      const t = tokens[j + 1];
-      if (
-        t &&
-        (t.type === "string" || t.type === "template") &&
-        t.value === name &&
-        this.punct(j + 2, "]")
-      )
-        return true;
-    }
-    if (this.computedWrites !== null) return this.computedWrites;
-    let found = false;
-    for (let j = 1; j < tokens.length && !found; j++) {
-      if (!this.punct(j, "[") || literal(j + 1)) continue;
-      const before = tokens[j - 1]!;
-      // a member access, not an array literal: after a name, `)`, `]` or `?.`
-      // a member access, not an array literal or a pattern: after a name that is not a
-      // keyword, `)`, `]` or `?.`
-      const member =
-        (before.type === "ident" && !KEYWORDS_BEFORE_BRACKET.has(before.value)) ||
-        (before.type === "punct" &&
-          (before.value === ")" || before.value === "]" || before.value === "?."));
-      if (!member) continue;
-      if (this.is(j - 1, "ident", "this")) {
-        found = true;
-        break;
-      }
-      // the receiver's start, for a `delete` or `++` before it
-      let start = j - 1;
-      while (start > 1 && this.punct(start - 1, ".") && this.is(start - 2, "ident")) start -= 2;
-      if (/^(delete|\+\+|--)$/.test(tokens[start - 1]?.value ?? "")) {
-        found = true;
-        break;
-      }
-      // the chain after `[…]`: `.key`, `?.key`, `[…]`, then an assignment
-      let e = this.match[j] ?? -1;
-      if (e === -1) continue;
-      for (let guard = 0; guard < 64; guard++) {
-        if ((this.punct(e + 1, ".") || this.punct(e + 1, "?.")) && this.is(e + 2, "ident")) e += 2;
-        else if (this.punct(e + 1, "[") && (this.match[e + 1] ?? -1) !== -1) e = this.match[e + 1]!;
-        else break;
-      }
-      const after = tokens[e + 1];
-      // `x[k] = …` on an object or list the code creates right there (`const all = {}`): no
-      // instance's field. Through anything else, or deeper (`x[k].y = …`), it may be one.
-      const direct = e === this.match[j];
-      if (direct && start === j - 1 && this.freshObject(j - 1)) continue;
-      found =
-        after?.type === "punct" &&
-        /^(?:=|\+\+|--|[-+*/%&|^]=|\*\*=|<<=|>>>?=|&&=|\|\|=|\?\?=)$/.test(after.value);
-    }
-    this.computedWrites = found;
-    return found;
-  }
-
-  private classFieldOf(
-    cls: { start: number; end: number },
-    name: string,
-    methodOf: (j: number) => { def: FnDef; cls: { start: number; end: number } } | null,
-  ): [number, number] | null {
-    const own = { cls };
-    const classes = this.classRanges();
-    const bodyOf = (j: number): number => {
-      this.innermostBlock(j, null); // builds the table of brackets
-      return this.parents![j]!;
-    };
-    // A computed member access can reach the field without naming it as `.NAME`: its name as
-    // a key (`this["prefs"]`, `w["prefs"]`), or a key that is not known (`this[key] = …`,
-    // `obj[k].x = …`). Either may change the options, so the field is not read.
-    if (this.computedAccessTo(name)) return null;
-    let found: [number, number] | null = null;
-    let writes = 0;
-    const positions = this.occurrences(name, 0, this.tokens.length);
-    if (positions.length > 4000) return null;
-    for (const j of positions) {
-      if (this.work-- <= 0) return null;
-      const assigns = this.punct(j + 1, "=") && !this.punct(j + 2, "=");
-      if (!this.punct(j - 1, ".")) {
-        // a field, method, getter or setter of a class body
-        const body = bodyOf(j);
-        if (!classes.some((c) => c.start === body)) continue;
-        if (this.punct(j - 1, "#")) continue;
-        if (body !== own.cls.start) return null;
-        if (!assigns || this.is(j - 1, "ident", "static")) return null;
-        writes++;
-        found = [j + 2, this.exprEnd(j + 2)];
-        continue;
-      }
-      const self = this.is(j - 2, "ident", "this");
-      const there = self ? methodOf(j - 2) : null;
-      if (self && there && there.cls.start === own.cls.start) {
-        const isConstructor = this.is(there.def.paramsAt - 1, "ident", "constructor");
-        if (assigns) {
-          // `this.NAME = …` directly in the constructor's body, not behind a condition
-          if (!isConstructor || bodyOf(j - 2) !== there.def.body[0]) return null;
-          writes++;
-          found = [j + 2, this.exprEnd(j + 2)];
-          continue;
-        }
-      } else if (assigns) return null;
-      if (this.punct(j - 3, "++") || this.punct(j - 3, "--") || this.is(j - 3, "ident", "delete"))
-        return null;
-      // a call of a method of that name: not this field (another class's method, or the field's
-      // value called, which cannot reassign the field)
-      if (this.punct(j + 1, "(")) continue;
-      // a key read: `x.NAME.key` followed by the end of an expression or a comparison
-      if (this.punct(j + 1, ".") && this.is(j + 2, "ident")) {
-        const follower = this.tokens[j + 3];
-        if (!follower || (follower.type === "punct" && KEY_READ_FOLLOWERS.has(follower.value)))
-          continue;
-        return null;
-      }
-      // the whole value, read by a library's constructor
-      if (self && this.externalConstructorArgument(j - 2)) continue;
-      return null;
-    }
-    return writes === 1 ? found : null;
   }
 
   private object(open: number, close: number, env: Env, depth: number): Val {
@@ -2008,6 +1759,21 @@ export class ExpressionResolver {
 
   /** `exports.NAME = <expr>` assigned once in the wrapped module's body (`= void 0` aside). */
   /** Whether a wrapped module may say it is an ES module, so its `default` is its own export. */
+  /** The truth of a literal in [from, to): `1`, `0`, `true`, `false`, `!0`, `!1`; null otherwise. */
+  private literalTruth(from: number, to: number): boolean | null {
+    const t = this.tokens[from];
+    if (!t) return null;
+    if (to === from + 1) {
+      if (t.type === "number") return Number(t.value) !== 0;
+      if (this.is(from, "ident", "true")) return true;
+      if (this.is(from, "ident", "false")) return false;
+      return null;
+    }
+    if (to === from + 2 && this.punct(from, "!") && this.tokens[from + 1]?.type === "number")
+      return Number(this.tokens[from + 1]!.value) === 0;
+    return null;
+  }
+
   private readonly esModules = new Map<number, boolean>();
   private marksEsModule(mod: Extract<Val, { kind: "cjs" }>): boolean {
     const known = this.esModules.get(mod.body[0]);
@@ -2812,6 +2578,9 @@ export class ExpressionResolver {
     // Only names declared once at the top of the file and never assigned again are followed;
     // a name that is also a parameter or local of the function around k is that one instead.
     if (this.enclosingParam(k, name) || this.declaredLocally(k, name)) return null;
+    // nor one a block at the top of the file declares around k (`{ const NAME = … }`, `if`,
+    // `for (const NAME of …)`, `switch`), nor a `catch (NAME)` around k
+    if (this.innerDeclared(null, name, k) || this.catchBinds(k, name)) return null;
     const decl = this.topDeclarations().get(name);
     if (decl)
       return this.unlessChanged(
@@ -4108,6 +3877,8 @@ export class ExpressionResolver {
   binding(k: number, name: string, despiteWrites = false): Binding | null {
     // the scans below are charged to the file's work budget; used up, nothing is bound
     if (this.work <= 0) return null;
+    // `catch (NAME)` around k: a binding none of the scans below knows
+    if (this.catchBinds(k, name)) return null;
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       if (this.work <= 0) return null;
       // a declaration of an inner block around k shadows the parameters as well
@@ -4152,6 +3923,22 @@ export class ExpressionResolver {
   private readonly listedCache = new Map<string, [number, number] | null | undefined>();
 
   private parents: Int32Array | null = null;
+
+  /** Whether a `catch (…)` whose parameter names NAME has a block around token k. */
+  private catchBinds(k: number, name: string): boolean {
+    this.innermostBlock(k, null); // builds the table of brackets
+    let p = this.parents![k] ?? -1;
+    for (let steps = 0; p > 0 && steps < 256; steps++) {
+      if (this.punct(p, "{") && this.punct(p - 1, ")")) {
+        const open = this.opener[p - 1]!;
+        if (open > 0 && this.is(open - 1, "ident", "catch"))
+          for (let j = open + 1; j < p - 1; j++) if (this.is(j, "ident", name)) return true;
+      }
+      p = this.parents![p]!;
+    }
+    // deeper than that: not known
+    return p > 0;
+  }
 
   /**
    * The block a declaration at j is visible in, as `blockScope` reads it, from the innermost open

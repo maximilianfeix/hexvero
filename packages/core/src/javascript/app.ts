@@ -426,10 +426,12 @@ function windowRanges(
   const traced = new Map<string, Set<number>>();
   const viaName = new Set<number>();
   const follow = (name: string, decl: number, window: number | null): void => {
+    // what an object that belongs to no window holds decides no window's settings
+    if (window === null) return;
     let decls = traced.get(name);
     if (!decls) traced.set(name, (decls = new Set()));
     decls.add(decl);
-    if (window !== null) viaName.add(window);
+    viaName.add(window);
   };
   const opaque = new Map<number, number>();
   /** Every place something unreadable was applied, per window; `opaque` holds the last one. */
@@ -514,17 +516,11 @@ function windowRanges(
     return shape ? { ...shape, decl } : null;
   };
   /**
-   * `this.NAME` at k (k is `this`): the object a class field or the constructor assigns, when
-   * nothing else may change the field (`ExpressionResolver.classFieldInit`).
-   */
-  const fieldAt = (k: number): { open: number; assign: boolean } | null => {
-    const init = resolver().classFieldInit(k);
-    return init ? shapeAt(init[0]) : null;
-  };
-  /**
-   * Follows a name or `this.NAME` at k used as window options, applied at `at` (null: in place),
-   * at `level`: an object of this file, or an `Object.assign(…)` of them. False when it is
-   * neither (nothing is recorded then).
+   * Follows a name at k used as window options, applied at `at` (null: in place), at `level`:
+   * an object of this file, or an `Object.assign(…)` of them. False when it is neither (nothing
+   * is recorded then). `this.NAME` is never followed: a field of an object can be changed in
+   * more ways than a reading of the file's text sees (`Object.assign(this, …)`, `Reflect.set`,
+   * a computed key, an alias of a nested object, a prototype), so its settings are not known.
    */
   const followAt = (
     k: number,
@@ -534,13 +530,13 @@ function windowRanges(
     at: number | null,
     level: ExternalBase["level"] | null,
   ): boolean => {
-    const self = tokens[k]?.value === "this";
-    const named = self ? fieldAt(k) : objectAt(k);
+    if (tokens[k]?.value === "this") return false;
+    const named = objectAt(k);
     if (!named) return false;
     if (named.assign) {
       if (!assignedVia(named.open, window, depth, at, level)) return false;
     } else add(named.open, window, inherited, depth + 1, at, level);
-    if (!self && "decl" in named) follow(tokens[k]!.value, named.decl as number, window);
+    follow(tokens[k]!.value, named.decl, window);
     return true;
   };
   /**
@@ -600,21 +596,8 @@ function windowRanges(
       const at = first.start - 1;
       const unread: PlanStep = { open: -1, at, follows: [] };
       if (is(from, "{") && close(from) === to - 1) plan.push({ open: from, at, follows: [] });
+      else if (first.type === "ident" && first.value === "this") plan.push(unread);
       else if (
-        first.type === "ident" &&
-        to === from + 3 &&
-        is(from + 1, ".") &&
-        tokens[from + 2]?.type === "ident" &&
-        first.value === "this"
-      ) {
-        const field = fieldAt(from);
-        if (!field) plan.push(unread);
-        else if (!field.assign) plan.push({ open: field.open, at, follows: [] });
-        else {
-          const inner = planOfCall(field.open, depth + 1);
-          plan.push(...(inner ? inner.map((step) => ({ ...step, at })) : [unread]));
-        }
-      } else if (
         first.type === "ident" &&
         to === from + 3 &&
         is(from + 1, ".") &&
@@ -2212,7 +2195,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 10;
+export const JS_SCAN_SCHEMA = 11;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and

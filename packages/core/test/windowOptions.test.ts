@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { buildSync } from "esbuild";
 import { afterAll, describe, expect, it } from "vitest";
+import { Constants } from "../src/javascript/aliases.js";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
+import { ExpressionResolver } from "../src/javascript/resolve.js";
+import { tokenize } from "../src/javascript/scan.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 /**
@@ -156,10 +159,10 @@ const EXPECTED = [
   "false true false ledger-preload.js not written",
   // openReport: SECURE spread, webSecurity written after it
   "false true true null false",
-  // AuditWindow: LOCAL spread, contextIsolation and preload after it; no sandbox anywhere
-  "false true not written audit-preload.js true",
-  // ChartWindow: LOCAL, then LOOSE (contextIsolation true, sandbox false), then nodeIntegration
-  "false true false null true",
+  // AuditWindow and ChartWindow take `this.options` / `this.prefs`: a field of an object is not
+  // read (it can be changed in ways a reading of the text does not see)
+  "computed computed computed null computed",
+  "computed computed computed null computed",
   // settingsPrefs(): SECURE and a preload
   "false true true settings-preload.js not written",
 ];
@@ -180,7 +183,10 @@ describe("window options built from constants, fields and factories", () => {
   it("reads them across modules in the plain build", () => {
     const info = analyze(SOURCES);
     expect(states(info)).toEqual(EXPECTED);
-    expect(info.limitations.map((l) => l.code)).not.toContain("window_options_unresolved");
+    // the two windows that take a class field are named as not followed
+    expect(info.limitations.find((l) => l.code === "window_options_unresolved")?.message).toContain(
+      "2 window(s)",
+    );
   });
 
   it("reads the same settings in an esbuild bundle, plain and minified", () => {
@@ -207,6 +213,28 @@ describe("window options built from constants, fields and factories", () => {
       expect(states(analyze(bundled(esm, minify))), String(minify)).toEqual([
         "false true false null not written",
       ]);
+  });
+
+  it("reads the node mode of esbuild's interop helper, and nothing when it is not a literal", () => {
+    const esm = esmSources(
+      'Object.defineProperty(exports, "__esModule", { value: true });\nexports.SECURE = { sandbox: true, contextIsolation: true };\nexports.default = { SECURE: { sandbox: false, contextIsolation: true } };',
+    );
+    const main = bundled(esm, false)["main.js"]!;
+    expect(main).toMatch(/__toESM\(require_prefs\(\)\)/);
+    const withMode = (mode: string): string[] =>
+      states(
+        analyze({
+          "main.js": main.replace(
+            /__toESM\(require_prefs\(\)\)/,
+            `__toESM(require_prefs(), ${mode})`,
+          ),
+        }),
+      );
+    // node mode: `default` is module.exports, whatever the module says it is
+    expect(withMode("1")).toEqual(["false true true null not written"]);
+    expect(withMode("0")).toEqual(["false true false null not written"]);
+    // not a literal: either may hold
+    expect(withMode("isNode")).toEqual(["false computed computed null computed"]);
   });
 
   it("reads the shorthand { webPreferences } like webPreferences: webPreferences", () => {
@@ -301,7 +329,7 @@ describe("window options built from constants, fields and factories", () => {
     const fresh = one(
       "class W {\n  prefs = { nodeIntegration: false };\n  open() { this.win = new BrowserWindow({ webPreferences: this.prefs }); }\n}\nfunction f(k, list) { const seen = {}; seen[k] = 1; const [first] = list; return [first]; }",
     );
-    expect(states(fresh)).toEqual(["false not written not written null not written"]);
+    expect(states(fresh)).toEqual(["computed computed computed null computed"]);
     // the same through the constructor's `this.options = …`, changed from outside
     const outer = one(
       'class W {\n  constructor() { this.options = { webPreferences: { nodeIntegration: false } }; }\n  open() { this.win = new BrowserWindow(this.options); }\n}\nconst w = new W();\nw["options"].webPreferences.nodeIntegration = true;',
@@ -334,14 +362,14 @@ describe("window options built from constants, fields and factories", () => {
         ),
       ),
     ).toEqual(["computed true computed null computed"]);
-    // in a class field, too
+    // in a class field, which is not read at all
     expect(
       states(
         one(
           "class W {\n  prefs = { sandbox: true, ...this.extra, contextIsolation: true };\n  open() { this.win = new BrowserWindow({ webPreferences: this.prefs }); }\n}",
         ),
       ),
-    ).toEqual(["computed true computed null computed"]);
+    ).toEqual(["computed computed computed null computed"]);
   });
 
   it("reads a factory that merges a base, and a static field or a getter not at all", () => {
@@ -370,10 +398,101 @@ describe("window options built from constants, fields and factories", () => {
 
   it("does not attach a webPreferences object to no window when a later window takes it", () => {
     const info = one(
-      "const BASE = { sandbox: true };\nclass W {\n  constructor() { this.options = { webPreferences: { ...BASE, sandbox: false } }; }\n  open() { this.win = new BrowserWindow(this.options); }\n}",
+      "const BASE = { sandbox: true };\nconst options = { webPreferences: { ...BASE, sandbox: false } };\nfunction open() { const win = new BrowserWindow(options); return win; }",
     );
     expect(info.webPreferences.map((p) => `${p.windowName} ${p.key}=${p.value}`)).toEqual([
       "win sandbox=false",
     ]);
+  });
+});
+
+/** A window that takes a class field's options, with code that may change the field. */
+const fieldWindow = (extra: string, ctor = ""): string =>
+  `class W { opts = { webPreferences: { contextIsolation: true, sandbox: true } }; constructor(){ ${ctor} } open(){ return new BrowserWindow(this.opts); } }\nconst w = new W();\n${extra}\nw.open();`;
+
+describe("review 2: no safe value for options the code may have changed", () => {
+  const BLOCKS: Array<[string, string]> = [
+    ["block", "{ const prefs = { contextIsolation: false }; NEW }"],
+    ["if", "if (x) { let prefs = { contextIsolation: false }; NEW }"],
+    ["catch", "try {} catch (prefs) { NEW }"],
+    ["for of", "for (const prefs of list) { NEW }"],
+    ["switch", "switch (x) { case 1: { const prefs = { contextIsolation: false }; NEW } }"],
+  ];
+
+  it("reads a name declared in a block at the top of the file as that block's, in the evaluation", () => {
+    for (const [label, block] of BLOCKS) {
+      const src = `const prefs = { contextIsolation: true };\n${block.replace("NEW", "new B({ w: prefs });")}`;
+      const { tokens } = tokenize(src);
+      const res = new ExpressionResolver(tokens, new Constants(tokens), "main.js");
+      const k = tokens.findIndex((t, i) => t.value === "B" && tokens[i + 1]?.value === "(");
+      const read = res.valuesAt(k + 2).values[0];
+      const w = read?.kind === "obj" ? read.props.get("w") : null;
+      const ci = w?.kind === "obj" ? w.props.get("contextIsolation") : null;
+      expect(ci?.kind === "bool" && ci.value, label).not.toBe(true);
+    }
+  });
+
+  it("reports no safe value for a window in such a block", () => {
+    for (const [label, block] of BLOCKS)
+      for (const make of [
+        "new BrowserWindow({ webPreferences: prefs });",
+        "new BrowserWindow(dev ? {} : { webPreferences: prefs });",
+      ]) {
+        const info = one(
+          `const prefs = { contextIsolation: true, sandbox: true };\n${block.replace("NEW", make)}`,
+        );
+        expect(
+          info.windows.map((w) => w.contextIsolation),
+          `${label}: ${make}`,
+        ).not.toContain(true);
+        expect(
+          info.webPreferences.filter(
+            (p) => p.window !== null && p.key === "sandbox" && p.value === true,
+          ),
+          `${label}: ${make}`,
+        ).toEqual([]);
+      }
+    // the options object itself shadowed in a block
+    const options = one(
+      "const o = { webPreferences: { contextIsolation: true, sandbox: true } };\nif (x) { const o = { webPreferences: { contextIsolation: false } }; new BrowserWindow(o); }",
+    );
+    expect(options.windows.map((w) => w.contextIsolation)).not.toContain(true);
+    expect(options.webPreferences.filter((p) => p.window !== null && p.value === true)).toEqual([]);
+  });
+
+  it("does not read a class field's options at all", () => {
+    for (const [extra, ctor] of [
+      ["", "Object.assign(this.opts.webPreferences, { contextIsolation: false });"],
+      ["", "loosen(this.opts.webPreferences);"],
+      ["", "const wp = this.opts.webPreferences; wp.contextIsolation = false;"],
+      ["", "Object.assign(this, { opts: { webPreferences: { contextIsolation: false } } });"],
+      ['Reflect.set(w, "opts", { webPreferences: { contextIsolation: false } });', ""],
+      [
+        'Object.defineProperty(w, "opts", { value: { webPreferences: { contextIsolation: false } } });',
+        "",
+      ],
+      [
+        "const key = pick(); Object.assign(w, { [key]: { webPreferences: { contextIsolation: false } } });",
+        "",
+      ],
+      ["const key = pick(); const o = w[key]; o.webPreferences.contextIsolation = false;", ""],
+      [
+        "const key = pick(); Object.assign(w[key].webPreferences, { contextIsolation: false });",
+        "",
+      ],
+      ["const v = w; v.opts.webPreferences.contextIsolation = false;", ""],
+      [
+        "Object.setPrototypeOf(w, { get opts(){ return { webPreferences: { contextIsolation: false } }; } });",
+        "",
+      ],
+      ["", ""],
+    ] as const) {
+      const info = one(fieldWindow(extra, ctor));
+      expect(states(info), `${extra}${ctor}`).toEqual(["computed computed computed null computed"]);
+      expect(
+        info.webPreferences.filter((p) => p.window !== null && p.value !== null),
+        `${extra}${ctor}`,
+      ).toEqual([]);
+    }
   });
 });

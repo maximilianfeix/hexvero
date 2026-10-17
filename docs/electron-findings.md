@@ -38,13 +38,15 @@ A setting also reads as `computed` where the code next to the window does not de
 
 Options are followed where they are built from objects the code names: a constant of the file or
 of another module (`Object.assign({}, BASE, { … })`, `{ ...BASE, sandbox: false }`,
-`Object.freeze({ … })`), the shorthand `{ webPreferences }`, a class field or a single
-`this.options = { … }` at the top of the constructor read through `this.options` (only when
-nothing else in the file writes that field or hands it on), and a factory function that returns
-such an object. A name is followed to the declaration it has where it is used, so a parameter
-or an inner declaration of the same name (and a minifier's short name reused in another
-function) is not taken for it. An argument of `Object.assign` that cannot be read makes every key
-of the arguments before it computed.
+`Object.freeze({ … })`), the shorthand `{ webPreferences }`, and a factory function that returns
+such an object. A name is followed to the declaration it has where it is used, so a parameter,
+a `catch (…)` binding or a declaration of the same name in an inner block (also a block at the
+top of the file, and a minifier's short name reused in another function) is not taken for it.
+An argument of `Object.assign` that cannot be read makes every key of the arguments before it
+computed. Options read from a field of an object (`new BrowserWindow(this.options)`,
+`webPreferences: this.prefs`) are not followed at all: a field can be changed in more ways than a
+reading of the text sees (`Object.assign(this, …)`, `Reflect.set`, a computed key, an alias of a
+nested object, a prototype), so those windows read as computed with `window_options_unresolved`.
 
 Within one object the later write of a key wins, as in JavaScript, also when one of the two is in
 an object that is spread into it (`{ sandbox: true, ...base }` takes `base`'s value) or returned
@@ -204,6 +206,11 @@ Electron fuses, Content Security Policy, what a navigation or window-open handle
 ([Security, 17][sec]), and `webPreferences` keys other than `preload`, `nodeIntegration`,
 `contextIsolation`, `sandbox`, `webSecurity`, `allowRunningInsecureContent`, `webviewTag`,
 `nodeIntegrationInSubFrames`, `nodeIntegrationInWorker` and `enableRemoteModule`.
+
+A change to an options object made in another module is not seen: a window that takes
+`SECURE` from `require("./prefs")` reads the values `prefs.js` writes there, and a module that
+imports the same object and changes it (`SECURE.sandbox = false`, `Object.assign(SECURE, …)`)
+is not looked at. Only changes in the window's own file make a value computed.
 
 [bc]: https://www.electronjs.org/docs/latest/breaking-changes
 [wp]: https://www.electronjs.org/docs/latest/api/structures/web-preferences

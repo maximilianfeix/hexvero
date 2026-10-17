@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.8.0",
-  "commit": "57d0ed4+uncommitted",
+  "version": "0.9.0",
+  "commit": "f39d2f1+uncommitted",
   "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
@@ -4586,6 +4586,7 @@
     "limitations": [
      "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
+     "window_options_unresolved",
      "webpreferences_computed"
     ],
     "ipcChannels": [
@@ -4787,26 +4788,6 @@
      {
       "key": "sandbox",
       "value": null,
-      "file": "main.js"
-     },
-     {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
-      "value": true,
       "file": "main.js"
      },
      {
@@ -5381,26 +5362,6 @@
      },
      {
       "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
       "value": false,
       "file": "main.js"
      },
@@ -5934,26 +5895,6 @@
      },
      {
       "key": "sandbox",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "preload",
-      "value": "preload.js",
-      "file": "main.js"
-     },
-     {
-      "key": "nodeIntegration",
-      "value": false,
-      "file": "main.js"
-     },
-     {
-      "key": "contextIsolation",
-      "value": true,
-      "file": "main.js"
-     },
-     {
-      "key": "sandbox",
       "value": false,
       "file": "main.js"
      },
@@ -6339,10 +6280,9 @@
      "added": [],
      "removed": [],
      "changed": [
-      "contextIsolation: true -> false",
       "sandbox: false -> true"
      ],
-     "relocated": 10,
+     "relocated": 7,
      "unchanged": 0
     },
     "endpoints": {
@@ -12101,11 +12041,10 @@
      "added": [],
      "removed": [],
      "changed": [
-      "sandbox: true -> false",
       "webSecurity: false -> true"
      ],
      "relocated": 0,
-     "unchanged": 11
+     "unchanged": 7
     },
     "endpoints": {
      "key": "file+kind+value",
