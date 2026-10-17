@@ -56,11 +56,17 @@ a complete one, and `hexvero demo` copies it next to the example builds:
 }
 ```
 
-| Rule                     | Reports                                                                                                                                                                                                                                                                                                                                                                  |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `new-interface-member`   | A member pages can call (`window.api.member`, from `contextBridge.exposeInMainWorld`) that the before build did not expose. Read from `interfaces`, or `contextBridge` where there is no `interfaces` list.                                                                                                                                                              |
-| `new-external-host`      | A host named by a new `endpoints` or `urls` row that is not in `allow`. `allow` takes exact host names and `*.domain` (every subdomain of `domain`, not `domain` itself); no scheme, port or path. Relative paths, `file:`, `data:`, app schemes and loopback are not external. A host built at run time (`https://${region}.api.example.com`) is unknown, never a pass. |
-| `window-more-permissive` | A window present in both builds whose derived `nodeIntegration`, `contextIsolation`, `sandbox` or page `require` changed so its pages may do more. A change whose direction cannot be told is unknown.                                                                                                                                                                   |
+| Rule                     | Reports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `new-interface-member`   | A member pages can call (`window.api.member`, from `contextBridge.exposeInMainWorld`) that the before build did not expose anywhere (a member that only moved to another preload file is not new). Read from `interfaces`, or `contextBridge` where there is no `interfaces` list.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `new-external-host`      | A host named by a new `endpoints` or `urls` row that is not in `allow` and that the before build did not already name (in any file, with any path: a renamed chunk or a new path on a known host is not a new host). The value is read as a WHATWG URL parser reads it: leading and trailing control characters and spaces and every tab and line break are dropped, any number of slashes may follow the scheme. `allow` takes exact host names and `*.domain` (every subdomain of `domain`, not `domain` itself); no scheme, port or path. Relative paths, `file:`, `data:`, app schemes and loopback are not external. A host built at run time (`https://${region}.api.example.com`) is unknown, never a pass. |
+| `window-more-permissive` | A window present in both builds whose derived `nodeIntegration`, `contextIsolation`, `sandbox` or page `require` changed so its pages may do more, and a new window (or one renamed: matched windows are matched by file and name) whose own settings already let its pages do more (`nodeIntegrationInEffect` on, `contextIsolationInEffect` off, `sandboxInEffect` off, `pageRequire` yes, or their defaults), with its file and line. When a removed window had the same permissive setting, the new one may be that window renamed, and the finding is unknown; so is a change whose direction cannot be told, a window row on a side that was not read, and a new window whose settings are not known.        |
+
+**What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
+app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a
+binary, an archive compared with a bundle) is refused with exit `1`; there is nothing to check
+there, and a check that found nothing must not read as a pass. Two bundles have no windows or
+bridge lists, so those rules are undecidable for them (gap `collection_missing`).
 
 `level` is `fail`, `warn` or `off`; a rule the policy does not list runs at `fail`. A misspelt
 rule or key is an error, not a rule that never runs. `level` says what the policy makes of a
@@ -78,24 +84,33 @@ first 32 hex characters. The identity is the member (`api.member`, not the prelo
 host, or the window, setting and new value. Lines, columns and the order of rows do not enter
 it, so a baseline survives code moving. The same member or host in several places is one
 finding with every place. A rename is a removal plus an addition: the new name is a new finding.
+An unknown finding ("may be new") has a fingerprint of its own (`identity` prefixed with
+`maybe`), so a baseline that accepted an unknown does not accept the same item once it is
+definitely new.
 Fingerprints are defined for policy and baseline version 1; another version is refused.
 
 **Baseline.** `--baseline file --update-baseline` writes every current finding (except
 suppressed ones) to `file` and is the only way findings are accepted; a normal run with
 `--baseline file` reads it and never writes. Accepted findings have state `baselined` and do not
 fail the check. A gap that leaves a rule undecidable cannot be baselined: set `unknown` to
-`warn` when you accept it.
+`warn` when you accept it. When the baseline was written for another policy or against another
+before build (its `policy` or `a` sha256 differs), the result says so in `baseline.warnings`
+(text output and stderr); it is still applied.
 
 **Suppressions** set one finding aside by rule and fingerprint, with a reason and an optional
 last day (`expires`, UTC). After that day the finding returns with state `suppression-expired`
-and counts as new, even if a baseline accepted it.
+and counts as new, even if a baseline accepted it: an expired suppression takes precedence over
+the baseline, so a deadline set in the policy cannot be bypassed by an older baseline. The order
+is: active suppression (`suppressed`), expired suppression (`suppression-expired`, counts), in
+the baseline (`baselined`), otherwise `new`.
 
 **Output.** Text, `--format json` (the `PolicyResult`), `--format markdown` (for a pull request
 comment or job summary) and `--format sarif` (SARIF 2.1.0) all come from the same result.
 `--out file` writes it to a file and prints a one-line status; an existing file is replaced only
-with `--force`. In SARIF, locations are paths inside the analyzed build, with
-`uriBaseId: HEXVERO_TARGET_B` (or `_A`), described as such in `originalUriBaseIds` and the run
-properties; nothing is mapped onto files of your repository. Only findings that count (`new`,
+with `--force`. In SARIF, locations are paths inside the analyzed build, written as
+`hexvero-build/after/<archive>/<path>` (`before` for the before build) with
+`uriBaseId: HEXVERO_TARGET_B` (or `_A`) whose base is `file:///`, described as such in
+`originalUriBaseIds` and the run properties; nothing is mapped onto files of your repository. Only findings that count (`new`,
 `suppression-expired`) become SARIF results, because code scanning does not honor SARIF
 suppressions. For CI, see [ci.md](ci.md).
 

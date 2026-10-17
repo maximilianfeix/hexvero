@@ -2,10 +2,13 @@
  * SARIF 2.1.0 from a `PolicyResult`, for GitHub code scanning and other SARIF readers.
  *
  * The places hexvero reports are paths inside the analyzed build (`main.js` inside
- * `notesdesk-1.5.0.asar`), not files of the repository the workflow runs in. Every location
- * therefore names its build through `uriBaseId` (`HEXVERO_TARGET_B`, `HEXVERO_TARGET_A`), the run
- * describes those bases and says so in `properties`, and nothing is mapped onto repository
- * sources. A code-scanning alert shows the path and line, but cannot open a file of the repo.
+ * `notesdesk-1.5.0.asar`), not files of the repository the workflow runs in. GitHub resolves a
+ * relative `uri` against the repository root whatever its `uriBaseId`, so a bare `main.js` could
+ * open the repository's own `main.js`. Every path is therefore prefixed with a segment no
+ * repository is expected to have, `hexvero-build/after/<archive>/main.js` (`before` for the
+ * before build), its `uriBaseId` (`HEXVERO_TARGET_B`, `HEXVERO_TARGET_A`) is given the absolute
+ * base `file:///` so the resolved URI is absolute and outside any checkout, and the run says in
+ * `originalUriBaseIds` and `properties` that these are paths inside the analyzed build.
  *
  * Only findings that count (state `new` or `suppression-expired`) become results: code scanning
  * ignores SARIF `suppressions`, so a baselined or suppressed finding there would reopen an alert.
@@ -59,11 +62,19 @@ const uriOf = (file: string): string =>
     )
     .join("/");
 
-function location(p: Place, id?: number): Record<string, unknown> {
+/** The path segment every location starts with: it names hexvero, the side and the archive. */
+export const SARIF_PREFIX = "hexvero-build";
+
+function location(
+  p: Place,
+  archives: { a: string; b: string },
+  id?: number,
+): Record<string, unknown> {
+  const uri = `${SARIF_PREFIX}/${p.side === "a" ? "before" : "after"}/${uriOf(archives[p.side])}/${uriOf(p.file)}`;
   return {
     ...(id === undefined ? {} : { id }),
     physicalLocation: {
-      artifactLocation: { uri: uriOf(p.file), uriBaseId: SARIF_BASE[p.side] },
+      artifactLocation: { uri, uriBaseId: SARIF_BASE[p.side] },
       ...(p.line === undefined ? {} : { region: { startLine: p.line } }),
     },
     ...(p.role ? { message: { text: p.role } } : {}),
@@ -95,6 +106,10 @@ export function toSarif(result: PolicyResult, options: SarifOptions): Record<str
   const counted = result.findings.filter(
     (f) => f.state === "new" || f.state === "suppression-expired",
   );
+  const archives = {
+    a: baseName(result.a.path).replace(/[\\/]/g, "_") || "before",
+    b: baseName(result.b.path).replace(/[\\/]/g, "_") || "after",
+  };
   const results = counted.map((f) => {
     const first = primary(f.where);
     const rest = f.where.filter((p) => p !== first).slice(0, 9);
@@ -104,9 +119,11 @@ export function toSarif(result: PolicyResult, options: SarifOptions): Record<str
       level: level(f, options.unknown),
       message: { text: plain(f.message) },
       locations: first
-        ? [location(first)]
+        ? [location(first, archives)]
         : [{ logicalLocations: [{ name: plain(f.key), kind: "member" }] }],
-      ...(rest.length ? { relatedLocations: rest.map((p, i) => location(p, i + 1)) } : {}),
+      ...(rest.length
+        ? { relatedLocations: rest.map((p, i) => location(p, archives, i + 1)) }
+        : {}),
       // Code scanning keys alerts on primaryLocationLineHash; a semantic fingerprint keeps one
       // alert per member, host or window setting however the code around it moves.
       partialFingerprints: {
@@ -152,8 +169,8 @@ export function toSarif(result: PolicyResult, options: SarifOptions): Record<str
         },
         automationDetails: { id: "hexvero-check/" },
         originalUriBaseIds: {
-          [SARIF_BASE.a]: { description: { text: describe("a") } },
-          [SARIF_BASE.b]: { description: { text: describe("b") } },
+          [SARIF_BASE.a]: { uri: "file:///", description: { text: describe("a") } },
+          [SARIF_BASE.b]: { uri: "file:///", description: { text: describe("b") } },
         },
         invocations: [
           {
@@ -173,7 +190,7 @@ export function toSarif(result: PolicyResult, options: SarifOptions): Record<str
             status: result.status,
             statusText: STATUS_TEXT[result.status],
             locations:
-              "Locations are paths inside the analyzed build archives (uriBaseId HEXVERO_TARGET_A for before, HEXVERO_TARGET_B for after), not files of the repository this log is uploaded to.",
+              "Locations are paths inside the analyzed build archives, written as hexvero-build/before/<archive>/<path> (uriBaseId HEXVERO_TARGET_A) and hexvero-build/after/<archive>/<path> (uriBaseId HEXVERO_TARGET_B), not files of the repository this log is uploaded to.",
             before: { file: plain(baseName(result.a.path)), sha256: result.a.sha256 },
             after: { file: plain(baseName(result.b.path)), sha256: result.b.sha256 },
             policy: result.policy.sha256,

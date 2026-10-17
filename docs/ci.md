@@ -108,11 +108,17 @@ SARIF 2.1.0 schema.
 
 ## What the SARIF file says, and what it does not
 
-- Locations are paths **inside the analyzed build** (`main.js` inside `app.asar`), with
-  `uriBaseId: HEXVERO_TARGET_B` for the after build and `HEXVERO_TARGET_A` for the before build.
-  `originalUriBaseIds` and the run's `properties.hexvero.locations` say so. hexvero does not map
-  them onto files of your repository, so a code-scanning alert shows the path and line but cannot
-  open a source file; a bundled `main.js` is not your `src/main.ts`.
+- Locations are paths **inside the analyzed build**, written as
+  `hexvero-build/after/<archive>/main.js` (`hexvero-build/before/…` for the before build) with
+  `uriBaseId: HEXVERO_TARGET_B` / `HEXVERO_TARGET_A`. Code scanning resolves a relative `uri`
+  against the repository root whatever its `uriBaseId`, so a bare `main.js` could point at your
+  repository's own `main.js`; the `hexvero-build/` prefix names a directory your repository does
+  not have (do not create one), and the bases are given the absolute URI `file:///` so a reader
+  that resolves them gets an absolute path outside any checkout. `originalUriBaseIds` and the
+  run's `properties.hexvero.locations` say so. hexvero does not map paths onto your sources: an
+  alert shows the path and line but opens no file, because a bundled `main.js` is not your
+  `src/main.ts`. Alternatives considered: logical locations only (no file or line would be
+  shown at all).
 - A place without a recorded line has no `region`; hexvero never invents a line.
 - `partialFingerprints` carries the semantic fingerprint (`hexveroFingerprint/v1`, and as
   `primaryLocationLineHash`, which code scanning keys alerts on), so one alert stays one alert
