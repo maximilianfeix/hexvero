@@ -3322,7 +3322,10 @@ export class ExpressionResolver {
    * more than once, or is not in the file.
    */
   binding(k: number, name: string): Binding | null {
+    // the scans below are charged to the file's work budget; used up, nothing is bound
+    if (this.work <= 0) return null;
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
+      if (this.work <= 0) return null;
       const index = d.params.findIndex((p) => paramNames([p]).includes(name));
       if (index !== -1)
         return d.params[index]!.kind === "name" ? { kind: "param", def: d, index } : null;
@@ -3351,11 +3354,24 @@ export class ExpressionResolver {
    * counts unless that function binds the name itself). "ambiguous" for anything else; null when
    * d does not declare it.
    */
+  private readonly directCache = new Map<string, Binding | "ambiguous" | null>();
+  private readonly patternCache = new Map<string, Binding | null | undefined>();
+  private readonly listedCache = new Map<string, [number, number] | null | undefined>();
+
   private directDeclaration(d: FnDef, name: string): Binding | "ambiguous" | null {
+    const key = `${d.paramsAt}:${name}`;
+    if (this.directCache.has(key)) return this.directCache.get(key)!;
+    const found = this.directDeclarationIn(d, name);
+    this.directCache.set(key, found);
+    return found;
+  }
+
+  private directDeclarationIn(d: FnDef, name: string): Binding | "ambiguous" | null {
     let count = 0;
     let found: Binding | "ambiguous" = "ambiguous";
     let written = false;
     for (const j of this.occurrences(name, d.body[0], d.body[1])) {
+      if (this.work <= 0) return "ambiguous";
       if (this.punct(j - 1, ".")) continue;
       const inner = this.enclosing(j);
       const before = this.tokens[j - 1];
@@ -3395,19 +3411,34 @@ export class ExpressionResolver {
   /** Whether a function from `inner` out to (not including) `outer` binds NAME itself. */
   private bindsBetween(inner: FnDef | null, outer: FnDef, name: string): boolean {
     for (let x = inner, guard = 0; x && x !== outer && guard < 20; guard++) {
-      if (x.params.some((p) => paramNames([p]).includes(name))) return true;
+      if (this.bindsOwn(x, name)) return true;
+      x = this.enclosing(x.paramsAt - 1);
+    }
+    return false;
+  }
+
+  private readonly ownCache = new Map<string, boolean>();
+
+  /** Whether x binds NAME itself: a parameter, or a declaration directly in its body. Cached. */
+  private bindsOwn(x: FnDef, name: string): boolean {
+    const key = `${x.paramsAt}:${name}`;
+    const cached = this.ownCache.get(key);
+    if (cached !== undefined) return cached;
+    let own = x.params.some((p) => paramNames([p]).includes(name));
+    if (!own)
       for (const j of this.occurrences(name, x.body[0], x.body[1])) {
         const before = this.tokens[j - 1];
         if (
           this.enclosing(j) === x &&
           ((before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) ||
             (this.punct(j - 1, ",") && this.punct(j + 1, "=") && this.inDeclarationList(j)))
-        )
-          return true;
+        ) {
+          own = true;
+          break;
+        }
       }
-      x = this.enclosing(x.paramsAt - 1);
-    }
-    return false;
+    this.ownCache.set(key, own);
+    return own;
   }
 
   /** NAME bound by an object pattern of a declaration in the innermost function around k that binds it. */
@@ -3446,7 +3477,15 @@ export class ExpressionResolver {
    * or assigned otherwise too; undefined when it is not declared so at all.
    */
   private topListed(name: string): [number, number] | null | undefined {
+    if (this.listedCache.has(name)) return this.listedCache.get(name);
+    const found = this.topListedIn(name);
+    this.listedCache.set(name, found);
+    return found;
+  }
+
+  private topListedIn(name: string): [number, number] | null | undefined {
     const all = this.positions(name);
+    this.work -= Math.min(all.length, 4001);
     if (all.length > 4000) return undefined;
     let at = -1;
     let declared = 0;
@@ -3476,6 +3515,14 @@ export class ExpressionResolver {
    * also in a declarator list): undefined when there is none, null when there are several.
    */
   private patternIn(d: FnDef, name: string): Binding | null | undefined {
+    const key = `${d.paramsAt}:${name}`;
+    if (this.patternCache.has(key)) return this.patternCache.get(key);
+    const found = this.patternInUncached(d, name);
+    this.patternCache.set(key, found);
+    return found;
+  }
+
+  private patternInUncached(d: FnDef, name: string): Binding | null | undefined {
     let found: Binding | null = null;
     let bound = 0;
     for (const j of this.occurrences(name, d.body[0], d.body[1])) {

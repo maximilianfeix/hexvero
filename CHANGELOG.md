@@ -25,7 +25,9 @@ All notable changes to hexvero are listed here. The format follows
 - The resolver no longer reads a parameter the function assigns to (`channel = "x:" + channel`)
   as what the call sites pass; it reads `var { K: name } = …` patterns inside functions.
 - New limitation code `ipc_wrappers_capped` when the search for wrapper calls runs out of its
-  budget. Stored scans of the earlier format are read again (`JS_SCAN_SCHEMA` 7).
+  budget. Short-named enums are checked in one pass per file under a budget (at most 256 per
+  file), and the scope lookups behind the wrapper search are cached and charged to the
+  resolver's budget, so hostile inputs stay linear (`completeness.test.ts`). Stored scans of the earlier format are read again (`JS_SCAN_SCHEMA` 7).
 
 ### MCP
 
