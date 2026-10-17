@@ -115,7 +115,17 @@ export interface Candidates {
   wrappersSkipped?: true;
   /** More HTTP client calls than MAX_CLIENT_CALLS were checked; the rest gave no rows. */
   clientsSkipped?: true;
+  /**
+   * Storage calls whose key could not be read where it is written (at most MAX_OPEN_KEYS): the
+   * token the key starts at, for the wrappers other modules call (wrappers.ts).
+   */
+  /** More calls of the file's own storage wrappers than are read (app.ts). */
+  keyCallsCapped?: true;
+  openKeys?: Array<{ at: number; kind: Candidate["kind"]; op?: NonNullable<Candidate["op"]> }>;
 }
+
+/** Storage calls with an unread key recorded per file for the cross-module wrapper stage. */
+const MAX_OPEN_KEYS = 64;
 
 /** HTTP client calls per file whose binding is checked (see `clients` in findCandidates). */
 const MAX_CLIENT_CALLS = 2000;
@@ -476,6 +486,8 @@ export function findCandidates(
   ): void => {
     const fast = read(k);
     const open = !fast || fast.value === null || fast.value.includes("${…}");
+    if (open && (out.openKeys ??= []).length < MAX_OPEN_KEYS)
+      out.openKeys.push({ at: k, kind, ...(extra.op ? { op: extra.op } : {}) });
     let calls = wrappers.get(k);
     if (open && calls === undefined && functionTokens === -1) {
       functionTokens = 0;

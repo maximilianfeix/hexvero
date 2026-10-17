@@ -72,6 +72,11 @@ export interface ScanResult {
   reexports?: Record<string, { specifier: string; property: string }>;
   /** `export * from "…"` specifiers. */
   starExports?: string[];
+  /**
+   * Every `module.exports = require("…")`, also under a condition or replaced later: for the
+   * replacements of wrapper methods only, where reading too much only reads less.
+   */
+  looseStarExports?: string[];
   /** Keys of `constants` whose values were read by evaluating code (see resolve.ts). */
   evaluated?: string[];
   /** Exported names whose value an evaluation could not read, with the reason. */
@@ -1242,7 +1247,16 @@ export function scanJavaScript(
     truncated,
     ...(Object.keys(constants.exported).length ? { constants: constants.exported } : {}),
     ...(Object.keys(constants.reexported).length ? { reexports: constants.reexported } : {}),
-    ...(constants.starExports.length ? { starExports: constants.starExports } : {}),
+    ...(() => {
+      // `module.exports = require("./x")`: a star export only where it is certain (aliases.ts)
+      const whole = constants.wholeReexports();
+      const stars = [...constants.starExports];
+      if (whole.strict !== null && !stars.includes(whole.strict)) stars.push(whole.strict);
+      return {
+        ...(stars.length ? { starExports: stars } : {}),
+        ...(whole.loose.length ? { looseStarExports: whole.loose } : {}),
+      };
+    })(),
     ...(constants.evaluated.length ? { evaluated: constants.evaluated } : {}),
     ...(Object.keys(constants.unevaluated).length ? { unevaluated: constants.unevaluated } : {}),
     ...(wrapped.facts ? { wrappers: wrapped.facts } : {}),

@@ -472,6 +472,76 @@ export class Constants {
   readonly reexported: Record<string, { specifier: string; property: string }> = {};
   /** `export * from "./x"`: every name of x is a name of this file. */
   readonly starExports: string[] = [];
+  /** Every `module.exports = require("…")` of the file, with the token of `module`. */
+  private readonly wholeRequires: Array<{ specifier: string; at: number }> = [];
+
+  /**
+   * `module.exports = require("./x")`: `strict` is the module the file passes on whole, like
+   * `export * from`, only when that statement is the file's one write of `module.exports` or
+   * `exports` (member additions such as `module.exports.extra = …` may follow), stands at the
+   * top of the file as a statement of its own (not in a function, a block, under `if`, after
+   * `else`, in a ternary, `&&` or `||`), and nothing else replaces the exports
+   * (`module.exports = f(module.exports)`, `exports = …`, `Object.assign(module, …)`). `loose`
+   * is every such statement wherever it stands, for readings where taking too much only reads
+   * less (replacements of wrapper methods, wrappers.ts).
+   */
+  wholeReexports(): { strict: string | null; loose: string[] } {
+    const loose = [...new Set(this.wholeRequires.map((w) => w.specifier))];
+    if (this.wholeRequires.length !== 1) return { strict: null, loose };
+    const tokens = this.tokens;
+    const isAt = (k: number, type: Token["type"], value?: string): boolean =>
+      tokens[k]?.type === type && (value === undefined || tokens[k]!.value === value);
+    // the writes of the exports object itself
+    let writes = 0;
+    for (let k = 0; k < tokens.length; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "ident") continue;
+      if (t.value === "exports" && isAt(k + 1, "punct", "=")) {
+        // `module.exports =`, or a bare `exports =`
+        if (
+          isAt(k - 1, "punct", ".")
+            ? isAt(k - 2, "ident", "module") && !isAt(k - 3, "punct", ".")
+            : true
+        )
+          writes++;
+      } else if (
+        t.value === "assign" &&
+        isAt(k - 1, "punct", ".") &&
+        isAt(k - 2, "ident", "Object") &&
+        isAt(k + 1, "punct", "(") &&
+        isAt(k + 2, "ident", "module") &&
+        !isAt(k + 3, "punct", ".")
+      )
+        writes++;
+      else if (
+        (t.value === "defineProperty" || t.value === "setPrototypeOf") &&
+        isAt(k + 1, "punct", "(") &&
+        isAt(k + 2, "ident", "module") &&
+        (isAt(k + 3, "punct", ",") ||
+          (isAt(k + 3, "punct", ".") &&
+            isAt(k + 4, "ident", "exports") &&
+            isAt(k + 5, "punct", ",")))
+      )
+        writes++;
+    }
+    if (writes !== 1) return { strict: null, loose };
+    const { specifier, at } = this.wholeRequires[0]!;
+    // a statement of its own at the top of the file
+    let depth = 0;
+    for (let k = 0; k < at; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "punct") continue;
+      if (t.value === "(" || t.value === "[" || t.value === "{") depth++;
+      else if (t.value === ")" || t.value === "]" || t.value === "}") depth--;
+    }
+    if (depth !== 0) return { strict: null, loose };
+    const before = tokens[at - 1];
+    const starts =
+      before === undefined ||
+      (before.type === "punct" && (before.value === ";" || before.value === "}"));
+    if (!starts) return { strict: null, loose };
+    return { strict: specifier, loose };
+  }
   /** Export entries whose value is a name, settled once the whole file is read. */
   private readonly exportNames: Array<{ key: string; at: number }> = [];
   /**
@@ -909,6 +979,24 @@ export class Constants {
         is(tokens[k + 6], "punct", "{")
           ? k + 6
           : -1;
+      // `module.exports = require("./store")` (not in a bundler's wrapper), wherever it stands:
+      // see `wholeReexports`
+      if (
+        eq &&
+        !wrapper &&
+        t.value === "exports" &&
+        is(tokens[k - 1], "punct", ".") &&
+        is(tokens[k - 2], "ident", "module") &&
+        !is(tokens[k - 3], "punct", ".") &&
+        is(value, "ident", "require") &&
+        is(tokens[k + 3], "punct", "(") &&
+        tokens[k + 4]?.type === "string" &&
+        is(tokens[k + 5], "punct", ")") &&
+        (tokens[k + 6]?.type !== "punct" || /^[;}]$/.test(tokens[k + 6]!.value))
+      ) {
+        const specifier = text(tokens[k + 4]);
+        if (specifier !== null) this.wholeRequires.push({ specifier, at: k - 2 });
+      }
       if (
         eq &&
         is(tokens[k - 1], "punct", ".") &&
