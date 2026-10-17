@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-17
+
 ### Performance
 
 - `analyze` of Discord is back to the time of 0.9.0 (852 ms median against 864 ms; 0.9.1 took
