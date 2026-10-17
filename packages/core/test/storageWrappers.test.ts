@@ -596,8 +596,27 @@ local.get("x");
       ["wrapped", `module.exports = require("./real");\nmodule.exports = wrap(module.exports);\n`],
       ["after &&", `process.env.DEV && (module.exports = require("./fake"));\n`],
       ["in a function", `function load() { module.exports = require("./fake"); }\n`],
+      [
+        "replaced through module[…]",
+        `module.exports = require("./real");\nmodule["exports"] = { API: "https://br.example", CH: "br-ch" };\n`,
+      ],
+      ["a tagged template on the next line", 'module.exports = require("./real")\n`x`\n'],
+      ["a call on the next line", `module.exports = require("./real")\n(1)\n`],
+      ["a member on the next line", `module.exports = require("./real")\n.sub\n`],
     ])("%s: not known", (_name, index) => {
       expect(through(index)).toEqual(["${…}/x"]);
+    });
+    it("replaced through an alias of module: the later object, never the re-exported module", () => {
+      const got = through(
+        `module.exports = require("./real");\nconst m = module; m.exports = { API: "https://a.example", CH: "a-ch" };\n`,
+      );
+      expect(got.filter((x) => x.includes("real"))).toEqual([]);
+    });
+    it("a statement on the next line ends it (ASI)", () => {
+      expect(through(`module.exports = require("./real")\nconsole.log(1)\n`)).toEqual([
+        "https://real.example/x",
+        "real-ch",
+      ]);
     });
     it("cycles end", () => {
       expect(
@@ -617,6 +636,28 @@ local.get("x");
       expect(info.storage.filter((r) => r.value?.includes("F_"))).toEqual([]);
       expect(info.limitations.map((l) => l.code)).toContain("wrapper_method_replaced");
     });
+  });
+
+  it("one replacement budget for the application, and says so when it runs out", () => {
+    const writes = Array.from(
+      { length: 400 },
+      (_, i) => `const o${i} = q${i} || {}; o${i}.save = f; o${i}.x${i} = f;`,
+    ).join("\n");
+    const files: Record<string, string> = {
+      "store.js": `class Store { save(k, v) { localStorage.setItem("app." + k, v); } }\nmodule.exports = { Store, store: new Store() };\n`,
+      "r.js": `const { store } = require("./store");\nstore.save("ok_key", 1);\n`,
+    };
+    for (let i = 0; i < 400; i++)
+      files[`p${i}.js`] = `const { store } = require("./store");\n${writes}\n`;
+    const started = performance.now();
+    const info = analyze(files);
+    expect(performance.now() - started).toBeLessThan(30_000);
+    const read = info.storage.some((r) => r.value === "app.ok_key");
+    const lim = info.limitations.find((l) => l.code === "wrapper_method_replaced");
+    // either every importing module was read (no write there is on the store), or the rest is
+    // flagged and the method counts as replaced
+    if (!read) expect(lim?.message).toMatch(/replacement budget/);
+    else expect(lim).toBeUndefined();
   });
 
   it("folds the per-file storage_wrappers_capped entries into one", () => {

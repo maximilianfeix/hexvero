@@ -95,6 +95,8 @@ export type ExternalLookup = (specifier: string, key: string) => WrapperValue | 
 const MAX_SITES = 64;
 /** Work for reading the receivers of member writes in one file (`replacements`). */
 const REPLACEMENT_WORK = 200_000;
+/** Work of the replacement scan of one application: tokens of the files opened plus receivers. */
+const REPLACEMENT_APP_WORK = 3_000_000;
 /** Tokens of an argument of a key-forwarding wrapper call the resolver reads, at most. */
 const MAX_ARGUMENT_TOKENS = 64;
 /** Calls of key-forwarding wrappers read per file. */
@@ -213,16 +215,22 @@ export class WrapperReader {
    * receivers are read within the work budget; one that is not read to the end counts for every
    * class with that method.
    */
-  replacements(): Array<{ cls: WrapperClass; method: string; at: number; budget?: true }> {
+  replacements(
+    limit = REPLACEMENT_WORK,
+  ): Array<{ cls: WrapperClass; method: string; at: number; budget?: true }> {
     // a budget of its own, so that the calls read later have theirs
     const saved = this.work;
-    this.work = REPLACEMENT_WORK;
+    this.work = limit;
     try {
       return this.replacementsIn();
     } finally {
+      this.replacementWork = limit - Math.max(0, this.work);
       this.work = saved;
     }
   }
+
+  /** The work the last `replacements` used. */
+  replacementWork = 0;
 
   private replacementsIn(): Array<{
     cls: WrapperClass;
@@ -1497,9 +1505,42 @@ function linkWrapperCalls<R>(input: {
   const looseImporters = input.edges
     .filter((e) => e.resolved && looseProviders.has(e.to))
     .map((e) => e.from);
+  // One budget for the whole application (tokens of the files opened, plus the work of reading
+  // receivers): a file past it is not read, and every method of the wrappers it imports counts
+  // as replaced (flagged), as a write there may replace any of them.
+  let left = REPLACEMENT_APP_WORK;
+  /** The wrapper modules file reaches through its imports (and re-exports), a few deep. */
+  const reached = (file: string): Set<string> => {
+    const seen = new Set<string>();
+    const walk = (from: string, depth: number): void => {
+      if (depth > 6) return;
+      for (const e of input.edges) {
+        if (e.from !== from || !e.resolved || !looseProviders.has(e.to) || seen.has(e.to)) continue;
+        seen.add(e.to);
+        walk(e.to, depth + 1);
+      }
+    };
+    walk(file, 0);
+    return seen;
+  };
   for (const file of [...new Set([...looseProviders, ...looseImporters])].toSorted()) {
+    if (left <= 0) {
+      const ids = reached(file);
+      if (looseProviders.has(file)) ids.add(file);
+      for (const cls of everyClass) {
+        if (!ids.has(cls.file)) continue;
+        for (const method of Object.keys(cls.methods)) {
+          const key = methodKey(cls, method);
+          if (replaced.has(key)) continue;
+          replaced.add(key);
+          replacedAt.push({ via: `${cls.name}.${method}`, file, line: 0, budget: true });
+        }
+      }
+      continue;
+    }
     const read = input.open(file);
     if (!read) continue;
+    left -= read.tokens.length;
     // a reader of its own: its lookup follows the uncertain whole re-exports too
     const reader = new WrapperReader(
       read.tokens,
@@ -1509,7 +1550,9 @@ function linkWrapperCalls<R>(input: {
       file,
     );
     for (const cls of everyClass) reader.adopt(cls);
-    for (const { cls, method, at, budget } of reader.replacements()) {
+    const found = reader.replacements(Math.max(1, Math.min(REPLACEMENT_WORK, left)));
+    left -= reader.replacementWork;
+    for (const { cls, method, at, budget } of found) {
       const key = methodKey(cls, method);
       if (replaced.has(key)) continue;
       replaced.add(key);
@@ -1521,8 +1564,18 @@ function linkWrapperCalls<R>(input: {
       });
     }
   }
+  /** Every method of every wrapper the file reaches is replaced: no call there gives a row. */
+  const allReplaced = (file: string): boolean => {
+    const ids = reached(file);
+    return everyClass.every(
+      (cls) =>
+        !ids.has(cls.file) ||
+        Object.keys(cls.methods).every((m) => replaced.has(methodKey(cls, m))),
+    );
+  };
   let passesCut = false;
   for (const file of importers) {
+    if (replaced.size && allReplaced(file)) continue;
     const reader = readerOf(file);
     if (!reader) continue;
     for (const cls of everyClass) reader.adopt(cls);

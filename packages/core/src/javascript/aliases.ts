@@ -505,6 +505,15 @@ export class Constants {
         )
           writes++;
       } else if (
+        t.value === "module" &&
+        !isAt(k - 1, "punct", ".") &&
+        !isAt(k - 1, "punct", "?.") &&
+        !(isAt(k + 1, "punct", ".") && isAt(k + 2, "ident", "exports"))
+      )
+        // `module["exports"] = …`, `module[k] = …`, `const m = module`, `f(module)`: the
+        // exports may be replaced through it
+        writes++;
+      else if (
         t.value === "assign" &&
         isAt(k - 1, "punct", ".") &&
         isAt(k - 2, "ident", "Object") &&
@@ -526,6 +535,19 @@ export class Constants {
     }
     if (writes !== 1) return { strict: null, loose };
     const { specifier, at } = this.wholeRequires[0]!;
+    // the statement ends after `require("…")`: `;`, `}`, the end of the file, or a statement on a
+    // later line that cannot continue the expression (ASI). A template (a tagged call), `(`,
+    // `[`, `.`, `?.`, an operator or `in`/`instanceof` continue it.
+    const next = tokens[at + 8];
+    const close = tokens[at + 7]!;
+    const ends =
+      next === undefined ||
+      (next.type === "punct" && (next.value === ";" || next.value === "}")) ||
+      (next.type === "ident" &&
+        next.line > close.line &&
+        !/^(in|instanceof|of)$/.test(next.value)) ||
+      (next.type === "string" && next.line > close.line);
+    if (!ends) return { strict: null, loose };
     // a statement of its own at the top of the file
     let depth = 0;
     for (let k = 0; k < at; k++) {
@@ -991,8 +1013,7 @@ export class Constants {
         is(value, "ident", "require") &&
         is(tokens[k + 3], "punct", "(") &&
         tokens[k + 4]?.type === "string" &&
-        is(tokens[k + 5], "punct", ")") &&
-        (tokens[k + 6]?.type !== "punct" || /^[;}]$/.test(tokens[k + 6]!.value))
+        is(tokens[k + 5], "punct", ")")
       ) {
         const specifier = text(tokens[k + 4]);
         if (specifier !== null) this.wholeRequires.push({ specifier, at: k - 2 });

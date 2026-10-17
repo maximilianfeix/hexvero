@@ -4522,7 +4522,9 @@ export function analyzeJavaScriptTree(
       message: `${replaced.length} wrapper method(s) are replaced by a member write on the class, its prototype or an instance, or a write there whose receiver was not read within the replacement budget, so their calls in other modules are not read (no IPC or storage rows through them): ${list(
         replaced.map((x) =>
           x.budget
-            ? `${x.via}: a member write not read within the replacement budget at ${x.file}:${x.line}`
+            ? x.line
+              ? `${x.via}: a member write not read within the replacement budget (of the file, or what was left of the application's) at ${x.file}:${x.line}`
+              : `${x.via}: ${x.file} imports it and was not read within the replacement budget of the application`
             : `${x.via} at ${x.file}:${x.line}`,
         ),
         5,

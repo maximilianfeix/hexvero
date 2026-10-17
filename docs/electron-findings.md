@@ -357,8 +357,12 @@ only blocks more). For every other reading (endpoints, IPC channels, bridge memb
 options, wrapper calls) `module.exports = require("./x")` passes module `./x` on whole, like
 `export *`, only when it is the file's one write of `module.exports` or `exports`, a statement of
 its own at the top of the file (not in a function or block, not under `if` or `else`, not in a
-ternary, `&&` or `||`), and nothing else replaces the exports (`module.exports = f(module.exports)`,
-`exports = …`, `Object.assign(module, …)`); members added after it (`module.exports.extra = …`)
+ternary, `&&` or `||`), ends there (`;`, `}`, the end of the file, or on the next line a statement
+that cannot continue it: not a template, which would make it a tagged call, nor `(`, `[`, `.`,
+`?.`, an operator, `in` or `instanceof`), and nothing else replaces the exports
+(`module.exports = f(module.exports)`, `exports = …`, `Object.assign(module, …)`,
+`Object.defineProperty(module, …)`, `module["exports"] = …`, `module[k] = …`, or `module` used any
+other way, `const m = module`, `f(module)`); members added after it (`module.exports.extra = …`)
 are read as before. The receiver must be proven to be the wrapper: the class, its prototype
 (`Store.prototype`, also as a name bound to it, `const P = Store.prototype` or `const P =
 require("./store").Store.prototype`, `Object.getPrototypeOf(s)`, `s.constructor.prototype`,
@@ -378,9 +382,13 @@ require("./store").Store.prototype`, `Object.getPrototypeOf(s)`, `s.constructor.
 
 Each replaced method gives no row in any module, and the limitation `wrapper_method_replaced`
 names it with the place of the write; when the receivers of a module's writes cannot be read
-within their work budget (200,000 steps per module), the methods of that name of every wrapper
-count as replaced, and the limitation says "a member write not read within the replacement
-budget at file:line". A write to another object of the same method name (`srv.handle = f`, lodash's
+within their work budget (200,000 steps per module, and 3,000,000 for the application: the tokens
+of the modules opened plus that work), the methods of that name of every wrapper count as
+replaced, and the limitation says "a member write not read within the replacement budget … at
+file:line"; a module not read at all once the application's budget is used up makes every method
+of the wrappers it imports count as replaced ("… imports it and was not read within the
+replacement budget of the application"). Calls of a wrapper whose methods all count as replaced
+are not read. A write to another object of the same method name (`srv.handle = f`, lodash's
 `_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
 so a call there may still be read although the method was replaced: a replacement through a
 global (`window.__s.save = f` with `window.__s` set elsewhere), through `require.cache`, through
