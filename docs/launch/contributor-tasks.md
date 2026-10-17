@@ -20,7 +20,7 @@ Two of the original five were solved in the sprint and are no longer open:
 
 Their places below are taken by two gaps verified in the code at `03588ec`.
 
-## 1. The HTTP export writes less than `hexvero export`
+## 1. The HTTP export writes less than `hexvero export` ([#149](https://github.com/maximilianfeix/hexvero/issues/149))
 
 - **Reproduce:** `hexvero ui --demo`, click "Export JSON", compare the file with
   `hexvero export examples/notesdesk-1.5.0.asar out.json`. The UI file lacks `complete`,
@@ -30,7 +30,7 @@ Their places below are taken by two gaps verified in the code at `03588ec`.
 - **Done when:** both write the same document (same top-level fields, same `hexvero: 1`), with a
   server test that compares the two for one target.
 
-## 2. The UI cannot read a large app with `fresh`, `include` or `batch`
+## 2. The UI cannot read a large app with `fresh`, `include` or `batch` ([#150](https://github.com/maximilianfeix/hexvero/issues/150))
 
 - **Reproduce:** the CLI and MCP accept `--fresh`, `--include p,q`, `--batch n`; the HTTP route
   `GET /api/targets/:id/analysis` accepts only `scan=continue|all` and answers 400 otherwise.
@@ -39,7 +39,7 @@ Their places below are taken by two gaps verified in the code at `03588ec`.
 - **Done when:** the route accepts the same options as `Session.continueAnalysis` with validation
   and a test per option; the UI offers "read only these paths" for a partly read app.
 
-## 3. Reports do not say what a collection means
+## 3. Reports do not say what a collection means ([#151](https://github.com/maximilianfeix/hexvero/issues/151))
 
 - **Reproduce:** `hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar
   --report r.md` (or `r.html`): each group is headed by the bare collection name
@@ -53,10 +53,10 @@ Their places below are taken by two gaps verified in the code at `03588ec`.
   them instead of keeping its own copy, both reports print the sentence under each group heading,
   and `scripts/build-site-demo.mjs --check` passes after regenerating the demo.
 
-## 4. The corpus baseline cannot be traced to a commit
+## 4. The corpus baseline cannot be traced to a commit ([#152](https://github.com/maximilianfeix/hexvero/issues/152))
 
-- **Reproduce:** `corpus/results/hexvero.json` records `tool.version` `0.8.0` and `commit`
-  `aa88007+uncommitted`, while the packages are 0.9.0. `corpus/observe-hexvero.mjs:286-291`
+- **Reproduce:** `corpus/results/hexvero.json` records `tool.version` `0.9.0` and `commit`
+  `f39d2f1+uncommitted` (checked 2026-10-17 on 0.9.2), while the packages are 0.9.2. `corpus/observe-hexvero.mjs:286-291`
   appends `+uncommitted` and carries on, so `npm run corpus:accept` from a dirty tree writes a
   baseline nobody can check out; `corpus/gate.mjs` then compares every later run with it.
 - **Files:** `corpus/observe-hexvero.mjs`, `package.json` (`corpus:accept`), `corpus/gate.mjs`,
@@ -66,10 +66,12 @@ Their places below are taken by two gaps verified in the code at `03588ec`.
   prints the baseline's version and commit next to the current ones, and the baseline is
   regenerated from a clean checkout of the current release.
 
-## 5. A stale UI token after a server restart
+## 5. A stale UI token after a server restart ([#153](https://github.com/maximilianfeix/hexvero/issues/153))
 
 - **Reproduce:** `hexvero ui`, open the page, stop and restart the server, reload: the page keeps
   the old token from `localStorage` and every call answers 401 until the new link is opened.
+  Since 0.9.2 the error says to open the link again and offers Retry (`api.ts` adds the hint to
+  every 401), but the stale token is not cleared, so Retry keeps failing.
 - **Files:** `packages/web/src/lib/api.ts` (`adoptHashToken`, `token()`), `packages/web/src/App.tsx`.
 - **Done when:** a 401 with a stored token clears it and shows the "open the link `hexvero ui`
   printed" state once, with a unit test of the token logic; the token still never appears in a
