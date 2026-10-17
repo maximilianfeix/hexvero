@@ -153,6 +153,17 @@ Probe scripts: scratchpad/review2/t1–t8.mjs, dbg2.mjs. A false safe value is w
 | X     | `sprint/x-robust` `~/hexvero-10h-x-robust`   | seeded fuzzing of readers/exports, hostile policy JSON, output paths    |
 | U     | `sprint/u-states` `~/hexvero-10h-u-states`   | UI browser states (loading/empty/error/large/hostile, keyboard, widths) |
 
+## Third review R3 (sprint/round3, origin/main..220a949, 14:30Z)
+
+Probes: scratchpad/r3/probes/. HIGH H1: another class's `this.save("…")` becomes a storage key or
+endpoint (regression; main: unknown) → S (`sprint/s2`). MEDIUM M1 (`this` in a nested object
+method), M2 (reassigned/shadowed wrapper functions, `exports.X` vs a local of that name) → S.
+LOW L1 (reassigned enum member, regression), L2 (`x.Setting.member` through any object), L5
+(RSS 528 vs 275 MB with 199k functions) → S; L3 (terminal: forged new line, raw bidi/zero-width),
+L4 (table widths, `code()` cut inside an escape), L6 (stale header cache) → X (`sprint/x2`).
+Sound: kind-aware compare rule, budgets, ASAR validation, policy nesting, report escaping,
+fuzz.mjs, web retry/focus/tabs/history, paint token (no bypass found).
+
 ## Next steps / resume instructions
 
 1. On hand-back of S, X, U: cherry-pick or merge onto a branch from main, run the gates (check,
