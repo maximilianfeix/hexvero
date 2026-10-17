@@ -511,6 +511,94 @@ describe("storage through wrapper methods and enums", () => {
       ]);
   });
 
+  it("reads module.Enum.MEMBER only through a module binding visible at the use (R3 N2)", () => {
+    const E = '1(e,t){var u;t.Setting=void 0,function(e){e.theme="theme"}(u||(t.Setting=u={}))},\n';
+    const cases: Array<[string, string[]]> = [
+      // webpack's require parameter with a module id, and require("…")
+      [
+        `${E}3(e,t,n){const c=n(1);localStorage.getItem(c.Setting.theme)}`,
+        ["localStorage read theme [inferred] @2:23"],
+      ],
+      [
+        `${E}3(e,t){const c=require("./s");localStorage.getItem(c.Setting.theme)}`,
+        ["localStorage read theme [inferred] @2:31"],
+      ],
+      // used in a function the module defines before the declaration, as webpack writes it
+      [
+        `${E}3(e,t,n){t.f=function(){return localStorage.getItem(r.Setting.theme)};const i=n(2),r=n(1)}`,
+        ["localStorage read theme [inferred] @2:32"],
+      ],
+      // used at the module's own level before the declaration: not yet bound
+      [
+        `${E}3(e,t,n){localStorage.getItem(r.Setting.theme);const r=n(1)}`,
+        ["localStorage read ?<expression> [unknown] @2:10"],
+      ],
+      // any other call is no module
+      [
+        `${E}3(e,t,n){const c=getConfig("x");localStorage.getItem(c.Setting.theme)}`,
+        ["localStorage read ?<expression> [unknown] @2:33"],
+      ],
+      [
+        `${E}3(e,t,n){const c=f(1);localStorage.getItem(c.Setting.theme)}`,
+        ["localStorage read ?<expression> [unknown] @2:23"],
+      ],
+      // a parameter of the same name in another module, a binding assigned again
+      [
+        `${E}3(e,t,n){const c=n(1)},\n4(e,t){function f(c){return localStorage.getItem(c.Setting.theme)}}`,
+        ["localStorage read ?<expression> [unknown] @3:29"],
+      ],
+      [
+        `${E}3(e,t,n){let c=n(1);c=other;localStorage.getItem(c.Setting.theme)}`,
+        ["localStorage read ?<expression> [unknown] @2:29"],
+      ],
+    ];
+    for (const [source, expected] of cases)
+      expect([source, rows(source)]).toEqual([source, expected]);
+  });
+
+  it("takes a member write of an unknown construction for a callable (R3 N3)", () => {
+    const cls = 'class A{save(k){localStorage.setItem(k,1)} run(){this.save("ka")}}\n';
+    for (const write of [
+      'const a=new A(); a.save = new Proxy(other, {});\na.save("not-a-key-proxy");',
+      'const a=new A(); a.save = new Function("x", "return x");',
+      "const a=new A(); a.save = new Wrapper(f);",
+    ])
+      expect([write, rows(cls + write)]).toEqual([
+        write,
+        ["localStorage write ?k [unknown] @1:17"],
+      ]);
+    // a class's own static instances, as Monaco's icons are written (`e.save = new e("save", …)`)
+    const own = 'var I=class{constructor(n){this.n=n}};I.save=new I("save");';
+    expect(rows(cls + own)).toEqual(["localStorage write ka [inferred] via A.save @1:55"]);
+  });
+
+  it("does not take a static method for an instance method of the same class (R3 N4)", () => {
+    const cases: Array<[string, string[]]> = [
+      [
+        'class A{static save(k){localStorage.setItem(k,1)} run(){this.save("not-static-call")}}',
+        ["localStorage write ?k [unknown] @1:24"],
+      ],
+      [
+        'class A{save(k){localStorage.setItem(k,1)} static run(){this.save("not-instance-call")}}',
+        ["localStorage write ?k [unknown] @1:17"],
+      ],
+      [
+        'class A{static save(k){localStorage.setItem(k,1)} static run(){this.save("static-ok")}}',
+        ["localStorage write static-ok [inferred] via A.save @1:69"],
+      ],
+      [
+        'class A{static x = this.save("static-field"); save(k){localStorage.setItem(k,1)}}',
+        ["localStorage write ?k [unknown] @1:55"],
+      ],
+      [
+        'class A{x = this.save("field-ok"); save(k){localStorage.setItem(k,1)}}',
+        ["localStorage write field-ok [inferred] via A.save @1:18"],
+      ],
+    ];
+    for (const [source, expected] of cases)
+      expect([source, rows(source)]).toEqual([source, expected]);
+  });
+
   it("follows no wrapper per call in a file with more functions than it follows wrappers for", () => {
     const source = [
       "function put(k) { localStorage.setItem(k, 1); }",

@@ -148,6 +148,8 @@ export interface FnDef {
   member?: true;
   /** An arrow function: it has no `this` of its own. */
   arrow?: true;
+  /** A `static` method of a class: `this` in it is the class, not an instance. */
+  static?: true;
 }
 
 const MAX_VALUES = 64;
@@ -1520,7 +1522,7 @@ export class ExpressionResolver {
     // `Enum.MEMBER` or `module.Enum.MEMBER`, a member of a compiled TypeScript string enum of
     // this file (the rules of `Constants.enumAt`); a name bound in the evaluation is that instead
     if (!env.has(t.value) && this.punct(start + 1, ".")) {
-      const member = this.constants.enumAt(start, end);
+      const member = this.constants.enumAt(start, end, (name) => this.moduleBinding(start, name));
       if (member !== null) return { kind: "str", values: [member] };
     }
     // name, name.prop, name(args), name(args)(args), name.prop(args)
@@ -3170,7 +3172,12 @@ export class ExpressionResolver {
             (prev.value === "{" || prev.value === "}" || prev.value === ";")) ||
           (prev.type === "ident" && /^(static|async|get|set)$/.test(prev.value));
         if (!starts || /^(if|for|while|switch|catch|function|with)$/.test(t.value)) continue;
+        const isStatic =
+          this.is(k - 1, "ident", "static") ||
+          (/^(async|get|set)$/.test(prev?.type === "ident" ? prev.value : "") &&
+            this.is(k - 2, "ident", "static"));
         defs.push({
+          ...(isStatic ? { static: true as const } : {}),
           name: t.value,
           owner,
           params: this.parseParams(k + 1, close),
@@ -3265,6 +3272,49 @@ export class ExpressionResolver {
   }
 
   /** `const NAME = …` once in the innermost function around k that declares NAME, before k. */
+  /**
+   * NAME at k is bound to a module object: in the innermost function around k that binds NAME
+   * (no function in between has a parameter of that name), NAME is declared once as
+   * `NAME = r(<number>)` with r a parameter of that function (webpack's require), `require("…")`,
+   * or `h(require_x())` (esbuild's interop around a wrapped module), and never assigned again.
+   * The declaration stands before k, or k is inside a function nested in the one that declares
+   * NAME (webpack modules define functions before `const r = n(…)`; they run later).
+   */
+  moduleBinding(k: number, name: string): boolean {
+    if (this.catchBinds(k, name)) return false;
+    const own = this.enclosing(k);
+    for (let d = own, guard = 0; d && guard < 20; guard++) {
+      if (this.paramIndex(d, name) !== -1) return false;
+      const decl = this.declarationIn(d, name, k);
+      if (decl)
+        return (
+          !!decl.range && (decl.range[0] - 2 < k || d !== own) && this.moduleInit(decl.range, d)
+        );
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    const top = this.topDeclarations().get(name);
+    return !!top && (top[0] - 2 < k || own !== null) && this.moduleInit(top, null);
+  }
+
+  private moduleInit([a, b]: [number, number], d: FnDef | null): boolean {
+    const t = this.tokens;
+    if (!this.is(a, "ident") || !this.punct(a + 1, "(")) return false;
+    // `r(123)` with r the module function's require parameter, `require("./x")`
+    if (b === a + 4 && this.punct(a + 3, ")")) {
+      if (t[a + 2]?.type === "number") return !!d && this.paramIndex(d, t[a]!.value) !== -1;
+      return t[a]!.value === "require" && t[a + 2]?.type === "string";
+    }
+    // `__toESM(require_x())`, also with esbuild's node-mode argument
+    return (
+      this.is(a + 2, "ident") &&
+      t[a + 2]!.value.startsWith("require_") &&
+      this.punct(a + 3, "(") &&
+      this.punct(a + 4, ")") &&
+      (this.punct(a + 5, ")") || (this.punct(a + 5, ",") && this.punct(a + 7, ")"))) &&
+      this.match[a + 1] === b - 1
+    );
+  }
+
   private localConst(k: number, name: string): [number, number] | null {
     for (let d = this.enclosing(k), guard = 0; d && guard < 20; guard++) {
       const decl = this.declarationIn(d, name, k);
@@ -3824,8 +3874,28 @@ export class ExpressionResolver {
     if (body === -1 || close === -1 || k <= body || k >= close) return false;
     let f = this.enclosing(k);
     for (let guard = 0; f?.arrow && guard < 64; guard++) f = this.enclosing(f.paramsAt - 1);
-    if (!f || f.body[0] < body) return true;
-    return f.owner === def.owner && parents[f.paramsAt - 1] === body;
+    // a field initializer: `this` is an instance, or the class in a `static` field
+    if (!f || f.body[0] < body) return this.staticMember(k, body) === !!def.static;
+    return f.owner === def.owner && parents[f.paramsAt - 1] === body && !!f.static === !!def.static;
+  }
+
+  /**
+   * Whether the class member around k (k inside the class body that opens at `body`) is written
+   * `static …`: the member's first token, found by walking back over the body's own tokens to the
+   * `;`, `}` or `{` before it. Unknown (a member longer than the walk) counts as static, so no
+   * instance call is read from it.
+   */
+  private staticMember(k: number, body: number): boolean {
+    const parents = this.s.parents!;
+    let p = k;
+    for (let guard = 0; parents[p] !== body && guard < 256; guard++) p = parents[p]!;
+    if (parents[p] !== body) return true;
+    for (let j = p - 1, steps = 0; j > body; j--, steps++) {
+      if (steps > 4000) return true;
+      if (parents[j] !== body) continue;
+      if (this.punct(j, ";") || this.punct(j, "}")) return this.is(j + 1, "ident", "static");
+    }
+    return this.is(body + 1, "ident", "static");
   }
 
   /**
@@ -3841,16 +3911,22 @@ export class ExpressionResolver {
     if (known !== undefined) return known;
     this.innermostBlock(0, null); // builds the table of brackets
     const parents = this.s.parents!;
-    // `= <value>` where the value may be a function; a literal, `new X(…)`, an object or array
-    // literal or `!0` is none, so `e.save = "save"` (an enum) or `e.save = new Icon(…)` is no
-    // other `save` to call
-    const assigns = (j: number): boolean => {
+    // `= <value>` where the value may be a function. A literal, an object or array literal or
+    // `!0` is none, so `e.save = "save"` (an enum) is no other `save` to call; nor is
+    // `R.save = new R(…)`, a class's own static instance (Monaco's icons, as Fiddle ships them).
+    // `new` of anything else (`new Proxy(f, {})`, `new Function(…)`) may be callable.
+    const assigns = (j: number, receiver: number): boolean => {
       if (!this.punct(j, "=")) return false;
       const v = this.tokens[j + 1];
       if (!v) return false;
       if (v.type === "string" || v.type === "number" || v.type === "template") return false;
-      if (v.type === "ident" && /^(new|true|false|null|void|undefined)$/.test(v.value))
-        return false;
+      if (v.type === "ident" && v.value === "new")
+        return !(
+          this.is(receiver, "ident") &&
+          this.is(j + 2, "ident", this.tokens[receiver]!.value) &&
+          this.punct(j + 3, "(")
+        );
+      if (v.type === "ident" && /^(true|false|null|void|undefined)$/.test(v.value)) return false;
       return !(v.type === "punct" && /^(\{|\[|!|-)$/.test(v.value));
     };
     const inAssign = (j: number): boolean => {
@@ -3867,7 +3943,7 @@ export class ExpressionResolver {
     };
     let found = false;
     for (const j of this.positions(name)) {
-      if (this.punct(j - 1, ".") && assigns(j + 1)) found = true;
+      if (this.punct(j - 1, ".") && assigns(j + 1, j - 2)) found = true;
       // `{ NAME: …`, `{ NAME, …`, `{ NAME(…) {…}` as an argument of Object.assign
       else if (
         (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
@@ -3887,7 +3963,7 @@ export class ExpressionResolver {
         const t = this.tokens[j]!;
         if (t.type !== "string" || written.has(t.value)) continue;
         if (
-          (this.punct(j - 1, "[") && this.punct(j + 1, "]") && assigns(j + 2)) ||
+          (this.punct(j - 1, "[") && this.punct(j + 1, "]") && assigns(j + 2, j - 2)) ||
           (this.punct(j - 1, ",") &&
             this.is(j - 4, "ident", "defineProperty") &&
             this.punct(j - 5, ".")) ||

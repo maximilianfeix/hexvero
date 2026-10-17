@@ -233,3 +233,21 @@ describe("bundles without a module map", () => {
     expect(manifest.chunks).toEqual(["./About-Dk2.js", "./vendor-B3x9.js"]);
   });
 });
+
+describe("storage wrappers in a single script", () => {
+  it("says when a script has more functions than storage wrappers are followed for (R3 N1)", () => {
+    const source = [
+      "function put(k) { localStorage.setItem(k, 1); }",
+      'put("a");',
+      ...Array.from({ length: 50_001 }, (_, i) => `function g${i}(a){return a}`),
+    ].join("\n");
+    expect(analyzeBundle(source).limitations.map((l) => l.code)).toContain(
+      "storage_wrappers_skipped",
+    );
+    expect(
+      analyzeBundle('function put(k) { localStorage.setItem(k, 1); }\nput("a");').limitations.map(
+        (l) => l.code,
+      ),
+    ).not.toContain("storage_wrappers_skipped");
+  });
+});

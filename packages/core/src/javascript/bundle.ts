@@ -657,6 +657,12 @@ export function analyzeBundle(source: string, options: { maxTokens?: number } = 
       code: "candidates_truncated",
       message: "More endpoints, storage accesses or URLs exist than the 2,000 per list recorded.",
     });
+  if (cands.wrappersSkipped)
+    limitations.push({
+      code: "storage_wrappers_skipped",
+      message:
+        "The file has more functions than storage wrappers are followed for (50,000); keys passed through a wrapper are not read at each call (no rows with via).",
+    });
   const candidates = {
     // A single file has no other module to look a constant up in.
     endpoints: (cands.endpoints as BundleCandidate[]).map((c) => resolvePending(c, () => null)),

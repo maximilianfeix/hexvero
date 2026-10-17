@@ -246,7 +246,8 @@ the resolver finds them for IPC and endpoint helpers, and only where the name me
 
 - `this.name(…)` only inside the wrapper's own class body, where the innermost function around
   the call that is no arrow is a method of that body (or the call is in a field initializer,
-  `x = this.retrieve(…)`). In a plain `function`, a method of an object literal or another class,
+  `x = this.retrieve(…)`), and static to static only: `this` in an instance method or field is
+  an instance, in a `static` method or field the class. In a plain `function`, a method of an object literal or another class,
   `this` is something else, and the call does not count. A method belongs to the class whose body
   is directly around it; a method of an object literal inside a class method is not one.
 - `x.name(…)` on an instance of the class (`x = new Name(…)` once) or on the object literal of
@@ -259,8 +260,11 @@ the resolver finds them for IPC and endpoint helpers, and only where the name me
 - A method or object-literal function whose name is also assigned as a member anywhere in the
   file (`x.save = …`, `x["save"] = …`, `A.prototype.save = …`, `Object.defineProperty(x, "save",
   …)`, a `save` key of an object literal passed to `Object.assign`) has no call read: `x.save(…)`
-  may call that other function. A value that is no function does not count (`e.save = "save"` of
-  an enum, `Icon.save = new Icon(…)`, a literal, an object or array literal).
+  may call that other function. A value that is no function does not count: a literal, an object
+  or array literal, and `R.save = new R(…)`, a class's own static instance (Monaco's icons in
+  Fiddle's bundle are written so, and without this exception Fiddle's `save` wrapper is lost).
+  `new` of anything else (`new Proxy(f, {})`, `new Function(…)`, an unknown constructor) may be
+  callable and counts.
 
 A class is the one written as `class Name`, `var Name = class` or `exports.Name = class`. Two
 classes of one name in one file are not told apart by an instance `x.name(…)`.
@@ -268,8 +272,12 @@ classes of one name in one file are not told apart by an instance `x.name(…)`.
 A key is read when it is a literal, a constant, a template or `+` of those, or a member of a
 compiled TypeScript string enum of the file, `GlobalSetting.theme` or `c.GlobalSetting.theme` as
 webpack writes an import (`(function (e) { e.theme = "theme" })(u || (t.GlobalSetting = u = {}))`).
-In front of the enum's name only a name the file binds to a module object counts
-(`c = n(33271)`, `x = require("./x")`, `i = __toESM(require_x())`); which module that is, is not
+In front of the enum's name only a name bound to a module object where the chain stands counts:
+declared once, never assigned again, as `c = n(33271)` with `n` the module function's require
+parameter, `x = require("./x")` or `i = __toESM(require_x())`, in the function around the use (or
+one it is nested in, also when the declaration comes later in the module, as webpack writes
+functions before `const r = n(…)`), with no parameter, `catch` binding or other declaration of the
+name in between. Any other call (`c = getConfig("x")`) or binding is no module. Which module that is, is not
 looked at: the enum's name and member decide. `other.GlobalSetting.theme` on any other object is
 not read as a storage key (IPC channels, read as before, take the enum's name and member whatever
 the object in front is). The enum's name must mean the enum everywhere in the file: tsc's export chain
@@ -284,7 +292,8 @@ from a wrapper of another file, a key the wrapper takes from `this` (`this.prefi
 constants a minifier declares in a list (`var a = 1, K = "key"`) where the resolver does not read
 them. At most 64 wrapper questions per file and 64 call sites per wrapper are read, each within the
 resolver's work budget. In a file with more than 50,000 functions (`function` and `=>`) wrappers
-are not followed per call at all (limitation `storage_wrappers_skipped`), and the resolver reads
+are not followed per call at all (limitation `storage_wrappers_skipped`, for an application and
+for a single script), and the resolver reads
 at most 60,000 functions of a file. False keys are worse than unread ones: where a rule above is
 not met, the key stays unread.
 

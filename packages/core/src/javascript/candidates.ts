@@ -281,7 +281,9 @@ export function findCandidates(
         let end = j + 1;
         while (end < j + 7 && is(tokens[end], "punct", ".") && is(tokens[end + 1], "ident"))
           end += 2;
-        const member = constants.enumAt(j, end);
+        const member = constants.enumAt(j, end, (name) =>
+          (wrapperResolver ??= makeResolver()).moduleBinding(j, name),
+        );
         if (member !== null) {
           value += member;
           if (evidence === "literal") evidence = "inferred";
