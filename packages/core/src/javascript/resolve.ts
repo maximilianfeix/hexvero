@@ -463,6 +463,9 @@ export class ExpressionResolver {
     return this.why;
   }
 
+  /** Set while `keyWith` evaluates: top-level names declared in a list are read too. */
+  private listedValues = false;
+
   /** Records the first reason of a question and gives up on the value. */
   private stop(why: string): null {
     this.why ??= why;
@@ -569,9 +572,12 @@ export class ExpressionResolver {
     return this.guarded(null, () => this.wrapperCallsIn(k));
   }
 
-  private wrapperCallsIn(k: number): WrapperCalls | null {
-    if (this.work <= 0) return null;
-    this.begin(20_000);
+  /**
+   * The wrapper the expression at k (a storage key) is in: the named function or method around
+   * it whose parameters it reads, none of them assigned in the body (see `wrapperCalls`). Null
+   * otherwise.
+   */
+  private wrapperOf(k: number): { def: FnDef; used: Set<string> } | null {
     const end = this.exprEnd(k);
     const def = this.enclosing(k);
     if (!def || def.name === null || def.calledBy) return null;
@@ -591,6 +597,61 @@ export class ExpressionResolver {
           ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
         )
           return null;
+    return { def, used };
+  }
+
+  /**
+   * For the cross-module stage: the wrapper the expression at k is in, when the expression reads
+   * exactly one of its parameters, a plain name (not a pattern), and nothing else of the
+   * function's own (`this`); with that parameter's index. Null otherwise.
+   */
+  keyParameter(k: number): { def: FnDef; index: number } | null {
+    return this.guarded(null, () => {
+      if (this.work <= 0) return null;
+      this.begin(20_000);
+      const found = this.wrapperOf(k);
+      if (!found || found.used.size !== 1) return null;
+      const end = this.exprEnd(k);
+      for (let j = k; j < end; j++) if (this.is(j, "ident", "this")) return null;
+      const name = [...found.used][0]!;
+      const index = found.def.params.findIndex((p) => p.kind === "name" && p.name === name);
+      return index === -1 ? null : { def: found.def, index };
+    });
+  }
+
+  /**
+   * The expression at k (a key inside the wrapper def) with parameter `index` of def bound to
+   * `value` and every other parameter unknown: its whole values, or null when any value it can
+   * take is not whole (a gap, an empty string) or it cannot be read. Bounded like `wrapperCalls`.
+   */
+  keyWith(k: number, def: FnDef, index: number, value: string): string[] | null {
+    return this.guarded(null, () => {
+      if (this.work <= 0) return null;
+      this.begin(20_000);
+      const args: Array<Val | null> = def.params.map(() => null);
+      args[index] = { kind: "str", values: [value] };
+      const env: Env = new Map();
+      this.bind(def.params, args, env);
+      this.listedValues = true;
+      let v: Val | null;
+      try {
+        v = this.evalRange(k, this.exprEnd(k), env, 1);
+      } finally {
+        this.listedValues = false;
+      }
+      if (v?.kind !== "str" || v.ref || !v.values.length) return null;
+      if (v.values.some((x) => x === "" || x.includes("${…}") || x.includes("\u0001"))) return null;
+      return v.values.slice(0, MAX_VALUES);
+    });
+  }
+
+  private wrapperCallsIn(k: number): WrapperCalls | null {
+    if (this.work <= 0) return null;
+    this.begin(20_000);
+    const end = this.exprEnd(k);
+    const found = this.wrapperOf(k);
+    if (!found) return null;
+    const { def } = found;
     const sites = this.callSites(def);
     if (!sites.length) return null;
     const out: WrapperCalls["sites"] = [];
@@ -613,7 +674,7 @@ export class ExpressionResolver {
       out.push({ at: open - 1, values: unread && !values.length ? null : values });
     }
     const holder = def.owner ?? (def.member ? this.literalOwner(def) : null);
-    return out.length ? { name: holder ? `${holder}.${def.name}` : def.name, sites: out } : null;
+    return out.length ? { name: holder ? `${holder}.${def.name}` : def.name!, sites: out } : null;
   }
 
   private result(values: string[]): ResolvedValues | null {
@@ -2779,11 +2840,15 @@ export class ExpressionResolver {
     // modules a bundle wraps: that module (only a module; other values keep their own rules).
     // Not where gaps are shown: a key or address with a gap read from such a module is not
     // claimed by the bundle when the other builds read it whole.
+    // In a wrapper's key (`keyWith`), also a string or a function declared so, as `topValue`
+    // reads a declaration in a list: `var U = "tidemark.", l = (t) => `${U}${t}``.
     if (!this.gaps && !this.topDeclarations().has(name)) {
       const listed = this.topListed(name);
       if (listed && !this.writtenElsewhere(name, listed[0] - 2)) {
         const mod = this.evalRange(listed[0], listed[1], new Map(), depth + 1);
         if (mod?.kind === "cjs") return mod;
+        if (this.listedValues && (mod?.kind === "str" || mod?.kind === "fn"))
+          return this.unlessChanged(name, listed[0] - 2, mod, 0, this.tokens.length, null);
       }
     }
     // a name another module defines, in a scan of this file alone: say so instead of nothing
@@ -4079,6 +4144,10 @@ export class ExpressionResolver {
           (this.punct(j - 1, ",") &&
             this.is(j - 4, "ident", "defineProperty") &&
             this.punct(j - 5, ".")) ||
+          (this.punct(j - 1, ",") &&
+            this.is(j - 4, "ident", "set") &&
+            this.punct(j - 5, ".") &&
+            this.is(j - 6, "ident", "Reflect")) ||
           (this.punct(j + 1, ":") && inAssign(j))
         )
           written.add(t.value);
@@ -4438,6 +4507,8 @@ export class ExpressionResolver {
         if (this.thisIsOwner(k - 2, def)) out.push(k + 1);
         continue;
       }
+      // a `static` method is called on the class, never on an instance
+      if (def.static) continue;
       if (receiver?.type === "ident" && instances.has(receiver.value)) {
         out.push(k + 1);
         continue;
@@ -4579,6 +4650,15 @@ export class ExpressionResolver {
       if (t.value === "(" || t.value === "[" || t.value === ";") return null;
     }
     return null;
+  }
+
+  /**
+   * Whether NAME is assigned as a member anywhere in the file (`x.NAME = f`, `x["NAME"] = f`,
+   * `Object.assign(x, { NAME })`, `Object.defineProperty(x, "NAME", …)`): `x.NAME(…)` may then
+   * call that other function.
+   */
+  memberAssigned(name: string): boolean {
+    return this.memberWritten(name);
   }
 
   /** Whether the method returns `this` (and so can be chained: `r.a(…).b(…)`). */

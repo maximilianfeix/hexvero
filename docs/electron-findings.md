@@ -305,11 +305,11 @@ to a member outside the definition (`GlobalSetting.theme = "other"`), makes it a
 nothing is read through it. A member the enum does not have is not read.
 
 A call whose key cannot be read keeps the row of the storage call inside the wrapper with
-`value: null` and the parameter as `expression`, so an unread key is never hidden. Not read:
-calls of a wrapper from another module (`local.get(KEY)` with `local` imported), a wrapper called
-from a wrapper of another file, a key the wrapper takes from `this` (`this.prefix + key`), and
-constants a minifier declares in a list (`var a = 1, K = "key"`) where the resolver does not read
-them. At most 64 wrapper questions per file and 64 call sites per wrapper are read, each within the
+`value: null` and the parameter as `expression`, so an unread key is never hidden. Not read: a
+wrapper called from a wrapper of another file, a key the wrapper takes from `this` (`this.prefix +
+key`), a plain function another module exports as the wrapper (below), and constants a minifier
+declares in a list (`var a = 1, K = "key"`) where the resolver does not read them (inside a
+wrapper's own key they are read, below). At most 64 wrapper questions per file and 64 call sites per wrapper are read, each within the
 resolver's work budget. In a file with more than 50,000 functions (`function` and `=>`) wrappers
 are not followed per call at all (limitation `storage_wrappers_skipped`, for an application and
 for a single script), and the resolver reads
@@ -318,6 +318,113 @@ not met, the key stays unread.
 
 In a comparison, an unread key hides only items of its own kind in its file: an unread
 `sessionStorage` key does not make a new `localStorage` key unknown.
+
+### Wrappers of another module
+
+A method of a class or object literal whose storage call's key reads exactly one of its
+parameters (and nothing of `this`), unchanged in the body, is also followed into the modules that
+import it, with the mechanism that follows IPC wrapper classes (`ipcMainManager.handle` in Electron
+Fiddle, see wrappers.ts):
+
+```js
+// web-store.js
+const PREFIX = "tidemark.";
+const key = (name) => `${PREFIX}${name}`;
+export const local = { get: (name) => localStorage.getItem(key(name)), … };
+// renderer.js
+import { local } from "./renderer/web-store.js";
+local.get(LAST_PROJECT); // LAST_PROJECT = "lastProject": localStorage read tidemark.lastProject
+```
+
+The receiver must be proven to be an instance of that class or that object: `import { local }
+from`, `const { SettingsStore } = require("./store")` then `new SettingsStore()` (a name declared
+once; a call such as `s.set(…)` does not count as a change of `s`, an assignment to `s` anywhere in
+the file does), `const store = require("./store")` with `module.exports = new Store()` there, `new
+(require("./store").SettingsStore)()`, re-exports as for IPC wrappers, and the same in one
+esbuild bundle (ESM modules hoisted into one scope, `__commonJS` with `require_x()`, plain and
+minified; `var store = require_x()` counts when every `module.exports = …` of the bundle says the
+same). A method
+name another class also defines counts only on such an instance. The name must mean the import at
+the call: a parameter, local, destructuring pattern, `for … of` head or `catch` binding of it in
+between is something else, and gives no row. A method whose name is assigned as a member in the
+calling module or in the wrapper's (`local.get = f`, `Object.assign(x, { get })`, `Reflect.set(x,
+"get", f)`) gives no row in that module.
+
+Replacements from other modules are read in the wrapper's module and in every module that imports
+it, directly or through a re-export (`export { … } from`, `export *`, `module.exports =
+require("./store")` in any form, also under a condition or replaced later: reading too much here
+only blocks more). For every other reading (endpoints, IPC channels, bridge members, window
+options, wrapper calls) `module.exports = require("./x")` passes module `./x` on whole, like
+`export *`, only when it is the file's one write of `module.exports` or `exports`, a statement of
+its own at the top of the file (not in a function or block, not under `if` or `else`, not in a
+ternary, `&&` or `||`), ends there (`;`, `}`, the end of the file, or on the next line a statement
+that cannot continue it: not a template, which would make it a tagged call, nor `(`, `[`, `.`,
+`?.`, an operator, `in` or `instanceof`), and nothing else replaces the exports
+(`module.exports = f(module.exports)`, `exports = …`, `Object.assign(module, …)`,
+`Object.defineProperty(module, …)`, `module["exports"] = …`, `module[k] = …`, or `module` used any
+other way, `const m = module`, `f(module)`); members added after it (`module.exports.extra = …`)
+are read as before. The receiver must be proven to be the wrapper: the class, its prototype
+(`Store.prototype`, also as a name bound to it, `const P = Store.prototype` or `const P =
+require("./store").Store.prototype`, `Object.getPrototypeOf(s)`, `s.constructor.prototype`,
+`s.__proto__`), or an instance (also through aliases, `const t = s`). These forms are seen:
+
+- a write of the method: `R.save = f`, `R["save"] = f`, `R.save ||= f` and every other
+  assignment operator, `++`/`--`, a target of a destructuring assignment (`[R.save] = …`, `({ a:
+  R.save } = …)`) or of a `for (R.save of …)` head;
+- a removal: `delete R.save`, `Reflect.deleteProperty(R, "save")`;
+- `Object.assign(R, { save })` and `Object.defineProperties(R, { save: … })` (another argument than
+  an object literal, or a spread in one, counts as any method), `Object.defineProperty`,
+  `Reflect.defineProperty` and `Reflect.set` with that name (a name computed at run time counts as
+  any method), and a computed member write `R[name] = f` (any method);
+- `Object.setPrototypeOf(R, …)` or `Reflect.setPrototypeOf(R, …)`: any method;
+- a write to the export the wrapper is reached through, `m.store = new Proxy(m.store, …)` or
+  `m.Store = class {…}` with `m = require("./store")`: any method of it.
+
+Each replaced method gives no row in any module, and the limitation `wrapper_method_replaced`
+names it with the place of the write; when the receivers of a module's writes cannot be read
+within their work budget (200,000 steps per module, and 3,000,000 for the application: the tokens
+of the modules opened plus that work), the methods of that name of every wrapper count as
+replaced, and the limitation says "a member write not read within the replacement budget … at
+file:line"; a module not read at all once the application's budget is used up makes every method
+of the wrappers it imports count as replaced ("… imports it and was not read within the
+replacement budget of the application"). That holds for storage keys; for IPC wrapper methods
+the calls are read as before the check existed, and the limitation `wrapper_replacements_unchecked`
+names the modules not checked. Modules are read in an order that a file growing between two
+builds does not change: the modules that define wrappers, then the rest, each by path; the 200
+calling files whose calls are read are the first 200 by path. Calls of a wrapper whose methods all
+count as replaced are not read. A write to another object of the same method name (`srv.handle = f`, lodash's
+`_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
+so a call there may still be read although the method was replaced: a replacement through a
+global (`window.__s.save = f` with `window.__s` set elsewhere), through `require.cache`, through
+`require(n)` with a name computed at run time, on an instance handed as a value to a function of
+a module that does not import the wrapper (`exports.patch = (s) => { s.save = f }`), and on any
+receiver that cannot be traced to the wrapper. A
+`static` method is called on the class, never on an instance, and is no wrapper method (this also
+holds for IPC wrappers and for the in-file rules above). Of `export *`, the module's own export of
+a name wins, and a name two `export *` sources give is ambiguous and not followed. A parameter of
+another module's function counts as an instance only when every call the calling modules make
+passes one, and the function does not assign the parameter (`use(s) { s = new Map(); … }`); when
+a calling module's calls are not all read, no parameter counts.
+
+The argument is read in the calling module (a literal, a constant, another module's constant such
+as a member of a compiled string enum, `StorageKey.Theme`, or what the resolver reads through
+call sites, whole), and the wrapper's key expression is then evaluated in its own module with
+that value for the parameter (`key(name)` above, also when the minifier declares `key` and
+`PREFIX` in a list). Each call is a row at the call with `via` the wrapper (`local.get`,
+`SettingsStore.set`; a minified name such as `c.get` in a bundle). A call whose argument or key is
+not read whole is an unknown row at the call with the argument's name as `expression` (in one
+bundle only when the file has no unknown row of that kind already: the storage call inside the
+wrapper keeps its own unread row, as before). Calls on `this` stay with the in-file rules above.
+Bounds: the storage calls with an unread key of at most 64 per file are looked at, at most 256
+wrapper calls per file are read (an argument longer than 64 tokens is not followed through the
+resolver: an unknown row), within the readers' work budget per file, at most 200 calling files and
+2,000 such rows per application; past them the limitation `storage_wrappers_capped` says so (one
+entry for the application, with the number of files and the first five). In
+one bundle, a call whose argument is no literal or constant is not read through the resolver once
+the file has an unknown row of its kind. Not followed across modules: a plain function as
+the wrapper (`exports.save = (key, v) => localStorage.setItem(key, v)`, `import { save }`), an
+electron-store instance a wrapper module holds, and HTTP requests made through a wrapper of
+another module (endpoints below).
 
 ## Requests through HTTP client modules (`endpoints`)
 
