@@ -318,6 +318,9 @@ describe("hostile input stays fast", () => {
         // a name written in thousands of nested functions, asked for at every one (resolve.ts
         // binding): took more than two minutes before the scans were cached
         `class C{handle(c,f){ipcMain.handle(c,f)}}function g(){${'function h(){x=1;x.handle("a",f)}'.repeat(20_000)}}`,
+        // block-scoped declarations of one name in thousands of blocks, and one block of thousands
+        `class C{handle(c,f){ipcMain.handle(c,f)}}function m(){${'if(x){const r=new C;r.handle("a",f)}'.repeat(20_000)}r.handle("b",f)}`,
+        `class C{handle(c,f){ipcMain.handle(c,f)}}function m(){if(x){${"var r=1;".repeat(20_000)}}${'r.handle("b",f);'.repeat(2000)}}`,
       ]) {
         const started = performance.now();
         analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
