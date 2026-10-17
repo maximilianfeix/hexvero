@@ -1760,8 +1760,36 @@ export class ExpressionResolver {
         props.set(key, this.evalRange(k + 2, end, env, depth + 1));
       } else if (key !== null && end === k + 1) {
         props.set(key, this.lookup(key, k, env, depth + 1));
-      } else if (key !== null) props.set(key, null); // a method or a computed value
-      else unknown = true; // a computed key: `[name]: …`
+      } else if (key !== null) {
+        // a method or a computed value; `get NAME()`, `set NAME()`, `async NAME()` name NAME
+        const accessor = key === "get" || key === "set" || key === "async";
+        const after = this.tokens[k + 1];
+        if (accessor && this.punct(k + 1, "[")) {
+          // `get [name]()`: may be any key, also one written before
+          for (const earlier of props.keys()) props.set(earlier, null);
+          unknown = true;
+        } else
+          props.set(
+            accessor && (after?.type === "ident" || after?.type === "string") ? after.value : key,
+            null,
+          );
+      } else if (t.type === "number") unknown = true;
+      else {
+        // `[name]: …`: the key it evaluates to, when that is one string; any other computed key
+        // (or `*gen()`) may be any key, also one written before, which it then replaces
+        const bracket = this.punct(k, "[") ? this.match[k]! : -1;
+        const name = bracket > k ? this.evalRange(k + 1, bracket, env, depth + 1) : null;
+        const single =
+          name?.kind === "str" && name.values.length === 1 && !name.values[0]!.includes("${")
+            ? name.values[0]!
+            : null;
+        if (single !== null && !unordered(single) && this.punct(bracket + 1, ":"))
+          props.set(single, this.evalRange(bracket + 2, end, env, depth + 1));
+        else {
+          for (const earlier of props.keys()) props.set(earlier, null);
+          unknown = true;
+        }
+      }
       k = end + 1;
     }
     // more keys than are read: the ones not listed are not known to be absent

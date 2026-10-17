@@ -806,7 +806,7 @@ function windowRanges(
       // reading naming it: `"webPreferences": …`, `[key]: …`, a method or an accessor. It may
       // replace every setting written before it, as an unknown spread may: a whole
       // `webPreferences` before it decides nothing. Plain `name: value`, the shorthand, a spread
-      // (read below) and another quoted or numbered key do not; `__proto__` counts as one.
+      // (read below) and another quoted or numbered key do not.
       if (
         window !== null &&
         level === "options" &&
@@ -816,10 +816,8 @@ function windowRanges(
         const plain =
           is(k, "}") || // after a trailing comma
           is(k, "...") ||
-          // `__proto__: x` sets the prototype, which is not modeled
-          (t.type === "ident" &&
-            t.value !== "__proto__" &&
-            (is(k + 1, ":") || is(k + 1, ",") || is(k + 1, "}"))) ||
+          // `__proto__: x` sets the prototype, which never replaces an own key
+          (t.type === "ident" && (is(k + 1, ":") || is(k + 1, ",") || is(k + 1, "}"))) ||
           ((t.type === "string" || t.type === "number") &&
             t.value !== "webPreferences" &&
             is(k + 1, ":"));

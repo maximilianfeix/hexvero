@@ -574,13 +574,44 @@ const STILL_COMPUTED = [
   "function method(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, webPreferences() { return o.p; } });\n}",
   "function getter(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, get webPreferences() { return o.p; } });\n}",
   'const P = { contextIsolation: true, sandbox: true };\nfunction namedThenQuoted(o) {\n  return new BrowserWindow({ ...o, webPreferences: P, "webPreferences": o.p });\n}',
-  // a prototype, which is not modeled
-  "function proto(o) {\n  return new BrowserWindow({ ...o, webPreferences: { sandbox: true }, __proto__: o });\n}",
   // a later spread of an object that brings the key
   "function spreadAfter(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, ...{ webPreferences: o.p } });\n}",
   "function spreadCond(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, ...(o.dev && { webPreferences: o.p }) });\n}",
 ].join("\n");
 const ALL = "computed computed computed null computed";
+
+/** Members after the settings, without any spread: which of them may replace them. */
+const LATER_MEMBERS = [
+  // a computed key that may be "webPreferences"
+  "function param(k) {\n  return new BrowserWindow({ webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, [k]: 1 });\n}",
+  // a constant key that is not, and one that is
+  'const TITLE = "title";\nfunction other() {\n  return new BrowserWindow({ webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, [TITLE]: "x" });\n}',
+  'const KEY = "webPreferences";\nfunction same() {\n  return new BrowserWindow({ webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, [KEY]: { sandbox: false } });\n}',
+  // an accessor and a method of that name
+  "function getter(o) {\n  return new BrowserWindow({ webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, get webPreferences() { return o; } });\n}",
+  "function method(o) {\n  return new BrowserWindow({ webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, webPreferences() { return o; } });\n}",
+  // a prototype never replaces an own key, also after a spread
+  "function proto(o) {\n  return new BrowserWindow({ ...o, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }, __proto__: o });\n}",
+].join("\n");
+const LATER_STATES = [
+  "computed computed computed null computed",
+  "false true true null not written",
+  "not written not written false null not written",
+  "computed computed computed null computed",
+  "computed computed computed null computed",
+  "false true true null not written",
+];
+
+describe("a member after the settings that may replace them", () => {
+  it("hides them unless its key is known to be another one", () => {
+    const main = `const { BrowserWindow } = require("electron");\n${LATER_MEMBERS}\nmodule.exports = { param, other, same, getter, method, proto };`;
+    expect(states(analyze({ "main.js": main }))).toEqual(LATER_STATES);
+    for (const minify of [false, true])
+      expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(
+        LATER_STATES,
+      );
+  });
+});
 
 describe("a whole webPreferences written after an unread spread", () => {
   it("decides every setting of the window, plain, bundled and minified", () => {
@@ -597,9 +628,9 @@ describe("a whole webPreferences written after an unread spread", () => {
   });
 
   it("decides nothing when the spread comes after it or may reach inside it", () => {
-    const main = `const { BrowserWindow } = require("electron");\n${STILL_COMPUTED}\nmodule.exports = { after, inside, declared, chosen, param, quoted, single, computedKey, anyKey, quotedUnsafe, method, getter, namedThenQuoted, proto, spreadAfter, spreadCond };`;
+    const main = `const { BrowserWindow } = require("electron");\n${STILL_COMPUTED}\nmodule.exports = { after, inside, declared, chosen, param, quoted, single, computedKey, anyKey, quotedUnsafe, method, getter, namedThenQuoted, spreadAfter, spreadCond };`;
     // the quoted unsafe object is read as well: two different values, which decide nothing
-    const expected = Array.from({ length: 16 }, (_, i) =>
+    const expected = Array.from({ length: 15 }, (_, i) =>
       i === 9 ? "conflicting conflicting conflicting null computed" : ALL,
     );
     expect(states(analyze({ "main.js": main }))).toEqual(expected);

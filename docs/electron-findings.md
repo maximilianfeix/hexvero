@@ -36,8 +36,12 @@ A setting also reads as `computed` where the code next to the window does not de
   is a condition or a parameter not every caller fills in, and a spread after it
   (`{ webPreferences: {…}, ...opts }`) keep the settings computed. So does a later member of the options that may write the key
   without the reading naming it, and it makes every key before it computed as an unknown spread
-  does: a quoted `"webPreferences": …`, a computed key `[k]: …`, a method or accessor, and
-  `__proto__: …`. The limitation
+  does: a quoted `"webPreferences": …`, a computed key `[k]: …`, a method or accessor. This holds
+  with or without a spread before the settings (`{ webPreferences: {…}, [k]: 1 }`). A computed
+  key whose value is read (`[TITLE]` with `const TITLE = "title"`) is that key, so another one
+  replaces nothing and `[KEY]` with `KEY = "webPreferences"` is the later `webPreferences`.
+  `__proto__: …` sets the prototype and never replaces an own key, so it hides nothing. The
+  limitation
   `window_options_unresolved` names the windows whose settings are not all known;
 - the options object that was followed may be changed after its declaration. A write to one key
   (`prefs.sandbox = false`, `prefs.sandbox ||= x`, `delete prefs.sandbox`) makes that key
