@@ -48,6 +48,12 @@ All notable changes to hexvero are listed here. The format follows
   `web-contents-created`, read `targetKind: webContents`. Rows carry `window` (name, `app` or
   null) and compare by file, kind, `targetKind` and `window`, so a renamed minified receiver is
   not removed and added. `JS_SCAN_SCHEMA` 10.
+- Security review of those fixes (each hid a real exposure): every member of a privileged Node
+  module is listed except a short list of members that only inform (`fs.stat*`, `fs.exists*`,
+  `process.env`, …), so `fs.promises`, `fs.createWriteStream`, `net.Socket` and `module.require`
+  are shown; a declaration, parameter, loop variable or write of the same name in another
+  function no longer hides the real binding (writes count only where they resolve to it); an
+  accessor, method or generator next to the `action` literal makes `returns` unknown. `JS_SCAN_SCHEMA` 12.
 - Both collections compare (identity without lines, lines as positions, the written evidence not a
   change of its own) and come after `windows` in release reports and the compare view.
   Stored scans are read again. Rules and sources:

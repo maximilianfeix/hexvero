@@ -517,3 +517,78 @@ describe("review regressions", () => {
     expect(diff.changed).toEqual([]);
   });
 });
+
+/** Security review of the review fixes: each decoy hid an exposure the tool must show. */
+describe("review regressions, false negatives", () => {
+  it("1 every member of a Node module is reported unless it only informs", () => {
+    const info = preload(
+      [
+        'const fs = require("fs");',
+        'const net = require("net");',
+        'const tls = require("tls");',
+        'const mod = require("module");',
+        'const proc = require("process");',
+        'contextBridge.exposeInMainWorld("api", {',
+        "  promises: fs.promises, write: fs.createWriteStream, read: fs.createReadStream,",
+        "  lchown: fs.lchown, fchmod: fs.fchmod,",
+        "  Socket: net.Socket, TLSSocket: tls.TLSSocket, req: mod.require, main: proc.mainModule,",
+        "  stat: fs.statSync, exists: fs.existsSync, env: proc.env, platform: proc.platform,",
+        "});",
+      ].join("\n"),
+    );
+    expect(exposed(info)).toEqual([
+      "api.Socket net.Socket",
+      "api.TLSSocket tls.TLSSocket",
+      "api.fchmod fs.fchmod",
+      "api.lchown fs.lchown",
+      "api.main process.mainModule",
+      "api.promises fs.promises",
+      "api.read fs.createReadStream",
+      "api.req module.require",
+      "api.write fs.createWriteStream",
+    ]);
+  });
+
+  it("2 a write or a declaration of the same name in another scope hides nothing", () => {
+    for (const elsewhere of [
+      "function g(){ let ipcRenderer; ipcRenderer = 1; }",
+      "function g(){ const { ipcRenderer } = other; return ipcRenderer; }",
+      "function g(ipcRenderer = 1){ return ipcRenderer; }",
+      "function g(){ let ipcRenderer = 2; ipcRenderer++; }",
+    ])
+      expect(
+        exposed(
+          preload(`${elsewhere}\ncontextBridge.exposeInMainWorld("api", { ipc: ipcRenderer });`),
+        ),
+        elsewhere,
+      ).toEqual(["api.ipc ipcRenderer"]);
+  });
+
+  it("3 a loop variable of the same name in another function hides nothing", () => {
+    const info = preload(
+      'function g(xs){ for (const ipcRenderer of xs) use(ipcRenderer); }\ncontextBridge.exposeInMainWorld("api", { ipcRenderer });',
+    );
+    expect(exposed(info)).toEqual(["api.ipcRenderer ipcRenderer"]);
+  });
+
+  it("4 an accessor, a method or a generator around the action makes returns unknown", () => {
+    for (const literal of [
+      '{ action: "deny", get action() { return "allow"; } }',
+      '{ action: "deny", set x(v) {} }',
+      '{ action: "deny", action() {} }',
+      '{ action: "deny", async m() {} }',
+      '{ action: "deny", *m() {} }',
+      '{ get action() { return "allow"; }, action: "deny" }',
+    ])
+      expect(
+        navigation(`win.webContents.setWindowOpenHandler(() => (${literal}));`)[0]?.["returns"],
+        literal,
+      ).toBe("unknown");
+    // a shorthand of another name cannot replace the action
+    expect(
+      navigation('win.webContents.setWindowOpenHandler(() => ({ action: "deny", url }));')[0]?.[
+        "returns"
+      ],
+    ).toBe("deny");
+  });
+});

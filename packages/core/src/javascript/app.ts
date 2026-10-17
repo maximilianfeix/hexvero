@@ -7,7 +7,7 @@ import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
 import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
-import { ExpressionResolver, type ModuleHost, type Val } from "./resolve.js";
+import { type Binding, ExpressionResolver, type ModuleHost, type Val } from "./resolve.js";
 import {
   ALIAS_TARGETS,
   evaluatorFor,
@@ -1048,26 +1048,15 @@ const ASSIGNMENT_OPERATORS = new Set([
 ]);
 
 /**
- * The methods of a privileged Node module that act (read or write files, start processes, open
- * connections, run code) when handed to a page by reference. Any other method (`fs.statSync`,
- * `fs.existsSync`, a constant) is not listed; the module object itself always is.
+ * Members of a privileged Node module that only inform, so handing one to a page by reference
+ * (`fs.statSync`, `process.env`) is not this observation. Every other member is reported:
+ * reading every acting member of every module is not possible, so the list is of the harmless
+ * ones, and a module without an entry has none. The module object itself is always reported.
  */
-const ACTING_METHODS: Readonly<Record<string, RegExp>> = {
-  fs: /^(read|write|append|unlink|rm|rmdir|mkdir|mkdtemp|rename|copyFile|cp|open|symlink|link|chmod|chown|truncate|ftruncate|utimes|createReadStream|createWriteStream|opendir|watch)/,
-  "fs/promises":
-    /^(read|write|append|unlink|rm|rmdir|mkdir|mkdtemp|rename|copyFile|cp|open|symlink|link|chmod|chown|truncate|utimes|opendir|watch)/,
-  child_process: /^(exec|execSync|execFile|execFileSync|spawn|spawnSync|fork)$/,
-  net: /^(connect|createConnection|createServer)$/,
-  tls: /^(connect|createServer)$/,
-  dgram: /^createSocket$/,
-  http: /^(request|get|createServer)$/,
-  https: /^(request|get|createServer)$/,
-  http2: /^(connect|createServer|createSecureServer)$/,
-  vm: /^(runInThisContext|runInNewContext|runInContext|compileFunction|Script|SourceTextModule)$/,
-  worker_threads: /^Worker$/,
-  cluster: /^(fork|setupPrimary|setupMaster)$/,
-  module: /^(createRequire|_load)$/,
-  process: /^(kill|exit|abort|chdir|dlopen|binding)$/,
+const HARMLESS_MEMBERS: Readonly<Partial<Record<string, RegExp>>> = {
+  fs: /^(stat|statSync|lstat|lstatSync|exists|existsSync|access|accessSync|constants|realpath|realpathSync)$/,
+  "fs/promises": /^(stat|lstat|access|constants|realpath)$/,
+  process: /^(env|versions|platform|arch|version|pid|cwd|uptime)$/,
 };
 
 /** `electron`, a privileged Node module (without `node:`), or null for any other specifier. */
@@ -1077,17 +1066,40 @@ function privilegedModule(specifier: string): string | null {
   return PRIVILEGED_BUILTINS.has(bare) ? bare : null;
 }
 
+/** One binding's identity, as the resolver gives it. */
+const idOf = (b: Binding | null): string | null => {
+  if (!b) return null;
+  switch (b.kind) {
+    case "value":
+      return `v${b.range[0]}`;
+    case "pattern":
+      return `p${b.from[0]}:${b.key}`;
+    case "param":
+      return `a${b.def.paramsAt}:${b.index}`;
+    case "function":
+      return `f${b.def.paramsAt}`;
+    case "class":
+      return `c${b.start}`;
+  }
+};
+
 /**
  * What names of one file stand for, as far as privileged objects go: `electron`, `ipcRenderer`,
  * `shell` or a Node module (`fs`). Read from declarations on the token stream:
  * `x = require("electron")`, `x = __toESM(require("fs"))`, `{ ipcRenderer: r } = require(…)`,
  * `import { shell as s } from "electron"`, `import * as fs from "fs"`, `y = x.ipcRenderer` and
- * `y = x`. A name declared more than once in the file is not taken: which declaration a use sees
- * is not decided here. `declared` holds every name declared at all, so `process` and `require`
- * are taken as the globals only where the file declares no such name.
+ * `y = x`. Which declaration a use means is read by scope (`ExpressionResolver.binding`): a local
+ * or parameter of the same name elsewhere changes nothing, and a write counts only where it
+ * resolves to the same binding. Where the scope cannot be read, only a name the file declares
+ * once is taken. `declared` holds every name declared at all, so `process` and `require` are taken
+ * as the globals only where the file declares (or writes) no such name.
  */
-function privilegedBindings(tokens: Token[]): {
-  meaning: Map<string, string>;
+function privilegedBindings(
+  tokens: Token[],
+  resolver: () => ExpressionResolver,
+): {
+  /** What the name at token `at` stands for there, by scope; null when it is nothing privileged. */
+  meaningAt: (name: string, at: number) => string | null;
   declared: Map<string, number>;
 } {
   const is = (i: number, value: string): boolean =>
@@ -1095,8 +1107,13 @@ function privilegedBindings(tokens: Token[]): {
   const ident = (i: number): string | null =>
     tokens[i]?.type === "ident" ? tokens[i]!.value : null;
   const declared = new Map<string, number>();
-  const count = (name: string): void => {
+  /** Where each name is declared (its token), for the scope reading below. */
+  const declaredAt = new Map<string, number[]>();
+  const count = (name: string, at: number): void => {
     declared.set(name, (declared.get(name) ?? 0) + 1);
+    const places = declaredAt.get(name) ?? [];
+    if (places.length < 200) places.push(at);
+    declaredAt.set(name, places);
   };
   /** `require("S")` at i: the privileged meaning of S and the token after `)`; else null. */
   const requireAt = (i: number): { meaning: string | null; next: number } | null =>
@@ -1133,69 +1150,70 @@ function privilegedBindings(tokens: Token[]): {
     }
     return path.length ? { kind: "path", path } : null;
   };
-  const simple: Array<{ name: string; rhs: Rhs }> = [];
-  /** Names declared with an initializer (`const r = …`): that is their one write. */
-  const initialized = new Set<string>();
-  const patterns: Array<{ entries: Array<[string, string]>; rhs: Rhs }> = [];
-  const imports: Array<[string, string]> = [];
+  /** `name = rhs` declarations: the name's token and where the initializer starts. */
+  const simple: Array<{ name: string; at: number; init: number; rhs: Rhs }> = [];
+  const patterns: Array<{ entries: Array<[string, string, number]>; init: number; rhs: Rhs }> = [];
+  const imports: Array<[string, string, number]> = [];
   for (let k = 0; k + 2 < tokens.length; k++) {
     const t = tokens[k]!;
     const declares =
       (t.type === "ident" && (t.value === "const" || t.value === "let" || t.value === "var")) ||
       (t.type === "punct" && t.value === ",");
     if (t.type === "ident" && (t.value === "function" || t.value === "class") && ident(k + 1))
-      count(ident(k + 1)!);
+      count(ident(k + 1)!, k + 1);
     if (t.type === "ident" && t.value === "import") {
       // import X from "S" | import * as X from "S" | import X, { a, b as c } from "S" | import { … }
       let j = k + 1;
-      const local: Array<[string, string | null]> = [];
+      const local: Array<[string, string | null, number]> = [];
       if (ident(j) && ident(j) !== "from" && !is(j, "*") && !is(j, "{")) {
-        local.push([ident(j)!, null]);
+        local.push([ident(j)!, null, j]);
         j++;
         if (is(j, ",")) j++;
       }
       if (is(j, "*") && ident(j + 1) === "as" && ident(j + 2)) {
-        local.push([ident(j + 2)!, null]);
+        local.push([ident(j + 2)!, null, j + 2]);
         j += 3;
       } else if (is(j, "{")) {
         for (j++; j < tokens.length && j < k + 400 && !is(j, "}"); j++) {
           const name = ident(j);
           if (!name) continue;
           if (ident(j + 1) === "as" && ident(j + 2)) {
-            local.push([ident(j + 2)!, name]);
+            local.push([ident(j + 2)!, name, j + 2]);
             j += 2;
-          } else local.push([name, name]);
+          } else local.push([name, name, j]);
         }
         j++;
       }
       if (ident(j) === "from" && tokens[j + 1]?.type === "string") {
         const spec = privilegedModule(tokens[j + 1]!.value);
-        for (const [name, member] of local) {
-          count(name);
+        for (const [name, member, at] of local) {
+          count(name, at);
           if (!spec) continue;
-          if (member === null) imports.push([name, spec]);
+          if (member === null) imports.push([name, spec, at]);
           else if (spec === "electron" && PRIVILEGED_ELECTRON.has(member))
-            imports.push([name, member]);
+            imports.push([name, member, at]);
         }
       }
       continue;
     }
+    // A loop variable (`for (const ipcRenderer of …)`) is not counted here: it binds only inside
+    // its loop, which the scope check where the value is written reads.
     if (!declares) continue;
-    // `for (const ipcRenderer of …)`: a declaration without an initializer
-    if (t.type === "ident" && ident(k + 1) && (ident(k + 2) === "of" || ident(k + 2) === "in")) {
-      count(ident(k + 1)!);
+    // `let ipcRenderer;`: a declaration without a value (after the keyword only; after a comma
+    // the same shape is an argument list)
+    if (t.type === "ident" && ident(k + 1) && (is(k + 2, ";") || is(k + 2, ","))) {
+      count(ident(k + 1)!, k + 1);
       continue;
     }
     if (ident(k + 1) && is(k + 2, "=") && !is(k + 3, "=")) {
-      count(ident(k + 1)!);
-      initialized.add(ident(k + 1)!);
+      count(ident(k + 1)!, k + 1);
       const rhs = rhsAt(k + 3);
-      if (rhs) simple.push({ name: ident(k + 1)!, rhs });
+      if (rhs) simple.push({ name: ident(k + 1)!, at: k + 1, init: k + 3, rhs });
       continue;
     }
     if (!is(k + 1, "{")) continue;
     // `{ ipcRenderer, shell: s } = …`: one level of a destructuring pattern
-    const entries: Array<[string, string]> = [];
+    const entries: Array<[string, string, number]> = [];
     let j = k + 2;
     let d = 0;
     for (; j < tokens.length && j < k + 400; j++) {
@@ -1206,20 +1224,20 @@ function privilegedBindings(tokens: Token[]): {
       } else if (d === 0 && ident(j) && (is(j - 1, "{") || is(j - 1, ","))) {
         const key = ident(j)!;
         if (is(j + 1, ":") && ident(j + 2)) {
-          entries.push([key, ident(j + 2)!]);
+          entries.push([key, ident(j + 2)!, j + 2]);
           j += 2;
-        } else entries.push([key, key]);
+        } else entries.push([key, key, j]);
       }
     }
     // only a pattern that is assigned declares: `f("api", { ipc: r })` is an object argument
     if (!is(j, "}") || !is(j + 1, "=") || is(j + 2, "=")) continue;
-    for (const [, local] of entries) count(local);
+    for (const [, local, at] of entries) count(local, at);
     const rhs = rhsAt(j + 2);
-    if (rhs) patterns.push({ entries, rhs });
+    if (rhs) patterns.push({ entries, init: j + 2, rhs });
   }
-  // Every write of a name: `r = …`, `r ||= …`, `r++`. A name written again after its declaration
-  // (`let r = ipcRenderer; r = { send() {} }`) may be anything where it is used.
-  const writes = new Map<string, number>();
+  // Every write of a name: `r = …`, `r ||= …`, `r++`. A write counts against a declaration only
+  // where it resolves to the same binding (below), so a local of that name elsewhere is no write.
+  const writes = new Map<string, number[]>();
   for (let k = 0; k + 1 < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident" || is(k - 1, ".") || is(k - 1, "?.")) continue;
@@ -1230,14 +1248,76 @@ function privilegedBindings(tokens: Token[]): {
       is(k - 1, "--") ||
       is(k + 1, "++") ||
       is(k + 1, "--");
-    if (written) writes.set(t.value, (writes.get(t.value) ?? 0) + 1);
+    if (!written) continue;
+    const places = writes.get(t.value) ?? [];
+    if (places.length < 200) places.push(k);
+    writes.set(t.value, places);
   }
-  const meaning = new Map<string, string>();
-  const once = (name: string): boolean =>
-    (declared.get(name) ?? 0) === 1 && (writes.get(name) ?? 0) === (initialized.has(name) ? 1 : 0);
-  for (const [name, m] of imports) if (once(name)) meaning.set(name, m);
-  const ofPath = (path: string[]): string | null => {
-    const base = once(path[0]!) ? meaning.get(path[0]!) : undefined;
+  /** Privileged declarations per name: the name's token and what it stands for. */
+  const privileged = new Map<string, Array<{ at: number; meaning: string }>>();
+  const recorded = new Set<number>();
+  const add = (name: string, at: number, meaning: string): boolean => {
+    if (recorded.has(at)) return false;
+    recorded.add(at);
+    const decls = privileged.get(name) ?? [];
+    decls.push({ at, meaning });
+    privileged.set(name, decls);
+    return true;
+  };
+  for (const [name, m, at] of imports) add(name, at, m);
+  const ids = new Map<number, string | null>();
+  const byBinding = new Map<string, string | null>();
+  const meaningAt = (name: string, at: number): string | null => {
+    const decls = privileged.get(name);
+    if (!decls) return null;
+    const r = resolver();
+    const here = idOf(r.binding(at, name, true));
+    if (here === null) {
+      // The resolver does not bind it (its own reading of the file's top level gave up, e.g.
+      // over a declaration of the name in another function): read by functions instead. The
+      // declaration a position sees is the one of the innermost function around it that declares
+      // the name; two in one function are not decided.
+      const visible = (pos: number): number => {
+        let depth = -2;
+        let found = -1;
+        for (const p of declaredAt.get(name) ?? []) {
+          const f = r.functionAt(p);
+          if (f && !(f.body[0] <= pos && pos <= f.body[1])) continue;
+          const d = f ? f.body[0] : -1;
+          if (d > depth) [depth, found] = [d, p];
+          else if (d === depth) found = -1;
+        }
+        return found;
+      };
+      const decl = decls.find((d) => d.at === visible(at));
+      if (!decl) return null;
+      for (const w of writes.get(name) ?? [])
+        if (w !== decl.at && visible(w) === decl.at && !r.paramAround(w, name)) return null;
+      return decl.meaning;
+    }
+    // the same binding gives the same answer at every use: read once
+    const key = `${name}\u0000${here}`;
+    const known = byBinding.get(key);
+    if (known !== undefined) return known;
+    const idAt = (pos: number): string | null => {
+      if (!ids.has(pos)) ids.set(pos, idOf(r.binding(pos, name, true)));
+      return ids.get(pos)!;
+    };
+    const match = decls.find((d) => idAt(d.at) === here);
+    let answer: string | null = match?.meaning ?? null;
+    // Written again where the same binding is meant (`let r = ipcRenderer; r = {…}`): it may be
+    // anything where it is used. A write that resolves to nothing is not counted.
+    if (match)
+      for (const w of writes.get(name) ?? [])
+        if (w !== match.at && idAt(w) === here) {
+          answer = null;
+          break;
+        }
+    byBinding.set(key, answer);
+    return answer;
+  };
+  const ofPath = (path: string[], at: number): string | null => {
+    const base = meaningAt(path[0]!, at);
     if (!base) return null;
     if (path.length === 1) return base;
     if (path.length === 2 && base === "electron" && PRIVILEGED_ELECTRON.has(path[1]!))
@@ -1249,25 +1329,22 @@ function privilegedBindings(tokens: Token[]): {
   // A few rounds: `const ipc = r` after `{ ipcRenderer: r } = require("electron")`.
   for (let round = 0; round < 4; round++) {
     let grew = false;
-    const set = (name: string, m: string | null): void => {
-      if (!m || !once(name) || meaning.has(name)) return;
-      meaning.set(name, m);
-      grew = true;
+    const set = (name: string, at: number, m: string | null): void => {
+      if (m && add(name, at, m)) grew = true;
     };
-    for (const { name, rhs } of simple)
-      set(name, rhs.kind === "module" ? rhs.meaning : ofPath(rhs.path));
-    for (const { entries, rhs } of patterns) {
-      const source = rhs.kind === "module" ? rhs.meaning : ofPath(rhs.path);
+    for (const { name, at, init, rhs } of simple)
+      set(name, at, rhs.kind === "module" ? rhs.meaning : ofPath(rhs.path, init));
+    for (const { entries, init, rhs } of patterns) {
+      const source = rhs.kind === "module" ? rhs.meaning : ofPath(rhs.path, init);
       if (source !== "electron") continue;
-      for (const [key, local] of entries) if (PRIVILEGED_ELECTRON.has(key)) set(local, key);
+      for (const [key, local, at] of entries) if (PRIVILEGED_ELECTRON.has(key)) set(local, at, key);
     }
     if (!grew) break;
   }
-  // `once` decides for the caller too: a name it does not take is reported as declared twice
-  // (also `process = …` or `require = …`: then no longer the global)
-  for (const name of writes.keys())
-    if (!once(name)) declared.set(name, Math.max(2, declared.get(name) ?? 0));
-  return { meaning, declared };
+  // `process = …` or `require = …` anywhere: then no longer the global
+  for (const name of ["process", "require"])
+    if (writes.has(name)) declared.set(name, Math.max(2, declared.get(name) ?? 0));
+  return { meaningAt, declared };
 }
 
 const MAX_BRIDGE_PER_FILE = 500;
@@ -1456,8 +1533,11 @@ export function bridgeMembers(
         bound = true;
       }
     }
-    bindings ??= privilegedBindings(tokens);
-    const { meaning, declared } = bindings;
+    bindings ??= privilegedBindings(
+      tokens,
+      () => (resolver ??= new ExpressionResolver(tokens, context.constants)),
+    );
+    const { declared } = bindings;
     let k = from;
     let base: string | null = null;
     const first = tokens[k];
@@ -1475,7 +1555,7 @@ export function bridgeMembers(
       const name = first.value;
       const global =
         (name === "process" || name === "require") && !declared.has(name) && k + 1 === stop;
-      base = (declared.get(name) ?? 0) === 1 ? (meaning.get(name) ?? null) : null;
+      base = bindings.meaningAt(name, from);
       // a parameter or loop variable where the value is written is another binding (asked only
       // for a name that means something, as the walk back is the costly part)
       if ((global || base) && shadowed(call, from, name)) return null;
@@ -1499,13 +1579,8 @@ export function bridgeMembers(
       else if (member === null && what !== "electron") member = p;
       else return null;
     }
-    // a Node module's method only where it acts (`fs.readFileSync`, not `fs.statSync`)
-    if (
-      member !== null &&
-      ACTING_METHODS[what] !== undefined &&
-      !ACTING_METHODS[what]!.test(member)
-    )
-      return null;
+    // a Node module's member unless it only informs (`fs.statSync`, `process.env`)
+    if (member !== null && HARMLESS_MEMBERS[what]?.test(member)) return null;
     if (bound && member === null) return null;
     return member === null ? what : `${what}.${member}`;
   };
@@ -1999,7 +2074,22 @@ export function navigationHandlers(
         if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
         else if (is(j, "}") || is(j, ")") || is(j, "]")) d--;
         else if (key) {
-          if (tokens[j]?.value !== "action") continue;
+          const t = tokens[j]!;
+          const plain =
+            (t.type === "ident" || t.type === "string" || t.type === "number") && is(j + 1, ":");
+          if (!plain) {
+            // An accessor, a method or a generator (`get action() {}`, `action() {}`, `*m() {}`):
+            // one named action is not a literal that was read, and any of them after the action
+            // may replace it. A shorthand of another name (`{ action: "deny", url }`) cannot.
+            const named =
+              t.value === "action" ||
+              ((t.value === "get" || t.value === "set" || t.value === "async" || is(j, "*")) &&
+                tokens[j + 1]?.value === "action");
+            const shorthand = t.type === "ident" && (is(j + 1, ",") || j + 1 === close);
+            if (named || (found !== null && !shorthand)) return null;
+            continue;
+          }
+          if (t.value !== "action") continue;
           const v = tokens[j + 2];
           // the later of two literal keys wins, as in JavaScript; anything else is not read
           if (!is(j + 1, ":") || v?.type !== "string" || !(is(j + 3, ",") || j + 3 === close))
@@ -2195,7 +2285,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 11;
+export const JS_SCAN_SCHEMA = 12;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and

@@ -132,20 +132,24 @@ string never counts):
 A name counts as electron's or Node's only through a declaration in the same file:
 `require("electron")` or `import … from "electron"` (destructured, renamed, `import * as`), what
 bundlers write for them (`import_electron.ipcRenderer`, `__toESM(require("fs"))`, `o.ipcRenderer`
-in a minified file), and `y = x` / `y = x.ipcRenderer` after such a declaration. A name declared
-twice in the file, written again after its declaration (`let r = ipcRenderer; r = {…}`, also
-`r ||= …`, `r++`), or bound as a parameter, loop or catch variable (`for (const ipcRenderer of …)`,
-`forEach(ipcRenderer => …)`, `catch (ipcRenderer)`) where the value is written or around the
-`exposeInMainWorld` call, is not taken. Modules that only compute or inform (`path`, `url`,
-`util`, `events`, `os`) are not listed, nor is `process.env` or `process.versions`.
+in a minified file), and `y = x` / `y = x.ipcRenderer` after such a declaration. Which
+declaration a use means is read by scope (the resolver's binding of the name where the value is
+written; where it cannot say, the innermost function around it that declares the name, and two
+declarations in one function decide nothing). A declaration, parameter or loop variable of the
+same name in another function changes nothing. The name is not taken where it is bound as a
+parameter, loop or catch variable (`for (const ipcRenderer of …)`, `forEach(ipcRenderer => …)`,
+`catch (ipcRenderer)`) where the value is written or around the `exposeInMainWorld` call, or where
+the same binding is written again after its declaration (`let r = ipcRenderer; r = {…}`, also
+`r ||= …`, `r++`); a write that resolves to another binding, or to none, is not counted. Modules
+that only compute or inform (`path`, `url`, `util`, `events`, `os`) are not listed.
 
-A Node module's method counts only where it acts: `fs` and `fs/promises` methods that read,
-write, remove, rename, copy, open or watch (`readFileSync`, `writeFile`, `rm`, `createReadStream`,
-…; not `statSync` or `existsSync`); `child_process` `exec*`, `spawn*`, `fork`; `net`/`tls`/`http`/
-`https`/`http2` `connect`, `request`, `get`, `create*Server`; `dgram.createSocket`; `vm` `run*`,
-`compileFunction`, `Script`; `worker_threads.Worker`; `cluster.fork`; `module.createRequire`;
-`process` `kill`, `exit`, `abort`, `chdir`, `dlopen`, `binding`. The module object itself is
-always listed. Every method of `ipcRenderer` and `shell` counts.
+Every member of a privileged Node module handed over by reference is listed (`fs.promises`,
+`fs.createWriteStream`, `net.Socket`, `module.require`, `process.mainModule`, …) except the few
+that only inform: `fs` `stat*`, `lstat*`, `exists*`, `access*`, `constants`, `realpath*` (and
+the same of `fs/promises`); `process` `env`, `versions`, `platform`, `arch`, `version`, `pid`,
+`cwd`, `uptime`. The list is of harmless members because one of acting members could not be
+complete. The module object itself is always listed, and so is every member of `ipcRenderer` and
+`shell`.
 
 Not this observation: a member that wraps the object in a function of its own
 (`send: (c, d) => ipcRenderer.send(c, d)`, `openUrl(u) { return shell.openExternal(u) }`, a
@@ -190,7 +194,10 @@ name, a conditional, two different literals, a nested function, a body whose las
 return (a path then returns nothing), or no return at all is `unknown`. Within one literal the later
 key wins, as in JavaScript (`{ action: "deny", action: "allow" }` is `allow`, `{ ...base, action:
 "deny" }` is `deny`); a spread or a computed key after the action may replace it
-(`{ action: "deny", ...extra }`, `{ action: "deny", [k]: "allow" }`), so that is `unknown`.
+(`{ action: "deny", ...extra }`, `{ action: "deny", [k]: "allow" }`), so that is `unknown`, as
+is an accessor, method or generator after the action (`get`, `set`, `async`, `*`, `m() {}`) or
+one named action anywhere (`get action() {}`, `action() {}`). A shorthand of another name
+(`{ action: "deny", url }`) cannot replace it.
 Nothing here says that a handler is safe or unsafe, nor whether it checks the URL or the sender
 ([Security, 17][sec] is not read).
 
