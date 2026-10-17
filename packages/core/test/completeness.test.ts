@@ -342,6 +342,12 @@ describe("hostile input stays fast", () => {
       `class C{handle(c,f){ipcMain.handle(c,f);return this}}${'function g(r){r.handle("x",f)}g(new C);'.repeat(30_000)}`,
       `class C{handle(c,f){ipcMain.handle(c,f)}}${'a.k=new C;a.k.handle("x",f);'.repeat(60_000)}`,
       `class C{handle(c,f){ipcMain.handle(c,f);return this}}new C()${'.handle("a",f)'.repeat(60_000)};`,
+      // navigation handlers (navigationHandlers): unclosed web-contents-created callbacks and
+      // window-open handlers, and one handler with thousands of returns
+      'app.on("web-contents-created",(e,c)=>{c.setWindowOpenHandler(()=>{'.repeat(60_000),
+      `w.webContents.setWindowOpenHandler(()=>{${"if(x)return(a,b,{action:'deny'});".repeat(60_000)}});`,
+      // contextBridge exposures: an exposed object of many members over many declarations
+      `const{ipcRenderer:r}=require("electron");${"var a=r,b=r;".repeat(20_000)}contextBridge.exposeInMainWorld("x",{${"m:r,".repeat(20_000)}});`,
     ]) {
       const started = performance.now();
       analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);

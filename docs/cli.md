@@ -137,23 +137,23 @@ a host built at run time, a window setting whose direction is unclear, or a part
 
 ## Collections by format
 
-| Format               | Collections                                                                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ELF                  | sections, segments, symbols, imports, exports, libraries, goDependencies                                                                         |
-| PE                   | sections, imports, exports, libraries, goDependencies; .NET adds types, methods (with IL facts), calls, cil, pinvokes, userStrings, assemblyRefs |
-| Mach-O               | segments, sections, symbols, imports, exports, libraries, goDependencies; fat adds slices                                                        |
-| WASM                 | imports, exports, types, sections                                                                                                                |
-| EVM                  | selectors, instructions, opcodes                                                                                                                 |
-| SQLite               | tables, columns, indexes, triggers, samples                                                                                                      |
-| HAR                  | requests, hosts, endpoints                                                                                                                       |
-| APK                  | permissions, components, libraries, files, classes, packages, dexFiles                                                                           |
-| JAR                  | classes, packages, manifest                                                                                                                      |
-| Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                                                 |
-| DEX                  | classes, packages, dexStrings                                                                                                                    |
-| ZIP                  | files                                                                                                                                            |
-| Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, windows, contextBridge, interfaces, endpoints, storage, urls, sourceMaps            |
-| JavaScript file      | references, ipc, exports, bundleModules, endpoints, routes, storage, urls                                                                        |
-| Source map           | sources, packages                                                                                                                                |
+| Format               | Collections                                                                                                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ELF                  | sections, segments, symbols, imports, exports, libraries, goDependencies                                                                                                   |
+| PE                   | sections, imports, exports, libraries, goDependencies; .NET adds types, methods (with IL facts), calls, cil, pinvokes, userStrings, assemblyRefs                           |
+| Mach-O               | segments, sections, symbols, imports, exports, libraries, goDependencies; fat adds slices                                                                                  |
+| WASM                 | imports, exports, types, sections                                                                                                                                          |
+| EVM                  | selectors, instructions, opcodes                                                                                                                                           |
+| SQLite               | tables, columns, indexes, triggers, samples                                                                                                                                |
+| HAR                  | requests, hosts, endpoints                                                                                                                                                 |
+| APK                  | permissions, components, libraries, files, classes, packages, dexFiles                                                                                                     |
+| JAR                  | classes, packages, manifest                                                                                                                                                |
+| Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                                                                           |
+| DEX                  | classes, packages, dexStrings                                                                                                                                              |
+| ZIP                  | files                                                                                                                                                                      |
+| Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, windows, contextBridge, bridgeExposures, interfaces, navigationHandlers, endpoints, storage, urls, sourceMaps |
+| JavaScript file      | references, ipc, exports, bundleModules, endpoints, routes, storage, urls                                                                                                  |
+| Source map           | sources, packages                                                                                                                                                          |
 
 `findings` and `limitations` exist for every format.
 

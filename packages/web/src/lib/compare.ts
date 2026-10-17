@@ -267,6 +267,10 @@ export const MEANING: Record<string, string> = {
   contextBridge: "Members the preload script exposes to web content",
   ipcChannels: "IPC channels with their senders and receivers",
   windows: "BrowserWindow settings that decide what a page may do",
+  bridgeExposures:
+    "Privileged objects (ipcRenderer, shell, Node modules) a preload hands to pages as they are, not wrapped",
+  navigationHandlers:
+    "setWindowOpenHandler and will-navigate handlers as written; whether they check URLs is not read",
   webPreferences: "webPreferences keys as written in the code",
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",
