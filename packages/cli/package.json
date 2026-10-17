@@ -1,6 +1,6 @@
 {
   "name": "hexvero",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Know what changed inside your app: inspect Electron apps and binaries, trace findings to file and line, compare releases. Locally, without running the target. CLI, MCP server and web UI.",
   "keywords": [
     "apk",
@@ -52,9 +52,9 @@
     "prepack": "node -e \"const fs=require('node:fs');fs.cpSync('../../skills','./skills',{recursive:true});fs.mkdirSync('./examples',{recursive:true});for(const v of ['1.4.0','1.5.0'])fs.copyFileSync('../../examples/notesdesk-'+v+'.asar','./examples/notesdesk-'+v+'.asar');fs.copyFileSync('../../examples/policy.json','./examples/policy.json')\""
   },
   "dependencies": {
-    "@hexvero/core": "0.9.3",
-    "@hexvero/mcp": "0.9.3",
-    "@hexvero/server": "0.9.3"
+    "@hexvero/core": "0.9.4",
+    "@hexvero/mcp": "0.9.4",
+    "@hexvero/server": "0.9.4"
   },
   "engines": {
     "node": ">=22.12.0"
