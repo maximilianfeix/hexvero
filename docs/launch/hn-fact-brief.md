@@ -35,9 +35,19 @@ Verify both commands from an empty directory on the release you link before post
   changes between two versions: channels 3 of 4, bridge members 4 of 4, window settings 0 of 2,
   endpoints 1 of 1. Source: `corpus/results/round4/README.md`. Most misses: a wrapper class around
   `ipcMain`, window options built with `Object.assign`.
-- Real app, Electron Fiddle 0.38.0 → 0.39.0: no false change in channels, bridge or windows; 4
-  changes found by reading the source that hexvero missed. Source:
+- Real app, Electron Fiddle 0.38.0 → 0.39.0 (measured with 0.8.0): no false change in channels,
+  bridge or windows; 4 changes found by reading the source that hexvero missed. Source:
   `docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md`.
+- After the sprint, Fiddle's handlers registered through its wrapper class
+  (`ipcMainManager.handle`) are read: 45 of 46 bridge members with a channel are linked to a
+  main-process handler in both builds (0.8.0: 0). Command:
+  `node scripts/case-study/bridge-links.mjs packages/core ElectronFiddle <a.asar> <b.asar>`.
+- holdout5 after the sprint is a **development set**, not blind (its misses were worked on): IPC
+  channels 72/0/0, senders and receivers 131/9/0, window settings 17/35/0 over 4 inputs. Never
+  quote these instead of, or mixed with, the blind 49 of 54 above.
+- Cost: Discord `analyze` median about +7 % (771 → 825 ms; a re-run gave 812 → 879 ms), Claude.app
+  within noise; interleaved runs against 0.8.0 on one Apple M2 with other load.
+- Verify every row in `docs/launch/claims.md` (A1, A6–A8) on the release you link.
 
 ## Do not say
 

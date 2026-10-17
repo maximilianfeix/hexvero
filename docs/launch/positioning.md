@@ -41,6 +41,9 @@ changed between two builds with the line behind each change.
   none false, bridge members 57 of 57, window settings 14 of 39; of the 8 expected changes to v2: channels
   3 of 4, bridge members 4 of 4, window settings 0 of 2, endpoints 1 of 1. Source: `corpus/results/round4/README.md`.
   Always quote the misses with the hits. (`holdout4`, 0.7.3: 12 of 57 channels.)
+- Separate from the blind result, never mixed with it: holdout5 as a development set after the
+  sprint (72/0/0 channels, 131/9/0 senders and receivers, 17/35/0 window settings, 4 inputs) and
+  Electron Fiddle bridge members linked to a main-process end 0 → 45 of 46 (claims.md A6, A7).
 - MCP catalog: 16 tools, `tools/list` 15,637 bytes; session start 17,847 bytes, 4,158 tokens with
   `o200k_base` (`node scripts/context-cost.mjs`, 2026-10-17). Re-run before quoting.
 
