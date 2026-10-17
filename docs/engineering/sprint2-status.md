@@ -24,20 +24,21 @@ This file is the resume point after any interruption.
 
 ## Plan (from sprint-report §9 and the blind round 5)
 
-| Agent | Branch / worktree                                | Task                                                                         |
-| ----- | ------------------------------------------------ | ---------------------------------------------------------------------------- |
-| E7    | `sprint2/e7-holdout7` `~/hexvero-s2-e7-holdout7` | third blind set, written without access to hexvero; measured once at the end |
-| P4    | `sprint2/p4-perf` `~/hexvero-s2-p4-perf`         | scan time against 0.8.0, identical output                                    |
-| W     | `sprint2/w-wrappers` `~/hexvero-s2-w-wrappers`   | storage and endpoint wrappers defined in another module                      |
-| C2    | `sprint2/c2-coverage` `~/hexvero-s2-c2-coverage` | `ipcRenderer?.send(…)` rows; window keys written after an unknown spread     |
+| Agent | Branch / worktree                                | Task                                                                                           |
+| ----- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| E7    | `sprint2/e7-holdout7` `~/hexvero-s2-e7-holdout7` | DONE `6640046`: holdout7 (Padwright, 23 files); not merged, not read; measured once at the end |
+| P4    | `sprint2/p4-perf` `~/hexvero-s2-p4-perf`         | scan time against 0.8.0, identical output                                                      |
+| W     | `sprint2/w-wrappers` `~/hexvero-s2-w-wrappers`   | storage and endpoint wrappers defined in another module                                        |
+| C2    | `sprint2/c2-coverage` `~/hexvero-s2-c2-coverage` | `ipcRenderer?.send(…)` rows; window keys written after an unknown spread                       |
 
 The good first issues #149–#153 stay with contributors.
 
 ## Time log
 
-| Period (UTC) | Work                                                                                                                                                                                                                                                                    | Who           |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 19:05–19:20  | inventory, plan, worktrees with own packages (`scratchpad/mkwt.sh`), E7 P4 W C2 started, this resume point; lead: compare view explains the `ipc` group (#178), suggested commands say `npx hexvero` under npx (#180); Glama still 404 (needs the maintainer's account) | lead + agents |
+| Period (UTC) | Work                                                                                                                                                                                                                                                                                                             | Who           |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 19:05–19:20  | inventory, plan, worktrees with own packages (`scratchpad/mkwt.sh`), E7 P4 W C2 started, this resume point; lead: compare view explains the `ipc` group (#178), suggested commands say `npx hexvero` under npx (#180); Glama still 404 (needs the maintainer's account)                                          | lead + agents |
+| 19:20–19:40  | E7 handed back holdout7 (`sprint2/e7-holdout7` `6640046`, Padwright; kept unmerged and unread until the one measurement); lead: release-policy rule `new-bridge-exposure` (#182, draft; default warn when a policy does not list it), R4 reviewing; load 40 during four agents, timing tests not meaningful then | lead + agents |
 
 ## Next steps / resume instructions
 
