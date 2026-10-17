@@ -231,6 +231,7 @@ const GAPS: Record<string, string> = {
   files_unreadable: "some files could not be read",
   values_unresolved: "some values could not be resolved (computed at run time)",
   item_truncated: "an item was too large and was shortened",
+  collection_missing: "the list is missing from a build, so nothing in it could be compared",
 };
 
 export const gapWords = (code: string): string => GAPS[code] ?? `coverage gap: ${code}`;

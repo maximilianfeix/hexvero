@@ -2133,3 +2133,199 @@ kbd {
     padding: 12px 16px 16px;
   }
 }
+
+/* ---------- release gate (POST /api/check) ---------- */
+
+.release-gate {
+  scroll-margin-top: 12px;
+}
+
+.release-gate h3:focus-visible {
+  outline-offset: 4px;
+}
+
+.gate-editor {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 76ch;
+}
+
+.gate-editor label {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.gate-editor textarea {
+  width: 100%;
+  font: 400 12.5px/1.5 var(--mono);
+  resize: vertical;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+
+/* the editor is the one large input: a ring as wide as the others' outline */
+.gate-editor textarea:focus {
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+.gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 8px 0 0;
+}
+
+.gate-result {
+  margin-top: 14px;
+  max-width: 76ch;
+}
+
+.gate-result:focus {
+  outline: none;
+}
+
+.gate-result:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.gate-status {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  font-size: 15px;
+}
+
+.gate-status .sign {
+  display: inline-block;
+  font-family: var(--mono);
+  font-weight: 600;
+  min-width: 1.2em;
+  margin-right: 6px;
+  text-align: center;
+}
+
+.gate-status.pass {
+  border-left-color: var(--ok);
+}
+.gate-status.pass .sign {
+  color: var(--ok);
+}
+.gate-status.fail,
+.gate-status.error {
+  border-left-color: var(--alert);
+}
+.gate-status.fail .sign,
+.gate-status.error .sign {
+  color: var(--alert);
+}
+.gate-status.incomplete {
+  border-left-color: var(--amber-ink);
+  border-left-style: dashed;
+}
+.gate-status.incomplete .sign {
+  color: var(--amber-ink);
+}
+
+.gate-tally {
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+
+.gate-findings {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.gate-finding {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.gate-finding:last-child {
+  border-bottom: 0;
+}
+
+.gate-finding > .sign {
+  font-family: var(--mono);
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+.gate-finding.fail > .sign {
+  color: var(--alert);
+}
+
+.gate-finding.warn > .sign,
+.gate-finding.unknown > .sign {
+  color: var(--amber-ink);
+}
+
+.gate-head,
+.gate-message,
+.gate-meta {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.gate-head .rule {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.gate-head .key {
+  color: var(--ink);
+}
+
+.gate-head .tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.gate-finding.unknown .gate-head .tag:first-of-type {
+  border-style: dashed;
+}
+
+.gate-message {
+  margin-top: 3px;
+}
+
+.gate-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+
+.gate-meta .side {
+  color: var(--ink-3);
+}
+
+.gate-meta .fingerprint {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.gate-invalid .gaps li {
+  overflow-wrap: anywhere;
+}

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -298,5 +298,137 @@ describe("hexvero HTTP API", () => {
     } finally {
       await custom.close();
     }
+  });
+});
+
+describe("POST /api/check (contract C7)", () => {
+  const examples = join(import.meta.dirname, "../../../examples");
+  const policyText = readFileSync(join(examples, "policy.json"), "utf8");
+  let running: RunningServer;
+  let a = "";
+  let b = "";
+  const call = (path: string, init: RequestInit = {}): Promise<Response> =>
+    fetch(`${running.url}/api${path}`, {
+      ...init,
+      headers: { authorization: `Bearer ${running.token}`, ...init.headers },
+    });
+  const check = (query: string, body: string = policyText): Promise<Response> =>
+    call(`/check?${query}`, { method: "POST", body });
+  beforeAll(async () => {
+    running = await startServer({
+      demoFiles: [join(examples, "notesdesk-1.4.0.asar"), join(examples, "notesdesk-1.5.0.asar")],
+    });
+    const opened = (await (await call("/demo", { method: "POST" })).json()) as {
+      a: { id: string };
+      b: { id: string };
+    };
+    a = opened.a.id;
+    b = opened.b.id;
+  });
+  afterAll(async () => {
+    await running.close();
+  });
+
+  it("checks the example builds against the example policy", async () => {
+    const res = await check(`a=${a}&b=${b}`);
+    expect(res.status).toBe(200);
+    const result = (await res.json()) as {
+      hexvero: string;
+      status: string;
+      findings: Array<{ rule: string; key: string; fingerprint: string; where: unknown[] }>;
+      policy: { file: string; sha256: string };
+    };
+    expect(result.hexvero).toBe("check");
+    expect(result.status).toBe("fail");
+    expect(result.findings.map((f) => `${f.rule} ${f.key}`).toSorted()).toEqual([
+      "new-external-host updates.notesdesk.example",
+      "new-interface-member notesdesk.checkUpdate",
+    ]);
+    for (const f of result.findings) {
+      expect(f.fingerprint).toMatch(/^[0-9a-f]{32}$/);
+      expect(f.where.length).toBeGreaterThan(0);
+    }
+    // the policy came in the body: the result names no client path
+    expect(result.policy.file).toBe("policy.json");
+  });
+
+  it("passes when the policy allows what changed", async () => {
+    const policy = JSON.parse(policyText) as {
+      rules: Record<string, { level: string; allow?: string[] }>;
+    };
+    policy.rules["new-interface-member"]!.level = "warn";
+    policy.rules["new-external-host"]!.allow!.push("updates.notesdesk.example");
+    const result = (await (await check(`a=${a}&b=${b}`, JSON.stringify(policy))).json()) as {
+      status: string;
+      findings: Array<{ level: string }>;
+    };
+    expect(result.status).toBe("pass");
+    expect(result.findings.map((f) => f.level)).toEqual(["warn"]);
+  });
+
+  it("downloads Markdown and SARIF with a file name", async () => {
+    const md = await check(`a=${a}&b=${b}&format=markdown`);
+    expect(md.status).toBe(200);
+    expect(md.headers.get("content-type")).toContain("text/markdown");
+    expect(md.headers.get("content-disposition")).toBe(
+      'attachment; filename="notesdesk-1.4.0-to-notesdesk-1.5.0.hexvero-check.md"',
+    );
+    expect(await md.text()).toContain("notesdesk.checkUpdate");
+    const sarif = await check(`a=${a}&b=${b}&format=sarif`);
+    expect(sarif.status).toBe(200);
+    expect(sarif.headers.get("content-type")).toContain("application/sarif+json");
+    expect(sarif.headers.get("content-disposition")).toContain(".hexvero-check.sarif");
+    const log = (await sarif.json()) as { version: string; runs: Array<{ results: unknown[] }> };
+    expect(log.version).toBe("2.1.0");
+    expect(log.runs[0]!.results).toHaveLength(2);
+  });
+
+  it("answers an invalid policy with 400 and every issue", async () => {
+    const res = await check(
+      `a=${a}&b=${b}`,
+      JSON.stringify({ hexvero: "policy", version: 2, rules: { "no-such-rule": {} }, extra: 1 }),
+    );
+    expect(res.status).toBe(400);
+    const { error } = (await res.json()) as {
+      error: { code: string; message: string; details: { issues: string[] } };
+    };
+    expect(error.code).toBe("invalid_policy");
+    expect(error.message).toBe("invalid policy policy.json");
+    expect(error.details.issues).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("extra: unknown key"),
+        expect.stringContaining("version: this hexvero reads policy version 1"),
+        expect.stringContaining("no-such-rule"),
+      ]),
+    );
+    const notJson = await check(`a=${a}&b=${b}`, "{nope");
+    expect(notJson.status).toBe(400);
+    expect(((await notJson.json()) as { error: { code: string } }).error.code).toBe(
+      "invalid_policy",
+    );
+  });
+
+  it("refuses bad requests with the documented status codes", async () => {
+    expect((await check(`a=${a}`)).status).toBe(400);
+    expect((await check(`a=${a}&b=${a}`)).status).toBe(400);
+    expect((await check(`a=${a}&b=${b}&format=html`)).status).toBe(400);
+    expect((await check(`a=${a}&b=t_missing`)).status).toBe(404);
+    expect((await call(`/check?a=${a}&b=${b}`)).status).toBe(405);
+    // larger than any policy: refused before it is parsed
+    expect((await check(`a=${a}&b=${b}`, " ".repeat((1 << 20) + 1))).status).toBe(413);
+    // the same guards as every other route
+    expect(
+      (await fetch(`${running.url}/api/check?a=${a}&b=${b}`, { method: "POST", body: policyText }))
+        .status,
+    ).toBe(401);
+    expect(
+      (
+        await fetch(`${running.url}/api/check?a=${a}&b=${b}`, {
+          method: "POST",
+          body: policyText,
+          headers: { authorization: `Bearer ${running.token}`, origin: "http://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
   });
 });
