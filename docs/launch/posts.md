@@ -6,7 +6,23 @@ News forbids generated or AI-edited text and automated posting
 as an outline of facts and order, not as text to paste there. One channel, one story; no
 identical cross-posts, no vote requests.
 
-## X: main post
+## X: 0.9.0 (draft, post after 0.9.0 is on npm)
+
+> Know what changed inside your Electron release.
+>
+> hexvero 0.9.0 compares two builds without running either, shows each change with the file and
+> line on both sides, keeps "could not tell" apart from "removed", and fails CI with exit 3 when a
+> release exposes a new member to pages or talks to a new host.
+>
+> npx hexvero demo
+>
+> github.com/maximilianfeix/hexvero
+
+Attach `docs/demo/release-gate.mp4` (25 s). Reply with the honest number: on the newest blind
+set 49 of 54 IPC channels, but 14 of 39 window settings (`corpus/results/round4/README.md`).
+Every fact: [claims.md](claims.md) C2, C3, C5, C7, A1.
+
+## X: main post (0.8.0, kept for reference)
 
 > Know what changed inside your app.
 >

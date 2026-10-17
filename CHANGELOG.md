@@ -6,6 +6,45 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Comparing releases
+
+- `compare` covers whole lists (up to 200,000 items or 256 MiB serialized per side, said when
+  not) instead of the first 2,000 items per side, and every comparison reports its
+  `completeness` per list (compared, total, gaps).
+- An item found on one side only is `unknown`, not `removed` or `added`, when the other build did
+  not read its file or has a value of the same kind there that could not be resolved (an IPC
+  call without a readable channel, a computed window setting, a URL with `${…}`), with that
+  reason.
+- Release comparisons are paged (`--report <file> --offset n --limit n`, `/api/compare`), rows
+  carry stable ids, and changed rows carry the place in the before build (`whereBefore`), so a
+  change is shown with the file and line on both sides.
+- `--report report.html` (or `.htm`): one self-contained, offline page with the summary, the
+  window settings to review, each change with the source lines of both builds, what was not
+  established and the command to reproduce it; filters run in one inline script allowed by a
+  strict CSP, all target text is escaped and bidi or invisible characters are written out.
+- Less noise: an interface row whose only difference is its `reason` text is unchanged, and
+  findings are matched by kind and location, so a reworded title is not an added and a removed
+  finding (both seen on Electron Fiddle 0.38.0 → 0.39.0).
+
+### Web UI
+
+- Compare view as a reviewer workspace: a summary bar of facts, filters for change kind, list and
+  basis kept in the URL, an evidence panel with the lines of the build before and after side by
+  side, "N of M shown" with Load more, keyboard navigation. The session token moves from the
+  address bar to storage on load.
+- Interface map tab for JavaScript apps: window → preload member → channel → main-process
+  handler, each edge saying whether it was read as a literal, resolved, or not read (with the
+  reason); every node opens its file and line.
+
+### Reading Electron apps and files
+
+- Entries an ASAR marks as unpacked are read from `<archive>.unpacked/` next to the archive,
+  confined like a directory target; when that directory is missing, the limitation says so
+  instead of "too large or could not be decoded". The scan cache key covers those files.
+- Target files are read through one descriptor that refuses anything but a regular file
+  (`O_NONBLOCK`, `O_NOFOLLOW`, same-inode check after open), so a FIFO cannot block an analysis
+  and a link swapped in after the check cannot lead out of the root.
+
 ### MCP
 
 - `hexvero_check` (16th tool, read-only): the release policy check over MCP with an inline
