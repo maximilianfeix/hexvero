@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.9.0",
-  "commit": "f39d2f1+uncommitted",
+  "version": "0.9.8",
+  "commit": "045de0c+uncommitted",
   "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
@@ -410,8 +410,8 @@
   {
    "set": "holdout",
    "class": "IPC channels",
-   "hit": 66,
-   "missed": 6,
+   "hit": 72,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -419,8 +419,8 @@
   {
    "set": "holdout",
    "class": "IPC senders and receivers",
-   "hit": 107,
-   "missed": 22,
+   "hit": 113,
+   "missed": 25,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -464,8 +464,8 @@
   {
    "set": "holdout",
    "class": "endpoint method",
-   "hit": 9,
-   "missed": 3,
+   "hit": 12,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -475,7 +475,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 3,
    "missed": 0,
-   "false": 5,
+   "false": 4,
    "hedged": 0,
    "inputs": 3
   },
@@ -554,8 +554,8 @@
   {
    "set": "holdout2",
    "class": "IPC senders and receivers",
-   "hit": 230,
-   "missed": 22,
+   "hit": 242,
+   "missed": 10,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -572,8 +572,8 @@
   {
    "set": "holdout2",
    "class": "bridge members",
-   "hit": 129,
-   "missed": 6,
+   "hit": 133,
+   "missed": 2,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -581,7 +581,7 @@
   {
    "set": "holdout2",
    "class": "bridge member channel",
-   "hit": 129,
+   "hit": 133,
    "missed": 0,
    "false": 0,
    "hedged": 0,
@@ -617,8 +617,8 @@
   {
    "set": "holdout2",
    "class": "storage keys",
-   "hit": 53,
-   "missed": 4,
+   "hit": 55,
+   "missed": 2,
    "false": 0,
    "hedged": 0,
    "inputs": 6
@@ -626,7 +626,7 @@
   {
    "set": "holdout2",
    "class": "storage read/write/delete",
-   "hit": 48,
+   "hit": 50,
    "missed": 0,
    "false": 0,
    "hedged": 0,
@@ -644,8 +644,8 @@
   {
    "set": "holdout2",
    "class": "changes in contextBridge",
-   "hit": 1,
-   "missed": 1,
+   "hit": 2,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 1
@@ -725,8 +725,8 @@
   {
    "set": "holdout3",
    "class": "endpoints",
-   "hit": 18,
-   "missed": 3,
+   "hit": 21,
+   "missed": 0,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -962,6 +962,285 @@
    "hit": 1,
    "missed": 0,
    "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "IPC channels",
+   "hit": 72,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "IPC senders and receivers",
+   "hit": 131,
+   "missed": 9,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "window settings",
+   "hit": 32,
+   "missed": 20,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "bridge members",
+   "hit": 76,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "bridge member channel",
+   "hit": 67,
+   "missed": 9,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "endpoints",
+   "hit": 21,
+   "missed": 4,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "endpoint method",
+   "hit": 5,
+   "missed": 16,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "requests with an unknown URL shown",
+   "hit": 4,
+   "missed": 0,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "storage keys",
+   "hit": 16,
+   "missed": 8,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "storage read/write/delete",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in ipcChannels",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in contextBridge",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout5",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "IPC channels",
+   "hit": 64,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "IPC senders and receivers",
+   "hit": 136,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "window settings",
+   "hit": 44,
+   "missed": 8,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "bridge members",
+   "hit": 80,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "bridge member channel",
+   "hit": 80,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "endpoints",
+   "hit": 16,
+   "missed": 5,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "endpoint method",
+   "hit": 5,
+   "missed": 11,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "requests with an unknown URL shown",
+   "hit": 4,
+   "missed": 0,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "storage keys",
+   "hit": 33,
+   "missed": 8,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "storage read/write/delete",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in ipcChannels",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in contextBridge",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout6",
+   "class": "changes in storage",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
    "hedged": 0,
    "inputs": 1
   },
@@ -2091,18 +2370,16 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "IPC channels",
-   "hit": 23,
-   "missed": 1,
+   "hit": 24,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed theme:changed"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "IPC senders and receivers",
-   "hit": 39,
+   "hit": 40,
    "missed": 6,
    "false": 0,
    "notes": [
@@ -2175,12 +2452,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.plain.asar",
    "class": "endpoint method",
-   "hit": 3,
-   "missed": 1,
+   "hit": 4,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "https://hooks.punchclock.example/invoice-exported: expected POST"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
@@ -2188,7 +2463,7 @@
    "class": "requests with an unknown URL shown",
    "hit": 1,
    "missed": 0,
-   "false": 3,
+   "false": 2,
    "notes": []
   },
   {
@@ -2216,18 +2491,16 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "IPC channels",
-   "hit": 23,
-   "missed": 1,
+   "hit": 24,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed theme:changed"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "IPC senders and receivers",
-   "hit": 40,
+   "hit": 41,
    "missed": 5,
    "false": 0,
    "notes": [
@@ -2296,12 +2569,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.bundled.asar",
    "class": "endpoint method",
-   "hit": 3,
-   "missed": 1,
+   "hit": 4,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "https://hooks.punchclock.example/invoice-exported: expected POST"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
@@ -2337,27 +2608,25 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "IPC channels",
-   "hit": 20,
-   "missed": 4,
+   "hit": 24,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed projects:list",
-    "missed projects:create",
-    "missed projects:rename",
-    "missed theme:changed"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 28,
-   "missed": 11,
+   "hit": 32,
+   "missed": 14,
    "false": 0,
    "notes": [
     "timer:start: sender preload.js missed",
     "timer:stop: sender preload.js missed",
     "timer:tick: receiver preload.js missed",
+    "projects:list: sender preload.js missed",
+    "projects:create: sender preload.js missed",
+    "projects:rename: sender preload.js missed",
     "widget:pin: receiver main.js missed",
     "widget:close: receiver main.js missed",
     "invoice:export: sender preload.js missed",
@@ -2434,12 +2703,10 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "endpoint method",
-   "hit": 3,
-   "missed": 1,
+   "hit": 4,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "https://hooks.punchclock.example/invoice-exported: expected POST"
-   ]
+   "notes": []
   },
   {
    "set": "holdout",
@@ -2563,20 +2830,16 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "bridge members",
-   "hit": 21,
-   "missed": 2,
+   "hit": 23,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed inkwell.listNotes",
-    "missed inkwell.searchNotes",
-    "1 entry reported as unreadable"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar",
    "class": "bridge member channel",
-   "hit": 21,
+   "hit": 23,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2664,20 +2927,16 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "bridge members",
-   "hit": 21,
-   "missed": 2,
+   "hit": 23,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed inkwell.listNotes",
-    "missed inkwell.searchNotes",
-    "1 entry reported as unreadable"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
    "input": "holdout2/markdown-editor.bundled.asar",
    "class": "bridge member channel",
-   "hit": 21,
+   "hit": 23,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2813,12 +3072,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "storage keys",
-   "hit": 4,
-   "missed": 4,
+   "hit": 6,
+   "missed": 2,
    "false": 0,
    "notes": [
-    "missed localStorage inkwell.theme",
-    "missed localStorage inkwell.sidebarWidth",
     "missed localStorage inkwell.recent",
     "missed indexedDB inkwell-search"
    ]
@@ -2827,7 +3084,7 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.minified.asar",
    "class": "storage read/write/delete",
-   "hit": 4,
+   "hit": 6,
    "missed": 0,
    "false": 0,
    "notes": []
@@ -2845,12 +3102,10 @@
    "set": "holdout2",
    "input": "holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar",
    "class": "changes in contextBridge",
-   "hit": 1,
-   "missed": 1,
+   "hit": 2,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed +inkwell.renameNote"
-   ]
+   "notes": []
   },
   {
    "set": "holdout2",
@@ -2892,14 +3147,10 @@
    "set": "holdout2",
    "input": "holdout2/music-player.plain.asar",
    "class": "IPC senders and receivers",
-   "hit": 35,
-   "missed": 5,
+   "hit": 39,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "playlists:list: receiver main.js missed",
-    "playlists:save: receiver main.js missed",
-    "settings:get: receiver main.js missed",
-    "settings:set: receiver main.js missed",
     "mini:get-artwork: receiver main.js missed"
    ]
   },
@@ -2992,14 +3243,10 @@
    "set": "holdout2",
    "input": "holdout2/music-player.bundled.asar",
    "class": "IPC senders and receivers",
-   "hit": 35,
-   "missed": 5,
+   "hit": 39,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "playlists:list: receiver main.js missed",
-    "playlists:save: receiver main.js missed",
-    "settings:get: receiver main.js missed",
-    "settings:set: receiver main.js missed",
     "mini:get-artwork: receiver main.js missed"
    ]
   },
@@ -3098,14 +3345,10 @@
    "set": "holdout2",
    "input": "holdout2/music-player.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 35,
-   "missed": 5,
+   "hit": 39,
+   "missed": 1,
    "false": 0,
    "notes": [
-    "playlists:list: receiver main.js missed",
-    "playlists:save: receiver main.js missed",
-    "settings:get: receiver main.js missed",
-    "settings:set: receiver main.js missed",
     "mini:get-artwork: receiver main.js missed"
    ]
   },
@@ -3245,12 +3488,10 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.plain.asar",
    "class": "endpoints",
-   "hit": 6,
-   "missed": 1,
+   "hit": 7,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed https://api.driftwood.example/v1/directory/top"
-   ]
+   "notes": []
   },
   {
    "set": "holdout3",
@@ -3339,12 +3580,10 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.bundled.asar",
    "class": "endpoints",
-   "hit": 6,
-   "missed": 1,
+   "hit": 7,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed https://api.driftwood.example/v1/directory/top"
-   ]
+   "notes": []
   },
   {
    "set": "holdout3",
@@ -3433,12 +3672,10 @@
    "set": "holdout3",
    "input": "holdout3/podcast-player.minified.asar",
    "class": "endpoints",
-   "hit": 6,
-   "missed": 1,
+   "hit": 7,
+   "missed": 0,
    "false": 0,
-   "notes": [
-    "missed https://api.driftwood.example/v1/directory/top"
-   ]
+   "notes": []
   },
   {
    "set": "holdout3",
@@ -3989,6 +4226,1009 @@
    "missed": 0,
    "false": 0,
    "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "IPC channels",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 32,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "export:markdown: sender preload.js missed",
+    "export:html: sender preload.js missed",
+    "publish:progress: sender publish.js missed"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "7 call(s) without a channel: ipcRenderer.invoke at undefined:9, ipcRenderer.invoke at undefined:22, ipcRenderer.invoke at undefined:23, ipcRenderer.send at undefined:37, ipcMain.on at undefined:64, ipcMain.handle at undefined:16, ipcMain.on at undefined:28"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed windows.js preload=preload-preview.js",
+    "missed windows.js webSecurity=true",
+    "missed windows.js contextIsolation=true",
+    "missed windows.js nodeIntegration=false",
+    "missed windows.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "bridge members",
+   "hit": 19,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "bridge member channel",
+   "hit": 17,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "tidemark.exportMarkdown: expected export:markdown, got null",
+    "tidemark.exportHtml: expected export:html, got null"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://telemetry.tidemark.example/v1/events"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "https://updates.tidemark.example/desktop/latest.json: expected GET",
+    "https://api.tidemark.example/v2/projects/…: expected GET",
+    "https://code.tidemark.example/api/v1/repos/…: expected GET",
+    "https://cdn.tidemark.example/preview/themes/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 2,
+   "false": 2,
+   "notes": [
+    "missed file tidemark-settings.json",
+    "missed file tidemark-drafts.json",
+    "false localStorage tidemark.${…}",
+    "false sessionStorage tidemark.${…}"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "IPC channels",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 34,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "publish:progress: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "6 call(s) without a channel: ipcMain.handle at undefined:48, ipcMain.on at undefined:59, ipcMain.on at undefined:282, ipcRenderer.invoke at undefined:52, ipcRenderer.invoke at undefined:53, ipcRenderer.send at undefined:66"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload-preview.js",
+    "missed main.js webSecurity=true",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "bridge members",
+   "hit": 19,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 17,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "tidemark.exportMarkdown: expected export:markdown, got null",
+    "tidemark.exportHtml: expected export:html, got null"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://telemetry.tidemark.example/v1/events"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "https://updates.tidemark.example/desktop/latest.json: expected GET",
+    "https://api.tidemark.example/v2/projects/…: expected GET",
+    "https://code.tidemark.example/api/v1/repos/…: expected GET",
+    "https://cdn.tidemark.example/preview/themes/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file tidemark-settings.json",
+    "missed file tidemark-drafts.json"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "IPC channels",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 34,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "publish:progress: sender main.js missed"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "6 call(s) without a channel: ipcMain.handle at undefined:1, ipcMain.on at undefined:1, ipcMain.on at undefined:3, ipcRenderer.invoke at undefined:1, ipcRenderer.invoke at undefined:1, ipcRenderer.send at undefined:1"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload-preview.js",
+    "missed main.js webSecurity=true",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "bridge members",
+   "hit": 19,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "bridge member channel",
+   "hit": 17,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "tidemark.exportMarkdown: expected export:markdown, got null",
+    "tidemark.exportHtml: expected export:html, got null"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://telemetry.tidemark.example/v1/events"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "https://updates.tidemark.example/desktop/latest.json: expected GET",
+    "https://api.tidemark.example/v2/projects/…: expected GET",
+    "https://code.tidemark.example/api/v1/repos/…: expected GET",
+    "https://cdn.tidemark.example/preview/themes/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file tidemark-settings.json",
+    "missed file tidemark-drafts.json"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "IPC channels",
+   "hit": 18,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 31,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "export:markdown: sender preload.js missed",
+    "export:html: sender preload.js missed",
+    "export:text: sender preload.js missed",
+    "publish:progress: sender publish.js missed"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "IPC channels with an unknown name shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": [
+    "8 call(s) without a channel: ipcRenderer.invoke at undefined:9, ipcRenderer.invoke at undefined:21, ipcRenderer.invoke at undefined:22, ipcRenderer.invoke at undefined:23, ipcRenderer.send at undefined:36, ipcMain.on at undefined:58, ipcMain.handle at undefined:16, ipcMain.on at undefined:28"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed windows.js preload=preload-preview.js",
+    "missed windows.js sandbox=false",
+    "missed windows.js webSecurity=true",
+    "missed windows.js contextIsolation=true",
+    "missed windows.js nodeIntegration=false"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "bridge members",
+   "hit": 19,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "bridge member channel",
+   "hit": 16,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "tidemark.exportMarkdown: expected export:markdown, got null",
+    "tidemark.exportHtml: expected export:html, got null",
+    "tidemark.exportText: expected export:text, got null"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "endpoints",
+   "hit": 6,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://telemetry.tidemark.example/v1/events"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "https://updates.tidemark.example/desktop/latest.json: expected GET",
+    "https://api.tidemark.example/v2/projects/…: expected GET",
+    "https://code.tidemark.example/api/v1/repos/…: expected GET",
+    "https://cdn.tidemark.example/preview/themes/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "storage keys",
+   "hit": 4,
+   "missed": 2,
+   "false": 2,
+   "notes": [
+    "missed file tidemark-settings.json",
+    "missed file tidemark-drafts.json",
+    "false localStorage tidemark.${…}",
+    "false sessionStorage tidemark.${…}"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark-v2.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed ~sandbox: true -> false"
+   ]
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout5",
+   "input": "holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "IPC channels",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "window settings",
+   "hit": 11,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed windows.js preload=preload-library.js",
+    "missed windows.js preload=preload-annotator.js"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "bridge member channel",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "endpoints",
+   "hit": 4,
+   "missed": 1,
+   "false": 1,
+   "notes": [
+    "missed https://share.snapdeck.example/api/v3/shots/…",
+    "false ${…}/shots/${…}"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "https://releases.snapdeck.example/feed/stable.json: expected GET",
+    "https://gallery.snapdeck.example/api/trending?window=week: expected GET",
+    "https://cdn.snapdeck.example/stickers/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "storage keys",
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file snapdeck-library.json",
+    "missed file snapdeck-prefs.json"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "IPC channels",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "window settings",
+   "hit": 11,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload-library.js",
+    "missed main.js preload=preload-annotator.js"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "https://releases.snapdeck.example/feed/stable.json: expected GET",
+    "https://gallery.snapdeck.example/api/trending?window=week: expected GET",
+    "https://cdn.snapdeck.example/stickers/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "storage keys",
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file snapdeck-library.json",
+    "missed file snapdeck-prefs.json"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "IPC channels",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "window settings",
+   "hit": 11,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload-library.js",
+    "missed main.js preload=preload-annotator.js"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "bridge member channel",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "endpoints",
+   "hit": 2,
+   "missed": 3,
+   "false": 2,
+   "notes": [
+    "missed https://share.snapdeck.example/api/v3/shots",
+    "missed https://share.snapdeck.example/api/v3/shots/…",
+    "missed https://gallery.snapdeck.example/api/trending?window=week",
+    "false ${…}/shots",
+    "false ${…}/shots/${…}"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "https://releases.snapdeck.example/feed/stable.json: expected GET",
+    "https://cdn.snapdeck.example/stickers/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "storage keys",
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file snapdeck-library.json",
+    "missed file snapdeck-prefs.json"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "IPC channels",
+   "hit": 16,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "window settings",
+   "hit": 11,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed windows.js preload=preload-library.js",
+    "missed windows.js preload=preload-annotator.js"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "bridge members",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "bridge member channel",
+   "hit": 20,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 1,
+   "notes": [
+    "missed https://share.snapdeck.example/api/v3/shots/…",
+    "false ${…}/shots/${…}"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "endpoint method",
+   "hit": 2,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "https://releases.snapdeck.example/feed/stable.json: expected GET",
+    "https://gallery.snapdeck.example/api/trending?window=week: expected GET",
+    "https://cdn.snapdeck.example/stickers/…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "storage keys",
+   "hit": 9,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file snapdeck-library.json",
+    "missed file snapdeck-prefs.json"
+   ]
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck-v2.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 9,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout6",
+   "input": "holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": [
+    "false ~localStorage overlay.lastRegion"
+   ]
   },
   {
    "set": "damaged",
