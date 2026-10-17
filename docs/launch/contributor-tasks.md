@@ -3,7 +3,22 @@
 Each one is a real gap found in the code during the 2026-10-17 sprint (see
 `docs/engineering/codebase-map.md`, open questions). Sized for an afternoon; every one has a way
 to reproduce it, the files involved and what "done" means. Run `npm install && npm run check`
-first.
+first. To add a new observation or collection, follow
+[docs/contributing/new-detector.md](../contributing/new-detector.md).
+
+## Done in the 0.9.0 sprint
+
+Two of the original five were solved in the sprint and are no longer open:
+
+- **`hexvero_compare` pages four lists with one offset.** Each list (added, removed, changed,
+  unknown) now pages on its own with `list` + `offset` and reports its own `next`
+  (`packages/mcp/src/tools.ts:159,420`). Sprint commit `9500c41`, released in `08f80c5` (#136).
+- **A brand-new permissive window is not flagged by `hexvero check`.** `unmatchedWindowDrafts`
+  (`packages/core/src/policy.ts:860-920`) judges an added window by its own settings, with tests
+  for a new permissive and a new safe window (`packages/core/test/policy.test.ts:1000`). Review
+  fix H3, sprint commit `84e8284`, released in `08f80c5` (#136).
+
+Their places below are taken by two gaps verified in the code at `03588ec`.
 
 ## 1. The HTTP export writes less than `hexvero export`
 
@@ -24,25 +39,32 @@ first.
 - **Done when:** the route accepts the same options as `Session.continueAnalysis` with validation
   and a test per option; the UI offers "read only these paths" for a partly read app.
 
-## 3. `hexvero_compare` pages four lists with one offset
+## 3. Reports do not say what a collection means
 
-- **Reproduce:** call `hexvero_compare` with `offset: 50` on a collection with 60 added and 5
-  removed items: the removed list comes back empty although none of its items were shown.
-- **Files:** `packages/mcp/src/tools.ts` (`hexvero_compare`, the `window` helper),
-  `packages/mcp/test/*.test.ts`, `docs/mcp.md`.
-- **Done when:** each list (added, removed, changed, unknown) reports its own `next`, the tool
-  description says how to page them, and `scripts/check-shape.mjs` still passes (catalog size).
+- **Reproduce:** `hexvero compare examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar
+  --report r.md` (or `r.html`): each group is headed by the bare collection name
+  (`webPreferences`, `interfaces`). The one-sentence meaning of each list exists only in the web
+  UI, `MEANING` in `packages/web/src/lib/compare.ts:265`; `report.ts` and `htmlReport.ts` have no
+  such text (verified by searching for the sentences in `packages/*/src`).
+- **Files:** `packages/core/src/report.ts` (`ORDER`, the group headings),
+  `packages/core/src/htmlReport.ts` (`<section class="group"><h3>`), `packages/web/src/lib/compare.ts`,
+  `packages/core/test/report.test.ts`, `packages/core/test/htmlReport.test.ts`.
+- **Done when:** the sentences live in `@hexvero/core` (one table, exported), the web UI imports
+  them instead of keeping its own copy, both reports print the sentence under each group heading,
+  and `scripts/build-site-demo.mjs --check` passes after regenerating the demo.
 
-## 4. A brand-new permissive window is not flagged by `hexvero check`
+## 4. The corpus baseline cannot be traced to a commit
 
-- **Reproduce:** v2 adds a second BrowserWindow with `nodeIntegration: true`; the rule
-  `window-more-permissive` reads only `overview.windowChanges`, which pairs windows present in both
-  builds, so the new window passes.
-- **Files:** `packages/core/src/policy.ts` (`windowDrafts`), `packages/core/test/policy.test.ts`,
-  `docs/cli.md`, `docs/policy.schema.json` if a new rule or option is added.
-- **Done when:** an added window whose effective settings are permissive (`nodeIntegrationInEffect`
-  on, `contextIsolationInEffect` off, `sandboxInEffect` off) is a finding with its file:line, with
-  a test for an added restrictive window that is not.
+- **Reproduce:** `corpus/results/hexvero.json` records `tool.version` `0.8.0` and `commit`
+  `aa88007+uncommitted`, while the packages are 0.9.0. `corpus/observe-hexvero.mjs:286-291`
+  appends `+uncommitted` and carries on, so `npm run corpus:accept` from a dirty tree writes a
+  baseline nobody can check out; `corpus/gate.mjs` then compares every later run with it.
+- **Files:** `corpus/observe-hexvero.mjs`, `package.json` (`corpus:accept`), `corpus/gate.mjs`,
+  `corpus/README.md`.
+- **Done when:** `corpus:accept` refuses to write `results/` from a tree with uncommitted changes
+  under `packages/` or `corpus/` (with a flag to override that is recorded in the file), the gate
+  prints the baseline's version and commit next to the current ones, and the baseline is
+  regenerated from a clean checkout of the current release.
 
 ## 5. A stale UI token after a server restart
 

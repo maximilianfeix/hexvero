@@ -20,7 +20,6 @@ import {
   type ProviderName,
   type ProviderOperation,
 } from "@hexvero/core";
-import { serveStdio } from "@hexvero/mcp";
 import { flagNumber, flagString, parseArgs, UsageError, type ParsedArgs } from "./args.js";
 import {
   formatFindings,
@@ -783,10 +782,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         );
       return 0;
     }
-    case "mcp":
+    case "mcp": {
+      // Loaded here, not at the top: the MCP SDK with its schema validators takes 60 to 100 ms
+      // to import, which every other command (compare, check, report) would pay for nothing.
+      const { serveStdio } = await import("@hexvero/mcp");
       await serveStdio(new Session({ worker: true }));
       await new Promise(() => {});
       return 0;
+    }
     case "ui": {
       const { startUi } = await import("./ui.js");
       const host = flagString(args.flags, "host");
