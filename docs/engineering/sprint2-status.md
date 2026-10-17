@@ -35,9 +35,9 @@ The good first issues #149–#153 stay with contributors.
 
 ## Time log
 
-| Period (UTC) | Work                                                                                | Who           |
-| ------------ | ----------------------------------------------------------------------------------- | ------------- |
-| 19:05–       | inventory, plan, worktrees with own packages, E7 P4 W C2 started, this resume point | lead + agents |
+| Period (UTC) | Work                                                                                                                                                                                                                                                                    | Who           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 19:05–19:20  | inventory, plan, worktrees with own packages (`scratchpad/mkwt.sh`), E7 P4 W C2 started, this resume point; lead: compare view explains the `ipc` group (#178), suggested commands say `npx hexvero` under npx (#180); Glama still 404 (needs the maintainer's account) | lead + agents |
 
 ## Next steps / resume instructions
 
