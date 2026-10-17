@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-10-17
+
 ### Electron analysis
 
 - Storage keys passed through a wrapper class or object that another module defines are read at each call in the importing module: `import { local } from "./web-store.js"; local.get(LAST_PROJECT)` with `local = { get: (name) => localStorage.getItem(key(name)) }` there gives `localStorage read tidemark.lastProject` at the call, `via: "local.get"`. The wrapper's own key expression is evaluated in its module with the argument read at the call (a literal, a constant, another module's constant such as a compiled string enum member). The receiver must be proven an instance (`import`, `require` + `new`, `module.exports = new Store()`, `new (require(…).C)()`, re-exports, one esbuild bundle plain or minified); a shadowing parameter, local, pattern, `for … of` or `catch`, an assignment to the binding, or a member assignment of the method name gives no row; a call whose key is not read whole is an unknown row at the call. Uses the cross-module mechanism of the IPC wrapper classes. Corpus: holdout5 (development set) storage keys 7 → 16 found and 17 → 8 missed (tidemark plain, minified and v2), holdout6 22 → 33 found and 19 → 8 missed (snapdeck plain and v2, and the v2 change `+localStorage snapdeck:ocrLanguage`), no new false rows; Electron Fiddle 0.38.0 → 0.39.0 storage, endpoints and IPC unchanged. Not followed: plain functions as cross-module wrappers, and endpoints through a wrapper of another module. Stored scans are read again (JS_SCAN_SCHEMA 21).
