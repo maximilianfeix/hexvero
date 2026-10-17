@@ -479,6 +479,38 @@ describe("storage through wrapper methods and enums", () => {
     expect(find(api).endpoints.map((r) => r.value ?? `?${r.expression}`)).toEqual(["?u"]);
   });
 
+  it("reads no call of a wrapper whose name is assigned as a member anywhere in the file", () => {
+    const cls = 'class A{ save(k){ localStorage.setItem(k,1) } run(){ this.save("ka") } }\n';
+    const obj = 'const prefs = { get(k){ return localStorage.getItem(k) } };\nprefs.get("kb");\n';
+    // the wrapper itself, read while no member of its name is written
+    expect(rows(cls)).toEqual(["localStorage write ka [inferred] via A.save @1:59"]);
+    expect(rows(obj)).toEqual(["localStorage read kb [inferred] via prefs.get @2:7"]);
+    for (const write of [
+      "const a = new A(); a.save = (x)=>x;",
+      'const a = new A(); a["save"] = (x)=>x;',
+      "A.prototype.save = function(x){ return x };",
+      'Object.defineProperty(a, "save", { value: (x)=>x });',
+      "Object.assign(a, { save: (x)=>x });",
+      "Object.assign(a, { save(x){ return x } });",
+    ])
+      expect([write, rows(cls + write)]).toEqual([
+        write,
+        ["localStorage write ?k [unknown] @1:19"],
+      ]);
+    for (const write of ["prefs.get = (x)=>x;", "Object.assign(prefs, { get: (x)=>x });"])
+      expect([write, rows(obj + write)]).toEqual([write, ["localStorage read ?k [unknown] @1:32"]]);
+    // a comparison is no write, nor is a value that is no function (an enum member, an icon)
+    for (const other of [
+      "if (a.save == null) f();",
+      '(function (e) { e.save = "save"; })(K || (K = {}));',
+      'Icon.save = new Icon("save", {});',
+    ])
+      expect([other, rows(cls + other)]).toEqual([
+        other,
+        ["localStorage write ka [inferred] via A.save @1:59"],
+      ]);
+  });
+
   it("follows no wrapper per call in a file with more functions than it follows wrappers for", () => {
     const source = [
       "function put(k) { localStorage.setItem(k, 1); }",

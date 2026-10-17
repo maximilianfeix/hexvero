@@ -256,6 +256,11 @@ the resolver finds them for IPC and endpoint helpers, and only where the name me
   call of it.
 - A parameter, local, `catch (name)` or block declaration of the name around a call binds the
   name there, and that call does not count.
+- A method or object-literal function whose name is also assigned as a member anywhere in the
+  file (`x.save = …`, `x["save"] = …`, `A.prototype.save = …`, `Object.defineProperty(x, "save",
+  …)`, a `save` key of an object literal passed to `Object.assign`) has no call read: `x.save(…)`
+  may call that other function. A value that is no function does not count (`e.save = "save"` of
+  an enum, `Icon.save = new Icon(…)`, a literal, an object or array literal).
 
 A class is the one written as `class Name`, `var Name = class` or `exports.Name = class`. Two
 classes of one name in one file are not told apart by an instance `x.name(…)`.

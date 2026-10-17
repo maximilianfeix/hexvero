@@ -308,6 +308,10 @@ interface Structure {
   fnDecls: Map<string, FnDef[]> | null;
   /** Functions by the names their parameters bind (see `paramAround`). */
   paramDefs: Map<string, FnDef[]> | null;
+  /** Names assigned as a member somewhere in the file (see `memberWritten`). */
+  memberWrites: Map<string, boolean>;
+  /** Member names written through a string key (`x["k"] = …`, defineProperty, Object.assign). */
+  stringWrites: Set<string> | null;
 }
 
 const structures = new WeakMap<Token[], Structure>();
@@ -407,6 +411,8 @@ export class ExpressionResolver {
         moduleTable: null,
         fnDecls: null,
         paramDefs: null,
+        memberWrites: new Map(),
+        stringWrites: null,
       };
       structures.set(tokens, shared);
     }
@@ -3822,11 +3828,87 @@ export class ExpressionResolver {
     return f.owner === def.owner && parents[f.paramsAt - 1] === body;
   }
 
+  /**
+   * A member named NAME is assigned somewhere in the file: `x.NAME = …`, `x["NAME"] = …`
+   * (also `A.prototype.NAME = …`), `Object.defineProperty(x, "NAME", …)`, or a key NAME of an
+   * object literal passed to `Object.assign(…)`, with a value that may be a function (see
+   * `assigns`). Then `x.NAME(…)` may call that instead of a
+   * method or object-literal function of the name, and its calls are not read. The positions of
+   * the name per name, and one pass over the file's strings for all names, kept.
+   */
+  private memberWritten(name: string): boolean {
+    const known = this.s.memberWrites.get(name);
+    if (known !== undefined) return known;
+    this.innermostBlock(0, null); // builds the table of brackets
+    const parents = this.s.parents!;
+    // `= <value>` where the value may be a function; a literal, `new X(…)`, an object or array
+    // literal or `!0` is none, so `e.save = "save"` (an enum) or `e.save = new Icon(…)` is no
+    // other `save` to call
+    const assigns = (j: number): boolean => {
+      if (!this.punct(j, "=")) return false;
+      const v = this.tokens[j + 1];
+      if (!v) return false;
+      if (v.type === "string" || v.type === "number" || v.type === "template") return false;
+      if (v.type === "ident" && /^(new|true|false|null|void|undefined)$/.test(v.value))
+        return false;
+      return !(v.type === "punct" && /^(\{|\[|!|-)$/.test(v.value));
+    };
+    const inAssign = (j: number): boolean => {
+      const brace = parents[j]!;
+      if (brace === -1 || !this.punct(brace, "{")) return false;
+      const call = parents[brace]!;
+      return (
+        call > 2 &&
+        this.punct(call, "(") &&
+        this.is(call - 1, "ident", "assign") &&
+        this.punct(call - 2, ".") &&
+        this.is(call - 3, "ident", "Object")
+      );
+    };
+    let found = false;
+    for (const j of this.positions(name)) {
+      if (this.punct(j - 1, ".") && assigns(j + 1)) found = true;
+      // `{ NAME: …`, `{ NAME, …`, `{ NAME(…) {…}` as an argument of Object.assign
+      else if (
+        (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
+        (this.punct(j + 1, ":") ||
+          this.punct(j + 1, ",") ||
+          this.punct(j + 1, "}") ||
+          this.punct(j + 1, "(")) &&
+        inAssign(j)
+      )
+        found = true;
+      if (found) break;
+    }
+    // names written through a string key: one pass over the file for all names
+    if (!this.s.stringWrites) {
+      const written = new Set<string>();
+      for (let j = 0; j < this.tokens.length; j++) {
+        const t = this.tokens[j]!;
+        if (t.type !== "string" || written.has(t.value)) continue;
+        if (
+          (this.punct(j - 1, "[") && this.punct(j + 1, "]") && assigns(j + 2)) ||
+          (this.punct(j - 1, ",") &&
+            this.is(j - 4, "ident", "defineProperty") &&
+            this.punct(j - 5, ".")) ||
+          (this.punct(j + 1, ":") && inAssign(j))
+        )
+          written.add(t.value);
+      }
+      this.s.stringWrites = written;
+    }
+    if (this.s.stringWrites.has(name)) found = true;
+    this.s.memberWrites.set(name, found);
+    return found;
+  }
+
   private callSites(def: FnDef): number[] {
     const cached = this.siteCache.get(def);
     if (cached) return cached;
     const out: number[] = [];
     this.siteCache.set(def, out);
+    // a method or an object literal's function whose name is also assigned as a member
+    if ((def.owner || def.member) && this.memberWritten(def.name!)) return out;
     const tokens = this.tokens;
     const instances = new Set<string>(
       def.owner ? this.instancesOf(def.owner).map((x) => x.name) : [],
