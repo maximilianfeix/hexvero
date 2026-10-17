@@ -55,7 +55,7 @@
       "status": "draft",
       "url": null,
       "date": "2026-10-17",
-      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md). Updated for 0.9.0 facts on 2026-10-17 (holdout5, check); verify npx hexvero@0.9.0 demo/check before posting. Fiddle bridge links (0 → 45 of 46) and holdout5 development-set numbers added, kept apart from the blind result. 0.9.1 (2026-10-17): verify with npx hexvero@0.9.1; its development-set numbers are claims N2 (docs/launch/claims.md), never mixed with the blind A1/A2."
+      "evidence": "HN guidelines forbid generated text and automated posting; only a fact brief for the maintainer exists (docs/launch/hn-fact-brief.md). Updated for 0.9.0 facts on 2026-10-17 (holdout5, check); verify npx hexvero@0.9.0 demo/check before posting. Fiddle bridge links (0 → 45 of 46) and holdout5 development-set numbers added, kept apart from the blind result. Latest 0.9.2 (2026-10-17): verify with npx hexvero@0.9.2. New blind set holdout6 measured once (claims B1); development-set numbers (N2, B2) never mixed with blind ones."
     },
     {
       "channel": "punkpeye/awesome-mcp-servers",
@@ -83,19 +83,19 @@
     },
     {
       "channel": "npm",
-      "item": "hexvero 0.9.0 and 0.9.1",
+      "item": "hexvero 0.9.0, 0.9.1 and 0.9.2",
       "status": "published",
       "url": "https://www.npmjs.com/package/hexvero",
       "date": "2026-10-17",
-      "evidence": "0.9.0: release run 38990077564 green (01:20Z). 0.9.1: release run 38996747203 green (03:00Z); npm dist-tag latest = 0.9.1; npx hexvero@0.9.1 --version, demo, check (exit 3, the demo policy is violated on purpose) and compare --report (33,298 bytes) from an empty cache."
+      "evidence": "0.9.0: run 38990077564 (01:20Z). 0.9.1: run 38996747203 (03:00Z). 0.9.2: run 39044161003 (15:20Z), npm dist-tag latest = 0.9.2; npx hexvero@0.9.2 --version, demo, check (exit 3, the demo policy is violated on purpose), compare --report (33,298 bytes) and the Electron Fiddle storage compare from an empty cache."
     },
     {
       "channel": "GitHub release",
-      "item": "v0.9.0, v0.9.1",
+      "item": "v0.9.0, v0.9.1, v0.9.2",
       "status": "published",
-      "url": "https://github.com/maximilianfeix/hexvero/releases/tag/v0.9.1",
+      "url": "https://github.com/maximilianfeix/hexvero/releases/tag/v0.9.2",
       "date": "2026-10-17",
-      "evidence": "gh release view v0.9.0 / v0.9.1: draft=false; notes from CHANGELOG."
+      "evidence": "gh release view v0.9.0 / v0.9.1 / v0.9.2: draft=false; notes from CHANGELOG."
     },
     {
       "channel": "Website",
@@ -103,15 +103,15 @@
       "status": "published",
       "url": "https://maximilianfeix.github.io/hexvero/",
       "date": "2026-10-17",
-      "evidence": "Pages workflow green on main; /demo/report.md names hexvero 0.9.1."
+      "evidence": "Pages workflow green on main; /demo/report.md names hexvero 0.9.2; the CI snippet pins hexvero@0.9.2 (2026-10-17)."
     },
     {
       "channel": "Official MCP registry",
-      "item": "server.json 0.9.1",
+      "item": "server.json 0.9.2",
       "status": "published",
       "url": "https://registry.modelcontextprotocol.io/v0/servers?search=hexvero",
       "date": "2026-10-17",
-      "evidence": "Registry search lists 0.9.1 with isLatest true (MCP registry workflow green on main)."
+      "evidence": "Registry search lists 0.9.2 with isLatest true (MCP registry workflow green on main, 2026-10-17)."
     },
     {
       "channel": "X",
