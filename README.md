@@ -17,12 +17,6 @@ The interfaces pages can call, window settings and network hosts that changed be
 
 </div>
 
-<!-- unreleased-note:start -->
-
-> **Version note.** This README describes `main`, which becomes 0.9.0. npm serves 0.8.0, which has `demo`, `compare` and `compare --report report.md`, but not `hexvero check`, the HTML report, the interface map, the `hexvero_check` MCP tool or reading `app.asar.unpacked`; those are under _Unreleased_ in the [changelog](CHANGELOG.md). To run `main` today: `git clone`, `npm install`, `npm run build`, `node packages/cli/bin/hexvero.js`.
-
-<!-- unreleased-note:end -->
-
 ![hexvero comparing two builds of an Electron app: counts of changed interfaces, window settings and hosts, the lists that were not compared whole, the window settings to review and the change filters](docs/screenshots/ui-compare.png)
 
 <sub>The local web UI comparing two builds of the example app in [`examples/`](examples/). Real output.</sub>

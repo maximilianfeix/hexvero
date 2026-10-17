@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-17
+
 ### Electron analysis
 
 - IPC wrapper classes and objects: a method that passes one of its parameters on, whole, as the
