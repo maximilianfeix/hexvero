@@ -209,6 +209,118 @@ describe("HTTP client modules", () => {
       expect(sfw.slice(1)).toEqual([expect.stringMatching(/^http-client GET \?\w+ \[unknown\]$/)]);
     });
 
+  it("does not take a function passed to a call for an immediately called one", () => {
+    const H = 'const https = require("https");\n';
+    expect(
+      show(H + 'foo(function (u) { https.get(u); })("https://not-the-arg.example/");'),
+    ).toEqual(["http-client GET ?u [unknown]"]);
+    expect(show(H + 'foo((u) => https.get(u))("https://not-the-arg-arrow.example/");')).toEqual([
+      "http-client GET ?u [unknown]",
+    ]);
+    expect(show(H + '(function (u) { https.get(u); })("https://iife-real.example/");')).toEqual([
+      "http-client GET https://iife-real.example/ [inferred]",
+    ]);
+    expect(show(H + '!function (u) { https.get(u); }("https://iife-bang.example/");')).toEqual([
+      "http-client GET https://iife-bang.example/ [inferred]",
+    ]);
+    expect(show(H + '((u) => https.get(u))("https://iife-arrow.example/");')).toEqual([
+      "http-client GET https://iife-arrow.example/ [inferred]",
+    ]);
+  });
+
+  it("does not take another binding of the client's name for the client", () => {
+    const H = 'const https = require("https");\n';
+    for (const source of [
+      'const { get } = require("https");\nfunction f(o) { const { get } = o; get("https://other-get.example/"); }',
+      'const { get } = require("https");\nfunction f(o) { const [get] = o; get("https://other-get.example/"); }',
+      H +
+        'function f(o) { { const { https } = o; https.get("https://fake-destructure.example/"); } }',
+      H +
+        'function f(o) { const { https } = o; return () => https.get("https://fake-destructure2.example/"); }',
+      H + 'for (const https of mirrors) https.get("https://fake-forof.example/");',
+      H + 'try { x(); } catch (https) { https.get("https://fake-catch.example/"); }',
+      H + 'class A { https = makeFake(); run() { this.https.get("https://via-this.example/"); } }',
+      // name-only, without a binding to the module
+      'function f(o) { { const { https } = o; https.get("https://fake-destructure.example/"); } }',
+      'for (const https of mirrors) https.get("https://fake-forof.example/");',
+      'class A { run() { this.https.get("https://via-this.example/"); } }',
+    ])
+      expect(show(source)).toEqual([]);
+    // the client itself, in a block of its own scope, is still read
+    expect(show(H + '{ https.get("https://real.example/a"); }')).toEqual([
+      "http-client GET https://real.example/a [literal]",
+    ]);
+  });
+
+  it("reads options merged over a URL only when every part they set is known", () => {
+    const H = 'const https = require("https");\n';
+    expect(
+      show(
+        [
+          H + 'https.request("https://a.example/x?q=1", { hostname: "b.example" });',
+          'https.request("https://a.example/x", { path: "/y", method: "POST" });',
+          'https.request("https://a.example/x", { hostname: host });',
+          'https.request("https://a.example/x", { port: 8443 });',
+          'https.request("https://a.example/x", { ...defaults });',
+          'https.get("https://a.example/z", { headers: { accept: "json" } });',
+          'https.request({ hostname: "a.example", defaultPort: 8443, path: "/p" });',
+          'https.request({ hostname: "a.example", lookup: myLookup, path: "/p" });',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "http-client https://b.example/x?q=1 [inferred]",
+      "http-client POST https://a.example/y [inferred]",
+      "http-client ?options.hostname [unknown]",
+      "http-client ?options.port [unknown]",
+      "http-client ?<options> [unknown]",
+      "http-client GET https://a.example/z [literal]",
+      "http-client ?options.defaultPort [unknown]",
+      "http-client ?options.lookup [unknown]",
+    ]);
+  });
+
+  it("reads new URL under an imported name only where that name means the import", () => {
+    const head = 'const { URL: U } = require("url");\nconst https = require("https");\n';
+    expect(show(head + 'https.get(new U("/x", "https://base.example/"));')).toEqual([
+      "http-client GET https://base.example/x [inferred]",
+    ]);
+    expect(
+      show(head + 'function f(U) { https.get(new U("/x", "https://base.example/")); }'),
+    ).toEqual(["http-client GET ?<expression> [unknown]"]);
+  });
+
+  it("stays linear on many client calls (outer bindings, nesting, named functions, options)", () => {
+    const n = 32_000;
+    const shapes = [
+      'const https = require("https");\nfunction mod() {\n' +
+        Array.from({ length: n }, (_, i) => `https.get("https://h${i}.example/");`).join("\n") +
+        "\n}",
+      'const https = require("https");\n' +
+        "function a() {".repeat(60) +
+        Array.from({ length: 16_000 }, (_, i) => `https.get(x${i});`).join("\n") +
+        "}".repeat(60),
+      'const { get } = require("https");\nfunction mod() {\n' +
+        Array.from({ length: n }, (_, i) => `get(y${i});`).join("\n") +
+        "\n}",
+      'const https = require("https");\nfunction mod() {\n' +
+        Array.from({ length: n }, (_, i) => `https.request({ hostname: h${i}, path: "/" });`).join(
+          "\n",
+        ) +
+        "\n}",
+      Array.from({ length: n }, (_, i) => `function f${i}(https) { https.get(u${i}); }`).join("\n"),
+    ];
+    for (const source of shapes) {
+      const started = performance.now();
+      const found = find(source);
+      // generous: the point is linear against quadratic, and test machines are busy
+      expect(performance.now() - started).toBeLessThan(5_000);
+      expect(found.endpoints.length).toBeLessThanOrEqual(2000);
+    }
+    const capped = find(shapes[0]!);
+    expect(capped.clientsSkipped).toBe(true);
+    expect(capped.endpoints).toHaveLength(2000);
+  });
+
   it("stays linear on hostile input", () => {
     const n = 20_000;
     const source = [

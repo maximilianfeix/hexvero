@@ -314,9 +314,13 @@ read as a `fetch` URL is, when the name it is made on is bound to that module:
   `net.request(…)`, and `E.net.request(…)` with `E = require("electron")` (esbuild's
   `import_electron.net.request(…)`).
 
-The name must mean that binding at the call: a parameter, a declaration or a `catch` binding of
-the name in a function between the call and the binding is another object, and a name assigned
-again anywhere in the file (`h = mock`) is no client at all. The request libraries named by
+The name must mean that binding at the call: a parameter of the name in a function between the
+call and the binding, a `catch` binding, or any other declaration of the name visible at the call
+(`const|let|var|function|class NAME`, a destructuring pattern, `const { get } = o`, `[get] = o`,
+a `for (const https of …)` head) is another object, and a name assigned again anywhere in the file
+(`h = mock`) is no client at all. The declarations of a name are read once per file into ranges,
+so the check is linear; at most 2,000 client calls are checked per file, and the further ones give
+no rows (limitation `client_calls_skipped`). The request libraries named by
 `require` (`axios`, `got`, `ky`, `superagent`, `needle`) count the same way. The method is `GET`
 for `get`, `POST` etc. for the verb methods, and for `request` the `method` option when the call
 writes one.
@@ -326,9 +330,12 @@ the function around the call, followed to the call sites of that function with t
 rules (as for storage wrappers above: a function declared once, `this.name(…)` only in its own
 class, no shadowing binding, no member assignment of the name, at most 64 call sites, depth 3).
 An anonymous function called where it is written (`async function (t, e) { … }(t, e)`,
-`(function (u) { … })(x)`, `((u) => { … })(x)`) has that call as its one call site, and
+`(function (u) { … })(x)`, `!function (u) { … }(x)`, `((u) => { … })(x)`) has that call as its
+one call site; the parenthesis around it must group it, not open a call it is an argument of
+(`foo(function (u) { … })(x)` calls what `foo` returns), and
 `new URL(t)` is read also when `URL` comes from `node:url` under another name (`import { URL as
-Nt } from "node:url"`, `new url.URL(…)`). Only a value shaped like an address counts (a scheme,
+Nt } from "node:url"`, `new url.URL(…)`), where that name means the import (a parameter `Nt` is
+something else). Only a value shaped like an address counts (a scheme,
 `/path`, or another module's constant). When some call sites give an address and others cannot be
 read, the call has a row per address and keeps an unknown row too (`expression` names the
 argument): Electron Fiddle 0.39.0's `sfw.mjs` reads
@@ -342,9 +349,14 @@ An options object is read only when every part of the address is known: `hostnam
 `net`), each one whole string; `url` for `net` and the request libraries. Anything else is an
 unknown row whose `expression` says which part was not read: `options.hostname` (also when none is
 written: Node then sends the request to localhost, which is not taken for an address),
-`options.port` and `options.socketPath` (not read at all), `options.url` for Node's `http` and
+`options.port`, `options.defaultPort`, `options.socketPath`, `options.lookup` and
+`options.createConnection` (not read at all), `options.url` for Node's `http` and
 `https` (which take no `url` option), `options.path`, `options.protocol`, and `<options>` for an
-object with a spread of something unknown. An argument that cannot be read is an unknown row with
+object with a spread of something unknown. Node merges an options object over a URL
+(`https.request(url, { hostname })`): when the second argument is an object literal that sets
+`protocol`, `hostname`, `host` or `path`, those parts replace the URL's, and only when each is
+known; one of the options above, a spread or a part that is not known makes the row unknown. An
+options object passed as a name there is not read (the URL is kept). An argument that cannot be read is an unknown row with
 the argument as `expression`; nothing is guessed.
 
 An address another module exports as a template on its own constant (`module.exports = {
@@ -353,15 +365,17 @@ third module passes it on with a spread (`module.exports = { ...endpoints }`) or
 the modules (esbuild, plain and minified), is read for `fetch` and the clients above. Every gap of
 the template must be one name of a string constant of that module, declared before the template,
 and written exactly once in the whole file: a second declaration, an assignment (`API_ROOT = …`,
-`+=`, `++`), or another binding of the name as a parameter or in a destructuring pattern makes the
-entry unread, and the request keeps its unknown row. Anything else in a gap (`${API_ROOT.trim()}`,
+`+=`, `++`), or another binding of the name (a parameter, also of an arrow `API_ROOT => …`, a
+destructuring pattern, a `for (const API_ROOT of|in …)` head) makes the entry unread, and the request keeps its unknown row. Anything else in a gap (`${API_ROOT.trim()}`,
 a call, a name the module does not declare) is not read either. At most 64 such names are checked
 per file.
 
 A client known by its name only (`https.get(…)` where `https` is not bound in the file,
 `axios.post(…)`) is read as before, without unknown rows; where a parameter or local of that name
-is meant (`function login(axios, body)`), the URL is read at the call only, not through call
-sites. Not read: modules a bundler refers to by number (webpack's `r = n(65692)` for
+is meant as a parameter (`function login(axios, body)`), the URL is read at the call only, not
+through call sites; a declaration, pattern or `for … of` of the name, and a member of another
+object (`this.https.get(…)`), make it no client by name (only the shape rule for unknown objects
+applies). Not read: modules a bundler refers to by number (webpack's `r = n(65692)` for
 `e.exports = require("https")`, as in Fiddle's main bundle, where Sentry's `t.net.request(…)` and
 `electron-devtools-installer`'s `s.net ? s.net.request : r.get` stay without a row in both
 versions), a client passed around as a value (`const l = net.request; l(url)`), wrappers called

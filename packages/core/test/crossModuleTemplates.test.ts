@@ -106,6 +106,19 @@ describe("templates on another module's constants", () => {
       ),
       // not a constant at all
       GOOD.replace('"https://api.example/v1"', "process.env.API_ROOT"),
+      // another binding of the name around the template
+      GOOD.replace(
+        "module.exports = {",
+        'for (const API_ROOT of ["https://loop.example"]) module.exports = {',
+      ),
+      GOOD.replace("module.exports = {", "module.exports = ((API_ROOT) => ({").replace(
+        "};",
+        '}))("https://other.example");',
+      ),
+      GOOD.replace("module.exports = {", "module.exports = (API_ROOT => ({").replace(
+        "};",
+        '}))("https://other.example");',
+      ),
       // a name that is not this module's
       GOOD.replace("`${API_ROOT}/directory/top`", "`${HOST}/directory/top`"),
       // more than a name in the gap

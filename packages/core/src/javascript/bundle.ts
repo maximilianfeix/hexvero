@@ -657,6 +657,12 @@ export function analyzeBundle(source: string, options: { maxTokens?: number } = 
       code: "candidates_truncated",
       message: "More endpoints, storage accesses or URLs exist than the 2,000 per list recorded.",
     });
+  if (cands.clientsSkipped)
+    limitations.push({
+      code: "client_calls_skipped",
+      message:
+        "More than 2,000 calls of HTTP client modules (node:https, node:http, Electron's net) were checked; the further ones give no endpoint rows.",
+    });
   if (cands.wrappersSkipped)
     limitations.push({
       code: "storage_wrappers_skipped",

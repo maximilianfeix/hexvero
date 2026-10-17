@@ -1628,6 +1628,15 @@ export class Constants {
         (before?.type === "punct" && (before.value === "++" || before.value === "--"))
       )
         writes++;
+      // `for (const NAME of …)`, `NAME => …`: another binding of the name
+      else if (
+        (before?.type === "ident" &&
+          /^(const|let|var)$/.test(before.value) &&
+          after?.type === "ident" &&
+          (after.value === "of" || after.value === "in")) ||
+        (after?.type === "punct" && after.value === "=>")
+      )
+        writes = 2;
       // `function f(NAME)`, `(NAME) =>`, `{ NAME } = …`, `catch (NAME)`: another binding
       else if (
         before?.type === "punct" &&

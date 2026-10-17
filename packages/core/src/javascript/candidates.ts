@@ -113,7 +113,12 @@ export interface Candidates {
    * keys passed through a wrapper there are not read at each call. The caller reports it.
    */
   wrappersSkipped?: true;
+  /** More HTTP client calls than MAX_CLIENT_CALLS were checked; the rest gave no rows. */
+  clientsSkipped?: true;
 }
+
+/** HTTP client calls per file whose binding is checked (see `clients` in findCandidates). */
+const MAX_CLIENT_CALLS = 2000;
 
 /**
  * Functions (`function` and `=>`) a file may have for storage wrappers to be followed in it. The
@@ -147,6 +152,20 @@ const clientModule = (spec: Token | undefined): ClientModule | null => {
   const m = /^(?:node:)?(https?|axios|got|ky|superagent|needle)$/.exec(spec.value);
   return !m ? null : m[1] === "http" || m[1] === "https" ? m[1] : "lib";
 };
+/** Words that start an expression; an argument starting with one is no name. */
+const OPERATOR_WORDS = new Set([
+  "new",
+  "await",
+  "typeof",
+  "void",
+  "function",
+  "class",
+  "yield",
+  "async",
+  "delete",
+]);
+/** Options that change where a request goes and are not read: their row is unknown. */
+const ADDRESS_OVERRIDES = ["port", "defaultPort", "socketPath", "lookup", "createConnection"];
 /** An unknown row: a request whose address is not read, `expression` saying what was not. */
 const unknownRead = (expression: string): Read => ({
   value: null,
@@ -290,7 +309,12 @@ export function findCandidates(
           value += known;
           if (evidence === "literal") evidence = "inferred";
         } else if (parts === 0 && !is(tokens[j + 1], "punct", "+"))
-          return { value: null, evidence: "unknown", expression: t.value };
+          return {
+            value: null,
+            evidence: "unknown",
+            // `new U(…)`, `await x`: an expression, not a name
+            expression: OPERATOR_WORDS.has(t.value) ? "<expression>" : t.value,
+          };
         else {
           value += "${…}";
           evidence = "template";
@@ -652,15 +676,25 @@ export function findCandidates(
         }
       }
   }
+  // Calls checked against the bindings per file; above the cap, client calls are not read
+  // (limitation `client_calls_skipped`), so no input makes the check slow.
+  let clientChecks = 0;
+  const refers = (j: number, at: number): boolean => {
+    if (clientChecks++ >= MAX_CLIENT_CALLS) {
+      out.clientsSkipped = true;
+      return false;
+    }
+    return (wrapperResolver ??= makeResolver()).refersTo(j, tokens[j]!.value, at);
+  };
+  const means = (j: number, list: Array<{ at: number }> | undefined): boolean =>
+    !!list?.some((c) => refers(j, c.at));
   /** The client module the verb at k is called on, when it is one of the bindings above. */
   const clientAt = (k: number): { module: ClientModule; verb: string } | null => {
     const t = tokens[k]!;
-    const means = (j: number, list: Array<{ at: number }> | undefined): boolean =>
-      !!list?.some((c) => (wrapperResolver ??= makeResolver()).refersTo(j, tokens[j]!.value, c.at));
     if (!is(tokens[k - 1], "punct", ".") && !is(tokens[k - 1], "punct", "?.")) {
       const list = functions.get(t.value);
       if (!list || is(tokens[k - 1], "ident", "function")) return null;
-      const hit = list.find((c) => (wrapperResolver ??= makeResolver()).refersTo(k, t.value, c.at));
+      const hit = list.find((c) => refers(k, c.at));
       return hit ? { module: hit.module, verb: hit.verb } : null;
     }
     if (!HTTP_VERBS.has(t.value)) return null;
@@ -752,8 +786,7 @@ export function findCandidates(
     }
     if (module === "lib") return unknownRead("<options>");
     // a port or a socket changes where the request goes; neither is read
-    for (const key of ["port", "socketPath"])
-      if (v.props.has(key)) return unknownRead(`options.${key}`);
+    for (const key of ADDRESS_OVERRIDES) if (v.props.has(key)) return unknownRead(`options.${key}`);
     const protocol = part("protocol");
     const scheme = protocol ?? (module === "https" ? "https:" : "http:");
     if (protocol === null || !/^https?:$/.test(scheme)) return unknownRead("options.protocol");
@@ -767,6 +800,70 @@ export function findCandidates(
       return unknownRead("options.path");
     return { value: `${scheme}//${host}${path ?? "/"}`, evidence: "inferred" };
   };
+  /**
+   * Node's `http(s).request(url, options)` merges the options over the URL: an options object
+   * written as the second argument that sets a part of the address replaces that part. The
+   * result is read only when every part it sets is known; otherwise the row is unknown. Null:
+   * the options change nothing of the address (or there are none written there).
+   */
+  const ADDRESS_KEYS = ["protocol", "hostname", "host", "path", ...ADDRESS_OVERRIDES];
+  const overridden = (at: number, r: Read): Read | null => {
+    const end = (wrapperResolver ??= makeResolver()).endOf(at);
+    if (!is(tokens[end], "punct", ",") || !is(tokens[end + 1], "punct", "{")) return null;
+    const objectAt = end + 1;
+    const close = wrapperResolver.closeOf(objectAt);
+    // what the literal writes at its top level: keys and spreads
+    const keys = new Set<string>();
+    let spread = false;
+    let d = 0;
+    for (let j = objectAt; close !== -1 && j < close; j++) {
+      const p = tokens[j]!;
+      if (p.type === "punct") {
+        if (p.value === "{" || p.value === "(" || p.value === "[") d++;
+        else if (p.value === "}" || p.value === ")" || p.value === "]") d--;
+        else if (d === 1 && p.value === "...") spread = true;
+        continue;
+      }
+      if (d === 1 && (is(tokens[j - 1], "punct", "{") || is(tokens[j - 1], "punct", ",")))
+        keys.add(p.type === "string" ? p.value : p.value);
+    }
+    const sets = ADDRESS_KEYS.filter((key) => keys.has(key));
+    if (!sets.length && !spread) return null;
+    if (spread || close === -1) return unknownRead("<options>");
+    const found = ADDRESS_OVERRIDES.find((key) => keys.has(key));
+    if (found) return unknownRead(`options.${found}`);
+    if (optionQuestions++ >= 64) return unknownRead("<options>");
+    const v = wrapperResolver.valueAt(objectAt);
+    if (v?.kind !== "obj" || v.open) return unknownRead("<options>");
+    const part = (key: string): string | null | undefined => {
+      if (!v.props.has(key)) return undefined;
+      const p = v.props.get(key);
+      if (p?.kind !== "str" || p.values.length !== 1) return null;
+      const text = p.values[0]!;
+      return text.includes("${…}") || text.includes(REF_OPEN) ? null : text;
+    };
+    for (const key of sets) if (part(key) === null) return unknownRead(`options.${key}`);
+    const values: string[] = [];
+    for (const value of [r.value!, ...(r.more ?? [])]) {
+      if (value.includes("${…}") || value.includes(REF_OPEN))
+        return unknownRead(`options.${sets[0]}`);
+      let url: URL;
+      try {
+        url = new URL(value);
+      } catch {
+        return unknownRead(`options.${sets[0]}`);
+      }
+      const protocol = part("protocol") ?? url.protocol;
+      const host = part("hostname") ?? part("host") ?? url.host;
+      const path = part("path") ?? `${url.pathname}${url.search}`;
+      if (!/^https?:$/.test(protocol)) return unknownRead("options.protocol");
+      if (!/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return unknownRead("options.hostname");
+      if (!path.startsWith("/")) return unknownRead("options.path");
+      values.push(`${protocol}//${host}${path}`);
+    }
+    const [first, ...rest] = values;
+    return { value: first!, evidence: "inferred", ...(rest.length ? { more: rest } : {}) };
+  };
   const clientRequest = (t: Token, open: number, module: ClientModule, name: string): void => {
     const at = open + 1;
     const method = name === "request" ? verb(open) : { method: name.toUpperCase() };
@@ -774,8 +871,16 @@ export function findCandidates(
       push(out.endpoints, "http-client", optionsAddress(at, module), t, method);
       return;
     }
-    const r = readArg(at, true);
+    let r = readArg(at, true);
     if (!r) return;
+    if (
+      r.value !== null &&
+      ADDRESS_START.test(r.value) &&
+      (module === "http" || module === "https")
+    ) {
+      const merged = overridden(at, r);
+      if (merged) r = { ...merged, ...(r.partial ? { partial: true as const } : {}) };
+    }
     if (r.value !== null && ADDRESS_START.test(r.value)) {
       push(out.endpoints, "http-client", r, t, method);
       // a call site that could not be read keeps the unread row too, so nothing unread is hidden
@@ -879,11 +984,15 @@ export function findCandidates(
       // A client by its name only. Where a parameter or a local of that name is meant
       // (`function login(axios, body)`), the URL is read at the call only: a value bound from
       // call sites would be taken for a request of whatever object the callers pass.
-      const client = is(owner, "ident") && HTTP_CLIENTS.has(owner!.value);
-      const local =
-        client &&
-        !is(tokens[k - 3], "punct", ".") &&
-        (wrapperResolver ??= makeResolver()).shadowedAt(k - 2, owner!.value);
+      // A declaration, pattern or `for … of` of the name (`const { https } = o`), and a member
+      // of another object (`this.https`), are other objects: then only the shape counts.
+      const named =
+        is(owner, "ident") && HTTP_CLIENTS.has(owner!.value) && !is(tokens[k - 3], "punct", ".");
+      const bound = named
+        ? (wrapperResolver ??= makeResolver()).boundAround(k - 2, owner!.value)
+        : null;
+      const client = named && bound !== "local";
+      const local = bound === "param";
       // `net.request({ url: "https://…", method: "POST" })`: the address is an option.
       const url = is(tokens[k + 2], "punct", "{") ? option(k + 1, "url") : null;
       if (url !== null) {
