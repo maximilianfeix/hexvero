@@ -294,6 +294,8 @@ function paramNames(params: Param[]): string[] {
 
 /** What a resolver derives from a file's tokens alone; built once per token array. */
 interface Structure {
+  /** Names bound to `URL` or to the `url` module (see `urlConstructor`). */
+  urlNames: { classes: Map<string, number>; modules: Map<string, number> } | null;
   match: Int32Array;
   opener: Int32Array;
   defs: FnDef[] | null;
@@ -432,6 +434,7 @@ export class ExpressionResolver {
         paramDefs: null,
         memberWrites: new Map(),
         stringWrites: null,
+        urlNames: null,
       };
       structures.set(tokens, shared);
     }
@@ -629,6 +632,30 @@ export class ExpressionResolver {
     if (!field) return null;
     const cls = this.classRanges().find((c) => k > c.start && k < c.end);
     if (!cls) return null;
+    // The answer depends on the class, the field and the two tables only, not on k: one reading
+    // of the class body per field (a class that calls `this.ipc.on(…)` a hundred times).
+    if (this.fieldOwners?.aliases !== aliases || this.fieldOwners.targets !== targets)
+      this.fieldOwners = { aliases, targets, owners: new Map() };
+    const key = `${cls.start}\u0000${field}`;
+    const known = this.fieldOwners.owners.get(key);
+    if (known !== undefined) return known;
+    const owner = this.fieldOwnerIn(cls, field, aliases, targets);
+    this.fieldOwners.owners.set(key, owner);
+    return owner;
+  }
+
+  private fieldOwners: {
+    aliases: Map<number, string>;
+    targets: ReadonlySet<string>;
+    owners: Map<string, string | null>;
+  } | null = null;
+
+  private fieldOwnerIn(
+    cls: { name: string; start: number; end: number },
+    field: string,
+    aliases: Map<number, string>,
+    targets: ReadonlySet<string>,
+  ): string | null {
     const owners = new Set<string>();
     for (let j = cls.start; j < cls.end; j++) {
       if (
@@ -655,13 +682,11 @@ export class ExpressionResolver {
       const index = ctor ? this.paramIndex(ctor, name) : -1;
       if (!ctor || index === -1) return null;
       let seen = 0;
-      for (let n = 0; n + 2 < this.tokens.length; n++) {
-        if (
-          !this.is(n, "ident", "new") ||
-          !this.is(n + 1, "ident", cls.name) ||
-          !this.punct(n + 2, "(")
-        )
-          continue;
+      // `new NAME(` in source order, from the name index instead of a walk over every token
+      for (const p of this.positions(cls.name)) {
+        const n = p - 1;
+        if (n < 0 || n + 2 >= this.tokens.length) continue;
+        if (!this.is(n, "ident", "new") || !this.punct(n + 2, "(")) continue;
         const at = this.argStart(n + 2, this.match[n + 2]!, index);
         if (at === null || !this.is(at, "ident")) return null;
         const passed =
@@ -4035,13 +4060,12 @@ export class ExpressionResolver {
    * `const { URL: X } = require("url")`. Module objects of `url` are in `urlModules`
    * (`new url.URL(…)`, esbuild's `new import_node_url.URL(…)`). Computed once per resolver.
    */
-  private urlNames: { classes: Map<string, number>; modules: Map<string, number> } | null = null;
 
   /** At k, after `new`: the `(` of a URL constructor call, or -1. */
   private urlConstructor(k: number): number {
     if (this.is(k, "ident", "URL") && this.punct(k + 1, "(")) return k + 1;
     if (!this.is(k, "ident")) return -1;
-    if (!this.urlNames) {
+    if (!this.s.urlNames) {
       const classes = new Map<string, number>();
       const modules = new Map<string, number>();
       const t = this.tokens;
@@ -4083,14 +4107,14 @@ export class ExpressionResolver {
         }
       }
       modules.delete("");
-      this.urlNames = { classes, modules };
+      this.s.urlNames = { classes, modules };
     }
     const name = this.tokens[k]!.value;
     // the name must mean that import where it is used, not a parameter or local of the name
-    const classDecl = this.urlNames.classes.get(name);
+    const classDecl = this.s.urlNames.classes.get(name);
     if (classDecl !== undefined && this.punct(k + 1, "("))
       return this.refersTo(k, name, classDecl) ? k + 1 : -1;
-    const moduleDecl = this.urlNames.modules.get(name);
+    const moduleDecl = this.s.urlNames.modules.get(name);
     if (
       moduleDecl !== undefined &&
       this.refersTo(k, name, moduleDecl) &&
