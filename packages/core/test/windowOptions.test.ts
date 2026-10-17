@@ -496,3 +496,28 @@ describe("review 2: no safe value for options the code may have changed", () => 
     }
   });
 });
+
+describe("a placed literal is listed once", () => {
+  it("drops the windowless copy of a line the evaluation gave to a window", () => {
+    // a helper merges SECURE and an override; a third window spreads `display.bounds` first, so
+    // not every window's options are known and windowless rows are otherwise kept
+    const info = one(
+      [
+        "const SECURE = Object.freeze({ contextIsolation: true, nodeIntegration: false, sandbox: true });",
+        'function opts(prefs = {}, extra = {}) { return { ...extra, webPreferences: { ...SECURE, preload: "p.js", ...prefs } }; }',
+        'function lib() { return new BrowserWindow(opts({}, { title: "x" })); }',
+        "function ann() { const options = opts({ sandbox: false }); return new BrowserWindow(options); }",
+        "function ov(display) { const webPreferences = { contextIsolation: true, sandbox: true }; return new BrowserWindow({ ...display.bounds, webPreferences }); }",
+      ].join("\n"),
+    );
+    const rows = info.webPreferences.map(
+      (p) => `${p.key}=${String(p.value)}@${p.line}:${p.window}`,
+    );
+    expect(rows.filter((r) => r.endsWith(":null"))).toEqual([]);
+    expect(rows).toEqual(
+      expect.arrayContaining(["sandbox=true@2:1", "sandbox=false@5:2", "preload=p.js@3:2"]),
+    );
+    // the opaque window still reads as computed: nothing it may take is hidden
+    expect(info.windows.find((w) => w.window === 3)?.computed).toContain("sandbox");
+  });
+});

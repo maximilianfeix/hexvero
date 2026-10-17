@@ -52,6 +52,7 @@ these scratch scripts, kept outside the repository:
      others.
    - On the extracted `snapdeck.minified.asar`, run in main-and-preloads mode, it gives the same
      sorted IPC, window and bridge facts as on the sources (identical md5).
+
 4. `gen.mjs` writes both `expected.json` files from facts I wrote down by hand. It looks up each
    line number by a piece of text that must occur exactly once in the named file.
 
@@ -253,7 +254,7 @@ Navigation (extra, unscored)
 
 ## Toolchain
 
-| Tool                    | Version                                                     |
-| ----------------------- | ----------------------------------------------------------- |
+| Tool                    | Version                                                       |
+| ----------------------- | ------------------------------------------------------------- |
 | node                    | v22.17.1 for building and scoring; v25.2.1 for `node --check` |
-| esbuild, @electron/asar | as pinned in `package.json` (through `corpus/build.mjs`)    |
+| esbuild, @electron/asar | as pinned in `package.json` (through `corpus/build.mjs`)      |

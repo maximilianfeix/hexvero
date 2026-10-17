@@ -3826,6 +3826,20 @@ export function analyzeJavaScriptTree(
     if (sandboxCall === "always") facts.enableSandbox = "always";
     else if (sandboxCall === "maybe" && facts.enableSandbox !== "always")
       facts.enableSandbox = "maybe";
+    // A literal the evaluation of a window's options has placed (a base spread into a helper's
+    // `webPreferences`, an override passed to it) is that window's row; the same line without a
+    // window would list the one write twice. A window that is not fully known keeps its
+    // computed keys, so nothing it may take is hidden by this.
+    const placedLines = new Set(
+      found
+        .filter((o) => o.window !== null && o.definedIn === undefined)
+        .map((o) => `${o.key}\u0000${String(o.value)}\u0000${o.line}`),
+    );
+    for (let i = found.length - 1; i >= 0; i--) {
+      const o = found[i]!;
+      if (o.window === null && placedLines.has(`${o.key}\u0000${String(o.value)}\u0000${o.line}`))
+        found.splice(i, 1);
+    }
     for (const { inherited: _inherited, order, scope, group, groupOrder, ...pref } of found) {
       if (pref.window !== null) {
         // A whole `webPreferences` object that a later write of that key replaces: gone with

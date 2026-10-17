@@ -2,9 +2,7 @@
   "case": "snapdeck-v2",
   "kind": "compare",
   "license": "MIT, written for this corpus",
-  "inputs": [
-    "holdout6/snapdeck-v2.plain.asar"
-  ],
+  "inputs": ["holdout6/snapdeck-v2.plain.asar"],
   "base": "holdout6/snapdeck.plain.asar",
   "method": "Every expectation was written from the sources by reading them. No analysis tool was run on them, and no tool's detectors, source code or output were looked at. Line numbers were looked up by a scratch script that finds the line of a given piece of text and fails unless it occurs exactly once. A second scratch script ran main.js, capture, share and delete flows and all three preloads in Node against a stand-in for the electron module (plus a stub fetch) and printed every ipcMain registration, webContents.send, new BrowserWindow with its merged webPreferences, request, and the channel each exposed member invokes, sends on or listens to, each with its stack of file:line; its output agreed with the expectations. main.js, the preloads and the modules in main/ and shared/ are CommonJS; renderer-library.js, renderer-annotator.js and renderer-overlay.js are ES modules that import from renderer/. FILE ATTRIBUTION (as in holdout5): facts are attributed to the source file a reader sees them in. The route table ROUTES, its registration loop and the handleSafe helper are all in main/ipc.js, so those receivers name main/ipc.js; prefs:get / prefs:set are attached in main/prefs.js (PrefsService.register, called from main.js with ipcMain as argument); annotator:dirty is received in main/windows.js; the overlay channels are received with ipcMain.once in main/capture.js; menu:command is sent from main/menu.js, shot:loaded from main/windows.js, overlay:frame from main/capture.js. Every window is created in main/windows.js. In the bundled and minified inputs these modules are bundled into their entry file; bundledFiles maps each module to the file it ends up in (line numbers then do not apply). Channel names come from the frozen Channels object in shared/channels.js (some built as LIBRARY + \"list\" with LIBRARY = \"library:\") and, in the two sandboxed preloads, from literals; the library preload builds five members from the table INVOKE (member -> channel) through invokers(). No channel name is chosen at run time, so ipcChannels has no unknown field; the helpers handleSafe, invokers, listen and request pass channels from their callers, all of them resolvable by reading. webPreferences lists preload, contextIsolation, nodeIntegration, sandbox and webSecurity, one entry per window and key the code writes (also through SECURE_DEFAULTS and the windowOptions helper); count in an absent entry is one more than the number of windows that have that value, as in holdout4 and holdout5. storage is not exhaustive: main/library.js also writes and deletes one PNG per capture at a path made at run time (pictures/Snapdeck/<id>.png); such a file has no fixed name and is not listed, and reporting it is neither a hit nor (unless it matches an absent entry) false. navigation is an extra, unscored class. interfaceLinks follows holdout5: a receiver reached through a helper or table has the line of the ipcMain call as line and entryFile/entryLine where the channel is handed over. For this case: snapdeck/src with changes.json applied the way derive() in corpus/build.mjs applies it, including the three comment lines in front of every .js file; line numbers are those of the derived files. changes lists what differs from snapdeck (plain); unchangedMoves lists facts that only moved and must not be reported as changes.",
   "bundledFiles": {
@@ -28,164 +26,98 @@
       "present": [
         {
           "channel": "library:list",
-          "receivers": [
-            "main/ipc.js"
-          ],
-          "senders": [
-            "preload-library.js"
-          ],
+          "receivers": ["main/ipc.js"],
+          "senders": ["preload-library.js"],
           "why": "main/ipc.js ROUTES row { channel: Channels.LIBRARY_LIST, kind: \"handle\", ... } with LIBRARY_LIST = LIBRARY + \"list\" (LIBRARY = \"library:\"), registered by registerRoutes: for (const route of ROUTES) ipcMain[route.kind](route.channel, route.fn), i.e. ipcMain.handle. registerRoutes is called from main.js. preload-library.js: INVOKE.listShots = \"library:list\", turned into (...args) => ipcRenderer.invoke(channel, ...args) by invokers(INVOKE), spread into api"
         },
         {
           "channel": "library:delete",
-          "receivers": [
-            "main/ipc.js"
-          ],
-          "senders": [
-            "preload-library.js"
-          ],
+          "receivers": ["main/ipc.js"],
+          "senders": ["preload-library.js"],
           "why": "ROUTES row LIBRARY_DELETE, kind handle; preload-library.js INVOKE.deleteShot through invokers"
         },
         {
           "channel": "capture:start",
-          "receivers": [
-            "main/ipc.js"
-          ],
-          "senders": [
-            "preload-library.js"
-          ],
+          "receivers": ["main/ipc.js"],
+          "senders": ["preload-library.js"],
           "why": "ROUTES row CAPTURE_START, kind \"on\"; preload-library.js startCapture: ipcRenderer.send(\"capture:start\")"
         },
         {
           "channel": "shot:open",
-          "receivers": [
-            "main.js"
-          ],
-          "senders": [
-            "preload-library.js"
-          ],
+          "receivers": ["main.js"],
+          "senders": ["preload-library.js"],
           "why": "main.js ipcMain.handle(Channels.SHOT_OPEN, ...) directly; preload-library.js INVOKE.openShot = \"shot:open\" through invokers"
         },
         {
           "channel": "shot:save",
-          "receivers": [
-            "main/ipc.js"
-          ],
-          "senders": [
-            "preload-annotator.js"
-          ],
+          "receivers": ["main/ipc.js"],
+          "senders": ["preload-annotator.js"],
           "why": "main/ipc.js handleSafe(Channels.SHOT_SAVE, ...), handleSafe being a function in the same file whose body calls ipcMain.handle(channel, ...); preload-annotator.js saveShot: request(Channels.SHOT_SAVE, shot), request calling ipcRenderer.invoke(channel, ...args)"
         },
         {
           "channel": "shot:share",
-          "receivers": [
-            "main/ipc.js"
-          ],
-          "senders": [
-            "preload-annotator.js"
-          ],
+          "receivers": ["main/ipc.js"],
+          "senders": ["preload-annotator.js"],
           "why": "handleSafe(Channels.SHOT_SHARE, ...); preload-annotator.js shareShot: request(Channels.SHOT_SHARE, id)"
         },
         {
           "channel": "shot:loaded",
-          "receivers": [
-            "preload-annotator.js"
-          ],
-          "senders": [
-            "main/windows.js"
-          ],
+          "receivers": ["preload-annotator.js"],
+          "senders": ["main/windows.js"],
           "why": "main/windows.js openAnnotator: annotatorWindow.webContents.send(Channels.SHOT_LOADED, shot) inside webContents.once(\"did-finish-load\"); preload-annotator.js onShotLoaded: listen(Channels.SHOT_LOADED), listen returning a function that calls ipcRenderer.on(channel, listener)"
         },
         {
           "channel": "prefs:get",
-          "receivers": [
-            "main/prefs.js"
-          ],
-          "senders": [
-            "preload-library.js",
-            "preload-annotator.js"
-          ],
+          "receivers": ["main/prefs.js"],
+          "senders": ["preload-library.js", "preload-annotator.js"],
           "why": "main/prefs.js PrefsService.register(ipc): ipc.handle(Channels.PREFERENCES_GET, ...), where ipc is ipcMain handed in by main.js prefs.register(ipcMain). Two senders: preload-library.js INVOKE.getPrefs = \"prefs:get\" and preload-annotator.js getPrefs: ipcRenderer.invoke(Channels.PREFERENCES_GET) (v2: the constant's key was renamed, the value is the same)"
         },
         {
           "channel": "prefs:set",
-          "receivers": [
-            "main/prefs.js"
-          ],
-          "senders": [
-            "preload-library.js"
-          ],
+          "receivers": ["main/prefs.js"],
+          "senders": ["preload-library.js"],
           "why": "PrefsService.register: ipc.handle(Channels.PREFERENCES_SET, ...); preload-library.js INVOKE.setPrefs (v2: the constant's key was renamed, the value is the same)"
         },
         {
           "channel": "menu:command",
-          "receivers": [
-            "preload-library.js",
-            "preload-annotator.js"
-          ],
-          "senders": [
-            "main/menu.js"
-          ],
+          "receivers": ["preload-library.js", "preload-annotator.js"],
+          "senders": ["main/menu.js"],
           "why": "main/menu.js sendCommand: BrowserWindow.getFocusedWindow() ... win.webContents.send(Channels.MENU_COMMAND, command), called from the click handlers of the menu template. Two receivers: preload-library.js onMenuCommand ipcRenderer.on(\"menu:command\", listener) (and removeListener) and preload-annotator.js onMenuCommand: listen(Channels.MENU_COMMAND)"
         },
         {
           "channel": "app:version",
-          "receivers": [
-            "main.js"
-          ],
-          "senders": [
-            "preload-library.js"
-          ],
+          "receivers": ["main.js"],
+          "senders": ["preload-library.js"],
           "why": "main.js ipcMain.on(\"app:version\", (event) => { event.returnValue = ... }), a synchronous message; preload-library.js appVersion: ipcRenderer.sendSync(\"app:version\")"
         },
         {
           "channel": "overlay:select",
-          "receivers": [
-            "main/capture.js"
-          ],
-          "senders": [
-            "preload-overlay.js"
-          ],
+          "receivers": ["main/capture.js"],
+          "senders": ["preload-overlay.js"],
           "why": "main/capture.js start: ipcMain.once(\"overlay:select\", ...) inside a Promise executor (ipcMain.removeAllListeners on the same channel afterwards is no new registration); preload-overlay.js select: ipcRenderer.send(\"overlay:select\", rect)"
         },
         {
           "channel": "overlay:cancel",
-          "receivers": [
-            "main/capture.js"
-          ],
-          "senders": [
-            "preload-overlay.js"
-          ],
+          "receivers": ["main/capture.js"],
+          "senders": ["preload-overlay.js"],
           "why": "main/capture.js ipcMain.once(\"overlay:cancel\", ...); preload-overlay.js cancel: ipcRenderer.send(\"overlay:cancel\")"
         },
         {
           "channel": "overlay:frame",
-          "receivers": [
-            "preload-overlay.js"
-          ],
-          "senders": [
-            "main/capture.js"
-          ],
+          "receivers": ["preload-overlay.js"],
+          "senders": ["main/capture.js"],
           "why": "main/capture.js: overlay.webContents.send(\"overlay:frame\", {...}) in webContents.once(\"did-finish-load\"), overlay being the window returned by windows.openOverlay; preload-overlay.js onFrame: ipcRenderer.on(\"overlay:frame\", ...)"
         },
         {
           "channel": "shot:ocr",
-          "receivers": [
-            "main/ipc.js"
-          ],
-          "senders": [
-            "preload-annotator.js"
-          ],
+          "receivers": ["main/ipc.js"],
+          "senders": ["preload-annotator.js"],
           "why": "v2: handleSafe(Channels.SHOT_OCR, ...) in main/ipc.js, SHOT_OCR = \"shot:ocr\"; preload-annotator.js recognizeText: request(Channels.SHOT_OCR, id)"
         },
         {
           "channel": "annotator:modified",
-          "receivers": [
-            "main/windows.js"
-          ],
-          "senders": [
-            "preload-annotator.js"
-          ],
+          "receivers": ["main/windows.js"],
+          "senders": ["preload-annotator.js"],
           "why": "v2: Channels.ANNOTATOR_DIRTY now has the value \"annotator:modified\"; both ends still use the constant (the key name did not change)"
         }
       ],
@@ -682,101 +614,67 @@
         {
           "kind": "file",
           "value": "snapdeck-library.json",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "main/library.js readIndex / writeIndex: fs.readFileSync / fs.writeFileSync of the whole index at path.join(app.getPath(\"userData\"), INDEX_FILE). Kind file as in holdout4 and holdout5"
         },
         {
           "kind": "file",
           "value": "snapdeck-prefs.json",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "main/prefs.js PrefsService, constructed with the file name in module.exports = new PrefsService(\"snapdeck-prefs.json\"); read() and write() through the getter file"
         },
         {
           "kind": "localStorage",
           "value": "snapdeck:theme",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer-library.js settings.get(StorageKey.Theme, ...) in start, settings.set on the theme select; settings (renderer/settings.js) wraps localStorage.getItem / setItem / removeItem, and StorageKey is a TypeScript-compiled string enum: StorageKey[\"Theme\"] = \"snapdeck:theme\""
         },
         {
           "kind": "localStorage",
           "value": "snapdeck:gridSize",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "settings.get(StorageKey.GridSize) in start, settings.set on the range input"
         },
         {
           "kind": "localStorage",
           "value": "snapdeck:lastFolder",
-          "ops": [
-            "read",
-            "write",
-            "delete"
-          ],
+          "ops": ["read", "write", "delete"],
           "why": "settings.get in render and start, settings.set on the folder select, settings.forget (localStorage.removeItem) on Reset view"
         },
         {
           "kind": "localStorage",
           "value": "snapdeck:strokeWidth",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer-annotator.js settings.get(StorageKey.StrokeWidth, 4), settings.set on the width input"
         },
         {
           "kind": "localStorage",
           "value": "snapdeck:ocrLanguage",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "v2: StorageKey[\"OcrLanguage\"]; renderer-annotator.js settings.get on load and settings.set on the language select"
         },
         {
           "kind": "localStorage",
           "value": "annotator.recentColors",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer-annotator.js settings.get(RECENT_COLORS, ...) and settings.set(RECENT_COLORS, ...), RECENT_COLORS = \"annotator.recentColors\", a key constant passed to the same wrapper"
         },
         {
           "kind": "sessionStorage",
           "value": "library.scrollTop",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer-library.js sessionStorage.getItem in render, setItem on scroll, directly"
         },
         {
           "kind": "sessionStorage",
           "value": "annotator.activeTool",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer-annotator.js sessionStorage.getItem at start, setItem in selectTool, directly"
         },
         {
           "kind": "localStorage",
           "value": "overlay.lastRegion",
-          "ops": [
-            "read",
-            "write"
-          ],
+          "ops": ["read", "write"],
           "why": "renderer-overlay.js, now through the constant LAST_REGION_KEY = \"overlay.lastRegion\""
         }
       ],
@@ -1316,10 +1214,7 @@
           {
             "kind": "localStorage",
             "value": "snapdeck:ocrLanguage",
-            "ops": [
-              "read",
-              "write"
-            ],
+            "ops": ["read", "write"],
             "why": "new StorageKey member OcrLanguage, read and written in renderer-annotator.js"
           }
         ],
