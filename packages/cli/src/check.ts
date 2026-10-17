@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve as resolvePath } from "node:path";
 import {
   CHECK_EXIT,
   CORE_VERSION,
@@ -200,6 +201,8 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
   let result = await checkRelease(session, a.id, b.id, policy, { baseline });
   if (update && baselineFile) {
     const written = createBaseline(result);
+    // a baseline usually lives in a directory of its own (.hexvero/baseline.json): create it
+    await mkdir(dirname(resolvePath(baselineFile)), { recursive: true });
     await writeFile(baselineFile, `${JSON.stringify(written, null, 2)}\n`);
     const loaded = parseBaseline(JSON.stringify(written), baselineFile);
     result = await checkRelease(session, a.id, b.id, policy, { baseline: loaded });
