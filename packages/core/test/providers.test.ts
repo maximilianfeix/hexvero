@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { detectProviders } from "../src/providers/index.js";
-import { loadCallGraph, runProvider } from "../src/providers/run.js";
+import { loadCallGraph, runProvider, sharedGraphWaiters } from "../src/providers/run.js";
 
 const unixOnly = process.platform === "win32" ? describe.skip : describe;
 
@@ -349,6 +349,9 @@ esac
     const a = loadCallGraph({ targetPath: target, provider: "rizin", signal: first.signal });
     const b = loadCallGraph({ targetPath: target, provider: "rizin", signal: second.signal });
     expect(await waitFor(() => existsSync(pidFile))).toBe(true);
+    // both callers must have joined the run before one cancels: each reads the target's digest
+    // first, and under load the second may join only after the engine has started
+    expect(await waitFor(() => sharedGraphWaiters().includes(2))).toBe(true);
     const pid = Number(readFileSync(pidFile, "utf8"));
     first.abort();
     await expect(a).rejects.toThrow(/cancelled/);

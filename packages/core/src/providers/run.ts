@@ -412,6 +412,14 @@ const graphCache = new Map<string, Promise<CallGraph>>();
  */
 const graphWaiters = new Map<string, { count: number; stop: AbortController }>();
 
+/**
+ * How many callers wait on each shared call-graph run in flight. For tests: a caller joins a run
+ * only after reading the target's digest, so whether two callers share one run depends on timing.
+ */
+export function sharedGraphWaiters(): number[] {
+  return [...graphWaiters.values()].map((w) => w.count);
+}
+
 /** Rejects with `cancelled` when the caller aborts while others keep waiting for the shared run. */
 function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return promise;
