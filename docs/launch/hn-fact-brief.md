@@ -16,7 +16,7 @@ npx hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0
 ```
 
 Verify both commands from an empty directory on the release you link before posting (latest:
-0.9.3, checked 2026-10-17 16:34Z).
+0.9.4, checked 2026-10-17 17:05Z).
 
 ## Facts you can state (each with its source)
 
