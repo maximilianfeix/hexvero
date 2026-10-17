@@ -1368,6 +1368,18 @@ describe("new-bridge-exposure", () => {
     expect(r.status).toBe("pass");
   });
 
+  it('never drops an exposure whose label cannot be split (a name holding "::")', () => {
+    const row: ChangeRow = {
+      collection: "bridgeExposures",
+      change: "added",
+      key: "preload.js::a::b::ipc::ipcRenderer",
+      where: [{ side: "b", file: "preload.js", line: 4 }],
+    };
+    const r = evaluatePolicy(comparison({ changes: [row] }), listed("fail"));
+    expect(r.findings.map((f) => [f.rule, f.unknown])).toEqual([["new-bridge-exposure", true]]);
+    expect(r.status).toBe("incomplete");
+  });
+
   it("reports an exposure hexvero could not decide as one that may be new", () => {
     const r = evaluatePolicy(
       comparison({ changes: [exposure("added", "r", "ipcRenderer")] }),

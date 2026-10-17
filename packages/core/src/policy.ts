@@ -836,7 +836,20 @@ function exposureDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Dr
     )
       continue;
     const f = fieldsOf(r, row);
-    if (!f || typeof f["api"] !== "string" || f["exposed"] === undefined) continue;
+    if (!f || typeof f["api"] !== "string" || f["exposed"] === undefined) {
+      // A label that cannot be split (a name from the target holding "::") is never dropped: it
+      // is an exposure that may be new, under its label.
+      out.push({
+        rule: "new-bridge-exposure",
+        identity: `label\0bridgeExposures\0${row.key}`,
+        row,
+        key: row.key,
+        message: `Pages may get a privileged object (${plain(row.key)}): the exposure could not be read back from the comparison.`,
+        where: row.where,
+        unknown: true,
+      });
+      continue;
+    }
     const identity = identityOf(f);
     if (before.has(identity)) continue;
     const item = after.find(
