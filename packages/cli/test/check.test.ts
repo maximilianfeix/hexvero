@@ -308,4 +308,18 @@ describe("hexvero check", () => {
     const r = await check(b, b, "--policy", examplePolicy, "--baseline", baseline);
     expect(r.io.text()).toContain("the baseline was written against another before build");
   });
+  it("creates the baseline's directory when it does not exist yet", async () => {
+    const baseline = join(dir, "fresh", ".hexvero", "baseline.json");
+    const r = await check(
+      a,
+      b,
+      "--policy",
+      examplePolicy,
+      "--baseline",
+      baseline,
+      "--update-baseline",
+    );
+    expect(r.code).toBe(0);
+    expect(JSON.parse(readFileSync(baseline, "utf8"))).toMatchObject({ hexvero: "baseline" });
+  });
 });

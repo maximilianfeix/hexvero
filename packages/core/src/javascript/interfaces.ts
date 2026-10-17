@@ -17,6 +17,8 @@ export interface InterfaceEnd {
   api: string;
   /** How the end's channel was read when it was not a literal (see `IpcUsage.via`). */
   via?: string;
+  /** For a call of a wrapper method: which one (`IpcMainManager.handle`). */
+  wrapper?: string;
 }
 
 export interface InterfaceRow {
@@ -63,6 +65,7 @@ const BLIND_SPOTS = new Set([
   "ipc_channel_unresolved",
   "ipc_receiver_unresolved",
   "ipc_open_calls_capped",
+  "ipc_wrappers_capped",
   "scan_truncated",
   "js_files_skipped",
   "js_files_truncated",
@@ -82,7 +85,13 @@ export function interfaceMap(app: AppParts, limitations: readonly Limitation[]):
       if (!u.channel || u.api.startsWith("ipcRenderer.") || u.api.startsWith("contextBridge."))
         continue;
       const list = ends.get(u.channel) ?? [];
-      list.push({ file: m.id, line: u.line, api: u.api, ...(u.via ? { via: u.via } : {}) });
+      list.push({
+        file: m.id,
+        line: u.line,
+        api: u.api,
+        ...(u.via ? { via: u.via } : {}),
+        ...(u.wrapper ? { wrapper: u.wrapper } : {}),
+      });
       ends.set(u.channel, list);
     }
   }

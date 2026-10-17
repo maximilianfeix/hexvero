@@ -8,6 +8,7 @@
 
 import { Constants, type Evaluator, type Resolved, resolveAliases } from "./aliases.js";
 import { ExpressionResolver, type ResolveMethod } from "./resolve.js";
+import { WrapperReader, type WrapperFacts, type WrapperRow } from "./wrappers.js";
 
 export interface ModuleReference {
   specifier: string;
@@ -27,9 +28,12 @@ export interface IpcUsage {
    * or as one of the keys of an object whose entries are registered in a loop (`table`).
    * `global`: through a name another file defines (a `window.` global, or a name at the top of a
    * file that is built together with this one). `webContents`: on one page's own channel object
-   * (`webContents.ipc.on`).
+   * (`webContents.ipc.on`). A `wrapper` row of a class or object method (see wrappers.ts) is read
+   * at the call of the method and names it in `wrapper`.
    */
   via?: "alias" | "constant" | "wrapper" | "table" | "global" | "webContents" | "resolved";
+  /** For a call of a wrapper method: `<Class>.<method>` (or the export key of a minified class). */
+  wrapper?: string;
   /**
    * For `via: "resolved"`: how the channel was read from an expression the fast scan could not
    * (see resolve.ts), and the lines of the call sites or lists it was bound at.
@@ -63,6 +67,10 @@ export interface ScanResult {
   evaluated?: string[];
   /** Exported names whose value an evaluation could not read, with the reason. */
   unevaluated?: Record<string, string>;
+  /** Wrapper classes and objects this file exports, for calls in other files (wrappers.ts). */
+  wrappers?: WrapperFacts;
+  /** The search for calls of the file's wrappers ran out of its budget. */
+  wrappersCapped?: true;
 }
 
 /** What a second reader of the same token stream needs to follow names. */
@@ -71,6 +79,11 @@ export interface ScanContext {
   constants: Constants;
   /** Helper functions of the file that pass their first argument on as an IPC channel. */
   wrappers: Map<string, string>;
+  /**
+   * Calls of the file's wrapper methods (wrappers.ts), by the token of the method name: the IPC
+   * API and the token of the channel argument. Read on first use.
+   */
+  methodCalls?: () => ReadonlyMap<number, { api: string; arg: number }>;
 }
 
 /**
@@ -554,7 +567,76 @@ export function scanJavaScript(
     }
     constants.visible = aliases;
   }
-  options.onTokens?.(tokens, truncated, { aliases, constants, wrappers });
+  // Wrapper classes and objects (wrappers.ts), read once on first use: by the bridge reader
+  // through the context, else after the scan below.
+  let wrapperScan: {
+    rows: WrapperRow[];
+    inner: Set<number>;
+    facts: WrapperFacts | null;
+    calls: Map<number, { api: string; arg: number }>;
+    capped?: true;
+  } | null = null;
+  const readWrappers = (): NonNullable<typeof wrapperScan> => {
+    if (wrapperScan) return wrapperScan;
+    wrapperScan = { rows: [], inner: new Set(), facts: null, calls: new Map() };
+    if (!/ipcMain|ipcRenderer|webContents/.test(source)) return wrapperScan;
+    const punct = (k: number, v: string): boolean =>
+      tokens[k]?.type === "punct" && tokens[k]!.value === v;
+    // IPC calls whose channel is a lone name: the calls a wrapper method can make
+    const calls: Array<{ api: string; arg: number }> = [];
+    for (let k = 0; k + 5 < tokens.length; k++) {
+      const method = tokens[k + 2]!;
+      if (
+        tokens[k]!.type !== "ident" ||
+        !punct(k + 1, ".") ||
+        method.type !== "ident" ||
+        !IPC_METHODS.has(method.value) ||
+        !punct(k + 3, "(") ||
+        tokens[k + 4]!.type !== "ident" ||
+        !(punct(k + 5, ",") || punct(k + 5, ")"))
+      )
+        continue;
+      let owner = aliases.get(k) ?? tokens[k]!.value;
+      if (
+        !IPC_APIS.has(`${owner}.${method.value}`) &&
+        punct(k - 1, ".") &&
+        tokens[k - 2]?.type === "ident" &&
+        tokens[k - 2]!.value === "this"
+      )
+        owner =
+          (resolver ??= new ExpressionResolver(tokens, constants)).fieldOwner(
+            k,
+            aliases,
+            FIELD_TARGETS,
+          ) ?? owner;
+      const api = `${owner}.${method.value}`;
+      if (IPC_APIS.has(api) && !api.startsWith("contextBridge.")) calls.push({ api, arg: k + 4 });
+    }
+    if (!calls.length) return wrapperScan;
+    const reader = new WrapperReader(
+      tokens,
+      (resolver ??= new ExpressionResolver(tokens, constants)),
+      constants,
+    );
+    reader.findClasses(calls);
+    if (!reader.classes.length) return wrapperScan;
+    const rows = reader.rows();
+    const facts = reader.facts();
+    wrapperScan = {
+      rows,
+      inner: reader.inner,
+      facts,
+      calls: new Map(rows.map((r) => [r.at, { api: r.usage.api, arg: r.arg }])),
+      ...(reader.capped ? { capped: true as const } : {}),
+    };
+    return wrapperScan;
+  };
+  options.onTokens?.(tokens, truncated, {
+    aliases,
+    constants,
+    wrappers,
+    methodCalls: () => readWrappers().calls,
+  });
   const references: ModuleReference[] = [];
   const ipc: IpcUsage[] = [];
   const exports = new Set<string>();
@@ -847,6 +929,16 @@ export function scanJavaScript(
     }
   }
 
+  // Calls of the file's wrapper methods: read at the call, the channel from its argument.
+  const wrapped = readWrappers();
+  if (wrapped.rows.length) {
+    for (const row of wrapped.rows) {
+      ipc.push(row.usage);
+      if (row.unread) open.push({ usage: row.usage, at: row.arg });
+    }
+    ipc.sort((x, y) => x.line - y.line);
+  }
+
   // The slow path, only for the calls the fast scan left open: a bounded expression resolver.
   if (open.length) {
     resolver ??= new ExpressionResolver(tokens, constants);
@@ -855,6 +947,8 @@ export function scanJavaScript(
       // rows); the call inside it stays without a channel, as it may be called from elsewhere.
       const helper = resolver.enclosingName(argument);
       if (helper !== null && wrappers.has(helper)) continue;
+      // likewise inside a wrapper method of a class or object
+      if (wrapped.inner.has(argument)) continue;
       const found = resolver.resolveArgument(argument);
       if (!found) {
         // why the evaluation of the code that builds the channel stopped, when it says
@@ -868,11 +962,14 @@ export function scanJavaScript(
         index,
         // a partial result keeps the call without a channel as well, for the limitation
         found.partial ? 0 : 1,
-        ...found.values.map((channel) => ({
+        ...found.values.map((channel): IpcUsage => ({
           api: usage.api,
           channel,
           line: usage.line,
-          via: "resolved" as const,
+          // a call of a wrapper method stays one, with how its argument was read
+          ...(usage.wrapper
+            ? { via: "wrapper" as const, wrapper: usage.wrapper }
+            : { via: "resolved" as const }),
           resolution: { method: found.method, lines: found.lines },
         })),
       );
@@ -895,6 +992,8 @@ export function scanJavaScript(
     ...(constants.starExports.length ? { starExports: constants.starExports } : {}),
     ...(constants.evaluated.length ? { evaluated: constants.evaluated } : {}),
     ...(Object.keys(constants.unevaluated).length ? { unevaluated: constants.unevaluated } : {}),
+    ...(wrapped.facts ? { wrappers: wrapped.facts } : {}),
+    ...(wrapped.capped ? { wrappersCapped: true as const } : {}),
   };
 }
 

@@ -20,6 +20,7 @@ import {
   type Token,
 } from "./scan.js";
 import { summarizeSourceMap } from "./sourcemap.js";
+import { linkWrappers, type ReadModule, type WrapperFacts } from "./wrappers.js";
 
 /** Minimal read-only file tree so directories and ASAR archives share one analyzer. */
 export interface FileTree {
@@ -59,6 +60,8 @@ export interface JsModule {
    * still waiting for a definition (see `ambient.ts`).
    */
   ambient?: AmbientFacts;
+  /** Wrapper classes and objects the file exports, for calls in other files (wrappers.ts). */
+  wrappers?: WrapperFacts;
 }
 
 /** How far back a setting may be from `webPreferences` / `BrowserWindow` to count as a window option. */
@@ -1173,6 +1176,16 @@ export function bridgeMembers(
         } else if (
           tokens[j]!.type === "ident" &&
           is(j + 1, "(") &&
+          context.methodCalls?.().get(j)?.api.startsWith("ipcRenderer.")
+        ) {
+          // a method of a wrapper class or object that forwards an argument as the channel
+          const arg = context.methodCalls().get(j)!.arg;
+          const channelName = context.constants.resolveArg(arg) ?? nameValue(arg);
+          if (channelName && "value" in channelName) channels.add(channelName.value);
+          else if (channelName && "ref" in channelName) addRef(channelName.ref);
+        } else if (
+          tokens[j]!.type === "ident" &&
+          is(j + 1, "(") &&
           context.aliases.get(j) === tokens[j]!.value &&
           context.wrappers.get(tokens[j]!.value)?.startsWith("ipcRenderer.")
         ) {
@@ -1333,7 +1346,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 6;
+export const JS_SCAN_SCHEMA = 7;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -2158,7 +2171,7 @@ export function analyzeJavaScriptTree(
   let taken = 0;
 
   // Modules read again for following window options across files, each tokenized once.
-  const modulesRead = new Map<string, { tokens: Token[]; resolver: ExpressionResolver } | null>();
+  const modulesRead = new Map<string, ReadModule | null>();
   const host: ModuleHost = {
     load: (from, specifier) => {
       const target = resolveSpecifier(from, specifier, known);
@@ -2173,16 +2186,15 @@ export function analyzeJavaScriptTree(
       return modulesRead.get(target)?.resolver ?? null;
     },
   };
-  const moduleResolver = (
-    path: string,
-    text: string,
-  ): { tokens: Token[]; resolver: ExpressionResolver } => {
+  const moduleResolver = (path: string, text: string): ReadModule => {
     const cached = modulesRead.get(path);
     if (cached) return cached;
     const { tokens } = tokenize(text);
+    const constants = new Constants(tokens);
     const made = {
       tokens,
-      resolver: new ExpressionResolver(tokens, new Constants(tokens), path, host),
+      constants,
+      resolver: new ExpressionResolver(tokens, constants, path, host),
     };
     modulesRead.set(path, made);
     return made;
@@ -2255,6 +2267,11 @@ export function analyzeJavaScriptTree(
       contextBridge.push(...bridge.members.slice(0, room));
       if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
     }
+    if (scan.wrappersCapped && facts.limitations.length < 200)
+      facts.limitations.push({
+        code: "ipc_wrappers_capped",
+        message: `${file.path}: the search for calls of IPC wrapper methods ran out of its budget; calls of them after that are missing.`,
+      });
     if (scan.truncated && facts.truncatedFiles.length < 200) facts.truncatedFiles.push(file.path);
     if (scan.truncated && facts.limitations.length < 200)
       facts.limitations.push({
@@ -2659,6 +2676,7 @@ export function analyzeJavaScriptTree(
       ...(scan.starExports ? { starExports: scan.starExports } : {}),
       ...(scan.evaluated ? { evaluated: scan.evaluated } : {}),
       ...(scan.unevaluated ? { unevaluated: scan.unevaluated } : {}),
+      ...(scan.wrappers ? { wrappers: scan.wrappers } : {}),
       ...(open && (open.facts.defines || open.facts.calls || open.facts.replies)
         ? { ambient: open.facts }
         : {}),
@@ -2767,9 +2785,66 @@ export function analyzeJavaScriptTree(
     });
   }
 
+  // Calls of wrapper classes and objects that another module defines (wrappers.ts): read in the
+  // modules that import one, now that every module's exports are known. Nothing is read again
+  // when no module exports a wrapper.
+  const moduleById = new Map(modules.map((m) => [m.id, m]));
+  const openModule = (path: string): ReadModule | null => {
+    if (!modulesRead.has(path)) {
+      try {
+        modulesRead.set(path, moduleResolver(path, decode(tree.read(path, maxFileBytes))));
+      } catch {
+        modulesRead.set(path, null);
+      }
+    }
+    return modulesRead.get(path) ?? null;
+  };
+  const linked = linkWrappers({
+    modules,
+    edges,
+    resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
+    open: openModule,
+  });
+  if (linked.capped.length)
+    limitations.push({
+      code: "ipc_wrappers_capped",
+      message: `${linked.capped.length} file(s) that use IPC wrappers of other modules were not read to the end for calls of them (a budget or the file limit of 200): ${linked.capped.slice(0, 5).join(", ")}${linked.capped.length > 5 ? " …" : ""}.`,
+    });
+  for (const [file, rows] of linked.rows) {
+    const m = moduleById.get(file);
+    if (!m) continue;
+    const resolver = openModule(file)?.resolver;
+    const have = new Set(m.ipc.map((u) => JSON.stringify(u)));
+    for (const { usage, arg, unread } of rows) {
+      let made: IpcUsage[] = [usage];
+      if (unread && resolver) {
+        // the argument read across modules, as the window options are
+        const found = resolver.resolveArgument(arg);
+        if (found)
+          made = [
+            ...(found.partial ? [usage] : []),
+            ...found.values.map((channel): IpcUsage => ({
+              ...usage,
+              channel,
+              resolution: { method: found.method, lines: found.lines },
+            })),
+          ];
+        else if (resolver.reason) usage.reason = `evaluation stopped: ${resolver.reason}`;
+      }
+      for (const u of made) {
+        const key = JSON.stringify(u);
+        if (have.has(key)) continue;
+        have.add(key);
+        m.ipc.push(u);
+      }
+    }
+    m.ipc.sort((x, y) => x.line - y.line);
+    if (m.role !== "main" && m.ipc.some((u) => u.via === "wrapper" && u.api.startsWith("ipcMain.")))
+      m.role = "main";
+  }
+
   // Channel names that are constants of another module: looked up now that modules are known.
   // A reference stays in place while its module is unread, so a continued scan resolves it later.
-  const moduleById = new Map(modules.map((m) => [m.id, m]));
   // A name may be passed on through index modules (`export { A as B } from`, `module.exports =
   // { B: x.A }`, `export *`): followed a few modules deep, never in a circle.
   /** Set by `lookUp` when the value it found was read by evaluating the other module's code. */
@@ -2828,7 +2903,10 @@ export function analyzeJavaScriptTree(
         continue;
       }
       u.channel = `${u.channelRef.before ?? ""}${found}${u.channelRef.after ?? ""}`;
-      if (lookedUpEvaluated) {
+      // a call of a wrapper method stays one (its `wrapper` says which)
+      if (u.wrapper) {
+        if (lookedUpEvaluated) u.resolution = { method: "evaluated", lines: [] };
+      } else if (lookedUpEvaluated) {
         u.via = "resolved";
         u.resolution = { method: "evaluated", lines: [] };
       } else u.via = "constant";

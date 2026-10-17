@@ -2,7 +2,7 @@
  "tool": {
   "name": "hexvero",
   "version": "0.8.0",
-  "commit": "05c31b4+uncommitted",
+  "commit": "aa88007+uncommitted",
   "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
@@ -410,8 +410,8 @@
   {
    "set": "holdout",
    "class": "IPC channels",
-   "hit": 64,
-   "missed": 8,
+   "hit": 66,
+   "missed": 6,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -419,8 +419,8 @@
   {
    "set": "holdout",
    "class": "IPC senders and receivers",
-   "hit": 105,
-   "missed": 20,
+   "hit": 107,
+   "missed": 22,
    "false": 0,
    "hedged": 0,
    "inputs": 3
@@ -2329,15 +2329,13 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "IPC channels",
-   "hit": 18,
-   "missed": 6,
+   "hit": 20,
+   "missed": 4,
    "false": 0,
    "notes": [
     "missed projects:list",
     "missed projects:create",
     "missed projects:rename",
-    "missed menu:new-entry",
-    "missed update:ready",
     "missed theme:changed"
    ]
   },
@@ -2345,8 +2343,8 @@
    "set": "holdout",
    "input": "holdout/time-tracker.minified.asar",
    "class": "IPC senders and receivers",
-   "hit": 26,
-   "missed": 9,
+   "hit": 28,
+   "missed": 11,
    "false": 0,
    "notes": [
     "timer:start: sender preload.js missed",
@@ -2357,7 +2355,9 @@
     "invoice:export: sender preload.js missed",
     "invoice:exported: sender main.js missed",
     "sync:progress: receiver preload.js missed",
-    "config:get-sync: sender preload.js missed"
+    "config:get-sync: sender preload.js missed",
+    "menu:new-entry: receiver preload.js missed",
+    "update:ready: receiver preload.js missed"
    ]
   },
   {
