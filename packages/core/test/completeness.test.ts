@@ -346,6 +346,12 @@ describe("hostile input stays fast", () => {
       `class W{p={sandbox:!0};${"m(){return new BrowserWindow({webPreferences:this.p})}".repeat(3000)}}`,
       `const K={sandbox:!0};${"function a(){let e=Object.assign({},K,{x:1});return new BrowserWindow({webPreferences:e})}".repeat(3000)}${"function b(e){e.k=1}".repeat(20_000)}`,
       `const K={sandbox:!0};const p=Object.assign({},${"K,".repeat(60_000)}{});new BrowserWindow({webPreferences:p});`,
+      // navigation handlers (navigationHandlers): unclosed web-contents-created callbacks and
+      // window-open handlers, and one handler with thousands of returns
+      'app.on("web-contents-created",(e,c)=>{c.setWindowOpenHandler(()=>{'.repeat(60_000),
+      `w.webContents.setWindowOpenHandler(()=>{${"if(x)return(a,b,{action:'deny'});".repeat(60_000)}});`,
+      // contextBridge exposures: an exposed object of many members over many declarations
+      `const{ipcRenderer:r}=require("electron");${"var a=r,b=r;".repeat(20_000)}contextBridge.exposeInMainWorld("x",{${"m:r,".repeat(20_000)}});`,
     ]) {
       const started = performance.now();
       analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);

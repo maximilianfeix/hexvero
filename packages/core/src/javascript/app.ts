@@ -993,10 +993,229 @@ export interface BridgeMember {
   channelRef?: { specifier: string; property: string; before?: string; after?: string };
 }
 
+/**
+ * A privileged object or function handed to the page as it is through contextBridge: the value
+ * of an exposed member (or the whole exposed value) is `ipcRenderer`, one of its methods as a
+ * reference, `shell`, the `electron` module, a Node module object (`fs`, `child_process`, …),
+ * `process` or `require`. A member that wraps such a value in a function of its own is not one.
+ * See docs/electron-findings.md ("Privileged objects exposed through contextBridge").
+ */
+export interface BridgeExposure {
+  /** The key the API is exposed under: `window.<api>`. */
+  api: string;
+  /** The member whose value it is; null when the exposed value as a whole is the object. */
+  member: string | null;
+  /** What it is: `ipcRenderer`, `ipcRenderer.on`, `shell`, `electron`, `fs`, `process`, … */
+  exposed: string;
+  /** The value as written (shortened), e.g. `o.ipcRenderer.send` in a minified bundle. */
+  evidence: string;
+  world: "main" | "isolated";
+  file: string;
+  line: number;
+}
+
 /** What one source file exposes, and whether a cap or an unclosed literal cut the reading short. */
 export interface BridgeScan {
   members: BridgeMember[];
+  /** Members (or whole values) that are a privileged object itself, not a wrapper around it. */
+  exposures: BridgeExposure[];
   truncated: boolean;
+}
+
+/** Members of the `electron` module whose object handed to a page is a privileged API. */
+const PRIVILEGED_ELECTRON = new Set(["ipcRenderer", "shell"]);
+/**
+ * Node modules whose object handed to a page gives it file, process, network or code access.
+ * Pure helpers (`path`, `url`, `util`, `events`, …) are not listed.
+ */
+const PRIVILEGED_BUILTINS = new Set([
+  "fs",
+  "fs/promises",
+  "child_process",
+  "net",
+  "dgram",
+  "http",
+  "https",
+  "http2",
+  "tls",
+  "os",
+  "vm",
+  "worker_threads",
+  "cluster",
+  "module",
+  "process",
+]);
+
+/** `electron`, a privileged Node module (without `node:`), or null for any other specifier. */
+function privilegedModule(specifier: string): string | null {
+  if (specifier === "electron") return "electron";
+  const bare = specifier.replace(/^node:/, "");
+  return PRIVILEGED_BUILTINS.has(bare) ? bare : null;
+}
+
+/**
+ * What names of one file stand for, as far as privileged objects go: `electron`, `ipcRenderer`,
+ * `shell` or a Node module (`fs`). Read from declarations on the token stream:
+ * `x = require("electron")`, `x = __toESM(require("fs"))`, `{ ipcRenderer: r } = require(…)`,
+ * `import { shell as s } from "electron"`, `import * as fs from "fs"`, `y = x.ipcRenderer` and
+ * `y = x`. A name declared more than once in the file is not taken: which declaration a use sees
+ * is not decided here. `declared` holds every name declared at all, so `process` and `require`
+ * are taken as the globals only where the file declares no such name.
+ */
+function privilegedBindings(tokens: Token[]): {
+  meaning: Map<string, string>;
+  declared: Map<string, number>;
+} {
+  const is = (i: number, value: string): boolean =>
+    tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  const ident = (i: number): string | null =>
+    tokens[i]?.type === "ident" ? tokens[i]!.value : null;
+  const declared = new Map<string, number>();
+  const count = (name: string): void => {
+    declared.set(name, (declared.get(name) ?? 0) + 1);
+  };
+  /** `require("S")` at i: the privileged meaning of S and the token after `)`; else null. */
+  const requireAt = (i: number): { meaning: string | null; next: number } | null =>
+    ident(i) === "require" && is(i + 1, "(") && tokens[i + 2]?.type === "string" && is(i + 3, ")")
+      ? { meaning: privilegedModule(tokens[i + 2]!.value), next: i + 4 }
+      : null;
+  /** The right-hand side at i: a module, a wrapped module, a name, or a member of one. */
+  type Rhs = { kind: "module"; meaning: string | null } | { kind: "path"; path: string[] };
+  const rhsAt = (i: number): Rhs | null => {
+    const direct = requireAt(i);
+    if (direct) {
+      if (is(direct.next, ".") && ident(direct.next + 1) && !is(direct.next + 2, ".")) {
+        const member = ident(direct.next + 1)!;
+        return {
+          kind: "module",
+          meaning: direct.meaning === "electron" && PRIVILEGED_ELECTRON.has(member) ? member : null,
+        };
+      }
+      return { kind: "module", meaning: direct.meaning };
+    }
+    // `__toESM(require("fs"))`, `l(require("fs"))`, as bundlers write a default import
+    if (ident(i) && is(i + 1, "(")) {
+      const inner = requireAt(i + 2);
+      if (inner && (is(inner.next, ")") || (is(inner.next, ",") && is(inner.next + 2, ")"))))
+        return { kind: "module", meaning: inner.meaning };
+      return null;
+    }
+    const path: string[] = [];
+    let k = i;
+    while (ident(k) && path.length < 3) {
+      path.push(ident(k)!);
+      if (!is(k + 1, ".")) break;
+      k += 2;
+    }
+    return path.length ? { kind: "path", path } : null;
+  };
+  const simple: Array<{ name: string; rhs: Rhs }> = [];
+  const patterns: Array<{ entries: Array<[string, string]>; rhs: Rhs }> = [];
+  const imports: Array<[string, string]> = [];
+  for (let k = 0; k + 2 < tokens.length; k++) {
+    const t = tokens[k]!;
+    const declares =
+      (t.type === "ident" && (t.value === "const" || t.value === "let" || t.value === "var")) ||
+      (t.type === "punct" && t.value === ",");
+    if (t.type === "ident" && (t.value === "function" || t.value === "class") && ident(k + 1))
+      count(ident(k + 1)!);
+    if (t.type === "ident" && t.value === "import") {
+      // import X from "S" | import * as X from "S" | import X, { a, b as c } from "S" | import { … }
+      let j = k + 1;
+      const local: Array<[string, string | null]> = [];
+      if (ident(j) && ident(j) !== "from" && !is(j, "*") && !is(j, "{")) {
+        local.push([ident(j)!, null]);
+        j++;
+        if (is(j, ",")) j++;
+      }
+      if (is(j, "*") && ident(j + 1) === "as" && ident(j + 2)) {
+        local.push([ident(j + 2)!, null]);
+        j += 3;
+      } else if (is(j, "{")) {
+        for (j++; j < tokens.length && j < k + 400 && !is(j, "}"); j++) {
+          const name = ident(j);
+          if (!name) continue;
+          if (ident(j + 1) === "as" && ident(j + 2)) {
+            local.push([ident(j + 2)!, name]);
+            j += 2;
+          } else local.push([name, name]);
+        }
+        j++;
+      }
+      if (ident(j) === "from" && tokens[j + 1]?.type === "string") {
+        const spec = privilegedModule(tokens[j + 1]!.value);
+        for (const [name, member] of local) {
+          count(name);
+          if (!spec) continue;
+          if (member === null) imports.push([name, spec]);
+          else if (spec === "electron" && PRIVILEGED_ELECTRON.has(member))
+            imports.push([name, member]);
+        }
+      }
+      continue;
+    }
+    if (!declares) continue;
+    if (ident(k + 1) && is(k + 2, "=") && !is(k + 3, "=")) {
+      count(ident(k + 1)!);
+      const rhs = rhsAt(k + 3);
+      if (rhs) simple.push({ name: ident(k + 1)!, rhs });
+      continue;
+    }
+    if (!is(k + 1, "{")) continue;
+    // `{ ipcRenderer, shell: s } = …`: one level of a destructuring pattern
+    const entries: Array<[string, string]> = [];
+    let j = k + 2;
+    let d = 0;
+    for (; j < tokens.length && j < k + 400; j++) {
+      if (is(j, "{") || is(j, "[") || is(j, "(")) d++;
+      else if (is(j, "}") || is(j, "]") || is(j, ")")) {
+        if (d === 0) break;
+        d--;
+      } else if (d === 0 && ident(j) && (is(j - 1, "{") || is(j - 1, ","))) {
+        const key = ident(j)!;
+        if (is(j + 1, ":") && ident(j + 2)) {
+          entries.push([key, ident(j + 2)!]);
+          j += 2;
+        } else entries.push([key, key]);
+      }
+    }
+    // only a pattern that is assigned declares: `f("api", { ipc: r })` is an object argument
+    if (!is(j, "}") || !is(j + 1, "=") || is(j + 2, "=")) continue;
+    for (const [, local] of entries) count(local);
+    const rhs = rhsAt(j + 2);
+    if (rhs) patterns.push({ entries, rhs });
+  }
+  const meaning = new Map<string, string>();
+  const once = (name: string): boolean => (declared.get(name) ?? 0) === 1;
+  for (const [name, m] of imports) if (once(name)) meaning.set(name, m);
+  const ofPath = (path: string[]): string | null => {
+    const base = once(path[0]!) ? meaning.get(path[0]!) : undefined;
+    if (!base) return null;
+    if (path.length === 1) return base;
+    if (path.length === 2 && base === "electron" && PRIVILEGED_ELECTRON.has(path[1]!))
+      return path[1]!;
+    // `__toESM(require("fs")).default`, `cp.default`: the module itself
+    if (path.length === 2 && base !== "electron" && path[1] === "default") return base;
+    return null;
+  };
+  // A few rounds: `const ipc = r` after `{ ipcRenderer: r } = require("electron")`.
+  for (let round = 0; round < 4; round++) {
+    let grew = false;
+    const set = (name: string, m: string | null): void => {
+      if (!m || !once(name) || meaning.has(name)) return;
+      meaning.set(name, m);
+      grew = true;
+    };
+    for (const { name, rhs } of simple)
+      set(name, rhs.kind === "module" ? rhs.meaning : ofPath(rhs.path));
+    for (const { entries, rhs } of patterns) {
+      const source = rhs.kind === "module" ? rhs.meaning : ofPath(rhs.path);
+      if (source !== "electron") continue;
+      for (const [key, local] of entries) if (PRIVILEGED_ELECTRON.has(key)) set(local, key);
+    }
+    if (!grew) break;
+  }
+  return { meaning, declared };
 }
 
 const MAX_BRIDGE_PER_FILE = 500;
@@ -1155,6 +1374,80 @@ export function bridgeMembers(
     }
     return false;
   };
+  const exposures: BridgeExposure[] = [];
+  let bindings: ReturnType<typeof privilegedBindings> | null = null;
+  /**
+   * The privileged object the value from token `from` to `end` (exclusive) is, as a whole: a
+   * path such as `ipcRenderer`, `o.ipcRenderer.send` or `require("fs")`, optionally a method of
+   * one with `.bind(…)`. Anything else (a function, a call, an object, a property of an object
+   * of the file) is null: a wrapper around a privileged object is not that object.
+   */
+  const privileged = (from: number, end: number): string | null => {
+    if (from >= end || end - from > 40) return null;
+    let stop = end;
+    // `ipcRenderer.on.bind(ipcRenderer)`: the method itself, bound
+    let bound = false;
+    if (is(stop - 1, ")")) {
+      const open = openOf(stop - 1);
+      if (open > from + 2 && tokens[open - 1]?.value === "bind" && is(open - 2, ".")) {
+        stop = open - 2;
+        bound = true;
+      }
+    }
+    bindings ??= privilegedBindings(tokens);
+    const { meaning, declared } = bindings;
+    let k = from;
+    let base: string | null = null;
+    const first = tokens[k];
+    if (first?.type !== "ident") return null;
+    if (
+      first.value === "require" &&
+      is(k + 1, "(") &&
+      tokens[k + 2]?.type === "string" &&
+      is(k + 3, ")")
+    ) {
+      if (declared.has("require")) return null;
+      base = privilegedModule(tokens[k + 2]!.value);
+      k += 4;
+    } else {
+      const name = first.value;
+      const global =
+        (name === "process" || name === "require") && !declared.has(name) && k + 1 === stop;
+      base = (declared.get(name) ?? 0) === 1 ? (meaning.get(name) ?? null) : null;
+      // a parameter or loop variable where the value is written is another binding (asked only
+      // for a name that means something, as the walk back is the costly part)
+      if ((global || base) && boundLocally(from, name)) return null;
+      if (global) return bound ? null : name;
+      k += 1;
+    }
+    if (!base) return null;
+    const path: string[] = [];
+    while (k < stop) {
+      if (!is(k, ".") || tokens[k + 1]?.type !== "ident") return null;
+      path.push(tokens[k + 1]!.value);
+      k += 2;
+    }
+    if (path.length > 2) return null;
+    let what = base;
+    let member: string | null = null;
+    for (const p of path) {
+      if (what === "electron" && member === null && PRIVILEGED_ELECTRON.has(p)) what = p;
+      else if (what !== "electron" && member === null && p === "default" && path.length === 1)
+        continue;
+      else if (member === null && what !== "electron") member = p;
+      else return null;
+    }
+    if (bound && member === null) return null;
+    return member === null ? what : `${what}.${member}`;
+  };
+  /** The value text as written, bounded. */
+  const evidenceOf = (from: number, end: number): string =>
+    short(
+      tokens
+        .slice(from, end)
+        .map((x) => (x.type === "string" ? JSON.stringify(x.value) : x.value))
+        .join(""),
+    );
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
     if (t.type !== "ident") continue;
@@ -1178,6 +1471,23 @@ export function bridgeMembers(
           line,
           ...(channelRef ? { channelRef } : {}),
         });
+    };
+    /** Records the value from `from` to `end` when it is a privileged object as it is. */
+    const expose = (member: string | null, from: number, end: number): void => {
+      // Every exposure is a member too, so past this cap the member cap has already marked the
+      // file's inventory as cut (`context_bridge_truncated`).
+      if (exposures.length >= MAX_BRIDGE_PER_FILE) return;
+      const what = privileged(from, end);
+      if (!what) return;
+      exposures.push({
+        api,
+        member,
+        exposed: what,
+        evidence: evidenceOf(from, end),
+        world,
+        file,
+        line: tokens[from]!.line,
+      });
     };
     let at = i + 2;
     if (world === "isolated") {
@@ -1274,6 +1584,20 @@ export function bridgeMembers(
         : null;
     if (!opens) {
       push(null, null, t.line);
+      // `exposeInMainWorld("ipc", ipcRenderer)`: the value as a whole, up to the call's end
+      if (simple) {
+        let end = at + 2;
+        for (let d = 0; end < tokens.length && end < at + 60; end++) {
+          const p = tokens[end]!;
+          if (p.type !== "punct") continue;
+          if (p.value === "(" || p.value === "[" || p.value === "{") d++;
+          else if (p.value === ")" || p.value === "]" || p.value === "}") {
+            if (d === 0) break;
+            d--;
+          } else if (p.value === "," && d === 0) break;
+        }
+        if (is(end, ")") || (is(end, ",") && is(end + 1, ")"))) expose(null, at + 2, end);
+      }
       continue;
     }
     /** One member, from token `from` to `end` (its `,` or `}`), of the object at `objectOpen`. */
@@ -1307,6 +1631,9 @@ export function bridgeMembers(
           ? nameToken.value
           : textOf(nameToken);
       if (name === null) return push(null, null, first.line);
+      // `{ ipcRenderer }`, `ipc: ipcRenderer`, `api.ipc = ipcRenderer`: the value itself
+      if (s === from && s + 1 === end && nameToken.type === "ident") expose(name, s, end);
+      else if (s === from && (is(s + 1, ":") || is(s + 1, "="))) expose(name, s + 2, end);
       const channels = new Set<string>();
       const refs: Array<NonNullable<BridgeMember["channelRef"]>> = [];
       // `on(CH, f)` and `off(CH, f)` in one member name one channel
@@ -1413,7 +1740,256 @@ export function bridgeMembers(
         }
     }
   }
-  return { members, truncated };
+  return { members, exposures, truncated };
+}
+
+/**
+ * A navigation or new-window handler registered on a webContents: `setWindowOpenHandler(…)`, or a
+ * listener for `will-navigate` / `will-frame-navigate`. Whether it checks anything is not read.
+ */
+export interface NavigationHandler {
+  kind: "setWindowOpenHandler" | "will-navigate" | "will-frame-navigate";
+  /**
+   * Whose webContents: the window's name as `windows` gives it (`win` for
+   * `win.webContents.setWindowOpenHandler`), `app` for a handler inside
+   * `app.on("web-contents-created", …)`, else the receiver as written.
+   */
+  target: string;
+  /** `window`: a window located in this file; `app`: every webContents; else as written. */
+  targetKind: "window" | "app" | "webContents";
+  /**
+   * For `setWindowOpenHandler`: `deny` or `allow` only when every return of the handler is an
+   * object literal whose `action` is that string literal; else `unknown`.
+   */
+  returns?: "deny" | "allow" | "unknown";
+  /** The receiver and call as written, shortened. */
+  evidence: string;
+  file: string;
+  line: number;
+}
+
+const NAVIGATION_EVENTS = new Set(["will-navigate", "will-frame-navigate"]);
+const LISTEN_METHODS = new Set(["on", "once", "addListener", "prependListener"]);
+const MAX_NAVIGATION_PER_FILE = 200;
+const NAVIGATION_WALK_BUDGET = 2_000_000;
+const MAX_CONTENTS_CREATED = 50;
+
+/**
+ * Reads navigation and new-window handlers from one file's tokens, so a name in a comment or a
+ * string is no call. `windowNames` are the names of the windows located in the same file.
+ */
+export function navigationHandlers(
+  tokens: Token[],
+  file: string,
+  windowNames: ReadonlySet<string>,
+): NavigationHandler[] {
+  const out: NavigationHandler[] = [];
+  const is = (i: number, value: string): boolean =>
+    tokens[i]?.type === "punct" && tokens[i]!.value === value;
+  const ident = (i: number): string | null =>
+    tokens[i]?.type === "ident" ? tokens[i]!.value : null;
+  // One budget for every bracket walk of the file: unclosed or repeated handlers stay linear. A
+  // walk past it finds no end, so its handler `returns` unknown.
+  let work = NAVIGATION_WALK_BUDGET;
+  /** The matching closing bracket of the opening one at `open`, or -1. */
+  const closeOf = (open: number): number => {
+    for (let d = 0, j = open; j < tokens.length && j < open + 200_000; j++) {
+      if (--work < 0) return -1;
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "[" || p.value === "{") d++;
+      else if (p.value === ")" || p.value === "]" || p.value === "}") {
+        d--;
+        if (d === 0) return j;
+      }
+    }
+    return -1;
+  };
+  /** The parameters and body of a function written at `k`: `(a, b) => …`, `a => …`, `function (a) {…}`. */
+  const fnAt = (k: number): { params: string[]; body: number; end: number } | null => {
+    let j = k;
+    if (ident(j) === "async") j++;
+    if (ident(j) === "function") {
+      j++;
+      if (ident(j)) j++;
+    }
+    const params: string[] = [];
+    if (is(j, "(")) {
+      const close = closeOf(j);
+      if (close < 0) return null;
+      for (let p = j + 1; p < close; p++)
+        if (ident(p) && (is(p - 1, "(") || is(p - 1, ","))) params.push(ident(p)!);
+        else if (ident(p) === null && (is(p - 1, "(") || is(p - 1, ","))) params.push("");
+      j = close + 1;
+    } else if (ident(j) && is(j + 1, "=>")) {
+      params.push(ident(j)!);
+      j++;
+    } else return null;
+    if (is(j, "=>")) j++;
+    if (is(j, "{")) {
+      const end = closeOf(j);
+      return end < 0 ? null : { params, body: j, end };
+    }
+    // an expression body: up to the `,` or `)` that ends the argument
+    let end = j;
+    for (let d = 0; end < tokens.length && end < j + 2000; end++) {
+      const p = tokens[end]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "(" || p.value === "[" || p.value === "{") d++;
+      else if (p.value === ")" || p.value === "]" || p.value === "}") {
+        if (d === 0) break;
+        d--;
+      } else if (p.value === "," && d === 0) break;
+    }
+    return { params, body: j, end: end - 1 };
+  };
+  // `app.on("web-contents-created", (event, contents) => { … })`: the callback's extent and the
+  // name of the webContents parameter
+  const created: Array<{ start: number; end: number; name: string }> = [];
+  for (let k = 0; k + 4 < tokens.length && created.length < MAX_CONTENTS_CREATED; k++) {
+    if (
+      !(is(k, ".") && LISTEN_METHODS.has(ident(k + 1) ?? "") && is(k + 2, "(")) ||
+      tokens[k + 3]?.type !== "string" ||
+      tokens[k + 3]!.value !== "web-contents-created" ||
+      !is(k + 4, ",")
+    )
+      continue;
+    const fn = fnAt(k + 5);
+    if (fn && fn.params[1]) created.push({ start: fn.body, end: fn.end, name: fn.params[1] });
+  }
+  /** The receiver chain ending right before the `.` at `dot`: its first token index. */
+  const receiverStart = (dot: number): number => {
+    let j = dot - 1;
+    if (!ident(j)) return -1;
+    while (is(j - 1, ".") && ident(j - 2)) j -= 2;
+    return j;
+  };
+  /** Whose webContents the receiver from `from` to the `.` at `dot` is. */
+  const targetOf = (
+    from: number,
+    dot: number,
+  ): { target: string; targetKind: NavigationHandler["targetKind"] } => {
+    const chain: string[] = [];
+    for (let j = from; j < dot; j += 2) chain.push(ident(j)!);
+    if (chain.length === 1) {
+      const inside = created.find((c) => c.name === chain[0] && from > c.start && from < c.end);
+      if (inside) return { target: "app", targetKind: "app" };
+    }
+    if (chain.length >= 2 && chain.at(-1) === "webContents") {
+      const owner = chain.at(-2)!;
+      if (windowNames.has(owner)) return { target: owner, targetKind: "window" };
+    }
+    return { target: short(chain.join(".")), targetKind: "webContents" };
+  };
+  /** `deny`/`allow` when every return of the handler at `k` is `{ action: "<that>" … }`. */
+  const returnsOf = (k: number): NonNullable<NavigationHandler["returns"]> => {
+    const fn = fnAt(k);
+    if (!fn) return "unknown";
+    /** The `action` literal of the object literal at `open`, or null. */
+    const actionOf = (open: number): string | null => {
+      const close = closeOf(open);
+      if (close < 0) return null;
+      let found: string | null = null;
+      for (let j = open + 1, d = 0; j < close; j++) {
+        if (--work < 0) return null;
+        if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
+        else if (is(j, "}") || is(j, ")") || is(j, "]")) d--;
+        else if (
+          d === 0 &&
+          (is(j - 1, "{") || is(j - 1, ",")) &&
+          (ident(j) === "action" || tokens[j]?.value === "action") &&
+          is(j + 1, ":")
+        ) {
+          const v = tokens[j + 2];
+          if (v?.type !== "string" || !(is(j + 3, ",") || j + 3 === close)) return null;
+          found = v.value;
+        }
+      }
+      return found;
+    };
+    /**
+     * The `action` of the value from `start` to `stop` (inclusive): an object literal, or the last
+     * part of a comma sequence (`open(url), { action: "deny" }`, as minifiers write it).
+     */
+    const valueAction = (start: number, stop: number): string | null => {
+      let last = start;
+      for (let j = start, d = 0; j <= stop; j++) {
+        if (--work < 0) return null;
+        if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
+        else if (is(j, "}") || is(j, ")") || is(j, "]")) d--;
+        else if (d === 0 && is(j, ",")) last = j + 1;
+      }
+      return is(last, "{") && closeOf(last) === stop ? actionOf(last) : null;
+    };
+    const values = new Set<string | null>();
+    if (!is(fn.body, "{")) {
+      // `() => ({ action: "deny" })`, `() => (open(url), { action: "deny" })`
+      if (is(fn.body, "(") && closeOf(fn.body) === fn.end)
+        values.add(valueAction(fn.body + 1, fn.end - 1));
+      else return "unknown";
+    } else {
+      for (let j = fn.body + 1; j < fn.end; j++) {
+        if (--work < 0) return "unknown";
+        // a function inside may return something of its own: not decided here
+        if (ident(j) === "function" || is(j, "=>")) return "unknown";
+        if (ident(j) !== "return") continue;
+        // the returned value runs to the `;` or the `}` that ends the statement
+        let stop = j + 1;
+        for (let d = 0; stop < fn.end; stop++) {
+          if (--work < 0) return "unknown";
+          if (is(stop, "{") || is(stop, "(") || is(stop, "[")) d++;
+          else if (is(stop, "}") || is(stop, ")") || is(stop, "]")) {
+            if (d === 0) break;
+            d--;
+          } else if (d === 0 && is(stop, ";")) break;
+        }
+        values.add(stop > j + 1 ? valueAction(j + 1, stop - 1) : null);
+      }
+      // without a return the handler gives undefined: not a literal that was read
+      if (!values.size) return "unknown";
+    }
+    if (values.size !== 1) return "unknown";
+    const [only] = [...values];
+    return only === "deny" || only === "allow" ? only : "unknown";
+  };
+  for (let k = 1; k + 2 < tokens.length && out.length < MAX_NAVIGATION_PER_FILE; k++) {
+    if (!is(k, ".") && !is(k, "?.")) continue;
+    const method = ident(k + 1);
+    if (!method || !is(k + 2, "(")) continue;
+    let kind: NavigationHandler["kind"] | null = null;
+    if (method === "setWindowOpenHandler") kind = "setWindowOpenHandler";
+    else if (
+      LISTEN_METHODS.has(method) &&
+      tokens[k + 3]?.type === "string" &&
+      NAVIGATION_EVENTS.has(tokens[k + 3]!.value) &&
+      is(k + 4, ",")
+    )
+      kind = tokens[k + 3]!.value as NavigationHandler["kind"];
+    if (!kind) continue;
+    const from = receiverStart(k);
+    if (from < 0) continue;
+    const { target, targetKind } = targetOf(from, k);
+    const call =
+      kind === "setWindowOpenHandler"
+        ? `${tokens
+            .slice(from, k + 2)
+            .map((x) => x.value)
+            .join("")}(…)`
+        : `${tokens
+            .slice(from, k + 2)
+            .map((x) => x.value)
+            .join("")}(${JSON.stringify(kind)}, …)`;
+    out.push({
+      kind,
+      target,
+      targetKind,
+      ...(kind === "setWindowOpenHandler" ? { returns: returnsOf(k + 3) } : {}),
+      evidence: short(call),
+      file,
+      line: tokens[k + 1]!.line,
+    });
+  }
+  return out;
 }
 
 export interface JsEdge {
@@ -1451,6 +2027,10 @@ export interface JsAppInfo {
   windows: WindowSummary[];
   /** What preload scripts expose to pages through contextBridge, member by member. */
   contextBridge: BridgeMember[];
+  /** Exposed members (or values) that are a privileged object itself, not a wrapper. */
+  bridgeExposures: BridgeExposure[];
+  /** setWindowOpenHandler and will-navigate / will-frame-navigate handlers, with file and line. */
+  navigationHandlers: NavigationHandler[];
   ipcChannels: Array<{
     channel: string;
     senders: string[];
@@ -1499,7 +2079,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 8;
+export const JS_SCAN_SCHEMA = 9;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -1538,6 +2118,8 @@ export interface JsScanFacts {
    */
   enableSandbox: "always" | "maybe" | false;
   contextBridge: BridgeMember[];
+  bridgeExposures: BridgeExposure[];
+  navigationHandlers: NavigationHandler[];
   endpoints: AppCandidate[];
   storage: AppCandidate[];
   urls: AppCandidate[];
@@ -1554,6 +2136,8 @@ export interface JsScanFacts {
   candidatesCapped: boolean;
   /** A file had more calls on undeclared names than are kept for cross-file resolution. */
   ambientCapped: boolean;
+  /** A file or the app had more navigation handlers than are kept. */
+  navigationCapped?: boolean;
   /** Limitations that belong to single files (e.g. a token budget that ran out). */
   limitations: Limitation[];
 }
@@ -1573,6 +2157,8 @@ export function emptyJsScanFacts(): JsScanFacts {
     windows: [],
     enableSandbox: false,
     contextBridge: [],
+    bridgeExposures: [],
+    navigationHandlers: [],
     endpoints: [],
     storage: [],
     urls: [],
@@ -1953,6 +2539,7 @@ export interface FileTokenFacts {
   preferenceObjects: Array<[number, number]>;
   candidates: ReturnType<typeof findCandidates> | null;
   bridge: ReturnType<typeof bridgeMembers> | null;
+  navigation: NavigationHandler[] | null;
 }
 
 export function readFileTokens(path: string, source: string): FileTokenFacts {
@@ -1971,6 +2558,7 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
   let ambient: ReturnType<typeof collectAmbient> | null = null;
   let candidates: ReturnType<typeof findCandidates> | null = null;
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
+  let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
     onTokens: (tokens, truncated, context) => {
       if (source.includes("enableSandbox")) {
@@ -2256,6 +2844,12 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
       if (CAN_HOLD_CANDIDATES.test(source)) {
         candidates = findCandidates(tokens, source, undefined, context.aliases, context.constants);
       }
+      if (/setWindowOpenHandler|will-navigate|will-frame-navigate/.test(source))
+        navigation = navigationHandlers(
+          tokens,
+          path,
+          new Set(ranges.flatMap((r) => (r.window !== null && r.name ? [r.name] : []))),
+        );
       if (!source.includes("exposeIn")) return;
       bridge = bridgeMembers({ tokens, truncated, context }, path);
     },
@@ -2273,6 +2867,7 @@ export function readFileTokens(path: string, source: string): FileTokenFacts {
     preferenceObjects: [...preferenceObjects],
     candidates,
     bridge,
+    navigation,
   };
 }
 
@@ -2471,6 +3066,20 @@ export function analyzeJavaScriptTree(
       const room = MAX_BRIDGE - contextBridge.length;
       contextBridge.push(...bridge.members.slice(0, room));
       if (bridge.truncated || bridge.members.length > room) bridgeCapped = true;
+      const exposures = (facts.bridgeExposures ??= []);
+      const left = MAX_BRIDGE - exposures.length;
+      exposures.push(...(bridge.exposures ?? []).slice(0, left));
+      if ((bridge.exposures ?? []).length > left) bridgeCapped = true;
+    }
+    if (tokenFacts.navigation?.length) {
+      const handlers = (facts.navigationHandlers ??= []);
+      const left = MAX_PREFS - handlers.length;
+      handlers.push(...tokenFacts.navigation.slice(0, left));
+      if (
+        tokenFacts.navigation.length > left ||
+        tokenFacts.navigation.length >= MAX_NAVIGATION_PER_FILE
+      )
+        facts.navigationCapped = true;
     }
     if (scan.wrappersCapped && facts.limitations.length < 200)
       facts.limitations.push({
@@ -2972,11 +3581,27 @@ export function analyzeJavaScriptTree(
       code: "context_bridge_truncated",
       message: `The contextBridge inventory is incomplete: a file exposes more than ${MAX_BRIDGE_PER_FILE} members, the app more than ${MAX_BRIDGE}, or an exposed object could not be read to its end.`,
     });
+  const bridgeExposures = facts.bridgeExposures ?? [];
+  const navigation = facts.navigationHandlers ?? [];
+  // An unreadable entry whose value is itself a privileged object is established as such; any
+  // other one may expose anything, which is said rather than reading "none exposed".
+  const unestablished = contextBridge.filter(
+    (b) =>
+      b.member === null &&
+      !bridgeExposures.some(
+        (x) => x.member === null && x.file === b.file && x.line === b.line && x.api === b.api,
+      ),
+  ).length;
   const bridgeUnread = contextBridge.filter((b) => b.member === null).length;
   if (bridgeUnread)
     limitations.push({
       code: "context_bridge_members_unreadable",
-      message: `${bridgeUnread} contextBridge ${bridgeUnread === 1 ? "entry is" : "entries are"} not a plain member of an object literal in the same file (a value built elsewhere, a spread or a computed key), so the exposed members are not all listed.`,
+      message: `${bridgeUnread} contextBridge ${bridgeUnread === 1 ? "entry is" : "entries are"} not a plain member of an object literal in the same file (a value built elsewhere, a spread or a computed key), so the exposed members are not all listed.${unestablished ? ` Whether ${unestablished === 1 ? "it exposes" : "they expose"} a privileged object directly (collection bridgeExposures) is not established.` : ""}`,
+    });
+  if (facts.navigationCapped)
+    limitations.push({
+      code: "navigation_handlers_truncated",
+      message: `More navigation handlers exist than the ${MAX_NAVIGATION_PER_FILE} per file / ${MAX_PREFS} in total that are recorded.`,
     });
   if (prefsCapped)
     limitations.push({
@@ -3494,6 +4119,65 @@ export function analyzeJavaScriptTree(
         location: `${contextBridge[0]!.file}:${contextBridge[0]!.line}`,
       });
     }
+    if (bridgeExposures.length) {
+      const named = (x: BridgeExposure): string => {
+        const api = x.api.startsWith("[") ? `window${x.api}` : `window.${x.api}`;
+        return `${x.member === null ? api : `${api}.${x.member}`} (${x.exposed})`;
+      };
+      const first = bridgeExposures[0]!;
+      findings.push({
+        kind: "electron.bridge-exposure",
+        title:
+          bridgeExposures.length === 1
+            ? `${first.exposed} exposed to pages as it is through contextBridge: ${named(first)}`
+            : `${bridgeExposures.length} privileged objects exposed to pages as they are through contextBridge: ${list(bridgeExposures.map(named), 4)}`,
+        detail: `${list(
+          bridgeExposures.map((x) => `${x.evidence} at ${x.file}:${x.line}`),
+          4,
+        )}. Electron's security guide: "You should not directly expose Electron's APIs, especially IPC, to untrusted web content in your preload scripts." Page scripts get the object or method itself, not a function that narrows its use (collection bridgeExposures).`,
+        // the value is read as written; that the name is electron's or Node's is read from the
+        // file's declarations, not from a run
+        confidence: "inferred",
+        location: `${first.file}:${first.line}`,
+      });
+    }
+    if (navigation.length || (facts.windows ?? []).length) {
+      const opens = navigation.filter((h) => h.kind === "setWindowOpenHandler");
+      const navs = navigation.filter((h) => h.kind !== "setWindowOpenHandler");
+      const targets = (rows: NavigationHandler[], withReturns: boolean): string =>
+        list(
+          [
+            ...new Set(
+              rows.map((h) =>
+                withReturns ? `${h.target}, returns ${h.returns ?? "unknown"}` : h.target,
+              ),
+            ),
+          ],
+          4,
+        );
+      const read = `${coverage.scanned} of ${coverage.total} JavaScript files read`;
+      const firstRow = navigation[0];
+      const firstWindow = (facts.windows ?? [])[0];
+      findings.push({
+        kind: "electron.navigation",
+        title: `${
+          opens.length
+            ? `setWindowOpenHandler for ${targets(opens, true)}`
+            : "no setWindowOpenHandler found in the files read"
+        }; ${
+          navs.length
+            ? `${[...new Set(navs.map((h) => h.kind))].join("/")} listener for ${targets(navs, false)}`
+            : "no will-navigate or will-frame-navigate listener found in the files read"
+        }`,
+        detail: `Read from the code (collection navigationHandlers); whether a handler checks the URL or the sender is not read, and "returns deny" or "returns allow" is said only where the returned action is a literal. A handler that is not found may still exist: ${read}, and one registered through code hexvero does not follow (a computed event name, a helper that is handed the webContents) is not seen. Electron's security guide, sections 13 and 14: limit navigation with will-navigate, and register a window open handler to "deny any unexpected window creation".`,
+        confidence: "inferred",
+        location: firstRow
+          ? `${firstRow.file}:${firstRow.line}`
+          : firstWindow
+            ? `${firstWindow.file}:${firstWindow.line}`
+            : undefined,
+      });
+    }
     if (preloadScripts.size)
       findings.push({
         kind: "electron.preload",
@@ -3556,7 +4240,7 @@ export function analyzeJavaScriptTree(
   if (!coverage.complete)
     for (const finding of findings)
       if (
-        /^(electron\.(ipc|context-bridge|preload)|js\.(endpoints|storage|minified))$/.test(
+        /^(electron\.(ipc|context-bridge|bridge-exposure|navigation|preload)|js\.(endpoints|storage|minified))$/.test(
           finding.kind,
         )
       ) {
@@ -3580,6 +4264,8 @@ export function analyzeJavaScriptTree(
     webPreferences,
     windows,
     contextBridge,
+    bridgeExposures,
+    navigationHandlers: navigation,
     endpoints,
     storage,
     urls: facts.urls,

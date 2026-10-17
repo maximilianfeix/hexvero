@@ -69,10 +69,15 @@ describe("flow 1: Electron app", () => {
       "electron.sandbox",
       "electron.ipc",
       "electron.context-bridge",
+      "electron.navigation",
       "electron.preload",
       "js.endpoints",
       "js.storage",
     ]);
+    // the window-open handler of main.js returns the literal { action: "deny" }
+    expect(byKind.get("electron.navigation")?.title).toBe(
+      "setWindowOpenHandler for win, returns deny; no will-navigate or will-frame-navigate listener found in the files read",
+    );
     // endpoints and storage keys of an archive, each with the file, line and column it was read at
     const endpoints = (await session.collection(target.id, "endpoints")).items as Array<{
       value: string | null;
@@ -577,7 +582,7 @@ describe("flow 4: a coding agent over MCP stdio", () => {
         analysis: { findings: unknown[] };
       };
       expect(file.unknowns).toHaveLength(1);
-      expect(file.analysis.findings).toHaveLength(7);
+      expect(file.analysis.findings).toHaveLength(8);
       expect((await call("hexvero_export", { targetId: id, path: out })).ok).toBe(false);
 
       // errors are structured, never a crash

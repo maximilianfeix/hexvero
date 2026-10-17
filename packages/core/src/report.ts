@@ -142,6 +142,8 @@ const ORDER = [
   "contextBridge",
   "ipcChannels",
   "windows",
+  "bridgeExposures",
+  "navigationHandlers",
   "webPreferences",
   "endpoints",
   "storage",

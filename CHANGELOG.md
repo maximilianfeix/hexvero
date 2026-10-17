@@ -23,6 +23,25 @@ All notable changes to hexvero are listed here. The format follows
   are downloads with a file name. Behind the existing token, Host and Origin checks.
 - `MAX_POLICY_BYTES` is exported from `@hexvero/core`.
 
+### Electron analysis
+
+- New collection `bridgeExposures` and finding `electron.bridge-exposure`: a preload that hands a
+  privileged object to pages as it is through contextBridge (`ipcRenderer`, a method of it such as
+  `ipcRenderer.on` passed as a reference or bound, `shell`, the `electron` module, a Node module
+  object such as `fs` or `child_process`, `process`, `require`), with `api`, `member`, `exposed`,
+  the value as written (`evidence`), file and line. Plain, esbuild-bundled and minified preloads
+  give the same rows; a wrapper function, a parameter or a local of the same name is not one. An
+  unreadable exposed value says "not established" through `context_bridge_members_unreadable`.
+- New collection `navigationHandlers` and finding `electron.navigation`: `setWindowOpenHandler`,
+  `will-navigate` and `will-frame-navigate` registrations per window (or `app` for
+  `web-contents-created`), with `returns: deny | allow` only where the returned `action` is a
+  literal, else `unknown`. Absence reads "no … found in the files read". New limitation code
+  `navigation_handlers_truncated`.
+- Both collections compare (identity without lines, lines as positions, the written evidence not a
+  change of its own) and come after `windows` in release reports and the compare view.
+  `JS_SCAN_SCHEMA` is 8, so stored scans are read again. Rules and sources:
+  docs/electron-findings.md.
+
 ## [0.9.0] - 2026-10-17
 
 ### Electron analysis

@@ -979,6 +979,12 @@ export function collectionsOf(
       if (d.app.windows?.length) out["windows"] = d.app.windows;
       if (d.app.contextBridge.length) out["contextBridge"] = d.app.contextBridge;
       if (d.app.contextBridge.length) out["interfaces"] = interfaceMap(d.app, analysis.limitations);
+      // Listed whenever there is a bridge (also empty), so a removed exposure compares against
+      // the other side's bridge and its unreadable entries instead of a missing list.
+      if (d.app.contextBridge.length) out["bridgeExposures"] = d.app.bridgeExposures ?? [];
+      // Listed whenever windows or handlers were read, so a handler that is gone is `removed`.
+      if (d.app.windows?.length || d.app.navigationHandlers?.length)
+        out["navigationHandlers"] = d.app.navigationHandlers ?? [];
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
       if (d.app.storage.length) out["storage"] = d.app.storage;

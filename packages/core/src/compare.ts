@@ -66,6 +66,8 @@ export const COLLECTION_FAMILY: Readonly<Record<string, UnresolvedFamily>> = {
   ipc: "ipc",
   interfaces: "ipc",
   contextBridge: "bridge",
+  // an unreadable bridge entry in a file may be such an exposure
+  bridgeExposures: "bridge",
   windows: "window",
   webPreferences: "window",
   endpoints: "endpoint",
@@ -180,6 +182,8 @@ const POSITION_FIELDS: Record<string, readonly string[]> = {
  */
 const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   contextBridge: ["line"],
+  bridgeExposures: ["line"],
+  navigationHandlers: ["line"],
   interfaces: ["line"],
   ipc: ["line"],
   webPreferences: ["line", "window"],
@@ -208,6 +212,10 @@ const NESTED_LINE_FIELDS: Record<string, ReadonlyArray<readonly [string, string]
  */
 const DERIVED_FIELDS: Record<string, readonly string[]> = {
   windows: ["basis"],
+  // the code as written: a minifier renames `o.ipcRenderer` to `n.ipcRenderer` between builds,
+  // while `exposed` / `kind`, `target` and `returns` carry the fact
+  bridgeExposures: ["evidence"],
+  navigationHandlers: ["evidence"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -269,6 +277,10 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   windows: [["file", "windowName"]],
   cil: [["method", "offset"]],
   contextBridge: [["api", "member"]],
+  // what is exposed where; the line is a position (SOURCE_LINE_FIELDS)
+  bridgeExposures: [["file", "api", "member", "exposed"]],
+  // a handler per webContents and kind; the same pair twice is matched as a multiset
+  navigationHandlers: [["file", "kind", "target"]],
   interfaces: [["file", "api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.
   endpoints: [

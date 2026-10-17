@@ -2,7 +2,7 @@
 
 What hexvero says about an Electron application's windows, under which condition it says it, and
 which page of Electron's documentation the statement rests on. The documentation was read on
-2026-10-13; where Electron changes a rule, this file and `windowEffects()` in
+2026-10-13 (the security guide's sections 13, 14 and 20 again on 2026-10-17); where Electron changes a rule, this file and `windowEffects()` in
 `packages/core/src/javascript/app.ts` change together.
 
 Nothing here describes a running application. hexvero reads what the code writes. It does not
@@ -102,16 +102,81 @@ Every finding below is `inferred`: it is read from a pattern in the code, not ob
 | `electron.web-security`             | a window writes `webSecurity: false`                                                           | fixed: "it will disable the same-origin policy" and sets `allowRunningInsecureContent` unless that is set                                                                                                                                                                                                                                                                                                                                                | [Security, 6][sec], [WebPreferences][wp]                               |
 | `electron.insecure-content`         | a window writes `allowRunningInsecureContent: true`                                            | fixed                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Security, 8][sec]                                                     |
 | `electron.webview-tag`              | a window writes `webviewTag: true`                                                             | fixed: "The `preload` script configured for the `<webview>` will have node integration enabled when it is executed"                                                                                                                                                                                                                                                                                                                                      | [WebPreferences][wp]                                                   |
+| `electron.bridge-exposure`          | a preload hands a privileged object to pages as it is (see below)                              | lists each one as `window.<api>.<member> (<exposed>)` with the value as written and its place; quotes [Security, 20][sec]                                                                                                                                                                                                                                                                                                                                | [Security, 20][sec]                                                    |
+| `electron.navigation`               | the app has a window or a navigation handler                                                   | names the targets of `setWindowOpenHandler` with what they return, and of `will-navigate` / `will-frame-navigate` listeners; a kind with no row reads "no … found in the files read", and the detail says how many files were read and what is not followed                                                                                                                                                                                              | [Security, 13 and 14][sec]                                             |
 
 No finding says that a single setting makes an application exploitable. `nodeIntegration: true`
 alone leads to "page scripts can require Node modules" only together with context isolation that
 is written as off in the same window; whether script injection is possible at all is outside what
 hexvero reads.
 
+## Privileged objects exposed through contextBridge (`bridgeExposures`)
+
+Electron's security guide, section 20: "You should not directly expose Electron's APIs,
+especially IPC, to untrusted web content in your preload scripts", and "Exposing raw APIs like
+`ipcRenderer.on` is dangerous" ([Security, 20][sec]). hexvero lists a row when the value of an
+exposed member, or the exposed value as a whole, is one of these, read from tokens (a comment or a
+string never counts):
+
+| Written as the value                                                                                                                                                                                              | `exposed`                                 |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `ipcRenderer` (`{ ipcRenderer }`, `ipc: ipcRenderer`, `exposeInMainWorld("ipc", ipcRenderer)`)                                                                                                                    | `ipcRenderer`                             |
+| a method of it as a reference: `ipcRenderer.send`, `ipcRenderer.on.bind(ipcRenderer)`                                                                                                                             | `ipcRenderer.send`, `ipcRenderer.on`      |
+| `shell`, or one of its methods as a reference                                                                                                                                                                     | `shell`, `shell.openExternal`             |
+| the `electron` module itself, `require("electron")`                                                                                                                                                               | `electron`                                |
+| a Node module object: `fs`, `fs/promises`, `child_process`, `net`, `dgram`, `http`, `https`, `http2`, `tls`, `os`, `vm`, `worker_threads`, `cluster`, `module`, `process` (also `node:`, also a method reference) | the module name, e.g. `fs`, `fs.readFile` |
+| the globals `process` and `require`, where the file declares no such name                                                                                                                                         | `process`, `require`                      |
+
+A name counts as electron's or Node's only through a declaration in the same file:
+`require("electron")` or `import … from "electron"` (destructured, renamed, `import * as`), what
+bundlers write for them (`import_electron.ipcRenderer`, `__toESM(require("fs"))`, `o.ipcRenderer`
+in a minified file), and `y = x` / `y = x.ipcRenderer` after such a declaration. A name declared
+twice in the file, or a parameter or loop variable of the same name where the value is written, is
+not taken. Path modules such as `path`, `url` or `util` are not listed.
+
+Not this observation: a member that wraps the object in a function of its own
+(`send: (c, d) => ipcRenderer.send(c, d)`, `openUrl(u) { return shell.openExternal(u) }`, a
+getter), the result of a call (`wrap(ipcRenderer)`), or a property of an object of the file. Whether
+a wrapper narrows anything is not read.
+
+The finding is `inferred`: the value is read as written, the meaning of its name from the file's
+declarations. When an exposed value cannot be read (a value built elsewhere, a spread or a computed
+key), the limitation `context_bridge_members_unreadable` says that whether it exposes a privileged
+object directly is not established; an empty `bridgeExposures` list never reads as "none exposed"
+while that limitation stands, and a comparison marks an exposure that only one side lists as
+`unknown` when the other side has such an entry in the same file.
+
+## Navigation and new-window handlers (`navigationHandlers`)
+
+Electron's security guide, section 13 (limit navigation: "you can call `event.preventDefault()` in
+a `will-navigate` handler") and section 14 ("register a handler to monitor the creation of windows,
+and deny any unexpected window creation", [Security, 13 and 14][sec]); `will-frame-navigate` is the
+webContents event that also covers frames ([webContents][wc]). One row per registration:
+
+| Written                                                                                  | `kind`                 | `target`                                                     |
+| ---------------------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------ |
+| `win.webContents.setWindowOpenHandler(…)`                                                | `setWindowOpenHandler` | `win`, the window's name in `windows` (`targetKind: window`) |
+| `win.webContents.on("will-navigate", …)` (also `once`, `addListener`, `prependListener`) | `will-navigate`        | as above                                                     |
+| `….on("will-frame-navigate", …)`                                                         | `will-frame-navigate`  | as above                                                     |
+| inside `app.on("web-contents-created", (e, contents) => …)` on `contents`                | as above               | `app` (`targetKind: app`)                                    |
+| on any other receiver (`view.webContents`, `this.contents`)                              | as above               | the receiver as written (`targetKind: webContents`)          |
+
+`returns` (only for `setWindowOpenHandler`) is `deny` or `allow` only when every return of the
+handler is an object literal whose `action` is that string literal: `() => ({ action: "deny" })`,
+`return { action: "deny" }`, and the minified `(open(u), { action: "deny" })`. A handler passed by
+name, a conditional, two different literals, a nested function or no return at all is `unknown`.
+Nothing here says that a handler is safe or unsafe, nor whether it checks the URL or the sender
+([Security, 17][sec] is not read).
+
+Absence is said only as "no setWindowOpenHandler found in the files read" or "no will-navigate or
+will-frame-navigate listener found in the files read", with the number of files read; a handler
+registered through code hexvero does not follow (a computed event name, a helper that is handed the
+webContents) is not seen, and a partial scan adds "in the scanned part".
+
 ## Not read
 
-Electron fuses, Content Security Policy, `setWindowOpenHandler` and `will-navigate` handlers,
-permission request handlers, `<webview>` attributes, whether an IPC handler validates its sender
+Electron fuses, Content Security Policy, what a navigation or window-open handler checks,
+`will-redirect` and the removed `new-window` event, permission request handlers, `<webview>` attributes, whether an IPC handler validates its sender
 ([Security, 17][sec]), and `webPreferences` keys other than `preload`, `nodeIntegration`,
 `contextIsolation`, `sandbox`, `webSecurity`, `allowRunningInsecureContent`, `webviewTag`,
 `nodeIntegrationInSubFrames`, `nodeIntegrationInWorker` and `enableRemoteModule`.
@@ -120,3 +185,4 @@ permission request handlers, `<webview>` attributes, whether an IPC handler vali
 [wp]: https://www.electronjs.org/docs/latest/api/structures/web-preferences
 [sb]: https://www.electronjs.org/docs/latest/tutorial/sandbox
 [sec]: https://www.electronjs.org/docs/latest/tutorial/security
+[wc]: https://www.electronjs.org/docs/latest/api/web-contents
