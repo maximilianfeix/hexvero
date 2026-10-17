@@ -1567,9 +1567,63 @@ export class Constants {
   private object(open: number, depth = 0): Map<string, string> {
     const table = new Map<string, string>();
     const tokens = this.tokens;
+    /** A later write of `name` that is not read: the entry and its nested group are not known. */
+    const drop = (name: string): void => {
+      for (const key of table.keys())
+        if (key === name || key.startsWith(`${name}.`)) table.delete(key);
+    };
     let d = 0;
     for (let k = open; k < tokens.length && k < open + 4000; k++) {
       const t = tokens[k]!;
+      // A member whose key is not written as a name or literal before `:` may replace an
+      // earlier entry: `[K]: v` replaces the key K evaluates to (or, when that is not one
+      // string, any earlier entry), `get name()` / `name() {}` replace `name`, and a spread,
+      // `*gen()` or `get [k]()` any earlier entry.
+      if (d === 1 && (is(tokens[k - 1], "punct", "{") || is(tokens[k - 1], "punct", ","))) {
+        if (is(t, "punct", "[")) {
+          let close = k + 1;
+          for (let e = 1; close < tokens.length && close < k + 400; close++) {
+            const p = tokens[close]!;
+            if (p.type !== "punct") continue;
+            if (p.value === "{" || p.value === "(" || p.value === "[") e++;
+            else if (p.value === "}" || p.value === ")" || p.value === "]") {
+              e--;
+              if (e === 0) break;
+            }
+          }
+          const named = close > k + 1 ? this.resolve(k + 1, close) : null;
+          if (named && "value" in named) {
+            drop(named.value);
+            const v = text(tokens[close + 2]);
+            const after = tokens[close + 3];
+            if (
+              is(tokens[close + 1], "punct", ":") &&
+              v !== null &&
+              (is(after, "punct", ",") || is(after, "punct", "}"))
+            )
+              table.set(named.value, v);
+          } else table.clear();
+        } else if (is(t, "punct", "...") || is(t, "punct", "*")) table.clear();
+        else if (t.type === "ident" || t.type === "string") {
+          const next = tokens[k + 1];
+          const accessor =
+            t.type === "ident" &&
+            (t.value === "get" || t.value === "set" || t.value === "async") &&
+            !is(next, "punct", "(") &&
+            !is(next, "punct", ":") &&
+            !is(next, "punct", ",") &&
+            !is(next, "punct", "}");
+          if (accessor) {
+            const name = tokens[k + 1];
+            if (
+              (name?.type === "ident" || name?.type === "string") &&
+              is(tokens[k + 2], "punct", "(")
+            )
+              drop(name.value);
+            else table.clear();
+          } else if (is(next, "punct", "(")) drop(t.type === "ident" ? t.value : (text(t) ?? ""));
+        }
+      }
       if (t.type === "punct") {
         if (t.value === "{" || t.value === "(" || t.value === "[") d++;
         else if (t.value === "}" || t.value === ")" || t.value === "]") {
@@ -1580,6 +1634,8 @@ export class Constants {
       }
       if (d !== 1 || !is(tokens[k + 1], "punct", ":")) continue;
       const key = t.type === "ident" ? t.value : text(t);
+      // `__proto__: x` sets the prototype; it is no entry
+      if (key === "__proto__") continue;
       // a nested group: `settings: { get: "settings:get" }` is the entry `settings.get`
       if (key !== null && is(tokens[k + 2], "punct", "{") && depth < 3) {
         for (const [inner, v] of this.object(k + 2, depth + 1)) table.set(`${key}.${inner}`, v);
@@ -1865,6 +1921,8 @@ export class Constants {
       const start = is(tokens[k - 1], "punct", "{") || is(tokens[k - 1], "punct", ",");
       const key = t.type === "ident" ? t.value : text(t);
       if (!start || key === null) continue;
+      // `__proto__: x` sets the prototype: no own key, and `Object.keys` / `entries` skip it
+      if (key === "__proto__" && is(tokens[k + 1], "punct", ":")) continue;
       const follows = tokens[k + 1];
       const wanted = shorthand
         ? is(follows, "punct", ",") || is(follows, "punct", "}")

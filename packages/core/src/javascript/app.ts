@@ -743,6 +743,24 @@ function windowRanges(
     }
     return -1;
   };
+  /** Whether the object literal at `brace` writes the key `name` as an own key, at its top. */
+  const writesOwn = (brace: number, name: string): boolean => {
+    const end = close(brace);
+    for (let d = 0, j = brace + 1; j < end; j++) {
+      const p = tokens[j]!;
+      if (p.type === "punct" && (p.value === "{" || p.value === "(" || p.value === "[")) d++;
+      else if (p.type === "punct" && (p.value === "}" || p.value === ")" || p.value === "]")) d--;
+      else if (
+        d === 0 &&
+        (p.type === "ident" || p.type === "string") &&
+        p.value === name &&
+        (is(j - 1, "{") || is(j - 1, ",")) &&
+        (is(j + 1, ":") || (p.type === "ident" && (is(j + 1, ",") || is(j + 1, "}"))))
+      )
+        return true;
+    }
+    return false;
+  };
   let work = 400_000;
   const add = (
     open: number,
@@ -806,7 +824,7 @@ function windowRanges(
       // reading naming it: `"webPreferences": …`, `[key]: …`, a method or an accessor. It may
       // replace every setting written before it, as an unknown spread may: a whole
       // `webPreferences` before it decides nothing. Plain `name: value`, the shorthand, a spread
-      // (read below) and another quoted or numbered key do not; `__proto__` counts as one.
+      // (read below) and another quoted or numbered key do not.
       if (
         window !== null &&
         level === "options" &&
@@ -816,10 +834,8 @@ function windowRanges(
         const plain =
           is(k, "}") || // after a trailing comma
           is(k, "...") ||
-          // `__proto__: x` sets the prototype, which is not modeled
-          (t.type === "ident" &&
-            t.value !== "__proto__" &&
-            (is(k + 1, ":") || is(k + 1, ",") || is(k + 1, "}"))) ||
+          // `__proto__: x` sets the prototype, which never replaces an own key
+          (t.type === "ident" && (is(k + 1, ":") || is(k + 1, ",") || is(k + 1, "}"))) ||
           ((t.type === "string" || t.type === "number") &&
             t.value !== "webPreferences" &&
             is(k + 1, ":"));
@@ -827,6 +843,29 @@ function windowRanges(
           wholePrefs.delete(window);
           hide(window, at ?? t.start);
         }
+      }
+      // `__proto__: x` replaces no own key, but Electron reads the options by property access,
+      // so a key the literal does not write is taken from x. In a window's options that matters
+      // for `webPreferences` unless the literal writes its own; in a webPreferences object every
+      // key it does not write may come from x, while the ones it writes stand.
+      // Quoted, too: `"__proto__": x` sets the prototype as well; only `["__proto__"]` does not.
+      if (
+        (t.type === "ident" || t.type === "string") &&
+        t.value === "__proto__" &&
+        is(k + 1, ":") &&
+        (is(k - 1, "{") || is(k - 1, ","))
+      ) {
+        const brace = braceAround(k, open);
+        const kind =
+          brace === root
+            ? level
+            : is(brace - 1, ":") && tokens[brace - 2]?.value === "webPreferences"
+              ? "prefs"
+              : "other";
+        if (kind === "options") {
+          if (!writesOwn(brace, "webPreferences")) hide(window, EVERYWHERE);
+        } else if (kind === "prefs") hide(window, at ?? tokens[brace]!.start);
+        else if (kind === null) hide(window, EVERYWHERE); // a level decided elsewhere
       }
       if (is(k, "...")) {
         const place = at ?? t.start;
