@@ -341,8 +341,11 @@ counts by what it is bound to:
   the call is an unknown row (`<expression>`), never the address.
 - Anything else, and a parameter of a name the file binds to a client module: another object.
 
-A declaration that an assignment writes to (`let h = require("https"); h = fake;`) holds
-something else by then: a call where the name means that declaration gives no row. At most 2,000 client calls are
+A declaration that an assignment writes to (`let h = require("https"); h = fake;`, also `h ??=
+fake`) may hold something else at any call, before or after the assignment: a call where the name
+means that declaration is an unknown row (`<expression>`), never the address. An assignment of
+another client module (`if (x) https = require("http")`) keeps the binding a client; when the two
+modules differ, an options object without `url` is not read (its default protocol is not known). At most 2,000 client calls are
 checked per file (limitation `client_calls_skipped`); the further ones are read by that rule, so
 a literal address past the cap is still a row. Unknown client rows past 200 per file are folded
 into one `<expression>` row with its count, so they cannot push known addresses out of the list

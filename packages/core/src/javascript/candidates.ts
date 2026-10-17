@@ -752,9 +752,27 @@ export function findCandidates(
           functions.clear();
           break;
         }
-        const keep = <T extends { at: number }>(list: T[] | undefined): T[] =>
+        // `h = require("http")`: another client module; the binding stays a client (a client
+        // of either module, so an options object without `protocol` is not read)
+        const another =
+          is(after, "punct", "=") &&
+          is(tokens[k + 2], "ident", "require") &&
+          is(tokens[k + 3], "punct", "(") &&
+          is(tokens[k + 5], "punct", ")") &&
+          !is(tokens[k + 6], "punct", ".") &&
+          !is(tokens[k + 6], "punct", "(") &&
+          !is(tokens[k + 6], "punct", "[")
+            ? clientModule(tokens[k + 4])
+            : null;
+        const keep = <T extends { at: number; module?: ClientModule }>(
+          list: T[] | undefined,
+        ): T[] =>
           (list ?? []).filter((c) => {
             if (!binder.writesTo(k, t.value, c.at)) return true;
+            if (another && another !== "electron" && c.module && c.module !== "electron") {
+              if (c.module !== another) c.module = "lib";
+              return true;
+            }
             const gone = reassignedClients.get(t.value) ?? [];
             gone.push(c.at);
             reassignedClients.set(t.value, gone);
@@ -1167,14 +1185,21 @@ export function findCandidates(
           if (kind === "other" && !own) continue;
           client = kind === "client" || (own && (kind === "unknown" || kind === "other"));
         }
-        // a declaration that an assignment writes to holds something else by then
+        // A declaration that an assignment writes to may hold something else at the call:
+        // which object is called is not known, so the call is an unknown row, not the address.
         if (
           client &&
           reassignedClients
             .get(owner!.value)
             ?.some((at) => (wrapperResolver ??= makeResolver()).refersTo(k - 2, owner!.value, at))
-        )
-          client = false;
+        ) {
+          pushClient(
+            { value: null, evidence: "unknown", expression: "<expression>" },
+            t,
+            t.value === "request" ? verb(k + 1) : { method: t.value.toUpperCase() },
+          );
+          continue;
+        }
       } else if (named) out.clientsSkipped = true;
       // `net.request({ url: "https://…", method: "POST" })`: the address is an option.
       const url = is(tokens[k + 2], "punct", "{") ? option(k + 1, "url") : null;

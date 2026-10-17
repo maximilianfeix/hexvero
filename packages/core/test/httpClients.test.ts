@@ -171,9 +171,6 @@ describe("HTTP client modules", () => {
           "api.get(url);",
           'label.textContent = "https://shown.example/docs";',
           "console.log(`GET ${url}`);",
-          'let h = require("https");',
-          "h = mock;",
-          "h.get(url);",
           "const o = { get(u) { return u; } };",
           "o.get(url);",
         ].join("\n"),
@@ -317,11 +314,32 @@ describe("HTTP client modules", () => {
 
   it("does not fall back to the name rule for a reassigned client or another module (#157)", () => {
     const cases: Array<[string, string[]]> = [
-      // reassigned where the call means the binding: no row
-      ['let h = require("https");\nh = fake;\nh.get("https://fake-reassigned.example/");', []],
+      // reassigned where the call means the binding: which object is called is not known, an
+      // unknown row instead of the address
+      [
+        'let h = require("https");\nh = fake;\nh.get("https://fake-reassigned.example/");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
       [
         'let https = require("https");\nhttps = fake;\nhttps.get("https://fake-reassigned.example/");',
-        [],
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let h = require("https");\nh.get("https://real-before-reassign.example/");\nh = fake;',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      [
+        'let h = require("https");\nh ??= fake;\nh.get("https://nullish.example/");',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+      // every value assigned is a client module: still the client
+      [
+        'let https = require("https");\nif (x) https = require("http");\nhttps.get("https://either.example/");',
+        ["http-client GET https://either.example/ [literal]"],
+      ],
+      [
+        'let h = require("https");\nif (x) h = require("node:http");\nh.get("https://either2.example/");',
+        ["http-client GET https://either2.example/ [literal]"],
       ],
       // a webpack module whose id is not known to be a client: an unknown row at most
       [
