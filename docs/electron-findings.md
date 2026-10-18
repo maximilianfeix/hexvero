@@ -399,7 +399,10 @@ names the modules not checked. Modules are read in an order that a file growing 
 builds does not change: the modules that define wrappers, then the rest, each by path; the 200
 calling files whose calls are read are the first 200 by path. Calls of a wrapper whose methods all
 count as replaced are not read. The same writes in the wrapper's own file count as well, which
-is where they are in one bundle (esbuild, webpack): for IPC wrappers (`w.handle = () => {}` on an
+is where they are in one bundle (esbuild, webpack): for storage wrappers (every form above, so
+`({ a: local.get } = …)`, `local.get ??= f`, `Object.assign(local, o)` and `Reflect.set(local, k,
+f)` in a bundle give no `via` row through `local.get`, as they give none across modules; since
+#202), for IPC wrappers (`w.handle = () => {}` on an
 instance of a class whose `handle` forwards to `ipcMain.handle`) and for methods with an IPC object
 parameter (`Svc.prototype.register = function (ipc) {…}`, `t.register = (ipc) => {}`), a call of
 the replaced method in that file gives no row, and `wrapper_method_replaced` names the method

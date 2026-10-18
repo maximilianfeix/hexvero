@@ -3456,6 +3456,8 @@ export interface FileTokenFacts {
   keyWrappers: WrapperFacts | null;
   bridge: ReturnType<typeof bridgeMembers> | null;
   navigation: NavigationHandler[] | null;
+  /** Methods of the file's storage wrappers the file replaces (`Class.method:line`, at most 20). */
+  keyReplaced?: string[];
 }
 
 export function readFileTokens(
@@ -3483,6 +3485,8 @@ export function readFileTokens(
   let ambient: ReturnType<typeof collectAmbient> | null = null;
   let candidates: ReturnType<typeof findCandidates> | null = null;
   let keyWrappers: WrapperFacts | null = null;
+  /** Methods of the file's storage wrappers the file replaces, as `Class.method:line`. */
+  let ownKeyReplaced: string[] | null = null;
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
   let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
@@ -3837,6 +3841,18 @@ export function readFileTokens(
           reader.findKeyWrappers(candidates.openKeys);
           if (reader.classes.length) {
             if (/export|module\.exports|exports\./.test(source)) keyWrappers = reader.facts();
+            // A method of such a wrapper the file replaces, in any form the stage across modules
+            // reads (`({ a: local.get } = …)`, `local.get ??= f`, `Object.assign(local, o)`,
+            // `Reflect.set(local, k, f)`): its calls give no row in the file either.
+            const replaced = reader.readOwnReplacements();
+            if (replaced.length) {
+              ownKeyReplaced = [
+                ...new Set(replaced.map((x) => `${x.via}:${reader.lineOf(x.at)}`)),
+              ].slice(0, 20);
+              // the rows the resolver's own reading gave through such a method go as well
+              const gone = new Set(replaced.map((x) => x.via));
+              candidates.storage = candidates.storage.filter((r) => !r.via || !gone.has(r.via));
+            }
             const calls = reader.keyCalls(false, true);
             if (reader.keyCallsCut) candidates.keyCallsCapped = true;
             if (calls.length) {
@@ -3882,6 +3898,7 @@ export function readFileTokens(
     preferenceObjects: [...preferenceObjects],
     candidates,
     keyWrappers,
+    ...(ownKeyReplaced ? { keyReplaced: ownKeyReplaced } : {}),
     bridge,
     navigation,
   };
@@ -4137,6 +4154,11 @@ export function analyzeJavaScriptTree(
       )
         facts.navigationCapped = true;
     }
+    if (tokenFacts.keyReplaced && facts.limitations.length < 200)
+      facts.limitations.push({
+        code: "wrapper_method_replaced",
+        message: `${file.path}: ${tokenFacts.keyReplaced.length} method(s) of storage wrappers of the file are replaced in the file by a member write on the class, its prototype or an instance (or one whose receiver was not read within the budget), so their calls there give no storage rows through them: ${tokenFacts.keyReplaced.join(", ")}.`,
+      });
     if (scan.wrappersReplaced && facts.limitations.length < 200)
       facts.limitations.push({
         code: "wrapper_method_replaced",

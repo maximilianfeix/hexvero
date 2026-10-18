@@ -777,3 +777,42 @@ local.get("x");
     for (const r of rows) expect(r.value).toMatch(/^app\.k\d+$/);
   });
 });
+
+// Issue #202: in one bundle, the replacements the stage across modules reads count for the
+// file's own storage wrappers as well.
+describe("a storage wrapper method replaced in the same bundle (#202)", () => {
+  const STORE = `const key = (name) => "app." + name;\nexport const local = { get: (name) => localStorage.getItem(key(name)) };\n`;
+  const PATCHES: Record<string, string> = {
+    destructuring: "({ a: local.get } = { a: (n) => n });",
+    nullish: "local.get ??= (n) => n;",
+    assign: "Object.assign(local, globalThis.o);",
+    reflect: "Reflect.set(local, globalThis.k, (n) => n);",
+  };
+  for (const [name, patch] of Object.entries(PATCHES))
+    for (const minify of [false, true])
+      it(`gives no row through it: ${name}${minify ? ", minified" : ""}`, () => {
+        const sources = {
+          "store.js": STORE,
+          "patch.js": `import { local } from "./store";\n${patch}\n`,
+          "renderer.js": `import { local } from "./store";\nimport "./patch";\nlocal.get("theme");\n`,
+        };
+        // as separate modules (the stage across modules), and as one bundle
+        const plain = analyze(sources);
+        const one = analyze(bundled(sources, "renderer.js", minify, "esm"));
+        for (const info of [plain, one]) {
+          expect(keys(info)).not.toContain("localStorage read app.theme");
+          expect(info.limitations.map((l) => l.code)).toContain("wrapper_method_replaced");
+        }
+      });
+  it("still reads it when another member is written", () => {
+    const sources = {
+      "store.js": STORE,
+      "patch.js": 'import { local } from "./store";\nlocal.other = 1;\n',
+      "renderer.js": `import { local } from "./store";\nimport "./patch";\nlocal.get("theme");\n`,
+    };
+    for (const minify of [false, true])
+      expect(keys(analyze(bundled(sources, "renderer.js", minify, "esm")))).toContain(
+        "localStorage read app.theme",
+      );
+  });
+});
