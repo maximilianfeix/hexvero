@@ -224,7 +224,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         : await session.analyze(target.id);
       const collections = await session.collections(target.id);
       const coverage = analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null;
-      const shown = displayPath(target.info.path);
+      // A packaged build is named as given; the app read inside it gets a line of its own.
+      const container = target.info.container;
+      const shown = displayPath(container?.path ?? target.info.path);
       const quoted = /^[\w./@:+-]+$/.test(shown) ? shown : JSON.stringify(shown);
       const next = suggestNextSteps(analysis, collections).map((step) => ({
         ...step,
@@ -249,14 +251,16 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         );
         return 0;
       }
+      const facts =
+        target.info.format === "directory"
+          ? `directory · ${analysis.durationMs} ms`
+          : `${target.info.format} · ${formatBytes(target.info.size)} · sha256 ${target.info.sha256.slice(0, 16)}… · ${analysis.durationMs} ms`;
       io.out(
-        `${heading(io, printable(displayPath(target.info.path)))}\n  ${paint(
-          io,
-          "dim",
-          target.info.format === "directory"
-            ? `directory · ${analysis.durationMs} ms`
-            : `${target.info.format} · ${formatBytes(target.info.size)} · sha256 ${target.info.sha256.slice(0, 16)}… · ${analysis.durationMs} ms`,
-        )}`,
+        container
+          ? `${heading(io, printable(shown))}\n  Electron app: ${printable(container.entry)}\n  ${paint(io, "dim", facts)}${
+              container.note ? `\n  ${paint(io, "dim", printable(container.note))}` : ""
+            }`
+          : `${heading(io, printable(shown))}\n  ${paint(io, "dim", facts)}`,
       );
       io.out(`\n${heading(io, "Summary")}\n  ${printable(analysis.summary)}`);
       if (coverage && !coverage.complete && coverage.remaining === 0)

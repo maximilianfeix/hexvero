@@ -22,10 +22,27 @@ export interface Limitation {
 }
 
 export interface TargetInfo {
+  /** The file or directory that was read: for a packaged build, the Electron app inside it. */
   path: string;
   size: number;
   sha256: string;
   format: FormatId;
+  /**
+   * Set when the path given was a packaged build (a macOS `.app`, a Windows/Linux install
+   * directory, a ZIP of either) and `path` is the Electron application found inside it.
+   */
+  container?: TargetContainer;
+}
+
+export interface TargetContainer {
+  /** The path as given: the bundle, install directory or archive. */
+  path: string;
+  format: "directory" | "zip";
+  /** The application inside it, relative, with `/` separators (`Contents/Resources/app.asar`). */
+  entry: string;
+  layout: "macos" | "windows-linux";
+  /** What else was there and why `entry` was read (Electron's search order). */
+  note?: string;
 }
 
 export interface Analysis<T> {

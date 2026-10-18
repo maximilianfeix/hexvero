@@ -171,6 +171,37 @@ longer has the size the analysis read, the request is refused: `409` with code `
 analyzed; open it again`. `compare --report file.html` stops with that error rather than mixing
 excerpts from two builds.
 
+## Packaged builds: `.app`, install directories, ZIP
+
+`analyze`, `compare`, `check`, the web UI and MCP open a packaged Electron build as the Electron
+app inside it, so its IPC, bridge, windows, endpoints and storage are read, not only the bundle:
+
+- a macOS `.app`: its `Contents/Resources`,
+- a Windows or Linux install directory: its `resources/`, when a Chromium runtime file sits next
+  to it (`resources.pak`, `chrome_100_percent.pak`, `icudtl.dat`, `v8_context_snapshot.bin` or
+  `snapshot_blob.bin`); a source tree with a `resources/` folder is still read as source,
+- a ZIP of either (a release download): the app is read from the archive, with the files it
+  keeps in `app.asar.unpacked/` that the scan reads (sources, `package.json`, source maps; up to
+  16 MiB each and 256 MiB in all). An app kept as an `app/` directory inside a ZIP is not
+  extracted; the limitation `electron_app_not_read` says where it is.
+
+In that directory hexvero takes what Electron runs: the first of `app/`, `app.asar` and
+`default_app.asar` that has a `package.json` (Electron's `lib/browser/init.ts`). Files kept in
+`app.asar.unpacked/` beside the archive are read as for an archive opened alone. When something
+else was there too, or an archive without `package.json` was passed over, the output says so; an
+archive with several builds is read at the one nearest its root and names the others. A
+directory or archive without an Electron app is read as before.
+
+The output names the file it read: `analyze` prints `Electron app: Contents/Resources/app.asar`
+under the path given, the summary starts with the build (`macOS app Discord 0.0.414
+(com.hnc.Discord) · … · Electron app Contents/Resources/app.asar: …`), and `--json` (and every
+target record over HTTP and MCP) carries `target.info.container` with `path` (as given),
+`format` (`directory` or `zip`), `entry`, `layout` (`macos` or `windows-linux`) and `note`.
+`target.info.path` is the app that was read. For a macOS bundle the bundle's own lists stay:
+frameworks, permissions, helpers, entitlements, libraries and symbols come next to the app's,
+and its findings (hardening, App Transport Security, privacy permissions) are listed too. A
+packaged build is a target of its own: the same `app.asar` opened alone has another id.
+
 ## Collections by format
 
 | Format               | Collections                                                                                                                                                                |
@@ -186,7 +217,7 @@ excerpts from two builds.
 | JAR                  | classes, packages, manifest                                                                                                                                                |
 | Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                                                                           |
 | DEX                  | classes, packages, dexStrings                                                                                                                                              |
-| ZIP                  | files                                                                                                                                                                      |
+| ZIP                  | files; a ZIP of a packaged Electron build: as Electron / directory                                                                                                                                                               |
 | Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, windows, contextBridge, bridgeExposures, interfaces, navigationHandlers, endpoints, storage, urls, sourceMaps |
 | JavaScript file      | references, ipc, exports, bundleModules, endpoints, routes, storage, urls                                                                                                  |
 | Source map           | sources, packages                                                                                                                                                          |

@@ -18,6 +18,7 @@ import {
   renderPolicyMarkdown,
   renderReleaseReport,
   Session,
+  electronInZip,
   targetFromBytes,
   toSarif,
 } from "@hexvero/core";
@@ -349,14 +350,21 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     if (req.method === "POST" && parts[0] === "uploads") {
       const name = (q.get("name") ?? "upload.bin").replace(/[^\w.@()-]+/g, "_");
       const bytes = await readBody(req, maxUpload);
-      const loaded = targetFromBytes(bytes, name);
+      // a ZIP of a packaged Electron build is opened as the app inside it, as from disk
+      const loaded = electronInZip(targetFromBytes(bytes, name));
       if (loaded.info.format === "sqlite") {
         uploadDir ??= await mkdtemp(join(tmpdir(), "hexvero-uploads-"));
         const path = join(uploadDir, `${loaded.info.sha256.slice(0, 16)}-${name}`);
         await writeFile(path, bytes);
         return json(res, 201, await session.open(path));
       }
-      return json(res, 201, session.register({ ...loaded, info: { ...loaded.info, path: name } }));
+      return json(
+        res,
+        201,
+        session.register(
+          loaded.info.container ? loaded : { ...loaded, info: { ...loaded.info, path: name } },
+        ),
+      );
     }
     if (parts[0] === "targets" && parts[1]) {
       const id = parts[1];

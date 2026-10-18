@@ -63,6 +63,7 @@ export function analyzeInWorker(
       info: target.info,
       bytes: copy,
       lazy: target.lazy ?? false,
+      ...(target.unpacked ? { unpacked: target.unpacked } : {}),
       options: options.analyze ?? {},
     },
     transferList: [copy.buffer],

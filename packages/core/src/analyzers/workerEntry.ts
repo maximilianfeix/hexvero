@@ -7,12 +7,14 @@ const data = workerData as {
   info: LoadedTarget["info"];
   bytes: Uint8Array;
   lazy: boolean;
+  unpacked?: Record<string, Uint8Array>;
   options?: AnalyzeOptions;
 };
 const target: LoadedTarget = {
   info: data.info,
   bytes: data.bytes,
   ...(data.lazy ? { lazy: true } : {}),
+  ...(data.unpacked ? { unpacked: data.unpacked } : {}),
 };
 
 analyzeTarget(target, data.options ?? {}).then(

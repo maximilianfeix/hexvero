@@ -1,5 +1,6 @@
 import { parseApk, type ApkInfo } from "../formats/apk.js";
 import { analyzeAppBundle, isAppBundle, type BundleInfo } from "../formats/bundle.js";
+import { findElectronAppInZip } from "../formats/electronApp.js";
 import { parseEvm, type EvmInfo } from "../formats/evm.js";
 import { parseDex, type DexInfo } from "../formats/dex.js";
 import { parseHar, type HarInfo } from "../formats/har.js";
@@ -42,7 +43,12 @@ export type AnalysisData =
   | { kind: "jar"; jar: Strip<JarInfo> }
   | { kind: "java-class"; javaClass: Strip<JavaClassInfo> }
   | { kind: "dex"; dex: Strip<DexInfo> }
-  | { kind: "javascript-app"; app: Strip<JsAppInfo> }
+  | {
+      kind: "javascript-app";
+      app: Strip<JsAppInfo>;
+      /** The macOS bundle the app was found in (`target.container`): its own native facts. */
+      native?: Strip<BundleInfo>;
+    }
   | { kind: "javascript"; script: ScanResult; bundle: Omit<JsBundleInfo, "limitations"> }
   | { kind: "source-map"; map: SourceMapSummary }
   | { kind: "json"; json: { topLevelKeys: string[]; bytes: number } }
@@ -161,6 +167,36 @@ async function scanApplication(
       message: `The scan state could not be stored (${notSaved}). This result is complete as reported, but a later run cannot continue from it; set HEXVERO_CACHE_DIR to a writable directory.`,
     });
   return app;
+}
+
+/**
+ * The native facts of the macOS bundle an Electron app was found in. Read in the same run, from
+ * the same directory, so a comparison of two `.app` bundles keeps their frameworks, permissions,
+ * entitlements and libraries next to the app's own lists.
+ */
+function nativeOf(info: LoadedTarget["info"]): BundleInfo | undefined {
+  const c = info.container;
+  if (!c || c.format !== "directory" || c.layout !== "macos" || !isAppBundle(c.path))
+    return undefined;
+  return analyzeAppBundle(c.path);
+}
+
+/** The summary of an app found inside a packaged build, saying which file was read. */
+function withContainer(
+  summary: string,
+  info: LoadedTarget["info"],
+  native: Strip<BundleInfo> | undefined,
+): string {
+  const c = info.container;
+  if (!c) return summary;
+  const build = native
+    ? `${native.platform === "macos" ? "macOS" : "iOS"} app ${native.name || native.bundleId} ${native.version} (${native.bundleId})${native.main ? ` · ${native.main.summary}` : ""}`
+    : c.format === "zip"
+      ? "ZIP archive"
+      : c.layout === "windows-linux"
+        ? "Windows/Linux install directory"
+        : "macOS app";
+  return `${build} · Electron app ${c.entry}: ${summary.replace(/^Electron ASAR(?::|,) /, "")}`;
 }
 
 /** Routes a loaded target to the matching analyzer; parser bounds errors become `malformed` results. */
@@ -284,27 +320,54 @@ async function analyzeTargetUnsafe(
     }
     case "zip": {
       const zip = openZip(bytes);
+      const inside = findElectronAppInZip(zip.entries);
+      if (inside) {
+        const entry = zip.find(inside.entry) ?? zip.find(`${inside.entry}/package.json`);
+        const why =
+          inside.kind === "directory"
+            ? "it is an app/ directory, which hexvero reads from disk only"
+            : entry?.encrypted
+              ? "the entry is encrypted"
+              : entry?.method === "other"
+                ? "the entry uses an unsupported compression method"
+                : entry
+                  ? `it expands to ${entry.size} bytes, more than hexvero reads into memory`
+                  : "the entry could not be read";
+        limitations.push({
+          code: "electron_app_not_read",
+          message: `The archive holds an Electron app at ${inside.entry}, but it was not read: ${why}. Extract the archive and analyze ${
+            inside.entry
+              .split("/")
+              .slice(0, inside.layout === "macos" ? -3 : -2)
+              .join("/") || "the extracted directory"
+          }.`,
+        });
+      }
       return done(`ZIP archive with ${zip.entries.length} entries`, {
         kind: "zip",
         zip: { entries: zip.entries, comment: zip.comment },
       });
     }
     case "asar": {
+      const host = nativeOf(info);
+      const native = host ? strip(host) : undefined;
       const app = strip(
         await scanApplication(
           info,
-          target.lazy ? asarTreeFromFile(info.path) : asarTree(bytes, info.path),
+          target.lazy ? asarTreeFromFile(info.path) : asarTree(bytes, info.path, target.unpacked),
           options.js,
         ),
       );
-      return done(
-        app.coverage.complete
-          ? `Electron ASAR: ${app.modules.length} JavaScript modules, ${app.ipcChannels.length} IPC channels`
-          : app.coverage.remaining > 0
-            ? `Electron ASAR, partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned, ${app.ipcChannels.length} IPC channels so far`
-            : `Electron ASAR, incomplete: ${app.coverage.skipped} of ${app.coverage.total} JavaScript files could not be read, ${app.ipcChannels.length} IPC channels in the rest`,
-        { kind: "javascript-app", app },
-      );
+      const summary = app.coverage.complete
+        ? `Electron ASAR: ${app.modules.length} JavaScript modules, ${app.ipcChannels.length} IPC channels`
+        : app.coverage.remaining > 0
+          ? `Electron ASAR, partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned, ${app.ipcChannels.length} IPC channels so far`
+          : `Electron ASAR, incomplete: ${app.coverage.skipped} of ${app.coverage.total} JavaScript files could not be read, ${app.ipcChannels.length} IPC channels in the rest`;
+      return done(withContainer(summary, info, native), {
+        kind: "javascript-app",
+        app,
+        ...(native ? { native } : {}),
+      });
     }
     case "directory": {
       if (isAppBundle(info.path)) {
@@ -318,16 +381,22 @@ async function analyzeTargetUnsafe(
           { kind: "bundle", bundle },
         );
       }
+      const host = nativeOf(info);
+      const native = host ? strip(host) : undefined;
       const app = strip(await scanApplication(info, directoryTree(info.path), options.js));
       return done(
-        `Directory: ${app.totals.files} files, ${
-          app.coverage.complete
-            ? `${app.modules.length} JavaScript modules`
-            : app.coverage.remaining > 0
-              ? `partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned`
-              : `incomplete: ${app.modules.length} JavaScript modules read, some files unread or unlisted`
-        }${app.electron ? " (Electron)" : ""}`,
-        { kind: "javascript-app", app },
+        withContainer(
+          `Directory: ${app.totals.files} files, ${
+            app.coverage.complete
+              ? `${app.modules.length} JavaScript modules`
+              : app.coverage.remaining > 0
+                ? `partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned`
+                : `incomplete: ${app.modules.length} JavaScript modules read, some files unread or unlisted`
+          }${app.electron ? " (Electron)" : ""}`,
+          info,
+          native,
+        ),
+        { kind: "javascript-app", app, ...(native ? { native } : {}) },
       );
     }
     case "javascript": {
