@@ -109,6 +109,12 @@ describe("R1: a check of the channel is read only where it decides the call", ()
     switchCase: `call(ch, ...a) { switch (mode) { case 1: if (!L.includes(ch)) return; } return ipcRenderer.invoke(ch, ...a); }`,
     loop: `call(ch, ...a) { for (const x of [1]) { if (!L.includes(ch)) return; } return ipcRenderer.invoke(ch, ...a); }`,
     logs: `call(ch, ...a) { if (L.includes(ch)) console.log(ch); ipcRenderer.send(ch, ...a); }`,
+    // an exit in the block that is only the body of a condition or loop leaves nothing for sure
+    blockIf: `call(ch, ...a) { if (!L.includes(ch)) { if (STRICT) return; } ipcRenderer.send(ch, ...a); }`,
+    blockIfThrow: `call(ch, ...a) { if (!L.includes(ch)) { if (STRICT) throw new Error("x"); } ipcRenderer.send(ch, ...a); }`,
+    blockWhile: `call(ch, ...a) { if (!L.includes(ch)) { while (STRICT) return; } ipcRenderer.send(ch, ...a); }`,
+    blockElse: `call(ch, ...a) { if (!L.includes(ch)) { if (STRICT) { log(1); } else return; } ipcRenderer.send(ch, ...a); }`,
+    prototype: `call(ch, ...a) { if (!L.includes(ch)) return; ipcRenderer.send(ch, ...a); } }); Array.prototype.includes = () => true; ({ x() {}`,
     value: `call(ch, ...a) { const ok = L.includes(ch); note(ok); ipcRenderer.send(ch, ...a); }`,
   };
   it("records an allow-list in its exact shapes, in every build", () => {
@@ -179,6 +185,44 @@ describe("R1: page scripts and preloads that may give the api something else", (
     }))
       expect(pageRows(analyze(files)), b).toEqual(["w:kept -"]);
   });
+  it("keeps the rows where a write only fills in a missing api, a script only names it, or a tag is a comment", () => {
+    for (const [name, files] of Object.entries({
+      fillIf: {
+        "index.html": `<script src="shim.js"></script><script src="renderer.js"></script>`,
+        "shim.js": `if (!window.api) window.api = { call: (c) => fetch(c) };\n`,
+      },
+      fillOr: {
+        "index.html": `<script src="shim.js"></script><script src="renderer.js"></script>`,
+        "shim.js": `window.api = window.api || { call: (c) => fetch(c) };\n`,
+      },
+      fillNullish: {
+        "index.html": `<script src="shim.js"></script><script src="renderer.js"></script>`,
+        "shim.js": `window.api ??= { call: (c) => fetch(c) };\n`,
+      },
+      bareVar: {
+        "index.html": `<script src="vendor.js"></script><script src="renderer.js"></script>`,
+        "vendor.js": `var api;\n(function () {})();\n`,
+      },
+      comment: {
+        "index.html": `<!-- <script src="shim.js"></script> -->\n<script src="renderer.js"></script>`,
+        "shim.js": `window.api = { call: (c) => fetch(c) };\n`,
+      },
+    }))
+      expect(pageRows(analyze({ ...base, ...files })), name).toEqual(["a:one -", "z:bad -"]);
+  });
+  it("names the calls it does not list because another page's script replaces the api", () => {
+    const info = analyze({
+      ...base,
+      "index.html": `<script src="renderer.js"></script>`,
+      "storybook/iframe.html": `<script src="../mock-api.js"></script><script src="../renderer.js"></script>`,
+      "mock-api.js": `window.api = { call() {} };\n`,
+    });
+    expect(pageRows(info)).toEqual([]);
+    expect(info.limitations.find((l) => l.code === "bridge_global_written")?.message).toContain(
+      "the calls of api in renderer.js are not listed",
+    );
+  });
+
   it("names the files it does not read, by what is written, not by text", () => {
     const info = analyze({
       ...base,

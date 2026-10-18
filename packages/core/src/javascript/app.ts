@@ -2616,6 +2616,10 @@ export function bridgeMembers(
         for (let q = k + 1; q < close; q++) {
           if (tokens[q]!.type === "ident" && tokens[q]!.value === param) return false;
           if (r.bracketAround(q) !== k) continue;
+          // only a statement of this block of its own: after `;`, the block's `{` or a `}` that
+          // closes a statement's block; not the body of `if (…)`, `while (…)`, `else`, `do`
+          const starts = q === k + 1 || is(q - 1, ";") || is(q - 1, "}");
+          if (!starts) continue;
           if (tokens[q]!.value === "return" && (is(q + 1, ";") || is(q + 1, "}"))) leaves = true;
           if (tokens[q]!.value === "throw") leaves = true;
         }
@@ -2705,6 +2709,17 @@ export function bridgeMembers(
     resolver ??= new ExpressionResolver(tokens, context.constants);
     const bound = resolver.binding(k, tokens[k]!.value);
     if (bound?.kind !== "value" || writtenAnywhere(tokens[k]!.value)) return null;
+    // `L.includes = …`, `Array.prototype.includes = …`: the check may say anything
+    if (
+      tokens.some(
+        (x, q) =>
+          (x.value === "includes" || x.value === "has") &&
+          x.type === "ident" &&
+          (is(q - 1, ".") || is(q - 1, "?.")) &&
+          (is(q + 1, "=") || is(q + 1, "??=") || is(q + 1, "||=")),
+      )
+    )
+      return null;
     // every other use is a check: `L.includes(x)`, `L.has(x)`; anything else may change it
     // (`S.add(…)`, `L.push(…)`, handed to a function)
     const decl = bound.range[0] - 2;
@@ -4009,7 +4024,21 @@ function htmlScripts(
     let cut = false;
     // `<script …>` tags found by position, each read within its own bounded slice: no pattern
     // runs over the page, so a page of unclosed tags stays linear
+    // `<!-- … -->` is no markup: a tag inside it loads nothing
+    const comments: Array<[number, number]> = [];
+    for (let c = lower.indexOf("<!--"); c !== -1;) {
+      const close = lower.indexOf("-->", c + 4);
+      comments.push([c, close === -1 ? lower.length : close + 3]);
+      if (close === -1) break;
+      c = lower.indexOf("<!--", close + 3);
+    }
+    let comment = 0;
     for (let at = lower.indexOf("<script"); at !== -1; at = lower.indexOf("<script", at + 7)) {
+      while (comment < comments.length && comments[comment]![1] <= at) comment++;
+      if (comment < comments.length && comments[comment]![0] <= at) {
+        at = comments[comment]![1] - 7;
+        continue;
+      }
       const end = lower.indexOf(">", at);
       if (end === -1) break;
       if (end - at > MAX_SCRIPT_TAG) {
@@ -4127,9 +4156,15 @@ function bridgeCallRows(input: {
   const workers = new Set<string>();
   const pages: Array<{ m: JsModule; named: string[]; read: ReadModule }> = [];
   /** The api names a write replaces, per script that write reaches. */
-  const replacedIn = new Map<string, Set<string>>();
+  const replacedIn = new Map<string, Map<string, string>>();
   const writes: string[] = [];
-  const replace = (file: string, api: string, what: string): void => {
+  const replace = (file: string, api: string, what: string, conditional = false): void => {
+    // a write that only fills in a missing api (`if (!window.api) window.api = …`,
+    // `window.api ??= …`) leaves the bridge in place where there is one: the rows stay
+    if (conditional) {
+      writes.push(`${what} in ${file}, only where the api is missing (rows kept)`);
+      return;
+    }
     const reach = new Set<string>([file]);
     let loaded = false;
     for (const scripts of input.htmlPages.values())
@@ -4138,8 +4173,8 @@ function bridgeCallRows(input: {
         for (const x of scripts) reach.add(x);
       }
     for (const x of reach) {
-      const set = replacedIn.get(x) ?? new Set<string>();
-      set.add(api);
+      const set = replacedIn.get(x) ?? new Map<string, string>();
+      if (!set.has(api)) set.set(api, `${what} in ${file}`);
       replacedIn.set(x, set);
     }
     if (!loaded) writes.push(`${what} in ${file}`);
@@ -4192,6 +4227,35 @@ function bridgeCallRows(input: {
               is(k + 1, "{") ||
               is(k + 1, "*")))),
     );
+    /**
+     * The write of the target [from, to) only fills in a missing api: `??=`, `||=`, `= <target>
+     * || …` / `?? …`, or inside `if (…)` whose condition names the api.
+     */
+    const fillsIn = (from: number, to: number, api: string): boolean => {
+      const op = tokens[to]?.value;
+      if (op === "??=" || op === "||=") return true;
+      if (op === "=") {
+        let q = to + 1;
+        let same = true;
+        for (let k = from; k < to; k++, q++)
+          if (tokens[q]?.value !== tokens[k]!.value) same = false;
+        if (same && (is(q, "||") || is(q, "??"))) return true;
+      }
+      // `if (!window.api) window.api = …`, `if (typeof api === "undefined") { api = … }`
+      const guardedBy = (head: number): boolean => {
+        if (!is(head, ")")) return false;
+        const open = r.openOf(head);
+        if (open <= 0 || tokens[open - 1]?.value !== "if") return false;
+        for (let k = open + 1; k < head; k++) if (tokens[k]!.value === api) return true;
+        return false;
+      };
+      if (guardedBy(from - 1)) return true;
+      for (let p = r.bracketAround(from), guard = 0; p >= 0 && is(p, "{") && guard < 8; guard++) {
+        if (guardedBy(p - 1)) return true;
+        p = r.bracketAround(p);
+      }
+      return false;
+    };
     for (const api of named)
       for (const j of r.namePositions(api)) {
         work--;
@@ -4200,7 +4264,7 @@ function bridgeCallRows(input: {
           r.binding(j - 2, tokens[j - 2]!.value, true) === null;
         // `window.api = …`, `window.api.m = …`
         if (host && (is(j - 1, ".") || is(j - 1, "?.")) && writesMember(tokens, j - 2) === api) {
-          replace(m.id, api, `window.${api} written`);
+          replace(m.id, api, `window.${api} written`, fillsIn(j - 2, j + 1, api));
           continue;
         }
         if (is(j - 1, ".") || is(j - 1, "?.") || moduleScoped) continue;
@@ -4212,12 +4276,14 @@ function bridgeCallRows(input: {
           before === "const" ||
           before === "function" ||
           before === "class";
+        // `var api;` alone gives the global no value (an existing one stays)
+        const valued = before === "function" || before === "class" || is(j + 1, "=");
         const alias =
           is(j + 1, "=") &&
           GLOBAL_HOSTS.has(tokens[j + 2]?.value ?? "") &&
           is(j + 3, ".") &&
           tokens[j + 4]?.value === api;
-        if (declares && r.functionAt(j) === null && r.bracketAround(j) === -1 && !alias)
+        if (declares && valued && r.functionAt(j) === null && r.bracketAround(j) === -1 && !alias)
           replace(m.id, api, `${api} declared at the top of a script`);
         else if (
           !declares &&
@@ -4225,7 +4291,7 @@ function bridgeCallRows(input: {
           r.binding(j, api, true) === null &&
           !r.paramAround(j, api)
         )
-          replace(m.id, api, `${api} assigned as a global`);
+          replace(m.id, api, `${api} assigned as a global`, fillsIn(j, j + 1, api));
       }
     // `window["api"] = …`, `Object.assign(window, { api })`, `Object.defineProperty(window, "api", …)`
     for (let j = 0; j + 3 < tokens.length; j++) {
@@ -4257,6 +4323,10 @@ function bridgeCallRows(input: {
   }
   for (const { m, named: all, read } of pages) {
     const gone = replacedIn.get(m.id);
+    for (const a of all) {
+      const why = gone?.get(a);
+      if (why) writes.push(`${why}: the calls of ${a} in ${m.id} are not listed`);
+    }
     const named = all.filter((a) => !gone?.has(a));
     if (!named.length) continue;
     if (workers.has(m.id)) {

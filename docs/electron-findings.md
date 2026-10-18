@@ -284,7 +284,8 @@ The member's row says `forwards: "ipcRenderer.send"`, and the channel stays null
 
 A check of the channel is recorded only where it decides every IPC call, in these shapes: `if
 (!LIST.includes(channel)) return;` or `throw …` (also `{ …; return; }` whose statements before the
-exit do not use the channel, as Element writes it) before every call; `if (LIST.includes(channel))
+exit do not use the channel, as Element writes it, the exit a statement of that block of its own:
+an exit that is only the body of an `if`, `while` or `else` in it leaves nothing for sure) before every call; `if (LIST.includes(channel))
 { … }` with every call inside, `if (LIST.includes(channel)) call;` and `if (…) return call;` (as
 esbuild rewrites the early exit); and `LIST.includes(channel) && call` as a statement of its own or
 an arrow's whole body. The check must be a statement of the function's own body: inside a block of
@@ -292,7 +293,7 @@ another statement (`if (process.env.STRICT) { … }`, `try`, a loop, a `switch` 
 a condition or loop without braces it is not read. The exit must leave without an IPC call (`if
 (!LIST.includes(channel)) return ipcRenderer.invoke(…)` is the opposite of a check), and a `!`
 before an `&&` check inverts it. `LIST` is an array literal (or `new Set([…])`) of strings that
-nothing writes and that is used only in `LIST.includes(…)` / `LIST.has(…)` (`S.add(…)`,
+nothing writes (no file assigns an `includes` or `has`, `Array.prototype.includes = …`) and that is used only in `LIST.includes(…)` / `LIST.has(…)` (`S.add(…)`,
 `L.push(…)` or handing it to a function may change it): `allowed` lists them. The same shapes with
 `channel.startsWith("x:")` (also `?.`) give `prefix`. Any other use of the parameter (a check that
 does not stop the call, `if (LIST.includes(channel)) log(channel)`, `const ok =
@@ -308,12 +309,16 @@ window.api; X.m(arg)`, `const { api } = window` (also renamed, `{ api: e }`, as 
 it), `const { m } = window.api; m(arg)`, with `?.` and nested members. A write that may give
 the global another value (`window.api = …`, `window["api"] = …`, `Object.assign(window, { api
 })`, `Object.defineProperty(window, "api", …)`, and in a classic script, one that is no CommonJS
-or ES module, a top-level `var api` or an assignment to an unbound `api`) replaces the bridge for
+or ES module, a top-level `var api = …` or an assignment to an unbound `api`; a bare `var api;`
+gives no value) replaces the bridge for
 that file and for the scripts of every HTML page of the app that loads it (`<script src>` read
 from the HTML files: each `<script …>` tag found by position and read within itself, up to
 4,096 bytes per tag and HTML files up to 1 MiB, 500 of them; one past those is named in
 `html_scripts_unread`): their calls of that api are not read. A write in a script no HTML file
-read loads leaves the rows and is named in `bridge_global_written`. A write of a local or a
+read loads leaves the rows and is named in `bridge_global_written`, as is a write that only fills
+in a missing api (`if (!window.api) window.api = …`, `window.api ??= …`, `window.api =
+window.api || …`), which leaves the rows too; every page script whose calls are not listed
+because of a write is named there with that write. Tags inside `<!-- … -->` load nothing. A write of a local or a
 parameter of that name is none. Not read, and named in `bridge_calls_unread` with the reason: a
 file that takes ipcMain from electron (by its tokens: `require("electron").ipcMain`, `{ ipcMain
 } = require("electron")`, `import { ipcMain } from "electron"`, `electron.ipcMain`), a worker
