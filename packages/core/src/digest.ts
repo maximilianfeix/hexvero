@@ -6,6 +6,11 @@ import { directoryTree } from "./javascript/app.js";
 export const DIGEST_MAX_BYTES = 512 * 1024 * 1024;
 /** Bytes read for one file of the digest (the analysis reads no more of one file either). */
 const DIGEST_MAX_FILE_BYTES = 64 << 20;
+/** How many links that lead out of the root `directoryTree` names (`skippedLinks`). */
+const SKIPPED_LINKS_NAMED = 200;
+
+// Paths in NFC, so the same build unpacked on macOS (NFD names) and elsewhere has one digest.
+const nfc = (name: string): string => name.normalize("NFC");
 
 export interface DirectoryDigest {
   sha256: string;
@@ -33,9 +38,12 @@ export function directoryDigest(
   const digest = createHash("sha256").update("hexvero-directory-v1\n");
   const notes: string[] = [];
   let budget = options.maxBytes ?? DIGEST_MAX_BYTES;
-  for (const file of tree.files.toSorted((a, b) => (a.path < b.path ? -1 : 1))) {
+  const files = tree.files
+    .map((file) => ({ ...file, name: nfc(file.path) }))
+    .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const file of files) {
     if (file.size > budget || file.size > DIGEST_MAX_FILE_BYTES) {
-      digest.update(`S ${file.path}\0${file.size}\n`);
+      digest.update(`S ${file.name}\0${file.size}\n`);
       notes.push(file.size > DIGEST_MAX_FILE_BYTES ? "a file is too large" : "the byte budget");
       continue;
     }
@@ -44,14 +52,22 @@ export function directoryDigest(
       bytes = tree.read(file.path, DIGEST_MAX_FILE_BYTES);
     } catch (error) {
       if (!(error instanceof AnalysisError)) throw error;
-      digest.update(`U ${file.path}\0${error.code}\n`);
+      digest.update(`U ${file.name}\0${error.code}\n`);
       notes.push("a file could not be read");
       continue;
     }
     budget -= bytes.length;
-    digest.update(`F ${file.path}\0${createHash("sha256").update(bytes).digest("hex")}\n`);
+    digest.update(`F ${file.name}\0${createHash("sha256").update(bytes).digest("hex")}\n`);
   }
-  for (const link of (tree.skippedLinks ?? []).toSorted()) digest.update(`L ${link}\n`);
+  const links = (tree.skippedLinks ?? []).map(nfc).toSorted();
+  for (const link of links) digest.update(`L ${link}\n`);
+  // The listing names at most this many links that lead out; more may exist unnamed.
+  if (links.length >= SKIPPED_LINKS_NAMED) {
+    digest.update(`T links past ${SKIPPED_LINKS_NAMED}\n`);
+    notes.push(
+      `more than ${SKIPPED_LINKS_NAMED - 1} links lead out of it, later ones are not named`,
+    );
+  }
   if (tree.truncated) {
     digest.update(`T ${tree.truncated}\n`);
     notes.push(tree.truncated);

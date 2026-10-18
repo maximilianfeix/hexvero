@@ -673,6 +673,11 @@ export interface CheckSides {
 
 export interface EvaluateOptions {
   baseline?: LoadedBaseline | undefined;
+  /**
+   * checkRelease only: compute content digests of app directories (`a.sha256` / `b.sha256`),
+   * which reads every listed file. Always done when `baseline` is set; set it to write one.
+   */
+  digest?: boolean | undefined;
   sides?: CheckSides | undefined;
   /** The day suppressions are judged against; default now. */
   now?: Date | undefined;
@@ -1377,6 +1382,7 @@ export async function checkRelease(
   for (const side of ["a", "b"] as const) {
     const info = comparison[side].info;
     if (info.format !== "directory" || info.sha256) continue;
+    if (!options.baseline && !options.digest) continue;
     const digest = directoryDigest(info.path);
     if (digest.partial)
       partial.push(`${side === "a" ? "before" : "after"} build: ${digest.partial}`);

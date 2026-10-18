@@ -210,6 +210,9 @@ describe("hexvero check", () => {
     const same = JSON.parse((await check(one, one, ...args)).io.stdout.join("\n"));
     expect(same.a.sha256).toBe(written.a);
     expect(same.baseline.warnings ?? []).toEqual([]);
+    // without a baseline nothing is digested (it would read every file for nothing)
+    const plain = await check(one, one, "--policy", examplePolicy, "--format", "json");
+    expect(JSON.parse(plain.io.stdout.join("\n")).a.sha256).toBe("");
     const other = JSON.parse((await check(two, one, ...args)).io.stdout.join("\n"));
     expect(other.a.sha256).not.toBe(written.a);
     expect((other.baseline.warnings ?? []).join("\n")).toContain("another before build");

@@ -68,4 +68,20 @@ describe("directory digest", () => {
     writeFileSync(join(root, "main.js"), "2");
     expect(directoryDigest(root).sha256).not.toBe(before.sha256);
   });
+
+  it("reads names in NFC and says when links out of the build are past the named ones", (ctx) => {
+    const nfd = directoryDigest(app("nfd", { "package.json": "{}", "cafe\u0301.js": "1" }));
+    const nfc = directoryDigest(app("nfc", { "package.json": "{}", "caf\u00e9.js": "1" }));
+    expect(nfd.sha256).toBe(nfc.sha256);
+    const root = app("links", { "package.json": "{}", "main.js": "1" });
+    const outside = join(dir, "outside-many.js");
+    writeFileSync(outside, "x");
+    try {
+      for (let i = 0; i < 205; i++) symlinkSync(outside, join(root, `l${i}.js`));
+    } catch (error) {
+      if (["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) ctx.skip();
+      throw error;
+    }
+    expect(directoryDigest(root).partial).toContain("links lead out of it");
+  });
 });

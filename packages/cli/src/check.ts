@@ -269,7 +269,11 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
 
   const a = await session.open(before);
   const b = await session.open(after);
-  let result = await checkRelease(session, a.id, b.id, policy, { baseline });
+  // Directory digests read every file: only for a baseline, which is what compares them.
+  let result = await checkRelease(session, a.id, b.id, policy, {
+    baseline,
+    digest: Boolean(baselineFile),
+  });
   if (update && baselineFile) {
     const written = createBaseline(result);
     // a baseline usually lives in a directory of its own (.hexvero/baseline.json): create it
