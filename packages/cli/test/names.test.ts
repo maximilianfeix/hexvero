@@ -76,7 +76,11 @@ describe("builds with the same file name", () => {
     const other = join(dir, "x", "other.asar");
     writeFileSync(
       other,
-      buildAsar({ "package.json": JSON.stringify({ name: "p", main: "m.js" }) }),
+      // a module to read: a build with no JavaScript is refused by check, not passed
+      buildAsar({
+        "package.json": JSON.stringify({ name: "p", main: "m.js" }),
+        "m.js": "console.log(1);\n",
+      }),
     );
     const compare = capture();
     expect(await main(["compare", a, other], compare)).toBe(0);
