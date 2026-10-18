@@ -249,6 +249,15 @@ const SHAPE_FIELDS: Record<string, readonly string[]> = {
 };
 
 /**
+ * Lists whose order is not content: a forwarder's allow-list (`allowed`, #221) is the same list
+ * when its channels are written in another order or twice. Compared sorted and without repeats;
+ * the items keep the order as written.
+ */
+const UNORDERED_FIELDS: Record<string, readonly string[]> = {
+  contextBridge: ["allowed"],
+};
+
+/**
  * Positions in a capture: a HAR request's `index` is where it sits in the log, so two captures
  * of the same requests in another order differ there only. Only HAR targets have `requests`.
  */
@@ -586,10 +595,19 @@ export function compareItems(
   const nested =
     (positional.includes("line") && options.collection && NESTED_LINE_FIELDS[options.collection]) ||
     [];
-  /** The item with the lines of its nested entries removed, when those count as positions. */
+  const unordered = (options.collection && UNORDERED_FIELDS[options.collection]) || [];
+  /**
+   * The item with the lines of its nested entries removed, when those count as positions, and its
+   * unordered lists sorted.
+   */
   const strip = (item: unknown): unknown => {
-    if (!isRecord(item) || nested.length === 0) return item;
+    if (!isRecord(item) || (nested.length === 0 && unordered.length === 0)) return item;
     const copy: Record<string, unknown> = { ...item };
+    for (const f of unordered) {
+      const value = copy[f];
+      if (Array.isArray(value) && value.every((v) => typeof v === "string"))
+        copy[f] = [...new Set(value)].toSorted();
+    }
     const drop = (entry: unknown, name: string): unknown => {
       if (!isRecord(entry)) return entry;
       const rest = { ...entry };

@@ -2644,6 +2644,15 @@ export function bridgeMembers(
         const at0 = tokens[c]?.value === "return" ? c + 1 : c;
         return calls.length === 1 && first === at0 && endsAfter(callOpen[0]!);
       }
+      // `check ? call : other` as minifiers write `if (check) return call; return other`: the
+      // arrow's body or a `return` of the body's own level, the one call between `?` and `:`
+      if (is(to, "?")) {
+        const value = def!.block ? tokens[at - 1]?.value === "return" && direct(at - 1) : at === b0;
+        const close = callOpen.length === 1 ? r.closeOf(callOpen[0]!) : -1;
+        return (
+          value && calls.length === 1 && first === to + 1 && close !== -1 && is(close + 1, ":")
+        );
+      }
       // `check && call;` as minifiers write the `if`, a statement of its own (or the arrow's body)
       const statement = def!.block ? direct(at) && (is(at - 1, "{") || is(at - 1, ";")) : at === b0;
       return (
@@ -5195,7 +5204,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 30;
+export const JS_SCAN_SCHEMA = 31;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and

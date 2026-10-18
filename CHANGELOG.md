@@ -6,6 +6,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Comparing generic bridge forwarders (#221): a forwarder's allow-list (`allowed` on the contextBridge row) is compared as a set, so the same channels written in another order or twice are no change; a channel added to or taken out of the list stays a change of every member that checks it (and of a page call it now blocks, `ipc` `allowed` yes → no). The minified form of an allow-list check that returns the call, `i.includes(e)?n.invoke(e,r):Promise.reject(…)` (esbuild's form of `if (LIST.includes(ch)) return ipcRenderer.invoke(…); return …`), is read as the check, so a minified `request` member has `allowed` like the plain one instead of none. Lines added around the forwarders give no contextBridge or IPC change, plain, bundled and minified. On holdout8 the three changes `~shopping.send`, `~shopping.request`, `~shopping.receive` between Gristmill v1 and v2 remain: v2 renames `shopping:clear` to `shopping:clear-checked` in that allow-list, which these rules count as a change, while the set's expectation does not. Electron Fiddle 0.38.0 → 0.39.0, Discord and Claude.app: contextBridge and IPC rows unchanged. JS_SCAN_SCHEMA 31.
+
 ## [0.10.0] - 2026-10-18
 
 ### Added
