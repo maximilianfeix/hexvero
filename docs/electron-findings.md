@@ -323,7 +323,9 @@ a test that the api is missing (`!window.api`, `!api`, `typeof api === "undefine
 `else` or a deeper block it is a replacement; every page script whose calls are not listed
 because of a write is named there with that write. Tags inside `<!-- … -->` load nothing; comments are recognised in markup only, not in the text
 of `script`, `style`, `textarea` and `title` or in a quoted attribute, and a script tag inside a
-comment, or a comment that does not close, is named in `html_scripts_unread`. A write of a local or a
+comment, or a comment that does not close, is named in `html_scripts_unread`. A quote opens an
+attribute value only right after `=`; a page whose reading stops early (a tag without `>`, an
+unclosed `script`, `style`, `textarea` or `title`) is named there too. A write of a local or a
 parameter of that name is none. Not read, and named in `bridge_calls_unread` with the reason: a
 file that takes ipcMain from electron (by its tokens: `require("electron").ipcMain`, `{ ipcMain
 } = require("electron")`, `import { ipcMain } from "electron"`, `electron.ipcMain`), a worker

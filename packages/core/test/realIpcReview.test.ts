@@ -218,6 +218,23 @@ describe("R1: page scripts and preloads that may give the api something else", (
       `<div title="<!--"></div><script src="shim.js"></script><script src="renderer.js"></script>`,
     ])
       expect(pageRows(analyze({ ...base, "index.html": html, "shim.js": shim })), html).toEqual([]);
+    // a stray quote in a tag is no attribute value: the next tags are read
+    expect(
+      pageRows(
+        analyze({
+          ...base,
+          "index.html": `<script src=x.js a"b></script><script src="shim.js"></script><script src="renderer.js"></script><p title="x">"</p>`,
+          "shim.js": shim,
+        }),
+      ),
+    ).toEqual([]);
+    // a page whose reading stops early is said
+    const stops = analyze({
+      ...base,
+      "index.html": `<script src="renderer.js"></script><style>p{}`,
+      "shim.js": shim,
+    });
+    expect(stops.limitations.map((l) => l.code)).toContain("html_scripts_unread");
     // an unclosed comment is said
     const open = analyze({
       ...base,

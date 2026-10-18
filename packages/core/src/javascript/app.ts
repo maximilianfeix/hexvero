@@ -4032,19 +4032,29 @@ function htmlScripts(
       const path = posix.normalize(clean.startsWith("/") ? clean.slice(1) : posix.join(dir, clean));
       if (known.has(path)) scripts.push(path);
     };
-    /** The `>` that ends the tag opened at `at`, past quoted attribute values; -1 if none. */
+    /**
+     * The `>` that ends the tag opened at `at`, past quoted attribute values: a quote opens a
+     * value only right after `=` (spaces between allowed), as in HTML's attribute value states;
+     * a stray quote is part of a name. -1 if the tag does not end.
+     */
     const tagEnd = (at: number): number => {
+      let afterEquals = false;
       for (let q = at + 1; q < lower.length; q++) {
         const c = lower.charCodeAt(q);
         if (c === 62) return q; // >
-        if (c === 34 || c === 39) {
+        if ((c === 34 || c === 39) && afterEquals) {
           const close = lower.indexOf(c === 34 ? '"' : "'", q + 1);
           if (close === -1) return -1;
           q = close;
+          afterEquals = false;
+          continue;
         }
+        if (c === 61) afterEquals = true; // =
+        else if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) afterEquals = false;
       }
       return -1;
     };
+    let stopped = false;
     // The HTML data state, step by step: markup, comments, and the raw text of `script`,
     // `style`, `textarea` and `title`, where neither `<!--` nor `<script` means anything. Each
     // step jumps forward by indexOf, so the page is read once.
@@ -4066,7 +4076,10 @@ function htmlScripts(
         continue;
       }
       const end = tagEnd(at);
-      if (end === -1) break;
+      if (end === -1) {
+        stopped = true;
+        break;
+      }
       if (name === "script") {
         if (end - at > MAX_SCRIPT_TAG) cut = true;
         else add(text.slice(at, end));
@@ -4074,17 +4087,27 @@ function htmlScripts(
       at = end + 1;
       if (name === "script" || name === "style" || name === "textarea" || name === "title") {
         const close = lower.indexOf(`</${name}`, at);
-        if (close === -1) break;
+        if (close === -1) {
+          stopped = true;
+          break;
+        }
         at = close;
         // the end tag itself
         const after = lower.indexOf(">", close);
-        if (after === -1) break;
+        if (after === -1) {
+          stopped = true;
+          break;
+        }
         at = after + 1;
       }
       at = lower.indexOf("<", at);
     }
     if (cut) skipped.push(`${f.path} (a <script> tag longer than ${MAX_SCRIPT_TAG} bytes)`);
     if (hidden) skipped.push(`${f.path} (a <script> tag inside a comment, which loads nothing)`);
+    if (stopped)
+      skipped.push(
+        `${f.path} (a tag or a script, style, textarea or title element that does not end: the rest is not read)`,
+      );
     pages.set(f.path, scripts);
   }
   return { pages, skipped };
