@@ -168,3 +168,110 @@ describe("compare of generic bridge forwarders (#221)", () => {
     });
   }
 });
+
+/**
+ * A channel the check refuses, when the channel is also used otherwise (`guard: "unknown"`): only
+ * the exit-first form (`if (!check) return`) stops it before every call. With the check around
+ * the call, the other path may forward it after all (a local helper, `require("electron")`, a
+ * computed member), so the page's call of it is `unknown`, not `no`.
+ */
+const OTHER_PATHS: Record<string, [body: string, refused: "no" | "unknown"]> = {
+  t12_else_fwd: [
+    `f: (ch, ...a) => L.includes(ch) ? ipcRenderer.invoke(ch, ...a) : fwd(ch, ...a)`,
+    "unknown",
+  ],
+  t14_else_require: [
+    `f: (ch, ...a) => L.includes(ch) ? ipcRenderer.invoke(ch, ...a) : require("electron").ipcRenderer.invoke(ch, ...a)`,
+    "unknown",
+  ],
+  t15_else_computed: [
+    `f: (ch, ...a) => L.includes(ch) ? ipcRenderer.invoke(ch, ...a) : ipcRenderer["invoke"](ch, ...a)`,
+    "unknown",
+  ],
+  p1_ifret_fwd: [
+    `f(ch, ...a) { if (L.includes(ch)) return ipcRenderer.invoke(ch, ...a); return fwd(ch, ...a) }`,
+    "unknown",
+  ],
+  p2_guard_then_fwd: [
+    `f(ch, ...a) { if (!L.includes(ch)) return; fwd(ch); return ipcRenderer.invoke(ch, ...a) }`,
+    "no",
+  ],
+  p3_and_then_fwd: [
+    `f(ch, ...a) { L.includes(ch) && ipcRenderer.invoke(ch, ...a); fwd(ch, ...a) }`,
+    "unknown",
+  ],
+  p4_ifblock_fwd: [
+    `f(ch, ...a) { if (L.includes(ch)) { return ipcRenderer.invoke(ch, ...a) } return fwd(ch, ...a) }`,
+    "unknown",
+  ],
+  p6_ifret_req: [
+    `f(ch, ...a) { if (L.includes(ch)) return ipcRenderer.invoke(ch, ...a); return require("electron").ipcRenderer.invoke(ch, ...a) }`,
+    "unknown",
+  ],
+};
+
+function otherPathFiles(mode: Mode, body: string): Record<string, string> {
+  const sources = {
+    "main.js": `const { ipcMain, BrowserWindow } = require("electron");
+new BrowserWindow({ webPreferences: { preload: require("path").join(__dirname, "preload.js") } });
+ipcMain.handle("a:one", () => 1);
+`,
+    "preload.js": `const { contextBridge, ipcRenderer } = require("electron");
+const L = ["a:one", "a:two"];
+const fwd = (c, ...a) => ipcRenderer.invoke(c, ...a);
+contextBridge.exposeInMainWorld("api", { ${body} });
+`,
+    "renderer.js": `window.api.f("a:one"); window.api.f("z:bad");\n`,
+  };
+  if (mode === "plain") return sources;
+  const src = mkdtempSync(join(dir, "other-"));
+  const out: Record<string, string> = {};
+  for (const [name, text] of Object.entries(sources)) {
+    writeFileSync(join(src, name), text);
+    const outfile = join(src, "out", name);
+    buildSync({
+      entryPoints: [join(src, name)],
+      bundle: true,
+      minify: mode === "minified",
+      platform: name === "renderer.js" ? "browser" : "node",
+      format: name === "renderer.js" ? "iife" : "cjs",
+      external: ["electron"],
+      outfile,
+      logLevel: "silent",
+    });
+    out[name] = readFileSync(outfile, "utf8");
+  }
+  return out;
+}
+
+describe("a refused channel with another path to the call (#221 review)", () => {
+  for (const mode of ["plain", "bundled", "minified"] as const)
+    it(`is no only behind an exit-first check (${mode})`, async () => {
+      const got: Record<string, string> = {};
+      const want: Record<string, string> = {};
+      for (const [name, [body, refused]] of Object.entries(OTHER_PATHS)) {
+        const session = new Session();
+        const path = join(dir, `other-${n++}.asar`);
+        writeFileSync(
+          path,
+          buildAsar({
+            "package.json": JSON.stringify({ name: "o", main: "main.js" }),
+            ...otherPathFiles(mode, body),
+          }),
+        );
+        const t = await session.open(path);
+        const page = (await session.items(t.id, "ipc")).filter(
+          (u) => (u as { via?: string }).via === "bridge",
+        ) as { channel: string; allowed?: string }[];
+        got[name] = page
+          .map((u) => `${u.channel} ${u.allowed ?? "-"}`)
+          .toSorted()
+          .join(", ");
+        // minified, p2 is `if(i.includes(o))return s(o),t.ipcRenderer.invoke(o,…)`, a form the
+        // check is not read in: no allow-list, so the refused call is unknown as well
+        const no = refused === "no" && mode !== "minified";
+        want[name] = `a:one unknown, z:bad ${no ? "no" : "unknown"}`;
+      }
+      expect(got).toEqual(want);
+    });
+});

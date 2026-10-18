@@ -1299,6 +1299,13 @@ export interface BridgeForwarder {
   allowed?: string[];
   prefix?: string;
   guard?: "unknown";
+  /**
+   * Every check read (`allowed`, `prefix`) is the exit-first form, `if (!check) return|throw`
+   * before every call. Only then does a channel the check refuses surely not reach the call when
+   * the channel is also used otherwise (`guard`); a check around the call (`if (check) { … }`,
+   * `check && call`, `check ? call : other`) leaves the other path, which may forward it.
+   */
+  exitFirst?: true;
   file: string;
   line: number;
 }
@@ -2551,6 +2558,9 @@ export function bridgeMembers(
     let other = false;
     let allowed: string[] | undefined;
     let prefix: string | undefined;
+    /** Whether the last check `enforced` accepted was the exit-first form; all of them, below. */
+    let exitForm = false;
+    let allExitFirst = true;
     for (let j = b0; j < b1; j++) {
       const t = tokens[j]!;
       if (t.type !== "ident") continue;
@@ -2626,10 +2636,11 @@ export function bridgeMembers(
         return leaves;
       };
       // `if (!check) return;` before every call
+      exitForm = false;
       if (is(at - 1, "!") && is(at - 2, "(") && tokens[at - 3]?.value === "if") {
-        return (
-          direct(at - 3) && is(to, ")") && r.closeOf(at - 2) === to && to < first && exits(to + 1)
-        );
+        exitForm =
+          direct(at - 3) && is(to, ")") && r.closeOf(at - 2) === to && to < first && exits(to + 1);
+        return exitForm;
       }
       if (is(at - 1, "!")) return false;
       // `if (check) { … every call … }`, `if (check) call;`
@@ -2687,6 +2698,7 @@ export function bridgeMembers(
         const strings = stringList(j - 4);
         if (strings && !allowed && enforced(j - 4, j + 2)) {
           allowed = strings;
+          allExitFirst &&= exitForm;
           continue;
         }
       }
@@ -2701,6 +2713,7 @@ export function bridgeMembers(
         enforced(j, j + 6)
       ) {
         prefix = textOf(tokens[j + 4])!;
+        allExitFirst &&= exitForm;
         continue;
       }
       other = true;
@@ -2710,6 +2723,7 @@ export function bridgeMembers(
       ...(allowed ? { allowed } : {}),
       ...(prefix !== undefined ? { prefix } : {}),
       ...(other ? { guard: "unknown" as const } : {}),
+      ...((allowed || prefix !== undefined) && allExitFirst ? { exitFirst: true as const } : {}),
     };
   };
   /** The strings of the array (or `new Set([…])`) the name ending at k holds, when it is a `const` nothing writes. */
@@ -4050,7 +4064,7 @@ function bridgeCallRows(input: {
   // one forwarder per api and path, the same in every preload that exposes it
   const byPath = new Map<string, BridgeForwarder | null>();
   const sig = (f: BridgeForwarder): string =>
-    JSON.stringify([f.method, f.allowed ?? null, f.prefix ?? null, f.guard ?? null]);
+    JSON.stringify([f.method, f.allowed ?? null, f.prefix ?? null, f.guard ?? null, !!f.exitFirst]);
   for (const f of input.forwarders) {
     const key = `${f.api}\u0000${f.path}`;
     const have = byPath.get(key);
@@ -4294,7 +4308,15 @@ function bridgeCallRows(input: {
           const ok =
             (f.allowed === undefined || f.allowed.includes(channel)) &&
             (f.prefix === undefined || channel.startsWith(f.prefix));
-          usage.allowed = !ok ? "no" : f.guard ? "unknown" : "yes";
+          // with other uses of the channel (`guard`), a refused channel surely stops only at an
+          // exit-first check; around the call, the other path may forward it (#221 review)
+          usage.allowed = !ok
+            ? f.guard && !f.exitFirst
+              ? "unknown"
+              : "no"
+            : f.guard
+              ? "unknown"
+              : "yes";
         }
         out.push(usage);
       }
