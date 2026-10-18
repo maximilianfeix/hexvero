@@ -5453,11 +5453,13 @@ export class ExpressionResolver {
       }
       p = parents[p] ?? -1;
     }
-    // a function between them with a parameter of the name
+    // a function between them with a parameter of the name; the next one out is the one whose
+    // body holds the parameter list (`(channel) => (...args) => …`: the token before an arrow's
+    // parameters may be the outer arrow's `=>`, outside its body)
     for (let d = this.enclosing(k), guard = 0; d !== def; guard++) {
       if (!d || guard >= 64) return null;
       if (this.paramIndex(d, name) !== -1) return false;
-      d = this.enclosing(d.paramsAt - 1);
+      d = this.enclosing(d.paramsAt);
     }
     // a declaration inside the function visible at k: a block's let/const/class/function, a
     // pattern or `for … of` head, any declaration of a function in between; not a `var` (or a
