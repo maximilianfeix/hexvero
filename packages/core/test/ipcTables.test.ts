@@ -1058,6 +1058,15 @@ describe("the in-file replacement check of a large bundle (RC 7)", () => {
     expect(codes(info)).not.toContain("wrapper_replacements_unchecked");
   });
 
+  it("reads the rows past a computed write of the class's own fields, and says so", () => {
+    // `this[key] = value` in a setter, as Electron Fiddle's AppState has: not a proven replacement
+    const main =
+      'const { ipcMain } = require("electron");\nclass Ipc { set(k, v) { this[k] = v; } handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst w = new Ipc();\nw.set("title", "x");\nw.handle("kept:h", () => 1);\nmodule.exports = { w };\n';
+    const info = analyze({ "main.js": main });
+    expect(rows(info)).toEqual(["kept:h ipcMain.handle main.js"]);
+    expect(codes(info)).toContain("wrapper_replacements_unchecked");
+  });
+
   it("does not read a file whose wrappers give no row there", () => {
     const main =
       'const { ipcMain } = require("electron");\nclass Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst w = new Ipc();\nw.handle = () => {};\nmodule.exports = { w };\n';

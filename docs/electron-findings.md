@@ -422,7 +422,9 @@ the file itself the writes are read only where a call of a wrapper method in tha
 row, and a write whose receiver is not read within the file's replacement budget (200,000 steps;
 the largest bundle of Discord, Claude.app and Electron Fiddle needs 86,000) proves nothing: the
 calls are read as before that check, and the limitation `wrapper_replacements_unchecked` names
-the file. A write to another object of the same method name (`srv.handle = f`, lodash's
+the file. So does a computed member write in the wrapper's own file (`this[key] = value` in a
+setter of the class, as Electron Fiddle's `AppState` and got's `Request` have): it may replace a
+method, which is not proven, and the calls are read. A write to another object of the same method name (`srv.handle = f`, lodash's
 `_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
 so a call there may still be read although the method was replaced: a replacement through a
 global (`window.__s.save = f` with `window.__s` set elsewhere), through `require.cache`, through

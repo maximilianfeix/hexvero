@@ -489,7 +489,10 @@ export class WrapperReader {
         if (start === null) continue;
         const classes = owners(start, j);
         if (classes === "budget") add(anyOf(null), null, j, true);
-        else add(classes, null, j);
+        // In the wrapper's own file such a write is mostly the class setting its own fields
+        // (`this[key] = value` in a setter): it may replace a method, which is not proven, so
+        // the file counts as not checked whole instead of every method as replaced.
+        else add(classes, null, j, ownFile);
         continue;
       }
       // `Object.assign(R, {…})`, `Object.defineProperty(R, "NAME", …)`, `Reflect.set(R, "NAME", …)`,
