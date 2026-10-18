@@ -147,6 +147,16 @@ describe("R1: a check of the channel is read only where it decides the call", ()
 
 describe("R1: page scripts and preloads that may give the api something else", () => {
   const base = forwarder(`call: (ch, ...a) => ipcRenderer.invoke(ch, ...a)`);
+  const classic = (html: string): JsAppInfo =>
+    analyze({
+      ...base,
+      "index.html": html,
+      "other.html": `<script src="other.js"></script>`,
+      "client.js": `var api = { call: function (c) { return fetch("/" + c); } };\n`,
+      "renderer.js": `api.call("w:global");\n`,
+      "other.js": `window.api.call("w:other");\n`,
+    });
+  const together = classic(`<script src="client.js"></script><script src="renderer.js"></script>`);
   it("reads no call where a page script replaces the api, in every build", () => {
     for (const [name, page] of Object.entries({
       bracket: `window["api"] = { call: (c) => fetch(c) };\nwindow.api.call("w:x");\n`,
@@ -155,14 +165,38 @@ describe("R1: page scripts and preloads that may give the api something else", (
     }))
       for (const [b, files] of builds({ ...base, "renderer.js": page }))
         expect(pageRows(analyze(files)), `${name} ${b}`).toEqual([]);
-    // a classic script of the page that declares the global
-    const classic = analyze({
+    // a classic script of the page that declares the global: the scripts of that page only
+    expect(pageRows(together)).toEqual([]);
+    expect(pageRows(together, "other.js")).toEqual(["w:other -"]);
+    // no page read loads the script: the rows stay, and the write is named
+    const unknown = classic(`<script src="renderer.js"></script>`);
+    expect(pageRows(unknown)).toEqual(["w:global -"]);
+    expect(unknown.limitations.map((l) => l.code)).toContain("bridge_global_written");
+    // a write of the name inside a function, or of a local, is no global
+    for (const [b, files] of builds({
       ...base,
-      "client.js": `var api = { call: function (c) { return fetch("/" + c); } };\n`,
-      "renderer.js": `api.call("w:global");\n`,
-    });
-    expect(pageRows(classic)).toEqual([]);
+      "renderer.js": `function f() { let api = 1; api = 2; return api; }\nconst g = (api) => { api = 3; return api; };\nf(); g();\nwindow.api.call("w:kept");\n`,
+    }))
+      expect(pageRows(analyze(files)), b).toEqual(["w:kept -"]);
   });
+  it("names the files it does not read, by what is written, not by text", () => {
+    const info = analyze({
+      ...base,
+      // a comment that names ipcMain and a file of the same name elsewhere are no reason
+      "renderer.js": `// talks to ipcMain through the bridge\nwindow.api.call("ok:page");\nnew Worker("./w/worker.js");\n`,
+      "w/worker.js": `self.api.call("w:worker");\n`,
+      "worker.js": `window.api.call("ok:same-name");\n`,
+      "with.js": `with (o) { api.call("w:with"); }\n`,
+    });
+    expect(pageRows(info)).toEqual(["ok:page -"]);
+    expect(pageRows(info, "worker.js")).toEqual(["ok:same-name -"]);
+    expect(pageRows(info, "w/worker.js")).toEqual([]);
+    expect(pageRows(info, "with.js")).toEqual([]);
+    const why = info.limitations.find((l) => l.code === "bridge_calls_unread")?.message ?? "";
+    expect(why).toContain("w/worker.js (a worker script");
+    expect(why).toContain("with.js (a with statement");
+  });
+
   it("reads no call in a worker script or a main-process file", () => {
     const info = analyze({
       ...base,
@@ -246,6 +280,16 @@ describe("R4: the name guard keeps Electron's rows a module of the app hands on"
         "re:renderer",
       ],
     ];
+    // a name taken out of the module keeps its rows, also where the module exports a forwarder
+    // of the method's name: it is the object the module exports under that name
+    cases.push([
+      "taken out",
+      {
+        "main.js": `const { ipcMain } = require("./ipc-main");\nipcMain.handle("re:taken", () => 1);\n`,
+        "ipc-main.js": `const electron = require("electron");\nfunction handle(channel, fn) { electron.ipcMain.handle(channel, fn); }\nexports.handle = handle;\nexports.ipcMain = electron.ipcMain;\n`,
+      },
+      "re:taken",
+    ]);
     for (const [name, files, channel] of cases)
       expect(
         analyze(files).ipcChannels.map((c) => c.channel),
@@ -285,8 +329,22 @@ describe("R4: forwarders that may not be what is called", () => {
   });
 });
 
+const each = (files: Files): Array<[string, string[]]> => [
+  ["plain", exposed(files)],
+  ...[false, true].map((minify): [string, string[]] => [
+    minify ? "minified" : "bundled",
+    analyze({ "main.js": "", ...build({ ...files, "main.js": "" }, minify) }).contextBridge.map(
+      (b) => `${b.member}=${b.channel}`,
+    ),
+  ]),
+];
 describe("R3: an exported object changed through another name", () => {
   const E = `import { ipcRenderer } from "electron";\n`;
+  const plat = (tail: string): Files => ({
+    "preload.js": `import { contextBridge } from "electron";\nimport { platform } from "./plat.js";\ncontextBridge.exposeInMainWorld("api", { platform });\n`,
+    "plat.js": `${E}export const platform = { a: () => ipcRenderer.invoke("ok:a") };\n${tail}`,
+  });
+  /** The members in each build: plain ES modules, and the preload bundled (plain, minified). */
   it("does not read the object as written", () => {
     // a module that imports it as a namespace writes a member
     expect(
@@ -296,17 +354,28 @@ describe("R3: an exported object changed through another name", () => {
         "patch.js": `${E}import * as base from "./base.js";\nbase.api.a = () => ipcRenderer.send("evil:a");\n`,
       }),
     ).toEqual(["null=null"]);
-    // another name for it in its own module, and a function it is handed to
-    for (const tail of [
-      `const p = platform;\np.a = () => ipcRenderer.invoke("evil:a");\n`,
-      `function patch(o) { o.a = () => ipcRenderer.invoke("evil:a"); }\npatch(platform);\n`,
-    ])
-      expect(
-        exposed({
-          "preload.js": `import { contextBridge } from "electron";\nimport { platform } from "./plat.js";\ncontextBridge.exposeInMainWorld("api", { platform });\n`,
-          "plat.js": `${E}export const platform = { a: () => ipcRenderer.invoke("ok:a") };\n${tail}`,
-        }),
-      ).toEqual(["platform=null"]);
+    for (const [name, tail] of Object.entries({
+      alias: `const p = platform;\np.a = () => ipcRenderer.invoke("evil:a");\n`,
+      call: `function patch(o) { o.a = () => ipcRenderer.invoke("evil:a"); }\npatch(platform);\n`,
+      // a local function named like a read-only call, and a shadowed console
+      localLog: `function log(t) { t.a = () => ipcRenderer.invoke("evil:a"); }\nlog(platform);\n`,
+      localConsole: `const console = { log(t) { t.a = () => ipcRenderer.invoke("evil:a"); } };\nconsole.log(platform);\n`,
+      // a function of the file named like contextBridge's method
+      fakeExpose: `function exposeInMainWorld(k, o) { o.a = () => ipcRenderer.invoke("evil:a"); }\nexposeInMainWorld("x", platform);\n`,
+      // held by an object that is changed, or chosen by an operator
+      holder: `const box = { platform };\nbox.platform.a = () => ipcRenderer.invoke("evil:a");\n`,
+      operator: `const q = globalThis.x || platform;\nq.a = () => ipcRenderer.invoke("evil:a");\n`,
+    }))
+      for (const [b, rows] of each(plat(tail)))
+        expect(rows, `${name} ${b}`).not.toContain("platform.a=ok:a");
+  });
+  it("reads it where it is only read", () => {
+    for (const [name, tail] of Object.entries({
+      none: "",
+      frozen: `Object.freeze(platform);\nconsole.log(platform);\n`,
+    }))
+      for (const [b, rows] of each(plat(tail)))
+        expect(rows, `${name} ${b}`).toEqual(["platform.a=ok:a"]);
   });
 });
 

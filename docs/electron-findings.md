@@ -242,9 +242,13 @@ A member is not read as written, and the entry stays as it was (the exposed valu
 module does not define the export once (two definitions, `export *`, `export { a } from "./b"`,
 `__exportStar`, `Object.defineProperty(exports, "P", …)` for a namespace), the name or a member of
 it is written in its module (the write forms of `writes.ts`, also `Object.assign` and the like,
-through another name for it, `const p = platform; p.a = …`, three names deep, or it is handed to a
-function other than `Object.freeze` / `keys` / `values` / `entries`, `JSON.stringify` and
-`console`), a module that imports it writes a member of it (also as a namespace, `import * as
+through another name for it, `const p = platform; p.a = …`, three names deep; handed to any
+function except the global `Object.freeze` / `keys` / `values` / `entries`, `JSON.stringify`,
+`String`, `Boolean`, `console.*` and `contextBridge.exposeInMainWorld` on a proven contextBridge
+(a local function or a shadowed `console` of that name is one); a value of an object or array
+literal other than the one exposed and the module's own exports, unless that literal is held
+under a name that is itself unchanged (`var ipc = { auth: auth_default }`); a part of `a ||
+name`, `a ?? name` or `c ? name : d`; and past the work budget, where nothing is proven), a module that imports it writes a member of it (also as a namespace, `import * as
 base; base.api.a = …`) (every importer except the exposing preload, whose
 writes before the call are members as above; past 64 importers the value is not read), the module
 is not among the files (a package, a file outside the app; only relative specifiers are followed),
@@ -301,13 +305,18 @@ The calls are read in every file that is not a main-process file and does not ex
 `window.api.m(arg)`, `globalThis.api.m(arg)`, `self.api.m(arg)`, `api.m(arg)` where the file binds
 no `api` (no declaration, parameter, import or require of it where it is used), `const X =
 window.api; X.m(arg)`, `const { api } = window` (also renamed, `{ api: e }`, as minifiers write
-it), `const { m } = window.api; m(arg)`, with `?.` and nested members. A page script that
-replaces the api (`window.api = …`, `window["api"] = …`, `Object.assign(window, { api })`,
-`Object.defineProperty(window, "api", …)`, an assignment to `api`) or declares `api` at its top
-without being a CommonJS or ES module (a classic script's `var api` is a global of the page) may
-change it for every script of the page: that api's calls are read in no file. Not read either: a
-file that names `ipcMain` (a main-process file), a worker script (a file named in `new
-Worker("…")` or `new SharedWorker("…")`), and a file with a `with` statement. Each call is one `ipc` row in the calling file: `api` the
+it), `const { m } = window.api; m(arg)`, with `?.` and nested members. A write that may give
+the global another value (`window.api = …`, `window["api"] = …`, `Object.assign(window, { api
+})`, `Object.defineProperty(window, "api", …)`, and in a classic script, one that is no CommonJS
+or ES module, a top-level `var api` or an assignment to an unbound `api`) replaces the bridge for
+that file and for the scripts of every HTML page of the app that loads it (`<script src>` read
+from the HTML files): their calls of that api are not read. A write in a script no HTML file
+read loads leaves the rows and is named in `bridge_global_written`. A write of a local or a
+parameter of that name is none. Not read, and named in `bridge_calls_unread` with the reason: a
+file that takes ipcMain from electron (by its tokens: `require("electron").ipcMain`, `{ ipcMain
+} = require("electron")`, `import { ipcMain } from "electron"`, `electron.ipcMain`), a worker
+script (`new Worker("./w.js")`, `new SharedWorker(…)`, located from the calling file; one that is
+not located is named too), and a file with a `with` statement. Each call is one `ipc` row in the calling file: `api` the
 forwarded method, `via: "bridge"`, `member` (`electron.ipcRenderer.sendMessage`), the channel its
 first argument names (a literal, a constant, another module's constant, or what the bounded
 resolver reads; else null, named in `ipc_channel_unresolved`), and with a recorded check
@@ -1135,9 +1144,11 @@ gives no row and no limitation, and a forwarder declared inside a bundler's modu
 module of the application (a relative specifier: `import * as ipcMain from "./ipc-main"` as GitHub
 Desktop writes it, `import ipcMain from "./x"`, `import { a as ipcMain } from "./x"`, `const ipcMain
 = require("./x")`, also through `__importStar`, and `const { a: ipcMain } = require("./x")`) calls
-that module. When the module is read and exports a channel-forwarding function of the method's
-name, the row through it (above) replaces the direct `ipcMain.x` row. Otherwise the direct row
-stays, as before: such a module may hand Electron's object on (`export { ipcMain } from
+that module. The direct `ipcMain.x` row is dropped only where the name is the module object
+itself (`import * as ipcMain`, `const ipcMain = require("./x")`, also through `__importStar`),
+the module is read and exports a channel-forwarding function of the method's name, and the row
+through it (above) was given for that same call. A name taken out of the module (`const {
+ipcMain } = require("./x")`) and every other case keep the direct row, as before: such a module may hand Electron's object on (`export { ipcMain } from
 "electron"`, `module.exports = require("electron").ipcMain`). A key the module defines twice
 (`exports.addHandler = a; exports.addHandler = b`), a forwarder the importer replaces
 (`ipc.addHandler = …`, `Object.assign(ipc, …)`, `addHandler = …`), and a helper that calls IPC

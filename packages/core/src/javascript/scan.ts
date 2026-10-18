@@ -400,10 +400,11 @@ function exportedForwarders(
 const IPC_OBJECT_NAMES: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]);
 
 /**
- * The names `ipcMain` / `ipcRenderer` that this file binds to a module of the application (a
- * relative specifier): `import * as ipcMain from "./ipc-main"`, `import ipcMain from "./x"`,
- * `import { a as ipcMain } from "./x"`, `const ipcMain = require("./x")` (also through
- * `__importStar` / `__toESM`), `const { a: ipcMain } = require("./x")`.
+ * The names `ipcMain` / `ipcRenderer` that this file binds to the module object of a module of
+ * the application (a relative specifier), with that specifier: `import * as ipcMain from
+ * "./ipc-main"`, `const ipcMain = require("./x")` (also through `__importStar` / `__toESM`). A
+ * name taken out of such a module (`import { ipcMain } from "./x"`) is not one: it may be
+ * Electron's object handed on.
  */
 export function appModuleNames(tokens: readonly Token[]): Map<string, string> {
   const out = new Map<string, string>();
@@ -419,25 +420,12 @@ export function appModuleNames(tokens: readonly Token[]): Map<string, string> {
     if (is(k - 1, ".") || is(k - 1, "?.")) continue;
     // `import * as N from "./x"`, `import N from "./x"`, `import { a as N } from "./x"`
     if (ident(k + 1, "from") && relative(k + 2)) {
-      if (ident(k - 1, "as") || ident(k - 1, "import")) out.set(t.value, tokens[k + 2]!.value);
+      // only `import * as ipcMain` binds the module object itself
+      if (ident(k - 1, "as") && is(k - 2, "*")) out.set(t.value, tokens[k + 2]!.value);
       continue;
     }
+    // a name taken out of such a module (`{ ipcMain } = require("./x")`) is not marked
     if (ident(k - 1, "as") || is(k - 1, "{") || is(k - 1, ",") || is(k - 1, ":")) {
-      // inside `{ … }` of an import or a require pattern
-      let close = k + 1;
-      while (close < tokens.length && close < k + 200 && !is(close, "}")) close++;
-      if (
-        is(close, "}") &&
-        ((ident(close + 1, "from") && relative(close + 2)) ||
-          (is(close + 1, "=") &&
-            ident(close + 2, "require") &&
-            is(close + 3, "(") &&
-            relative(close + 4)))
-      ) {
-        // a key of a pattern (`{ ipcMain: other }`) binds the other name
-        if (!is(k + 1, ":"))
-          out.set(t.value, tokens[ident(close + 1, "from") ? close + 2 : close + 4]!.value);
-      }
       continue;
     }
     // `const N = require("./x")`, `const N = __importStar(require("./x"))`

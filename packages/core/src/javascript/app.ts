@@ -2220,8 +2220,10 @@ export function bridgeMembers(
     )
       open = a + 4;
     if (open === -1) return { from: a, to: b };
-    // an object some code changes is not read as written
-    return writtenAnywhere(t.value) ? null : { object: open, from: a, to: b };
+    // an object some code changes, directly or through another name or a call, is not read as written
+    return writtenAnywhere(t.value) || escapes(t.value, 0)
+      ? null
+      : { object: open, from: a, to: b };
   };
   /**
    * The getters esbuild's `__export(target, { k: () => v })` defines on an empty object, as it writes
@@ -2779,10 +2781,18 @@ export function bridgeMembers(
    * handed to (`patch(api)`) other than the few that only read.
    */
   const escapes = (name: string, depth: number): boolean => {
-    if (depth > 3 || budget <= 0) return depth > 3;
+    // past the depth or the budget nothing is proven: the object may escape
+    if (depth > 3 || budget <= 0) return true;
     resolver ??= new ExpressionResolver(tokens, context.constants);
-    for (const j of resolver.namePositions(name)) {
+    const r = resolver;
+    /** The name at k is a global (or the file binds nothing of that name there). */
+    const unbound = (k: number): boolean =>
+      tokens[k]?.type === "ident" &&
+      r.binding(k, tokens[k]!.value, true) === null &&
+      !r.paramAround(k, tokens[k]!.value);
+    for (const j of r.namePositions(name)) {
       budget -= BRIDGE_SCOPE_COST;
+      if (budget <= 0) return true;
       if (is(j - 1, ".") || is(j - 1, "?.")) continue;
       const ends =
         is(j + 1, ";") ||
@@ -2796,24 +2806,100 @@ export function bridgeMembers(
         if (other !== name && (writtenAnywhere(other) || escapes(other, depth + 1))) return true;
         continue;
       }
+      // a value of an object or array literal (`{ k: name }`, `{ name }`, `[name]`), or a
+      // part of `a || name`, `a ?? name`, `c ? name : d` on the right of an assignment: another
+      // object holds it now, except the module's own exports (`module.exports = { name }`)
+      const around = r.bracketAround(j);
+      if (
+        around >= 0 &&
+        (is(around, "{") || is(around, "[")) &&
+        (is(j - 1, ":") || is(j - 1, "{") || is(j - 1, "[") || is(j - 1, ",")) &&
+        (ends || is(j + 1, "]"))
+      ) {
+        const exportsObject =
+          is(around, "{") &&
+          is(around - 1, "=") &&
+          (tokens[around - 2]?.value === "exports" ||
+            (is(around - 3, ".") && tokens[around - 4]?.value === "exports"));
+        const exportDefault =
+          is(around, "{") &&
+          tokens[around - 1]?.value === "default" &&
+          tokens[around - 2]?.value === "export";
+        // a key of a destructuring pattern or of an import/export list is no value
+        const listOrPattern =
+          is(around, "{") &&
+          (tokens[around - 1]?.value === "export" ||
+            tokens[around - 1]?.value === "import" ||
+            is(r.closeOf(around) + 1, "=") ||
+            tokens[r.closeOf(around) + 1]?.value === "from");
+        if (exportsObject || exportDefault || listOrPattern) continue;
+        // the outermost literal it sits in (`{ a: { platform } }`)
+        let top = around;
+        for (let guard = 0; guard < 8; guard++) {
+          const up = r.bracketAround(top);
+          if (
+            up < 0 ||
+            !(is(up, "{") || is(up, "[")) ||
+            !(is(top - 1, ":") || is(top - 1, ",") || is(top - 1, "{") || is(top - 1, "["))
+          )
+            break;
+          top = up;
+        }
+        // exposed as it is: `contextBridge.exposeInMainWorld("api", { platform })`
+        const call = r.bracketAround(top);
+        if (
+          call >= 0 &&
+          is(call, "(") &&
+          (tokens[call - 1]?.value === "exposeInMainWorld" ||
+            tokens[call - 1]?.value === "exposeInIsolatedWorld") &&
+          (is(call - 2, ".") || is(call - 2, "?.")) &&
+          (context.aliases.get(call - 3) ?? tokens[call - 3]?.value) === "contextBridge"
+        )
+          continue;
+        // held by an object of the file under a name (`var ipc = { auth: auth_default }`): an
+        // escape only when that holder may change or escape itself
+        const holder =
+          is(top - 1, "=") && tokens[top - 2]?.type === "ident" && !is(top - 3, ".")
+            ? tokens[top - 2]!.value
+            : null;
+        if (holder === null || holder === name) return true;
+        if (writtenAnywhere(holder) || escapes(holder, depth + 1)) return true;
+        continue;
+      }
+      if (
+        is(j - 1, "||") ||
+        is(j - 1, "??") ||
+        is(j - 1, "?") ||
+        (is(j - 1, ":") && !is(around, "{"))
+      )
+        return true;
       // handed to a call
       if ((is(j - 1, "(") || is(j - 1, ",")) && (is(j + 1, ")") || is(j + 1, ","))) {
-        const open = is(j - 1, "(") ? j - 1 : resolver.bracketAround(j);
+        const open = is(j - 1, "(") ? j - 1 : around;
         if (!is(open, "(")) continue;
         const callee = tokens[open - 1];
-        const owner = is(open - 2, ".") ? tokens[open - 3]?.value : null;
-        if (callee?.type !== "ident") continue;
+        if (callee?.type !== "ident") return true;
+        const member = is(open - 2, ".") || is(open - 2, "?.");
+        const owner = member ? open - 3 : -1;
+        // `contextBridge.exposeInMainWorld(…, name)` on a proven contextBridge
         if (
-          READ_ONLY_CALLS.has(callee.value) &&
-          (owner === null || owner === "Object" || owner === "JSON" || owner === "console")
+          member &&
+          (callee.value === "exposeInMainWorld" || callee.value === "exposeInIsolatedWorld") &&
+          (context.aliases.get(owner) ?? tokens[owner]?.value) === "contextBridge"
         )
           continue;
-        if (
-          owner === "console" ||
-          callee.value === "exposeInMainWorld" ||
-          callee.value === "exposeInIsolatedWorld"
-        )
-          continue;
+        // the few calls that only read, on the global they belong to
+        if (READ_ONLY_CALLS.has(callee.value)) {
+          if (!member && unbound(open - 1) && !/^(log|warn|error|info|debug)$/.test(callee.value))
+            continue;
+          if (
+            member &&
+            /^(Object|JSON|console)$/.test(tokens[owner]?.value ?? "") &&
+            !is(owner - 1, ".") &&
+            unbound(owner)
+          )
+            continue;
+        }
         return true;
       }
     }
@@ -3897,6 +3983,37 @@ function linkBridgeValues(input: {
   return { unread, exposures, forwarders, capped };
 }
 
+/**
+ * The scripts each HTML file of the tree loads: `<script src="…">`, resolved against the HTML
+ * file's directory to the JavaScript files of the app. Remote and missing sources are left out.
+ */
+function htmlScripts(
+  tree: FileTree,
+  known: Set<string>,
+  maxFileBytes: number,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const f of tree.files) {
+    if (!/\.html?$/i.test(f.path) || out.size >= 500) continue;
+    let text: string;
+    try {
+      text = new TextDecoder().decode(tree.read(f.path, maxFileBytes));
+    } catch {
+      continue;
+    }
+    const dir = posix.dirname(f.path);
+    const scripts: string[] = [];
+    for (const m of text.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"'#?]+)/gi)) {
+      const src = m[1]!;
+      if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) continue;
+      const path = posix.normalize(src.startsWith("/") ? src.slice(1) : posix.join(dir, src));
+      if (known.has(path)) scripts.push(path);
+    }
+    out.set(f.path, scripts);
+  }
+  return out;
+}
+
 /** Page scripts read for calls of generic bridge forwarders, per analysis. */
 const MAX_BRIDGE_CALL_FILES = 200;
 /** Tokens of those page scripts, in all. */
@@ -3925,11 +4042,20 @@ function bridgeCallRows(input: {
   modules: readonly JsModule[];
   text(path: string): string | null;
   open(path: string): ReadModule | null;
-}): { rows: Map<string, IpcUsage[]>; ambiguous: string[]; capped: string[] } {
+  resolve(from: string, specifier: string): string | null;
+  /** The scripts each HTML file of the app loads (`<script src>`), by the HTML file's path. */
+  htmlPages: ReadonlyMap<string, string[]>;
+}): {
+  rows: Map<string, IpcUsage[]>;
+  ambiguous: string[];
+  capped: string[];
+  unread: string[];
+  writes: string[];
+} {
   const rows = new Map<string, IpcUsage[]>();
   const ambiguous: string[] = [];
   const capped: string[] = [];
-  if (!input.forwarders.length) return { rows, ambiguous, capped };
+  if (!input.forwarders.length) return { rows, ambiguous, capped, unread: [], writes: [] };
   // one forwarder per api and path, the same in every preload that exposes it
   const byPath = new Map<string, BridgeForwarder | null>();
   const sig = (f: BridgeForwarder): string =>
@@ -3966,23 +4092,51 @@ function bridgeCallRows(input: {
   for (const f of input.forwarders) exposing.add(f.file);
   let work = BRIDGE_CALL_WORK;
   let files = 0;
-  // The page scripts, and what any of them does to the api names first: a script that assigns
-  // `window.api` (also `window["api"]`, `Object.assign(window, { api })`,
-  // `Object.defineProperty(window, "api", …)`) or declares `api` at its top (a classic script's
-  // `var api` is a global of the page) may replace the bridge for every script of the page, so
-  // those names are not read anywhere. Worker scripts (`new Worker("w.js")`) have no bridge, and
-  // a file that names ipcMain is a main-process file.
+  // The page scripts, and what they do to the api first. A write that gives the global another
+  // value (`window.api = …`, `window["api"] = …`, `Object.assign(window, { api })`,
+  // `Object.defineProperty(window, "api", …)`, a classic script's top-level `var api` or `api =
+  // …`) replaces the bridge for the scripts of the pages that load that file (read from the HTML
+  // files), and for the file itself; where no page read loads it, the rows stay and the write is
+  // named. Worker scripts (`new Worker("w.js")`, located from the calling file), files that take
+  // ipcMain from electron and files with a `with` statement are not read, and named.
+  const unread: string[] = [];
   const workers = new Set<string>();
   const pages: Array<{ m: JsModule; named: string[]; read: ReadModule }> = [];
-  const replaced = new Set<string>();
+  /** The api names a write replaces, per script that write reaches. */
+  const replacedIn = new Map<string, Set<string>>();
+  const writes: string[] = [];
+  const replace = (file: string, api: string, what: string): void => {
+    const reach = new Set<string>([file]);
+    let loaded = false;
+    for (const scripts of input.htmlPages.values())
+      if (scripts.includes(file)) {
+        loaded = true;
+        for (const x of scripts) reach.add(x);
+      }
+    for (const x of reach) {
+      const set = replacedIn.get(x) ?? new Set<string>();
+      set.add(api);
+      replacedIn.set(x, set);
+    }
+    if (!loaded) writes.push(`${what} in ${file}`);
+  };
   for (const m of input.modules) {
     const text = m.role === "main" || exposing.has(m.id) ? null : input.text(m.id);
     if (text === null) continue;
     for (const w of text.matchAll(
       /new\s+(?:Shared)?Worker\s*\(\s*(?:new\s+URL\s*\(\s*)?["'`]([^"'`]+)["'`]/g,
-    ))
-      workers.add(w[1]!.split("/").pop()!);
-    if (/\bipcMain\b/.test(text)) continue;
+    )) {
+      const spec = w[1]!;
+      const target = input.resolve(
+        m.id,
+        spec.startsWith(".") || spec.startsWith("/") ? spec : `./${spec}`,
+      );
+      if (target) workers.add(target);
+      else
+        unread.push(
+          `${spec} (a worker script named in ${m.id} that was not located: its calls may be read as a page's)`,
+        );
+    }
     const named = apis.filter((a) => text.includes(a));
     if (!named.length) continue;
     if (files >= MAX_BRIDGE_CALL_FILES || work <= 0) {
@@ -3993,10 +4147,15 @@ function bridgeCallRows(input: {
     const read = input.open(m.id);
     if (!read) continue;
     work -= read.tokens.length;
-    pages.push({ m, named, read });
     const { tokens, resolver: r } = read;
     const is = (k: number, v: string): boolean =>
       tokens[k]?.type === "punct" && tokens[k]!.value === v;
+    // a file that takes ipcMain from electron runs in the main process
+    if (takesIpcMain(tokens)) {
+      unread.push(`${m.id} (takes ipcMain from electron)`);
+      continue;
+    }
+    pages.push({ m, named, read });
     // a CommonJS or ES module keeps its top-level names to itself; only a classic script's are globals
     const moduleScoped = tokens.some(
       (t, k) =>
@@ -4012,66 +4171,84 @@ function bridgeCallRows(input: {
     for (const api of named)
       for (const j of r.namePositions(api)) {
         work--;
-        const before = tokens[j - 1]?.value;
-        const host = GLOBAL_HOSTS.has(tokens[j - 2]?.value ?? "");
+        const host =
+          GLOBAL_HOSTS.has(tokens[j - 2]?.value ?? "") &&
+          r.binding(j - 2, tokens[j - 2]!.value, true) === null;
         // `window.api = …`, `window.api.m = …`
-        if (host && (is(j - 1, ".") || is(j - 1, "?.")) && writesMember(tokens, j - 2) === api)
-          replaced.add(api);
-        // a declaration at the top of the file that is no alias of the bridge (`const X = window.api`)
-        if (
-          !moduleScoped &&
-          r.functionAt(j) === null &&
-          (before === "var" ||
-            before === "let" ||
-            before === "const" ||
-            before === "function" ||
-            before === "class") &&
-          !(
-            is(j + 1, "=") &&
-            GLOBAL_HOSTS.has(tokens[j + 2]?.value ?? "") &&
-            is(j + 3, ".") &&
-            tokens[j + 4]?.value === api
-          )
+        if (host && (is(j - 1, ".") || is(j - 1, "?.")) && writesMember(tokens, j - 2) === api) {
+          replace(m.id, api, `window.${api} written`);
+          continue;
+        }
+        if (is(j - 1, ".") || is(j - 1, "?.") || moduleScoped) continue;
+        // a classic script's own global: declared at its top, or assigned where nothing binds it
+        const before = tokens[j - 1]?.value;
+        const declares =
+          before === "var" ||
+          before === "let" ||
+          before === "const" ||
+          before === "function" ||
+          before === "class";
+        const alias =
+          is(j + 1, "=") &&
+          GLOBAL_HOSTS.has(tokens[j + 2]?.value ?? "") &&
+          is(j + 3, ".") &&
+          tokens[j + 4]?.value === api;
+        if (declares && r.functionAt(j) === null && r.bracketAround(j) === -1 && !alias)
+          replace(m.id, api, `${api} declared at the top of a script`);
+        else if (
+          !declares &&
+          writesName(tokens, j) &&
+          r.binding(j, api, true) === null &&
+          !r.paramAround(j, api)
         )
-          replaced.add(api);
-        if (writesName(tokens, j) && !is(j - 1, ".")) replaced.add(api);
+          replace(m.id, api, `${api} assigned as a global`);
       }
     // `window["api"] = …`, `Object.assign(window, { api })`, `Object.defineProperty(window, "api", …)`
     for (let j = 0; j + 3 < tokens.length; j++) {
       const t = tokens[j]!;
       if (t.type !== "ident" || !GLOBAL_HOSTS.has(t.value) || is(j - 1, ".")) continue;
+      if (r.binding(j, t.value, true) !== null) continue;
       if (
         is(j + 1, "[") &&
         tokens[j + 2]?.type === "string" &&
         is(j + 3, "]") &&
-        writesMember(tokens, j) !== null
+        writesMember(tokens, j) !== null &&
+        named.includes(tokens[j + 2]!.value)
       )
-        replaced.add(tokens[j + 2]!.value);
+        replace(m.id, tokens[j + 2]!.value, `${t.value}["${tokens[j + 2]!.value}"] written`);
       if (is(j - 1, "(") && writtenByCallAt(tokens, j)) {
         // the keys the call can give the global: a literal, or (unknown) every api
         const close = r.closeOf(j - 1);
         const keys = new Set<string>();
-        let open = false;
+        let open = close === -1;
         for (let q = j + 1; q < close; q++)
           if (tokens[q]!.type === "string" || tokens[q]!.type === "ident")
             keys.add(tokens[q]!.value);
           else if (is(q, "...") || is(q, "[")) open = true;
-        for (const api of named) if (open || keys.has(api)) replaced.add(api);
-        if (close === -1) for (const api of named) replaced.add(api);
+        for (const api of named)
+          if (open || keys.has(api))
+            replace(m.id, api, `${t.value} changed by ${tokens[j - 2]?.value ?? "a call"}`);
       }
     }
   }
   for (const { m, named: all, read } of pages) {
-    const named = all.filter((a) => !replaced.has(a));
-    if (!named.length || workers.has(m.id.split("/").pop()!)) continue;
+    const gone = replacedIn.get(m.id);
+    const named = all.filter((a) => !gone?.has(a));
+    if (!named.length) continue;
+    if (workers.has(m.id)) {
+      unread.push(`${m.id} (a worker script: no bridge there)`);
+      continue;
+    }
     const { tokens, constants, resolver: r } = read;
     // `with (obj) { api.m() }` may be `obj.api`: such a file is not read
     if (
       tokens.some(
         (t, k) => t.type === "ident" && t.value === "with" && tokens[k + 1]?.value === "(",
       )
-    )
+    ) {
+      unread.push(`${m.id} (a with statement: a name may be a member of its object)`);
       continue;
+    }
     const is = (k: number, v: string): boolean =>
       tokens[k]?.type === "punct" && tokens[k]!.value === v;
     const dot = (k: number): boolean => is(k, ".") || is(k, "?.");
@@ -4173,12 +4350,7 @@ function bridgeCallRows(input: {
     for (const api of named) {
       const positions = r.namePositions(api);
       // a write of the api in the file (`window.api = …`, `api = …`): what it holds is not the bridge
-      if (
-        positions.some(
-          (j) => writesName(tokens, j) || (hosted(j) && writesMember(tokens, j - 2) === api),
-        )
-      )
-        continue;
+      // (writes that replace the global are read above, per page)
       for (const j of positions) {
         if (hosted(j) || global(j)) {
           readCall(api, j, []);
@@ -4265,7 +4437,52 @@ function bridgeCallRows(input: {
     }
     if (out.length) rows.set(m.id, out);
   }
-  return { rows, ambiguous, capped };
+  return { rows, ambiguous, capped, unread, writes };
+}
+
+/**
+ * The file takes ipcMain from electron: `require("electron").ipcMain`, `const { ipcMain } =
+ * require("electron")`, `import { ipcMain } from "electron"`, `electron.ipcMain` with `electron`
+ * bound to `require("electron")` (also through an interop helper). A comment or a string that
+ * names it is none.
+ */
+function takesIpcMain(tokens: readonly Token[]): boolean {
+  const is = (k: number, v: string): boolean =>
+    tokens[k]?.type === "punct" && tokens[k]!.value === v;
+  const electronVars = new Set<string>();
+  for (let k = 0; k + 3 < tokens.length; k++)
+    if (
+      tokens[k]!.value === "require" &&
+      tokens[k]!.type === "ident" &&
+      is(k + 1, "(") &&
+      tokens[k + 2]?.type === "string" &&
+      tokens[k + 2]!.value === "electron"
+    ) {
+      // `x = require("electron")`, `x = __toESM(require("electron"))`
+      let at = k - 1;
+      if (is(at, "(") && tokens[at - 1]?.type === "ident" && tokens[at - 1]!.value !== "require")
+        at -= 2;
+      if (is(at, "=") && tokens[at - 1]?.type === "ident") electronVars.add(tokens[at - 1]!.value);
+      if ((is(k + 4, ".") || is(k + 4, "?.")) && tokens[k + 5]?.value === "ipcMain") return true;
+    }
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident" || t.value !== "ipcMain") continue;
+    if ((is(k - 1, ".") || is(k - 1, "?.")) && electronVars.has(tokens[k - 2]?.value ?? ""))
+      return true;
+    if (is(k - 1, "{") || is(k - 1, ",")) {
+      let close = k + 1;
+      while (close < tokens.length && close < k + 200 && !is(close, "}")) close++;
+      const spec =
+        tokens[close + 1]?.value === "from"
+          ? tokens[close + 2]
+          : is(close + 1, "=") && tokens[close + 2]?.value === "require"
+            ? tokens[close + 4]
+            : undefined;
+      if (spec?.type === "string" && spec.value === "electron") return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -6951,23 +7168,6 @@ export function analyzeJavaScriptTree(
     return modulesRead.get(path) ?? null;
   };
 
-  // `ipcMain` bound to a module of the app (`import * as ipcMain from "./ipc-main"`): the call is
-  // that module's function. When the module is read and exports a channel-forwarding function of
-  // the method's name, its row at the call (above) replaces the direct one; otherwise the direct
-  // row stays, as the module may hand Electron's object on (`export { ipcMain } from "electron"`).
-  for (const m of modules) {
-    if (!m.ipc.some((u) => u.appModule)) continue;
-    m.ipc = m.ipc.filter((u) => {
-      const spec = u.appModule;
-      if (!spec) return true;
-      delete u.appModule;
-      const target = resolveSpecifier(m.id, spec, known);
-      const method = u.api.slice(u.api.indexOf(".") + 1);
-      const forwarder = target ? moduleById.get(target)?.wrappers?.forwarders?.[method] : undefined;
-      return forwarder === undefined;
-    });
-  }
-
   // Bridge objects another module defines (`exposeInMainWorld("ipc", ipc)` with `export const ipc
   // = { auth, platform }` there): each entry whose value is another module's export is read in
   // that module, by the same member rules, a few modules deep. See docs/electron-findings.md.
@@ -7003,6 +7203,8 @@ export function analyzeJavaScriptTree(
       }
     },
     open: openModule,
+    resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
+    htmlPages: htmlScripts(tree, known, maxFileBytes),
   });
   for (const [file, made] of bridgeCalls.rows) {
     const m = moduleById.get(file);
@@ -7027,6 +7229,16 @@ export function analyzeJavaScriptTree(
     limitations.push({
       code: "bridge_forwarder_ambiguous",
       message: `${bridgeCalls.ambiguous.length} exposed member(s) pass their channel on, but the preloads that expose them do not do it the same way (another IPC method or another check), so which one a page script reaches is not known and its calls give no IPC rows: ${list(bridgeCalls.ambiguous, 5)}.`,
+    });
+  if (bridgeCalls.unread.length)
+    limitations.push({
+      code: "bridge_calls_unread",
+      message: `${bridgeCalls.unread.length} file(s) were not read for page calls of exposed members that pass their channel on: ${list(bridgeCalls.unread, 5)}.`,
+    });
+  if (bridgeCalls.writes.length)
+    limitations.push({
+      code: "bridge_global_written",
+      message: `${bridgeCalls.writes.length} write(s) may give an exposed api another value, in scripts no HTML file read loads, so which pages they reach is not known; the calls of the api in other files are listed as the bridge's: ${list(bridgeCalls.writes, 5)}.`,
     });
   if (bridgeCalls.capped.length)
     limitations.push({
@@ -7185,6 +7397,33 @@ export function analyzeJavaScriptTree(
     m.ipc.sort((x, y) => x.line - y.line);
     if (m.role !== "main" && m.ipc.some((u) => u.via === "wrapper" && u.api.startsWith("ipcMain.")))
       m.role = "main";
+  }
+
+  // `ipcMain` bound to a module of the app (`import * as ipcMain from "./ipc-main"`): the call is
+  // that module's function. When the module is read and exports a channel-forwarding function of
+  // the method's name, its row at the call (above) replaces the direct one; otherwise the direct
+  // row stays, as the module may hand Electron's object on (`export { ipcMain } from "electron"`).
+  for (const m of modules) {
+    if (!m.ipc.some((u) => u.appModule)) continue;
+    m.ipc = m.ipc.filter((u) => {
+      const spec = u.appModule;
+      if (!spec) return true;
+      delete u.appModule;
+      const target = resolveSpecifier(m.id, spec, known);
+      const method = u.api.slice(u.api.indexOf(".") + 1);
+      const forwarder = target ? moduleById.get(target)?.wrappers?.forwarders?.[method] : undefined;
+      if (forwarder === undefined || !target) return true;
+      // only where the row through the forwarder was given for this very call
+      const label = `${target.replace(/\.(m?js|cjs|jsx)$/, "")}.${method}`;
+      return !m.ipc.some(
+        (w) =>
+          w.via === "wrapper" &&
+          w.wrapper === label &&
+          w.line === u.line &&
+          w.api === u.api &&
+          w.channel === u.channel,
+      );
+    });
   }
 
   // Channel names that are constants of another module: looked up now that modules are known.
