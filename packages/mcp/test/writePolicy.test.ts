@@ -95,6 +95,11 @@ describe("MCP write policy", () => {
     const report = join(root, "report.json");
     await session.export(id, report);
     await session.export(id, report, { overwrite: true, onlyReplaceExports: true });
+    // an MCP export is a file, never a stream, whatever the write policy said
+    for (const stream of ["-", "/dev/stdout", "/dev/fd/1"])
+      await expect(
+        session.export(id, stream, { overwrite: true, onlyReplaceExports: true }),
+      ).rejects.toThrow(/is a stream/);
     expect(readFileSync(report, "utf8").startsWith('{\n  "hexvero": 1')).toBe(true);
   });
 

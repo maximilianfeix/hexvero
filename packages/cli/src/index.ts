@@ -15,6 +15,7 @@ import {
   resolveNode,
   runProvider,
   STRING_TAGS,
+  isStdout,
   shellWord,
   tracePath,
   writeFileNoFollow,
@@ -240,6 +241,8 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       }));
       const out = flagString(args.flags, "out");
       if (out) await session.export(target.id, out, { overwrite: true });
+      // The export went to stdout: the summary goes to stderr so stdout stays parseable.
+      if (out && isStdout(out)) io = { ...io, out: io.err };
       if (json) {
         io.out(
           toJson({
@@ -422,13 +425,14 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             throw new UsageError(`${report} exists; pass --force to replace it`);
           throw error;
         }
-        if (json) io.out(toJson({ report, bytes: Buffer.byteLength(text), ...comparison }));
+        // a report to stdout is the whole of stdout: the summary goes to stderr
+        const toStdout = isStdout(report);
+        const say = (t: string): void => (toStdout ? io.err(t) : io.out(t));
+        if (json) say(toJson({ report, bytes: Buffer.byteLength(text), ...comparison }));
         else {
           const { formatChanges } = await import("./demo.js");
-          io.out(formatChanges(io, comparison).join("\n"));
-          io.out(
-            `${paint(io, "green", "✓")} ${printable(report)} (${Buffer.byteLength(text)} bytes)`,
-          );
+          say(formatChanges(io, comparison).join("\n"));
+          say(`${paint(io, "green", "✓")} ${printable(report)} (${Buffer.byteLength(text)} bytes)`);
         }
         return 0;
       }
@@ -669,7 +673,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "export": {
       const target = await session.open(need(0, "path"));
       const result = await session.export(target.id, need(1, "out.json"), { overwrite: true });
-      io.out(
+      const toStdout = isStdout(result.path);
+      const say = (t: string): void => (toStdout ? io.err(t) : io.out(t));
+      say(
         json
           ? toJson(result)
           : `${paint(io, "green", "✓")} ${printable(result.path)} (${result.bytes} bytes)`,

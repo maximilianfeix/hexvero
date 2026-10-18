@@ -9,6 +9,7 @@ import {
   createBaseline,
   parseBaseline,
   parsePolicy,
+  isStdout,
   shellWord,
   renderPolicyMarkdown,
   STATUS_TEXT,
@@ -303,7 +304,9 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
         throw new UsageError(`${out} exists; pass --force to replace it`);
       throw error;
     }
-    io.out(
+    // with --out - (SARIF to stdout in CI) the status line goes to stderr
+    const toStdout = isStdout(out);
+    (toStdout ? (t: string) => io.err(t) : (t: string) => io.out(t))(
       `${paint(io, "bold", "hexvero check")} ${STATUS_TEXT[result.status]} · ${result.findings.length} finding(s) · ${safe(out)}`,
     );
   } else io.out(text);

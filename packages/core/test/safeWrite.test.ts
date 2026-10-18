@@ -96,6 +96,16 @@ describe("writeFileNoFollow", () => {
     ).rejects.toMatchObject({ details: { code: "EMLINK" } });
     expect(readFileSync(outside, "utf8")).toBe('{"hexvero": 1}');
   });
+
+  it("refuses a FIFO at a path that is not a stream name instead of blocking", async (ctx) => {
+    if (process.platform === "win32") return ctx.skip();
+    const fifo = join(dir, "not-a-stream.md");
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("mkfifo", [fifo]);
+    await expect(writeFileNoFollow(fifo, "x", { overwrite: true })).rejects.toMatchObject({
+      details: { code: "ENOTREG" },
+    });
+  });
 });
 
 function lstatSafe(path: string): boolean {

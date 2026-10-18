@@ -4,6 +4,11 @@ process.removeAllListeners("warning");
 process.on("warning", (warning) => {
   if (warning.name !== "ExperimentalWarning") console.error(warning.stack ?? warning.message);
 });
+// A reader that went away (`| head -c 20`) ends the output, not the process with a stack trace.
+process.stdout.on("error", (error) => {
+  if (error.code === "EPIPE") process.exit(0);
+  throw error;
+});
 const { main } = await import("../dist/index.js");
 
 // Exit only after stdout has been written out: with a pipe, exiting at once cuts large JSON

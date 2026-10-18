@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -245,6 +245,51 @@ describe("hexvero CLI", () => {
     for (let i = 0; i < 100 && !readFileSync(out, "utf8").includes("# What changed"); i++)
       await new Promise((r) => setTimeout(r, 50));
     expect(readFileSync(out, "utf8")).toContain("# What changed");
+  });
+
+  it("keeps stdout parseable when the output itself goes to stdout", async (ctx) => {
+    if (process.platform === "win32") return ctx.skip();
+    const a = join(dir, "demo-out", "notesdesk-1.4.0.asar");
+    const b = join(dir, "demo-out", "notesdesk-1.5.0.asar");
+    expect(await main(["demo", join(dir, "demo-out")], capture())).toBe(0);
+    const bin = join(import.meta.dirname, "..", "bin", "hexvero.js");
+    const run = (...argv: string[]) => {
+      const r = spawnSync(process.execPath, [bin, ...argv], { encoding: "utf8" });
+      return { code: r.status, out: r.stdout, err: r.stderr };
+    };
+    for (const argv of [
+      ["export", a, "-"],
+      ["analyze", a, "--out", "-"],
+      ["analyze", a, "--json", "--out", "/dev/stdout"],
+    ]) {
+      const r = run(...argv);
+      expect(r.code, argv.join(" ")).toBe(0);
+      expect(r.out.endsWith("}\n"), argv.join(" ")).toBe(true);
+      expect(JSON.parse(r.out).hexvero).toBe(1);
+    }
+    expect(run("export", a, "-").err).toContain("bytes)");
+    const policy = join(dir, "demo-out", "policy.json");
+    const sarif = run("check", a, b, "--policy", policy, "--format", "sarif", "--out", "-");
+    expect(sarif.code).toBe(3);
+    expect(JSON.parse(sarif.out).version).toBe("2.1.0");
+    expect(sarif.err).toContain("hexvero check");
+    // the Markdown report on stdout is exactly the report
+    const file = join(dir, "demo-out", "report.md");
+    expect(run("compare", a, b, "--report", file).code).toBe(0);
+    const piped = run("compare", a, b, "--report", "-");
+    expect(piped.code).toBe(0);
+    expect(piped.out).toBe(readFileSync(file, "utf8"));
+    expect(piped.err).toContain("bytes)");
+    // a reader that stops early ends the output quietly
+    const head = spawnSync(
+      "sh",
+      ["-c", '"$0" "$1" analyze "$2" --out /dev/fd/1 | head -c 20', process.execPath, bin, a],
+      {
+        encoding: "utf8",
+      },
+    );
+    expect(head.stdout).toHaveLength(20);
+    expect(head.stderr).not.toMatch(/EPIPE|Error/);
   });
 
   it("writes an HTML report for .html/.htm, with the same --force and paging rules", async () => {

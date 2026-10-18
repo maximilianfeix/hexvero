@@ -59,7 +59,13 @@ export {
   type JsScanRequest,
 } from "./analyzers/dispatch.js";
 export { suggestNextSteps, type NextStep } from "./next.js";
-export { writeFileNoFollow, isStreamName, isSymlink, type WriteFileOptions } from "./safeWrite.js";
+export {
+  writeFileNoFollow,
+  isStdout,
+  isStreamName,
+  isSymlink,
+  type WriteFileOptions,
+} from "./safeWrite.js";
 export {
   findCandidates,
   type Candidate,

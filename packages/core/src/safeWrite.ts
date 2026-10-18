@@ -1,4 +1,4 @@
-import { constants, lstatSync, unlinkSync, type Stats } from "node:fs";
+import { constants, fstatSync, lstatSync, statSync, unlinkSync, type Stats } from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
 import { AnalysisError } from "./model.js";
 
@@ -38,6 +38,25 @@ export function isStreamName(path: string): boolean {
   return path === "-" || STREAM_NAME.test(path);
 }
 
+/**
+ * True when writing to `path` writes to this process's standard output: `-`, `/dev/stdout`,
+ * `/dev/fd/1`, or a path that is the same file as descriptor 1 (`--out x > x`). The CLI then
+ * prints its own summary to stderr, so the output stays parseable.
+ */
+export function isStdout(path: string): boolean {
+  if (path === "-" || path === "/dev/stdout" || path === "/dev/fd/1") return true;
+  try {
+    const a = statSync(path);
+    const b = fstatSync(1);
+    return a.dev === b.dev && a.ino === b.ino;
+  } catch {
+    return false;
+  }
+}
+
+/** A reader that went away (`| head`): the rest of the output is not wanted. */
+const gone = (error: unknown): boolean => (error as NodeJS.ErrnoException | null)?.code === "EPIPE";
+
 /** True when the last component of `path` is a symbolic link (dangling or not). */
 export function isSymlink(path: string): boolean {
   try {
@@ -50,7 +69,7 @@ export function isSymlink(path: string): boolean {
 /** Writes all of `data` to standard output. */
 function writeStdout(data: string | Uint8Array): Promise<void> {
   return new Promise((done, fail) => {
-    process.stdout.write(data, (error) => (error ? fail(error) : done()));
+    process.stdout.write(data, (error) => (error && !gone(error) ? fail(error) : done()));
   });
 }
 
@@ -95,8 +114,9 @@ export async function writeFileNoFollow(
       // The kernel makes these names, and the user named one: whatever the shell connected
       // there is the output (`--out /dev/stdout > out.json` is a regular file).
       const st = await stream.stat();
-      if (!st.isCharacterDevice() && !st.isFIFO() && !st.isFile())
-        throw refuse("ENOTREG", "is not a file, terminal, pipe or device");
+      // a socket too: libuv gives child processes socket pairs as pipes
+      if (!st.isCharacterDevice() && !st.isFIFO() && !st.isFile() && !st.isSocket())
+        throw refuse("ENOTREG", "is not a file, terminal, pipe, socket or device");
       await writeAll(stream, typeof data === "string" ? Buffer.from(data) : data);
     } finally {
       await stream.close();
@@ -119,16 +139,29 @@ export async function writeFileNoFollow(
     // A careful replace truncates only after the checks on the opened file.
     const flags = careful
       ? constants.O_RDWR | NOFOLLOW | NONBLOCK
-      : constants.O_WRONLY | constants.O_TRUNC | NOFOLLOW;
+      : constants.O_WRONLY | constants.O_TRUNC | NOFOLLOW | NONBLOCK;
     try {
       handle = await opening(flags);
     } catch (reopen) {
       const code = (reopen as NodeJS.ErrnoException).code;
       if (code === "ELOOP" || code === "EMLINK") throw linkRefusal();
+      // a FIFO nothing reads, opened non-blocking: not a file either way
+      if (code === "ENXIO")
+        throw refuse(
+          "ENOTREG",
+          "is not a regular file; name a stream as -, /dev/stdout or /dev/fd/N",
+        );
       throw reopen;
     }
   }
   try {
+    // Only a stream name is written to as a stream: a FIFO or device at any other path is
+    // refused (opened non-blocking above, so a FIFO without a reader does not hang).
+    if (!created && !careful && !(await handle.stat()).isFile())
+      throw refuse(
+        "ENOTREG",
+        "is not a regular file; name a stream as -, /dev/stdout or /dev/fd/N",
+      );
     if (careful) {
       const st = await handle.stat();
       options.afterOpen?.(st);
@@ -174,6 +207,7 @@ async function writeAll(handle: FileHandle, bytes: Uint8Array): Promise<void> {
       done += bytesWritten;
       waits = 0;
     } catch (error) {
+      if (gone(error)) return;
       if ((error as NodeJS.ErrnoException).code !== "EAGAIN" || ++waits > 30_000) throw error;
       await new Promise((r) => setTimeout(r, 10));
     }

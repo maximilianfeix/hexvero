@@ -691,7 +691,12 @@ export class Session {
       afterOpen?: WriteFileOptions["afterOpen"];
     } = {},
   ): Promise<{ path: string; bytes: number }> {
-    // `-` and /dev/stdout-like names are written as they are (CLI only; MCP paths are checked)
+    // `-` and /dev/stdout-like names are written as they are, for the CLI only: an MCP export
+    // (onlyReplaceExports) is always a regular file inside the write roots.
+    if (options.onlyReplaceExports && isStreamName(destination))
+      throw new AnalysisError("invalid_input", `${destination} is a stream; an export is a file`, {
+        path: destination,
+      });
     const path = isStreamName(destination) ? destination : resolvePath(destination);
     const notAnExport = `exists and is not an earlier hexvero export; it is not replaced`;
     const inspect = (head: string): string | null =>
@@ -728,7 +733,7 @@ export class Session {
       },
       replacer,
       2,
-    );
+    ).concat("\n");
     try {
       await writeFileNoFollow(path, text, {
         overwrite: options.overwrite,
