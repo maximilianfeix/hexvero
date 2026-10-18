@@ -177,6 +177,7 @@ export {
   safeRelativePath,
   type RecoveryResult,
   type RecoveredFile,
+  type WriteGuard,
 } from "./javascript/recover.js";
 export {
   parseObjcMetadata,

@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { isStreamName, isSymlink, writeFileNoFollow } from "./safeWrite.js";
+import { isStreamName, isSymlink, writeFileNoFollow, type WriteFileOptions } from "./safeWrite.js";
 import { resolve as resolvePath } from "node:path";
 import {
   analyzeTarget,
@@ -9,7 +9,12 @@ import {
   type JsScanRequest,
 } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
-import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
+import {
+  recoverBundle,
+  recoverSourceMap,
+  type RecoveryResult,
+  type WriteGuard,
+} from "./javascript/recover.js";
 import {
   compareItems,
   positionalFields,
@@ -639,7 +644,11 @@ export class Session {
   }
 
   /** Writes recoverable sources (bundle modules or source-map originals) into a new directory. */
-  async recover(id: string, outputDir: string): Promise<RecoveryResult> {
+  async recover(
+    id: string,
+    outputDir: string,
+    options: { guard?: WriteGuard | undefined } = {},
+  ): Promise<RecoveryResult> {
     const analysis = await this.analyze(id);
     const e = this.entry(id);
     const text = (): string => new TextDecoder().decode(e.loaded.bytes);
@@ -651,8 +660,10 @@ export class Session {
         `${resolvePath(outputDir)} is a symbolic link to a missing location; choose a new directory`,
         { outputDir: resolvePath(outputDir) },
       );
-    if (analysis.data.kind === "javascript") return recoverBundle(text(), outputDir);
-    if (analysis.data.kind === "source-map") return recoverSourceMap(text(), outputDir);
+    if (analysis.data.kind === "javascript")
+      return recoverBundle(text(), outputDir, undefined, options.guard);
+    if (analysis.data.kind === "source-map")
+      return recoverSourceMap(text(), outputDir, options.guard);
     throw new AnalysisError(
       "invalid_input",
       `recover needs a single JavaScript bundle file or a source map; this target is ${analysis.data.kind}.${
@@ -675,6 +686,9 @@ export class Session {
       overwrite?: boolean | undefined;
       /** Replace an existing file only when it is an earlier hexvero export (MCP sets this). */
       onlyReplaceExports?: boolean | undefined;
+      /** Passed to writeFileNoFollow: re-check a write policy right before and after opening. */
+      beforeOpen?: WriteFileOptions["beforeOpen"];
+      afterOpen?: WriteFileOptions["afterOpen"];
     } = {},
   ): Promise<{ path: string; bytes: number }> {
     // `-` and /dev/stdout-like names are written as they are (CLI only; MCP paths are checked)
@@ -719,6 +733,8 @@ export class Session {
       await writeFileNoFollow(path, text, {
         overwrite: options.overwrite,
         inspect: options.onlyReplaceExports ? inspect : undefined,
+        beforeOpen: options.beforeOpen,
+        afterOpen: options.afterOpen,
       });
     } catch (error) {
       if (error instanceof AnalysisError) throw error;

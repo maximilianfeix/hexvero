@@ -41,8 +41,42 @@ export function safeRelativePath(name: string, fallback: string): string {
   return clean;
 }
 
-function prepareOutput(outputDir: string): string {
+/**
+ * Called with each absolute path right before it is created (the output directory, each
+ * directory and file below it); throws to stop the whole recovery. The MCP server re-checks its
+ * write policy here, so a directory swapped for a link after the first check is caught.
+ */
+export type WriteGuard = (path: string) => void;
+
+/** A guard's refusal: ends the recovery instead of skipping one file. */
+class GuardStop extends Error {
+  constructor(readonly inner: unknown) {
+    super("write guard refused");
+  }
+}
+
+function guarded(guard: WriteGuard | undefined, path: string): void {
+  if (!guard) return;
+  try {
+    guard(path);
+  } catch (error) {
+    throw new GuardStop(error);
+  }
+}
+
+/** Runs a recovery and turns a guard's refusal back into its own error. */
+function unguard<T>(run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    if (error instanceof GuardStop) throw error.inner;
+    throw error;
+  }
+}
+
+function prepareOutput(outputDir: string, guard?: WriteGuard): string {
   const absolute = resolve(outputDir);
+  guarded(guard, absolute);
   if (existsSync(absolute)) {
     if (!statSync(absolute).isDirectory())
       throw new AnalysisError("invalid_input", `${absolute} exists and is not a directory`);
@@ -93,11 +127,18 @@ function hash(text: string): string {
   return (h >>> 0).toString(16);
 }
 
-function writeInside(root: string, relative: string, content: string | Uint8Array): number {
+function writeInside(
+  root: string,
+  relative: string,
+  content: string | Uint8Array,
+  guard?: WriteGuard,
+): number {
   const target = resolve(root, relative);
   if (!target.startsWith(root + sep))
     throw new AnalysisError("invalid_input", `refusing to write outside ${root}: ${relative}`);
+  guarded(guard, dirname(target));
   mkdirSync(dirname(target), { recursive: true });
+  guarded(guard, target);
   writeFileSync(target, content, { flag: "wx" });
   return Buffer.byteLength(content);
 }
@@ -107,8 +148,18 @@ export function recoverBundle(
   source: string,
   outputDir: string,
   info: JsBundleInfo = analyzeBundle(source),
+  guard?: WriteGuard,
 ): RecoveryResult {
-  const root = prepareOutput(outputDir);
+  return unguard(() => bundleInto(source, outputDir, info, guard));
+}
+
+function bundleInto(
+  source: string,
+  outputDir: string,
+  info: JsBundleInfo,
+  guard: WriteGuard | undefined,
+): RecoveryResult {
+  const root = prepareOutput(outputDir, guard);
   const manifestPath = "hexvero-bundle.json";
   const written: RecoveredFile[] = [];
   const skipped: RecoveryResult["skipped"] = [];
@@ -134,10 +185,11 @@ export function recoverBundle(
           `${header}// scope-hoisted: names may be defined in another section of the bundle\n${body}`
         : `${header}module.exports = ${factory};\n`;
     try {
-      const bytes = writeInside(root, relative, text);
+      const bytes = writeInside(root, relative, text, guard);
       written.push({ path: relative, bytes, origin: "bundle-module", moduleId: m.id });
       fileOf.push(relative);
     } catch (error) {
+      if (error instanceof GuardStop) throw error;
       fileOf.push(null);
       skipped.push({
         name: m.name ?? m.id,
@@ -163,14 +215,26 @@ export function recoverBundle(
     routes: info.routes,
     storage: info.storage,
   };
-  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2));
+  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard);
   return { outputDir: root, written, skipped, manifest: manifestPath };
 }
 
 /** Writes the original sources embedded in a source map (`sourcesContent`) back to disk. */
-export function recoverSourceMap(mapText: string, outputDir: string): RecoveryResult {
+export function recoverSourceMap(
+  mapText: string,
+  outputDir: string,
+  guard?: WriteGuard,
+): RecoveryResult {
+  return unguard(() => sourcesInto(mapText, outputDir, guard));
+}
+
+function sourcesInto(
+  mapText: string,
+  outputDir: string,
+  guard: WriteGuard | undefined,
+): RecoveryResult {
   const map = parseSourceMapJson(mapText);
-  const root = prepareOutput(outputDir);
+  const root = prepareOutput(outputDir, guard);
   const manifestPath = "hexvero-sources.json";
   const written: RecoveredFile[] = [];
   const skipped: RecoveryResult["skipped"] = [];
@@ -199,10 +263,11 @@ export function recoverSourceMap(mapText: string, outputDir: string): RecoveryRe
     try {
       written.push({
         path: relative,
-        bytes: writeInside(root, relative, content),
+        bytes: writeInside(root, relative, content, guard),
         origin: "source-map",
       });
     } catch (error) {
+      if (error instanceof GuardStop) throw error;
       skipped.push({ name: label, reason: error instanceof Error ? error.message : String(error) });
     }
   });
@@ -213,6 +278,6 @@ export function recoverSourceMap(mapText: string, outputDir: string): RecoveryRe
     written: written.length,
     skipped,
   };
-  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2));
+  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard);
   return { outputDir: root, written, skipped, manifest: manifestPath };
 }

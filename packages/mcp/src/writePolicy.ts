@@ -102,11 +102,29 @@ function realLocation(path: string): string {
   return tail ? join(real, ...tail) : real;
 }
 
-export function checkWritePath(target: string, kind: "export" | "recover"): string {
+/**
+ * A directory where another user could swap an entry for a link between the check and the
+ * write: not sticky, and owned by someone else or writable by everyone. (A shared temp root such
+ * as /tmp is sticky, so only an entry's owner can rename or remove it there.)
+ */
+function swappable(dir: string): boolean {
+  const uid = process.getuid?.();
+  if (uid === undefined) return false; // Windows: no POSIX ownership to judge by
+  try {
+    const st = lstatSync(dir);
+    if (!st.isDirectory() || st.mode & 0o1000) return false;
+    return st.uid !== uid || (st.mode & 0o002) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+function resolveWrite(
+  target: string,
+  kind: "export" | "recover",
+): { absolute: string; real: string } {
   const absolute = resolve(target);
-  const real = realLocation(absolute);
   const allowed = roots();
-  const root = allowed.find((r) => real === r || real.startsWith(r + sep));
   const refuse = (why: string): never => {
     throw new AnalysisError(
       "invalid_input",
@@ -114,13 +132,54 @@ export function checkWritePath(target: string, kind: "export" | "recover"): stri
       { path: absolute },
     );
   };
+  const real = realLocation(absolute);
+  const root = allowed.find((r) => real === r || real.startsWith(r + sep));
   if (!root) refuse("the path is outside the allowed roots");
   const parts = relative(root!, real).split(sep).filter(Boolean);
   if (parts.some((part) => part.startsWith(".")))
     refuse("hidden files and directories are not written");
   if (kind === "export" && !real.toLowerCase().endsWith(".json"))
     refuse("an export must end in .json");
-  return absolute;
+  // The root and every existing directory below it on the way to the target.
+  let dir = root!;
+  for (const part of ["", ...parts.slice(0, -1)]) {
+    dir = part ? join(dir, part) : dir;
+    if (swappable(dir))
+      refuse(
+        `${dir} can be changed by other users (not sticky, not owned by you or writable by all)`,
+      );
+  }
+  return { absolute, real };
+}
+
+/** Checks a path an agent chose for `hexvero_export` or `hexvero_recover`; returns it absolute. */
+export function checkWritePath(target: string, kind: "export" | "recover"): string {
+  return resolveWrite(target, kind).absolute;
+}
+
+/**
+ * After a file was opened for writing: the policy holds again for its path, and the file opened
+ * is the one at the real location the policy resolved (same device and inode). Catches a
+ * directory on the way that was swapped for a link between the check and the open.
+ */
+export function verifyOpened(
+  target: string,
+  kind: "export" | "recover",
+  opened: { dev: number; ino: number },
+): void {
+  const { absolute, real } = resolveWrite(target, kind);
+  let now: { dev: number; ino: number } | null = null;
+  try {
+    now = lstatSync(real);
+  } catch {
+    // checked below
+  }
+  if (!now || now.dev !== opened.dev || now.ino !== opened.ino)
+    throw new AnalysisError(
+      "invalid_input",
+      `${kind} refused for ${absolute}: the path changed while it was opened`,
+      { path: absolute },
+    );
 }
 
 /**

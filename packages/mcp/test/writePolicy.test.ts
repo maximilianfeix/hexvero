@@ -1,10 +1,13 @@
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -12,7 +15,8 @@ import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Session } from "@hexvero/core";
-import { checkWritePath } from "../src/writePolicy.js";
+import { createHandlers } from "../src/tools.js";
+import { checkWritePath, verifyOpened } from "../src/writePolicy.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
 
 /** Creates a symlink, or returns false where the platform does not permit it (Windows without rights). */
@@ -26,6 +30,12 @@ function trySymlink(target: string, path: string): boolean {
     throw error;
   }
 }
+
+/** Moves a directory away and puts a link to `to` in its place, as another process could. */
+const swapDir = (dir: string, to: string) => () => {
+  renameSync(dir, `${dir}.old`);
+  symlinkSync(to, dir);
+};
 
 describe("MCP write policy", () => {
   let root: string;
@@ -168,5 +178,74 @@ describe("MCP write policy", () => {
       code: "invalid_input",
     });
     expect(existsSync(join(root, "not-there"))).toBe(false);
+  });
+
+  describe("between the check and the write", () => {
+    /** A session whose next analysis also swaps a directory, as another process could meanwhile. */
+    class SwapSession extends Session {
+      swap: (() => void) | undefined;
+      override async analyze(...args: Parameters<Session["analyze"]>) {
+        const result = await super.analyze(...args);
+        const swap = this.swap;
+        this.swap = undefined;
+        swap?.();
+        return result;
+      }
+    }
+
+    it("refuses an export and a recovery when a directory became a link", async (ctx) => {
+      const victim = join(outside, "victim");
+      mkdirSync(victim);
+      if (!trySymlink(victim, join(root, "probe"))) return ctx.skip();
+      const session = new SwapSession();
+      const tools = createHandlers(session, {} as never);
+      const elf = join(root, "fixture.elf");
+      writeFileSync(elf, buildElf());
+      const { id } = await session.open(elf);
+      mkdirSync(join(root, "d"));
+      session.swap = swapDir(join(root, "d"), victim);
+      await expect(
+        tools.hexvero_export({ targetId: id, path: join(root, "d", "out.json") }),
+      ).rejects.toThrow(/outside/);
+      expect(existsSync(join(victim, "out.json"))).toBe(false);
+
+      const bundle = join(root, "bundle.js");
+      writeFileSync(bundle, "console.log(1);\n");
+      const js = await session.open(bundle);
+      mkdirSync(join(root, "e"));
+      session.swap = swapDir(join(root, "e"), victim);
+      await expect(
+        tools.hexvero_recover({ targetId: js.id, outputDir: join(root, "e", "rec") }),
+      ).rejects.toThrow(/outside/);
+      expect(existsSync(join(victim, "rec"))).toBe(false);
+    });
+
+    it("refuses an opened file that is not the one the policy resolved", async (ctx) => {
+      const victim = join(outside, "victim2");
+      mkdirSync(victim);
+      mkdirSync(join(root, "f"));
+      const path = join(root, "f", "x.json");
+      writeFileSync(path, "{}");
+      const opened = statSync(path);
+      expect(() => verifyOpened(path, "export", opened)).not.toThrow();
+      writeFileSync(join(victim, "x.json"), "{}");
+      if (!trySymlink(victim, join(root, "probe2"))) return ctx.skip();
+      swapDir(join(root, "f"), join(root, "g"))();
+      mkdirSync(join(root, "g"));
+      writeFileSync(join(root, "g", "x.json"), "{}");
+      expect(() => verifyOpened(path, "export", opened)).toThrow(/changed while it was opened/);
+    });
+
+    it("refuses directories other users can change, unless they are sticky", (ctx) => {
+      if (process.getuid === undefined) return ctx.skip();
+      const shared = join(root, "shared");
+      mkdirSync(shared);
+      chmodSync(shared, 0o777);
+      expect(() => checkWritePath(join(shared, "a.json"), "export")).toThrow(/other users/);
+      chmodSync(shared, 0o1777);
+      expect(checkWritePath(join(shared, "a.json"), "export")).toBe(join(shared, "a.json"));
+      chmodSync(shared, 0o755);
+      expect(checkWritePath(join(shared, "a.json"), "export")).toBe(join(shared, "a.json"));
+    });
   });
 });

@@ -1,5 +1,5 @@
 import { runCheckTool } from "./check.js";
-import { checkWritePath } from "./writePolicy.js";
+import { checkWritePath, verifyOpened } from "./writePolicy.js";
 import {
   brief,
   suggestNextSteps,
@@ -369,15 +369,23 @@ export function createHandlers(
     },
     hexvero_bytes: async (a) =>
       session.bytes(str(a["targetId"]), Number(a["offset"]), Number(a["length"])),
-    hexvero_export: async (a) =>
-      session.export(str(a["targetId"]), checkWritePath(str(a["path"]), "export"), {
+    hexvero_export: async (a) => {
+      const path = checkWritePath(str(a["path"]), "export");
+      // The analysis runs between this check and the write: check again when the file is
+      // opened, and that the opened file is the one the policy allowed.
+      return session.export(str(a["targetId"]), path, {
         overwrite: a["overwrite"] === true,
         onlyReplaceExports: true,
-      }),
+        beforeOpen: () => void checkWritePath(path, "export"),
+        afterOpen: (opened) => verifyOpened(path, "export", opened),
+      });
+    },
     hexvero_recover: async (a) => {
       const result = await session.recover(
         str(a["targetId"]),
         checkWritePath(str(a["outputDir"]), "recover"),
+        // every directory and file is checked again right before it is created
+        { guard: (path) => void checkWritePath(path, "recover") },
       );
       return {
         ...result,
