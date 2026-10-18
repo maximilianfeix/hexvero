@@ -2,11 +2,12 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { detectFormat } from "./formats/detect.js";
 import { findElectronApp, findElectronAppInZip } from "./formats/electronApp.js";
+import { readRuntimeInZip, type ElectronRuntime } from "./formats/electronRuntime.js";
 import { openAsar } from "./formats/asar.js";
 import { openZip, type ZipArchive } from "./formats/zip.js";
 import { createHash as hash } from "node:crypto";
 import { closeSync, createReadStream, openSync, readSync } from "node:fs";
-import { AnalysisError, type FormatId, type TargetInfo } from "./model.js";
+import { AnalysisError, type FormatId, type Limitation, type TargetInfo } from "./model.js";
 
 export interface LoadedTarget {
   info: TargetInfo;
@@ -24,6 +25,12 @@ export interface LoadedTarget {
    * same ZIP, by their path inside the archive. Only files the JavaScript scan reads are taken.
    */
   unpacked?: Record<string, Uint8Array>;
+  /**
+   * For an app read out of a ZIP of a packaged build: the Electron runtime of that build, read
+   * when the ZIP was opened (its binary is in the ZIP, which is not kept). A build on disk has
+   * its runtime read by the analysis.
+   */
+  runtime?: { runtime: ElectronRuntime; limitations: Limitation[] };
 }
 
 /** What `stamp` records about a file on disk. */
@@ -97,9 +104,20 @@ export function electronInZip(loaded: LoadedTarget, maxBytes = DEFAULT_MAX_BYTES
   // ends in `.asar`, and the bytes were opened as an archive by the finder.
   const inner = targetFromBytes(bytes, `${basename(loaded.info.path)}!/${found.entry}`);
   const unpacked = unpackedFromZip(zip, bytes, `${found.entry}.unpacked/`);
+  const prefix = found.entry.replace(/(?:Contents\/Resources|resources)\/[^/]+$/, "");
+  const runtime = readRuntimeInZip(
+    zip,
+    prefix,
+    found.layout,
+    found.entry.slice(prefix.length),
+    found.kind,
+    maxBytes,
+    bytes,
+  );
   return {
     ...inner,
     ...(unpacked ? { unpacked } : {}),
+    runtime,
     info: {
       ...inner.info,
       format: "asar",
@@ -109,6 +127,7 @@ export function electronInZip(loaded: LoadedTarget, maxBytes = DEFAULT_MAX_BYTES
         entry: found.entry,
         layout: found.layout,
         ...(found.note ? { note: found.note } : {}),
+        ...(found.warning ? { warning: found.warning } : {}),
       },
     },
   };

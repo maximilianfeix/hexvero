@@ -31,11 +31,12 @@ export const POLICY_RULES = [
   "new-external-host",
   "window-more-permissive",
   "new-bridge-exposure",
+  "fuse-weakened",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
 
 /** Rules added after 0.9.6: they run at warn when a policy does not list them. */
-const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set(["new-bridge-exposure"]);
+const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set(["new-bridge-exposure", "fuse-weakened"]);
 
 export type RuleLevel = "fail" | "warn" | "off";
 export type UnknownHandling = "fail" | "warn" | "allow";
@@ -421,6 +422,7 @@ const KIND_LISTS: Record<string, ReadonlySet<string>> = {
     "windows",
     "endpoints",
     "urls",
+    "runtime",
   ]),
   javascript: new Set(["endpoints", "urls"]),
 };
@@ -448,6 +450,7 @@ const DEFAULT_KEYS: Record<string, string> = {
   windows: "file+windowName",
   endpoints: "file+kind+value",
   urls: "file+value",
+  runtime: "item",
 };
 
 /** Fields that say where an item sits, not what it is. */
@@ -707,6 +710,7 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   "new-external-host": () => ["endpoints", "urls"],
   "window-more-permissive": () => ["windows"],
   "new-bridge-exposure": () => ["bridgeExposures"],
+  "fuse-weakened": () => ["runtime"],
 };
 
 /**
@@ -719,6 +723,7 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   "window-more-permissive": () => [],
   // what a preload hands to pages is read from the bridge: an unreadable member is a gap here too
   "new-bridge-exposure": () => ["contextBridge"],
+  "fuse-weakened": () => [],
 };
 
 /**
@@ -729,6 +734,8 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
  */
 const IRRELEVANT_GAPS: Partial<Record<PolicyRuleId, Record<string, readonly string[]>>> = {
   "new-interface-member": { interfaces: ["values_unresolved"] },
+  // the runtime is read from the build's binary and metadata, not by the JavaScript scan
+  "fuse-weakened": { runtime: ["scan_partial", "files_unread", "files_unreadable"] },
 };
 
 function mergePlaces(into: Place[], more: readonly Place[]): void {
@@ -1067,6 +1074,179 @@ function unmatchedWindowDrafts(r: ReleaseComparison, sides: CheckSides | undefin
   return out;
 }
 
+/**
+ * For each fuse the rule watches, its less safe state, and what that state lets happen (Electron's
+ * documentation of the fuse, docs/tutorial/fuses.md).
+ */
+export const FUSE_LESS_SAFE: Readonly<Record<string, { state: "on" | "off"; means: string }>> = {
+  runAsNode: {
+    state: "on",
+    means: "ELECTRON_RUN_AS_NODE can start the app's binary as a plain Node.js process",
+  },
+  nodeOptions: {
+    state: "on",
+    means: "the NODE_OPTIONS and NODE_EXTRA_CA_CERTS environment variables are respected",
+  },
+  nodeCliInspect: {
+    state: "on",
+    means: "--inspect and the other debugging flags are respected in the main process",
+  },
+  embeddedAsarIntegrityValidation: {
+    state: "off",
+    means: "Electron does not validate app.asar against the build's integrity record",
+  },
+  onlyLoadAppFromAsar: {
+    state: "off",
+    means: "Electron also looks for the app in app/ and default_app.asar, not only in app.asar",
+  },
+  cookieEncryption: {
+    state: "off",
+    means: "cookies on disk are not encrypted with the operating system's keys",
+  },
+  grantFileProtocolExtraPrivileges: {
+    state: "on",
+    means: "pages loaded from file:// get the extra privileges of Electron's legacy file protocol",
+  },
+};
+
+const COVERS = "covers the loaded archive";
+const PAST_SUPPORT = "past end of support";
+
+/**
+ * The `runtime` rows of one side as item → row: every row when the check has them, else the ones
+ * the comparison lists as changed (their before or after values). Null when the side has none.
+ */
+function runtimeOf(
+  r: ReleaseComparison,
+  sides: CheckSides | undefined,
+  side: "a" | "b",
+): Map<string, Record<string, unknown>> | null {
+  const all = sides?.items[side]["runtime"];
+  const out = new Map<string, Record<string, unknown>>();
+  if (all) for (const item of all.filter(isRecord)) out.set(String(item["item"]), item);
+  else
+    for (const row of r.changes) {
+      if (row.collection !== "runtime" || row.change !== "changed") continue;
+      const value = row.fields?.find((f) => f.field === "value");
+      if (value)
+        out.set(row.key, { item: row.key, value: side === "a" ? value.before : value.after });
+    }
+  return out.size ? out : null;
+}
+
+/** The `value` of a runtime row, as text. */
+function runtimeValue(m: Map<string, Record<string, unknown>>, item: string): string | undefined {
+  const v = m.get(item)?.["value"];
+  return v === undefined ? undefined : String(v);
+}
+
+/** The runtime facts the rule reads: fuses, integrity coverage, support. */
+function fuseDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const before = runtimeOf(r, sides, "a");
+  const after = runtimeOf(r, sides, "b");
+  if (!before || !after) return [];
+  const value = runtimeValue;
+  const out: Draft[] = [];
+  const rowFor = (item: string): ChangeRow =>
+    r.changes.find((c) => c.collection === "runtime" && c.key === item) ?? {
+      id: rowId({ id: "", collection: "runtime", change: "changed", key: item, where: [] }),
+      collection: "runtime",
+      change: "changed",
+      key: item,
+      where: [],
+    };
+  const push = (item: string, identity: string, unknown: boolean, message: string): void => {
+    const row = rowFor(item);
+    out.push({
+      rule: "fuse-weakened",
+      identity,
+      row,
+      key: item,
+      message,
+      where: row.where,
+      unknown,
+    });
+  };
+  // a fuse the wire of a side does not hold: unknown when that wire was not read, else absent
+  const fuseValue = (m: Map<string, Record<string, unknown>>, name: string): string | undefined =>
+    value(m, `fuse.${name}`) ?? (value(m, "fuses") === "unknown" ? "unknown" : undefined);
+  for (const [name, { state: bad, means }] of Object.entries(FUSE_LESS_SAFE)) {
+    const was = fuseValue(before, name);
+    // A fuse the after build's wire does not hold, while the before build had it (a wire of a
+    // schema version hexvero does not know, a short wire): not read, so it may be weakened.
+    const now = fuseValue(after, name) ?? (was === undefined ? undefined : "unknown");
+    // a fuse new in this Electron starts at its default: no move
+    if (was === undefined || now === undefined || was === bad) continue;
+    // `removed` (r) has no effect: what it was in effect before is not known, so a move from it
+    // is a finding that may be one, never a definite one
+    const open = was === "unknown" || was === "removed";
+    if (now === bad)
+      push(
+        `fuse.${name}`,
+        `fuse\0${name}\0${bad}`,
+        open,
+        was === "unknown"
+          ? `Fuse ${name} is ${bad}; it was not read in the before build, so it may have been ${bad} already: ${means}.`
+          : was === "removed"
+            ? `Fuse ${name} is ${bad}; in the before build it was marked removed (no effect), so whether this is a move is not known: ${means}.`
+            : `Fuse ${name} moved ${was} → ${bad}: ${means}.`,
+      );
+    // a removed fuse is no effect; one not read afterwards may be anything, so it is a finding too
+    else if (now === "unknown" && was !== "unknown")
+      push(
+        `fuse.${name}`,
+        `fuse\0${name}\0${bad}`,
+        true,
+        `Fuse ${name} was ${was} and could not be read in the after build (${plain(String(after.get(`fuse.${name}`)?.["detail"] ?? after.get("fuses")?.["detail"] ?? "not in its fuse wire"))}); if it is ${bad}, ${means}.`,
+      );
+  }
+  const covered = value(before, "asarIntegrity");
+  const covers = value(after, "asarIntegrity");
+  if (covered !== undefined && covers !== undefined && covers !== COVERS) {
+    const integrity = after.get("asarIntegrity")?.["detail"];
+    if (covered === COVERS)
+      push(
+        "asarIntegrity",
+        `integrity\0${covers}`,
+        covers === "unknown",
+        covers === "unknown"
+          ? `The ASAR integrity record covered the archive Electron loads; in the after build it could not be read (${plain(String(integrity ?? ""))}).`
+          : `The ASAR integrity record no longer covers what Electron loads: ${covers} (${plain(String(integrity ?? ""))}).`,
+      );
+    else if (covered === "unknown" && covers !== "unknown")
+      push(
+        "asarIntegrity",
+        `integrity\0${covers}`,
+        true,
+        `The ASAR integrity record ${covers} in the after build; in the before build it could not be read, so coverage may be lost (${plain(String(integrity ?? ""))}).`,
+      );
+  }
+  const was = value(before, "support");
+  const now = value(after, "support");
+  if (was !== undefined && now !== undefined && was !== PAST_SUPPORT) {
+    const electron = value(after, "electron") ?? "unknown";
+    const detail = plain(String(after.get("support")?.["detail"] ?? ""));
+    const line = /^(\d+)\./.exec(electron)?.[1] ?? electron;
+    if (now === PAST_SUPPORT)
+      push(
+        "support",
+        `support\0${line}`,
+        was === "unknown",
+        was === "unknown"
+          ? `The after build's runtime is past end of support, and the before build's support status is not known: ${detail}.`
+          : `The runtime went past end of support: ${detail}.`,
+      );
+    else if (now === "unknown" && was === "supported")
+      push(
+        "support",
+        `support\0${line}`,
+        true,
+        `The before build's runtime was supported; the after build's support status is not known: ${detail}.`,
+      );
+  }
+  return out;
+}
+
 const RULE_RANK = (rule: string): number => POLICY_RULES.indexOf(rule as PolicyRuleId);
 
 /** True when the day of `now` (UTC) is after `expires`. */
@@ -1111,13 +1291,19 @@ export function evaluatePolicy(
         ...(rule === "new-external-host" && hostsKnown ? ["values_unresolved"] : []),
       ];
       const gaps = completenessOf(r, collection).gaps.filter((g) => !ignore.includes(g));
-      if (missing(collection)) gaps.unshift("collection_missing");
+      // The runtime exists only for packaged builds: with neither side one, the rule has nothing
+      // to compare (it reads nothing); with one side only, it cannot tell what moved.
+      if (rule === "fuse-weakened") {
+        if (r.overview.onlyA.includes(collection) || r.overview.onlyB.includes(collection))
+          gaps.unshift("collection_missing");
+      } else if (missing(collection)) gaps.unshift("collection_missing");
       if (gaps.length) incomplete.push({ rule, collection, gaps });
     }
     if (rule === "new-interface-member") drafts.push(...interfaceDrafts(r, collections[0]!, sides));
     if (rule === "new-external-host") drafts.push(...hostDrafts(r, cfg.allow ?? [], sides));
     if (rule === "window-more-permissive") drafts.push(...windowDrafts(r, sides));
     if (rule === "new-bridge-exposure") drafts.push(...exposureDrafts(r, sides));
+    if (rule === "fuse-weakened") drafts.push(...fuseDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -1282,6 +1468,7 @@ const RULE_LISTS = [
   "windows",
   "endpoints",
   "urls",
+  "runtime",
 ];
 
 /**

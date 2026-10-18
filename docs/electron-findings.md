@@ -6,8 +6,10 @@ which page of Electron's documentation the statement rests on. The documentation
 `packages/core/src/javascript/app.ts` change together.
 
 Nothing here describes a running application. hexvero reads what the code writes. It does not
-know the Electron version that is shipped, command-line switches such as `--no-sandbox`, or a
-setting that is changed at run time.
+know command-line switches such as `--no-sandbox`, or a setting that is changed at run time. The Electron version that is shipped, and its fuses, are read only from a packaged build (see
+[Runtime](#runtime-of-a-packaged-build-runtime)); an `.asar` or app directory alone does not
+ship them. The window defaults below rest on the version `package.json` names in either case; the
+runtime version is reported, not used for them.
 
 ## Four kinds of value
 
@@ -103,7 +105,8 @@ on the version:
 | `contextIsolation`   | `true` (was `false`)                                                                    | 12.0  | [Breaking changes, 12.0][bc]          |
 | `sandbox`            | `true` (was `false`), "unless `nodeIntegration: true` or `sandbox: false` is specified" | 20.0  | [Breaking changes, 20.0][bc]          |
 
-The only version hexvero can read is the range `package.json` asks for (`"electron": "^38.0.0"`).
+The only version these defaults use is the range `package.json` asks for (`"electron": "^38.0.0"`);
+the runtime version of a packaged build is listed in `runtime` and not used here.
 That is the application's own metadata: it may be absent from a packaged app, and it does not
 prove which runtime is shipped. A value derived from it is therefore written `default on` or
 `default off`, and `pageRequire` is `yes by default` or `no by default`. They never read as `on`,
@@ -1023,9 +1026,104 @@ expression, and `.call` gets that chain (or the temporary it was assigned to) as
 Another name after the test (`(_a = ipcRenderer) == null ? void 0 : socket.send(…)`), another
 receiver of `.call`, and `.apply(…)` give no row.
 
+## Runtime of a packaged build (`runtime`)
+
+A packaged build (a macOS `.app`, a Windows or Linux install directory, a release ZIP of either)
+ships the Electron runtime next to the app, and hexvero reads its bytes; it runs nothing. An
+`.asar` or app directory opened alone has no `runtime` list, and `data.runtime` says
+`shipped: false` ("not shipped in this input").
+
+| Row                                        | Read from                                                                                                                                                         | Known only when                                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `electron`, `chromium`                     | the fragment `Chrome/<a.b.c.d> Electron/<x.y.z>` followed by a NUL byte, which Electron compiles into its binary for the user agent                               | every occurrence in the binary agrees (a universal macOS binary holds one per architecture) |
+| `node`                                     | `https://nodejs.org/download/release/v<x.y.z>/node-v<x.y.z>.tar.gz` (and `-headers.tar.gz`), Node's `process.release` URLs                                        | every occurrence agrees                                                                     |
+| `fuses`, `fuse.<name>`                     | the wire after `dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX`: a schema version byte, a count byte, one byte per fuse (`0` off, `1` on, `r` removed)                          | schema version 1 and the same byte at that position in every wire                           |
+| `asarIntegrity`, `asarIntegrity:<archive>` | macOS `ElectronAsarIntegrity` in `Contents/Info.plist`; Windows the resource `Integrity/ElectronAsar` (a JSON list of `file`, `alg`, `value`) of the app's `.exe` | the record is there and readable; Linux is `unknown`                                        |
+| `support`                                  | the end-of-life date of the Electron line in the snapshot of Electron's release data hexvero ships                                                                | the version is known and its line is in the snapshot                                        |
+
+The binary is `Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework`
+(then the `Versions/Current` and top-level links, followed only inside the bundle) on macOS, and
+on Windows and Linux a file of at least 1 MiB next to `resources/` that starts as a PE (`MZ`) or
+ELF file and that the packaging names: electron-builder writes `<productName>.exe` on Windows
+(productName defaults to `name`) and `<name>` in lower case on Linux, unless
+`build.executableName` (or `build.win`/`build.linux`) says otherwise; @electron/packager and
+Electron Forge use `executableName` or the app name. On Windows an `.exe` carrying the resource
+`Integrity/ElectronAsar` counts too (the 8 largest are looked at; not in a ZIP). At most 4 such
+files are scanned, and the 3 largest unnamed PE or ELF files next to them. When no named file
+holds markers, up to 8 unnamed files are scanned, and one is taken only with both an Electron
+user agent and a fuse wire (Electron has had fuses since version 12, while a helper can hold a
+user agent alone); the `electron` row says it was taken by its markers. All files scanned for one build count against 2 GiB (by the bytes read); any unnamed file of the cross-check left unscanned (over that, or over 1 GiB) makes the reading `unknown`. When
+any two scanned files hold Electron markers that disagree (versions or fuse wires), which is the runtime
+is not known: every reading is `unknown`, with `electron_runtime_not_read` naming both, and the
+app pick keeps its `electron_app_pick_unverified` warning. Passed over: `chrome-sandbox`, `chrome_crashpad_handler`, `crashpad_handler`, `Update.exe`, `squirrel.exe`, `elevate.exe` and libraries (`.so`, `.dll`, …);
+at most 5,000 names are listed and the 64 largest files probed, and when nothing is found within those caps the reason says so. On Windows the integrity resource is taken only from an `.exe` that holds the Electron marker; otherwise it is `unknown`. Measured on 2026-10-18 on three installed
+apps:
+
+| App                         | Electron                | Chromium       | Node    | Fuse wire             | Integrity record                                                         |
+| --------------------------- | ----------------------- | -------------- | ------- | --------------------- | ------------------------------------------------------------------------ |
+| Claude 2.42304.0            | 44.7.2                  | 152.0.7977.149 | 24.21.0 | `010011011`           | `Resources/app.asar`: covers the loaded archive, the header hash matches |
+| Discord 0.0.414 (universal) | 42.11.8 (2 occurrences) | 148.0.7778.280 | 24.19.0 | `001000011` (2 wires) | `Resources/default_app.asar` only: does not cover `app.asar`             |
+| LM Studio 0.3.31            | 37.7.1                  | 138.0.7204.251 | 22.20.0 | `10110001` (8 fuses)  | `Resources/default_app.asar` only; Electron loads `app/`                 |
+
+The versions agree with Electron's release data for those releases. The fuse names, in wire
+order, are those of Electron's `build/fuses/fuses.json5` (`_version: 1`): `run_as_node`,
+`cookie_encryption`, `node_options`, `node_cli_inspect`, `embedded_asar_integrity_validation`,
+`only_load_app_from_asar`, `load_browser_process_specific_v8_snapshot`,
+`grant_file_protocol_extra_privileges`, `wasm_trap_handlers`, written as in Electron's
+[fuses guide][fuses] (`runAsNode`, …). An older Electron has fewer (Electron 37 and 40: eight);
+a position past the nine is listed as `#10`, … with value `unknown`, and a wire of another schema
+version names none.
+
+The integrity record of the archive Electron loads is matched by name: on macOS the key
+relative to `Contents` (`Resources/app.asar`), on Windows the path relative to the `.exe`,
+compared in lower case (`resources\app.asar`), as Electron's `archive_win.cc` looks it up.
+Electron's hash is the SHA-256 of the archive's header string; hexvero reads that header alone
+(the 16-byte pickle and the header, up to 64 MiB) and says `matches` or `differs`. Entry paths are
+normalized (`./`, `../` inside the build), each archive file is hashed once however many entries
+name it, and at most 64 MiB of headers are hashed per build; past that an entry is `not compared`,
+with the reason. That is all it
+checks: whether Electron validates the archive at startup depends on the fuse
+`embeddedAsarIntegrityValidation`, which the detail names.
+
+Support is "supported", "past end of support" or "prerelease", always with the end-of-life date,
+the snapshot date and the day it was judged on ("Electron 37.7.1 is past its end of support
+(2026-01-15, from the snapshot of 2026-10-18, as of 2026-10-18)"); a date after the snapshot is
+"planned", as Electron's schedule may move it. A line's end of life is the release day of the
+next stable line, so on that day it is past. An alpha, beta or nightly of a line not yet past is
+a "prerelease", not "supported". The
+snapshot (`packages/core/src/data/electronReleases.ts`) holds every non-nightly release with its
+date, Chromium and Node versions from <https://releases.electronjs.org/releases.json>, and per
+major line the stable and end-of-life dates from <https://releases.electronjs.org/schedule.json>;
+`node scripts/electron-releases.mjs` refreshes it (by hand, never in CI). Support status says
+nothing about vulnerabilities. It is judged against the day of the analysis, so the same build
+can be supported today and past end of support after the date.
+
+Limits: a binary over 1 GiB is not scanned and every reading is `unknown` with the limitation
+`electron_runtime_not_read` (as when the binary is missing); a Windows or Linux candidate inside a ZIP is inflated into memory only once its first bytes (read without inflating the entry) show a PE or ELF file (the macOS framework is taken by its name), and all the runtime candidates of one build inflated together stay within the target's size limit (512 MiB by default) and the ZIP's own inflate budget.
+The binary is read in windows of 8 MiB with 256 bytes of overlap; at most 64 occurrences of each
+marker are kept, and a 65th makes that value `unknown`, never a pick among them; at most 4,096
+strings that start like a marker (` Electron/`, Node's URL prefix) are examined, and more make
+the value `unknown` with that reason, so a file of repeats costs one pass. `Info.plist` and
+the integrity resource are read up to 1 MiB, the PE resource directory up to 32 MiB.
+
+Which app Electron runs in its resources directory depends on the version and on the fuse
+`onlyLoadAppFromAsar` (`app.asar`, `app/`, `default_app.asar` since Electron 15.0.0-beta.6,
+electron#30667 on main on 2021-09-09 and its backport #30900, in `shell/common/node_bindings.cc`
+and on main `shell/browser/app_package.cc`; `app/` first before, `lib/browser/init.ts`;
+`app.asar` alone with the fuse on, see the [fuses guide][fuses]). The fuse arrived in the same
+change, so a schema 1 wire with 6 or more positions means `app.asar` first and one with fewer
+means `app/` first and no such fuse; without a wire, the version decides, and 15.0.0 alphas,
+betas 1 to 5 and the 15 and 16 nightlies stay open (`electron_app_pick_unverified`), as does a wire whose length disagrees with the version. Electron 14
+and earlier cannot have the fuse. hexvero reads the binary only when the candidates there would
+give different apps under these orders. A `package.json` that is JSON but not an object depends on
+the version: Electron 45 and later pass over it (`app_package.cc`, `is_dict`); earlier versions
+load it with `require` and run a list, string or number, while `null` makes them run no app
+(`packageJson == null`: "Unable to find a valid app"). When the version is not read and the rule
+changes the pick, the pick stays open (`electron_app_pick_unverified`).
+
 ## Not read
 
-Electron fuses, Content Security Policy, what a navigation or window-open handler checks,
+Content Security Policy, what a navigation or window-open handler checks,
 `will-redirect` and the removed `new-window` event, permission request handlers, `<webview>` attributes, whether an IPC handler validates its sender
 ([Security, 17][sec]), and `webPreferences` keys other than `preload`, `nodeIntegration`,
 `contextIsolation`, `sandbox`, `webSecurity`, `allowRunningInsecureContent`, `webviewTag`,
@@ -1051,3 +1149,4 @@ replaces the earlier one, and which one runs last is not established.
 [sb]: https://www.electronjs.org/docs/latest/tutorial/sandbox
 [sec]: https://www.electronjs.org/docs/latest/tutorial/security
 [wc]: https://www.electronjs.org/docs/latest/api/web-contents
+[fuses]: https://www.electronjs.org/docs/latest/tutorial/fuses

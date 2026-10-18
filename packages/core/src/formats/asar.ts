@@ -1,4 +1,4 @@
-import { closeSync, fstatSync, openSync, readSync, realpathSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { basename, join, sep } from "node:path";
 import { readRegularFile } from "../binary/file.js";
 import { ByteReader, utf8String } from "../binary/reader.js";
@@ -55,9 +55,25 @@ export function openAsar(bytes: Uint8Array): AsarArchive {
   };
 }
 
+/**
+ * Opens `path` for reading without blocking: a FIFO, socket or device in an archive's place is
+ * refused (`invalid_input`) instead of blocking the open or a read for ever.
+ */
+function openRegular(path: string): number {
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  try {
+    if (!fstatSync(fd).isFile())
+      throw new AnalysisError("invalid_input", `${path} is not a regular file`);
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
+  return fd;
+}
+
 /** Same archive view, but reading from disk on demand so multi-gigabyte ASARs never load fully. */
 export function openAsarFile(path: string): AsarArchive {
-  const fd = openSync(path, "r");
+  const fd = openRegular(path);
   const fileSize = fstatSync(fd).size;
   // Never allocate more than the file can supply: a forged header length must not cost memory.
   const readAt = (off: number, len: number): Uint8Array => {
@@ -76,7 +92,7 @@ export function openAsarFile(path: string): AsarArchive {
     checkReadable(file, maxBytes);
     if (file.offset === null || file.offset < 0)
       throw new AnalysisError("malformed", `${file.path} has no valid offset`);
-    const h = openSync(path, "r");
+    const h = openRegular(path);
     try {
       const out = new Uint8Array(file.size);
       const n = readSync(h, out, 0, file.size, dataStart + file.offset!);

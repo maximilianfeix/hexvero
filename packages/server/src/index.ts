@@ -419,7 +419,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       }
       if (sub === "collections" && parts[3]) {
         const page = await session.collection(id, parts[3], paging());
-        const partial = await session.partial(id);
+        const partial = await session.partial(id, page.collection);
         return json(res, 200, partial ? { ...page, partial } : page);
       }
       if (sub === "strings") {

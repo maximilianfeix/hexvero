@@ -278,6 +278,8 @@ export const MEANING: Record<string, string> = {
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",
   urls: "URL literals in the code",
+  runtime:
+    "The Electron runtime the build ships: versions, fuses, ASAR integrity, support status (read from the binary)",
 };
 
 export const show = (v: unknown): string => (v === undefined ? "not written" : JSON.stringify(v));

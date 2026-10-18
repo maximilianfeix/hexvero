@@ -33,7 +33,9 @@ Everything in this table works with Node alone. Engines add disassembly and deco
 
 Packaged Electron builds (a macOS `.app`, a Windows or Linux install directory, a release ZIP)
 are opened as the Electron app inside them; how the app is picked is in
-[cli.md](cli.md#packaged-builds-app-install-directories-zip).
+[cli.md](cli.md#packaged-builds-app-install-directories-zip). Their `runtime` list holds the
+shipped Electron runtime, read from the binary's bytes: Electron, Chromium and Node versions,
+fuses, the ASAR integrity record and support status ([cli.md](cli.md#the-electron-runtime)).
 
 Reading SQLite databases needs Node.js 22.13 or 24 and newer; on 22.12 everything else works and
 SQLite files are refused with a message saying so.

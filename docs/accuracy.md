@@ -32,7 +32,7 @@ it is in [launch/claims.md](launch/claims.md).
 - Call graphs depend on the engine's analysis; a function reached only through a pointer has no direct caller. Ghidra is verified on fixtures only.
 - Very large single items are returned compacted with a marker; very large files above the per-file budget are listed as unread.
 - `compare` is a per-collection diff: it does not line up renamed functions or match code by structure; a renamed window shows up as removed and added. It compares whole lists up to 200,000 items or 256 MiB per side and says when it did not. IPC argument shapes are not compared, so a new field in an existing channel's payload is not a change.
-- `hexvero check` judges four rules (new interface member, new external host, more permissive window, privileged object newly handed to pages); it is not a vulnerability scanner and a pass is not a security verdict.
+- `hexvero check` judges five rules (new interface member, new external host, more permissive window, privileged object newly handed to pages, weakened fuse of a packaged build); it is not a vulnerability scanner and a pass is not a security verdict.
 - Native findings cite a collection (imports, symbols) rather than a file offset.
 - Files above 512 MiB are read lazily only for ASAR archives; other formats that large are refused with `too_large`.
 - No dynamic analysis, debugging, device access, firmware unpacking or packet capture: for those, see [REA](comparison.md#compared-with-rea).

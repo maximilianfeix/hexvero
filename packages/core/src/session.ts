@@ -47,6 +47,12 @@ export interface TargetRecord {
 
 const hasItems = (counts: Record<string, number>, name: string): boolean => (counts[name] ?? 0) > 0;
 
+/**
+ * Lists of a JavaScript application that the scan does not read: the runtime comes from the
+ * build's binary and metadata, so a partial scan or an unreadable file leaves it whole.
+ */
+const NOT_FROM_SCAN = new Set(["runtime"]);
+
 /** One collection both targets have, as `Session.compareAll` counts it. */
 export interface CollectionComparison {
   collection: string;
@@ -361,10 +367,14 @@ export class Session {
    * For a JavaScript application whose analysis has not read every file: how much it has read.
    * Null when the analysis is complete or the target is something else. Whatever is derived
    * from such an analysis (a page, a comparison) covers the scanned part only and must say so.
+   * With `collection`: null as well for a list the scan does not read (`runtime`), which is
+   * whole however much of the JavaScript was read.
    */
   async partial(
     id: string,
+    collection?: string,
   ): Promise<{ scanned: number; total: number; remaining: number; skipped: number } | null> {
+    if (collection !== undefined && NOT_FROM_SCAN.has(collection)) return null;
     const analysis = await this.analyze(id);
     if (analysis.data.kind !== "javascript-app" || analysis.data.app.coverage.complete) return null;
     const { scanned, total, remaining, skipped } = analysis.data.app.coverage;
@@ -485,7 +495,10 @@ export class Session {
       positional: options.strict
         ? []
         : positionalFields(name, [this.get(idA).info.format, this.get(idB).info.format]),
-      coverage: { a: await this.coverage(idA), b: await this.coverage(idB) },
+      // what the JavaScript scan read says nothing about a list read from elsewhere
+      coverage: NOT_FROM_SCAN.has(name)
+        ? undefined
+        : { a: await this.coverage(idA), b: await this.coverage(idB) },
       cut: { a: partA.length < allA.length, b: partB.length < allB.length },
       total: { a: allA.length, b: allB.length },
       onOneSided: options.onOneSided,
@@ -1016,6 +1029,8 @@ export function collectionsOf(
       if (d.app.storage.length) out["storage"] = d.app.storage;
       if (d.app.urls.length) out["urls"] = d.app.urls;
       out["sourceMaps"] = d.app.sourceMaps;
+      // the runtime of a packaged build; an archive or directory alone ships none (no list)
+      if (d.runtime?.shipped) out["runtime"] = d.runtime.rows;
       break;
     case "javascript":
       out["references"] = d.script.references;
