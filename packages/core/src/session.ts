@@ -1092,6 +1092,8 @@ const computedValue = (value: string | null): boolean => value === null || value
 export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> = {
   ipc_receiver_unresolved: "ipc",
   ipc_open_calls_capped: "ipc",
+  // calls of IPC wrappers or of functions taking ipcMain/ipcRenderer past what is read
+  ipc_wrappers_capped: "ipc",
   context_bridge_truncated: "bridge",
   context_bridge_members_unreadable: "bridge",
   web_preferences_truncated: "window",

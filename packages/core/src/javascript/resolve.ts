@@ -749,6 +749,8 @@ export class ExpressionResolver {
     const sites = this.callSites(def);
     if (!sites.length) return null;
     const out: WrapperCalls["sites"] = [];
+    // a caller's own bindings may be cut too (`b(q) { a("x" + q) }` with b called past the cap)
+    this.cut = false;
     for (const open of sites) {
       const close = this.match[open]!;
       if (close === -1) continue;
@@ -772,7 +774,7 @@ export class ExpressionResolver {
     return {
       name: holder ? `${holder}.${def.name}` : def.name!,
       sites: out,
-      ...(this.sitesCapped.has(def) ? { capped: true as const } : {}),
+      ...(this.sitesCapped.has(def) || this.cut ? { capped: true as const } : {}),
     };
   }
 
