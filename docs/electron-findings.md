@@ -697,38 +697,108 @@ the bounded resolver (`packages/core/src/javascript/resolve.ts`, nothing is run)
 outside the rules below gives an unreadable or unresolved row as before, never a guessed
 channel.
 
+**What counts as a write.** One definition serves every reader (`packages/core/src/javascript/writes.ts`).
+A constant (a top-level `const`, `let` or `var` with a literal, or a table) keeps its value only
+when nothing in the file writes it. A name is written by:
+
+- an assignment with any operator: `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `**=`, `<<=`, `>>=`,
+  `>>>=`, `&=`, `|=`, `^=`, `&&=`, `||=`, `??=`;
+- `++` or `--`, before or after it;
+- an array or object pattern that is assigned, at any depth: `[CH] = …`, `[, CH] = …`,
+  `({ CH } = …)`, `({ k: CH } = …)`, `({ CH = 1 } = …)`, `[[CH]] = …`;
+- the head of a loop: `for (CH of …)`, `for (CH in …)`;
+- any of these in parentheses: `(CH) += …`, `((CH))++`;
+- a `var` declared again with a value in a block of the same scope: `if (x) { var CH = "b" }`.
+
+Its own declaration (also in a list, `var a = 1, CH = 2`, and in a declaration pattern
+`const { CH } = …`), a parameter default (`function f(CH = 1)`), a class field
+(`class A { CH = 1 }`) and a computed key (`o[CH] = …`) are no writes of it. A line break
+ends a declaration list where no operator continues it (`let a = 1⏎return g(), CH += "x"`
+writes `CH`; `CH⏎++y` steps `y`). A method head is `name(…) {` with its brace on the line of
+the `)` (also `[k](…) {`, `"key"(…) {`); `foo(CH = 1)⏎{ }` is a call that assigns `CH`. Where a minifier
+reuses a short name, a write other than a plain `=` to a parameter, a `catch` binding, a
+pattern element of a declaration or a `const|let|var` of a function or block around it is that
+local's own (`function f() { let d = 0; d++ }` leaves the top-level `d` alone); a plain `=`
+counts in any scope, as before. A `var` belongs to the function body around it; where that body
+is not recognized for certain (a class body, `static { … }`, an unrecognized `) {`), it is no
+local of any function, and the write counts for the top-level name. A constant declared inside a
+bundler's module wrapper counts every write of its name. Up to 0.9.8 only a plain `=` counted,
+and `%=`, `&=`, `|=`, `^=` and `>>>=` were not even single tokens: the old value was reported as
+known after any other write (#198). A minifier's `n=e,o=e` in a function counted only its first
+assignment.
+
+A member is written the same ways through a chain of members and elements from a name
+(`T.A += …`, `T["A"]++`, `T?.a.b = …`, `[T.A] = …`, `({ k: T.A } = …)`, `for (T.A of …)`,
+`delete T.A`, `(T).A = …`, `(T.A) = …`): `T.A` is then unknown, and any key of `T` for a
+computed one (`T[k] = …`), for `Object.assign(T, …)`, `Object.defineProperties(T, …)` and the
+other writers below, and for a write through another name for it (`const U = T; U.A = …`, also
+`var c = {…}, o = c` as minifiers write it). A module that writes its own table or constant
+(`Channels.OPEN = "…"`, `KEYS.theme = …`, `exports.CH` assigned again, or inside a function)
+hands the written entries to no other module; tsc's `exports.a = exports.b = void 0` declares
+the exports and is no write.
+
 **What counts as a change of a table or list.** The values are read only when the table or list
 is a `const` object or array literal (also in `Object.freeze(…)`, and in a declaration list as
 minifiers write it, `var a = …, T = {…}`) that nothing may change. Anywhere in the file, these
 make it unknown:
 
-- an assignment to the name, or to a member or element at any depth: `T.x = …`, `T[k] = …`,
-  `T.a.b += …`, `R[0].channel = …`, `T.x++`;
+- a write to the name, or to a member or element at any depth (above): `T.x = …`, `T[k] = …`,
+  `T.a.b += …`, `R[0].channel = …`, `T.x++`, `[D[0].channel] = …`;
 - `delete T.x`, `delete T[k]`;
-- a mutating method on it or on a member: `push`, `pop`, `shift`, `unshift`, `splice`, `set`,
-  `delete`, `clear`, `fill`, `copyWithin`, `sort`, `reverse`;
+- a mutating method on it or on a member, also called with `?.`: `push`, `pop`, `shift`,
+  `unshift`, `splice`, `set`, `delete`, `clear`, `fill`, `copyWithin`, `sort`, `reverse`
+  (`R[0].list.push(…)`, `E.splice?.(0, 1)`);
 - `Object.assign`, `Object.defineProperty`, `Object.defineProperties`, `Object.setPrototypeOf`,
   `Reflect.set`, `Reflect.defineProperty`, `Reflect.deleteProperty`, `Reflect.setPrototypeOf`
-  with it as the target;
+  with it or a member of it as the target (`Object.assign(R[0], …)`, `Reflect.set(T.a, …)`);
 - a member write through a loop variable or callback parameter that runs over a list:
-  `for (const r of R) r.channel = …`, `R.forEach((r) => { r.kind = … })` (also `map`,
-  `filter`, `find`, `findLast`, `some`, `every`, `reduce`, `flatMap`);
-- for the readers new in this release only, also an alias (`const U = T`), a function the table
-  is passed to that writes its parameter (`addMore(T)` with `t.b = …` in it), and passing it to
-  a function whose body is not read (`register(T)`, `logger.info(T)`). These readers are: the
-  members built from a table (the generated invokers and `api[k] = …` loops below), the computed
-  route form `ipcMain[r.kind](…)` and the other route lists read per element, and a list read
-  through a parameter of the function around it (`invokers(table)`). Every reader 0.9.8 had (a
-  channel `T.k` or `T["k"]`, the loops 0.9.8 read, endpoints, storage keys, window options) takes
-  a table passed to such a function as it is written.
+  `for (const r of R) r.channel = …`, `for (const [i, r] of R.entries()) r.channel = …` (also
+  `values()`), `R.forEach((r) => { r.kind = … })` (also `map`, `filter`, `find`, `findLast`,
+  `some`, `every`, `reduce`, `flatMap`), also through another name for the element
+  (`const x = r; x.channel = …`), and a named callback (`R.forEach(tweak)`) that writes its
+  parameter or is not a function of the file (`String`, `Boolean`, `Number`, `parseInt`,
+  `parseFloat` and the URI coders only read);
+- a function of the file the table is passed to that writes it at any depth (`tweak(R)` with
+  `list[0].channel = …` in it);
+- for the readers of tables built into IPC, also an alias that is written (`const U = T;
+  U.c = …`) and passing it to a function whose body is not read (`register(T)`,
+  `globalThis.mutate(T)`). These readers are: the members built from a table (the generated
+  invokers and `api[k] = …` loops below), every loop over a list or over a table's keys
+  (`for (const r of R) …`, `R.forEach(…)`, `for (const k of Object.keys(T)) ipcMain.on(T[k], …)`)
+  and a member read by a key a loop finds (`T[k]`). A channel `T.k` or `T["k"]` (also `T[KEY]`
+  with `KEY` a constant), endpoints, storage keys and window options take a table passed to such
+  a function as it is written. Up to 0.9.8 the loops it read took such a table as written too.
 
-Reading a member, `typeof`, a spread, `for … of`, a template (`` `${T}` ``), and passing it to
-`console.*`, `JSON.stringify`, `String`, `Array.isArray`, `Object.freeze` / `isFrozen` / `keys` /
-`entries` / `values`, or to a function of the file that does not write its parameter (read up to
-three calls deep), are reads in every reader.
+Reads, in every reader: a member, `typeof`, a spread, `for … of`, a template (`` `${T}` ``),
+another name for it that nothing writes (`const X2 = T`, `const y = T || {}`,
+`const z = x ? T : null`), a test or comparison (`!T`, `T === x`, `T != null`, `case T:`,
+`if (T)`, `while (T && T.A)`, and minified `T && f()`), the source of a destructuring
+(`const { A } = T`), passing it to `console.*`, `JSON.stringify`, `String`, `structuredClone`,
+`Array.isArray`, `Object.freeze` / `isFrozen` / `keys` / `entries` / `values` /
+`getOwnPropertyNames`, or to a function of the file that does not write its parameter (read up to
+three calls deep), and handing it on as a value: `module.exports = T`; an element of an array or
+object literal bound to a declaration (`const L = [T]`, `const W = { x: T }`) when that name is
+itself unchanged by the same rules; and `return T` from a named function whose every call's
+result is discarded, destructured (`const { A } = get()`) or bound to a name that is unchanged
+(`const r = get()`). A container or result used any other way may write the table:
+`[T][0].A = …`, `L[0].A = …`, `W.x.B = …`, `get().A = …`, `get()["B"] = …`,
+`Object.assign(get(), …)`, `r[k] = …`, a container passed to a call (`f({ T })`), a function
+handed around. No use of the table at all: an object key
+(`{ T: 2 }`), a class member (`class Q { T() {} }`), a label (`T: for (;;) { break T }`), and
+another binding of the name: a parameter (`function h(T)`, `(a, T) => a`), a `catch (T)`, a
+pattern element of its own (`function g({ T })`, `const { a: T } = o` in a function).
 
-Not seen: a write through what a method returns (`R.find(f).channel = …`), `|=`, `&=`, `^=` and
-`%=`, and a write in another module.
+A table passed to a function of the file that writes one of its members (`function mut(o) {
+o.A = … }`, `mut(T)`) changes it for every reader that reads it strictly (above); a literal key
+(`T.A`, `T["A"]`) keeps reading it as written, as 0.9.8 did. This is a decision: the function's
+writes are not followed to the keys they change. The query of a URL (`url.searchParams.set(…)`, `url.search = …`, `url.hash = …`) is no
+change of the address a local `new URL(…)` holds. The same holds, for now, for a write through a container, a function's
+result or an alias built with `||`, `??` or `?:` (`const L = [T]; L[0].A = …`,
+`const y = T || {}; y.A = …`): the loops above do not read `T`, a literal key `T.A` still does,
+as in 0.9.8.
+
+Not seen: a write through what a method returns (`R.find(f).channel = …`), through an element
+handed to a function (`for (const r of R) tweak(r)`), and a write in another module.
 
 **Bridge members and senders from a channel table.** The forms:
 

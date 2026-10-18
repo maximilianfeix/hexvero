@@ -680,22 +680,21 @@ describe("review: tables and lists that may change", () => {
       expect(codes(info)).toContain("ipc_channel_unresolved");
     });
 
-  // what the evaluation cannot follow makes the members built from the table unreadable; the
-  // senders keep the reading 0.9.8 had (the table as written)
+  // what the evaluation cannot follow makes the members built from the table unreadable, and
+  // the senders too: the callback runs over the table as it is then, which may not be as written
+  // (#198, RA's probes D and K; 0.9.8 read the senders from the table as written)
   for (const [name, write] of [
     ["an alias write", 'const U = T; U.c = "t:c";'],
     ["a function that writes its parameter", 'function more(t) { t.c = "t:c"; }\nmore(T);'],
     ["a call of a function that is not read", "register(T);"],
   ] as const)
-    it(`reads no member, and the senders as written, after ${name}`, () => {
+    it(`reads no member and no sender after ${name}`, () => {
       const info = preload(
         `const T = { a: "t:a", b: "t:b" };\n${write}\ncontextBridge.exposeInMainWorld("x", ${FORWARD});\n`,
       );
       expect(members(info)).toEqual(["x.null null"]);
-      expect(rows(info)).toEqual([
-        "t:a ipcRenderer.invoke preload.js",
-        "t:b ipcRenderer.invoke preload.js",
-      ]);
+      expect(rows(info)).toEqual([]);
+      expect(codes(info)).toContain("ipc_channel_unresolved");
     });
 
   it("reads no channel when the function that builds the members writes the table", () => {
@@ -728,25 +727,19 @@ describe("review: changes the evaluation cannot follow, in a route list", () => 
       'function add(l) { l.push({ channel: "r:b", kind: "on" }); }\nadd(R);',
     ],
   ] as const)
-    it(`leaves the computed form unresolved after ${name}, the loops of 0.9.8 as before`, () => {
+    // every loop reads its list strictly (#198): 0.9.8 read the last two from the list as written
+    it(`leaves every loop over the list unresolved after ${name}`, () => {
       const info = mainOnly(
         `const R = [{ channel: "r:a", kind: "handle" }];\n${write}\nfor (const r of R) ipcMain[r.kind](r.channel, () => 1);\nfor (const r of R) ipcMain.handle(r.channel, () => 1);\nR.forEach((r) => ipcMain.on(r.channel, () => 1));\n`,
       );
-      expect(rows(info)).toEqual(["r:a ipcMain.handle main.js", "r:a ipcMain.on main.js"]);
-      expect(unresolved(info)).toBe(1);
+      expect(rows(info)).toEqual([]);
+      expect(unresolved(info)).toBe(3);
     });
 });
 
 describe("review: what only reads a table", () => {
   // as R7's probes n2 and n3: what 0.9.8 read after such a use is still read
-  for (const use of [
-    "console.log(X)",
-    "JSON.stringify(X)",
-    "Object.freeze(X)",
-    "log(X)",
-    'emitter.emit("c", X)',
-    "const X2 = X",
-  ])
+  for (const use of ["console.log(X)", "JSON.stringify(X)", "Object.freeze(X)", "const X2 = X"])
     it(`reads the tables after ${use}`, () => {
       const info = analyze({
         "main.js": `const { ipcMain } = require("electron");\nconst CH = { A: "n:a", B: "n:b" };\nconst URLS = { api: "https://n.example.com/api" };\nconst KEYS = { theme: "n.theme" };\nconst ROUTES = [{ channel: "r:a", kind: "handle" }];\n${use.replaceAll("X", "CH")}; ${use.replaceAll("X", "URLS")}; ${use.replaceAll("X", "KEYS")}; ${use.replaceAll("X", "ROUTES")};\nipcMain.on(CH["B"], () => 1);\nfor (const k of Object.keys(CH)) ipcMain.handle(CH[k], () => 1);\nfor (const r of ROUTES) ipcMain.handle(r.channel, () => 1);\nfetch(URLS["api"] + "/x");\nlocalStorage.getItem(KEYS["theme"]);\n`,
@@ -757,6 +750,92 @@ describe("review: what only reads a table", () => {
         "n:b ipcMain.on main.js",
         "r:a ipcMain.handle main.js",
       ]);
+      expect(info.endpoints.map((e) => e.value)).toContain("https://n.example.com/api/x");
+      expect(info.storage.map((e) => e.value)).toContain("n.theme");
+    });
+
+  // RW's review of #198: uses that are no use of the table at all, that only test it, or that
+  // bind a name of their own, are reads in the loops too (they were taken for escapes)
+  for (const use of [
+    "const o = { T: 2 };",
+    "T: for (;;) { break T; }",
+    "const { A } = T;",
+    "let { B: bb = CH } = T;",
+    "if (T) f();",
+    "while (T && T.A) f();",
+    "const n = !T;",
+    "const m = T === null, m2 = T != null;",
+    "const y = T || {};",
+    "const z = x ? T : null;",
+    "switch (x) { case T: break; }",
+    "class Q { T() {} static T = 1; }",
+    "function h(T) { g(T); }",
+    "const h2 = (a, T) => a;",
+    "try { f(); } catch (T) { g(T); }",
+    "function g2({ T }) {}",
+    "function h7([T]) { g(T); }",
+    "function h8() { const { a: T } = o; g(T); }",
+    // handed on as a value, as `module.exports = T` is (what is done with it there is not read)
+    "function r() { return T; }",
+    "const arr = [T];",
+    "module.exports = T;",
+    "structuredClone(T);",
+    "Object.getOwnPropertyNames(T);",
+  ])
+    for (const how of BUILDS)
+      it(`reads the loops over a table after \`${use}\` (${how})`, () => {
+        const info = analyze(
+          build(
+            {
+              "main.js": `const { ipcMain } = require("electron");\nlet CH = "c:a";\nvar T = { A: "t:a", B: "t:b" };\n${use}\nfor (const k of Object.keys(T)) ipcMain.handle(T[k], () => 1);\n`,
+            },
+            ["main.js"],
+            how,
+          ),
+        );
+        expect(rows(info)).toEqual(["t:a ipcMain.handle main.js", "t:b ipcMain.handle main.js"]);
+      });
+
+  it("reads a list's callback after a use that only reads it", () => {
+    for (const use of [
+      "if (T) f();",
+      "function h(T) {}",
+      "const { A } = T;",
+      "T: for (;;) break T;",
+    ]) {
+      const info = analyze({
+        "main.js": `const { ipcMain } = require("electron");\nvar T = { A: "t:a", B: "t:b" };\n${use}\nObject.values(T).forEach((c) => ipcMain.on(c, () => 1));\n`,
+      });
+      expect(rows(info), use).toEqual(["t:a ipcMain.on main.js", "t:b ipcMain.on main.js"]);
+    }
+  });
+
+  it("reads the endpoint and storage loops after uses that only read", () => {
+    for (const use of [
+      "if (U) f();",
+      "function h(U) {}",
+      "const { a } = U;",
+      "const o = { U: 1 };",
+    ]) {
+      const info = analyze({
+        "main.js": `const U = { a: "https://a.example.com/x", b: "https://b.example.com/y" };\nconst K = ["k.one", "k.two"];\n${use.replaceAll("U", "U")} ${use.replaceAll("U", "K")}\nfor (const k of Object.keys(U)) fetch(U[k]);\nK.forEach((k) => localStorage.getItem(k));\n`,
+      });
+      expect(info.endpoints.map((e) => e.value).toSorted(), use).toEqual([
+        "https://a.example.com/x",
+        "https://b.example.com/y",
+      ]);
+      expect(info.storage.map((e) => e.value).toSorted(), use).toEqual(["k.one", "k.two"]);
+    }
+  });
+
+  // A function that is not read may change the table it is given (#198, RA's probe K): a key
+  // the loop finds (`T[k]`) and an element of a loop are no longer read; a literal key still is.
+  for (const use of ["log(X)", 'emitter.emit("c", X)'])
+    it(`reads only the literal keys after ${use}`, () => {
+      const info = analyze({
+        "main.js": `const { ipcMain } = require("electron");\nconst CH = { A: "n:a", B: "n:b" };\nconst URLS = { api: "https://n.example.com/api" };\nconst KEYS = { theme: "n.theme" };\nconst ROUTES = [{ channel: "r:a", kind: "handle" }];\n${use.replaceAll("X", "CH")}; ${use.replaceAll("X", "URLS")}; ${use.replaceAll("X", "KEYS")}; ${use.replaceAll("X", "ROUTES")};\nipcMain.on(CH["B"], () => 1);\nfor (const k of Object.keys(CH)) ipcMain.handle(CH[k], () => 1);\nfor (const r of ROUTES) ipcMain.handle(r.channel, () => 1);\nfetch(URLS["api"] + "/x");\nlocalStorage.getItem(KEYS["theme"]);\n`,
+      });
+      expect(rows(info)).toEqual(["n:b ipcMain.on main.js"]);
       expect(info.endpoints.map((e) => e.value)).toContain("https://n.example.com/api/x");
       expect(info.storage.map((e) => e.value)).toContain("n.theme");
     });

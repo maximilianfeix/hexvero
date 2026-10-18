@@ -336,6 +336,21 @@ describe("hostile input stays fast", () => {
     },
   );
 
+  it(
+    "tells a write from a local's quickly in deeply nested functions (#198)",
+    { timeout: 60_000 },
+    () => {
+      // 63 nested functions with 125 parameters each and 80,000 writes in the innermost: every
+      // write asked each function around it for its parameters, 12 s before they were kept
+      const params = Array.from({ length: 125 }, (_, i) => `p${i}`).join(",");
+      const hostile = `const { ipcMain } = require("electron");\nlet CH = "c:x";\n${`function q(${params}){`.repeat(63)}${"CH += 1;".repeat(80_000)}${"}".repeat(63)}\nipcMain.on(CH, f);\n`;
+      const started = performance.now();
+      const info = analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
+      expect(performance.now() - started).toBeLessThan(5_000);
+      expect(info.modules.flatMap((m) => m.ipc.map((u) => u.channel))).toEqual([null]);
+    },
+  );
+
   it("bounds the listener, helper and window scans", { timeout: 90_000 }, () => {
     for (const hostile of [
       // twice the size at which each of these took 3 to 14 seconds before it was bounded

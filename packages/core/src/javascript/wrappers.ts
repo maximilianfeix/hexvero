@@ -22,6 +22,7 @@ import type { Constants, Resolved } from "./aliases.js";
 import type { ExpressionResolver, FnDef } from "./resolve.js";
 import type { Candidate } from "./candidates.js";
 import type { IpcUsage, Token } from "./scan.js";
+import { ASSIGNMENT_OPERATORS, writesName } from "./writes.js";
 
 /**
  * An IPC call on a parameter of a function or method, `ipc.handle(C.GET, …)` inside
@@ -434,8 +435,7 @@ export class WrapperReader {
     const written = (k: number, start: number): boolean => {
       const after = tokens[k + 1];
       if (after?.type === "punct") {
-        if (after.value === "=") return true;
-        if (/^[^=!<>]+=$/.test(after.value) || after.value === "++" || after.value === "--")
+        if (ASSIGNMENT_OPERATORS.has(after.value) || after.value === "++" || after.value === "--")
           return true;
       }
       const before = tokens[start - 1];
@@ -514,8 +514,8 @@ export class WrapperReader {
           !(before?.type === "ident" || (before?.type === "punct" && /^[)\]]$/.test(before.value)))
         )
           continue;
-        if (!this.punct(close + 1, "=") && !/^[^=!<>]+=$/.test(tokens[close + 1]?.value ?? ""))
-          continue;
+        const op = tokens[close + 1];
+        if (op?.type !== "punct" || !ASSIGNMENT_OPERATORS.has(op.value)) continue;
         const start = r.receiverAt(j);
         if (start === null) continue;
         const classes = owners(start, j);
@@ -726,7 +726,10 @@ export class WrapperReader {
       if (!assigns) continue;
       const after = this.tokens[j + 1];
       if (
-        (after?.type === "punct" && /^([^=!<>]*=|\+\+|--)$/.test(after.value)) ||
+        (after?.type === "punct" &&
+          (ASSIGNMENT_OPERATORS.has(after.value) ||
+            after.value === "++" ||
+            after.value === "--")) ||
         (before?.type === "punct" && (before.value === "++" || before.value === "--"))
       )
         return true;
@@ -929,29 +932,9 @@ export class WrapperReader {
         found = true;
         break;
       }
-      if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
-      const before = this.tokens[j - 1];
-      const after = this.tokens[j + 1];
-      if (before?.type === "ident" && /^(const|let|var)$/.test(before.value)) continue;
-      if (
-        (after?.type === "punct" && /^([^=!<>]*=|\+\+|--)$/.test(after.value)) ||
-        (before?.type === "punct" && (before.value === "++" || before.value === "--"))
-      ) {
+      if (writesName(this.tokens, j)) {
         found = true;
         break;
-      }
-      if (this.punct(j - 1, "[") || this.punct(j - 1, ",") || this.punct(j - 1, "{")) {
-        const open = this.container(j);
-        const close = open === -1 ? -1 : this.r.closeOf(open);
-        const word = this.tokens[open - 1];
-        if (
-          close !== -1 &&
-          this.punct(close + 1, "=") &&
-          !(word?.type === "ident" && /^(const|let|var)$/.test(word.value))
-        ) {
-          found = true;
-          break;
-        }
       }
     }
     this.assignedCache.set(name, found);

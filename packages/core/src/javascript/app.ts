@@ -6,6 +6,7 @@ import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "../forma
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
+import { ASSIGNMENT_OPERATORS, chainEnd, writesMember, writesName } from "./writes.js";
 import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
 import {
@@ -1312,25 +1313,6 @@ const PRIVILEGED_BUILTINS = new Set([
   "process",
 ]);
 
-const ASSIGNMENT_OPERATORS = new Set([
-  "=",
-  "+=",
-  "-=",
-  "*=",
-  "/=",
-  "%=",
-  "**=",
-  "<<=",
-  ">>=",
-  ">>>=",
-  "&=",
-  "|=",
-  "^=",
-  "&&=",
-  "||=",
-  "??=",
-]);
-
 /**
  * Members of a privileged Node module that only inform, so handing one to a page by reference
  * (`fs.statSync`, `process.env`) is not this observation. Every other member is reported:
@@ -1608,7 +1590,8 @@ function privilegedBindings(
       is(k - 1, "++") ||
       is(k - 1, "--") ||
       is(k + 1, "++") ||
-      is(k + 1, "--");
+      is(k + 1, "--") ||
+      writesName(tokens, k);
     if (!written || !relevant.has(t.value) || is(k - 1, ".") || is(k - 1, "?.")) continue;
     const places = writes.get(t.value) ?? [];
     if (places.length < MAX_PLACES) places.push(k);
@@ -3123,7 +3106,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 26;
+export const JS_SCAN_SCHEMA = 27;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -3873,6 +3856,15 @@ export function readFileTokens(
               ? tokens[at + 1]!.value
               : null;
           const after = is(at, ".") ? at + 2 : at + 3;
+          // a member written by a pattern or a loop head (`[name.key] = …`, `for (name.key of …)`),
+          // or written with an operator the next lines do not tell from a read
+          if (writesMember(tokens, k) !== null) {
+            // one key when the chain ends right after it; a deeper or computed write may be any
+            if (key === null || key === "webPreferences" || chainEnd(tokens, k) !== after)
+              everyKey();
+            else mutated.add(key);
+            continue;
+          }
           if (key !== null && is(after, "=") && !is(after + 1, "=")) {
             // `name.webPreferences = other` replaces every key
             if (key === "webPreferences") everyKey();

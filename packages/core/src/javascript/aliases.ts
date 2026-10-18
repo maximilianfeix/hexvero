@@ -14,6 +14,17 @@
  */
 import type { Val } from "./resolve.js";
 import type { Token } from "./scan.js";
+import {
+  ASSIGNMENT_OPERATORS,
+  chainEnd,
+  declaredAt,
+  firstKey,
+  shadowedAt,
+  topLevelAt,
+  writesMember,
+  writesName,
+  writtenByCallAt,
+} from "./writes.js";
 
 const is = (t: Token | undefined, type: Token["type"], value?: string): boolean =>
   !!t && t.type === type && (value === undefined || t.value === value);
@@ -622,6 +633,27 @@ export class Constants {
     end: number;
   }> = [];
 
+  /**
+   * The entries of a table of the file that nothing writes: without `KEY` (and `KEY.…`) when
+   * `NAME.KEY` is written, empty when the name is (unless `assignedOnce`) or a computed member is.
+   */
+  private unwritten(
+    name: string,
+    table: Map<string, string>,
+    assignedOnce = false,
+  ): Map<string, string> {
+    if (!assignedOnce && this.reassigned.has(name)) return new Map();
+    if (this.reassigned.has(`${name}.*`)) return new Map();
+    let out = table;
+    for (const key of table.keys()) {
+      const top = key.split(".")[0]!;
+      if (!this.reassigned.has(`${name}.${top}`)) continue;
+      if (out === table) out = new Map(table);
+      out.delete(key);
+    }
+    return out;
+  }
+
   /** Reads the compiled string enums of the file into `enums`. */
   private readEnums(): void {
     const tokens = this.tokens;
@@ -925,6 +957,86 @@ export class Constants {
 
   constructor(private readonly tokens: Token[]) {
     this.readEnums();
+    /** Writes of `exports.K` per key: 1 for each at the top, 2 for each inside brackets. */
+    const exportWrites = new Map<string, number>();
+    /** Names a member of which is written somewhere. */
+    const memberWritten = new Set<string>();
+    /** `const U = T`: the tables each name is another name for. */
+    const aliasesOf = new Map<string, string[]>();
+    // A value written anywhere in the file is no constant: `CH = "b"`, `CH += "c"`, `[CH] = …`,
+    // `for (CH of …)`, `TABLE.KEY = "z"`, `TABLE["KEY"]++`; `TABLE[k] = …` may be any key. Read
+    // before the declarations, so a constant or a table entry the module itself changes is
+    // neither known here nor handed to another module.
+    for (let k = 0; k < tokens.length; k++) {
+      const t = tokens[k]!;
+      if (t.type !== "ident" || is(tokens[k - 1], "punct", ".") || is(tokens[k - 1], "punct", "?."))
+        continue;
+      // A plain `NAME = …` counts in any scope, as it always did; the other writes not where
+      // they are to a local of the same name (a parameter, a `let` of a function).
+      if (
+        writesName(tokens, k) &&
+        (is(tokens[k + 1], "punct", "=") || !shadowedAt(tokens, k, t.value))
+      )
+        this.reassigned.add(t.value);
+      if (t.value === this.exportsName) {
+        // `exports.K = …` declares an export once, at the top; written again, or inside a
+        // function, it is no constant (`exports.later = () => { exports.K = "b" }`)
+        const written = writesMember(tokens, k);
+        // tsc's `exports.a = exports.b = void 0;` declares the exports, it sets no value
+        let v = k + 4;
+        while (
+          is(tokens[v], "ident", this.exportsName) &&
+          is(tokens[v + 1], "punct", ".") &&
+          is(tokens[v + 2], "ident") &&
+          is(tokens[v + 3], "punct", "=")
+        )
+          v += 4;
+        const hoisted =
+          is(tokens[k + 3], "punct", "=") &&
+          is(tokens[v], "ident", "void") &&
+          is(tokens[v + 1], "number", "0");
+        if (written !== null && !hoisted) {
+          const n = (exportWrites.get(written) ?? 0) + (topLevelAt(tokens, k) ? 1 : 2);
+          exportWrites.set(written, n);
+        }
+        continue;
+      }
+      // a member written, or the whole table by `Object.assign(T, …)`, `Object.defineProperties`
+      // and the other writers: `T.A` (any key for a computed one or a whole-table writer)
+      const key = writesMember(tokens, k);
+      if (key !== null) {
+        this.reassigned.add(`${t.value}.${key}`);
+        memberWritten.add(t.value);
+      }
+      if (writtenByCallAt(tokens, k)) {
+        const end = chainEnd(tokens, k);
+        this.reassigned.add(`${t.value}.${end === k + 1 ? "*" : firstKey(tokens, k)}`);
+        memberWritten.add(t.value);
+      }
+      // `const U = T;`: U is the same table, so a write through U writes T
+      if (
+        is(tokens[k - 1], "punct", "=") &&
+        declaredAt(tokens, k - 2) &&
+        (is(tokens[k + 1], "punct", ";") ||
+          is(tokens[k + 1], "punct", ",") ||
+          (tokens[k + 1]?.line ?? Infinity) > t.line)
+      ) {
+        const list = aliasesOf.get(tokens[k - 2]!.value) ?? [];
+        list.push(t.value);
+        aliasesOf.set(tokens[k - 2]!.value, list);
+      }
+    }
+    for (const [key, n] of exportWrites) if (n > 1) this.reassigned.add(`exports.${key}`);
+    // an alias written: the table it names is written, any key (a few links deep)
+    for (let round = 0; round < 3; round++)
+      for (const [alias, targets] of aliasesOf)
+        if (memberWritten.has(alias))
+          for (const target of targets)
+            if (!memberWritten.has(target)) {
+              // any member of the table; a string constant cannot be written through a member
+              this.reassigned.add(`${target}.*`);
+              memberWritten.add(target);
+            }
     const wrappers = this.wrapperStrings;
     /** A bundler's module wrapper being read: `var W = helper({ "file.js"(exports, module) {`. */
     let wrapper: { name: string; until: number; depth: number } | null = null;
@@ -948,26 +1060,11 @@ export class Constants {
         continue;
       }
       if (t.type !== "ident") continue;
-      // A value assigned again anywhere is no constant: `CH = "b"`, `TABLE.KEY = "z"`.
-      if (!is(tokens[k - 1], "punct", ".")) {
-        const before = tokens[k - 1];
-        const declares =
-          (is(before, "ident") && /^(const|let|var)$/.test(before!.value)) ||
-          is(before, "punct", ",");
-        if (is(tokens[k + 1], "punct", "=") && !declares) this.reassigned.add(t.value);
-        if (
-          is(tokens[k + 1], "punct", ".") &&
-          is(tokens[k + 2], "ident") &&
-          is(tokens[k + 3], "punct", "=") &&
-          this.exportsName !== t.value
-        )
-          this.reassigned.add(`${t.value}.${tokens[k + 2]!.value}`);
-      }
       if (wrapper ? depth > wrapper.depth + 2 : depth !== 0) continue;
       // `class Channels { static SAVE = "doc:save" }`: a table of its static string fields.
       if (t.value === "class" && is(tokens[k + 1], "ident") && !is(tokens[k - 1], "punct", ".")) {
         const name = tokens[k + 1]!.value;
-        const table = this.staticTable(k + 2);
+        const table = this.unwritten(name, this.staticTable(k + 2));
         if (table.size && !this.tables.has(name) && !this.strings.has(name)) {
           this.tables.set(name, table);
           if (is(tokens[k - 1], "ident", "export")) this.export(name);
@@ -1079,6 +1176,8 @@ export class Constants {
         is(tokens[k + 3], "punct", "=")
       ) {
         const v = text(tokens[k + 4]);
+        // written again elsewhere (see the writes above): no constant to hand out
+        if (this.reassigned.has(`exports.${tokens[k + 2]!.value}`)) continue;
         if (v !== null && !wrapper) this.exported[tokens[k + 2]!.value] = v;
         // `exports.Channels = { Save: "doc:save" }`: one entry per `Channels.Save`
         else if (!wrapper && is(tokens[k + 4], "punct", "{"))
@@ -1117,11 +1216,15 @@ export class Constants {
           after.value === "}")
       ) {
         // A second declaration of the name makes it ambiguous.
-        this.strings.set(t.value, this.strings.has(t.value) ? null : literal);
+        // A second declaration of the name, or a write to it, makes it ambiguous.
+        this.strings.set(
+          t.value,
+          this.strings.has(t.value) || this.reassigned.has(t.value) ? null : literal,
+        );
         if (exportedHere) this.export(t.value);
       } else if (is(value, "punct", "{") || frozen !== -1) {
         const at = frozen !== -1 ? frozen : k + 2;
-        const table = this.object(at);
+        const table = this.unwritten(t.value, this.object(at));
         if (table.size) this.tables.set(t.value, table);
         const keys = this.keys(at);
         if (keys.length) this.tableKeys.set(t.value, keys);
@@ -1137,7 +1240,7 @@ export class Constants {
         if (exportedHere) this.export(t.value);
       } else if (is(value, "ident", "class")) {
         // `var Library2 = class { static LIST = "…" }`, as bundlers write a class
-        const table = this.staticTable(k + 3);
+        const table = this.unwritten(t.value, this.staticTable(k + 3));
         if (table.size && !this.tables.has(t.value)) this.tables.set(t.value, table);
       } else if (
         (declared || listed) &&
@@ -1165,7 +1268,7 @@ export class Constants {
         if (is(tokens[k + 4], "punct", ")")) {
           // `var CH = require_channels()`: the table a wrapper exported
           const table = wrappers.get(value!.value);
-          if (table) this.tables.set(t.value, table);
+          if (table) this.tables.set(t.value, this.unwritten(t.value, table));
           if (wrappers.has(value!.value)) this.wrapperOf.set(t.value, value!.value);
         } else if (!wrapper) {
           // `var W = helper({ "file.js"(exports, module) { … } })`, or minified
@@ -1230,15 +1333,13 @@ export class Constants {
     const assignments = new Map<string, number[]>();
     for (let k = 1; k + 1 < tokens.length; k++) {
       const t = tokens[k]!;
-      if (t.type !== "ident" || !bare.has(t.value) || is(tokens[k - 1], "punct", ".")) continue;
-      if (!is(tokens[k + 1], "punct", "=") || is(tokens[k + 2], "punct", "=")) continue;
-      const before = tokens[k - 1];
-      if (is(before, "ident") && /^(const|let|var)$/.test(before!.value)) continue;
+      if (t.type !== "ident" || !bare.has(t.value) || !writesName(tokens, k)) continue;
       const list = assignments.get(t.value) ?? [];
-      list.push(k + 2);
+      // any other write (`+=`, `++`, a pattern) leaves the name without one value: -1
+      list.push(is(tokens[k + 1], "punct", "=") ? k + 2 : -1);
       assignments.set(t.value, list);
     }
-    const single = [...assignments].filter(([, at]) => at.length === 1);
+    const single = [...assignments].filter(([, at]) => at.length === 1 && at[0] !== -1);
     const settle = (name: string, at: number): boolean => {
       // declared with a value somewhere as well: ambiguous, left alone
       if (this.strings.has(name) || this.tables.has(name)) return true;
@@ -1254,7 +1355,8 @@ export class Constants {
       const literal = text(value);
       if (literal !== null && !is(tokens[at + 1], "punct", "+")) this.strings.set(name, literal);
       else if (is(value, "punct", "{") || frozen !== -1) {
-        const table = this.object(frozen !== -1 ? frozen : at);
+        // the name itself is assigned once (this assignment); its entries must not be written
+        const table = this.unwritten(name, this.object(frozen !== -1 ? frozen : at), true);
         if (!table.size) return false;
         this.tables.set(name, table);
       } else if (
@@ -1647,7 +1749,8 @@ export class Constants {
     if (
       !this.sees(k, name) ||
       this.reassigned.has(name) ||
-      this.reassigned.has(`${name}.${property}`)
+      this.reassigned.has(`${name}.${property}`) ||
+      this.reassigned.has(`${name}.*`)
     )
       return null;
     return this.tables.get(name)?.get(property) ?? null;
@@ -1832,7 +1935,7 @@ export class Constants {
       const before = tokens[j - 1];
       if (
         (after?.type === "punct" &&
-          (/^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) ||
+          (ASSIGNMENT_OPERATORS.has(after.value) ||
             after.value === "++" ||
             after.value === "--")) ||
         (before?.type === "punct" && (before.value === "++" || before.value === "--"))
@@ -2113,7 +2216,11 @@ export class Constants {
       const parts: string[] = [];
       for (let j = k + 2; j <= last; j += 2) parts.push(tokens[j]!.value);
       const property = parts.join(".");
-      if (this.reassigned.has(t.value) || this.reassigned.has(`${t.value}.${property}`))
+      if (
+        this.reassigned.has(t.value) ||
+        this.reassigned.has(`${t.value}.${property}`) ||
+        this.reassigned.has(`${t.value}.*`)
+      )
         return null;
       const value = this.tables.get(t.value)?.get(property);
       if (value !== undefined) return { value, via: "constant" };

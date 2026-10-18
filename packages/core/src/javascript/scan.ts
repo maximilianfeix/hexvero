@@ -363,6 +363,10 @@ const PUNCT2 = new Set([
   "**",
   "<<",
   ">>",
+  "%=",
+  "&=",
+  "|=",
+  "^=",
 ]);
 /** Characters that can follow the first one of a multi-character punctuator. */
 const PUNCT_SECOND = new Set([...PUNCT2, ...PUNCT3].map((p) => p[1]!));
@@ -588,7 +592,14 @@ export function tokenize(
     if (PUNCT_SECOND.has(source[i + 1] ?? "")) {
       const three = source.slice(i, i + 3);
       const two = source.slice(i, i + 2);
-      punct = PUNCT3.has(three) ? three : PUNCT2.has(two) ? two : c;
+      punct =
+        three === ">>>" && source[i + 3] === "="
+          ? ">>>="
+          : PUNCT3.has(three)
+            ? three
+            : PUNCT2.has(two)
+              ? two
+              : c;
     }
     tokens.push({ type: "punct", value: punct, line, start: i, end: i + punct.length });
     i += punct.length;
