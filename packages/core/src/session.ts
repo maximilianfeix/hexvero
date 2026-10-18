@@ -1099,12 +1099,6 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
   ipc_wrappers_capped: "ipc",
   context_bridge_truncated: "bridge",
   context_bridge_members_unreadable: "bridge",
-  // bridge values of other modules, and page calls of generic forwarders, not read
-  context_bridge_module_unread: "bridge",
-  bridge_forwarder_ambiguous: "ipc",
-  bridge_calls_capped: "ipc",
-  bridge_calls_unread: "ipc",
-  bridge_global_written: "ipc",
   web_preferences_truncated: "window",
   candidates_truncated: "endpoint",
 };
