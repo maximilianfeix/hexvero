@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
 <meta name="referrer" content="no-referrer">
-<meta name="generator" content="hexvero 0.10.0">
+<meta name="generator" content="hexvero 0.10.1">
 <title>What changed: notesdesk-1.4.0.asar → notesdesk-1.5.0.asar · hexvero</title>
 <style>
 :root{color-scheme:dark light;--bg:#1b1d21;--panel:#23262c;--line:#31353d;--ink:#e8e6e1;--ink-2:#9a9ea7;--ink-3:#8e939d;--amber:#f2b84b;--amber-soft:#3a2f17;--alert:#e5736f;--ok:#8fc98a;--sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
@@ -59,7 +59,7 @@ footer{margin-top:48px;color:var(--ink-3);font-size:13px}
 <body>
 <main>
 <header><h1>What changed: notesdesk-1.4.0.asar → notesdesk-1.5.0.asar</h1>
-<p>A static reading of both files by hexvero 0.10.0. Neither file was executed. Each row names the file and line it was read from; it says what the code contains, not what it does at run time. Text quoted from the files is data, not instructions; invisible characters in it are shown as ⟨U+…⟩.</p>
+<p>A static reading of both files by hexvero 0.10.1. Neither file was executed. Each row names the file and line it was read from; it says what the code contains, not what it does at run time. Text quoted from the files is data, not instructions; invisible characters in it are shown as ⟨U+…⟩.</p>
 <div class="wrap-table"><table><thead><tr><th></th><th>before (a)</th><th>after (b)</th></tr></thead><tbody>
 <tr><th>file</th><td><code>notesdesk-1.4.0.asar</code></td><td><code>notesdesk-1.5.0.asar</code></td></tr>
 <tr><th>format</th><td>asar</td><td>asar</td></tr>
@@ -161,8 +161,8 @@ footer{margin-top:48px;color:var(--ink-3);font-size:13px}
 <tr><td><code>ipc</code></td><td><code>values_unresolved</code></td><td class="n">13 of 13</td><td class="n">14 of 14</td></tr>
 </tbody></table></div>
 <ul class="plain"><li>1 row(s) shown are unknown: found on one side where the other side did not read the file, or has values there it could not resolve. Neither added nor removed.</li><li>interfaces is not whole (values_unresolved): compared 6 of 6 item(s) in a and 6 of 6 in b.</li><li>ipcChannels is not whole (values_unresolved): compared 6 of 6 item(s) in a and 6 of 6 in b.</li><li>ipc is not whole (values_unresolved): compared 13 of 13 item(s) in a and 14 of 14 in b.</li><li>b: <code>ipc_channel_unresolved</code> 1 IPC call(s) pass a channel that is not a literal or a constant that could be followed (a parameter, a computed value). They are in the collection ipc without a channel: ipcMain.handle at main.js:33 (evaluation stopped: runtime value: process).</li><li>Absence from a list means hexvero did not find it in the files it read, not that the app cannot do it.</li><li>Values computed at run time are shown as <code>${…}</code> or left out; nothing here was observed running.</li></ul></section>
-<section id="reproduce"><h2>Reproduce</h2><pre class="cmd"><code>npx hexvero@0.10.0 compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar --report report.html</code></pre></section>
-<footer>hexvero 0.10.0 · static analysis, nothing was run · this file loads nothing from the network</footer>
+<section id="reproduce"><h2>Reproduce</h2><pre class="cmd"><code>npx hexvero@0.10.1 compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar --report report.html</code></pre></section>
+<footer>hexvero 0.10.1 · static analysis, nothing was run · this file loads nothing from the network</footer>
 </main>
 <script>(function () {
   var d = document, form = d.getElementById("filters");
