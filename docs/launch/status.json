@@ -83,19 +83,19 @@
     },
     {
       "channel": "npm",
-      "item": "hexvero 0.9.0 – 0.11.0",
+      "item": "hexvero 0.9.0 – 0.11.1",
       "status": "published",
       "url": "https://www.npmjs.com/package/hexvero",
       "date": "2026-10-17",
-      "evidence": "0.9.0: run 38990077564 (01:20Z). 0.9.1: run 38996747203 (03:00Z). 0.9.2: run 39044161003 (15:20Z), npm dist-tag latest = 0.9.2; npx hexvero@0.9.2 --version, demo, check (exit 3, the demo policy is violated on purpose), compare --report (33,298 bytes) and the Electron Fiddle storage compare from an empty cache. 0.9.3: run 39049256326 (16:30Z), dist-tag latest = 0.9.3; npx hexvero@0.9.3 demo, check (exit 3), compare --report (33,298 bytes) and the Fiddle endpoints/storage compares from an empty cache. 0.9.4: run 39051642548 green (17:00Z), dist-tag latest = 0.9.4; npx hexvero@0.9.4 demo, check (exit 3), compare --report (33,298 bytes), Fiddle endpoints and storage compares from an empty cache. 0.9.5: run 39054086916 green (17:30Z), dist-tag latest = 0.9.5; npx hexvero@0.9.5 demo, check (exit 3), compare --report and the Fiddle ipc, endpoints and storage compares from an empty cache. 0.9.6: run 39056731394 green (18:05Z), dist-tag latest = 0.9.6; npx hexvero@0.9.6 demo, check (exit 3), compare --report and the Fiddle ipc, storage and endpoints compares from an empty cache. 0.9.7: run 39069203666 green (21:05Z), dist-tag latest = 0.9.7; npx hexvero@0.9.7 --version, demo, check (exit 3) and compare --report (33,298 bytes) from an empty cache. 0.9.8: run 39073271201 green (22:05Z), dist-tag latest = 0.9.8; npx hexvero@0.9.8 --version, demo, check (exit 3) and compare --report (33,298 bytes) from an empty cache. 0.9.9: run 39129101973 green (12:55Z, 2026-10-18; first release gated on the Windows and macOS tests, e2e and the corpus), dist-tag latest = 0.9.9 with provenance; the npm CDN served it a few minutes after publishing; npx hexvero@0.9.9 demo, check (exit 3), compare --report (33,298 bytes) and analyze /Applications/Discord.app (reads Contents/Resources/app.asar) from an empty cache. 0.10.0: run 39141419953 green (15:40Z), dist-tag latest = 0.10.0 with provenance; npx hexvero@0.10.0 demo, check (exit 3), compare --report (33,302 bytes; the version string is longer) and analyze \"/Applications/LM Studio.app\" (runtime Electron 37.7.1 / Chromium 138.0.7204.251 / Node 22.20.0) from an empty cache. 0.10.1: run 39145378897 green (16:39Z), dist-tag latest = 0.10.1; npx hexvero@0.10.1 demo, check (exit 3) and compare --report (33,302 bytes) from an empty cache. 0.11.0: run 39151553767 green (17:57Z), dist-tag latest = 0.11.0 with provenance; npx hexvero@0.11.0 --version, demo, check (exit 3) and compare --report (33,302 bytes) from an empty cache; the MCP registry publish failed once on a registry-side database error and passed on re-run."
+      "evidence": "0.9.0: run 38990077564 (01:20Z). 0.9.1: run 38996747203 (03:00Z). 0.9.2: run 39044161003 (15:20Z), npm dist-tag latest = 0.9.2; npx hexvero@0.9.2 --version, demo, check (exit 3, the demo policy is violated on purpose), compare --report (33,298 bytes) and the Electron Fiddle storage compare from an empty cache. 0.9.3: run 39049256326 (16:30Z), dist-tag latest = 0.9.3; npx hexvero@0.9.3 demo, check (exit 3), compare --report (33,298 bytes) and the Fiddle endpoints/storage compares from an empty cache. 0.9.4: run 39051642548 green (17:00Z), dist-tag latest = 0.9.4; npx hexvero@0.9.4 demo, check (exit 3), compare --report (33,298 bytes), Fiddle endpoints and storage compares from an empty cache. 0.9.5: run 39054086916 green (17:30Z), dist-tag latest = 0.9.5; npx hexvero@0.9.5 demo, check (exit 3), compare --report and the Fiddle ipc, endpoints and storage compares from an empty cache. 0.9.6: run 39056731394 green (18:05Z), dist-tag latest = 0.9.6; npx hexvero@0.9.6 demo, check (exit 3), compare --report and the Fiddle ipc, storage and endpoints compares from an empty cache. 0.9.7: run 39069203666 green (21:05Z), dist-tag latest = 0.9.7; npx hexvero@0.9.7 --version, demo, check (exit 3) and compare --report (33,298 bytes) from an empty cache. 0.9.8: run 39073271201 green (22:05Z), dist-tag latest = 0.9.8; npx hexvero@0.9.8 --version, demo, check (exit 3) and compare --report (33,298 bytes) from an empty cache. 0.9.9: run 39129101973 green (12:55Z, 2026-10-18; first release gated on the Windows and macOS tests, e2e and the corpus), dist-tag latest = 0.9.9 with provenance; the npm CDN served it a few minutes after publishing; npx hexvero@0.9.9 demo, check (exit 3), compare --report (33,298 bytes) and analyze /Applications/Discord.app (reads Contents/Resources/app.asar) from an empty cache. 0.10.0: run 39141419953 green (15:40Z), dist-tag latest = 0.10.0 with provenance; npx hexvero@0.10.0 demo, check (exit 3), compare --report (33,302 bytes; the version string is longer) and analyze \"/Applications/LM Studio.app\" (runtime Electron 37.7.1 / Chromium 138.0.7204.251 / Node 22.20.0) from an empty cache. 0.10.1: run 39145378897 green (16:39Z), dist-tag latest = 0.10.1; npx hexvero@0.10.1 demo, check (exit 3) and compare --report (33,302 bytes) from an empty cache. 0.11.0: run 39151553767 green (17:57Z), dist-tag latest = 0.11.0 with provenance; npx hexvero@0.11.0 --version, demo, check (exit 3) and compare --report (33,302 bytes) from an empty cache; the MCP registry publish failed once on a registry-side database error and passed on re-run. 0.11.1: run 39154171682 green (18:31Z), dist-tag latest = 0.11.1; npx hexvero@0.11.1 --version, demo, check (exit 3) and compare --report (33,302 bytes) from an empty cache."
     },
     {
       "channel": "GitHub release",
-      "item": "v0.9.0 – v0.11.0",
+      "item": "v0.9.0 – v0.11.1",
       "status": "published",
-      "url": "https://github.com/maximilianfeix/hexvero/releases/tag/v0.11.0",
+      "url": "https://github.com/maximilianfeix/hexvero/releases/tag/v0.11.1",
       "date": "2026-10-17",
-      "evidence": "gh release view v0.9.0 … v0.11.0: draft=false; notes from CHANGELOG."
+      "evidence": "gh release view v0.9.0 … v0.11.1: draft=false; notes from CHANGELOG."
     },
     {
       "channel": "Website",
@@ -103,15 +103,15 @@
       "status": "published",
       "url": "https://maximilianfeix.github.io/hexvero/",
       "date": "2026-10-17",
-      "evidence": "Pages workflow green on main; /demo/report.md names hexvero 0.11.0; the CI snippet pins the release (2026-10-17)."
+      "evidence": "Pages workflow green on main; /demo/report.md names hexvero 0.11.1; the CI snippet pins the release (2026-10-17)."
     },
     {
       "channel": "Official MCP registry",
-      "item": "server.json 0.11.0",
+      "item": "server.json 0.11.1",
       "status": "published",
       "url": "https://registry.modelcontextprotocol.io/v0/servers?search=hexvero",
       "date": "2026-10-17",
-      "evidence": "Registry search lists 0.11.0 with isLatest true (2026-10-18)."
+      "evidence": "Registry search lists 0.11.1 with isLatest true (2026-10-18)."
     },
     {
       "channel": "X",
