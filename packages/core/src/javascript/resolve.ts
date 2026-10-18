@@ -4347,7 +4347,7 @@ export class ExpressionResolver {
       if (!this.is(j, "ident", "for") || !this.punct(j + 1, "(")) continue;
       const close = this.match[j + 1]!;
       if (close === -1) continue;
-      const bodyEnd = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
+      const bodyEnd = this.forBodyEnd(close);
       if (!(close < start && end <= bodyEnd + 1)) continue;
       let p = j + 2;
       if (this.is(p, "ident", "const") || this.is(p, "ident", "let") || this.is(p, "ident", "var"))
@@ -5341,6 +5341,26 @@ export class ExpressionResolver {
   }
 
   /**
+   * The name at k means the same binding as the name at `at` (as `for (NAME of …)` without a
+   * declaration of its own assigns it): the same declaration, or the same function's parameter
+   * or no binding at all with no function between them that has a parameter of the name.
+   */
+  sameBinding(k: number, name: string, at: number): boolean {
+    const a = this.boundAround(k, name);
+    const b = this.boundAround(at, name);
+    if (a?.kind === "local" || b?.kind === "local")
+      return a?.kind === "local" && b?.kind === "local" && !!a.site && a.site.name === b.site?.name;
+    if (a?.kind !== b?.kind) return false;
+    const home = this.enclosing(at);
+    for (let d = this.enclosing(k), guard = 0; d !== home; guard++) {
+      if (!d || guard >= 64) return false;
+      if (this.paramIndex(d, name) !== -1) return false;
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    return true;
+  }
+
+  /**
    * How the name at k is bound around it: `param` (a parameter of a function around k, also in a
    * parameter list k stands in), `local` (a declaration, pattern, `for … of` head or `catch`
    * visible at k; `site` is the innermost such declaration, absent for `catch`), or null.
@@ -5548,6 +5568,18 @@ export class ExpressionResolver {
     return this.opener[k] ?? -1;
   }
 
+  /**
+   * Where the body of the `for (…)` whose head closes at `close` ends: its block's `}`, or the
+   * end of its one statement, also of expressions a minifier joins with commas
+   * (`for (…) f(a), g(a);`).
+   */
+  forBodyEnd(close: number): number {
+    if (this.punct(close + 1, "{")) return this.match[close + 1] ?? -1;
+    let end = this.exprEnd(close + 1);
+    for (let s = 0; s < 256 && this.punct(end, ","); s++) end = this.exprEnd(end + 1);
+    return end;
+  }
+
   /** Where the expression that starts at k ends (exclusive): the next top-level `,`, `;` or closing bracket. */
   endOf(k: number): number {
     return this.exprEnd(k);
@@ -5744,8 +5776,7 @@ export class ExpressionResolver {
     if (p === -1 || (d && p <= d.body[0])) return null;
     const close = this.match[p]!;
     if (this.punct(p, "(") && this.is(p - 1, "ident", "for") && close !== -1) {
-      const body = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
-      return [p, Math.max(close, body)];
+      return [p, Math.max(close, this.forBodyEnd(close))];
     }
     return [p, close];
   }
