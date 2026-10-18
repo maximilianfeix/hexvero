@@ -6,8 +6,8 @@
  * home directory nor the filesystem root), never into a hidden file or directory below a root, and an
  * export always ends in `.json`. The CLI is not limited: there a person chooses the path.
  */
-import { lstatSync, readlinkSync, realpathSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { delimiter, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { AnalysisError } from "@hexvero/core";
 
@@ -111,10 +111,64 @@ function realLocation(path: string): string {
   return tail ? join(real, ...tail) : real;
 }
 
+/** The fields of each line of /etc/group or /etc/passwd, comments and blank lines left out. */
+const rows = (text: string): string[][] =>
+  text
+    .split("\n")
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => line.split(":"));
+
+/** Where the account and group lists come from; tests replace them. */
+export interface GroupSources {
+  platform: NodeJS.Platform;
+  username: () => string;
+  group: () => string;
+  passwd: () => string;
+}
+
+const systemSources: GroupSources = {
+  platform: process.platform,
+  username: () => userInfo().username,
+  group: () => readFileSync("/etc/group", "utf8"),
+  passwd: () => readFileSync("/etc/passwd", "utf8"),
+};
+
+/**
+ * True when `gid` is provably a user-private group of the current user (the Debian and Ubuntu
+ * layout behind a umask of 002), so a directory writable by it is writable by no one else: on
+ * Linux only, every /etc/group entry with that gid is named after the user and lists no other
+ * member, the gid is 1000 or more, and no other account in /etc/passwd has it as its primary
+ * group. Anything unreadable or different is false: on macOS every user's primary group is the
+ * shared `staff`, and elsewhere a primary group may be shared (`users`).
+ */
+export function isUserPrivateGroup(gid: number, sources: GroupSources = systemSources): boolean {
+  if (sources.platform !== "linux" || gid < 1000) return false;
+  try {
+    const user = sources.username();
+    const groups = rows(sources.group()).filter((f) => f.length >= 4 && Number(f[2]) === gid);
+    if (groups.length === 0) return false;
+    for (const f of groups) {
+      if (f[0] !== user) return false;
+      const members = f[3]!
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean);
+      if (members.some((m) => m !== user)) return false;
+    }
+    const shared = rows(sources.passwd()).some(
+      (f) => f.length >= 4 && f[0] !== user && Number(f[3]) === gid,
+    );
+    return !shared;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * A directory where another user could swap an entry for a link between the check and the
  * write: not sticky, and owned by someone other than you or root, writable by everyone, or
- * writable by a group that is not your primary group. (A shared temp directory such as /tmp is sticky, so only an entry's owner can rename
+ * writable by its group, unless that group is your user-private group (`isUserPrivateGroup`) or
+ * HEXVERO_TRUST_GROUP_WRITABLE=1 is set. (A shared temp directory such as /tmp is sticky, so only an entry's owner can rename
  * or remove it there.)
  */
 function swappable(dir: string): boolean {
@@ -125,9 +179,9 @@ function swappable(dir: string): boolean {
     if (!st.isDirectory() || st.mode & 0o1000) return false;
     if (st.uid !== uid && st.uid !== 0) return true;
     if (st.mode & 0o002) return true;
-    // Group write counts unless the group is the user's own primary group: with user private
-    // groups (umask 002 on Debian, Ubuntu and others) that group holds only the user.
-    return (st.mode & 0o020) !== 0 && st.gid !== process.getgid?.();
+    if (!(st.mode & 0o020)) return false;
+    // Group write is unsafe unless the group provably holds only this user, or the user said so.
+    return process.env["HEXVERO_TRUST_GROUP_WRITABLE"] !== "1" && !isUserPrivateGroup(st.gid);
   } catch {
     return false;
   }
@@ -168,7 +222,7 @@ function resolveWrite(
   for (const dir of [...ancestors(root!), ...below])
     if (swappable(dir))
       refuse(
-        `${dir} can be changed by other users (not sticky, and owned by another user, writable by all, or writable by a group other than yours)`,
+        `${dir} can be changed by other users (not sticky, and owned by another user, or writable by all or by a group that may hold others; HEXVERO_TRUST_GROUP_WRITABLE=1 accepts group-writable ones)`,
       );
   return { absolute, real };
 }

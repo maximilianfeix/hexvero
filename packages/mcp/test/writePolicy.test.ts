@@ -17,7 +17,7 @@ import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Session } from "@hexvero/core";
 import { createHandlers } from "../src/tools.js";
-import { checkWritePath, verifyOpened } from "../src/writePolicy.js";
+import { checkWritePath, isUserPrivateGroup, verifyOpened } from "../src/writePolicy.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
 
 /** Creates a symlink, or returns false where the platform does not permit it (Windows without rights). */
@@ -31,6 +31,15 @@ function trySymlink(target: string, path: string): boolean {
     throw error;
   }
 }
+
+/** Account and group lists for isUserPrivateGroup, for the user `maxi` (uid and gid 1000). */
+const sources = (over: Partial<Record<"platform" | "group" | "passwd", string>> = {}) => ({
+  platform: (over.platform ?? "linux") as NodeJS.Platform,
+  username: () => "maxi",
+  group: () => over.group ?? "root:x:0:\nusers:x:100:maxi,anna\nmaxi:x:1000:\n",
+  passwd: () =>
+    over.passwd ?? "root:x:0:0::/root:/bin/sh\nmaxi:x:1000:1000::/home/maxi:/bin/bash\n",
+});
 
 /** Moves a directory away and puts a link to `to` in its place, as another process could. */
 const swapDir = (dir: string, to: string) => () => {
@@ -258,12 +267,25 @@ describe("MCP write policy", () => {
       expect(checkWritePath(join(shared, "a.json"), "export")).toBe(join(shared, "a.json"));
       chmodSync(shared, 0o755);
       expect(checkWritePath(join(shared, "a.json"), "export")).toBe(join(shared, "a.json"));
-      // writable by the user's own primary group (user private groups, umask 002): allowed
+      // group-writable: refused unless the group is provably the user's own (Linux only)
       const own = join(root, "own-group");
       mkdirSync(join(own, "sub"), { recursive: true });
-      chownSync(own, process.getuid(), process.getgid!());
       chmodSync(own, 0o775);
-      expect(checkWritePath(join(own, "sub", "a.json"), "export")).toBe(join(own, "sub", "a.json"));
+      if (!isUserPrivateGroup(statSync(own).gid))
+        expect(() => checkWritePath(join(own, "sub", "a.json"), "export")).toThrow(/other users/);
+      // macOS: the primary group is the shared `staff`, never exempt
+      if (process.platform === "darwin")
+        expect(() => checkWritePath(join(own, "sub", "a.json"), "export")).toThrow(/other users/);
+      // the explicit opt-in for setups the check cannot prove
+      process.env["HEXVERO_TRUST_GROUP_WRITABLE"] = "1";
+      try {
+        expect(checkWritePath(join(own, "sub", "a.json"), "export")).toBe(
+          join(own, "sub", "a.json"),
+        );
+      } finally {
+        delete process.env["HEXVERO_TRUST_GROUP_WRITABLE"];
+      }
+      chmodSync(own, 0o755);
       // writable by another group: any member of it could swap an entry
       const other = process.getgroups!().find((g) => g !== process.getgid!());
       if (other === undefined) return; // no second group to test with
@@ -287,5 +309,38 @@ describe("MCP write policy", () => {
       expect(() => checkWritePath(join(parent, "r", "a.json"), "export")).toThrow(/other users/);
       chmodSync(parent, 0o700);
     });
+  });
+
+  it("exempts only a provable Linux user-private group", () => {
+    expect(isUserPrivateGroup(1000, sources())).toBe(true);
+    expect(isUserPrivateGroup(1000, sources({ group: "maxi:x:1000:maxi\n" }))).toBe(true);
+    // never on macOS or Windows
+    expect(isUserPrivateGroup(1000, sources({ platform: "darwin" }))).toBe(false);
+    expect(isUserPrivateGroup(1000, sources({ platform: "win32" }))).toBe(false);
+    // a shared group, another member, a system gid, an unknown gid
+    expect(isUserPrivateGroup(100, sources())).toBe(false);
+    expect(isUserPrivateGroup(1000, sources({ group: "maxi:x:1000:anna\n" }))).toBe(false);
+    expect(isUserPrivateGroup(1000, sources({ group: "staff:x:1000:\n" }))).toBe(false);
+    expect(isUserPrivateGroup(500, sources({ group: "maxi:x:500:\n" }))).toBe(false);
+    expect(isUserPrivateGroup(1001, sources())).toBe(false);
+    // another account with that gid as its primary group, or a second entry for the gid
+    expect(
+      isUserPrivateGroup(
+        1000,
+        sources({ passwd: "maxi:x:1000:1000::/h:/s\nanna:x:1001:1000::/h:/s\n" }),
+      ),
+    ).toBe(false);
+    expect(isUserPrivateGroup(1000, sources({ group: "maxi:x:1000:\ndev:x:1000:anna\n" }))).toBe(
+      false,
+    );
+    // unreadable lists
+    expect(
+      isUserPrivateGroup(1000, {
+        ...sources(),
+        group: () => {
+          throw new Error("EACCES");
+        },
+      }),
+    ).toBe(false);
   });
 });
