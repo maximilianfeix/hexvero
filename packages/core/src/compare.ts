@@ -110,6 +110,8 @@ export interface SideCoverage {
   read: ReadonlySet<string>;
   /** Files that exist but were passed over (too large, not decodable) or read only in part. */
   unreadable: ReadonlySet<string>;
+  /** More such files exist than `unreadable` names: any file in `read` may be one of them. */
+  unreadableUnlisted?: boolean;
   /** Files (module ids) where a value of this collection family could not be resolved,
    *  e.g. an IPC call whose channel is not a literal. "*" = somewhere, file unknown. */
   unresolved: ReadonlyMap<UnresolvedFamily, ReadonlySet<string>>;
@@ -678,6 +680,17 @@ export function compareItems(
           return;
         }
       }
+      // A file of the other side may have been cut or passed over without being named, so an
+      // item missing there may be in the part that was not read.
+      if (other.unreadableUnlisted) {
+        unknown.push({
+          key: shown,
+          side,
+          file: files[0] ?? "",
+          reason: "the other side was read only in part",
+        });
+        return;
+      }
       // The other side read the file, but a value of this family there could not be resolved
       // (an IPC channel built at run time): the item may well be that value.
       const hidden = family === undefined ? undefined : other.unresolved.get(family);
@@ -850,7 +863,8 @@ function completenessOf(
     )
   )
     found.add("files_unread");
-  if (sides.some((c) => c.unreadable.size > 0)) found.add("files_unreadable");
+  if (sides.some((c) => c.unreadable.size > 0 || c.unreadableUnlisted))
+    found.add("files_unreadable");
   if (family !== undefined && sides.some((c) => (c.unresolved.get(family)?.size ?? 0) > 0))
     found.add("values_unresolved");
   const gaps = COMPLETENESS_GAPS.filter((g) => found.has(g));

@@ -3101,12 +3101,19 @@ export interface JsCoverage {
   nextFiles: string[];
   /** The files that were passed over (the first 200); nothing is known about their contents. */
   skippedFiles: string[];
+  /** Files read only up to the token budget, all of them; they count as scanned. */
+  partial: number;
   /** The files that were read only up to the token budget (the first 200). */
   partialFiles: string[];
+  /**
+   * More files were passed over or read in part than `skippedFiles` and `partialFiles` name:
+   * any read file may then be one of them.
+   */
+  filesUnlisted: boolean;
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 27;
+export const JS_SCAN_SCHEMA = 29;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -3117,8 +3124,10 @@ export interface JsScanFacts {
   /** Paths already processed, in scan order. A file is processed exactly once. */
   scanned: string[];
   skippedFiles: string[];
-  /** Files whose reading stopped at the token budget: what follows the cut is not known. */
+  /** Files whose reading stopped at the token budget (the first 200): what follows the cut is not known. */
   truncatedFiles: string[];
+  /** Every file whose reading stopped at the token budget, also those past the 200 named. */
+  truncated?: number;
   skipped: number;
   bytes: number;
   modules: JsModule[];
@@ -3168,8 +3177,13 @@ export interface JsScanFacts {
   /** Files with more calls of their own storage wrappers than are read, and the first five. */
   keyCallsCapped?: number;
   keyCallsCappedFiles?: string[];
-  /** Limitations that belong to single files (e.g. a token budget that ran out). */
+  /**
+   * Limitations that belong to single files (e.g. a token budget that ran out), at most
+   * MAX_FILE_LIMITATIONS and always one of each code (see `fileLimitation`).
+   */
   limitations: Limitation[];
+  /** Per code, the files whose limitation of that code is not in `limitations`. */
+  limitationsUnlisted?: Record<string, number>;
 }
 
 export function emptyJsScanFacts(): JsScanFacts {
@@ -3204,6 +3218,27 @@ export function emptyJsScanFacts(): JsScanFacts {
 }
 
 const MAX_CANDIDATES = 5000;
+/** Per-file limitations kept one by one; past it, one more of each code still is. */
+const MAX_FILE_LIMITATIONS = 200;
+/** Files named in `skippedFiles` and `truncatedFiles`; past it they are counted only. */
+const MAX_NAMED_FILES = 200;
+
+/**
+ * Records a limitation of one file. Past MAX_FILE_LIMITATIONS it is counted instead, except the
+ * first of its code: a code is never missing because others filled the list (BLIND_SPOTS and
+ * UNRESOLVED_LIMITATIONS read the codes), and the count says how many are not listed.
+ */
+function fileLimitation(facts: JsScanFacts, limitation: Limitation): void {
+  if (
+    facts.limitations.length < MAX_FILE_LIMITATIONS ||
+    !facts.limitations.some((l) => l.code === limitation.code)
+  ) {
+    facts.limitations.push(limitation);
+    return;
+  }
+  const unlisted = (facts.limitationsUnlisted ??= {});
+  unlisted[limitation.code] = (unlisted[limitation.code] ?? 0) + 1;
+}
 /** Every detector of candidates.ts needs one of these in the source to report anything. */
 const CAN_HOLD_CANDIDATES =
   /https?:|wss?:|fetch|Storage|indexedDB|cookie|caches|axios|\.(get|post|put|patch|delete|head|options|request|open)\(|sendBeacon|EventSource|WebSocket|path\s*:|electron-store|["'`]\/(api|graphql|v\d|rest|rpc)/;
@@ -3623,6 +3658,8 @@ export function readFileTokens(
    * scan's constants of the file, whose tables a second reading shares (`withoutEvaluator`).
    */
   keep?: (tokens: Token[], constants: Constants) => void,
+  /** Tokens read of the file (default 2,000,000, the tokenizer's); a test hook. */
+  maxTokens?: number,
 ): FileTokenFacts {
   let ranges: WindowRange[] = [];
   let located: WindowRanges | null = null;
@@ -3646,6 +3683,7 @@ export function readFileTokens(
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
   let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
+    ...(maxTokens === undefined ? {} : { maxTokens }),
     onTokens: (tokens, truncated, context) => {
       keep?.(tokens, context.constants);
       let keyResolver: ExpressionResolver | null = null;
@@ -4191,6 +4229,8 @@ export function analyzeJavaScriptTree(
     budgets?: {
       /** Work of the wrapper replacement scan of the application (default 3,000,000). */
       replacementAppWork?: number;
+      /** Tokens read per file (default 2,000,000); applies to the files read on this thread. */
+      fileTokens?: number;
     };
   } = {},
 ): JsAppInfo {
@@ -4339,7 +4379,7 @@ export function analyzeJavaScriptTree(
     taken++;
     if (file.size > maxFileBytes) {
       skipped++;
-      if (facts.skippedFiles.length < 200) facts.skippedFiles.push(file.path);
+      if (facts.skippedFiles.length < MAX_NAMED_FILES) facts.skippedFiles.push(file.path);
       continue;
     }
     let source: string;
@@ -4347,7 +4387,7 @@ export function analyzeJavaScriptTree(
       source = decode(tree.read(file.path, maxFileBytes));
     } catch {
       skipped++;
-      if (facts.skippedFiles.length < 200) facts.skippedFiles.push(file.path);
+      if (facts.skippedFiles.length < MAX_NAMED_FILES) facts.skippedFiles.push(file.path);
       continue;
     }
     runBytes += file.size;
@@ -4356,7 +4396,12 @@ export function analyzeJavaScriptTree(
     let scanned: { tokens: Token[]; constants: Constants } | null = null;
     const tokenFacts =
       options.prepared?.get(file.path) ??
-      readFileTokens(file.path, source, (tokens, constants) => (scanned = { tokens, constants }));
+      readFileTokens(
+        file.path,
+        source,
+        (tokens, constants) => (scanned = { tokens, constants }),
+        options.budgets?.fileTokens,
+      );
     const { scan, located, ranges, sandboxCall, settingsAt, braces } = tokenFacts;
     const ambient = tokenFacts.ambient;
     const mutated = new Set(tokenFacts.mutated);
@@ -4374,13 +4419,13 @@ export function analyzeJavaScriptTree(
     const cand = tokenFacts.candidates;
     if (cand) {
       if (cand.truncated) facts.candidatesCapped = true;
-      if (cand.clientsSkipped && facts.limitations.length < 200)
-        facts.limitations.push({
+      if (cand.clientsSkipped)
+        fileLimitation(facts, {
           code: "client_calls_skipped",
           message: `${file.path}: more than 2,000 calls of HTTP client modules (node:https, node:http, Electron's net) were checked; the further ones give no endpoint rows.`,
         });
-      if (cand.clientWritesSkipped && facts.limitations.length < 200)
-        facts.limitations.push({
+      if (cand.clientWritesSkipped)
+        fileLimitation(facts, {
           code: "client_writes_skipped",
           message: `${file.path}: more writes of HTTP client names (or bindings made from clients) than are checked (2,000 writes, 32,000 questions), or more functions than the resolver reads (60,000); requests on a name written past that point are unknown rows, also where the address is a literal.`,
         });
@@ -4389,8 +4434,8 @@ export function analyzeJavaScriptTree(
         if ((facts.keyCallsCappedFiles ??= []).length < 5)
           facts.keyCallsCappedFiles.push(file.path);
       }
-      if (cand.wrappersSkipped && facts.limitations.length < 200)
-        facts.limitations.push({
+      if (cand.wrappersSkipped)
+        fileLimitation(facts, {
           code: "storage_wrappers_skipped",
           message: `${file.path}: the file has more functions than storage wrappers are followed for (50,000); keys passed through a wrapper there are not read at each call (no rows with via).`,
         });
@@ -4428,29 +4473,32 @@ export function analyzeJavaScriptTree(
       )
         facts.navigationCapped = true;
     }
-    if (tokenFacts.keyReplaced && facts.limitations.length < 200)
-      facts.limitations.push({
+    if (tokenFacts.keyReplaced)
+      fileLimitation(facts, {
         code: "wrapper_method_replaced",
         message: `${file.path}: ${tokenFacts.keyReplaced.length} method(s) of storage wrappers of the file are replaced in the file by a member write on the class, its prototype or an instance (or one whose receiver was not read within the budget), so their calls there give no storage rows through them: ${tokenFacts.keyReplaced.join(", ")}.`,
       });
-    if ((scan.wrappersUnchecked || tokenFacts.keyUnchecked) && facts.limitations.length < 200)
-      facts.limitations.push({
+    if (scan.wrappersUnchecked || tokenFacts.keyUnchecked)
+      fileLimitation(facts, {
         code: "wrapper_replacements_unchecked",
         message: `${file.path}: the writes in the file that may replace a method of its own ${scan.wrappersUnchecked && tokenFacts.keyUnchecked ? "IPC and storage" : scan.wrappersUnchecked ? "IPC" : "storage"} wrappers were not all read: a computed member write on the class, its prototype or an instance (\`this[key] = value\`), which may replace a method, or a write past the replacement budget of the file (200,000 steps); calls of those methods in the file are read without that check, so a method replaced there would not be seen.`,
       });
-    if (scan.wrappersReplaced && facts.limitations.length < 200)
-      facts.limitations.push({
+    if (scan.wrappersReplaced)
+      fileLimitation(facts, {
         code: "wrapper_method_replaced",
         message: `${file.path}: ${scan.wrappersReplaced.length} method(s) of IPC wrappers of the file are replaced in the file by a member write on the class, its prototype or an instance (or one whose receiver was not read within the budget), so their calls there are not read (no IPC rows through them): ${scan.wrappersReplaced.join(", ")}.`,
       });
-    if (scan.wrappersCapped && facts.limitations.length < 200)
-      facts.limitations.push({
+    if (scan.wrappersCapped)
+      fileLimitation(facts, {
         code: "ipc_wrappers_capped",
         message: `${file.path}: the search for calls of IPC wrapper methods ran out of its budget; calls of them after that are missing.`,
       });
-    if (scan.truncated && facts.truncatedFiles.length < 200) facts.truncatedFiles.push(file.path);
-    if (scan.truncated && facts.limitations.length < 200)
-      facts.limitations.push({
+    if (scan.truncated) {
+      facts.truncated = (facts.truncated ?? facts.truncatedFiles.length) + 1;
+      if (facts.truncatedFiles.length < MAX_NAMED_FILES) facts.truncatedFiles.push(file.path);
+    }
+    if (scan.truncated)
+      fileLimitation(facts, {
         code: "scan_truncated",
         message: `${file.path}: token budget exhausted; references after the cut are missing.`,
       });
@@ -4771,11 +4819,10 @@ export function analyzeJavaScriptTree(
       !(mutated.size && (located as WindowRanges | null)?.viaName.size);
     if (unattached.size && windowsKnown) {
       for (let i = found.length - 1; i >= 0; i--) if (found[i]!.window === null) found.splice(i, 1);
-      if (facts.limitations.length < 200)
-        facts.limitations.push({
-          code: "webpreferences_unattached",
-          message: `${file.path}: ${unattached.size === 1 ? "a webPreferences object" : `${unattached.size} webPreferences objects`} at line ${[...unattached].slice(0, 10).join(", ")}${unattached.size > 10 ? " …" : ""} that no window in the file takes (its settings are not listed as a window's).`,
-        });
+      fileLimitation(facts, {
+        code: "webpreferences_unattached",
+        message: `${file.path}: ${unattached.size === 1 ? "a webPreferences object" : `${unattached.size} webPreferences objects`} at line ${[...unattached].slice(0, 10).join(", ")}${unattached.size > 10 ? " …" : ""} that no window in the file takes (its settings are not listed as a window's).`,
+      });
     }
     // Every located window, so one that writes no setting at all is still a row.
     for (const r of ranges) {
@@ -4936,6 +4983,11 @@ export function analyzeJavaScriptTree(
   }
   options.onFacts?.(sync());
   for (const limitation of facts.limitations) limitations.push(limitation);
+  for (const [code, count] of Object.entries(facts.limitationsUnlisted ?? {}))
+    limitations.push({
+      code,
+      message: `${count} more ${count === 1 ? "file has" : "files have"} this limitation (${code}); they are not listed one by one (the per-file list keeps ${MAX_FILE_LIMITATIONS} entries).`,
+    });
   const scannedNow = new Set(facts.scanned);
   const remainingFiles = ordered.filter((f) => !scannedNow.has(f.path));
   const coverage: JsCoverage = {
@@ -4949,7 +5001,10 @@ export function analyzeJavaScriptTree(
     order: "entry file, then path depth, then path",
     nextFiles: remainingFiles.slice(0, 5).map((f) => f.path),
     skippedFiles: [...facts.skippedFiles],
-    partialFiles: [...(facts.truncatedFiles ?? [])],
+    partial: facts.truncated ?? facts.truncatedFiles.length,
+    partialFiles: [...facts.truncatedFiles],
+    filesUnlisted:
+      skipped > facts.skippedFiles.length || (facts.truncated ?? 0) > facts.truncatedFiles.length,
   };
   if (tree.truncated)
     limitations.push({

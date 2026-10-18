@@ -381,3 +381,44 @@ describe("hostile input stays fast", () => {
     }
   });
 });
+
+describe("caps that keep a count instead of dropping silently", () => {
+  it("keeps one limitation of every code when one code fills the per-file list", () => {
+    const files: Record<string, string> = { "main.js": "" };
+    // 201 files with a webPreferences object no window takes: one more than the list keeps
+    for (let i = 0; i < 201; i++)
+      files[`w/f${String(i).padStart(3, "0")}.js`] =
+        "new BrowserWindow({});\nconst table = { webPreferences: { sandbox: true } };\n";
+    // read last (deepest path): a file whose IPC wrapper's replacements cannot all be checked
+    files["z/z/z/late.js"] =
+      'const { ipcMain } = require("electron");\nclass Ipc { set(k, v) { this[k] = v; } handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst w = new Ipc();\nw.set("title", "x");\nw.handle("kept:h", () => 1);\nmodule.exports = { w };\n';
+    const info = analyzeJavaScriptTree(app(files));
+    const codes = info.limitations.map((l) => l.code);
+    expect(codes).toContain("wrapper_replacements_unchecked");
+    const unattached = info.limitations.filter((l) => l.code === "webpreferences_unattached");
+    // 200 listed one by one (the list is full), the 201st counted in one entry
+    expect(unattached.length).toBe(201);
+    expect(unattached.at(-1)!.message).toMatch(/^1 more file has this limitation/);
+  });
+
+  it("counts every file read in part, also past the 200 it names, and says some are not named", () => {
+    const files: Record<string, string> = { "main.js": "" };
+    for (let i = 0; i < 202; i++)
+      files[`p/f${String(i).padStart(3, "0")}.js`] = `const a${i} = [${"1,".repeat(20)}];\n`;
+    const info = analyzeJavaScriptTree(app(files), { budgets: { fileTokens: 10 } });
+    expect(info.coverage.partial).toBe(202);
+    expect(info.coverage.partialFiles.length).toBe(200);
+    expect(info.coverage.filesUnlisted).toBe(true);
+    const named = analyzeJavaScriptTree(
+      app({ "main.js": "", "a.js": "const a = [1,2,3,4,5,6];" }),
+      {
+        budgets: { fileTokens: 10 },
+      },
+    );
+    expect(named.coverage).toMatchObject({
+      partial: 1,
+      partialFiles: ["a.js"],
+      filesUnlisted: false,
+    });
+  });
+});
