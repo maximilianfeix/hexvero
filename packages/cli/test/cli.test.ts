@@ -35,6 +35,9 @@ const payloadApp = (v2: boolean): Buffer =>
       `ipcRenderer.send("save", { d${v2 ? ', ok\u202egnp, "\\u001b[31mred": 1' : ""} });\n`,
   });
 
+/** A word in POSIX single quotes, written out by hand to compare with the CLI's quoting. */
+const posix = (word: string): string => `'${word.replace(/'/g, "'\\''")}'`;
+
 describe("hexvero CLI", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-cli-"));
   const so = join(dir, "lib.so");
@@ -76,6 +79,29 @@ describe("hexvero CLI", () => {
     const plain = capture();
     expect(await main(["demo", target], plain)).toBe(0);
     expect(plain.stdout.join("\n")).toMatch(/^ {4}hexvero compare /m);
+  });
+
+  it("quotes paths in suggested commands for a POSIX shell", async () => {
+    const target = join(dir, "demo-q $(touch PWNED) `id` it's");
+    const demo = capture();
+    expect(await main(["demo", target], demo)).toBe(0);
+    const a = join(target, "notesdesk-1.4.0.asar");
+    const b = join(target, "notesdesk-1.5.0.asar");
+    const text = demo.stdout.join("\n");
+    expect(text).toContain(`compare ${posix(a)} ${posix(b)} interfaces`);
+    expect(text).toContain(`--policy ${posix(join(target, "policy.json"))}`);
+    expect(text).not.toContain(JSON.stringify(a));
+    // a name with replacement patterns (`$&`, `$'`) and quotes, in text and in --json
+    const odd = join(dir, `b'q"$&$'.asar`);
+    writeFileSync(odd, readFileSync(a));
+    const json = capture();
+    expect(await main(["analyze", odd, "--json"], json)).toBe(0);
+    const next: Array<{ command: string }> = JSON.parse(json.stdout.join("\n")).next;
+    expect(next.length).toBeGreaterThan(0);
+    for (const step of next) {
+      expect(step.command).toContain(` ${posix(odd)}`);
+      expect(step.command).not.toContain("<path>");
+    }
   });
 
   it("shows a changed IPC payload with the target's key names escaped", async () => {

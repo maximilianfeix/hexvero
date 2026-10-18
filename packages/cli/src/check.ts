@@ -9,6 +9,7 @@ import {
   createBaseline,
   parseBaseline,
   parsePolicy,
+  shellWord,
   renderPolicyMarkdown,
   STATUS_TEXT,
   toSarif,
@@ -249,7 +250,7 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT")
           throw new UsageError(
-            `baseline ${baselineFile} does not exist; create it with --baseline ${baselineFile} --update-baseline`,
+            `baseline ${baselineFile} does not exist; create it with --baseline ${shellWord(baselineFile)} --update-baseline`,
           );
         throw error;
       }

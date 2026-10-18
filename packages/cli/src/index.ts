@@ -15,6 +15,7 @@ import {
   resolveNode,
   runProvider,
   STRING_TAGS,
+  shellWord,
   tracePath,
   writeFileNoFollow,
   type ProviderName,
@@ -231,10 +232,11 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       // A packaged build is named as given; the app read inside it gets a line of its own.
       const container = target.info.container;
       const shown = displayPath(container?.path ?? target.info.path);
-      const quoted = /^[\w./@:+-]+$/.test(shown) ? shown : JSON.stringify(shown);
+      const quoted = shellWord(shown);
+      // a function, so `$&` or `$'` in the path is not read as a replacement pattern
       const next = suggestNextSteps(analysis, collections).map((step) => ({
         ...step,
-        cli: step.cli.replace("<path>", quoted),
+        cli: step.cli.replace("<path>", () => quoted),
       }));
       const out = flagString(args.flags, "out");
       if (out) await session.export(target.id, out, { overwrite: true });

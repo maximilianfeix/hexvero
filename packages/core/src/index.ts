@@ -103,6 +103,7 @@ export {
   compareReleases,
   targetName,
   renderReleaseReport,
+  shellWord,
   type ChangeRow,
   type Place,
   type ReleaseComparison,

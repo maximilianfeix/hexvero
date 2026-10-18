@@ -565,7 +565,11 @@ const code = (text: string): string => {
 const cell = (text: string): string =>
   visibleControls(text.replace(/[\r\n]+/g, " ")).replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
 /** A file name as one shell word: single-quoted unless it is plain. */
-const shellWord = (text: string): string => {
+/**
+ * A word as it can be pasted into a POSIX shell: control characters dropped, anything beyond a
+ * plain path in single quotes (a quote inside as '\''), so no `$`, backtick or quote can run.
+ */
+export const shellWord = (text: string): string => {
   const flat = [...text].filter((c) => c.charCodeAt(0) > 31 && c !== "\u007f").join("");
   return /^[\w./@:+-]+$/.test(flat) ? flat : `'${flat.replace(/'/g, "'\\''")}'`;
 };
