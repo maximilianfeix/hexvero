@@ -2205,9 +2205,11 @@ export function bridgeMembers(
     const named = context.constants.importOf(t.value, k);
     const form = named ? null : importFormOf(t.value);
     const required = named || form ? null : context.constants.requireOf(t.value, k);
-    if (named && !named.specifier.startsWith(".")) return null;
-    if (form && !form.specifier.startsWith(".")) return null;
-    if (required !== null && !required.startsWith(".")) return null;
+    // a package's or another unread module's value is followed too, to be named as not read
+    // (#235); electron and Node's built-ins hold no member that passes a channel on
+    if (named && !bridgeValueSource(named.specifier)) return null;
+    if (form && !bridgeValueSource(form.specifier)) return null;
+    if (required !== null && !bridgeValueSource(required)) return null;
     // `const x_1 = __importDefault(require("./x"))` (tsc) is read from the declaration
     if (!named && !form && required === null && !hasRequire()) return null;
     resolver ??= new ExpressionResolver(tokens, context.constants);
@@ -2228,7 +2230,7 @@ export function bridgeMembers(
       if (base === null) return null;
       if (writtenAnywhere(t.value)) return null;
     }
-    if (!base.specifier.startsWith(".")) return null;
+    if (!bridgeValueSource(base.specifier)) return null;
     if (member === null) return { specifier: base.specifier, property: base.property };
     // a member of a module object: the export of that name
     return base.property === "*" ? { specifier: base.specifier, property: member } : null;
@@ -5307,7 +5309,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 35;
+export const JS_SCAN_SCHEMA = 36;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -5693,6 +5695,18 @@ interface PackageJson {
 }
 
 const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+
+/**
+ * Whether a contextBridge value imported from `specifier` is followed (`valueRef`): every module
+ * but electron's own and Node's built-ins, which cannot carry a member that passes a channel on to
+ * IPC. A package or a module not among the files read is then named in context_bridge_module_unread
+ * (#235) instead of reading as a member that forwards nothing.
+ */
+function bridgeValueSource(specifier: string): boolean {
+  if (specifier === "electron" || specifier.startsWith("electron/")) return false;
+  const bare = specifier.startsWith("node:") ? specifier.slice(5) : specifier;
+  return !NODE_BUILTINS.has(bare.split("/")[0]!);
+}
 
 function resolveSpecifier(from: string, specifier: string, known: Set<string>): string | null {
   if (!specifier.startsWith(".") && !specifier.startsWith("/")) return null;

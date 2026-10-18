@@ -515,3 +515,95 @@ describe("page IPC through a bridge that could not be read (#229)", () => {
     );
   });
 });
+
+/**
+ * RZ's P2 probe (#235): the preload exposes `{ sub: api }` with `api` from a local module (v1) or
+ * from a package that is not among the files read (v2), written plain, as a bundler writes a
+ * require, and minified. The page calls a forwarder of `sub`.
+ */
+const P2_FORMS: Record<string, (spec: string) => string> = {
+  plain: (spec) => `import { contextBridge } from "electron";
+import { api } from "${spec}";
+contextBridge.exposeInMainWorld("bridge", { sub: api });
+`,
+  bundled: (spec) => `"use strict";
+const electron_1 = require("electron");
+const apilib_1 = require("${spec}");
+electron_1.contextBridge.exposeInMainWorld("bridge", { sub: apilib_1.api });
+`,
+  minified: (spec) =>
+    `const{contextBridge:e}=require("electron"),t=require("${spec}");e.exposeInMainWorld("bridge",{sub:t.api});\n`,
+};
+
+const p2App = (form: string, local: boolean, drop = false): Uint8Array => {
+  const esm = form === "plain";
+  return buildAsar({
+    "package.json": JSON.stringify({
+      name: "u",
+      main: "main.js",
+      ...(esm ? { type: "module" } : {}),
+    }),
+    "main.js": esm
+      ? `import { ipcMain } from "electron";\nipcMain.handle("x", () => 1);\n`
+      : `const { ipcMain } = require("electron");\nipcMain.handle("x", () => 1);\n`,
+    "preload.js": P2_FORMS[form]!(local ? "./api.js" : "apilib"),
+    ...(local
+      ? {
+          "api.js": esm
+            ? `import { ipcRenderer } from "electron";\nexport const api = { call: (channel, ...a) => ipcRenderer.invoke(channel, ...a) };\n`
+            : `const { ipcRenderer } = require("electron");\nexports.api = { call: (channel, ...a) => ipcRenderer.invoke(channel, ...a) };\n`,
+        }
+      : {}),
+    "renderer.js": `window.bridge.sub.call("x");\n${drop ? "" : `window.bridge.sub.call("gone");\n`}`,
+  });
+};
+
+describe("a bridge value from a package that is not read (#235)", () => {
+  for (const form of Object.keys(P2_FORMS)) {
+    it(`opens the page rows as unknown (${form})`, async () => {
+      writeFileSync(join(dir, `p2-${form}-1.asar`), p2App(form, true));
+      writeFileSync(join(dir, `p2-${form}-2.asar`), p2App(form, false));
+      const session = new Session();
+      const v1 = (await session.open(join(dir, `p2-${form}-1.asar`))).id;
+      const v2 = (await session.open(join(dir, `p2-${form}-2.asar`))).id;
+      const lim = (await session.analyze(v2)).limitations.filter(
+        (l) => l.code === "context_bridge_module_unread",
+      );
+      expect(lim.map((l) => l.message).join()).toContain("not among the files read");
+      const ipc = (await session.compareCollection(v1, v2, "ipc")).diff;
+      // the forwarder of the local module that v2 no longer has is gone; the page rows are not
+      expect(ipc.removed).toEqual(["api.js::ipcRenderer.invoke::null"]);
+      expect(ipc.unknown.map((u) => u.key).toSorted()).toEqual([
+        "renderer.js::ipcRenderer.invoke::gone",
+        "renderer.js::ipcRenderer.invoke::x",
+      ]);
+    });
+
+    it(`keeps a real removal through a local bridge (${form})`, async () => {
+      writeFileSync(join(dir, `p2l-${form}-1.asar`), p2App(form, true));
+      writeFileSync(join(dir, `p2l-${form}-2.asar`), p2App(form, true, true));
+      const session = new Session();
+      const v1 = (await session.open(join(dir, `p2l-${form}-1.asar`))).id;
+      const v2 = (await session.open(join(dir, `p2l-${form}-2.asar`))).id;
+      const ipc = (await session.compareCollection(v1, v2, "ipc")).diff;
+      expect(ipc.removed).toEqual(["renderer.js::ipcRenderer.invoke::gone"]);
+      expect(ipc.unknown).toEqual([]);
+    });
+  }
+
+  it("does not flag electron's own values or Node's built-ins", () => {
+    for (const spec of ["electron", "node:path", "path", "events"]) {
+      const info = analyzeJavaScriptTree(
+        asarTree(
+          buildAsar({
+            "package.json": JSON.stringify({ name: "u", main: "main.js" }),
+            "main.js": MAIN,
+            "preload.js": `const { contextBridge } = require("electron");\nconst m = require("${spec}");\ncontextBridge.exposeInMainWorld("bridge", { sub: m.join });\n`,
+          }),
+          "app.asar",
+        ),
+      );
+      expect(of(info, "context_bridge_module_unread"), spec).toEqual([]);
+    }
+  });
+});
