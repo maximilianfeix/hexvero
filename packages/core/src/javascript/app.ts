@@ -3635,7 +3635,7 @@ function linkBridgeValues(input: {
         } catch {
           got = null;
         }
-      else capped = true;
+      // past the limit the value is named in `unread`, not a cut inventory
       sources.set(path, got);
     }
     return sources.get(path) ?? null;
@@ -3701,7 +3701,7 @@ function linkBridgeValues(input: {
       const src = source(target);
       if (!src) {
         unread.push(
-          `${named}: ${target} could not be read${capped ? ` (more than ${MAX_BRIDGE_MODULES} modules)` : ""}`,
+          `${named}: ${target} could not be read${sources.size >= MAX_BRIDGE_MODULES ? ` (or more than ${MAX_BRIDGE_MODULES} modules were opened)` : ""}`,
         );
         continue;
       }

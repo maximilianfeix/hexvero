@@ -1100,7 +1100,9 @@ file. A parameter or local of the same name at the call is not the export. A hel
 writes its parameter (`channel = "x:" + channel`) is no forwarder, now also in one file (before,
 its calls gave the channel as passed). The calls share the cross-module wrapper stage and its
 limits (200 importing files, the work budget per file, `ipc_wrappers_capped`); per file at most
-2,000 such calls are read, the rest named by `ipc_wrappers_capped` too.
+2,000 such calls are read, the rest named by `ipc_wrappers_capped` too. Not read: a call through
+an import list longer than the file's constants read (about 200 names in one `import { … }`), which
+gives no row and no limitation, and a forwarder declared inside a bundler's module wrapper.
 
 **A module of the app under the name `ipcMain`.** A file that binds `ipcMain` or `ipcRenderer` to a
 module of the application (a relative specifier: `import * as ipcMain from "./ipc-main"` as GitHub
