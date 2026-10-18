@@ -480,6 +480,9 @@ function elementOf(tokens: readonly Token[], open: number, outer: number): boole
 export function writesName(tokens: readonly Token[], j: number): boolean {
   const t = tokens[j];
   if (!t || t.type !== "ident") return false;
+  // only these neighbours can start a write (every case below needs one): asked first, as most
+  // names in a file are followed by `(`, `;` or an operator
+  if (!stepAt(tokens, j - 1) && !NAME_WRITE_NEXT.has(nextShape(tokens, j))) return false;
   if (punct(tokens, j - 1, ".") || punct(tokens, j - 1, "?.")) return false;
   const { parent, match, flags } = shapeOf(tokens);
   if ((flags[j]! & DECLARED) !== 0) return redeclaresVar(tokens, j);
@@ -577,6 +580,8 @@ function chainFrom(tokens: readonly Token[], from: number): number {
  * written as a literal (`T[k] = …`), null when nothing of it is written there.
  */
 export function writesMember(tokens: readonly Token[], j: number): string | null {
+  // a chain or a parenthesis must follow the name
+  if (!MEMBER_WRITE_NEXT.has(nextShape(tokens, j))) return null;
   if (punct(tokens, j - 1, ".") || punct(tokens, j - 1, "?.")) return null;
   // the chain, also through parentheses: `(T).A = …`, `(T.A) = …`, `((T).A).b++`
   let start = j;
@@ -600,6 +605,31 @@ export function writesMember(tokens: readonly Token[], j: number): string | null
   if (!written) return null;
   return firstKey(tokens, j);
 }
+
+/**
+ * The token after j as the shape tables below read it: a punctuator's value, `of` / `in` for
+ * those words, anything else as nothing a write can start with.
+ */
+const nextShape = (tokens: readonly Token[], j: number): string => {
+  const t = tokens[j + 1];
+  if (!t) return "";
+  if (t.type === "punct") return t.value;
+  return t.type === "ident" && (t.value === "of" || t.value === "in") ? t.value : "";
+};
+/** What may follow a name that is written: an operator, a step, a pattern's or group's end, a loop head. */
+const NAME_WRITE_NEXT: ReadonlySet<string> = new Set([
+  ...ASSIGNMENT_OPERATORS,
+  "++",
+  "--",
+  ")",
+  ",",
+  "]",
+  "}",
+  "of",
+  "in",
+]);
+/** What may follow a name whose member is written: a member, an element, a group's end. */
+const MEMBER_WRITE_NEXT: ReadonlySet<string> = new Set([".", "?.", "[", ")"]);
 
 /** A member or an element starts at k: `.a`, `?.a`, `[…]`. */
 const memberAt = (tokens: readonly Token[], k: number): boolean =>
