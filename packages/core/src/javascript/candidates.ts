@@ -552,7 +552,8 @@ export function findCandidates(
       if (r) push(out.storage, kind, adjust(r), t, extra);
       return;
     }
-    let unread = false;
+    // past the call sites read, a key may be anything: said by the unknown row below
+    let unread = !!calls.capped;
     for (const site of calls.sites) {
       if (!site.values) {
         unread = true;

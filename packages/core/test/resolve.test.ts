@@ -514,4 +514,27 @@ describe("bounded expression resolution", () => {
     const row = info.modules[0]!.ipc.find((u) => u.channel === "sec:one");
     expect(row).toMatchObject({ via: "resolved", resolution: { method: "parameter", lines: [3] } });
   });
+
+  it("reads a helper called more often than its call sites are read as partial, never as every value", () => {
+    // 70 calls, each with its own channel: the resolver reads 64 call sites (MAX_SITES)
+    const calls = Array.from({ length: 70 }, (_, i) => `route('c${i}', () => ${i});`);
+    const info = analyzeJavaScriptTree(
+      asarTree(
+        buildAsar({
+          "package.json": JSON.stringify({ name: "p", main: "main.js" }),
+          "main.js": [
+            "const { ipcMain } = require('electron');",
+            "function route(name, fn) { ipcMain.handle('app:' + name, fn); }",
+            ...calls,
+          ].join("\n"),
+        }),
+        "app.asar",
+      ),
+    );
+    const rows = info.modules[0]!.ipc;
+    // the channels read are kept, and the call stays open: the other six are not invented
+    expect(rows.filter((u) => u.channel !== null).length).toBe(64);
+    expect(rows.filter((u) => u.channel === null)).toMatchObject([{ line: 2 }]);
+    expect(info.limitations.map((l) => l.code)).toContain("ipc_channel_unresolved");
+  });
 });
