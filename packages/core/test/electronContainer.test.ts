@@ -102,22 +102,32 @@ describe("the Electron app inside a packaged build", () => {
     expect(values).toContain("https://api.unpacked.example/y");
   });
 
-  it("takes app/ before app.asar, as Electron does, and says what else was there", async () => {
+  it("takes app.asar before app/, as Electron 15 and later do, and says what else was there", async () => {
     const root = macApp("Both.app", {
       "app.asar": buildAsar(app("api.asar.example")),
       "app/package.json": app("api.dir.example")["package.json"]!,
       "app/main.js": app("api.dir.example")["main.js"]!,
     });
     const found = findElectronApp(root);
-    expect(found).toMatchObject({ entry: "Contents/Resources/app", kind: "directory" });
-    expect(found?.note).toContain("app/");
-    expect(found?.note).toContain("Also there, not run by Electron: app.asar");
+    expect(found).toMatchObject({ entry: "Contents/Resources/app.asar", kind: "asar" });
+    expect(found?.note).toContain("Also there, not run by Electron: app/");
+    const t = await loadTarget(root);
+    expect(t.info.format).toBe("asar");
+    expect(t.info.path).toBe(join(root, "Contents", "Resources", "app.asar"));
+    const analysis = await analyzeTarget(t);
+    expect(analysis.data.kind).toBe("javascript-app");
+    expect(analysis.summary).toContain("Electron app Contents/Resources/app.asar:");
+  });
+
+  it("takes app/ when it is the only app, as Electron does", async () => {
+    const root = macApp("DirOnly.app", {
+      "app/package.json": app("api.dir.example")["package.json"]!,
+      "app/main.js": app("api.dir.example")["main.js"]!,
+    });
     const t = await loadTarget(root);
     expect(t.info.format).toBe("directory");
     expect(t.info.path).toBe(join(root, "Contents", "Resources", "app"));
-    const analysis = await analyzeTarget(t);
-    expect(analysis.data.kind).toBe("javascript-app");
-    expect(analysis.summary).toContain("Electron app Contents/Resources/app:");
+    expect((await analyzeTarget(t)).summary).toContain("Electron app Contents/Resources/app:");
   });
 
   it("passes over an archive without package.json to default_app.asar", () => {
@@ -134,7 +144,9 @@ describe("the Electron app inside a packaged build", () => {
     const outside = join(dir, "outside-app");
     mkdirSync(outside, { recursive: true });
     writeFileSync(join(outside, "package.json"), "{}");
-    const root = macApp("Linked.app", { "app.asar": buildAsar(app("api.linked.example")) });
+    const root = macApp("Linked.app", {
+      "default_app.asar": buildAsar(app("api.linked.example")),
+    });
     symlinkSync(outside, join(root, "Contents", "Resources", "app"));
     const found = findElectronApp(root);
     expect(found?.entry).toBe("Contents/Resources/app");
@@ -175,10 +187,10 @@ describe("the Electron app inside a packaged build", () => {
     const root = macApp("BadJson.app", {
       "app/package.json": "{ not json",
       "app/main.js": "1;\n",
-      "app.asar": buildAsar(app("api.asar.example")),
+      "default_app.asar": buildAsar(app("api.asar.example")),
     });
     const found = findElectronApp(root);
-    expect(found?.entry).toBe("Contents/Resources/app.asar");
+    expect(found?.entry).toBe("Contents/Resources/default_app.asar");
     expect(found?.note).toContain("app/ (package.json is not valid JSON or could not be read)");
     // and inside an archive
     const asar = macApp("BadJsonAsar.app", {
@@ -193,17 +205,17 @@ describe("the Electron app inside a packaged build", () => {
     const root = macApp("Big.app", {
       "app/package.json": big,
       "app/main.js": "1;\n",
-      "app.asar": buildAsar(app("api.asar.example")),
+      "default_app.asar": buildAsar(app("api.asar.example")),
     });
     const found = findElectronApp(root);
-    expect(found?.entry).toBe("Contents/Resources/app.asar");
+    expect(found?.entry).toBe("Contents/Resources/default_app.asar");
     expect(found?.note).toContain("app/ (package.json is larger than 1 MiB and was not parsed)");
     const zip = buildZip({
       "X.app/Contents/Resources/app/package.json": big,
-      "X.app/Contents/Resources/app.asar": buildAsar(app("api.asar.example")),
+      "X.app/Contents/Resources/default_app.asar": buildAsar(app("api.asar.example")),
     });
     const inZip = findElectronAppInZip(openZip(zip), 1 << 30);
-    expect(inZip?.entry).toBe("X.app/Contents/Resources/app.asar");
+    expect(inZip?.entry).toBe("X.app/Contents/Resources/default_app.asar");
     expect(inZip?.refused).toBeUndefined();
     expect(inZip?.note).toContain("app/ (package.json is larger than 1 MiB and was not parsed)");
     // in an archive too
@@ -229,7 +241,7 @@ describe("the Electron app inside a packaged build", () => {
     writeFileSync(join(away, "package.json"), "{}");
     const root = macApp("PkgLink.app", {
       "app/main.js": "1;\n",
-      "app.asar": buildAsar(app("api.asar.example")),
+      "default_app.asar": buildAsar(app("api.asar.example")),
     });
     symlinkSync(
       join(away, "package.json"),
@@ -238,14 +250,17 @@ describe("the Electron app inside a packaged build", () => {
     expect(findElectronApp(root)?.refused).toContain("package.json is a link outside the bundle");
   });
 
-  it("warns that a fuse may make Electron run app.asar instead of app/", async () => {
+  it("warns that the unread version or fuse may make Electron run another app", async () => {
     const root = macApp("Fuse.app", {
       "app/package.json": app("api.dir.example")["package.json"]!,
       "app/main.js": app("api.dir.example")["main.js"]!,
       "app.asar": buildAsar(app("api.asar.example")),
     });
     const t = await loadTarget(root);
-    expect(t.info.container?.warning).toContain("OnlyLoadAppFromAsar");
+    expect(t.info.container?.warning).toContain("the fuse onlyLoadAppFromAsar could not be read");
+    expect(t.info.container?.warning).toContain(
+      "with Electron before 15.0.0-beta.6 Electron runs Contents/Resources/app",
+    );
     const analysis = await analyzeTarget(t);
     expect(analysis.limitations.map((l) => l.code)).toContain("electron_app_pick_unverified");
   });

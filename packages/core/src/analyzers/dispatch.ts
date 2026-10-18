@@ -7,6 +7,11 @@ import { parseJar, parseJavaClass, type JarInfo, type JavaClassInfo } from "../f
 import { parsePlist, type PlistValue } from "../formats/plist.js";
 import { inspectSqlite, type SqliteInfo } from "../formats/sqlite.js";
 import { parseWasm, type WasmInfo } from "../formats/wasm.js";
+import {
+  NOT_SHIPPED,
+  readRuntimeOnDisk,
+  type ElectronRuntime,
+} from "../formats/electronRuntime.js";
 import { openZip, type ZipEntry } from "../formats/zip.js";
 import {
   analyzeJavaScriptTree,
@@ -47,6 +52,11 @@ export type AnalysisData =
       app: Strip<JsAppInfo>;
       /** The macOS bundle the app was found in (`target.container`): its own native facts. */
       native?: Strip<BundleInfo>;
+      /**
+       * The Electron runtime the packaged build ships (`target.container`): versions, fuses, ASAR
+       * integrity, support status. `shipped: false` for an archive or directory alone.
+       */
+      runtime?: ElectronRuntime;
     }
   | { kind: "javascript"; script: ScanResult; bundle: Omit<JsBundleInfo, "limitations"> }
   | { kind: "source-map"; map: SourceMapSummary }
@@ -178,6 +188,28 @@ function nativeOf(info: LoadedTarget["info"]): BundleInfo | undefined {
   if (!c || c.format !== "directory" || c.layout !== "macos" || !isAppBundle(c.path))
     return undefined;
   return analyzeAppBundle(c.path);
+}
+
+/**
+ * The Electron runtime of the build an app was found in: read with the ZIP it came from, or from
+ * the build on disk now. An app that is no packaged build ships none.
+ */
+function runtimeOf(target: LoadedTarget, limitations: Limitation[]): ElectronRuntime {
+  const c = target.info.container;
+  if (!c) return NOT_SHIPPED;
+  const read =
+    target.runtime ??
+    (c.format === "directory"
+      ? readRuntimeOnDisk(
+          c.path,
+          c.layout,
+          c.entry,
+          target.info.format === "asar" ? "asar" : "directory",
+        )
+      : null);
+  if (!read) return NOT_SHIPPED;
+  limitations.push(...read.limitations);
+  return read.runtime;
 }
 
 /** The summary of an app found inside a packaged build, saying which file was read. */
@@ -347,10 +379,12 @@ async function analyzeTargetUnsafe(
         : app.coverage.remaining > 0
           ? `Electron ASAR, partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned, ${app.ipcChannels.length} IPC channels so far`
           : `Electron ASAR, incomplete: ${app.coverage.skipped} of ${app.coverage.total} JavaScript files could not be read, ${app.ipcChannels.length} IPC channels in the rest`;
+      const runtime = runtimeOf(target, limitations);
       return done(withContainer(summary, info, native), {
         kind: "javascript-app",
         app,
         ...(native ? { native } : {}),
+        runtime,
       });
     }
     case "directory": {
@@ -380,7 +414,12 @@ async function analyzeTargetUnsafe(
           info,
           native,
         ),
-        { kind: "javascript-app", app, ...(native ? { native } : {}) },
+        {
+          kind: "javascript-app",
+          app,
+          ...(native ? { native } : {}),
+          runtime: runtimeOf(target, limitations),
+        },
       );
     }
     case "javascript": {

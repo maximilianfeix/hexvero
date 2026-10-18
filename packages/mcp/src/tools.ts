@@ -356,7 +356,7 @@ export function createHandlers(
       const page = await session.collection(id, str(a["collection"]), paged(a));
       // A page of a partly read application says so itself; the caller may never have seen
       // the analysis result.
-      const partial = await session.partial(id);
+      const partial = await session.partial(id, page.collection);
       return partial ? { ...page, partial } : page;
     },
     hexvero_strings: async (a) => {

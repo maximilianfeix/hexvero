@@ -155,6 +155,8 @@ const ORDER = [
   "endpoints",
   "storage",
   "urls",
+  // the Electron runtime of a packaged build: versions, fuses, integrity, support
+  "runtime",
 ];
 /**
  * Not listed row by row: findings restate the lists in sentences, `ipc` repeats `ipcChannels`

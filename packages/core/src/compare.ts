@@ -226,6 +226,10 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
+  // the runtime of a packaged build: where a marker sits in the binary moves with every build,
+  // and `detail` says in words what `value` and `eol` hold; an integrity entry's `hash` changes
+  // whenever the archive does, and `header` (matches or not) carries the fact
+  runtime: ["evidence", "detail", "hash"],
 };
 
 /**
@@ -321,6 +325,8 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   // hexvero's own findings: what it found and where, not how the title words it ("… in the
   // scanned part" is added when a scan is partial), so a reworded title is a change
   findings: [["kind", "location"], ["kind"]],
+  // one row per fact of the runtime: `electron`, `fuse.runAsNode`, `asarIntegrity:<archive>`
+  runtime: [["item"]],
 };
 
 /** Paths (dotted, up to three levels) at which two values differ. */

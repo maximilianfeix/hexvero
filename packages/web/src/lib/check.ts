@@ -24,6 +24,8 @@ export const RULE: Record<string, string> = {
   "window-more-permissive": "a window setting that became more permissive",
   "new-bridge-exposure":
     "a privileged object (ipcRenderer, shell, a Node module) handed to pages as it is",
+  "fuse-weakened":
+    "a packaged build's runtime less locked down: a fuse, the ASAR integrity record, end of support",
 };
 
 const STATE: Record<PolicyFinding["state"], string> = {

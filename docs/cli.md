@@ -55,7 +55,10 @@ hexvero analyze <path> [--out file.json]
 
 Detects the format, runs the analyzer, prints summary, findings, limitations and the collections
 that exist. `--out` also writes the complete JSON (an existing file is replaced, without
-`--force`). For a large JavaScript app see [Large applications](#large-applications).
+`--force`). For a large JavaScript app see [Large applications](#large-applications). For a
+packaged build (`.app`, install directory, release ZIP) it also prints the shipped Electron
+runtime under `Runtime`: versions, fuses, ASAR integrity and support status (see [The Electron
+runtime](#the-electron-runtime)).
 
 ### `collection`
 
@@ -128,7 +131,8 @@ hexvero check <before> <after> --policy <file> [--baseline file] [--update-basel
 ```
 
 Applies a release policy to the comparison of two builds: new interface members, new external
-hosts, windows that became more permissive, privileged objects newly handed to pages. Exit `0` pass, `1` technical error, `2` usage error or
+hosts, windows that became more permissive, privileged objects newly handed to pages, weakened
+fuses of a packaged build. Exit `0` pass, `1` technical error, `2` usage error or
 invalid policy, `3` policy violated, `4` not decidable under `unknown: fail`. See [Release
 policies](#release-policies-hexvero-check).
 
@@ -272,7 +276,8 @@ writes one of that shape to `.hexvero/policy.json`, with the external hosts of `
     "new-interface-member": { "level": "fail" },
     "new-external-host": { "level": "fail", "allow": ["api.example.com", "*.cdn.example.com"] },
     "window-more-permissive": { "level": "fail" },
-    "new-bridge-exposure": { "level": "fail" }
+    "new-bridge-exposure": { "level": "fail" },
+    "fuse-weakened": { "level": "fail" }
   },
   "unknown": "fail",
   "suppressions": [
@@ -319,8 +324,22 @@ Rules:
   the `electron` module, a Node module such as `fs` or `child_process`, `process`, `require` (read
   from `bridgeExposures`; the same exposure in another preload file of the before build is not new).
   An exposure hexvero kept but could not decide (`undecided`) is an unknown finding. Added in 0.9.7:
-  a policy that does not list it runs it at `warn`, so an upgrade does not turn a passing check red;
-  every other rule that is not listed runs at `fail`.
+  a policy that does not list it runs it at `warn`, so an upgrade does not turn a passing check red
+  (as does `fuse-weakened`); every other rule that is not listed runs at `fail`.
+- **`fuse-weakened`**: For two packaged builds (`.app`, install directory, release ZIP), read from
+  the `runtime` list (see [The Electron runtime](#the-electron-runtime)): a fuse that moved to its
+  less safe state (`runAsNode`, `nodeOptions`, `nodeCliInspect` or
+  `grantFileProtocolExtraPrivileges` to on; `embeddedAsarIntegrityValidation`,
+  `onlyLoadAppFromAsar` or `cookieEncryption` to off), an ASAR integrity record that covered the
+  archive Electron loads and no longer does, and an Electron line that went past its end of
+  support by the snapshot of Electron's release data hexvero ships (the message names its date;
+  never a claim about vulnerabilities). A fuse new in the after build's Electron is at its default,
+  not a move. A state not read on one side (`unknown`), a fuse marked removed (`r`) before, and a
+  watched fuse the before build had that the after build's wire does not hold (a short wire, an
+  unknown schema version) give an unknown finding. With only one build packaged, the rule is
+  undecidable (`collection_missing`); with neither (two `.asar` files, two directories, two
+  bundles), it has nothing to read and reports nothing. Added after 0.9.9: a policy that does not
+  list it runs it at `warn`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
 app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a
@@ -343,8 +362,9 @@ or
 bridge lists, so those rules are undecidable for them (gap `collection_missing`).
 
 `level` is `fail`, `warn` or `off`. A rule the policy does not list runs at `fail`, except
-`new-bridge-exposure` (added in 0.9.7), which runs at `warn` until the policy lists it;
-`hexvero init` and `examples/policy.json` list all four at `fail`. A misspelt rule or key is an error, not a rule that never runs. `level` says what the policy makes of a
+`new-bridge-exposure` (added in 0.9.7) and `fuse-weakened` (added after 0.9.9), which run at
+`warn` until the policy lists them; `hexvero init` and `examples/policy.json` list all five at
+`fail`. A misspelt rule or key is an error, not a rule that never runs. `level` says what the policy makes of a
 finding; how the fact was read (`literal`, `inferred`, `link direct`) is reported separately as
 `basis`.
 
@@ -470,17 +490,31 @@ app inside it, so its IPC, bridge, windows, endpoints and storage are read, not 
   16 MiB each and 256 MiB in all, counted in bytes read; a stored entry whose sizes differ is
   refused).
 
-In that directory hexvero takes what Electron runs: the first of `app/`, `app.asar` and
-`default_app.asar` whose `package.json` parses as JSON (Electron's `lib/browser/init.ts`), on
-disk and inside a ZIP alike: a candidate without one, with one that is not JSON or cannot be read,
+In that directory hexvero takes what Electron runs: the first of `app.asar`, `app/` and
+`default_app.asar` whose `package.json` it can load (Electron 15.0.0-beta.6 and later,
+`shell/common/node_bindings.cc`, electron#30667; before that `app/` came first,
+`lib/browser/init.ts`; with the fuse `onlyLoadAppFromAsar` on, `app.asar` alone), on disk and
+inside a ZIP alike: a candidate without one, with one that is not JSON or cannot be read,
 or with one larger than 1 MiB (not parsed) is passed over, and one whose `package.json` is a link
-out of the bundle stops the pick. An archive whose header or `package.json` hexvero cannot read is
+out of the bundle stops the pick. A `package.json` that is JSON but not an object depends on the
+version: Electron 45 and later pass over it; earlier versions run a list, string or number, and
+`null` makes them run no app (`electron_app_not_read`); when the version is not read and that
+changes the pick, the pick stays open with `electron_app_pick_unverified`. An archive whose header or `package.json` hexvero cannot read is
 taken, and the note says it was not checked. Files kept in `app.asar.unpacked/` beside the archive are read as for an
 archive opened alone. When something else was there too, or a candidate was passed over, the
 output says so; an archive with several builds is read at the one nearest its root and names the
-others. When `app/` is taken while an `app.asar` is there too, the limitation
-`electron_app_pick_unverified` says that the fuse `OnlyLoadAppFromAsar` would make Electron run
-`app.asar`; hexvero does not read fuses.
+others. When these orders would pick different apps from what
+is there (`app/` next to `app.asar`, or no `app.asar` at all), hexvero reads the Electron version
+and the fuse `onlyLoadAppFromAsar` from the runtime binary (see "The Electron runtime" below) and
+picks by Electron's order for them; the note names the version. A schema 1 fuse wire tells the
+order itself (its 6th position, `onlyLoadAppFromAsar`, came in the same change: 6 or more
+positions, `app.asar` first; fewer, `app/` first and the fuse cannot be on); without a wire the
+version tells it, except for 15.0.0 alphas, betas 1 to 5 and the 15 and 16 nightlies, which stay
+open. A wire and a version that give different orders leave it open too. Electron 14 and earlier have no `onlyLoadAppFromAsar`; the fuse counts as closed only when what was read does not disagree. With the fuse on and no
+`app.asar` Electron would load, Electron runs no app, and neither does hexvero
+(`electron_app_not_read`). Only when the version or the fuse could not be read and the pick
+depends on it does the limitation `electron_app_pick_unverified` say what was not read and what
+Electron would run otherwise.
 
 The app is not read, and the build is read as it is with the limitation `electron_app_not_read`
 naming the entry and the reason, when the candidate Electron would run is a link out of the
@@ -501,25 +535,79 @@ frameworks, permissions, helpers, entitlements, libraries and symbols come next 
 and its findings (hardening, App Transport Security, privacy permissions) are listed too. A
 packaged build is a target of its own: the same `app.asar` opened alone has another id.
 
+### The Electron runtime
+
+A packaged build ships the Electron runtime, and its analysis has a `runtime` list (one row per
+fact, matched by `item` in a comparison) and `data.runtime` with the same facts in brief
+(`electron`, `chromium`, `node`, `support`, `fuses`, `asarIntegrity`, `binary`, `platform`).
+`analyze` prints them under `Runtime`. Nothing is run; the bytes are read:
+
+- **Where**: macOS `Contents/Frameworks/Electron Framework.framework/Versions/A/Electron
+  Framework`; Windows and Linux the PE or ELF file of 1 MiB or more next to `resources/` that
+  the packaging names: the executable named after the app's `package.json` (`productName` or
+  `name`, `build.executableName`, Forge's `executableName`; `.exe` on Windows, compared without case, in Unicode NFC) or, on Windows, an `.exe` carrying the resource `Integrity/ElectronAsar` (not looked for
+  in a ZIP). The 3 largest unnamed PE or ELF files are scanned too. When no named file holds
+  markers, up to 8 unnamed ones are scanned and one is taken only with both a user agent and a
+  fuse wire (a helper can hold a user agent alone), which the `electron` row says. When any two
+  scanned files hold markers that disagree (versions or fuse wires), the runtime is `unknown`
+  (`electron_runtime_not_read` names them); so is any reading when an unnamed file of the cross-check could not be scanned (over the 2 GiB read for one build, by bytes read, or over 1 GiB). Helpers such as `chrome-sandbox`, `chrome_crashpad_handler`, `Update.exe` are passed
+  over; the 64 largest files are probed. In a ZIP the same entries: a candidate's first bytes are read without inflating it (only a PE or ELF file is inflated), and every candidate inflated counts against one cap, the size limit of the target.
+- **`electron`, `chromium`**: the user-agent fragment `Chrome/<version> Electron/<version>` the
+  binary holds; **`node`**: Node's release URL (`process.release`,
+  `https://nodejs.org/download/release/v<version>/…`). A universal macOS binary holds one per
+  architecture: a value is known only when every occurrence agrees, else `unknown` with each
+  value and offset. `evidence` is `<binary>@<offset>`.
+- **`fuses`, `fuse.<name>`**: the wire after the sentinel `dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX`
+  (schema version byte, count byte, one byte per fuse: `0` off, `1` on, `r` removed), named by
+  Electron's schema version 1: `runAsNode`, `cookieEncryption`, `nodeOptions`, `nodeCliInspect`,
+  `embeddedAsarIntegrityValidation`, `onlyLoadAppFromAsar`,
+  `loadBrowserProcessSpecificV8Snapshot`, `grantFileProtocolExtraPrivileges`, `wasmTrapHandlers`.
+  A position past those nine is `#10`, … with value `unknown`; another schema version names no
+  fuse (all `unknown`, and the `fuses` row is `unknown`); positions where two wires disagree are `unknown`.
+- **`asarIntegrity`**: macOS `ElectronAsarIntegrity` in `Contents/Info.plist`, Windows the
+  resource `Integrity/ElectronAsar` of the `.exe`, taken only when that `.exe` holds the Electron
+  marker (Linux: `unknown`, hexvero reads no record there). `covers the loaded archive`, `does not cover the loaded archive` (the record names
+  another archive, as many builds keep Electron's own entry for `Resources/default_app.asar`),
+  `does not cover the loaded app` (Electron loads `app/`, a directory), `no record`, or
+  `unknown`; the detail says whether the fuse `embeddedAsarIntegrityValidation` is on. One row
+  `asarIntegrity:<archive>` per entry with `algorithm`, `hash` and `header`: `matches` or
+  `differs` when the archive's header (read alone, up to 64 MiB) hashes to it or not, `archive
+  absent`, `not compared` (with the reason). Entry paths are normalized, each archive file is
+  hashed once however many entries name it, and at most 64 MiB of headers are hashed per build.
+- **`support`**: `supported`, `past end of support` (on and after the end-of-life date, which is
+  the next stable line's release day) or `prerelease` (an alpha, beta or nightly of a line not
+  yet past), from the end-of-life date of the Electron line in the snapshot of Electron's release
+  data hexvero ships (`packages/core/src/data/electronReleases.ts`, from
+  `releases.electronjs.org`; the detail names the snapshot date and the day it was judged on, "as
+  of <date>", and a date after the snapshot is "planned"). `unknown` when the version was not
+  read or the line is not in the snapshot. It says nothing about vulnerabilities.
+
+Every scan is bounded: a binary over 1 GiB is not scanned (`unknown`, limitation
+`electron_runtime_not_read`), at most 64 occurrences of a marker are kept and at most 4,096
+strings that start like one examined (more make that value `unknown`, with the reason), `Info.plist` and the integrity resource up to 1 MiB, the resource directory up to 32
+MiB. A build without the binary has the rows with `unknown` and the same limitation. An `.asar`
+or app directory opened alone ships no runtime: it has no `runtime` list, and `data.runtime` says
+`shipped: false`, "not shipped in this input".
+
 ## Collections by format
 
-| Format               | Collections                                                                                                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ELF                  | sections, segments, symbols, imports, exports, libraries, goDependencies                                                                                                   |
-| PE                   | sections, imports, exports, libraries, goDependencies; .NET adds types, methods (with IL facts), calls, cil, pinvokes, userStrings, assemblyRefs                           |
-| Mach-O               | segments, sections, symbols, imports, exports, libraries, goDependencies; fat adds slices                                                                                  |
-| WASM                 | imports, exports, types, sections                                                                                                                                          |
-| EVM                  | selectors, instructions, opcodes                                                                                                                                           |
-| SQLite               | tables, columns, indexes, triggers, samples                                                                                                                                |
-| HAR                  | requests, hosts, endpoints                                                                                                                                                 |
-| APK                  | permissions, components, libraries, files, classes, packages, dexFiles                                                                                                     |
-| JAR                  | classes, packages, manifest                                                                                                                                                |
-| Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                                                                           |
-| DEX                  | classes, packages, dexStrings                                                                                                                                              |
-| ZIP                  | files; a ZIP of a packaged Electron build: as Electron / directory                                                                                                         |
-| Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, windows, contextBridge, bridgeExposures, interfaces, navigationHandlers, endpoints, storage, urls, sourceMaps |
-| JavaScript file      | references, ipc, exports, bundleModules, endpoints, routes, storage, urls                                                                                                  |
-| Source map           | sources, packages                                                                                                                                                          |
+| Format               | Collections                                                                                                                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ELF                  | sections, segments, symbols, imports, exports, libraries, goDependencies                                                                                                                                  |
+| PE                   | sections, imports, exports, libraries, goDependencies; .NET adds types, methods (with IL facts), calls, cil, pinvokes, userStrings, assemblyRefs                                                          |
+| Mach-O               | segments, sections, symbols, imports, exports, libraries, goDependencies; fat adds slices                                                                                                                 |
+| WASM                 | imports, exports, types, sections                                                                                                                                                                         |
+| EVM                  | selectors, instructions, opcodes                                                                                                                                                                          |
+| SQLite               | tables, columns, indexes, triggers, samples                                                                                                                                                               |
+| HAR                  | requests, hosts, endpoints                                                                                                                                                                                |
+| APK                  | permissions, components, libraries, files, classes, packages, dexFiles                                                                                                                                    |
+| JAR                  | classes, packages, manifest                                                                                                                                                                               |
+| Java class           | methods, fields, referencedMethods, referencedClasses, constants                                                                                                                                          |
+| DEX                  | classes, packages, dexStrings                                                                                                                                                                             |
+| ZIP                  | files; a ZIP of a packaged Electron build: as Electron / directory                                                                                                                                        |
+| Electron / directory | modules, edges, externals, ipcChannels, ipc, webPreferences, windows, contextBridge, bridgeExposures, interfaces, navigationHandlers, endpoints, storage, urls, sourceMaps; a packaged build adds runtime |
+| JavaScript file      | references, ipc, exports, bundleModules, endpoints, routes, storage, urls                                                                                                                                 |
+| Source map           | sources, packages                                                                                                                                                                                         |
 
 `findings` and `limitations` exist for every format.
 

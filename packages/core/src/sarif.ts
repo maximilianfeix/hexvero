@@ -56,6 +56,12 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       full: "The preload script exposes a privileged object to web content through contextBridge without wrapping it (ipcRenderer or one of its methods, shell, the electron module, a Node module such as fs or child_process, process, require), and the previous build did not. Pages can then use the whole object, not only the calls the app meant to offer. An exposure hexvero could not decide is reported as unknown.",
       help: 'Expose a function that does the one thing pages need (e.g. `send: (msg) => ipcRenderer.send("channel", msg)`) instead of the object. If the exposure is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.',
     },
+    "fuse-weakened": {
+      name: "FuseWeakened",
+      short: "The packaged build's Electron runtime is less locked down than before.",
+      full: "Read from the Electron binary and the bundle's metadata of two packaged builds (a macOS .app, a Windows or Linux install directory, a release ZIP): a fuse moved to its less safe state (runAsNode, nodeOptions or nodeCliInspect on; embeddedAsarIntegrityValidation, onlyLoadAppFromAsar or cookieEncryption off; grantFileProtocolExtraPrivileges on), the ASAR integrity record no longer covers the archive Electron loads, or the Electron line went past its end of support by the release data snapshot hexvero ships (never a claim about vulnerabilities). A state hexvero could not read on one side is reported as unknown.",
+      help: "Flip the fuse back with @electron/fuses when packaging, keep an integrity record for the archive the app loads, or move to a supported Electron line. If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
   };
 
 const uriOf = (file: string): string =>

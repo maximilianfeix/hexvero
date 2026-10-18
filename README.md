@@ -26,7 +26,7 @@ From the two example builds that `npx hexvero demo` copies (NotesDesk 1.4.0 and 
 - **New network hosts and stored keys**: a request to `updates.notesdesk.example` at `main.js:30`; a `localStorage` key `notesdesk.telemetry` read at `renderer/app.bundle.js:15`.
 - **What it could not establish**: `shell:open` is reported as `?` unknown, not as removed, because 1.5.0 builds channel names from an environment variable at `main.js:33`.
 
-A release policy (`hexvero check`) turns these into a CI gate: a new interface member, a new external host, a more permissive window, or a privileged object such as `ipcRenderer` or `fs` handed to pages as it is.
+A release policy (`hexvero check`) turns these into a CI gate: a new interface member, a new external host, a more permissive window, or a privileged object such as `ipcRenderer` or `fs` handed to pages as it is. For a `.app`, an install directory or a release ZIP it also reads the shipped Electron runtime from the binary's bytes (Electron, Chromium and Node versions, fuses, the ASAR integrity record, and whether the Electron line is still supported by a dated snapshot of Electron's release data), and the policy flags a fuse that became less safe ([docs/cli.md](docs/cli.md#the-electron-runtime)).
 
 ![hexvero comparing two builds of an Electron app: counts of changed interfaces, window settings and hosts, the lists that were not compared whole, the window settings to review and the change filters](docs/screenshots/ui-compare.png)
 
@@ -168,7 +168,7 @@ In Claude Code the server and the skill also come as one plugin: `/plugin market
 
 - It reads files and never runs the program, so a finding is what the code contains, not what it does at run time, and not whether anything is exploitable. A passing check means nothing new against the policy in what was read.
 - It misses things and can be wrong ([numbers](docs/accuracy.md)). Absence from a list is weaker evidence than presence.
-- `hexvero check` judges four rules; it is not a vulnerability scanner and a pass is not a security verdict. Content Security Policy, permission handlers, `shell.openExternal` calls and Electron fuses are not checked ([what is not read](docs/electron-findings.md#not-read)).
+- `hexvero check` judges five rules; it is not a vulnerability scanner and a pass is not a security verdict. Content Security Policy, permission handlers and `shell.openExternal` calls are not checked, and fuses only for packaged builds ([what is not read](docs/electron-findings.md#not-read)).
 - Not executing the target is not a safety guarantee: parsing a hostile file still processes attacker-controlled bytes, within size, depth and time limits.
 
 The full list: [docs/accuracy.md](docs/accuracy.md#limits).

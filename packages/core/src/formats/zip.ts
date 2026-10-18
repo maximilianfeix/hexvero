@@ -1,4 +1,4 @@
-import { inflateRawSync } from "node:zlib";
+import { constants as zlib, inflateRawSync } from "node:zlib";
 import { ByteReader, latin1, utf8String } from "../binary/reader.js";
 import { AnalysisError } from "../model.js";
 
@@ -18,6 +18,12 @@ export interface ZipArchive {
   comment: string;
   /** Reads and decompresses one entry, bounded by `maxBytes`. */
   read(entry: ZipEntry, maxBytes?: number): Uint8Array;
+  /**
+   * The first bytes of an entry (at most `length`, up to 64 KiB), without inflating the rest:
+   * a deflated entry is inflated from its first KiB of compressed data only. Null when they
+   * cannot be read. Does not count against the inflate budget (bounded by itself).
+   */
+  head(entry: ZipEntry, length: number): Uint8Array | null;
   find(name: string): ZipEntry | undefined;
   /** Entries a Unix extractor makes symbolic links (the mode in the external attributes). */
   links: ReadonlySet<ZipEntry>;
@@ -116,6 +122,34 @@ export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } =
   const byName = new Map<string, ZipEntry>();
   for (const e of entries) if (!byName.has(e.name)) byName.set(e.name, e);
 
+  /** Where an entry's data starts and its compressed bytes, or null. */
+  const dataOf = (entry: ZipEntry): Uint8Array | null => {
+    if (entry.localHeaderOffset + 30 > bytes.length) return null;
+    const lr = new ByteReader(bytes, entry.localHeaderOffset);
+    if (lr.u32() !== LOCAL) return null;
+    lr.skip(22);
+    const nameLength = lr.u16();
+    const extraLength = lr.u16();
+    const start = lr.offset + nameLength + extraLength;
+    return bytes.subarray(start, start + entry.compressedSize);
+  };
+  const head = (entry: ZipEntry, length: number): Uint8Array | null => {
+    const n = Math.max(0, Math.min(length, 64 << 10));
+    if (entry.encrypted || entry.method === "other") return null;
+    const data = dataOf(entry);
+    if (!data) return null;
+    if (entry.method === "stored") return data.subarray(0, n);
+    try {
+      // 1 KiB of deflate data inflates to about 1 MiB at most
+      const out = inflateRawSync(data.subarray(0, 1024), {
+        finishFlush: zlib.Z_SYNC_FLUSH,
+        maxOutputLength: 2 << 20,
+      });
+      return new Uint8Array(out.buffer, out.byteOffset, Math.min(out.byteLength, n));
+    } catch {
+      return null;
+    }
+  };
   const read = (entry: ZipEntry, maxBytes = 64 * 1024 * 1024): Uint8Array => {
     if (entry.encrypted)
       throw new AnalysisError("unsupported_format", `${entry.name} is encrypted`);
@@ -164,6 +198,7 @@ export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } =
     entries,
     comment,
     read,
+    head,
     find: (name) => byName.get(name),
     links,
   };

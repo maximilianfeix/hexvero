@@ -67,7 +67,7 @@ Commands
                                                 excerpts and filters, anything else Markdown
   check <before> <after> --policy <file>        Apply a release policy (new interface members, new
         [--baseline file] [--update-baseline]   external hosts, more permissive windows, privileged
-                                                objects handed to pages); exit 0
+                                                objects handed to pages, weakened fuses); exit 0
         [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
         [--out file] [--force]                  the result (never over a file without --force)
   init [build] [--out file] [--force]           Write a starting policy to .hexvero/policy.json
@@ -273,6 +273,21 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           : `${heading(io, printable(shown))}\n  ${paint(io, "dim", facts)}`,
       );
       io.out(`\n${heading(io, "Summary")}\n  ${printable(analysis.summary)}`);
+      // the Electron runtime of a packaged build (the `runtime` list has every row)
+      const runtime = analysis.data.kind === "javascript-app" ? analysis.data.runtime : undefined;
+      if (runtime?.shipped) {
+        const support = runtime.rows.find((r) => r.item === "support");
+        const fuses = Object.entries(runtime.fuses);
+        io.out(
+          `\n${heading(io, "Runtime")}\n  Electron ${printable(runtime.electron)} · Chromium ${printable(runtime.chromium)} · Node ${printable(runtime.node)}${
+            runtime.binary
+              ? `\n  ${paint(io, "dim", `read from ${printable(runtime.binary)}`)}`
+              : ""
+          }\n  support: ${printable(support?.detail ?? runtime.support)}\n  fuses: ${
+            fuses.length ? fuses.map(([name, state]) => `${name} ${state}`).join(", ") : "unknown"
+          }\n  ASAR integrity: ${printable(runtime.asarIntegrity)}`,
+        );
+      }
       if (coverage && !coverage.complete && coverage.remaining === 0)
         io.out(
           `\n${heading(io, "Coverage")}\n  ${paint(io, "yellow", "incomplete")}: ${coverage.skipped} of ${coverage.total} JavaScript files could not be read (see Limitations). Everything below covers the rest only.`,
@@ -320,7 +335,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "list": {
       const target = await session.open(need(0, "path"));
       const page = await session.collection(target.id, need(1, "collection"), paging());
-      const partial = await session.partial(target.id);
+      const partial = await session.partial(target.id, page.collection);
       if (json) {
         io.out(toJson(partial ? { ...page, partial } : page));
         return 0;
@@ -553,7 +568,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         session.analyze(a.id).then((x) => x.limitations.length),
         session.analyze(b.id).then((x) => x.limitations.length),
       ]);
-      const partial = { a: await session.partial(a.id), b: await session.partial(b.id) };
+      const partial = {
+        a: await session.partial(a.id, name),
+        b: await session.partial(b.id, name),
+      };
       const { completeness } = diff;
       // compared only in part: a side exceeded the comparison budget
       const truncated = completeness.gaps.includes("budget");

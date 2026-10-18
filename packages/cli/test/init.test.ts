@@ -49,6 +49,7 @@ describe("hexvero init (#197)", () => {
         "fail",
         "fail",
         "fail",
+        "fail",
       ]);
       expect(loaded.policy.unknown).toBe("fail");
       const again = capture();
