@@ -1518,7 +1518,7 @@ export class ExpressionResolver {
     if (this.is(k - 1, "ident", "of") && this.punct(listed, ")")) {
       const close = listed;
       const open = this.opener[close]!;
-      if (open > 0 && this.is(open - 1, "ident", "for")) {
+      if (open > 0 && this.forParen(open)) {
         let v = open + 1;
         if (/^(const|let|var)$/.test(tokens[v]?.value ?? "")) v++;
         const names: string[] = [];
@@ -1526,7 +1526,7 @@ export class ExpressionResolver {
         else if ((this.punct(v, "[") || this.punct(v, "{")) && this.match[v] === k - 2)
           for (let p = v + 1; p < k - 2; p++)
             if (this.is(p, "ident") && !this.punct(p + 1, ":")) names.push(tokens[p]!.value);
-        const end = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
+        const end = this.forBodyEnd(close);
         for (const name of names) if (this.writesMember(name, close + 1, end)) return true;
       }
     }
@@ -4218,9 +4218,8 @@ export class ExpressionResolver {
       } else if (t.value === "{" || t.value === "[") return [i, this.match[i]!];
       else if (t.value === "(") {
         const close = this.match[i]!;
-        if (!this.is(i - 1, "ident", "for") || close === -1) return [i, close];
-        const body = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
-        return [i, Math.max(close, body)];
+        if (!this.forParen(i) || close === -1) return [i, close];
+        return [i, Math.max(close, this.forBodyOrExpressionEnd(close))];
       }
     }
     return null;
@@ -4344,12 +4343,15 @@ export class ExpressionResolver {
     for (let j = start - 1; j >= 0 && j > start - 4000; j--) {
       // the walk back is charged to the file's work, so the questions together stay bounded
       if (this.work-- <= 0) return null;
-      if (!this.is(j, "ident", "for") || !this.punct(j + 1, "(")) continue;
-      const close = this.match[j + 1]!;
+      if (!this.is(j, "ident", "for")) continue;
+      // `for (…)`, `for await (…)`
+      const head = this.punct(j + 1, "(") ? j + 1 : this.is(j + 1, "ident", "await") ? j + 2 : -1;
+      if (head === -1 || !this.punct(head, "(")) continue;
+      const close = this.match[head]!;
       if (close === -1) continue;
-      const bodyEnd = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
+      const bodyEnd = this.forBodyEnd(close);
       if (!(close < start && end <= bodyEnd + 1)) continue;
-      let p = j + 2;
+      let p = head + 1;
       if (this.is(p, "ident", "const") || this.is(p, "ident", "let") || this.is(p, "ident", "var"))
         p++;
       const patternEnd = this.punct(p, "[") || this.punct(p, "{") ? this.match[p]! + 1 : p + 1;
@@ -5341,6 +5343,28 @@ export class ExpressionResolver {
   }
 
   /**
+   * The name at k means the same binding as the name at `at` (as `for (NAME of …)` without a
+   * declaration of its own assigns it): the same declaration, or the same function's parameter
+   * or no binding at all with no function between them that has a parameter of the name.
+   */
+  sameBinding(k: number, name: string, at: number): boolean {
+    const a = this.boundAround(k, name);
+    const b = this.boundAround(at, name);
+    if (a?.kind === "local" || b?.kind === "local")
+      return a?.kind === "local" && b?.kind === "local" && !!a.site && a.site.name === b.site?.name;
+    if (a?.kind !== b?.kind) return false;
+    // a parameter (or no binding) on both sides: no block declaration of the name around one only
+    if (this.covered(k, name, -2) !== this.covered(at, name, -2)) return false;
+    const home = this.enclosing(at);
+    for (let d = this.enclosing(k), guard = 0; d !== home; guard++) {
+      if (!d || guard >= 64) return false;
+      if (this.paramIndex(d, name) !== -1) return false;
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    return true;
+  }
+
+  /**
    * How the name at k is bound around it: `param` (a parameter of a function around k, also in a
    * parameter list k stands in), `local` (a declaration, pattern, `for … of` head or `catch`
    * visible at k; `site` is the innermost such declaration, absent for `catch`), or null.
@@ -5548,6 +5572,142 @@ export class ExpressionResolver {
     return this.opener[k] ?? -1;
   }
 
+  /** The parenthesis at `open` is the head of a `for (…)` or `for await (…)`. */
+  forParen(open: number): boolean {
+    return (
+      this.punct(open, "(") &&
+      (this.is(open - 1, "ident", "for") ||
+        (this.is(open - 1, "ident", "await") && this.is(open - 2, "ident", "for")))
+    );
+  }
+
+  /**
+   * Where the body of the `for (…)` whose head closes at `close` ends: the token of its last
+   * `}` or `;`, or the one before what follows it. The body is one statement: a block, an
+   * `if … else …`, a nested loop, `do … while (…)`, `try`, `switch`, a labeled statement, or
+   * expressions (also joined with commas, as a minifier writes them) up to `;`, a closing
+   * bracket, or a line break that starts a new statement (code without semicolons).
+   */
+  forBodyEnd(close: number): number {
+    const next = this.statementNext(close + 1, 0);
+    return next === -1 ? -1 : next - 1;
+  }
+
+  /** `forBodyEnd`, or where the expression after the head ends when the body is not read. */
+  private forBodyOrExpressionEnd(close: number): number {
+    const end = this.forBodyEnd(close);
+    return end !== -1 ? end : this.exprEnd(close + 1);
+  }
+
+  /** The token after the statement that starts at k (-1: not read). */
+  private statementNext(k: number, depth: number): number {
+    const n = this.tokens.length;
+    if (k >= n || depth > 64) return -1;
+    const t = this.tokens[k]!;
+    const after = (open: number): number => {
+      const m = this.match[open] ?? -1;
+      return m === -1 ? -1 : m + 1;
+    };
+    if (t.type === "punct") {
+      if (t.value === "{") return after(k);
+      if (t.value === ";") return k + 1;
+    }
+    if (t.type === "ident" && !this.punct(k + 1, ".") && !this.punct(k + 1, "?.")) {
+      const head = (at: number): number => (this.punct(at, "(") ? after(at) : -1);
+      switch (t.value) {
+        case "if": {
+          const c = head(k + 1);
+          if (c === -1) return -1;
+          const body = this.statementNext(c, depth + 1);
+          return body !== -1 && this.is(body, "ident", "else")
+            ? this.statementNext(body + 1, depth + 1)
+            : body;
+        }
+        case "for":
+        case "while":
+        case "with": {
+          const c = head(this.is(k + 1, "ident", "await") ? k + 2 : k + 1);
+          return c === -1 ? -1 : this.statementNext(c, depth + 1);
+        }
+        case "do": {
+          const body = this.statementNext(k + 1, depth + 1);
+          if (body === -1 || !this.is(body, "ident", "while")) return -1;
+          const c = head(body + 1);
+          return c !== -1 && this.punct(c, ";") ? c + 1 : c;
+        }
+        case "switch": {
+          const c = head(k + 1);
+          return c !== -1 && this.punct(c, "{") ? after(c) : -1;
+        }
+        case "try": {
+          if (!this.punct(k + 1, "{")) return -1;
+          let j = after(k + 1);
+          if (j !== -1 && this.is(j, "ident", "catch")) {
+            if (this.punct(j + 1, "(")) j = after(j + 1);
+            else j++;
+            j = j !== -1 && this.punct(j, "{") ? after(j) : -1;
+          }
+          if (j !== -1 && this.is(j, "ident", "finally"))
+            j = this.punct(j + 1, "{") ? after(j + 1) : -1;
+          return j;
+        }
+      }
+      // `label: statement`
+      if (this.punct(k + 1, ":") && !STATEMENT_WORDS.has(t.value))
+        return this.statementNext(k + 2, depth + 1);
+    }
+    // expressions, joined with commas
+    const limit = Math.min(n, k + 20_000);
+    for (let j = k; j < limit; j++) {
+      const p = this.tokens[j]!;
+      if (p.type !== "punct") {
+        // a line break after a complete value before a word, name or literal: a new statement
+        if (
+          j > k &&
+          p.type !== "template" &&
+          p.line !== this.tokens[j - 1]!.line &&
+          !(p.type === "ident" && /^(in|of|instanceof)$/.test(p.value)) &&
+          this.endsValue(j - 1)
+        )
+          return j;
+        // `return` and `yield` before a line break end the statement (restricted productions)
+        if (
+          p.type === "ident" &&
+          (p.value === "return" || p.value === "yield") &&
+          (j + 1 >= n || this.tokens[j + 1]!.line !== p.line)
+        )
+          return j + 1;
+        continue;
+      }
+      // a prefix `++`, `--`, `!` or `~` at the start of a line after a complete value: a new
+      // statement (`a\n++b`; `a !b` is no expression)
+      if (
+        (p.value === "++" || p.value === "--" || p.value === "!" || p.value === "~") &&
+        j > k &&
+        p.line !== this.tokens[j - 1]!.line &&
+        this.endsValue(j - 1)
+      )
+        return j;
+      if (p.value === "{" || p.value === "(" || p.value === "[") {
+        const m = this.match[j]!;
+        if (m === -1) return -1;
+        // an arrow's block body is never called: a line break after it ends the statement
+        if (
+          p.value === "{" &&
+          this.punct(j - 1, "=>") &&
+          m + 1 < n &&
+          this.tokens[m + 1]!.line !== this.tokens[m]!.line &&
+          !(this.tokens[m + 1]!.type === "punct" && /^[,;)\]}]$/.test(this.tokens[m + 1]!.value))
+        )
+          return m + 1;
+        j = m;
+      } else if (p.value === "}" || p.value === ")" || p.value === "]") return j;
+      else if (p.value === ";") return j + 1;
+    }
+    // the end of the file ends the statement; the cap leaves it unread
+    return limit === n ? n : -1;
+  }
+
   /** Where the expression that starts at k ends (exclusive): the next top-level `,`, `;` or closing bracket. */
   endOf(k: number): number {
     return this.exprEnd(k);
@@ -5743,9 +5903,8 @@ export class ExpressionResolver {
     const p = this.s.parents![j]!;
     if (p === -1 || (d && p <= d.body[0])) return null;
     const close = this.match[p]!;
-    if (this.punct(p, "(") && this.is(p - 1, "ident", "for") && close !== -1) {
-      const body = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
-      return [p, Math.max(close, body)];
+    if (this.punct(p, "(") && this.forParen(p) && close !== -1) {
+      return [p, Math.max(close, this.forBodyOrExpressionEnd(close))];
     }
     return [p, close];
   }

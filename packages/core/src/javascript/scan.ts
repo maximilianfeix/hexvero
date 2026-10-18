@@ -1337,8 +1337,26 @@ export function scanJavaScript(
   };
 
   /**
-   * The keys of the object a loop variable runs over, when `name` is bound by
-   * `Object.entries(T)`, `Object.keys(T)` or `in T` shortly before token k.
+   * The loop variable at `nameAt`, in the head of a `for (…)`, is what the name at `use` reads:
+   * `use` is in that loop's body, and the name there means that variable, not a parameter, a
+   * declaration or another loop's variable of the same name (#209: a minifier reuses short names).
+   */
+  const ownLoopVariable = (use: number, name: string, nameAt: number): boolean => {
+    const r = (resolver ??= new ExpressionResolver(tokens, constants));
+    let open = r.bracketAround(nameAt);
+    for (let s = 0; open > 0 && s < 4 && !is(open, "punct", "("); s++) open = r.bracketAround(open);
+    if (open <= 0 || !r.forParen(open)) return false;
+    const close = r.closeOf(open);
+    if (close === -1 || use <= close) return false;
+    const end = r.forBodyEnd(close);
+    if (end === -1 || use >= end) return false;
+    const declared = is(open + 1, "ident") && /^(const|let|var)$/.test(at(open + 1)!.value);
+    return declared ? r.refersTo(use, name, nameAt) : r.sameBinding(use, name, nameAt);
+  };
+  /**
+   * The keys of the object a loop variable runs over, when the name read at k + 4 is the loop
+   * variable of `Object.entries(T)`, `Object.keys(T)` or `in T` of a loop shortly before k that
+   * holds k.
    */
   const tableKeys = (k: number, name: string): string[] => {
     for (let j = k - 1; j >= 4 && j > k - 40; j--) {
@@ -1353,27 +1371,31 @@ export function scanJavaScript(
       ) {
         const entries = is(j + 2, "ident", "entries");
         const keys = is(j + 2, "ident", "keys");
-        const bound = entries
+        const nameAt = entries
           ? is(j - 2, "punct", "]")
-            ? firstOfPattern(j - 2) === name
-            : false
-          : keys && is(j - 2, "ident", name);
-        return bound ? constants.keysOf(at(j + 4)!.value, j + 4) : [];
+            ? firstAt(j - 2)
+            : -1
+          : keys && is(j - 2, "ident")
+            ? j - 2
+            : -1;
+        if (nameAt !== -1 && at(nameAt)!.value === name && ownLoopVariable(k + 4, name, nameAt))
+          return constants.keysOf(at(j + 4)!.value, j + 4);
       }
       // `name in T)`
       if (
         is(j, "ident", "in") &&
         is(j - 1, "ident", name) &&
         is(j + 1, "ident") &&
-        is(j + 2, "punct", ")")
+        is(j + 2, "punct", ")") &&
+        ownLoopVariable(k + 4, name, j - 1)
       )
         return constants.keysOf(at(j + 1)!.value, j + 1);
     }
     return [];
   };
   /**
-   * For `for (const [name, …] of T)` shortly before token k: the first elements of the pairs of
-   * the list T, resolved. Empty when T is no list of pairs declared in this file.
+   * For `for (const [name, …] of T)` shortly before token k, holding it: the first elements of
+   * the pairs of the list T, resolved. Empty when T is no list of pairs declared in this file.
    */
   const pairList = (k: number, name: string): ReturnType<Constants["pairFirsts"]> => {
     for (let j = k - 1; j >= 4 && j > k - 40; j--)
@@ -1381,17 +1403,19 @@ export function scanJavaScript(
         is(j, "ident") &&
         is(j + 1, "punct", ")") &&
         is(j - 1, "ident", "of") &&
-        is(j - 2, "punct", "]") &&
-        firstOfPattern(j - 2) === name
-      )
-        return constants.pairFirsts(at(j)!.value, j);
+        is(j - 2, "punct", "]")
+      ) {
+        const nameAt = firstAt(j - 2);
+        if (nameAt !== -1 && at(nameAt)!.value === name && ownLoopVariable(k + 4, name, nameAt))
+          return constants.pairFirsts(at(j)!.value, j);
+      }
     return [];
   };
-  /** The first name of the array pattern that closes at `close`: `[id, fn]` gives `id`. */
-  const firstOfPattern = (close: number): string | null => {
+  /** The token of the first name of the array pattern that closes at `close`, or -1. */
+  const firstAt = (close: number): number => {
     for (let j = close - 1; j >= 0 && j > close - 12; j--)
-      if (is(j, "punct", "[")) return is(j + 1, "ident") ? at(j + 1)!.value : null;
-    return null;
+      if (is(j, "punct", "[")) return is(j + 1, "ident") ? j + 1 : -1;
+    return -1;
   };
 
   /**
