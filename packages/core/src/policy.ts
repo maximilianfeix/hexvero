@@ -20,6 +20,7 @@
  */
 import { createHash } from "node:crypto";
 import { AnalysisError } from "./model.js";
+import { directoryDigest } from "./target.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
 import { UNRESOLVED_LIMITATIONS, type Session, type TargetRecord } from "./session.js";
 
@@ -1310,7 +1311,40 @@ export async function checkRelease(
       "invalid_input",
       `hexvero check compares two builds of the same kind; before is ${sides.kind.a}, after is ${sides.kind.b}`,
     );
-  const comparison = await comparisonForCheck(session, idA, idB);
+  // An app with nothing hexvero could read (an empty directory, one without JavaScript, files
+  // that are only links out of it) would pass every rule for lack of findings: refuse it.
+  if (sides.kind.a === "javascript-app")
+    for (const side of ["a", "b"] as const) {
+      const id = side === "a" ? idA : idB;
+      const { data } = await session.analyze(id);
+      if (data.kind !== "javascript-app") continue;
+      const app = data.app;
+      const why =
+        app.modules.length === 0
+          ? "has no JavaScript module hexvero could read (an empty directory, no .js files, or only links that lead out of it)"
+          : app.package === null
+            ? "has no package.json, so it is not an application hexvero can check"
+            : null;
+      if (why)
+        throw new AnalysisError(
+          "invalid_input",
+          `nothing to check: the ${side === "a" ? "before" : "after"} build ${session.get(id).info.path} ${why}`,
+          { side },
+        );
+    }
+  let comparison = await comparisonForCheck(session, idA, idB);
+  // A directory has no file digest; give it a content digest so a baseline can tell its builds.
+  for (const side of ["a", "b"] as const) {
+    const info = comparison[side].info;
+    if (info.format === "directory" && !info.sha256)
+      comparison = {
+        ...comparison,
+        [side]: {
+          ...comparison[side],
+          info: { ...info, sha256: await directoryDigest(info.path) },
+        },
+      };
+  }
   return evaluatePolicy(comparison, policy, { ...options, sides: options.sides ?? sides });
 }
 

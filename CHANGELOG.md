@@ -12,6 +12,7 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Fixed
 
+- `check` (CLI, MCP `hexvero_check`): a build with nothing to read, an empty directory, a directory without JavaScript, one whose JavaScript files are only symbolic links out of it, or one without `package.json`, is refused with exit `1` instead of passing with exit `0`. App directories get a content digest in `a.sha256` / `b.sha256` (it was empty), so a baseline written against other builds warns for them too.
 - `recover` and `hexvero_recover`: module and source names from the analyzed bundle no longer create hidden files or directories in the output directory; a leading dot in a path segment becomes `_` (`./.ssh/authorized_keys` → `_ssh/authorized_keys.js`), as docs/mcp.md already said. An output directory that is a symbolic link to a missing location is refused as `invalid_input` instead of failing with `internal`.
 
 ### Electron analysis
