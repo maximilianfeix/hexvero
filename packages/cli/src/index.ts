@@ -21,6 +21,7 @@ import {
   type ProviderOperation,
 } from "@hexvero/core";
 import { flagNumber, flagString, parseArgs, UsageError, type ParsedArgs } from "./args.js";
+import { buildNames } from "./names.js";
 import {
   suggest,
   formatFindings,
@@ -442,6 +443,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         const own = new Set(["findings", "limitations"]);
         const differing = all.collections.filter((c) => differs(c) && !own.has(c.collection));
         const ownDiffering = all.collections.filter((c) => differs(c) && own.has(c.collection));
+        const names = await buildNames(session, a.id, b.id);
         io.out(
           heading(
             io,
@@ -452,6 +454,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             }`,
           ),
         );
+        // both builds have the same file name (two app.asar): say which is which
+        if (names.sameName)
+          io.out(paint(io, "dim", `  a ${printable(names.a)} · b ${printable(names.b)}`));
         for (const row of table(
           all.collections.map((c) => ({
             collection: c.collection,

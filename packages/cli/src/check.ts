@@ -21,6 +21,7 @@ import {
 import { flagString, UsageError, type ParsedArgs } from "./args.js";
 import { paint, toJson, type Io } from "./format.js";
 import { DEFAULT_POLICY_PATH } from "./init.js";
+import { buildNames } from "./names.js";
 
 const FORMATS = ["text", "json", "markdown", "sarif"] as const;
 type Format = (typeof FORMATS)[number];
@@ -44,14 +45,19 @@ const STATE_MARK: Record<PolicyFinding["state"], string> = {
 };
 
 /** The result for a terminal: status first, then each finding with where it was read. */
-export function formatCheck(io: Io, r: PolicyResult, policy?: Policy): string {
+export function formatCheck(
+  io: Io,
+  r: PolicyResult,
+  policy?: Policy,
+  names: { a: string; b: string } = { a: baseName(r.a.path), b: baseName(r.b.path) },
+): string {
   const color = r.status === "pass" ? "green" : r.status === "fail" ? "red" : "yellow";
   const lines = [
     `${paint(io, "bold", "hexvero check")} ${paint(io, color, STATUS_TEXT[r.status])}`,
     paint(
       io,
       "dim",
-      `  before ${safe(baseName(r.a.path))} · after ${safe(baseName(r.b.path))} · policy ${safe(baseName(r.policy.file))}`,
+      `  before ${safe(names.a)} · after ${safe(names.b)} · policy ${safe(baseName(r.policy.file))}`,
     ),
     "",
   ];
@@ -170,7 +176,13 @@ export function nextSteps(r: PolicyResult, policy?: Policy): string[] {
   return out;
 }
 
-function render(io: Io, result: PolicyResult, format: Format, policy: Policy): string {
+function render(
+  io: Io,
+  result: PolicyResult,
+  format: Format,
+  policy: Policy,
+  names: { a: string; b: string },
+): string {
   const { unknown } = policy;
   switch (format) {
     case "json":
@@ -180,7 +192,7 @@ function render(io: Io, result: PolicyResult, format: Format, policy: Policy): s
     case "sarif":
       return toJson(toSarif(result, { version: CORE_VERSION, unknown }));
     case "text":
-      return formatCheck(io, result, policy);
+      return formatCheck(io, result, policy, names);
   }
 }
 
@@ -266,7 +278,13 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
     );
   }
 
-  const text = render(out ? { ...io, color: false } : io, result, format, policy.policy);
+  const text = render(
+    out ? { ...io, color: false } : io,
+    result,
+    format,
+    policy.policy,
+    await buildNames(session, a.id, b.id),
+  );
   if (out) {
     try {
       await writeFile(out, `${text}\n`, { flag: force ? "w" : "wx" });

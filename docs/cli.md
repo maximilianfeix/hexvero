@@ -112,6 +112,8 @@ the baseline, so a deadline set in the policy cannot be bypassed by an older bas
 is: active suppression (`suppressed`), expired suppression (`suppression-expired`, counts), in
 the baseline (`baselined`), otherwise `new`.
 
+**Names of the builds.** The text output of `check` names the builds by file name (`before notesdesk-1.4.0.asar · after notesdesk-1.5.0.asar`). When both have the same name (two `app.asar`, two `.app` bundles), it adds the app's `package.json` name and version (`before app.asar (notes 1.0.0) · after app.asar (notes 2.0.0)`), or, when those read the same, as many parent directories as tell them apart (`before build-old/out/app.asar`); `compare` without a collection prints the same names under its first line (`a … · b …`).
+
 **Output.** Text, `--format json` (the `PolicyResult`), `--format markdown` (for a pull request
 comment or job summary) and `--format sarif` (SARIF 2.1.0) all come from the same result.
 `--out file` writes it to a file and prints a one-line status; an existing file is replaced only
