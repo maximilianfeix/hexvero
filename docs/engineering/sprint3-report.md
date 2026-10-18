@@ -110,9 +110,9 @@ window).
 
 - Issues filed this sprint and still open: #208 (CLI outputs follow a symlinked parent), #210
   (literal-key reads through containers), #211 (recover's after-open check, verify through the MCP
-  handler), #216/#217 (Electron 45 prereleases' package.json rule), #227 (a wrapper parameter
-  hidden by a block declaration), #229 (page IPC rows reported removed when a bridge value is not
-  read; also on 0.9.8). Closed in round 3 and 4: #209, #219, #225.
+  handler), #216/#217 (Electron 45 prereleases' package.json rule), #235 (a
+  bridge member from a bare package import read as known), #237 (wrapper follow-ups). Closed in
+  rounds 3 to 5: #209, #219, #225, #227, #229, #231.
 - Features researched, not built: protocols and their privileges, permission handlers, the
   update channel, sub-commands multiplexed on one channel, MessagePort
   RPC, SBOM and package diff, a GitHub Action with PR comments, folding duplicate rows in the
@@ -120,7 +120,7 @@ window).
 - Maintainer decisions: a security advisory for the MCP export fix in 0.9.9; the GitHub repo
   description proposed in #213.
 
-## 8. Rounds 3 and 4 (after 0.10.0)
+## 8. Rounds 3 to 5 (after 0.10.0)
 
 Each change had a second reader; every one needed a second round.
 
@@ -154,7 +154,16 @@ Each change had a second reader; every one needed a second round.
   accepts either quote (#231, #232). npx 0.11.0 demo, check exit 3, compare --report 33,302 bytes
   from an empty cache; Pages on 0.11.0; the MCP registry publish failed once on a registry-side
   database error and passed on re-run.
-- Second readers in rounds 3 and 4 again found a fail-open point in every change; none passed in
+- Round 5 (18:05–18:35Z), two fixes from the reviews' follow-ups, each with RZ as second reader
+  (yes in the first round, the gaps it found filed): #234 (#229) page IPC rows through a bridge
+  that was not read whole open as unknown, not removed; real removals and other apis unchanged,
+  the Fiddle compare byte-identical. #236 (#227, JS_SCAN_SCHEMA 35) a wrapper parameter hidden by a
+  nearer declaration is not forwarded (four false rows gone, three true rows recovered, one rare
+  `var ch = ch` form lost, #237); undecided keeps the row with the file-scoped limitation
+  `ipc_wrapper_param_undecided`. Corpus observations identical on all 66 inputs. Released as
+  **0.11.1** (run 39154171682, 18:31Z; npx demo, check exit 3, compare --report 33,302 bytes,
+  Pages, MCP registry).
+- Second readers in rounds 3 to 5 again found a fail-open point in every change; none passed in
   its first round.
 
 ## 9. Metrics (same commands as before)
