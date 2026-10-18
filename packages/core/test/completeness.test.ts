@@ -225,9 +225,15 @@ describe("a guess is not reported as a fact", () => {
   });
 
   it("reads table keys as channels only when the loop variable is the key and is passed as it is", () => {
+    // `CH[k]` is the value under the key, read per key: the channel is "doc:save", never "SAVE"
     expect(
       ipc(
         'const CH = { SAVE: "doc:save" };\nfor (const k of Object.keys(CH)) { ipcMain.on(CH[k], f); }',
+      ),
+    ).toEqual(["ipcMain.on doc:save"]);
+    expect(
+      ipc(
+        'const CH = { SAVE: "doc:save" };\nfor (const k of Object.keys(CH)) { ipcMain.on(CH[k + "x"], f); }',
       ),
     ).toEqual([]);
     // A string method outside the evaluation subset is not read …

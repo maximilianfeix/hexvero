@@ -23,11 +23,47 @@ import type { ExpressionResolver, FnDef } from "./resolve.js";
 import type { Candidate } from "./candidates.js";
 import type { IpcUsage, Token } from "./scan.js";
 
+/**
+ * An IPC call on a parameter of a function or method, `ipc.handle(C.GET, …)` inside
+ * `register(ipc) { … }`: the parameter is ipcMain (or ipcRenderer) when every call site passes it.
+ * The channel is read at the call inside, as the scan reads one.
+ */
+export interface ObjectCall {
+  /** `handle`, `on`, `send`, … */
+  method: string;
+  line: number;
+  channel: string | null;
+  channelRef?: IpcUsage["channelRef"];
+  /** For a call that sends: the payload shape (see `IpcUsage.args`). */
+  args?: string;
+  /**
+   * The call looks like IPC: the parameter's name says `ipc`, or the method is one only IPC
+   * objects have (`handle`, `handleOnce`, `invoke`, `sendSync`). Only such functions are offered
+   * to other modules (`facts`); one in a module another module imports that does not look like
+   * IPC gives no rows (its calls there are not read).
+   */
+  ipcLike?: true;
+}
+
+/** Methods only IPC objects have, of those read on a parameter. */
+const IPC_ONLY_METHODS: ReadonlySet<string> = new Set([
+  "handle",
+  "handleOnce",
+  "invoke",
+  "sendSync",
+]);
+
 /** One IPC call a wrapper method makes with one of its parameters, whole, as the channel. */
 export interface Forward {
   api: string;
-  /** The parameter that is the channel. */
+  /** The parameter that is the channel (with `object`: the parameter that is the IPC object). */
   index: number;
+  /**
+   * Not a channel: parameter `index` is the IPC object, and this is the call made on it. Such a
+   * forward gives no row at a call of the method; the call sites decide what the object is
+   * (`WrapperReader.objectSites`).
+   */
+  object?: ObjectCall;
   /**
    * A storage key instead of a channel (`api` is then the storage kind): the token where the
    * key expression of the storage call inside the method starts, which reads parameter `index`,
@@ -64,6 +100,33 @@ export interface WrapperFacts {
   classes: Array<Omit<WrapperClass, "file">>;
   /** export key (`""`: `module.exports` itself) -> a wrapper class, or an instance of one */
   exports: Record<string, { kind: "cls" | "inst"; id: string }>;
+  /** Export keys of plain functions with a parameter used as the IPC object (`ObjectCall`). */
+  fns?: string[];
+}
+
+/**
+ * Which call sites of functions and methods with an IPC object parameter the cross-file stage may
+ * have missed: of methods (calls on instances; an importer not read, or the reading budget used
+ * up), of plain functions (also: more calls of other modules' functions than are read).
+ */
+export interface ObjectsCut {
+  methods: boolean;
+  fns: boolean;
+}
+
+/**
+ * A call site of a function or method with a parameter used as the IPC object, and what it
+ * passes for it: `ipcMain`, `ipcRenderer`, or null (something else, or not read).
+ */
+export interface ObjectSite {
+  /** The module that defines the function; "" for the file being read. */
+  home: string;
+  /** `<class id>.<method>`, or `fn@<token>` for a plain function. */
+  key: string;
+  index: number;
+  /** Where the call is: `<file>:<token>` ("" for the file being read). */
+  site: string;
+  target: string | null;
 }
 
 /** What an expression is, as far as wrappers are concerned. */
@@ -76,8 +139,29 @@ export type WrapperValue =
   | { kind: "xfn"; file: string; key: string }
   /** Another module's exports (`require("./x")`, `import * as x`). */
   | { kind: "module"; specifier: string }
-  /** A bundler's module object in this file (`i(76675)`, `require_x()`): its members are keys. */
-  | { kind: "bundle" };
+  /**
+   * A bundler's module object in this file (`i(76675)`, `require_x()`): its members are keys.
+   * `callee`: the function called, for `require_x()`.
+   */
+  | { kind: "bundle"; callee?: string }
+  /** ipcMain or ipcRenderer itself (`target`), or another name for it. */
+  | { kind: "ipc"; target: string };
+
+/**
+ * A function or method of a file with a parameter used as the IPC object, the calls made on it,
+ * and the call sites the file itself has (see `WrapperReader.objectSites`). The application stage
+ * adds the call sites of other modules and gives the calls as IPC rows of ipcMain (or
+ * ipcRenderer) only when every call site passes that object.
+ */
+export interface ParamIpc {
+  /** `<class id>.<method>` or `fn@<token>`, as `ObjectSite.key`. */
+  key: string;
+  /** `Class.method` or the function's name, as the rows' `wrapper`. */
+  label: string;
+  index: number;
+  calls: ObjectCall[];
+  sites: Array<{ site: string; target: string | null }>;
+}
 
 /** A row the reader found, with the token of its channel argument. */
 export interface WrapperRow {
@@ -93,6 +177,8 @@ export interface WrapperRow {
 export type ExternalLookup = (specifier: string, key: string) => WrapperValue | null;
 
 const MAX_SITES = 64;
+/** Work for reading the functions with an IPC object parameter of one file, and their calls. */
+const OBJECT_WORK = 400_000;
 /** Work for reading the receivers of member writes in one file (`replacements`). */
 const REPLACEMENT_WORK = 200_000;
 /** Work of the replacement scan of one application: tokens of the files opened plus receivers. */
@@ -146,7 +232,8 @@ const same = (a: WrapperValue, b: WrapperValue): boolean => {
   if (a.kind === "fn" && b.kind === "fn") return a.def === b.def;
   if (a.kind === "xfn" && b.kind === "xfn") return a.file === b.file && a.key === b.key;
   if (a.kind === "module" && b.kind === "module") return a.specifier === b.specifier;
-  return a.kind === "bundle";
+  if (a.kind === "ipc" && b.kind === "ipc") return a.target === b.target;
+  return a.kind === "bundle" && b.kind === "bundle" && a.callee === b.callee;
 };
 
 /** A minifier's name says nothing; the export key it is reached through says more. */
@@ -180,6 +267,8 @@ export class WrapperReader {
     private readonly constants: Constants,
     private readonly external: ExternalLookup | null = null,
     private readonly file = "",
+    /** `ipcMain` or `ipcRenderer` when the identifier at k is (another name for) one; else null. */
+    private readonly ipcAt: ((k: number) => string | null) | null = null,
   ) {}
 
   private is(k: number, type: Token["type"], value?: string): boolean {
@@ -509,7 +598,13 @@ export class WrapperReader {
     const forwards = Object.hasOwn(cls.methods, def.name) ? cls.methods[def.name]! : [];
     if (
       !forwards.some(
-        (f) => f.api === forward.api && f.index === forward.index && f.key?.at === forward.key?.at,
+        (f) =>
+          f.api === forward.api &&
+          f.index === forward.index &&
+          f.key?.at === forward.key?.at &&
+          f.object?.line === forward.object?.line &&
+          f.object?.channel === forward.object?.channel &&
+          JSON.stringify(f.object?.channelRef) === JSON.stringify(forward.object?.channelRef),
       )
     )
       forwards.push(forward);
@@ -550,6 +645,31 @@ export class WrapperReader {
         (before?.type === "punct" && (before.value === "++" || before.value === "--"))
       )
         return true;
+      // `for (ipc of …)`, `for (ipc in …)`: bound again in each round
+      if (
+        (this.is(j + 1, "ident", "of") || this.is(j + 1, "ident", "in")) &&
+        this.punct(j - 1, "(") &&
+        this.is(j - 2, "ident", "for")
+      )
+        return true;
+      // `({ ipc } = …)`, `[ipc] = …`, `({ a: ipc } = …)`: a destructuring assignment
+      if (
+        this.punct(j - 1, "[") ||
+        this.punct(j - 1, ",") ||
+        this.punct(j - 1, "{") ||
+        this.punct(j - 1, ":")
+      ) {
+        const open = this.container(j);
+        const close = open === -1 ? -1 : this.r.closeOf(open);
+        const word = this.tokens[open - 1];
+        if (
+          close !== -1 &&
+          (this.punct(open, "{") || this.punct(open, "[")) &&
+          this.punct(close + 1, "=") &&
+          !(word?.type === "ident" && /^(const|let|var)$/.test(word.value))
+        )
+          return true;
+      }
     }
     return false;
   }
@@ -629,8 +749,8 @@ export class WrapperReader {
       return { kind: "module", specifier: this.tokens[start + 2]!.value };
     // a call: `i(76675)` (webpack), `require_x()` (esbuild), `__toESM(require_x())` (interop)
     if (this.is(start, "ident") && this.punct(start + 1, "(") && r.closeOf(start + 1) === end - 1) {
-      if (end === start + 3 || (end === start + 4 && this.is(start + 2, "number")))
-        return { kind: "bundle" };
+      if (end === start + 3) return { kind: "bundle", callee: this.tokens[start]!.value };
+      if (end === start + 4 && this.is(start + 2, "number")) return { kind: "bundle" };
       const first = start + 2;
       const inner = this.valueOf(first, Math.min(r.endOf(first), end - 1), depth + 1);
       return inner?.kind === "bundle" || inner?.kind === "module" ? inner : null;
@@ -897,6 +1017,12 @@ export class WrapperReader {
   /** The instances of wrappers the receiver expression in [start, end) can be. */
   receiverValues(start: number, end: number, depth = 0): WrapperValue[] {
     if (depth > 4 || this.work-- <= 0) return [];
+    // ipcMain, another name for it, `electron.ipcMain`: only while call sites of functions with
+    // an IPC object parameter are read (`objectSites`, `passes`)
+    if (this.readingObjects) {
+      const target = this.ipcOf(start, end);
+      if (target) return [{ kind: "ipc", target }];
+    }
     if (end === start + 1 && this.is(start, "ident", "this")) {
       const cls = this.thisClass(start);
       return cls ? [{ kind: "inst", cls, label: cls.name }] : [];
@@ -928,6 +1054,10 @@ export class WrapperReader {
     // `var store = require_singleton()` in one bundle: what every `module.exports = …` of the
     // file says, when they all say the same
     else if (v?.kind === "bundle" && this.keyCallsOnly) v = this.keyValue("");
+    // while call sites of IPC object parameters are read: what that one module's body assigns
+    // to its `module.exports`
+    else if (v?.kind === "bundle" && v.callee && this.readingObjects)
+      v = this.bundleExport(v.callee);
     return v?.kind === "inst" ? [v] : [];
   }
 
@@ -987,7 +1117,12 @@ export class WrapperReader {
     };
     const names = new Set<string>(def.member ? [] : [def.name]);
     const keys = new Set<string>();
-    for (const j of r.namePositions(def.name)) {
+    // A function declared inside another one (a module a bundler wraps) is visible only in that
+    // function's body: its name is looked for there, not in the whole file, where a minifier
+    // reuses the same short name thousands of times.
+    const outer = def.member || def.owner ? null : r.outerOf(def);
+    const [from, to] = outer ? outer.body : [0, this.tokens.length];
+    for (const j of r.namePositions(def.name, from, to)) {
       if (this.work-- <= 0) break;
       if (
         this.punct(j - 1, ":") &&
@@ -1025,7 +1160,7 @@ export class WrapperReader {
       }
     }
     for (const name of names)
-      for (const j of r.namePositions(name)) {
+      for (const j of name === def.name ? r.namePositions(name, from, to) : r.namePositions(name)) {
         if (this.work-- <= 0) break;
         if (out.length >= MAX_SITES) break;
         if (!this.punct(j + 1, "(") || this.punct(j - 1, ".") || j + 1 === def.paramsAt) continue;
@@ -1036,11 +1171,343 @@ export class WrapperReader {
     return out;
   }
 
+  // ---------- IPC object parameters ----------
+
+  /** Set while call sites of IPC object parameters are read: `ipcMain` is a value then. */
+  private readingObjects = false;
+  /**
+   * Token visits left for reading IPC object parameters, their own budget: that reading never
+   * takes from what the wrapper rows of the file may use.
+   */
+  private objectWork = OBJECT_WORK;
+
+  /** The reading of IPC object parameters ran out of its budget: call sites may be missing. */
+  get objectsCapped(): boolean {
+    return this.objectWork <= 0;
+  }
+
+  /** Runs `read` on the budget of IPC object parameters. */
+  private onObjectBudget<T>(read: () => T): T {
+    const saved = this.work;
+    this.work = this.objectWork;
+    try {
+      return read();
+    } finally {
+      this.objectWork = this.work;
+      this.work = saved;
+    }
+  }
+  /** Plain functions of this file with a parameter used as the IPC object, by parameter. */
+  private readonly objectFns = new Map<FnDef, Map<number, ObjectCall[]>>();
+  /** What calls of other modules pass for an IPC object parameter (cross-file stage). */
+  private readonly objectSeeds = new Map<
+    FnDef,
+    Map<number, Array<{ site: string; target: string | null }>>
+  >();
+
+  /** `ipcMain` / `ipcRenderer` when [start, end) is one as such: a name or `x.ipcMain`. */
+  private ipcOf(start: number, end: number): string | null {
+    if (!this.ipcAt || end <= start || end - start > 9 || !this.is(end - 1, "ident")) return null;
+    for (let j = start; j < end - 1; j += 2)
+      if (!this.is(j, "ident") || !this.punct(j + 1, ".")) return null;
+    // a parameter named so is what its callers pass (read as a parameter instead)
+    if (end === start + 1 && this.r.paramAround(start, this.tokens[start]!.value)) return null;
+    return this.ipcAt(end - 1);
+  }
+
+  /** What the body of the module a bundler wrapped as `callee` assigns to `module.exports`. */
+  private bundleExport(callee: string): WrapperValue | null {
+    const mod = this.r.bundledModule(callee);
+    if (!mod?.module) return null;
+    let found: WrapperValue | null = null;
+    for (const j of this.r.namePositions(mod.module, mod.body[0], mod.body[1])) {
+      if (this.work-- <= 0) return null;
+      if (
+        this.punct(j - 1, ".") ||
+        !this.punct(j + 1, ".") ||
+        !this.is(j + 2, "ident", "exports") ||
+        !this.punct(j + 3, "=") ||
+        this.punct(j + 4, "=")
+      )
+        continue;
+      const v = this.valueOf(j + 4, this.r.endOf(j + 4), 1);
+      if (!v || (found && !same(found, v))) return null;
+      found = v;
+    }
+    return found;
+  }
+
+  /**
+   * Finds the functions and methods whose parameter is used as the IPC object: `at` is the token
+   * of the parameter's name in `P.method(…)`, `call` what that call is. A parameter the body
+   * writes to is none; a function that is not named (a callback) is none.
+   */
+  findObjectParams(found: ReadonlyArray<{ at: number; call: ObjectCall }>): void {
+    this.onObjectBudget(() => this.findObjectParamsIn(found));
+  }
+
+  private findObjectParamsIn(found: ReadonlyArray<{ at: number; call: ObjectCall }>): void {
+    for (const { at, call } of found) {
+      if (this.work-- <= 0) break;
+      const name = this.tokens[at]!.value;
+      const b = this.r.binding(at, name);
+      if (b?.kind !== "param") continue;
+      const { def, index } = b;
+      if (def.params[index]?.kind !== "name" || def.name === null) continue;
+      if (this.declares(def, name, true)) continue;
+      const forward: Forward = {
+        api: call.method,
+        index,
+        object:
+          /ipc/i.test(name) || IPC_ONLY_METHODS.has(call.method)
+            ? { ...call, ipcLike: true }
+            : call,
+      };
+      if ((def.owner !== null && !def.arrow) || def.member) {
+        this.register(def, forward);
+        continue;
+      }
+      if (def.owner !== null || def.static) continue;
+      const by = this.objectFns.get(def) ?? new Map<number, ObjectCall[]>();
+      const calls = by.get(index) ?? [];
+      calls.push(forward.object!);
+      by.set(index, calls);
+      this.objectFns.set(def, by);
+    }
+    this.findChains();
+  }
+
+  /**
+   * Every function and method of this file with an IPC object parameter, with the call sites
+   * this file has (`objectSites`), for the scan's facts.
+   */
+  paramIpc(): ParamIpc[] {
+    const sites = this.objectSites();
+    const out: ParamIpc[] = [];
+    const add = (key: string, label: string, index: number, calls: ObjectCall[]): void => {
+      out.push({
+        key,
+        label,
+        index,
+        calls,
+        sites: sites
+          .filter((x) => x.home === this.file && x.key === key && x.index === index)
+          .map(({ site, target }) => ({ site, target })),
+      });
+    };
+    for (const cls of this.classes) {
+      if (cls.file !== this.file) continue;
+      for (const [method, forwards] of Object.entries(cls.methods)) {
+        const byIndex = new Map<number, ObjectCall[]>();
+        for (const f of forwards)
+          if (f.object) byIndex.set(f.index, [...(byIndex.get(f.index) ?? []), f.object]);
+        for (const [index, calls] of byIndex)
+          add(`${cls.id}.${method}`, `${cls.name}.${method}`, index, calls);
+      }
+    }
+    for (const [def, by] of this.objectFns)
+      for (const [index, calls] of by) add(`fn@${def.paramsAt}`, def.name!, index, calls);
+    return out;
+  }
+
+  /** The plain functions with IPC object parameters, with their calls (for the scan's facts). */
+  objectFunctions(): Array<{ key: string; label: string; index: number; calls: ObjectCall[] }> {
+    const out: Array<{ key: string; label: string; index: number; calls: ObjectCall[] }> = [];
+    for (const [def, by] of this.objectFns)
+      for (const [index, calls] of by)
+        out.push({ key: `fn@${def.paramsAt}`, label: def.name!, index, calls });
+    return out;
+  }
+
+  /** What a call of another module passes for an IPC object parameter of def (cross-file stage). */
+  seedObject(def: FnDef, index: number, site: string, target: string | null): void {
+    const by =
+      this.objectSeeds.get(def) ??
+      new Map<number, Array<{ site: string; target: string | null }>>();
+    const list = by.get(index) ?? [];
+    if (!list.some((x) => x.site === site)) list.push({ site, target });
+    by.set(index, list);
+    this.objectSeeds.set(def, by);
+  }
+
+  /**
+   * The uses of a plain function of this file other than a call by its name and an export of it:
+   * `reg.call(…)` (with the `(` of that call), `reg.apply(…)`, `reg.bind(…)`, `forEach(reg)`,
+   * `setTimeout(reg, …)`, `const f = reg`. Each may call it with something else.
+   */
+  private otherUses(def: FnDef): Array<{ at: number; call: number | null }> {
+    const out: Array<{ at: number; call: number | null }> = [];
+    if (def.name === null) return out;
+    const { r } = this;
+    const outer = r.outerOf(def);
+    const [from, to] = outer ? outer.body : [0, this.tokens.length];
+    for (const j of r.namePositions(def.name, from, to)) {
+      if (this.work-- <= 0) break;
+      if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
+      if (this.is(j - 1, "ident", "function") || j + 1 === def.paramsAt) continue;
+      if (this.punct(j + 1, "(")) continue; // a call by name: `callSitesOf`
+      // a key of an object literal, `{ reg: … }`, or the name's own declaration
+      if (this.punct(j + 1, ":") && (this.punct(j - 1, "{") || this.punct(j - 1, ","))) continue;
+      if (this.is(j - 1, "ident") && /^(const|let|var|class)$/.test(this.tokens[j - 1]!.value))
+        continue;
+      if (this.exportUse(j)) continue;
+      const b = r.binding(j, def.name);
+      if (b && !(b.kind === "function" && b.def === def)) continue;
+      const call =
+        this.punct(j + 1, ".") && this.is(j + 2, "ident", "call") && this.punct(j + 3, "(")
+          ? j + 3
+          : null;
+      out.push({ at: j, call });
+    }
+    return out;
+  }
+
+  /**
+   * The use of a name at j exports it, as such: `module.exports = reg`, `exports.K = reg`,
+   * `module.exports = { reg, K: reg }`, `export { reg }`, `export default reg`.
+   */
+  private exportUse(j: number): boolean {
+    if (this.is(j - 1, "ident", "default") && this.is(j - 2, "ident", "export")) return true;
+    if (this.punct(j - 1, "=") && this.is(j - 2, "ident") && this.punct(j - 3, ".")) {
+      const holder = this.tokens[j - 4];
+      return (
+        this.tokens[j - 2]!.value === "exports" ||
+        (holder?.type === "ident" && (holder.value === "exports" || holder.value === "module"))
+      );
+    }
+    const inObject =
+      (this.punct(j - 1, "{") || this.punct(j - 1, ",") || this.punct(j - 1, ":")) &&
+      (this.punct(j + 1, ",") || this.punct(j + 1, "}") || this.is(j + 1, "ident", "as"));
+    if (!inObject) return false;
+    const open = this.container(j);
+    if (open === -1 || !this.punct(open, "{")) return false;
+    if (this.is(open - 1, "ident", "export")) return true;
+    return (
+      this.punct(open - 1, "=") &&
+      this.is(open - 2, "ident", "exports") &&
+      (this.punct(open - 3, ".") || !this.punct(open - 3, "."))
+    );
+  }
+
+  /** `ipcMain` / `ipcRenderer` when the argument from `arg` is one, as far as it is read. */
+  private objectTarget(arg: number): string | null {
+    const values = this.receiverValues(arg, this.r.endOf(arg));
+    const targets = new Set(values.map((v) => (v.kind === "ipc" ? v.target : null)));
+    return values.length && targets.size === 1 && !targets.has(null) ? [...targets][0]! : null;
+  }
+
+  /**
+   * The call sites of the methods and functions with IPC object parameters this reader knows,
+   * and what each passes. Methods: calls on a proven instance of the class (as `rows` reads
+   * them; a method another module replaces gives none). Plain functions of this file: their call
+   * sites here, and what other modules pass (seeded). With `onlySeeded`: only calls on a
+   * parameter another module passes an instance for, and only the seeded calls of functions.
+   */
+  objectSites(onlySeeded = false): ObjectSite[] {
+    return this.onObjectBudget(() => this.objectSitesIn(onlySeeded));
+  }
+
+  private objectSitesIn(onlySeeded: boolean): ObjectSite[] {
+    const out: ObjectSite[] = [];
+    const { r } = this;
+    this.readingObjects = true;
+    this.chains.clear();
+    try {
+      const names = new Set<string>();
+      for (const cls of this.classes)
+        for (const [m, forwards] of Object.entries(cls.methods))
+          if (forwards.some((f) => f.object)) names.add(m);
+      for (const method of names) {
+        for (const j of r.namePositions(method)) {
+          if (this.work-- <= 0) return out;
+          if (!(this.punct(j - 1, ".") || this.punct(j - 1, "?."))) continue;
+          // `inst.register.call(t, ipcMain)` reads its argument after `this`; any other use
+          // of the method that is not a call (`.apply`, `.bind`, a callback) passes what it
+          // passes unread, which counts as something else
+          const direct = this.punct(j + 1, "(");
+          const viaCall =
+            !direct &&
+            this.punct(j + 1, ".") &&
+            this.is(j + 2, "ident", "call") &&
+            this.punct(j + 3, "(");
+          if (!direct && this.punct(j + 1, "=") && !this.punct(j + 2, "=")) continue;
+          let start = r.receiverAt(j - 1);
+          if (start === null) continue;
+          if (this.is(start - 1, "ident", "new")) start--;
+          if (onlySeeded) {
+            const b =
+              start === j - 2 && this.is(start, "ident")
+                ? r.binding(start, this.tokens[start]!.value)
+                : null;
+            if (b?.kind !== "param" || !this.seeds.get(b.def)?.has(b.index)) continue;
+          }
+          for (const v of this.receiverValues(start, j - 1)) {
+            if (v.kind !== "inst" || !Object.hasOwn(v.cls.methods, method)) continue;
+            if (this.isReplaced(v.cls, method)) continue;
+            const indexes = new Set(
+              v.cls.methods[method]!.filter((f) => f.object).map((f) => f.index),
+            );
+            for (const index of indexes) {
+              const arg = direct
+                ? r.argumentAt(j + 1, index)
+                : viaCall
+                  ? r.argumentAt(j + 3, index + 1)
+                  : null;
+              const target = arg === null || this.punct(arg, ")") ? null : this.objectTarget(arg);
+              out.push({
+                home: v.cls.file,
+                key: `${v.cls.id}.${method}`,
+                index,
+                site: `${this.file}:${j}`,
+                target,
+              });
+            }
+          }
+        }
+      }
+      if (!onlySeeded)
+        for (const [def, by] of this.objectFns)
+          for (const index of by.keys()) {
+            const key = `fn@${def.paramsAt}`;
+            for (const open of this.callSitesOf(def)) {
+              const arg = r.argumentAt(open, index);
+              const target = arg === null || this.punct(arg, ")") ? null : this.objectTarget(arg);
+              out.push({ home: this.file, key, index, site: `${this.file}:${open}`, target });
+            }
+            for (const ref of this.otherUses(def)) {
+              // `reg.call(t, ipcMain)`: its argument after `this`; anything else unread
+              const arg = ref.call === null ? null : r.argumentAt(ref.call, index + 1);
+              const target = arg === null || this.punct(arg, ")") ? null : this.objectTarget(arg);
+              out.push({ home: this.file, key, index, site: `${this.file}:${ref.at}`, target });
+            }
+          }
+      // what calls of other modules pass (the stage decides for the functions that have such a
+      // parameter; for any other function the seed matches nothing)
+      for (const [def, by] of this.objectSeeds)
+        for (const [index, seeds] of by)
+          for (const seed of seeds)
+            out.push({
+              home: this.file,
+              key: `fn@${def.paramsAt}`,
+              index,
+              site: seed.site,
+              target: seed.target,
+            });
+    } finally {
+      this.readingObjects = false;
+      this.chains.clear();
+    }
+    return out;
+  }
+
   // ---------- results ----------
 
+  /** The methods with a forward that gives rows at its calls (a channel, not an IPC object). */
   private methodNames(): Set<string> {
     const names = new Set<string>();
-    for (const cls of this.classes) for (const m of Object.keys(cls.methods)) names.add(m);
+    for (const cls of this.classes)
+      for (const [m, forwards] of Object.entries(cls.methods))
+        if (forwards.some((f) => !f.object)) names.add(m);
     return names;
   }
 
@@ -1070,8 +1537,8 @@ export class WrapperReader {
         for (const v of this.receiverValues(start, j - 1)) {
           if (v.kind !== "inst" || !Object.hasOwn(v.cls.methods, method)) continue;
           if (this.isReplaced(v.cls, method)) continue;
-          for (const { api, index, key } of v.cls.methods[method]!) {
-            if (key) continue;
+          for (const { api, index, key, object } of v.cls.methods[method]!) {
+            if (key || object) continue;
             const arg = r.argumentAt(j + 1, index);
             if (arg === null || this.punct(arg, ")")) continue;
             const named = channelArg(this.tokens, this.constants, arg);
@@ -1178,12 +1645,18 @@ export class WrapperReader {
     key: string;
     index: number;
     values: WrapperValue[];
+    /** The token of the called name. */
+    at: number;
+    /** ipcMain or ipcRenderer, when the argument is one. */
+    ipc: string | null;
   }> {
     const out: Array<{
       file: string;
       key: string;
       index: number;
       values: WrapperValue[];
+      at: number;
+      ipc: string | null;
     }> = [];
     const { r, tokens } = this;
     this.passesCapped = false;
@@ -1207,7 +1680,19 @@ export class WrapperReader {
         // also what is no instance, so that a parameter some call passes something else for
         // is none (`use(new Store()); use(new Map())`)
         const values = this.receiverValues(arg, r.endOf(arg));
-        out.push({ file: callee.file, key: callee.key, index, values });
+        // and whether it is ipcMain or ipcRenderer, for an IPC object parameter there
+        let ipc: string | null = null;
+        if (this.ipcAt)
+          ipc = this.onObjectBudget(() => {
+            this.readingObjects = true;
+            try {
+              return this.objectTarget(arg);
+            } finally {
+              this.readingObjects = false;
+              this.chains.clear();
+            }
+          });
+        out.push({ file: callee.file, key: callee.key, index, values, at: j, ipc });
       }
     }
     if (this.work <= 0) this.passesCapped = true;
@@ -1219,11 +1704,21 @@ export class WrapperReader {
 
   /** The export keys of this file that name one of its wrappers or an instance of one. */
   facts(): WrapperFacts | null {
-    if (!this.classes.length) return null;
+    // only what another module can use: channel-forwarding wrappers, and functions with an IPC
+    // object parameter that look like IPC (see `ObjectCall.ipcLike`)
+    const offered = this.classes.filter((c) =>
+      Object.values(c.methods).some((forwards) =>
+        forwards.some((f) => !f.object || f.object.ipcLike),
+      ),
+    );
+    const offeredFns = [...this.objectFns].some(([, by]) =>
+      [...by.values()].some((calls) => calls.some((c) => c.ipcLike)),
+    );
+    if (!offered.length && !offeredFns) return null;
     const { r, tokens } = this;
     const keys = new Set<string>();
     const names = new Set<string>();
-    for (const cls of this.classes) {
+    for (const cls of offered) {
       const start = this.startOf(cls);
       // the name the class or object is bound to
       for (let j = start - 1; j >= 0 && j > start - 21; j--)
@@ -1273,13 +1768,54 @@ export class WrapperReader {
       if ((v?.kind === "cls" || v?.kind === "inst") && v.cls.file === this.file)
         exports[key] = { kind: v.kind, id: v.cls.id };
     }
-    if (!Object.keys(exports).length) return null;
+    // plain functions with an IPC object parameter, by the keys they are exported under
+    const fns: string[] = [];
+    for (const [def, by] of this.objectFns) {
+      if (![...by.values()].some((calls) => calls.some((c) => c.ipcLike))) continue;
+      for (const key of this.exportKeysOf(def)) if (!fns.includes(key)) fns.push(key);
+    }
+    if (!Object.keys(exports).length && !fns.length) return null;
     return {
       classes: this.classes
         .filter((c) => c.file === this.file)
         .map(({ id, name, methods, chain }) => ({ id, name, methods, chain })),
       exports,
+      ...(fns.length ? { fns: fns.toSorted() } : {}),
     };
+  }
+
+  /** The export keys of this file that name def (`exportedFunction` of each is def). */
+  private exportKeysOf(def: FnDef): string[] {
+    return this.onObjectBudget(() => this.exportKeysIn(def));
+  }
+
+  private exportKeysIn(def: FnDef): string[] {
+    if (def.name === null) return [];
+    const { r } = this;
+    // a function declared inside another one is named only in that function's body
+    const outer = r.outerOf(def);
+    const [from, to] = outer ? outer.body : [0, this.tokens.length];
+    const keys = new Set<string>();
+    // `export function NAME`, `export default function NAME`
+    if (this.is(def.paramsAt - 2, "ident", "function")) {
+      if (this.is(def.paramsAt - 3, "ident", "export")) keys.add(def.name);
+      if (this.is(def.paramsAt - 3, "ident", "default")) keys.add("default");
+    }
+    for (const j of r.namePositions(def.name, from, to)) {
+      if (this.work-- <= 0) break;
+      // `{ K: NAME }`, `x.K = NAME` (`module.exports = NAME`: ""), `{ NAME }`, `NAME as K`
+      if (this.punct(j - 1, ":") && this.is(j - 2, "ident")) keys.add(this.tokens[j - 2]!.value);
+      else if (this.punct(j - 1, "=") && this.is(j - 2, "ident") && this.punct(j - 3, "."))
+        keys.add(this.tokens[j - 2]!.value === "exports" ? "" : this.tokens[j - 2]!.value);
+      else if (this.is(j + 1, "ident", "as") && this.is(j + 2, "ident"))
+        keys.add(this.tokens[j + 2]!.value);
+      else if (
+        (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
+        (this.punct(j + 1, ",") || this.punct(j + 1, "}"))
+      )
+        keys.add(def.name);
+    }
+    return [...keys].filter((key) => key !== "__proto__" && this.exportedFunction(key) === def);
   }
 
   /** The function an export key of this file names (cross-file stage). */
@@ -1293,7 +1829,34 @@ export class WrapperReader {
   }
 }
 
-/** A module as the cross-file stage reads it. */
+/**
+ * The facts of a module for one of the two cross-file stages: the channel-forwarding wrappers
+ * only (`objects: false`, the stage of 0.9.8), or only what has a parameter used as the IPC object
+ * (`objects: true`). The two stages run apart, each with its own budgets.
+ */
+export function factsFor(
+  facts: WrapperFacts | undefined,
+  objects: boolean,
+): WrapperFacts | undefined {
+  if (!facts) return undefined;
+  const classes: WrapperFacts["classes"] = [];
+  for (const cls of facts.classes) {
+    const methods: Record<string, Forward[]> = {};
+    for (const [m, forwards] of Object.entries(cls.methods)) {
+      const kept = forwards.filter((f) => (objects ? !!f.object?.ipcLike : !f.object));
+      if (kept.length) methods[m] = kept;
+    }
+    if (Object.keys(methods).length) classes.push({ ...cls, methods });
+  }
+  const ids = new Set(classes.map((c) => c.id));
+  const exports: WrapperFacts["exports"] = {};
+  for (const [key, e] of Object.entries(facts.exports)) if (ids.has(e.id)) exports[key] = e;
+  const fns = objects ? (facts.fns ?? []) : [];
+  if (!Object.keys(exports).length && !fns.length) return undefined;
+  return { classes, exports, ...(fns.length ? { fns } : {}) };
+}
+
+/** A module as the cross-file stage reads it. */ /** A module as the cross-file stage reads it. */
 export interface WrapperModule {
   id: string;
   /** The names the module exports itself (scan.ts), not through `export *`. */
@@ -1312,6 +1875,8 @@ export interface ReadModule {
   tokens: Token[];
   constants: Constants;
   resolver: ExpressionResolver;
+  /** `ipcMain` / `ipcRenderer` when the identifier at k is (another name for) one. */
+  ipcAt?: (k: number) => string | null;
 }
 
 /**
@@ -1329,17 +1894,46 @@ export function linkWrappers(input: {
   maxFiles?: number;
 }): {
   rows: Map<string, WrapperRow[]>;
+  /** Calls of functions and methods with an IPC object parameter, and what each passes. */
+  sites: Map<string, ObjectSite[]>;
+  /** Which of those calls may be missing (see `ObjectsCut`). */
+  objectsCut: ObjectsCut;
   capped: string[];
   replaced: Replaced[];
   unchecked: string[];
 } {
-  return linkWrapperCalls({
+  type Found = { row: WrapperRow; site?: never } | { site: ObjectSite; row?: never };
+  const linked = linkWrapperCalls<Found>({
     ...input,
     // past the replacement budget, IPC calls are read without the check (as before it existed)
     keepPastBudget: true,
-    read: (reader, onlySeeded) => reader.rows(onlySeeded),
-    same: (x, row) => x.at === row.at && x.usage.api === row.usage.api,
+    read: (reader, onlySeeded) => [
+      ...reader.rows(onlySeeded).map((row) => ({ row })),
+      ...reader.objectSites(onlySeeded).map((site) => ({ site })),
+    ],
+    same: (x, y) =>
+      x.row && y.row
+        ? x.row.at === y.row.at && x.row.usage.api === y.row.usage.api
+        : !!x.site &&
+          !!y.site &&
+          x.site.site === y.site.site &&
+          x.site.key === y.site.key &&
+          x.site.index === y.site.index &&
+          x.site.home === y.site.home,
+    keyOf: (x) =>
+      x.row
+        ? `r\u0000${x.row.at}\u0000${x.row.usage.api}`
+        : `s\u0000${x.site.site}\u0000${x.site.key}\u0000${x.site.index}\u0000${x.site.home}`,
   });
+  const rows = new Map<string, WrapperRow[]>();
+  const sites = new Map<string, ObjectSite[]>();
+  for (const [file, found] of linked.rows) {
+    const r = found.flatMap((f) => (f.row ? [f.row] : []));
+    const s = found.flatMap((f) => (f.site ? [f.site] : []));
+    if (r.length) rows.set(file, r);
+    if (s.length) sites.set(file, s);
+  }
+  return { ...linked, rows, sites };
 }
 
 /**
@@ -1373,24 +1967,35 @@ function linkWrapperCalls<R>(input: {
   maxFiles?: number;
   read(reader: WrapperReader, onlySeeded: boolean): R[];
   same(a: R, b: R): boolean;
+  /** A key that is equal exactly when `same` holds: rows are then told apart in constant time. */
+  keyOf?(row: R): string;
   /**
    * Past the replacement budget, keep the calls (and name the modules not checked) instead of
    * counting every method as replaced.
    */
   keepPastBudget?: boolean;
-}): { rows: Map<string, R[]>; capped: string[]; replaced: Replaced[]; unchecked: string[] } {
+}): {
+  rows: Map<string, R[]>;
+  capped: string[];
+  replaced: Replaced[];
+  unchecked: string[];
+  objectsCut: ObjectsCut;
+} {
   const out = new Map<string, R[]>();
+  const objectsCut: ObjectsCut = { methods: false, fns: false };
   const capped: string[] = [];
   const byId = new Map(input.modules.map((m) => [m.id, m]));
   const providers = new Set(
     input.modules
-      .filter((m) => m.wrappers && Object.keys(m.wrappers.exports).length)
+      .filter(
+        (m) => m.wrappers && (Object.keys(m.wrappers.exports).length || m.wrappers.fns?.length),
+      )
       .map((m) => m.id),
   );
   const replaced = new Set<string>();
   const replacedAt: Replaced[] = [];
   const unchecked: string[] = [];
-  if (!providers.size) return { rows: out, capped, replaced: replacedAt, unchecked };
+  if (!providers.size) return { rows: out, capped, replaced: replacedAt, unchecked, objectsCut };
   // classes of other modules, one object per class so that identity holds across readers
   const known = new Map<string, WrapperClass>();
   const classOf = (file: string, id: string): WrapperClass | null => {
@@ -1486,21 +2091,41 @@ function linkWrapperCalls<R>(input: {
   ].toSorted();
   const importers = allImporters.slice(0, input.maxFiles ?? 200);
   capped.push(...allImporters.slice(importers.length));
+  // importers not read at all: what they pass is not known for either kind
+  if (importers.length < allImporters.length) objectsCut.methods = objectsCut.fns = true;
   const readers = new Map<string, WrapperReader | null>();
   const readerOf = (file: string): WrapperReader | null => {
     if (readers.has(file)) return readers.get(file)!;
     const read = input.open(file);
     const reader = read
-      ? new WrapperReader(read.tokens, read.resolver, read.constants, lookup(file), file)
+      ? new WrapperReader(
+          read.tokens,
+          read.resolver,
+          read.constants,
+          lookup(file),
+          file,
+          read.ipcAt ?? null,
+        )
       : null;
     if (reader) reader.replaced = replaced;
     readers.set(file, reader);
     return reader;
   };
+  const keys = new Map<string, Set<string>>();
   const add = (file: string, rows: R[]): void => {
     if (!rows.length) return;
     const list = out.get(file) ?? [];
-    for (const row of rows) if (!list.some((x) => input.same(x, row))) list.push(row);
+    const keyOf = input.keyOf;
+    if (keyOf) {
+      const seen = keys.get(file) ?? new Set<string>();
+      for (const row of rows) {
+        const key = keyOf(row);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        list.push(row);
+      }
+      keys.set(file, seen);
+    } else for (const row of rows) if (!list.some((x) => input.same(x, row))) list.push(row);
     out.set(file, list);
   };
   // every class a provider exports is a class the importers can reach
@@ -1515,12 +2140,15 @@ function linkWrapperCalls<R>(input: {
     key: string;
     index: number;
     values: WrapperValue[];
+    at: number;
+    ipc: string | null;
+    from: string;
   }> = [];
   // Methods replaced from another module (`Store.prototype.get = f`, `s.get = f` on an instance
   // there): read in every module that imports a provider, and in the providers, before any call
   // is read. A write to another object of the same method name is none.
   // (no module calls a provider's wrappers: nothing to read)
-  if (!importers.length) return { rows: out, capped, replaced: replacedAt, unchecked };
+  if (!importers.length) return { rows: out, capped, replaced: replacedAt, unchecked, objectsCut };
   const looseImporters = input.edges
     .filter((e) => e.resolved && looseProviders.has(e.to))
     .map((e) => e.from);
@@ -1616,7 +2244,7 @@ function linkWrapperCalls<R>(input: {
     if (!reader) continue;
     for (const cls of everyClass) reader.adopt(cls);
     add(file, input.read(reader, false));
-    passes.push(...reader.passes());
+    passes.push(...reader.passes().map((p) => ({ ...p, from: file })));
     if (reader.passesCapped) {
       passesCut = true;
       if (!capped.includes(file)) capped.push(file);
@@ -1624,6 +2252,8 @@ function linkWrapperCalls<R>(input: {
   }
   // a call not read may pass something else: then no parameter is taken for an instance
   if (passesCut) passes.length = 0;
+  if (passesCut) objectsCut.fns = true;
+  const objectSeeded = new Set<string>();
   for (const pass of passes) {
     const reader = readerOf(pass.file);
     if (!reader) continue;
@@ -1631,14 +2261,25 @@ function linkWrapperCalls<R>(input: {
     if (!def) continue;
     for (const cls of everyClass) reader.adopt(cls);
     reader.seed(def, pass.index, pass.values);
+    // a function of that module with an IPC object parameter: what this call passes for it
+    if (byId.get(pass.file)?.wrappers?.fns?.includes(pass.key)) {
+      reader.seedObject(def, pass.index, `${pass.from}:${pass.at}`, pass.ipc);
+      objectSeeded.add(pass.file);
+    }
   }
-  for (const file of new Set(passes.filter((p) => p.values.length).map((p) => p.file)).values()) {
+  for (const file of new Set([
+    ...passes.filter((p) => p.values.length).map((p) => p.file),
+    ...objectSeeded,
+  ])) {
     const reader = readers.get(file);
     if (reader) add(file, input.read(reader, true));
   }
-  for (const [file, reader] of readers)
-    if ((reader?.capped || reader?.keyCallsCut) && !capped.includes(file)) capped.push(file);
-  return { rows: out, capped, replaced: replacedAt, unchecked };
+  for (const [file, reader] of readers) {
+    if ((reader?.capped || reader?.keyCallsCut || reader?.objectsCapped) && !capped.includes(file))
+      capped.push(file);
+    if (reader?.objectsCapped) objectsCut.methods = objectsCut.fns = true;
+  }
+  return { rows: out, capped, replaced: replacedAt, unchecked, objectsCut };
 }
 
 /**

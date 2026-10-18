@@ -16,6 +16,7 @@ import {
 } from "./resolve.js";
 import {
   ALIAS_TARGETS,
+  IPC_APIS,
   evaluatorFor,
   scanJavaScript,
   tokenize,
@@ -32,10 +33,98 @@ import {
   MAX_KEY_CALLS_PER_FILE,
   type Replaced,
   linkWrappers,
+  factsFor,
+  type ParamIpc,
   type ReadModule,
   type WrapperFacts,
   WrapperReader,
 } from "./wrappers.js";
+
+/** A module for one cross-file wrapper stage, with the facts of that stage only. */
+function withFacts(m: JsModule, wrappers: WrapperFacts | undefined): JsModule {
+  const { wrappers: _all, ...rest } = m;
+  return wrappers ? { ...rest, wrappers } : rest;
+}
+
+/** The objects a parameter used as the IPC object may be (see `ParamIpc`). */
+const IPC_OBJECTS: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]);
+/** `ipcMain` or `ipcRenderer` by its own name, as the scan reads a call on one. */
+const ipcName = (t: Token | undefined): string | null =>
+  t?.type === "ident" && IPC_OBJECTS.has(t.value) ? t.value : null;
+
+/**
+ * The IPC rows of functions and methods with a parameter used as the IPC object: per function,
+ * every call site this module and other modules have (`sites`, keyed by the defining module, the
+ * function's key and the parameter), and only when there is one and every one passes the same
+ * object (ipcMain or ipcRenderer). One that passes anything else, or is not read, makes the
+ * function no IPC. A call the object has no such method for (`ipcRenderer.handle`) gives none.
+ */
+export function paramIpcRows(
+  modules: ReadonlyArray<Pick<JsModule, "id" | "ipc" | "paramIpc" | "wrappers">>,
+  linked: ReadonlyMap<
+    string,
+    ReadonlyArray<{ home: string; key: string; index: number; site: string; target: string | null }>
+  >,
+  /**
+   * The cross-module search may have missed calls (`linkWrappers`): of methods, of plain
+   * functions. A function or method another module may call is then undecided.
+   */
+  cut: { methods: boolean; fns: boolean } = { methods: false, fns: false },
+  /** Modules another module imports: their functions may be called there. */
+  imported: ReadonlySet<string> = new Set(),
+): void {
+  const all = new Map<
+    string,
+    { m: (typeof modules)[number]; e: ParamIpc; sites: Map<string, string | null> }
+  >();
+  for (const m of modules)
+    for (const e of m.paramIpc ?? []) {
+      // a function another module may call, when not every module was read for calls of it
+      if (
+        e.key.startsWith("fn@")
+          ? cut.fns && m.wrappers?.fns?.length
+          : cut.methods && Object.keys(m.wrappers?.exports ?? {}).length
+      )
+        continue;
+      // other modules are read only for what looks like IPC: in a module another one imports,
+      // anything else may be called there with any object, unread
+      if (imported.has(m.id) && !e.calls.some((c) => c.ipcLike)) continue;
+      all.set(`${m.id}\u0000${e.key}\u0000${e.index}`, {
+        m,
+        e,
+        // this file's own sites are written `:<token>`
+        sites: new Map(
+          e.sites.map((x) => [x.site.startsWith(":") ? `${m.id}${x.site}` : x.site, x.target]),
+        ),
+      });
+    }
+  for (const [file, sites] of linked)
+    for (const x of sites) {
+      const home = x.home || file;
+      const entry = all.get(`${home}\u0000${x.key}\u0000${x.index}`);
+      if (!entry) continue;
+      entry.sites.set(x.site.startsWith(":") ? `${file}${x.site}` : x.site, x.target);
+    }
+  for (const { m, e, sites } of all.values()) {
+    const targets = new Set(sites.values());
+    if (targets.size !== 1 || targets.has(null)) continue;
+    const target = [...targets][0]!;
+    for (const call of e.calls) {
+      const api = `${target}.${call.method}`;
+      if (!IPC_APIS.has(api)) continue;
+      m.ipc.push({
+        api,
+        channel: call.channel,
+        line: call.line,
+        via: "parameter",
+        wrapper: e.label,
+        ...(call.channelRef ? { channelRef: call.channelRef } : {}),
+        ...(call.args !== undefined && target === "ipcRenderer" ? { args: call.args } : {}),
+      });
+    }
+    m.ipc.sort((x, y) => x.line - y.line);
+  }
+}
 
 /** Minimal read-only file tree so directories and ASAR archives share one analyzer. */
 export interface FileTree {
@@ -81,6 +170,8 @@ export interface JsModule {
   wrappers?: WrapperFacts;
   /** Storage-key wrapper classes and objects the file exports, for calls in other files. */
   keyWrappers?: WrapperFacts;
+  /** Functions and methods with a parameter used as the IPC object (see wrappers.ts). */
+  paramIpc?: ParamIpc[];
 }
 
 /** How far back a setting may be from `webPreferences` / `BrowserWindow` to count as a window option. */
@@ -1664,10 +1755,28 @@ function privilegedBindings(
   return { meaningAt, declared };
 }
 
+/** One key per binding (see `ExpressionResolver.binding`): equal keys are the same binding. */
+const bindingKey = (b: Binding): string =>
+  b.kind === "param"
+    ? `p${b.def.paramsAt}:${b.index}`
+    : b.kind === "value"
+      ? `v${b.range[0]}`
+      : b.kind === "function"
+        ? `f${b.def.paramsAt}`
+        : b.kind === "class"
+          ? `c${b.start}`
+          : `o${b.from[0]}:${b.key}`;
+
 const MAX_BRIDGE_PER_FILE = 500;
 const MAX_BRIDGE = 2000;
 /** Tokens walked inside exposed objects per file; keeps repeated or unclosed calls linear. */
 const BRIDGE_WALK_BUDGET = 400_000;
+/** Charged per `api[…]` occurrence of a step-by-step object, before anything is read for it. */
+const BRIDGE_STEP_COST = 8;
+/** Charged per `api[k] = …` whose scope and loop rounds are read. */
+const BRIDGE_ROUND_COST = 2000;
+/** Charged per `api.x = …` that is read as a member (a write to another binding is not). */
+const BRIDGE_SCOPE_COST = 8;
 const BRIDGE_MODIFIERS = new Set(["async", "get", "set", "static"]);
 const CHANNEL_CALLS = new Set([
   "invoke",
@@ -1733,6 +1842,31 @@ export function bridgeMembers(
     if (!found || found.partial || found.values.length !== 1) return null;
     if (found.method === "parameter" || found.method === "element") return null;
     return { value: found.values[0]!, via: "evaluated" };
+  };
+  /** The tokens [from, to) are `ipcRenderer` as such: another name for it, or `x.ipcRenderer`. */
+  const isRenderer = (from: number, to: number): boolean => {
+    if (to <= from || to - from > 9 || tokens[to - 1]?.type !== "ident") return false;
+    for (let j = from; j < to - 1; j += 2)
+      if (tokens[j]?.type !== "ident" || !is(j + 1, ".")) return false;
+    return (context.aliases.get(to - 1) ?? tokens[to - 1]!.value) === "ipcRenderer";
+  };
+  /**
+   * The members of an object the expression at k builds (`Object.fromEntries(…)`, a call of a
+   * function of the file that returns one), read by the bounded resolver: only when it is read
+   * whole and each member is a function whose body is one call of an ipcRenderer method (see
+   * `ExpressionResolver.forwardingMembers`). Null otherwise.
+   */
+  const forwarded = (k: number): Array<{ member: string; channel: string | null }> | null => {
+    if (budget <= 0) return null;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    budget -= 2000;
+    const found = resolver.forwardingMembers(k, isRenderer, CHANNEL_CALLS);
+    return found
+      ? found.map((f) => ({
+          member: f.member,
+          channel: f.channels?.length === 1 ? f.channels[0]! : null,
+        }))
+      : null;
   };
   let objects: Map<string, number> | null = null;
   const objectOf = (name: string): number => {
@@ -2053,6 +2187,13 @@ export function bridgeMembers(
       (value.next === -1 || is(value.next, ")") || (is(value.next, ",") && is(value.next + 1, ")")))
         ? value.opens
         : null;
+    // `exposeInMainWorld("api", Object.fromEntries(…))`, or a name declared as such: members
+    // built from a table, when every one forwards to an ipcRenderer call
+    const built = simple && !opens && value === null ? forwarded(at + 2) : null;
+    if (built) {
+      for (const b of built) push(b.member, b.channel, t.line);
+      continue;
+    }
     if (!opens) {
       push(null, null, t.line);
       // `exposeInMainWorld("ipc", ipcRenderer)`: the value as a whole, up to the call's end;
@@ -2092,6 +2233,12 @@ export function bridgeMembers(
           spread?.type === "ident" && s + 2 === end && level < 3 ? objectOf(spread.value) : -1;
         if (base !== -1 && base !== objectOpen) {
           if (!walk(base, level + 1)) truncated = true;
+          return;
+        }
+        // `...invokers(TABLE)`, `...Object.fromEntries(…)`: members built from a table
+        const spreadBuilt = base === -1 && s + 1 < end ? forwarded(s + 1) : null;
+        if (spreadBuilt) {
+          for (const b of spreadBuilt) push(b.member, b.channel, first.line);
           return;
         }
         return push(null, null, first.line);
@@ -2194,9 +2341,64 @@ export function bridgeMembers(
     if (objectName && !stepwise.has(objectName)) {
       stepwise.add(objectName);
       budget -= tokens.length;
+      /**
+       * Whether the name at k is the binding the exposed object is (`same`), another one (a
+       * parameter or local of the same name, as minifiers reuse short names), or not decided.
+       */
+      const exposedAt = at + 2;
+      let exposed: Binding | null | undefined;
+      const sameObject = (k: number): "same" | "other" | "unknown" => {
+        resolver ??= new ExpressionResolver(tokens, context.constants);
+        // the object is written to member by member, so its declaration is read despite writes
+        exposed ??= resolver.binding(exposedAt, objectName, true);
+        const here = resolver.binding(k, objectName, true);
+        if (!exposed || !here) return "unknown";
+        return bindingKey(exposed) === bindingKey(here) ? "same" : "other";
+      };
       if (budget <= 0) truncated = true;
       else
         for (let k = 0; k + 3 < tokens.length; k++) {
+          // `api[name] = (...a) => ipcRenderer.invoke(channel, ...a)` once per entry of a table
+          // a loop runs over: one member per key; anything else there is an unreadable entry
+          if (
+            tokens[k]!.type === "ident" &&
+            tokens[k]!.value === objectName &&
+            !is(k - 1, ".") &&
+            is(k + 1, "[")
+          ) {
+            // every occurrence is charged before anything is read for it: many `x[…]` stay
+            // linear, and past the budget the object's inventory is marked as cut
+            if (budget <= 0) {
+              truncated = true;
+              break;
+            }
+            budget -= BRIDGE_STEP_COST;
+            resolver ??= new ExpressionResolver(tokens, context.constants);
+            // the bracket's match from the resolver's table, not a walk
+            const close = resolver.closeOf(k + 1);
+            if (close === -1 || !is(close + 1, "=") || is(close + 2, "=")) continue;
+            // only a write to the exposed object itself (the scope reading is charged to the
+            // resolver's own work; a write to another binding of the name costs no more here)
+            const which = sameObject(k);
+            if (which === "unknown" && resolver.exhausted()) {
+              truncated = true;
+              break;
+            }
+            if (which !== "same") continue;
+            budget -= BRIDGE_ROUND_COST;
+            if (budget <= 0) {
+              truncated = true;
+              break;
+            }
+            const rounds = resolver.loopAssignments(k);
+            if (!rounds) push(null, null, tokens[k]!.line);
+            else
+              for (const { key, value: round } of rounds) {
+                const call = resolver.forwardCall(round, isRenderer, CHANNEL_CALLS);
+                push(key, call?.channels?.length === 1 ? call.channels[0]! : null, tokens[k]!.line);
+              }
+            continue;
+          }
           if (
             tokens[k]!.type !== "ident" ||
             tokens[k]!.value !== objectName ||
@@ -2215,6 +2417,16 @@ export function bridgeMembers(
               if (d === 0) break;
               d--;
             } else if (p.value === ";" && d === 0) break;
+          }
+          // a write to another binding of the same name (`function (e) { e.A = 1 }` in a file
+          // whose exposed object is a `const e` elsewhere) is no member; the scope is read
+          // within the resolver's own work; only a write that stays a member is charged here
+          const which = sameObject(k);
+          if (which === "other") continue;
+          budget -= BRIDGE_SCOPE_COST;
+          if (budget <= 0) {
+            truncated = true;
+            break;
           }
           readMember(k + 2, end, 0, -1);
         }
@@ -2621,7 +2833,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 21;
+export const JS_SCAN_SCHEMA = 23;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -3588,11 +3800,19 @@ export function analyzeJavaScriptTree(
     // so are the scan's constants, read as a fresh `Constants` of those tokens would read them.
     const tokens = scanned?.tokens ?? tokenize(text).tokens;
     const constants = scanned ? scanned.constants.withoutEvaluator() : new Constants(tokens);
-    const made = {
+    let names: Map<number, string> | null = null;
+    const made: ReadModule = {
       source: text,
       tokens,
       constants,
       resolver: new ExpressionResolver(tokens, constants, path, host),
+      // another name for ipcMain or ipcRenderer, read once and only when asked
+      ipcAt: (k) => {
+        names ??= /ipcMain|ipcRenderer/.test(text)
+          ? resolveAliases(tokens, IPC_OBJECTS)
+          : new Map<number, string>();
+        return names.get(k) ?? ipcName(tokens[k]);
+      },
     };
     modulesRead.set(path, made);
     return made;
@@ -4146,6 +4366,7 @@ export function analyzeJavaScriptTree(
       ...(scan.unevaluated ? { unevaluated: scan.unevaluated } : {}),
       ...(scan.wrappers ? { wrappers: scan.wrappers } : {}),
       ...(tokenFacts.keyWrappers ? { keyWrappers: tokenFacts.keyWrappers } : {}),
+      ...(scan.paramIpc ? { paramIpc: scan.paramIpc } : {}),
       ...(open && (open.facts.defines || open.facts.calls || open.facts.replies)
         ? { ambient: open.facts }
         : {}),
@@ -4294,11 +4515,37 @@ export function analyzeJavaScriptTree(
     return modulesRead.get(path) ?? null;
   };
   const linked = linkWrappers({
-    modules,
+    // the channel-forwarding wrappers only: this stage reads what it read before IPC object
+    // parameters existed, within the same budgets
+    modules: modules.map((m) => withFacts(m, factsFor(m.wrappers, false))),
     edges,
     resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
     open: openModule,
   });
+  // Parameters used as the IPC object: a stage of its own, with its own budgets (what it could
+  // not read leaves the functions another module may call undecided, see `paramIpcRows`); rows
+  // once every call site, here and elsewhere, is known.
+  const objectLinked = modules.some((m) => factsFor(m.wrappers, true))
+    ? linkWrappers({
+        modules: modules.map((m) => withFacts(m, factsFor(m.wrappers, true))),
+        edges,
+        resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
+        open: openModule,
+      })
+    : null;
+  // a cut in that stage leaves functions undecided (no rows): said, with the files
+  const objectCapped = (objectLinked?.capped ?? []).filter((f) => !linked.capped.includes(f));
+  if (objectCapped.length)
+    limitations.push({
+      code: "ipc_wrappers_capped",
+      message: `${objectCapped.length} file(s) were not read to the end for calls of functions and methods of other modules that take ipcMain or ipcRenderer as a parameter (a budget or the file limit of 200), so those functions give no IPC rows: ${objectCapped.slice(0, 5).join(", ")}${objectCapped.length > 5 ? " …" : ""}.`,
+    });
+  paramIpcRows(
+    modules,
+    objectLinked?.sites ?? new Map(),
+    objectLinked?.objectsCut ?? { methods: false, fns: false },
+    new Set(edges.filter((e) => e.resolved && e.from !== e.to).map((e) => e.to)),
+  );
   if (linked.capped.length)
     limitations.push({
       code: "ipc_wrappers_capped",
@@ -4400,6 +4647,8 @@ export function analyzeJavaScriptTree(
       // a call of a wrapper method stays one (its `wrapper` says which)
       if (u.wrapper) {
         if (lookedUpEvaluated) u.resolution = { method: "evaluated", lines: [] };
+      } else if (u.via === "resolved" && u.resolution?.method === "element") {
+        // read per element of a route list: it stays that, with the list's line
       } else if (lookedUpEvaluated) {
         u.via = "resolved";
         u.resolution = { method: "evaluated", lines: [] };
@@ -4554,9 +4803,11 @@ export function analyzeJavaScriptTree(
         senders: new Set(),
         receivers: new Set(),
       };
+      channels.set(u.channel, entry);
+      // `ipcMain[route.kind](…)` with a kind that is not read: the channel, but neither end
+      if (u.api.endsWith(".[unknown]")) continue;
       const receiving = /\.(on|once|handle|handleOnce)$/.test(u.api);
       (receiving ? entry.receivers : entry.senders).add(m.id);
-      channels.set(u.channel, entry);
     }
   }
   const ipcChannels = [...channels]

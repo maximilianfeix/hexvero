@@ -536,6 +536,172 @@ applies). Not read: modules a bundler refers to by number (webpack's `r = n(6569
 versions), a client passed around as a value (`const l = net.request; l(url)`), wrappers called
 from another module, and `fetch(new Request(url))`.
 
+## IPC built from data: tables, routes, parameters (`ipc`, `ipcChannels`, `contextBridge`)
+
+Applications often generate their IPC from data instead of writing one call per channel. Four
+such forms are read, each in the plain, bundled (esbuild) and minified build. They are read by
+the bounded resolver (`packages/core/src/javascript/resolve.ts`, nothing is run); anything
+outside the rules below gives an unreadable or unresolved row as before, never a guessed
+channel.
+
+**What counts as a change of a table or list.** The values are read only when the table or list
+is a `const` object or array literal (also in `Object.freeze(…)`, and in a declaration list as
+minifiers write it, `var a = …, T = {…}`) that nothing may change. Anywhere in the file, these
+make it unknown:
+
+- an assignment to the name, or to a member or element at any depth: `T.x = …`, `T[k] = …`,
+  `T.a.b += …`, `R[0].channel = …`, `T.x++`;
+- `delete T.x`, `delete T[k]`;
+- a mutating method on it or on a member: `push`, `pop`, `shift`, `unshift`, `splice`, `set`,
+  `delete`, `clear`, `fill`, `copyWithin`, `sort`, `reverse`;
+- `Object.assign`, `Object.defineProperty`, `Object.defineProperties`, `Object.setPrototypeOf`,
+  `Reflect.set`, `Reflect.defineProperty`, `Reflect.deleteProperty`, `Reflect.setPrototypeOf`
+  with it as the target;
+- a member write through a loop variable or callback parameter that runs over a list:
+  `for (const r of R) r.channel = …`, `R.forEach((r) => { r.kind = … })` (also `map`,
+  `filter`, `find`, `findLast`, `some`, `every`, `reduce`, `flatMap`);
+- for the readers new in this release only, also an alias (`const U = T`), a function the table
+  is passed to that writes its parameter (`addMore(T)` with `t.b = …` in it), and passing it to
+  a function whose body is not read (`register(T)`, `logger.info(T)`). These readers are: the
+  members built from a table (the generated invokers and `api[k] = …` loops below), the computed
+  route form `ipcMain[r.kind](…)` and the other route lists read per element, and a list read
+  through a parameter of the function around it (`invokers(table)`). Every reader 0.9.8 had (a
+  channel `T.k` or `T["k"]`, the loops 0.9.8 read, endpoints, storage keys, window options) takes
+  a table passed to such a function as it is written.
+
+Reading a member, `typeof`, a spread, `for … of`, a template (`` `${T}` ``), and passing it to
+`console.*`, `JSON.stringify`, `String`, `Array.isArray`, `Object.freeze` / `isFrozen` / `keys` /
+`entries` / `values`, or to a function of the file that does not write its parameter (read up to
+three calls deep), are reads in every reader.
+
+Not seen: a write through what a method returns (`R.find(f).channel = …`), `|=`, `&=`, `^=` and
+`%=`, and a write in another module.
+
+**Bridge members and senders from a channel table.** The forms:
+
+| written in the preload                                                                                                    | members                     |
+| ------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `{ ...Object.fromEntries(Object.entries(T).map(([m, ch]) => [m, (...a) => ipcRenderer.invoke(ch, ...a)])) }`              | one per key, with its value |
+| the same through a function of the file, `function invokers(t) { return Object.fromEntries(…) }` and `{ ...invokers(T) }` | one per key                 |
+| `exposeInMainWorld("x", Object.fromEntries(…))`, or a name declared as such                                               | one per key                 |
+| `for (const [k, ch] of Object.entries(T)) api[k] = (...a) => ipcRenderer.send(ch, ...a)` after `const api = {…}`          | one per key                 |
+| `Object.keys(T).forEach((k) => { api[k] = (...a) => ipcRenderer.invoke(T[k], ...a); })`                                   | one per key                 |
+| `api["open"] = …` or `api[KEY] = …` with `KEY` a constant, outside any loop                                               | the key it names            |
+
+The object must be read whole (a closed object, every key known), and every member must be a
+function of the file whose body is exactly one call `ipcRenderer.<method>(<channel>, …)`: an
+expression body or `{ return …; }`, the method one of `invoke`, `send`, `sendSync`,
+`sendToHost`, `postMessage`, `on`, `once`, `addListener`. The member's channel is that first
+argument, evaluated with the loop's binding; a channel that is not one whole string leaves the
+member with `channel: null`. These give one entry with `member: null`
+(`context_bridge_members_unreadable`), never a guessed member: a member that does anything else
+first (`{ log(m); return ipcRenderer.invoke(ch); }`), a table that may have changed (above), a
+spread of something else, a loop over keys known only at run time, and a write in a round after
+anything that may skip it (see "Control flow" below). A write `api[k] = …` or `api.x = …` counts
+only when `api` there is the binding of the exposed object: a parameter or local of the same
+name, as minifiers reuse `e`, is another object. Electron Fiddle 0.38.0 and 0.39.0 each lost nine
+false members of `window.__SENTRY_IPC__` that way (the writes of Sentry's enum IIFEs,
+`function (e) { e.EVENT = "…" }`).
+
+The senders are read with the same evaluation: `ipcRenderer.invoke(ch, ...a)` inside such a
+callback gives one row per channel (`via: "resolved"`, method `element`). The list a `forEach` /
+`map` callback or a `for … of` loop runs over may read a parameter of the function it is in
+(`Object.entries(table)` in `invokers(table)`); it is then read once per call site of that
+function, each with its binding. `T[k]` with `k` bound to one key reads that member (so
+`for (const k of Object.keys(CH)) ipcMain.on(CH[k], f)` registers the values of `CH`, never its
+keys). `Object.fromEntries(list,)`, `Object.entries(o,)` and `Object.freeze(o,)` with a trailing
+comma read as without it.
+
+**Receivers from a list of routes.** `for (const route of ROUTES) ipcMain[route.kind](route.channel,
+route.fn)` gives one row per element. The method is the element's `kind` when that is one string
+naming an IPC method of the object (`on`, `once`, `handle`, `handleOnce` for ipcMain; `on`,
+`once`, `send`, `invoke`, `sendSync`, `postMessage` for ipcRenderer). Any other value gives the api
+`ipcMain.[unknown]`: the channel is listed, and the call is neither a sender nor a receiver in
+`ipcChannels`, `interfaces` and the release report. `ROUTES.forEach((r) => ipcMain.handle(r.channel,
+r.fn))` and `for (const r of ROUTES) ipcMain.handle(r.channel, r.fn)` give one row per element too.
+A list that may have changed (above, including `[...BASE, {…}]` spreads and writes to an element
+or through the loop variable), an element that is not read (not an object, a channel from
+`process.env`), and a call in a round after anything that may skip it give one row without a
+channel (`ipc_channel_unresolved`; for the computed form with api `ipcMain.[unknown]`). This also
+holds for the loops 0.9.8 read already. A channel named by a constant of another module
+(`Channels.LIBRARY_LIST` with `const { Channels } = require("../shared/channels")`) is a reference
+filled in once that module is read. A table there with computed entries
+(`Object.freeze({ LIST: PREFIX + "list", OPEN: "doc:open" })`) now exports those entries too, read
+by evaluation (listed in `evaluated`); up to this release only its literal entries were.
+
+**Control flow in a round.** A member write or an IPC call that a round of a `for … of` loop or
+of a `forEach` / `map` callback makes only after one of `if`, `else`, `continue`, `break`,
+`return`, `throw`, `switch`, `case`, a nested `for` / `while` / `do`, `try`, `?`, `&&`, `||` or
+`??` (anywhere before it in the round) is not made in every round: it gives an unreadable entry
+or an unresolved row instead of one per element.
+
+**ipcMain passed as an argument.** A method of a class or object literal, or a named function,
+whose parameter `P` is used as an IPC object (`P.handle(…)`, also `on`, `once`, `handleOnce`,
+`send`, `invoke`, `sendSync`, `postMessage`). The parameter must not be written in the body: an
+assignment (`ipc = …`, `ipc ||= …`, `ipc++`), a `for (ipc of …)` or `for (ipc in …)` head, a
+destructuring assignment (`({ ipc } = …)`, `[ipc] = …`), or a `var ipc` there make it another
+object. Its call sites are found with the wrapper machinery (`wrappers.ts`): calls of the method on
+a proven instance of the class (`new C`, `module.exports = new C()` reached through `require` or
+`import`, re-exports, the module wrappers of esbuild and webpack, and in one bundle what the
+bundled module assigns to its `module.exports`), and calls of the function by name, under the keys
+it is exported as, and from other modules (`require("./x").register(ipcMain)`,
+`const { register } = require("./x")`). Every other use of the function or method counts as a
+call site too: `f.call(thisArg, X)` passes X, and `f.apply(…)`, `f.bind(…)`, `f` handed on as a
+callback (`forEach(f)`, `setTimeout(f, …)`) or to another name pass something that is not read.
+The calls on the parameter become rows only when there is at least one call site and every one
+passes the same object: `ipcMain` (or `ipcRenderer`) itself, another name for it,
+`electron.ipcMain`, or a parameter whose own call sites all pass it. One call site that passes
+anything else, or that is not read, gives no rows at all. The rows are in the file of the function,
+at the call inside it, with `via: "parameter"` and `wrapper` naming it (`PrefsService.register`, a
+minifier's name in a minified build); a call the object has no such method for
+(`ipcRenderer.handle`) gives none, and a sending call through ipcRenderer has `args`.
+
+Limits: a file is read for this when it calls `handle`, `handleOnce`, `invoke` or `sendSync`
+on a parameter, whatever the parameter is named (`register(m) { m.handle(…) }`); for `on`,
+`once`, `send` and `postMessage`, which other objects have too, only when its text also names
+`ipc` (a parameter `ipc`, a comment, an import of `ipcMain`). Other modules are read for calls of a
+function or method only when it looks like IPC: its parameter's name contains `ipc`, or it calls
+`handle`, `handleOnce`, `invoke` or `sendSync` on it. A function in a module that another module
+imports and that does not look like IPC gives no rows (its calls there are not read). This reading
+of other modules is a stage of its own, apart from the one for channel-forwarding wrappers, so it
+never takes from that stage's budgets. Per file at most 2,000 calls on parameters are read, with a
+work budget of their own (400,000 token visits); past either the file gives no such rows, without
+a limitation (as before this release, when none were read). A function declared inside another
+one is looked for only in that function's body. When the stage of other modules may have missed
+calls (an importer past its limit of 200 files or its budget, and for plain functions also more
+than 256 calls of other modules' functions in one file), the methods of the classes and instances
+a module exports, or the functions it exports, give none, and `ipc_wrappers_capped` names the files
+that were not read to the end; a function only its own file calls is still decided there. Not read: `event.reply` inside a listener registered this way, an anonymous
+function, an arrow function in a class field, and a nested destructuring pattern
+(`({ a: { ipc } } = …)`).
+
+**Budgets.** Per file, at most 256 IPC calls are read once per element of a list (the computed
+`ipcMain[r.kind](…)` and the loops the scan leaves open); the later ones stay without a channel
+(the computed form as `ipcMain.[unknown]`, with a reason) and are named in
+`ipc_channel_unresolved`. The step-by-step members of an exposed object share the bridge walk's
+budget (400,000 token visits per file, less the file's length): every `api[…] = …` costs 8 before
+anything is read for it, and 2,000 more when it writes the exposed object itself and its loop is
+read; an `api.x = …` that stays a member costs 8. Whether a write is to the exposed object is
+charged to the resolver's own work, so writes to other bindings of the same name take nothing from
+that budget. Past it the file's members are marked as cut (`context_bridge_truncated`). The walks
+back to a loop and to a callback around a call are charged to the resolver's work for the file.
+
+**Channel helpers inside a bundled module.** A `function guarded(channel, fn) { ipcMain.handle(channel,
+…) }` declared inside another function (the body of a module esbuild or webpack wraps, or an inner
+helper) is now called wherever its name is bound to it in that scope, so its calls give the
+channels (`via: "resolved"`, method `parameter`). Up to this release such a helper read as
+shadowed at every call, and the bundled and minified builds of holdout6 missed `shot:save` and
+`shot:share`, which the plain build read.
+
+Corpus, before → after (hit/missed/false, per class): holdout6 IPC channels 52/12/0 → 64/0/0,
+senders and receivers 89/23/0 → 136/0/0, bridge members 60/20/0 → 80/0/0, bridge member channel
+60/0/0 → 80/0/0; holdout2 bridge members 129/6/0 → 133/2/0, senders and receivers 238/14/0 →
+242/10/0, changes in contextBridge 1/1/0 → 2/0/0; holdout IPC channels 69/3/0 → 72/0/0, senders
+and receivers 110/22/0 → 113/25/0 (the three channels now found in the minified time-tracker
+build have preload senders that no build of it reads); holdout3, holdout4 and holdout5 unchanged.
+Electron Fiddle 0.38.0 → 0.39.0: `ipc`, `ipcChannels` and the comparison unchanged, 51 members of
+`window.ElectronFiddle`, 45 linked to a main-process end, as before.
+
 ## Payload shape of an IPC call (`ipc`, field `args`)
 
 A new field in what a renderer sends on an existing channel does not change the channel list, so

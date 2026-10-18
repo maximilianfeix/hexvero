@@ -1,6 +1,6 @@
-# hexvero 0.9.0 on the hexvero corpus
+# hexvero 0.9.8 on the hexvero corpus
 
-Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
+Tool: name hexvero · version 0.9.8 · commit 045de0c+uncommitted · node v22.17.1 · platform darwin arm64 · engines {"radare2":"radare2 6.2.4 +0 abi:152 @ darwin-arm_64","rizin":"rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"}
 
 ## Per class
 
@@ -50,14 +50,14 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout | functions | 4 | 68 | 0 | 0 |  |
 | holdout | call paths | 4 | 70 | 2 | 0 |  |
 | holdout | direct callers | 4 | 91 | 0 | 1 |  |
-| holdout | IPC channels | 3 | 66 | 6 | 0 |  |
-| holdout | IPC senders and receivers | 3 | 107 | 22 | 0 |  |
+| holdout | IPC channels | 3 | 72 | 0 | 0 |  |
+| holdout | IPC senders and receivers | 3 | 113 | 25 | 0 |  |
 | holdout | window settings | 3 | 21 | 12 | 0 |  |
 | holdout | bridge members | 3 | 60 | 9 | 0 |  |
 | holdout | bridge member channel | 3 | 40 | 20 | 0 |  |
 | holdout | endpoints | 3 | 36 | 6 | 0 |  |
-| holdout | endpoint method | 3 | 9 | 3 | 0 |  |
-| holdout | requests with an unknown URL shown | 3 | 3 | 0 | 5 |  |
+| holdout | endpoint method | 3 | 12 | 0 | 0 |  |
+| holdout | requests with an unknown URL shown | 3 | 3 | 0 | 4 |  |
 | holdout | storage keys | 3 | 51 | 0 | 0 |  |
 | holdout | storage read/write/delete | 3 | 39 | 6 | 0 |  |
 | holdout | changes in ipcChannels | 1 | 3 | 0 | 0 |  |
@@ -66,17 +66,17 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout | changes in endpoints | 1 | 4 | 4 | 0 |  |
 | holdout | changes in storage | 1 | 1 | 1 | 0 |  |
 | holdout2 | IPC channels | 6 | 126 | 0 | 0 |  |
-| holdout2 | IPC senders and receivers | 6 | 230 | 22 | 0 |  |
+| holdout2 | IPC senders and receivers | 6 | 242 | 10 | 0 |  |
 | holdout2 | window settings | 6 | 53 | 10 | 0 |  |
-| holdout2 | bridge members | 6 | 129 | 6 | 0 |  |
-| holdout2 | bridge member channel | 6 | 129 | 0 | 0 |  |
+| holdout2 | bridge members | 6 | 133 | 2 | 0 |  |
+| holdout2 | bridge member channel | 6 | 133 | 0 | 0 |  |
 | holdout2 | endpoints | 6 | 54 | 3 | 0 |  |
 | holdout2 | endpoint method | 6 | 9 | 9 | 0 |  |
 | holdout2 | requests with an unknown URL shown | 6 | 6 | 0 | 2 |  |
-| holdout2 | storage keys | 6 | 53 | 4 | 0 |  |
-| holdout2 | storage read/write/delete | 6 | 48 | 0 | 0 |  |
+| holdout2 | storage keys | 6 | 55 | 2 | 0 |  |
+| holdout2 | storage read/write/delete | 6 | 50 | 0 | 0 |  |
 | holdout2 | changes in ipcChannels | 1 | 2 | 0 | 0 |  |
-| holdout2 | changes in contextBridge | 1 | 1 | 1 | 0 |  |
+| holdout2 | changes in contextBridge | 1 | 2 | 0 | 0 |  |
 | holdout2 | changes in webPreferences | 1 | 1 | 0 | 0 |  |
 | holdout2 | changes in endpoints | 1 | 4 | 0 | 0 |  |
 | holdout2 | changes in storage | 1 | 1 | 0 | 0 |  |
@@ -85,7 +85,7 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout3 | window settings | 3 | 42 | 0 | 0 |  |
 | holdout3 | bridge members | 3 | 78 | 0 | 0 |  |
 | holdout3 | bridge member channel | 3 | 78 | 0 | 0 |  |
-| holdout3 | endpoints | 3 | 18 | 3 | 0 |  |
+| holdout3 | endpoints | 3 | 21 | 0 | 0 |  |
 | holdout3 | endpoint method | 3 | 3 | 0 | 0 |  |
 | holdout3 | requests with an unknown URL shown | 3 | 6 | 0 | 0 |  |
 | holdout3 | storage keys | 3 | 27 | 0 | 0 |  |
@@ -112,6 +112,37 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout4 | changes in webPreferences | 1 | 2 | 0 | 0 |  |
 | holdout4 | changes in endpoints | 1 | 0 | 1 | 0 |  |
 | holdout4 | changes in storage | 1 | 1 | 0 | 0 |  |
+| holdout5 | IPC channels | 4 | 72 | 0 | 0 |  |
+| holdout5 | IPC senders and receivers | 4 | 131 | 9 | 0 |  |
+| holdout5 | IPC channels with an unknown name shown | 4 | 4 | 0 | 0 |  |
+| holdout5 | window settings | 4 | 32 | 20 | 0 |  |
+| holdout5 | bridge members | 4 | 76 | 0 | 0 |  |
+| holdout5 | bridge member channel | 4 | 67 | 9 | 0 |  |
+| holdout5 | endpoints | 4 | 21 | 4 | 0 |  |
+| holdout5 | endpoint method | 4 | 5 | 16 | 0 |  |
+| holdout5 | requests with an unknown URL shown | 4 | 4 | 0 | 4 |  |
+| holdout5 | storage keys | 4 | 16 | 8 | 4 |  |
+| holdout5 | storage read/write/delete | 4 | 16 | 0 | 0 |  |
+| holdout5 | changes in ipcChannels | 1 | 4 | 0 | 0 |  |
+| holdout5 | changes in contextBridge | 1 | 4 | 0 | 0 |  |
+| holdout5 | changes in webPreferences | 1 | 1 | 1 | 0 |  |
+| holdout5 | changes in endpoints | 1 | 1 | 0 | 0 |  |
+| holdout5 | changes in storage | 1 | 0 | 0 | 0 |  |
+| holdout6 | IPC channels | 4 | 64 | 0 | 0 |  |
+| holdout6 | IPC senders and receivers | 4 | 136 | 0 | 0 |  |
+| holdout6 | window settings | 4 | 44 | 8 | 0 |  |
+| holdout6 | bridge members | 4 | 80 | 0 | 0 |  |
+| holdout6 | bridge member channel | 4 | 80 | 0 | 0 |  |
+| holdout6 | endpoints | 4 | 16 | 5 | 4 |  |
+| holdout6 | endpoint method | 4 | 5 | 11 | 0 |  |
+| holdout6 | requests with an unknown URL shown | 4 | 4 | 0 | 1 |  |
+| holdout6 | storage keys | 4 | 33 | 8 | 0 |  |
+| holdout6 | storage read/write/delete | 4 | 33 | 0 | 0 |  |
+| holdout6 | changes in ipcChannels | 1 | 4 | 0 | 0 |  |
+| holdout6 | changes in contextBridge | 1 | 3 | 0 | 0 |  |
+| holdout6 | changes in webPreferences | 1 | 1 | 0 | 0 |  |
+| holdout6 | changes in endpoints | 1 | 1 | 0 | 0 |  |
+| holdout6 | changes in storage | 1 | 1 | 0 | 1 |  |
 | damaged | damaged input | 6 | 6 | 0 | 0 |  |
 
 ## Per input
@@ -238,33 +269,33 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | functions | 17 | 0 | 0 |  |
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | call paths | 16 | 2 | 0 | debug_level → atoi: path not found, stated without warning (no function atoi); main → atoi: not answered (no function atoi) |
 | holdout | holdout/exprcalc.O2.macho-arm64 (rizin) | direct callers | 23 | 0 | 0 | state_blank: indirect caller next_token reported |
-| holdout | holdout/time-tracker.plain.asar | IPC channels | 23 | 1 | 0 | missed theme:changed |
-| holdout | holdout/time-tracker.plain.asar | IPC senders and receivers | 39 | 6 | 0 | timer:tick: sender main.js missed; projects:list: sender preload.js missed; projects:create: sender preload.js missed; projects:rename: sender preload.js missed; invoice:exported: sender main.js missed; update:ready: receiver preload.js missed |
+| holdout | holdout/time-tracker.plain.asar | IPC channels | 24 | 0 | 0 |  |
+| holdout | holdout/time-tracker.plain.asar | IPC senders and receivers | 40 | 6 | 0 | timer:tick: sender main.js missed; projects:list: sender preload.js missed; projects:create: sender preload.js missed; projects:rename: sender preload.js missed; invoice:exported: sender main.js missed; update:ready: receiver preload.js missed |
 | holdout | holdout/time-tracker.plain.asar | window settings | 7 | 4 | 0 | missed main.js sandbox=true; missed main.js preload=preload.js; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; not scored: 1 row(s) with a computed value |
 | holdout | holdout/time-tracker.plain.asar | bridge members | 20 | 3 | 0 | missed widget.pin; missed widget.close; missed widget.connect; 1 entry reported as unreadable |
 | holdout | holdout/time-tracker.plain.asar | bridge member channel | 16 | 4 | 0 | tracker.listProjects: expected projects:list, got null; tracker.createProject: expected projects:create, got null; tracker.renameProject: expected projects:rename, got null; tracker.createInvoice: expected invoice:create, got null |
 | holdout | holdout/time-tracker.plain.asar | endpoints | 10 | 4 | 0 | missed https://api.punchclock.example/v3/clients; missed https://api.punchclock.example/v3/timesheets/current…; missed https://api.punchclock.example/v3/entries; missed https://updates.punchclock.example/feed/stable.json |
-| holdout | holdout/time-tracker.plain.asar | endpoint method | 3 | 1 | 0 | https://hooks.punchclock.example/invoice-exported: expected POST |
-| holdout | holdout/time-tracker.plain.asar | requests with an unknown URL shown | 1 | 0 | 3 |  |
+| holdout | holdout/time-tracker.plain.asar | endpoint method | 4 | 0 | 0 |  |
+| holdout | holdout/time-tracker.plain.asar | requests with an unknown URL shown | 1 | 0 | 2 |  |
 | holdout | holdout/time-tracker.plain.asar | storage keys | 17 | 0 | 0 |  |
 | holdout | holdout/time-tracker.plain.asar | storage read/write/delete | 13 | 2 | 0 | electron-store ui.locale: expected read+write, got read; electron-store ui.currency: expected read+write, got read |
-| holdout | holdout/time-tracker.bundled.asar | IPC channels | 23 | 1 | 0 | missed theme:changed |
-| holdout | holdout/time-tracker.bundled.asar | IPC senders and receivers | 40 | 5 | 0 | projects:list: sender preload.js missed; projects:create: sender preload.js missed; projects:rename: sender preload.js missed; invoice:exported: sender main.js missed; update:ready: receiver preload.js missed |
+| holdout | holdout/time-tracker.bundled.asar | IPC channels | 24 | 0 | 0 |  |
+| holdout | holdout/time-tracker.bundled.asar | IPC senders and receivers | 41 | 5 | 0 | projects:list: sender preload.js missed; projects:create: sender preload.js missed; projects:rename: sender preload.js missed; invoice:exported: sender main.js missed; update:ready: receiver preload.js missed |
 | holdout | holdout/time-tracker.bundled.asar | window settings | 7 | 4 | 0 | missed main.js sandbox=true; missed main.js preload=preload.js; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; not scored: 1 row(s) with a computed value |
 | holdout | holdout/time-tracker.bundled.asar | bridge members | 20 | 3 | 0 | missed widget.pin; missed widget.close; missed widget.connect; 1 entry reported as unreadable |
 | holdout | holdout/time-tracker.bundled.asar | bridge member channel | 16 | 4 | 0 | tracker.listProjects: expected projects:list, got null; tracker.createProject: expected projects:create, got null; tracker.renameProject: expected projects:rename, got null; tracker.createInvoice: expected invoice:create, got null |
 | holdout | holdout/time-tracker.bundled.asar | endpoints | 13 | 1 | 0 | missed https://api.punchclock.example/v3/entries |
-| holdout | holdout/time-tracker.bundled.asar | endpoint method | 3 | 1 | 0 | https://hooks.punchclock.example/invoice-exported: expected POST |
+| holdout | holdout/time-tracker.bundled.asar | endpoint method | 4 | 0 | 0 |  |
 | holdout | holdout/time-tracker.bundled.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
 | holdout | holdout/time-tracker.bundled.asar | storage keys | 17 | 0 | 0 |  |
 | holdout | holdout/time-tracker.bundled.asar | storage read/write/delete | 13 | 2 | 0 | electron-store ui.locale: expected read+write, got read; electron-store ui.currency: expected read+write, got read |
-| holdout | holdout/time-tracker.minified.asar | IPC channels | 20 | 4 | 0 | missed projects:list; missed projects:create; missed projects:rename; missed theme:changed |
-| holdout | holdout/time-tracker.minified.asar | IPC senders and receivers | 28 | 11 | 0 | timer:start: sender preload.js missed; timer:stop: sender preload.js missed; timer:tick: receiver preload.js missed; widget:pin: receiver main.js missed; widget:close: receiver main.js missed; invoice:export: sender preload.js missed; invoice:exported: sender main.js missed; sync:progress: receiver preload.js missed; config:get-sync: sender preload.js missed; menu:new-entry: receiver preload.js missed; update:ready: receiver preload.js missed |
+| holdout | holdout/time-tracker.minified.asar | IPC channels | 24 | 0 | 0 |  |
+| holdout | holdout/time-tracker.minified.asar | IPC senders and receivers | 32 | 14 | 0 | timer:start: sender preload.js missed; timer:stop: sender preload.js missed; timer:tick: receiver preload.js missed; projects:list: sender preload.js missed; projects:create: sender preload.js missed; projects:rename: sender preload.js missed; widget:pin: receiver main.js missed; widget:close: receiver main.js missed; invoice:export: sender preload.js missed; invoice:exported: sender main.js missed; sync:progress: receiver preload.js missed; config:get-sync: sender preload.js missed; menu:new-entry: receiver preload.js missed; update:ready: receiver preload.js missed |
 | holdout | holdout/time-tracker.minified.asar | window settings | 7 | 4 | 0 | missed main.js sandbox=true; missed main.js preload=preload.js; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; not scored: 1 row(s) with a computed value |
 | holdout | holdout/time-tracker.minified.asar | bridge members | 20 | 3 | 0 | missed widget.pin; missed widget.close; missed widget.connect; 1 entry reported as unreadable |
 | holdout | holdout/time-tracker.minified.asar | bridge member channel | 8 | 12 | 0 | tracker.startTimer: expected timer:start, got null; tracker.stopTimer: expected timer:stop, got null; tracker.onTick: expected timer:tick, got null; tracker.listProjects: expected projects:list, got null; tracker.createProject: expected projects:create, got null; tracker.renameProject: expected projects:rename, got null; tracker.createInvoice: expected invoice:create, got null; tracker.exportInvoice: expected invoice:export, got null; tracker.onSyncProgress: expected sync:progress, got null; tracker.setting: expected config:get-sync, got null; tracker.onNewEntry: expected menu:new-entry, got null; tracker.onUpdateReady: expected update:ready, got null |
 | holdout | holdout/time-tracker.minified.asar | endpoints | 13 | 1 | 0 | missed https://api.punchclock.example/v3/entries |
-| holdout | holdout/time-tracker.minified.asar | endpoint method | 3 | 1 | 0 | https://hooks.punchclock.example/invoice-exported: expected POST |
+| holdout | holdout/time-tracker.minified.asar | endpoint method | 4 | 0 | 0 |  |
 | holdout | holdout/time-tracker.minified.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
 | holdout | holdout/time-tracker.minified.asar | storage keys | 17 | 0 | 0 |  |
 | holdout | holdout/time-tracker.minified.asar | storage read/write/delete | 13 | 2 | 0 | electron-store ui.locale: expected read+write, got read; electron-store ui.currency: expected read+write, got read |
@@ -276,8 +307,8 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout2 | holdout2/markdown-editor.plain.asar | IPC channels | 22 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar | IPC senders and receivers | 42 | 2 | 0 | settings:changed: sender main.js missed; vault:reveal: receiver main.js missed |
 | holdout2 | holdout2/markdown-editor.plain.asar | window settings | 9 | 0 | 0 | not scored: 1 row(s) with a computed value |
-| holdout2 | holdout2/markdown-editor.plain.asar | bridge members | 21 | 2 | 0 | missed inkwell.listNotes; missed inkwell.searchNotes; 1 entry reported as unreadable |
-| holdout2 | holdout2/markdown-editor.plain.asar | bridge member channel | 21 | 0 | 0 |  |
+| holdout2 | holdout2/markdown-editor.plain.asar | bridge members | 23 | 0 | 0 |  |
+| holdout2 | holdout2/markdown-editor.plain.asar | bridge member channel | 23 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar | endpoints | 8 | 1 | 0 | missed https://embed.inkwell.example/oembed… |
 | holdout2 | holdout2/markdown-editor.plain.asar | endpoint method | 3 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
@@ -286,8 +317,8 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout2 | holdout2/markdown-editor.bundled.asar | IPC channels | 22 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.bundled.asar | IPC senders and receivers | 42 | 2 | 0 | settings:changed: sender main.js missed; vault:reveal: receiver main.js missed |
 | holdout2 | holdout2/markdown-editor.bundled.asar | window settings | 9 | 0 | 0 | not scored: 1 row(s) with a computed value |
-| holdout2 | holdout2/markdown-editor.bundled.asar | bridge members | 21 | 2 | 0 | missed inkwell.listNotes; missed inkwell.searchNotes; 1 entry reported as unreadable |
-| holdout2 | holdout2/markdown-editor.bundled.asar | bridge member channel | 21 | 0 | 0 |  |
+| holdout2 | holdout2/markdown-editor.bundled.asar | bridge members | 23 | 0 | 0 |  |
+| holdout2 | holdout2/markdown-editor.bundled.asar | bridge member channel | 23 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.bundled.asar | endpoints | 9 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.bundled.asar | endpoint method | 3 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.bundled.asar | requests with an unknown URL shown | 1 | 0 | 0 |  |
@@ -301,15 +332,15 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout2 | holdout2/markdown-editor.minified.asar | endpoints | 9 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.minified.asar | endpoint method | 3 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.minified.asar | requests with an unknown URL shown | 1 | 0 | 0 |  |
-| holdout2 | holdout2/markdown-editor.minified.asar | storage keys | 4 | 4 | 0 | missed localStorage inkwell.theme; missed localStorage inkwell.sidebarWidth; missed localStorage inkwell.recent; missed indexedDB inkwell-search |
-| holdout2 | holdout2/markdown-editor.minified.asar | storage read/write/delete | 4 | 0 | 0 |  |
+| holdout2 | holdout2/markdown-editor.minified.asar | storage keys | 6 | 2 | 0 | missed localStorage inkwell.recent; missed indexedDB inkwell-search |
+| holdout2 | holdout2/markdown-editor.minified.asar | storage read/write/delete | 6 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar | changes in ipcChannels | 2 | 0 | 0 |  |
-| holdout2 | holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar | changes in contextBridge | 1 | 1 | 0 | missed +inkwell.renameNote |
+| holdout2 | holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar | changes in contextBridge | 2 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar | changes in webPreferences | 1 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar | changes in endpoints | 4 | 0 | 0 |  |
 | holdout2 | holdout2/markdown-editor.plain.asar → holdout2/markdown-editor-v2.plain.asar | changes in storage | 1 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.plain.asar | IPC channels | 20 | 0 | 0 |  |
-| holdout2 | holdout2/music-player.plain.asar | IPC senders and receivers | 35 | 5 | 0 | playlists:list: receiver main.js missed; playlists:save: receiver main.js missed; settings:get: receiver main.js missed; settings:set: receiver main.js missed; mini:get-artwork: receiver main.js missed |
+| holdout2 | holdout2/music-player.plain.asar | IPC senders and receivers | 39 | 1 | 0 | mini:get-artwork: receiver main.js missed |
 | holdout2 | holdout2/music-player.plain.asar | window settings | 12 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.plain.asar | bridge members | 22 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.plain.asar | bridge member channel | 22 | 0 | 0 |  |
@@ -319,7 +350,7 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout2 | holdout2/music-player.plain.asar | storage keys | 11 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.plain.asar | storage read/write/delete | 10 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.bundled.asar | IPC channels | 20 | 0 | 0 |  |
-| holdout2 | holdout2/music-player.bundled.asar | IPC senders and receivers | 35 | 5 | 0 | playlists:list: receiver main.js missed; playlists:save: receiver main.js missed; settings:get: receiver main.js missed; settings:set: receiver main.js missed; mini:get-artwork: receiver main.js missed |
+| holdout2 | holdout2/music-player.bundled.asar | IPC senders and receivers | 39 | 1 | 0 | mini:get-artwork: receiver main.js missed |
 | holdout2 | holdout2/music-player.bundled.asar | window settings | 7 | 5 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js sandbox=true |
 | holdout2 | holdout2/music-player.bundled.asar | bridge members | 22 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.bundled.asar | bridge member channel | 22 | 0 | 0 |  |
@@ -329,7 +360,7 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout2 | holdout2/music-player.bundled.asar | storage keys | 11 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.bundled.asar | storage read/write/delete | 10 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.minified.asar | IPC channels | 20 | 0 | 0 |  |
-| holdout2 | holdout2/music-player.minified.asar | IPC senders and receivers | 35 | 5 | 0 | playlists:list: receiver main.js missed; playlists:save: receiver main.js missed; settings:get: receiver main.js missed; settings:set: receiver main.js missed; mini:get-artwork: receiver main.js missed |
+| holdout2 | holdout2/music-player.minified.asar | IPC senders and receivers | 39 | 1 | 0 | mini:get-artwork: receiver main.js missed |
 | holdout2 | holdout2/music-player.minified.asar | window settings | 7 | 5 | 0 | missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js sandbox=true |
 | holdout2 | holdout2/music-player.minified.asar | bridge members | 22 | 0 | 0 |  |
 | holdout2 | holdout2/music-player.minified.asar | bridge member channel | 22 | 0 | 0 |  |
@@ -343,7 +374,7 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout3 | holdout3/podcast-player.plain.asar | window settings | 14 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | bridge members | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | bridge member channel | 26 | 0 | 0 |  |
-| holdout3 | holdout3/podcast-player.plain.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
+| holdout3 | holdout3/podcast-player.plain.asar | endpoints | 7 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | endpoint method | 1 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | requests with an unknown URL shown | 2 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.plain.asar | storage keys | 9 | 0 | 0 |  |
@@ -353,7 +384,7 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout3 | holdout3/podcast-player.bundled.asar | window settings | 14 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | bridge members | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | bridge member channel | 26 | 0 | 0 |  |
-| holdout3 | holdout3/podcast-player.bundled.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
+| holdout3 | holdout3/podcast-player.bundled.asar | endpoints | 7 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | endpoint method | 1 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | requests with an unknown URL shown | 2 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.bundled.asar | storage keys | 9 | 0 | 0 |  |
@@ -363,7 +394,7 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout3 | holdout3/podcast-player.minified.asar | window settings | 14 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | bridge members | 26 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | bridge member channel | 26 | 0 | 0 |  |
-| holdout3 | holdout3/podcast-player.minified.asar | endpoints | 6 | 1 | 0 | missed https://api.driftwood.example/v1/directory/top |
+| holdout3 | holdout3/podcast-player.minified.asar | endpoints | 7 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | endpoint method | 1 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | requests with an unknown URL shown | 2 | 0 | 0 |  |
 | holdout3 | holdout3/podcast-player.minified.asar | storage keys | 9 | 0 | 0 |  |
@@ -410,6 +441,100 @@ Tool: name hexvero · version 0.9.0 · commit f39d2f1+uncommitted · node v22.17
 | holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in webPreferences | 2 | 0 | 0 |  |
 | holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in endpoints | 0 | 1 | 0 | missed +https://api.lattice.example/v1/changelog |
 | holdout4 | holdout4/kanban-board.plain.asar → holdout4/kanban-board-v2.plain.asar | changes in storage | 1 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.plain.asar | IPC channels | 18 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.plain.asar | IPC senders and receivers | 32 | 3 | 0 | export:markdown: sender preload.js missed; export:html: sender preload.js missed; publish:progress: sender publish.js missed |
+| holdout5 | holdout5/tidemark.plain.asar | IPC channels with an unknown name shown | 1 | 0 | 0 | 7 call(s) without a channel: ipcRenderer.invoke at undefined:9, ipcRenderer.invoke at undefined:22, ipcRenderer.invoke at undefined:23, ipcRenderer.send at undefined:37, ipcMain.on at undefined:64, ipcMain.handle at undefined:16, ipcMain.on at undefined:28 |
+| holdout5 | holdout5/tidemark.plain.asar | window settings | 8 | 5 | 0 | missed windows.js preload=preload-preview.js; missed windows.js webSecurity=true; missed windows.js contextIsolation=true; missed windows.js nodeIntegration=false; missed windows.js sandbox=true |
+| holdout5 | holdout5/tidemark.plain.asar | bridge members | 19 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.plain.asar | bridge member channel | 17 | 2 | 0 | tidemark.exportMarkdown: expected export:markdown, got null; tidemark.exportHtml: expected export:html, got null |
+| holdout5 | holdout5/tidemark.plain.asar | endpoints | 5 | 1 | 0 | missed https://telemetry.tidemark.example/v1/events |
+| holdout5 | holdout5/tidemark.plain.asar | endpoint method | 1 | 4 | 0 | https://updates.tidemark.example/desktop/latest.json: expected GET; https://api.tidemark.example/v2/projects/…: expected GET; https://code.tidemark.example/api/v1/repos/…: expected GET; https://cdn.tidemark.example/preview/themes/…: expected GET |
+| holdout5 | holdout5/tidemark.plain.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
+| holdout5 | holdout5/tidemark.plain.asar | storage keys | 4 | 2 | 2 | missed file tidemark-settings.json; missed file tidemark-drafts.json; false localStorage tidemark.${…}; false sessionStorage tidemark.${…} |
+| holdout5 | holdout5/tidemark.plain.asar | storage read/write/delete | 4 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.bundled.asar | IPC channels | 18 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.bundled.asar | IPC senders and receivers | 34 | 1 | 0 | publish:progress: sender main.js missed |
+| holdout5 | holdout5/tidemark.bundled.asar | IPC channels with an unknown name shown | 1 | 0 | 0 | 6 call(s) without a channel: ipcMain.handle at undefined:48, ipcMain.on at undefined:59, ipcMain.on at undefined:282, ipcRenderer.invoke at undefined:52, ipcRenderer.invoke at undefined:53, ipcRenderer.send at undefined:66 |
+| holdout5 | holdout5/tidemark.bundled.asar | window settings | 8 | 5 | 0 | missed main.js preload=preload-preview.js; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js sandbox=true |
+| holdout5 | holdout5/tidemark.bundled.asar | bridge members | 19 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.bundled.asar | bridge member channel | 17 | 2 | 0 | tidemark.exportMarkdown: expected export:markdown, got null; tidemark.exportHtml: expected export:html, got null |
+| holdout5 | holdout5/tidemark.bundled.asar | endpoints | 5 | 1 | 0 | missed https://telemetry.tidemark.example/v1/events |
+| holdout5 | holdout5/tidemark.bundled.asar | endpoint method | 1 | 4 | 0 | https://updates.tidemark.example/desktop/latest.json: expected GET; https://api.tidemark.example/v2/projects/…: expected GET; https://code.tidemark.example/api/v1/repos/…: expected GET; https://cdn.tidemark.example/preview/themes/…: expected GET |
+| holdout5 | holdout5/tidemark.bundled.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
+| holdout5 | holdout5/tidemark.bundled.asar | storage keys | 4 | 2 | 0 | missed file tidemark-settings.json; missed file tidemark-drafts.json |
+| holdout5 | holdout5/tidemark.bundled.asar | storage read/write/delete | 4 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.minified.asar | IPC channels | 18 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.minified.asar | IPC senders and receivers | 34 | 1 | 0 | publish:progress: sender main.js missed |
+| holdout5 | holdout5/tidemark.minified.asar | IPC channels with an unknown name shown | 1 | 0 | 0 | 6 call(s) without a channel: ipcMain.handle at undefined:1, ipcMain.on at undefined:1, ipcMain.on at undefined:3, ipcRenderer.invoke at undefined:1, ipcRenderer.invoke at undefined:1, ipcRenderer.send at undefined:1 |
+| holdout5 | holdout5/tidemark.minified.asar | window settings | 8 | 5 | 0 | missed main.js preload=preload-preview.js; missed main.js webSecurity=true; missed main.js contextIsolation=true; missed main.js nodeIntegration=false; missed main.js sandbox=true |
+| holdout5 | holdout5/tidemark.minified.asar | bridge members | 19 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.minified.asar | bridge member channel | 17 | 2 | 0 | tidemark.exportMarkdown: expected export:markdown, got null; tidemark.exportHtml: expected export:html, got null |
+| holdout5 | holdout5/tidemark.minified.asar | endpoints | 5 | 1 | 0 | missed https://telemetry.tidemark.example/v1/events |
+| holdout5 | holdout5/tidemark.minified.asar | endpoint method | 1 | 4 | 0 | https://updates.tidemark.example/desktop/latest.json: expected GET; https://api.tidemark.example/v2/projects/…: expected GET; https://code.tidemark.example/api/v1/repos/…: expected GET; https://cdn.tidemark.example/preview/themes/…: expected GET |
+| holdout5 | holdout5/tidemark.minified.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
+| holdout5 | holdout5/tidemark.minified.asar | storage keys | 4 | 2 | 0 | missed file tidemark-settings.json; missed file tidemark-drafts.json |
+| holdout5 | holdout5/tidemark.minified.asar | storage read/write/delete | 4 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark-v2.plain.asar | IPC channels | 18 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark-v2.plain.asar | IPC senders and receivers | 31 | 4 | 0 | export:markdown: sender preload.js missed; export:html: sender preload.js missed; export:text: sender preload.js missed; publish:progress: sender publish.js missed |
+| holdout5 | holdout5/tidemark-v2.plain.asar | IPC channels with an unknown name shown | 1 | 0 | 0 | 8 call(s) without a channel: ipcRenderer.invoke at undefined:9, ipcRenderer.invoke at undefined:21, ipcRenderer.invoke at undefined:22, ipcRenderer.invoke at undefined:23, ipcRenderer.send at undefined:36, ipcMain.on at undefined:58, ipcMain.handle at undefined:16, ipcMain.on at undefined:28 |
+| holdout5 | holdout5/tidemark-v2.plain.asar | window settings | 8 | 5 | 0 | missed windows.js preload=preload-preview.js; missed windows.js sandbox=false; missed windows.js webSecurity=true; missed windows.js contextIsolation=true; missed windows.js nodeIntegration=false |
+| holdout5 | holdout5/tidemark-v2.plain.asar | bridge members | 19 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark-v2.plain.asar | bridge member channel | 16 | 3 | 0 | tidemark.exportMarkdown: expected export:markdown, got null; tidemark.exportHtml: expected export:html, got null; tidemark.exportText: expected export:text, got null |
+| holdout5 | holdout5/tidemark-v2.plain.asar | endpoints | 6 | 1 | 0 | missed https://telemetry.tidemark.example/v1/events |
+| holdout5 | holdout5/tidemark-v2.plain.asar | endpoint method | 2 | 4 | 0 | https://updates.tidemark.example/desktop/latest.json: expected GET; https://api.tidemark.example/v2/projects/…: expected GET; https://code.tidemark.example/api/v1/repos/…: expected GET; https://cdn.tidemark.example/preview/themes/…: expected GET |
+| holdout5 | holdout5/tidemark-v2.plain.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
+| holdout5 | holdout5/tidemark-v2.plain.asar | storage keys | 4 | 2 | 2 | missed file tidemark-settings.json; missed file tidemark-drafts.json; false localStorage tidemark.${…}; false sessionStorage tidemark.${…} |
+| holdout5 | holdout5/tidemark-v2.plain.asar | storage read/write/delete | 4 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar | changes in ipcChannels | 4 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar | changes in contextBridge | 4 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar | changes in webPreferences | 1 | 1 | 0 | missed ~sandbox: true -> false |
+| holdout5 | holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar | changes in endpoints | 1 | 0 | 0 |  |
+| holdout5 | holdout5/tidemark.plain.asar → holdout5/tidemark-v2.plain.asar | changes in storage | 0 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar | IPC channels | 16 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar | IPC senders and receivers | 34 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar | window settings | 11 | 2 | 0 | missed windows.js preload=preload-library.js; missed windows.js preload=preload-annotator.js |
+| holdout6 | holdout6/snapdeck.plain.asar | bridge members | 20 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar | bridge member channel | 20 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar | endpoints | 4 | 1 | 1 | missed https://share.snapdeck.example/api/v3/shots/…; false ${…}/shots/${…} |
+| holdout6 | holdout6/snapdeck.plain.asar | endpoint method | 1 | 3 | 0 | https://releases.snapdeck.example/feed/stable.json: expected GET; https://gallery.snapdeck.example/api/trending?window=week: expected GET; https://cdn.snapdeck.example/stickers/…: expected GET |
+| holdout6 | holdout6/snapdeck.plain.asar | requests with an unknown URL shown | 1 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar | storage keys | 8 | 2 | 0 | missed file snapdeck-library.json; missed file snapdeck-prefs.json |
+| holdout6 | holdout6/snapdeck.plain.asar | storage read/write/delete | 8 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.bundled.asar | IPC channels | 16 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.bundled.asar | IPC senders and receivers | 34 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.bundled.asar | window settings | 11 | 2 | 0 | missed main.js preload=preload-library.js; missed main.js preload=preload-annotator.js |
+| holdout6 | holdout6/snapdeck.bundled.asar | bridge members | 20 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.bundled.asar | bridge member channel | 20 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.bundled.asar | endpoints | 5 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.bundled.asar | endpoint method | 2 | 3 | 0 | https://releases.snapdeck.example/feed/stable.json: expected GET; https://gallery.snapdeck.example/api/trending?window=week: expected GET; https://cdn.snapdeck.example/stickers/…: expected GET |
+| holdout6 | holdout6/snapdeck.bundled.asar | requests with an unknown URL shown | 1 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.bundled.asar | storage keys | 8 | 2 | 0 | missed file snapdeck-library.json; missed file snapdeck-prefs.json |
+| holdout6 | holdout6/snapdeck.bundled.asar | storage read/write/delete | 8 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.minified.asar | IPC channels | 16 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.minified.asar | IPC senders and receivers | 34 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.minified.asar | window settings | 11 | 2 | 0 | missed main.js preload=preload-library.js; missed main.js preload=preload-annotator.js |
+| holdout6 | holdout6/snapdeck.minified.asar | bridge members | 20 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.minified.asar | bridge member channel | 20 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.minified.asar | endpoints | 2 | 3 | 2 | missed https://share.snapdeck.example/api/v3/shots; missed https://share.snapdeck.example/api/v3/shots/…; missed https://gallery.snapdeck.example/api/trending?window=week; false ${…}/shots; false ${…}/shots/${…} |
+| holdout6 | holdout6/snapdeck.minified.asar | endpoint method | 0 | 2 | 0 | https://releases.snapdeck.example/feed/stable.json: expected GET; https://cdn.snapdeck.example/stickers/…: expected GET |
+| holdout6 | holdout6/snapdeck.minified.asar | requests with an unknown URL shown | 1 | 0 | 1 |  |
+| holdout6 | holdout6/snapdeck.minified.asar | storage keys | 8 | 2 | 0 | missed file snapdeck-library.json; missed file snapdeck-prefs.json |
+| holdout6 | holdout6/snapdeck.minified.asar | storage read/write/delete | 8 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | IPC channels | 16 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | IPC senders and receivers | 34 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | window settings | 11 | 2 | 0 | missed windows.js preload=preload-library.js; missed windows.js preload=preload-annotator.js |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | bridge members | 20 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | bridge member channel | 20 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | endpoints | 5 | 1 | 1 | missed https://share.snapdeck.example/api/v3/shots/…; false ${…}/shots/${…} |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | endpoint method | 2 | 3 | 0 | https://releases.snapdeck.example/feed/stable.json: expected GET; https://gallery.snapdeck.example/api/trending?window=week: expected GET; https://cdn.snapdeck.example/stickers/…: expected GET |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | requests with an unknown URL shown | 1 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | storage keys | 9 | 2 | 0 | missed file snapdeck-library.json; missed file snapdeck-prefs.json |
+| holdout6 | holdout6/snapdeck-v2.plain.asar | storage read/write/delete | 9 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar | changes in ipcChannels | 4 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar | changes in contextBridge | 3 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar | changes in webPreferences | 1 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar | changes in endpoints | 1 | 0 | 0 |  |
+| holdout6 | holdout6/snapdeck.plain.asar → holdout6/snapdeck-v2.plain.asar | changes in storage | 1 | 0 | 1 | false ~localStorage overlay.lastRegion |
 | damaged | damaged/empty.asar | damaged input | 1 | 0 | 0 | error malformed |
 | damaged | damaged/header-cut.asar | damaged input | 1 | 0 | 0 | error malformed |
 | damaged | damaged/header-length-lies.asar | damaged input | 1 | 0 | 0 | error malformed |

@@ -8,8 +8,15 @@
 
 import { Constants, type Evaluator, type Resolved, resolveAliases } from "./aliases.js";
 import { PayloadReader } from "./payload.js";
-import { ExpressionResolver, type ResolveMethod } from "./resolve.js";
-import { WrapperReader, type WrapperFacts, type WrapperRow } from "./wrappers.js";
+import { ExpressionResolver, type ResolveMethod, type Val } from "./resolve.js";
+import {
+  channelArg,
+  type ObjectCall,
+  type ParamIpc,
+  WrapperReader,
+  type WrapperFacts,
+  type WrapperRow,
+} from "./wrappers.js";
 
 export interface ModuleReference {
   specifier: string;
@@ -30,9 +37,19 @@ export interface IpcUsage {
    * `global`: through a name another file defines (a `window.` global, or a name at the top of a
    * file that is built together with this one). `webContents`: on one page's own channel object
    * (`webContents.ipc.on`). A `wrapper` row of a class or object method (see wrappers.ts) is read
-   * at the call of the method and names it in `wrapper`.
+   * at the call of the method and names it in `wrapper`. `parameter`: on a parameter of a
+   * function or method (named in `wrapper`) that every call site of the application passes
+   * ipcMain or ipcRenderer for (`register(ipc) { ipc.handle(…) }` with `prefs.register(ipcMain)`).
    */
-  via?: "alias" | "constant" | "wrapper" | "table" | "global" | "webContents" | "resolved";
+  via?:
+    | "alias"
+    | "constant"
+    | "wrapper"
+    | "table"
+    | "global"
+    | "webContents"
+    | "resolved"
+    | "parameter";
   /** For a call of a wrapper method: `<Class>.<method>` (or the export key of a minified class). */
   wrapper?: string;
   /**
@@ -85,6 +102,11 @@ export interface ScanResult {
   wrappers?: WrapperFacts;
   /** The search for calls of the file's wrappers ran out of its budget. */
   wrappersCapped?: true;
+  /**
+   * Functions and methods whose parameter is used as the IPC object (`register(ipc) {
+   * ipc.handle(…) }`), with this file's call sites; the application stage decides (wrappers.ts).
+   */
+  paramIpc?: ParamIpc[];
 }
 
 /** What a second reader of the same token stream needs to follow names. */
@@ -262,7 +284,8 @@ const KEYWORDS_BEFORE_REGEX = new Set([
   "yield",
   "await",
 ]);
-const IPC_APIS = new Set([
+/** The IPC calls the scan reads, as `<object>.<method>`. */
+export const IPC_APIS: ReadonlySet<string> = new Set([
   "ipcMain.on",
   "ipcMain.once",
   "ipcMain.handle",
@@ -276,6 +299,32 @@ const IPC_APIS = new Set([
   "webContents.send",
   "contextBridge.exposeInMainWorld",
 ]);
+/** Methods of ipcMain and ipcRenderer a parameter used as one of them is read for (`paramIpc`). */
+const OBJECT_METHODS: ReadonlySet<string> = new Set([
+  "on",
+  "once",
+  "handle",
+  "handleOnce",
+  "send",
+  "invoke",
+  "sendSync",
+  "postMessage",
+]);
+/** Of those, the methods only IPC objects have: read on a parameter in any file. */
+const IPC_ONLY_METHODS: ReadonlySet<string> = new Set([
+  "handle",
+  "handleOnce",
+  "invoke",
+  "sendSync",
+]);
+const OBJECT_SENDS: ReadonlySet<string> = new Set(["send", "invoke", "sendSync", "postMessage"]);
+/**
+ * IPC calls read once per element of a list of routes (`ipcMain[r.kind](r.channel, …)`, and the
+ * loops the fast scan leaves open), per file. The later ones stay without a channel.
+ */
+const MAX_ROUTE_READS = 256;
+/** Calls on names that may be such a parameter, read per file. */
+const MAX_OBJECT_CALLS = 2000;
 /** Objects a class field may hold that the scan reads IPC calls on. */
 const FIELD_TARGETS: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]);
 const IPC_METHODS = new Set([...IPC_APIS].map((api) => api.split(".")[1]!));
@@ -818,16 +867,27 @@ export function scanJavaScript(
     facts: WrapperFacts | null;
     calls: Map<number, { api: string; arg: number }>;
     capped?: true;
+    paramIpc?: ParamIpc[];
   } | null = null;
   const readWrappers = (): NonNullable<typeof wrapperScan> => {
     if (wrapperScan) return wrapperScan;
     wrapperScan = { rows: [], inner: new Set(), facts: null, calls: new Map() };
-    if (!/ipcMain|ipcRenderer|webContents/.test(source)) return wrapperScan;
+    const named = /ipcMain|ipcRenderer|webContents/.test(source);
+    // A file that names no IPC object may still take one as a parameter: read for that when it
+    // calls a method only IPC objects have (`register(m) { m.handle(…) }`), and for the methods
+    // they share with other objects (`on`, `once`, `send`, `postMessage`) only when its text names
+    // `ipc` (`register(ipc)`, a comment, an import of ipcMain). A library that never says `ipc`
+    // is not read for its streams and emitters.
+    const namesIpcText = /ipc/i.test(source);
+    const objectsMaybe =
+      /\.(handle|handleOnce|invoke|sendSync)\(/.test(source) ||
+      (namesIpcText && /\.(on|once|send|postMessage)\(/.test(source));
+    if (!named && !objectsMaybe) return wrapperScan;
     const punct = (k: number, v: string): boolean =>
       tokens[k]?.type === "punct" && tokens[k]!.value === v;
     // IPC calls whose channel is a lone name: the calls a wrapper method can make
     const calls: Array<{ api: string; arg: number }> = [];
-    for (let k = 0; k + 5 < tokens.length; k++) {
+    for (let k = 0; named && k + 5 < tokens.length; k++) {
       const method = tokens[k + 2]!;
       if (
         tokens[k]!.type !== "ident" ||
@@ -855,14 +915,73 @@ export function scanJavaScript(
       const api = `${owner}.${method.value}`;
       if (IPC_APIS.has(api) && !api.startsWith("contextBridge.")) calls.push({ api, arg: k + 4 });
     }
-    if (!calls.length) return wrapperScan;
+    // `ipc.handle(C.GET, …)` on a name that is no IPC object here: maybe a parameter that every
+    // call site passes ipcMain for (`register(ipc) { … }`, called as `prefs.register(ipcMain)`)
+    const objects: Array<{ at: number; call: ObjectCall }> = [];
+    let payloads: PayloadReader | null = null;
+    for (
+      let k = 0;
+      objectsMaybe && k + 3 < tokens.length && objects.length < MAX_OBJECT_CALLS;
+      k++
+    ) {
+      const method = tokens[k + 2]!;
+      if (
+        tokens[k]!.type !== "ident" ||
+        !punct(k + 1, ".") ||
+        method.type !== "ident" ||
+        !OBJECT_METHODS.has(method.value) ||
+        (!namesIpcText && !IPC_ONLY_METHODS.has(method.value)) ||
+        !punct(k + 3, "(") ||
+        punct(k - 1, ".") ||
+        punct(k - 1, "?.") ||
+        tokens[k]!.value === "this"
+      )
+        continue;
+      const owner = aliases.get(k) ?? tokens[k]!.value;
+      if (IPC_APIS.has(`${owner}.${method.value}`) || owner === "webContents") continue;
+      // only a name some function around the call has as a parameter (a cheap test first)
+      if (
+        !(resolver ??= new ExpressionResolver(tokens, constants)).paramAround(k, tokens[k]!.value)
+      )
+        continue;
+      let read = channelArg(tokens, constants, k + 4);
+      // a channel the constants cannot say (a table of a module a bundler wrapped): read by the
+      // bounded resolver, one whole value or none
+      if (read === null && !punct(k + 4, ")")) {
+        const found = resolver.resolveArgument(k + 4);
+        if (found && !found.partial && found.values.length === 1)
+          read = { value: found.values[0]!, via: "evaluated" };
+      }
+      const call: ObjectCall = {
+        method: method.value,
+        line: tokens[k]!.line,
+        channel: read && "value" in read ? read.value : null,
+      };
+      if (read && "ref" in read) call.channelRef = read.ref;
+      if (OBJECT_SENDS.has(method.value))
+        call.args = (payloads ??= new PayloadReader(tokens, source)).shapeAt(k + 3);
+      objects.push({ at: k, call });
+    }
+    if (!calls.length && !objects.length) return wrapperScan;
     const reader = new WrapperReader(
       tokens,
       (resolver ??= new ExpressionResolver(tokens, constants)),
       constants,
+      null,
+      "",
+      (k) => {
+        // as the scan reads a call: another name for one, or the name itself
+        const name = aliases.get(k) ?? tokens[k]!.value;
+        return name === "ipcMain" || name === "ipcRenderer" ? name : null;
+      },
     );
-    reader.findClasses(calls);
-    if (!reader.classes.length) return wrapperScan;
+    if (calls.length) reader.findClasses(calls);
+    if (objects.length) reader.findObjectParams(objects);
+    // a search cut short may have missed a call site that passes something else: no decision
+    const objectsCut = objects.length >= MAX_OBJECT_CALLS;
+    const read = objects.length ? reader.paramIpc() : [];
+    const paramIpc = reader.objectsCapped || objectsCut ? [] : read;
+    if (!reader.classes.length && !paramIpc.length) return wrapperScan;
     const rows = reader.rows();
     const facts = reader.facts();
     wrapperScan = {
@@ -870,7 +989,9 @@ export function scanJavaScript(
       inner: reader.inner,
       facts,
       calls: new Map(rows.map((r) => [r.at, { api: r.usage.api, arg: r.arg }])),
+      // what the search for IPC object parameters could not read only leaves its own rows out
       ...(reader.capped ? { capped: true as const } : {}),
+      ...(paramIpc.length ? { paramIpc } : {}),
     };
     return wrapperScan;
   };
@@ -1040,6 +1161,68 @@ export function scanJavaScript(
     while (is(end, "punct", ".") && is(end + 1, "ident")) end += 2;
     return is(end, "punct", ",") || is(end, "punct", ")") ? named : null;
   };
+  /**
+   * The rows of an IPC call that runs once per element of a list of routes (see
+   * `ExpressionResolver.perElement`): `ranges` are the expressions to read per element, the
+   * channel argument last. Cross-module names are read as references (`Channels.SAVE` of
+   * `require("./channels")`), filled in once that module is read. Null when the loop or its list
+   * is not read whole.
+   */
+  let routeResolver: ExpressionResolver | null = null;
+  /** Calls read per element of a list so far in this file (see MAX_ROUTE_READS). */
+  let routeReads = 0;
+  const perRoute = (
+    k: number,
+    ranges: Array<[number, number]>,
+  ): { rows: Array<Array<Val | null>>; line: number } | null => {
+    if (routeReads >= MAX_ROUTE_READS) return null;
+    routeReads++;
+    routeResolver ??= new ExpressionResolver(tokens, constants, "", null, routeRef, false, true);
+    return routeResolver.perElement(k, ranges);
+  };
+  /** `ipcMain[expr](channel, …)` at k, with `]` at close. */
+  const computedCalls = (k: number, owner: string, close: number): IpcUsage[] => {
+    const line = at(k)!.line;
+    const unread: IpcUsage = { api: `${owner}.[unknown]`, channel: null, line };
+    const arg = close + 2;
+    resolver ??= new ExpressionResolver(tokens, constants);
+    const argEnd = resolver.endOf(arg);
+    if (argEnd <= arg) return [unread];
+    if (routeReads >= MAX_ROUTE_READS) {
+      unread.reason = `more calls with a computed method than are read per file (${MAX_ROUTE_READS})`;
+      return [unread];
+    }
+    const found = perRoute(k, [
+      [k + 2, close],
+      [arg, argEnd],
+    ]);
+    if (!found) {
+      unread.reason =
+        "the method and channel are read per element of a list, which is not read whole";
+      return [unread];
+    }
+    const out: IpcUsage[] = [];
+    for (const [method, channel] of found.rows) {
+      const name = method?.kind === "str" && method.values.length === 1 ? method.values[0]! : null;
+      const api =
+        name !== null && IPC_APIS.has(`${owner}.${name}`) && !name.startsWith("expose")
+          ? `${owner}.${name}`
+          : `${owner}.[unknown]`;
+      const read = routeChannel(channel);
+      out.push(
+        read.channel !== null || read.channelRef
+          ? {
+              api,
+              ...read,
+              line,
+              via: "resolved",
+              resolution: { method: "element", lines: [found.line] },
+            }
+          : { api, channel: null, line },
+      );
+    }
+    return out;
+  };
   /** IPC calls whose channel argument is neither a literal nor a constant: resolved below. */
   const open: Array<{ usage: IpcUsage; at: number }> = [];
   const payload = new PayloadReader(tokens, source);
@@ -1166,6 +1349,18 @@ export function scanJavaScript(
         if (api === "ipcMain.on" || api === "ipcMain.once") replies(k + 3);
       }
     }
+    // `ipcMain[route.kind](route.channel, route.fn)` in a loop over a list of routes: one row per
+    // element, the method its `kind` when that is a method of the object (else unknown).
+    if (is(k + 1, "punct", "[") && namesIpc()) {
+      const owner = aliases.get(k) ?? t.value;
+      if ((owner === "ipcMain" || owner === "ipcRenderer") && !is(k - 1, "punct", ".")) {
+        resolver ??= new ExpressionResolver(tokens, constants);
+        const close = resolver.closeOf(k + 1);
+        if (close > k + 2 && is(close + 1, "punct", "(") && !is(close + 2, "punct", ")")) {
+          ipc.push(...computedCalls(k, owner, close));
+        }
+      }
+    }
     // A call of one of the file's own channel-forwarding helpers: `route("rooms:list", fn)`.
     if (is(k + 1, "punct", "(") && !is(k - 1, "ident", "function")) {
       const helper = aliases.get(k);
@@ -1206,9 +1401,40 @@ export function scanJavaScript(
       // likewise inside a wrapper method of a class or object
       if (wrapped.inner.has(argument)) continue;
       const found = resolver.resolveArgument(argument);
+      // why the evaluation of the code that builds the channel stopped, when it says
+      const why = found ? null : resolver.reason;
+      if (!found || found.partial) {
+        // `for (const r of ROUTES) ipcMain.handle(r.channel, r.fn)` with channels of another
+        // module: one row per element, the names read as references
+        const routed =
+          !usage.wrapper && usage.via !== "wrapper"
+            ? perRoute(argument, [[argument, resolver.endOf(argument)]])
+            : null;
+        const index = routed ? ipc.indexOf(usage) : -1;
+        if (
+          routed &&
+          index !== -1 &&
+          routed.rows.every(([c]) => {
+            const read = routeChannel(c);
+            return read.channel !== null || read.channelRef !== undefined;
+          })
+        ) {
+          ipc.splice(
+            index,
+            1,
+            ...routed.rows.map(([c]): IpcUsage => ({
+              api: usage.api,
+              ...routeChannel(c),
+              line: usage.line,
+              via: "resolved",
+              resolution: { method: "element", lines: [routed.line] },
+              ...(usage.args === undefined ? {} : { args: usage.args }),
+            })),
+          );
+          continue;
+        }
+      }
       if (!found) {
-        // why the evaluation of the code that builds the channel stopped, when it says
-        const why = resolver.reason;
         if (why) usage.reason = `evaluation stopped: ${why}`;
         continue;
       }
@@ -1261,6 +1487,37 @@ export function scanJavaScript(
     ...(Object.keys(constants.unevaluated).length ? { unevaluated: constants.unevaluated } : {}),
     ...(wrapped.facts ? { wrappers: wrapped.facts } : {}),
     ...(wrapped.capped ? { wrappersCapped: true as const } : {}),
+    ...(wrapped.paramIpc ? { paramIpc: wrapped.paramIpc } : {}),
+  };
+}
+
+/** How a route table's cross-module name is written while the scan reads it (see `routeChannel`). */
+const routeRef = (specifier: string, property: string): string =>
+  `\u0001${specifier}\u0002${property}\u0001`;
+const ROUTE_REF =
+  // oxlint-disable-next-line no-control-regex -- the markers are control characters on purpose
+  /^([^\u0001]*)\u0001([^\u0001\u0002]*)\u0002([^\u0001\u0002]*)\u0001([^\u0001]*)$/;
+
+/**
+ * The channel of one element of a route table: a whole string, or a reference to another
+ * module's constant (with what is written before and after it); otherwise none (unresolved).
+ */
+function routeChannel(v: Val | null | undefined): Pick<IpcUsage, "channel" | "channelRef"> {
+  if (v?.kind !== "str" || v.values.length !== 1) return { channel: null };
+  const text = v.values[0]!;
+  if (text.includes("${…}") || text === "") return { channel: null };
+  if (!text.includes("\u0001")) return { channel: text };
+  const m = ROUTE_REF.exec(text);
+  if (!m) return { channel: null };
+  const [, before, specifier, property, after] = m;
+  return {
+    channel: null,
+    channelRef: {
+      specifier: specifier!,
+      property: property!,
+      ...(before ? { before } : {}),
+      ...(after ? { after } : {}),
+    },
   };
 }
 

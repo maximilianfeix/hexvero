@@ -220,7 +220,8 @@ function placesOf(item: unknown, side: "a" | "b", ipc: ReadonlyMap<string, Item[
   // A channel row names files only; the calls on that channel carry the lines.
   if (typeof item["channel"] === "string" && !file && Array.isArray(item["senders"]))
     for (const call of ipc.get(item["channel"]) ?? [])
-      if (typeof call["module"] === "string")
+      // a call whose method is not read (`ipcMain[route.kind](…)`) is neither end
+      if (typeof call["module"] === "string" && !String(call["api"]).endsWith(".[unknown]"))
         out.push({
           side,
           file: call["module"],

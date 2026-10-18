@@ -187,7 +187,37 @@ const MAX_STRING = 1000;
 const MAX_NESTING = 64;
 const UNKNOWN: Val = { kind: "unknown" };
 /** Methods that change the list or map they are called on. */
-const MUTATORS = /^(push|unshift|splice|set|delete|clear|fill|copyWithin|sort|reverse)$/;
+const MUTATORS = /^(push|pop|shift|unshift|splice|set|delete|clear|fill|copyWithin|sort|reverse)$/;
+/** Words that make what follows them in a loop round conditional (see `conditionalBefore`). */
+const CONTROL_WORDS: ReadonlySet<string> = new Set([
+  "if",
+  "else",
+  "continue",
+  "break",
+  "return",
+  "throw",
+  "switch",
+  "case",
+  "for",
+  "while",
+  "do",
+  "try",
+]);
+const CONTROL_PUNCT: ReadonlySet<string> = new Set(["?", "&&", "||", "??"]);
+/** The tokens that assign to what is before them (`|=`, `&=`, `^=`, `%=` are two tokens). */
+const ASSIGNS: ReadonlySet<string> = new Set([
+  "=",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "**=",
+  "<<=",
+  ">>=",
+  "&&=",
+  "||=",
+  "??=",
+]);
 /** Names whose value exists only at run time; reading one says so in the reason. */
 const RUNTIME = new Set([
   "Math",
@@ -359,10 +389,33 @@ export class ExpressionResolver {
   private partial = false;
   private readonly siteCache = new Map<FnDef, number[]>();
   private readonly literalOwners = new Map<FnDef, string | null>();
-  private readonly bindingCache = new Map<
+  private readonly bindingCaches = [
+    new Map<FnDef, { envs: Env[] | null; partial: boolean; lines: number[] }>(),
+    new Map<FnDef, { envs: Env[] | null; partial: boolean; lines: number[] }>(),
+  ];
+  /** The bindings read so far, apart for the strict reading (see `strict`). */
+  private get bindingCache(): Map<
     FnDef,
     { envs: Env[] | null; partial: boolean; lines: number[] }
-  >();
+  > {
+    return this.bindingCaches[this.strict ? 1 : 0]!;
+  }
+  /**
+   * Set while a table built into IPC is read (bridge members, routes, a list a callback reads
+   * through a parameter): a literal table that is aliased, passed to something that may write
+   * it, or changed in any way the evaluation cannot follow, is not read (see `escapes`).
+   */
+  private strict = 0;
+
+  /** Runs `read` with the strict reading of tables (see `strict`). */
+  private strictly<T>(read: () => T): T {
+    this.strict++;
+    try {
+      return read();
+    } finally {
+      this.strict--;
+    }
+  }
   private readonly newSites = new Map<string, Array<{ name: string; open: number }>>();
   /**
    * Token visits for scanning function bodies and call sites, for the whole file. When it is used
@@ -405,6 +458,12 @@ export class ExpressionResolver {
      * making the whole value unknown (endpoint detection reports such templates as templates).
      */
     private readonly gaps = false,
+    /**
+     * With `reference`: a name or `NAME.KEY` the file's constants name as another module's
+     * (`const { Channels } = require("./c")`, then `Channels.SAVE`) is read as a reference to it,
+     * as the fast scan reads a channel argument (IPC route tables).
+     */
+    private readonly constantRefs = false,
   ) {
     let shared = structures.get(tokens);
     if (!shared) {
@@ -519,10 +578,21 @@ export class ExpressionResolver {
   }
 
   /**
+   * The end of the one argument of the call whose parentheses are at `open` and `close`: before
+   * a trailing comma (`Object.fromEntries(list,)`, as formatters write a call over several
+   * lines), else `close`.
+   */
+  private lastArgEnd(open: number, close: number): number {
+    return close - 1 > open && this.punct(close - 1, ",") ? close - 1 : close;
+  }
+
+  /**
    * The values the argument at token k can have, or null. The argument ends at the next
    * top-level `,` or `)`.
    */
   resolveArgument(k: number): ResolvedValues | null {
+    // the reading 0.9.8 had: a table passed to a function whose body is not read is taken as it
+    // is written (the new readers read strictly, see `strict`)
     return this.guarded(null, () => this.resolveArgumentIn(k));
   }
 
@@ -866,7 +936,9 @@ export class ExpressionResolver {
     const computed =
       this.punct(init, "(") ||
       (this.is(init, "ident") && (this.punct(init + 1, "(") || this.punct(init + 1, ".")));
-    if (!computed) return false;
+    // the readers of tables built into IPC (`strict`): a literal table too, as an alias, a
+    // function that writes its parameter or anything unknown it is passed to may change it
+    if (!computed && !this.strict) return false;
     return this.changedIn(name, decl, from, to, owner, 0);
   }
 
@@ -916,13 +988,14 @@ export class ExpressionResolver {
       if (this.exportedAt(j)) continue;
       if (this.externalConstructorArgument(j)) continue;
       if (this.assignSource(j)) continue;
-      // `Object.freeze(T)`, `Object.keys(T)`, …: the whole argument, read only
+      // `Object.freeze(T)`, `console.info("x", T)`, `JSON.stringify(T)`, …: a whole argument of a
+      // function known to only read it
+      if (this.readOnlyArgument(j)) continue;
+      // `${T}` in a template: turned into a string, read only
       if (
-        this.punct(j - 1, "(") &&
-        this.punct(j + 1, ")") &&
-        /^(freeze|keys|values|entries)$/.test(this.tokens[j - 2]?.value ?? "") &&
-        this.punct(j - 3, ".") &&
-        this.is(j - 4, "ident", "Object")
+        this.tokens[j - 1]?.type === "template" &&
+        this.tokens[j - 1]!.value.endsWith("${…}") &&
+        this.tokens[j + 1]?.type === "template"
       )
         continue;
       // an argument of a function of this file that only reads that parameter
@@ -939,6 +1012,42 @@ export class ExpressionResolver {
       return true;
     }
     return false;
+  }
+
+  /**
+   * The name at j is a whole argument of a call known to only read its arguments: `console.*`,
+   * `JSON.stringify`, `String`, `Array.isArray`, `Object.freeze` / `isFrozen` / `keys` /
+   * `entries` / `values`.
+   */
+  private readOnlyArgument(j: number): boolean {
+    if (!(this.punct(j - 1, "(") || this.punct(j - 1, ","))) return false;
+    if (!(this.punct(j + 1, ",") || this.punct(j + 1, ")"))) return false;
+    // the `(` of the call: back over the arguments before it
+    let open = j - 1;
+    for (let guard = 0; this.punct(open, ",") && guard < 32; guard++) {
+      let i = open - 1;
+      for (let steps = 0; i >= 0 && steps < 400; steps++, i--) {
+        const t = this.tokens[i]!;
+        if (t.type !== "punct") continue;
+        if (t.value === ")" || t.value === "]" || t.value === "}") {
+          i = this.opener[i]!;
+          if (i === -1) return false;
+        } else if (t.value === "(" || t.value === "," || t.value === "[" || t.value === "{") break;
+      }
+      open = i;
+    }
+    if (!this.punct(open, "(")) return false;
+    const name = this.tokens[open - 1];
+    if (name?.type !== "ident") return false;
+    if (this.punct(open - 2, ".") && this.is(open - 3, "ident") && !this.punct(open - 4, ".")) {
+      const base = this.tokens[open - 3]!.value;
+      if (base === "console") return true;
+      if (base === "JSON") return name.value === "stringify";
+      if (base === "Array") return name.value === "isArray";
+      if (base === "Object") return /^(freeze|isFrozen|keys|entries|values)$/.test(name.value);
+      return false;
+    }
+    return name.value === "String" && !this.punct(open - 2, ".");
   }
 
   /** A whole argument after the first of `Object.assign(target, …)`: read, never written. */
@@ -1083,21 +1192,105 @@ export class ExpressionResolver {
     for (const j of this.positions(name)) {
       if (j === decl || this.punct(j - 1, ".")) continue;
       if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j)) return true;
+      if (this.writesAt(j)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Whether the use of a name at k (not after a `.`) writes to what it holds: a member or element
+   * of it, at any depth (`T.k = …`, `T[k] += …`, `R[0].channel = …`, `T.a.b++`), `delete T.k`,
+   * a mutating method (`push`, `splice`, `set`, …) on it or on a member of it,
+   * `Object.assign` / `defineProperty` / `defineProperties` / `setPrototypeOf` and
+   * `Reflect.set` / `defineProperty` / `deleteProperty` / `setPrototypeOf` with it as the target,
+   * and, for a list, a member write to a loop variable or callback parameter that runs over it
+   * (`for (const r of R) r.channel = …`, `R.forEach((r) => { r.kind = … })`). An assignment to
+   * the name itself is not looked at here.
+   */
+  private writesAt(k: number, element = false): boolean {
+    const tokens = this.tokens;
+    if (this.is(k - 1, "ident", "delete")) return true;
+    if (
+      this.punct(k - 1, "(") &&
+      this.is(k - 2, "ident") &&
+      /^(assign|defineProperty|defineProperties|setPrototypeOf|set|deleteProperty)$/.test(
+        tokens[k - 2]!.value,
+      ) &&
+      this.punct(k - 3, ".") &&
+      (this.is(k - 4, "ident", "Object") || this.is(k - 4, "ident", "Reflect")) &&
+      (this.punct(k + 1, ",") || this.punct(k + 1, ")"))
+    )
+      return true;
+    let j = k + 1;
+    let members = 0;
+    for (let guard = 0; guard < 32; guard++) {
+      if (this.punct(j, ".") && this.is(j + 1, "ident")) {
+        if (MUTATORS.test(tokens[j + 1]!.value) && this.punct(j + 2, "(")) return true;
+        j += 2;
+        members++;
+      } else if (this.punct(j, "[") && this.match[j] !== -1) {
+        j = this.match[j]! + 1;
+        members++;
+      } else break;
+    }
+    if (members > 0) {
+      const t = tokens[j];
+      if (t?.type === "punct" && ASSIGNS.has(t.value)) return true;
       if (
-        this.punct(j + 1, ".") &&
-        this.is(j + 2, "ident") &&
-        ((this.punct(j + 3, "=") && !this.punct(j + 4, "=")) ||
-          (MUTATORS.test(this.tokens[j + 2]!.value) && this.punct(j + 3, "(")))
+        this.punct(j, "++") ||
+        this.punct(j, "--") ||
+        this.punct(k - 1, "++") ||
+        this.punct(k - 1, "--")
       )
         return true;
-      if (
-        this.punct(j + 1, "[") &&
-        this.match[j + 1] !== -1 &&
-        this.punct(this.match[j + 1]! + 1, "=") &&
-        !this.punct(this.match[j + 1]! + 2, "=")
-      )
-        return true;
-      if (this.punct(j - 1, "(") && this.is(j - 2, "ident", "assign")) return true;
+    }
+    if (element) return false;
+    // `for (const r of R) …`: the loop variable is each element
+    if (this.is(k - 1, "ident", "of") && this.punct(k + 1, ")")) {
+      const close = k + 1;
+      const open = this.opener[close]!;
+      if (open > 0 && this.is(open - 1, "ident", "for")) {
+        let v = open + 1;
+        if (/^(const|let|var)$/.test(tokens[v]?.value ?? "")) v++;
+        if (this.is(v, "ident") && v + 1 === k - 1) {
+          const end = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
+          if (this.writesMember(tokens[v]!.value, close + 1, end)) return true;
+        }
+      }
+    }
+    // `R.forEach((r) => …)`, `R.map(function (r) { … })`: the parameter is each element
+    if (
+      this.punct(k + 1, ".") &&
+      this.is(k + 2, "ident") &&
+      /^(forEach|map|filter|find|findLast|some|every|reduce|flatMap)$/.test(tokens[k + 2]!.value) &&
+      this.punct(k + 3, "(")
+    ) {
+      const close = this.match[k + 3]!;
+      let p = k + 4;
+      if (this.is(p, "ident", "async")) p++;
+      if (this.is(p, "ident", "function")) {
+        p++;
+        if (this.is(p, "ident")) p++;
+      }
+      // the element is the first parameter (the second of `reduce`)
+      const second = tokens[k + 2]!.value === "reduce";
+      let name: string | null = null;
+      if (this.is(p, "ident") && this.punct(p + 1, "=>") && !second) name = tokens[p]!.value;
+      else if (this.punct(p, "(")) {
+        const at = second ? p + 3 : p + 1;
+        if (this.is(at, "ident") && (!second || this.punct(p + 2, ","))) name = tokens[at]!.value;
+      }
+      if (name !== null && close !== -1 && this.writesMember(name, p, close)) return true;
+    }
+    return false;
+  }
+
+  /** A member write (see `writesAt`) to the name anywhere in [from, to). */
+  private writesMember(name: string, from: number, to: number): boolean {
+    for (const j of this.occurrences(name, from, to)) {
+      if (this.work-- <= 0) return true;
+      if (this.punct(j - 1, ".")) continue;
+      if (this.writesAt(j, true)) return true;
     }
     return false;
   }
@@ -1457,7 +1650,7 @@ export class ExpressionResolver {
     ) {
       const close = this.match[start + 3]!;
       if (close === -1 || close >= end) return null;
-      const list = this.evalRange(start + 4, close, env, depth + 1);
+      const list = this.evalRange(start + 4, this.lastArgEnd(start + 3, close), env, depth + 1);
       if (list?.kind !== "arr" || list.more)
         return this.stop("Object.fromEntries of a list that is not known whole");
       const props = new Map<string, Val | null>();
@@ -1525,7 +1718,7 @@ export class ExpressionResolver {
     ) {
       const close = this.match[start + 3]!;
       if (close === -1 || close >= end) return null;
-      const o = this.evalRange(start + 4, close, env, depth + 1);
+      const o = this.evalRange(start + 4, this.lastArgEnd(start + 3, close), env, depth + 1);
       if (o?.kind !== "obj" || o.open) return null;
       const how = this.tokens[start + 2]!.value;
       const elems: Array<Val | null> = [...o.props].map(([key, v]) =>
@@ -1586,7 +1779,7 @@ export class ExpressionResolver {
     ) {
       const close = this.match[start + 3]!;
       if (close !== end - 1) return null;
-      return this.evalRange(start + 4, close, env, depth + 1);
+      return this.evalRange(start + 4, this.lastArgEnd(start + 3, close), env, depth + 1);
     }
     // `Object.assign({…}, a, b, …)`: a new object, the sources' keys laid over it from left to
     // right as spreads are. Only with an object literal as the target: an object the code holds
@@ -1639,6 +1832,20 @@ export class ExpressionResolver {
       const member = this.constants.enumAt(start, end, (name) => this.moduleBinding(start, name));
       if (member !== null) return { kind: "str", values: [member] };
     }
+    // `Channels.SAVE` of another module, as the fast scan reads it: a reference
+    if (this.constantRefs && this.reference && !env.has(t.value)) {
+      let last = start;
+      while (this.punct(last + 1, ".") && this.is(last + 2, "ident")) last += 2;
+      if (last + 1 === end && !this.enclosingParam(start, t.value)) {
+        const named = this.constants.resolve(start, end);
+        if (named && "ref" in named && !named.ref.before && !named.ref.after)
+          return {
+            kind: "str",
+            values: [this.reference(named.ref.specifier, named.ref.property)],
+            ref: { specifier: named.ref.specifier, property: named.ref.property },
+          };
+      }
+    }
     // name, name.prop, name(args), name(args)(args), name.prop(args)
     let value = this.lookup(t.value, start, env, depth);
     let j = start + 1;
@@ -1677,6 +1884,15 @@ export class ExpressionResolver {
       ) {
         value = this.member(value, this.tokens[j + 1]!.value, depth);
         j += 3;
+      } else if (this.punct(j, "[") && value.kind === "obj") {
+        // `T[k]` with a key the evaluation knows as one whole string (a loop variable bound to
+        // one key of a table): that member. Any other key is not read.
+        const close = this.match[j]!;
+        if (close === -1 || close >= end || close === j + 1) return null;
+        const key = this.oneString(this.evalRange(j + 1, close, env, depth + 1));
+        if (key === null) return null;
+        value = this.member(value, key, depth);
+        j = close + 1;
       } else if (this.punct(j, "(")) {
         const close = this.match[j]!;
         if (close === -1 || close >= end) return null;
@@ -1894,8 +2110,26 @@ export class ExpressionResolver {
    * A module a bundler wrapped into this file: `var require_x = __commonJS({ "path"(exports) { … } })`
    * as esbuild writes it, or `var E = y(c => { … })` once minified. Null when name is not one.
    */
-  private wrappedModule(name: string): Val | null {
-    const decl = this.topDeclarations().get(name);
+  /**
+   * For the wrapper reader: the module a bundler wrapped under `name` (`var require_x =
+   * __commonJS({…})`, minified `var E = y((e, t) => {…})`, also in a declaration list), as its
+   * body and the names of its `exports` and `module` parameters. Null when it is none.
+   */
+  bundledModule(
+    name: string,
+  ): { exports: string; module: string | null; body: [number, number] } | null {
+    const mod = this.guarded(null, () => {
+      const top = this.topDeclarations().get(name);
+      const listed = top ? null : this.topListed(name);
+      return this.wrappedModule(name, top ?? listed ?? null);
+    });
+    return mod?.kind === "cjs"
+      ? { exports: mod.exports, module: mod.module, body: mod.body }
+      : null;
+  }
+
+  private wrappedModule(name: string, at?: [number, number] | null): Val | null {
+    const decl = at === undefined ? this.topDeclarations().get(name) : at;
     if (!decl) return null;
     const k = decl[0];
     if (
@@ -2845,8 +3079,19 @@ export class ExpressionResolver {
     if (!this.gaps && !this.topDeclarations().has(name)) {
       const listed = this.topListed(name);
       if (listed && !this.writtenElsewhere(name, listed[0] - 2)) {
+        // a table written as a literal, `var a = …, T = { k: "x:y" }` as minifiers join the
+        // declarations of a file: read as `const T = {…}` would be (never written anywhere)
+        const literal =
+          this.punct(listed[0], "{") ||
+          this.punct(listed[0], "[") ||
+          (this.is(listed[0], "ident", "Object") &&
+            this.punct(listed[0] + 1, ".") &&
+            this.is(listed[0] + 2, "ident", "freeze") &&
+            this.punct(listed[0] + 4, "{"));
         const mod = this.evalRange(listed[0], listed[1], new Map(), depth + 1);
         if (mod?.kind === "cjs") return mod;
+        if (literal && (mod?.kind === "obj" || mod?.kind === "arr"))
+          return this.unlessChanged(name, listed[0] - 2, mod, 0, this.tokens.length, null);
         if (this.listedValues && (mod?.kind === "str" || mod?.kind === "fn"))
           return this.unlessChanged(name, listed[0] - 2, mod, 0, this.tokens.length, null);
       }
@@ -3042,35 +3287,16 @@ export class ExpressionResolver {
         k += 2;
         continue;
       }
-      // A later assignment `NAME = …`, a write to a property (`NAME.KEY = …`, `NAME[k] = …`),
-      // or a call that changes a list or map (`push`, `set`, `Object.assign(NAME, …)`): the
-      // declaration no longer says what the name holds.
-      if (
-        t.value === "assign" &&
-        this.is(k - 2, "ident", "Object") &&
-        this.punct(k + 1, "(") &&
-        this.is(k + 2, "ident")
-      )
-        assigned.add(tokens[k + 2]!.value);
+      // A later assignment `NAME = …`, a write to a property or an element (`NAME.KEY = …`,
+      // `NAME[k] = …`, `NAME[0].p = …`, `delete NAME.k`), a call that changes it (`push`,
+      // `set`, `Object.assign(NAME, …)`, `Object.defineProperty(NAME, …)`), or a write to the
+      // members of a loop variable that runs over it: the declaration no longer says what the
+      // name holds.
       if (this.punct(k - 1, ".")) continue;
       const prev = tokens[k - 1];
       const declares = prev?.type === "ident" && /^(const|let|var)$/.test(prev.value);
       if (this.punct(k + 1, "=") && !this.punct(k + 2, "=") && !declares) assigned.add(t.value);
-      else if (
-        (this.punct(k + 1, ".") &&
-          this.is(k + 2, "ident") &&
-          this.punct(k + 3, "=") &&
-          !this.punct(k + 4, "=")) ||
-        (this.punct(k + 1, ".") &&
-          this.is(k + 2, "ident") &&
-          MUTATORS.test(tokens[k + 2]!.value) &&
-          this.punct(k + 3, "(")) ||
-        (this.punct(k + 1, "[") &&
-          this.match[k + 1] !== -1 &&
-          this.punct(this.match[k + 1]! + 1, "=") &&
-          !this.punct(this.match[k + 1]! + 2, "="))
-      )
-        assigned.add(t.value);
+      else if (this.writesAt(k)) assigned.add(t.value);
     }
     this.s.topDeclsLoose = new Map(decls);
     for (const name of assigned) if (decls.has(name)) decls.set(name, null);
@@ -3638,6 +3864,10 @@ export class ExpressionResolver {
     }
     if (!def) return this.throughLoop(start, end, depth);
     if (!used.size) return this.throughLoop(start, end, depth);
+    // a round of a `forEach` / `map` callback: a call after a condition, `continue` or `return`
+    // in it is not made in every round
+    if (def.calledBy && def.name === null && this.conditionalBefore(def.body[0], start))
+      return null;
     // a parameter the function assigns to (`channel = "x:" + channel`) no longer holds what the
     // call sites pass: not read
     for (const name of used) {
@@ -3668,7 +3898,35 @@ export class ExpressionResolver {
 
   /** `for (const r of LIST) … r.channel …`: one value per element of a readable list. */
   private throughLoop(start: number, end: number, depth: number): string[] | null {
+    const loop = this.loopEnvs(start, end, depth);
+    if (!loop) return null;
+    // a call after a condition, `continue`, `break` or `return` is not made in every round
+    if (this.conditionalBefore(loop.body, start)) return null;
+    const values: string[] = [];
+    for (const env of loop.envs) {
+      const v = this.evalRange(start, end, env, depth + 1);
+      if (v?.kind !== "str") return null;
+      values.push(...v.values);
+    }
+    this.note("element");
+    this.lines.add(loop.line);
+    return values;
+  }
+
+  /**
+   * The innermost `for (const PATTERN of LIST)` whose body holds [start, end): one environment
+   * per element of LIST, its pattern bound to the element. Null when there is no such loop, it is
+   * another kind of loop, or LIST is not read whole (also when LIST reads a parameter of the
+   * function the loop is in, and a binding of that is not read).
+   */
+  private loopEnvs(
+    start: number,
+    end: number,
+    depth: number,
+  ): { envs: Env[]; line: number; at: number; body: number } | null {
     for (let j = start - 1; j >= 0 && j > start - 4000; j--) {
+      // the walk back is charged to the file's work, so the questions together stay bounded
+      if (this.work-- <= 0) return null;
       if (!this.is(j, "ident", "for") || !this.punct(j + 1, "(")) continue;
       const close = this.match[j + 1]!;
       if (close === -1) continue;
@@ -3682,33 +3940,239 @@ export class ExpressionResolver {
       const params = this.parseParams(p - 1, patternEnd);
       // parseParams expects `( … )`; fake the bounds around the single pattern
       const param = params[0];
-      const list = this.evalRange(patternEnd + 1, close, new Map(), depth + 1);
-      if (!param || !list) return null;
-      const elems =
-        list.kind === "arr"
-          ? list.elems
-          : list.kind === "map"
-            ? list.entries.map(([a, b]) => ({
-                kind: "arr" as const,
-                elems: [a, b],
-                line: list.line,
-              }))
-            : null;
-      if (!elems?.length) return null;
-      const values: string[] = [];
-      for (const e of elems) {
-        if (!e) return null;
-        const env: Env = new Map();
-        this.bind([param], [e], env);
-        const v = this.evalRange(start, end, env, depth + 1);
-        if (v?.kind !== "str") return null;
-        values.push(...v.values);
+      if (!param) return null;
+      const envs: Env[] = [];
+      // the list may read a parameter of the function the loop is in: once per binding of it
+      const outer = this.envsFor(patternEnd + 1, patternEnd + 1, close, depth + 1, true);
+      const throughParams = outer.length !== 1 || outer[0]!.size > 0;
+      for (const caller of outer) {
+        const list = throughParams
+          ? this.strictly(() => this.evalRange(patternEnd + 1, close, caller, depth + 1))
+          : this.evalRange(patternEnd + 1, close, caller, depth + 1);
+        if (!list) return null;
+        // a list longer than is read: the rounds read are not all there are
+        if (list.kind === "arr" && list.more) this.partial = true;
+        const elems =
+          list.kind === "arr"
+            ? list.elems
+            : list.kind === "map"
+              ? list.entries.map(([a, b]) => ({
+                  kind: "arr" as const,
+                  elems: [a, b],
+                  line: list.line,
+                }))
+              : null;
+        if (!elems?.length) return null;
+        for (const e of elems) {
+          if (!e) return null;
+          const env: Env = new Map(caller);
+          this.bind([param], [e], env);
+          envs.push(env);
+        }
       }
-      this.note("element");
-      this.lines.add(this.tokens[patternEnd + 1]!.line);
-      return values;
+      return { envs, line: this.tokens[patternEnd + 1]!.line, at: j, body: close + 1 };
     }
     return null;
+  }
+
+  /**
+   * For token k inside a loop over a readable list, `for (const … of LIST)` or a `LIST.forEach` /
+   * `map` callback around it (the innermost of the two): per element of LIST, in order, the value
+   * of each of the ranges with the loop's variables bound to that element. Null when k is in
+   * neither, or LIST (or any element of it) is not read whole.
+   */
+  perElement(
+    k: number,
+    ranges: ReadonlyArray<[number, number]>,
+  ): { rows: Array<Array<Val | null>>; line: number } | null {
+    return this.guarded(null, () => this.strictly(() => this.perElementIn(k, ranges)));
+  }
+
+  private perElementIn(
+    k: number,
+    ranges: ReadonlyArray<[number, number]>,
+  ): { rows: Array<Array<Val | null>>; line: number } | null {
+    {
+      if (this.work <= 0) return null;
+      this.begin(20_000);
+      let cb = this.enclosing(k);
+      for (let guard = 0; cb && guard < 4 && !(cb.calledBy && cb.name === null); guard++) {
+        this.work--;
+        cb = this.enclosing(cb.paramsAt - 1);
+      }
+      if (cb && !(cb.calledBy && cb.name === null)) cb = null;
+      const end = Math.max(...ranges.map(([, b]) => b), k + 1);
+      this.partial = false;
+      const loop = this.loopEnvs(k, end, 0);
+      let envs: Env[] | null;
+      let line: number;
+      if (cb && (!loop || cb.paramsAt > loop.at)) {
+        // a call after a condition, `continue`, `break` or `return` in the round is not made
+        // in every round
+        if (this.conditionalBefore(cb.body[0], k)) return null;
+        envs = this.bindings(cb, 0);
+        const receiver = this.receiverStart(cb.calledBy!.receiverEnd);
+        line = this.tokens[receiver ?? cb.paramsAt]!.line;
+      } else {
+        if (loop && this.conditionalBefore(loop.body, k)) return null;
+        envs = loop?.envs ?? null;
+        line = loop?.line ?? 0;
+      }
+      if (!envs?.length || envs.length > MAX_ITERATIONS || this.partial) return null;
+      const rows = envs.map((env) => ranges.map(([a, b]) => this.evalRange(a, b, env, 1)));
+      return { rows, line };
+    }
+  }
+
+  /**
+   * Whether anything in [from, to) may skip what follows in the same round or make it
+   * conditional: `if`, `else`, `continue`, `break`, `return`, `throw`, `switch`, `case`, a
+   * nested loop, `try`, `?`, `&&`, `||`, `??`. A round with any of them is not read.
+   */
+  private conditionalBefore(from: number, to: number): boolean {
+    for (let j = Math.max(0, from); j < to; j++) {
+      if (this.work-- <= 0) return true;
+      const t = this.tokens[j]!;
+      if (
+        t.type === "ident"
+          ? CONTROL_WORDS.has(t.value)
+          : t.type === "punct" && CONTROL_PUNCT.has(t.value)
+      )
+        return true;
+    }
+    return false;
+  }
+
+  /**
+   * For `NAME[KEY] = VALUE` at k (k is NAME) run once per element of a readable list: in a
+   * `for (… of LIST)` around it, or in the body of a `LIST.forEach(cb)` / `map` callback (not in a
+   * function nested deeper), with NAME not bound by that callback. Per element, the key (one whole
+   * string) and the value. Null when the statement is no such assignment or any round is not
+   * read.
+   */
+  loopAssignments(k: number): Array<{ key: string; value: Val | null }> | null {
+    return this.guarded(null, () => this.strictly(() => this.loopAssignmentsIn(k)));
+  }
+
+  private loopAssignmentsIn(k: number): Array<{ key: string; value: Val | null }> | null {
+    if (this.work <= 0) return null;
+    this.begin(20_000);
+    const name = this.tokens[k];
+    if (name?.type !== "ident" || !this.punct(k + 1, "[")) return null;
+    const close = this.match[k + 1]!;
+    if (close === -1 || !this.punct(close + 1, "=") || this.punct(close + 2, "=")) return null;
+    const valueEnd = this.exprEnd(close + 2);
+    this.partial = false;
+    let envs: Env[] | null = null;
+    const def = this.enclosing(k);
+    if (def?.calledBy && def.name === null) {
+      if (paramNames(def.params).includes(name.value) || this.declaredLocally(k, name.value))
+        return null;
+      // a write after a condition, `continue` or `return` is not made in every round
+      if (this.conditionalBefore(def.body[0], k)) return null;
+      envs = this.bindings(def, 0);
+    } else {
+      const loop = this.loopEnvs(k, valueEnd, 0);
+      if (loop && this.conditionalBefore(loop.body, k)) return null;
+      envs = loop?.envs ?? null;
+      // `api["open"] = …`, `api[KEY] = …` outside any loop: the one key it names, as `api.open`
+      if (!loop && !this.insideLoop(k)) {
+        const key = this.oneString(this.evalRange(k + 2, close, new Map(), 1));
+        return key === null
+          ? null
+          : [{ key, value: this.evalRange(close + 2, valueEnd, new Map(), 1) }];
+      }
+    }
+    if (!envs?.length || envs.length > MAX_ITERATIONS || this.partial) return null;
+    const out: Array<{ key: string; value: Val | null }> = [];
+    for (const env of envs) {
+      const key = this.oneString(this.evalRange(k + 2, close, env, 1));
+      if (key === null) return null;
+      out.push({ key, value: this.evalRange(close + 2, valueEnd, env, 1) });
+    }
+    return out;
+  }
+
+  /** Whether a `for`, `while` or `do` loop of the function around k has k in its body. */
+  private insideLoop(k: number): boolean {
+    const own = this.enclosing(k);
+    for (let j = k - 1; j >= 0 && j > k - 4000; j--) {
+      if (this.work-- <= 0) return true;
+      const t = this.tokens[j]!;
+      if (t.type !== "ident") continue;
+      if (own && j < own.body[0]) return false;
+      if (t.value === "do" && this.punct(j + 1, "{")) {
+        if (this.match[j + 1]! > k) return true;
+      } else if ((t.value === "for" || t.value === "while") && this.punct(j + 1, "(")) {
+        const head = this.match[j + 1]!;
+        if (head === -1) continue;
+        const end = this.punct(head + 1, "{") ? this.match[head + 1]! : this.exprEnd(head + 1);
+        if (head < k && k <= end) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * The object the expression at k builds, as members that each forward to one call: read whole
+   * (a closed object, every key known), and every member a function of this file whose body is
+   * exactly one call `<receiver>.<method>(<channel>, …)` (an expression body or `{ return …; }`),
+   * `receiver` true for the receiver's tokens and the method one of `methods`. Per member, the
+   * method and the channel's values in the function's environment (null when they are not read).
+   * Null when any of that does not hold.
+   */
+  forwardingMembers(
+    k: number,
+    receiver: (from: number, to: number) => boolean,
+    methods: ReadonlySet<string>,
+  ): Array<{ member: string; method: string; channels: string[] | null }> | null {
+    return this.guarded(null, () =>
+      this.strictly(() => {
+        if (this.work <= 0) return null;
+        this.begin(20_000);
+        const v = this.evalRange(k, this.exprEnd(k), new Map(), 0);
+        if (v?.kind !== "obj" || v.open || !v.props.size) return null;
+        const out: Array<{ member: string; method: string; channels: string[] | null }> = [];
+        for (const [member, fn] of v.props) {
+          const call = this.forwardCall(fn, receiver, methods);
+          if (!call) return null;
+          out.push({ member, ...call });
+        }
+        return out;
+      }),
+    );
+  }
+
+  /** See `forwardingMembers`: one function value. Public for the loop-built members. */
+  forwardCall(
+    fn: Val | null,
+    receiver: (from: number, to: number) => boolean,
+    methods: ReadonlySet<string>,
+  ): { method: string; channels: string[] | null } | null {
+    if (fn?.kind !== "fn" || fn.res !== this) return null;
+    const { def } = fn;
+    if (this.asyncOrGenerator(def)) return null;
+    let [from, to] = def.body;
+    if (def.block) {
+      const end = this.returnOnly(def);
+      if (end === -1) return null;
+      from += 2;
+      to = end;
+    }
+    // `<receiver>.<method>(…)` and nothing after the call's `)`
+    if (!this.punct(to - 1, ")")) return null;
+    const open = this.opener[to - 1]!;
+    if (open <= from + 2 || !this.is(open - 1, "ident") || !this.punct(open - 2, ".")) return null;
+    const method = this.tokens[open - 1]!.value;
+    if (!methods.has(method) || !receiver(from, open - 2)) return null;
+    const first = this.argStart(open, to - 1, 0);
+    if (first === null || this.punct(first, "...")) return { method, channels: null };
+    const v = this.evalRange(first, Math.min(this.exprEnd(first), to - 1), fn.env, 1);
+    const channels =
+      v?.kind === "str" && !v.ref && v.values.length && !v.values.some((x) => x.includes("${…}"))
+        ? v.values
+        : null;
+    return { method, channels };
   }
 
   /** Every environment the function's parameters are bound to: its call sites, or the list a callback runs over. */
@@ -3741,24 +4205,38 @@ export class ExpressionResolver {
       if (def.calledBy.method !== "forEach" && def.calledBy.method !== "map") return null;
       const receiver = this.receiverStart(def.calledBy.receiverEnd);
       if (receiver === null) return null;
-      const list = this.evalRange(receiver, def.calledBy.receiverEnd, new Map(), depth + 1);
-      if (!list) return null;
       const envs: Env[] = [];
-      if (list.kind === "arr") {
-        for (const e of list.elems) {
-          if (!e) return null;
-          const env: Env = new Map();
-          this.bind(def.params, [e], env);
-          envs.push(env);
-        }
-      } else if (list.kind === "map") {
-        for (const [key, value] of list.entries) {
-          if (!key) return null;
-          const env: Env = new Map();
-          this.bind(def.params, [value ?? { kind: "str", values: [] }, key], env);
-          envs.push(env);
-        }
-      } else return null;
+      // The list may read a parameter of the function the call is in (`Object.entries(table)`
+      // in `function invokers(table)`): once per binding of that function. The callback's own
+      // environment keeps those bindings, so its body reads them too.
+      const outer = this.envsFor(receiver, receiver, def.calledBy.receiverEnd, depth + 1, true);
+      const throughParams = outer.length !== 1 || outer[0]!.size > 0;
+      for (const caller of outer) {
+        const list = throughParams
+          ? this.strictly(() =>
+              this.evalRange(receiver, def.calledBy!.receiverEnd, caller, depth + 1),
+            )
+          : this.evalRange(receiver, def.calledBy.receiverEnd, caller, depth + 1);
+        if (!list) return null;
+        // a list longer than is read: the rounds read are not all there are
+        if (list.kind === "arr" && list.more) this.partial = true;
+        if (list.kind === "arr") {
+          for (const e of list.elems) {
+            if (!e) return null;
+            const env: Env = new Map(caller);
+            this.bind(def.params, [e], env);
+            envs.push(env);
+          }
+        } else if (list.kind === "map") {
+          for (const [key, value] of list.entries) {
+            if (!key) return null;
+            const env: Env = new Map(caller);
+            this.bind(def.params, [value ?? { kind: "str", values: [] }, key], env);
+            envs.push(env);
+          }
+        } else return null;
+        if (outer.length > 1 && envs.length > MAX_ITERATIONS) return null;
+      }
       this.note("element");
       this.lines.add(this.tokens[receiver]!.line);
       return envs;
@@ -3800,10 +4278,21 @@ export class ExpressionResolver {
    * cannot be read makes the result partial.
    */
   private callerEnvs(open: number, close: number, depth: number): Env[] {
-    const caller = this.enclosing(open);
+    return this.envsFor(open, open - 3, close, depth);
+  }
+
+  /**
+   * The environments the expression in [from, to) is read in, inside the function around `at`:
+   * one empty environment when it reads nothing of that function (its parameters, `this`, or a
+   * local const built from them), else that function's bindings. A function whose bindings
+   * cannot be read makes the result partial.
+   */
+  private envsFor(at: number, from: number, to: number, depth: number, strict = false): Env[] {
+    const caller = this.enclosing(at);
     if (!caller || depth > 3) return [new Map()];
+    const close = to;
     let reads = false;
-    for (let j = open - 3; j < close && !reads; j++) {
+    for (let j = from; j < close && !reads; j++) {
       const t = this.tokens[j];
       if (t?.type !== "ident" || this.punct(j - 1, ".")) continue;
       if ((t.value === "this" && caller.owner) || this.paramIndex(caller, t.value) !== -1)
@@ -3815,7 +4304,9 @@ export class ExpressionResolver {
             reads = true;
     }
     if (!reads) return [new Map()];
-    const outer = this.bindings(caller, depth + 1);
+    const outer = strict
+      ? this.strictly(() => this.bindings(caller, depth + 1))
+      : this.bindings(caller, depth + 1);
     if (!outer?.length) {
       this.partial = true;
       return [new Map()];
@@ -4473,10 +4964,24 @@ export class ExpressionResolver {
       def.owner ? this.instancesOf(def.owner).map((x) => x.name) : [],
     );
     let plain: boolean | null = null;
+    // `function NAME(…) {…}` declared inside another function (the body of a module a bundler
+    // wrapped, an inner helper): called where the name is bound to it, which the scope says
+    const nested =
+      !def.owner &&
+      !def.member &&
+      !def.arrow &&
+      this.is(def.paramsAt - 2, "ident", "function") &&
+      this.enclosing(def.paramsAt - 1) !== null;
     for (const k of this.positions(def.name!)) {
       if (out.length >= MAX_SITES) break;
       if (!this.is(k, "ident", def.name!) || !this.punct(k + 1, "(") || k + 1 === def.paramsAt)
         continue;
+      if (nested) {
+        if (this.punct(k - 1, ".") || this.is(k - 1, "ident", "function")) continue;
+        const b = this.binding(k, def.name!);
+        if (b?.kind === "function" && b.def === def) out.push(k + 1);
+        continue;
+      }
       // a parameter or local of the same name at the call hides the function
       if (!def.owner && this.shadowed(k, def.name!)) continue;
       const before = this.punct(k - 1, ".");

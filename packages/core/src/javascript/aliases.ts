@@ -571,6 +571,12 @@ export class Constants {
    * `Object.fromEntries(…)`): where the initializer starts; null when declared twice.
    */
   private readonly computedAt = new Map<string, number | null>();
+  /**
+   * Top-level tables written as an object literal with some entries that are not literals
+   * (`{ LIST: PREFIX + "list", OPEN: "doc:open" }`): where the initializer starts (null when
+   * declared twice). The other entries are read by an evaluation, as a computed name is.
+   */
+  private readonly partialAt = new Map<string, number | null>();
   private evaluator: Evaluator | null = null;
   private readonly computedCache = new Map<string, (Flat & { line: number }) | null>();
   private readonly computedReasons = new Map<string, string>();
@@ -1119,6 +1125,15 @@ export class Constants {
         if (table.size) this.tables.set(t.value, table);
         const keys = this.keys(at);
         if (keys.length) this.tableKeys.set(t.value, keys);
+        if (
+          !wrapper &&
+          depth === 0 &&
+          table.size &&
+          keys.some(
+            (key) => !table.has(key) && ![...table.keys()].some((e) => e.startsWith(`${key}.`)),
+          )
+        )
+          this.partialAt.set(t.value, this.partialAt.has(t.value) ? null : k + 2);
         if (exportedHere) this.export(t.value);
       } else if (is(value, "ident", "class")) {
         // `var Library2 = class { static LIST = "…" }`, as bundlers write a class
@@ -1463,7 +1478,7 @@ export class Constants {
       }
     };
     for (const { key, name } of this.exportRequests) {
-      if (!this.computedAt.get(name)) continue;
+      if (!this.computedAt.get(name) && !this.partialAt.get(name)) continue;
       const found = this.computed(name);
       if (found) put(key, found);
       else if (this.computedReasons.has(name))
@@ -1513,7 +1528,8 @@ export class Constants {
   private computed(name: string): (Flat & { line: number }) | null {
     const cached = this.computedCache.get(name);
     if (cached !== undefined) return cached;
-    const at = this.computedAt.get(name);
+    const partial = this.partialAt.get(name);
+    const at = partial ?? this.computedAt.get(name);
     let out: (Flat & { line: number }) | null = null;
     if (
       this.evaluator &&
@@ -1521,7 +1537,7 @@ export class Constants {
       at !== null &&
       !this.reassigned.has(name) &&
       !this.strings.has(name) &&
-      !this.tables.has(name)
+      (!this.tables.has(name) || partial)
     ) {
       const { value, reason } = this.evaluator.name(name, at);
       const flat = flatten(value);
@@ -1541,7 +1557,8 @@ export class Constants {
     const value = this.strings.get(name);
     if (value) this.exported[name] = value;
     for (const [key, v] of this.tables.get(name) ?? []) this.exported[`${name}.${key}`] = v;
-    if (!value && !this.tables.has(name)) this.exportRequests.push({ key: name, name });
+    if (!value && (!this.tables.has(name) || this.partialAt.get(name)))
+      this.exportRequests.push({ key: name, name });
   }
 
   /** A destructuring pattern at `open`, if it takes names from another module. */

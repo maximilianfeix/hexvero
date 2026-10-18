@@ -1,8 +1,8 @@
 {
  "tool": {
   "name": "hexvero",
-  "version": "0.9.0",
-  "commit": "f39d2f1+uncommitted",
+  "version": "0.9.8",
+  "commit": "045de0c+uncommitted",
   "node": "v22.17.1",
   "platform": "darwin arm64",
   "engines": {
@@ -4716,6 +4716,13 @@
       ]
      },
      {
+      "channel": "theme:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "timer:port",
       "senders": [
        "main.js"
@@ -4937,7 +4944,7 @@
      {
       "value": "https://hooks.punchclock.example/invoice-exported",
       "kind": "http-client",
-      "method": null,
+      "method": "POST",
       "evidence": "literal"
      },
      {
@@ -4995,7 +5002,7 @@
       "evidence": "template"
      }
     ],
-    "endpointsUnreadable": 4,
+    "endpointsUnreadable": 3,
     "ipcUnreadable": [
      "webContents.send at undefined:159",
      "ipcMain.on at undefined:313",
@@ -5269,6 +5276,13 @@
       ]
      },
      {
+      "channel": "theme:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
+     },
+     {
       "channel": "timer:port",
       "senders": [
        "main.js"
@@ -5492,8 +5506,8 @@
      {
       "value": "https://hooks.punchclock.example/invoice-exported",
       "kind": "http-client",
-      "method": null,
-      "evidence": "inferred"
+      "method": "POST",
+      "evidence": "literal"
      },
      {
       "value": "https://updates.punchclock.example/feed/stable.json",
@@ -5787,6 +5801,27 @@
       "receivers": []
      },
      {
+      "channel": "projects:create",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "projects:list",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "projects:rename",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
       "channel": "sync:cancel",
       "senders": [
        "preload.js"
@@ -5810,6 +5845,13 @@
       "receivers": [
        "main.js"
       ]
+     },
+     {
+      "channel": "theme:changed",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": []
      },
      {
       "channel": "timer:port",
@@ -6025,8 +6067,8 @@
      {
       "value": "https://hooks.punchclock.example/invoice-exported",
       "kind": "http-client",
-      "method": null,
-      "evidence": "inferred"
+      "method": "POST",
+      "evidence": "literal"
      },
      {
       "value": "https://updates.punchclock.example/feed/stable.json",
@@ -6103,7 +6145,6 @@
     ],
     "endpointsUnreadable": 2,
     "ipcUnreadable": [
-     "ipcMain.handle at undefined:1",
      "ipcMain.on at undefined:1",
      "ipcMain.on at undefined:1",
      "ipcRenderer.invoke at undefined:1",
@@ -6261,7 +6302,7 @@
       "widget:close"
      ],
      "relocated": 0,
-     "unchanged": 21
+     "unchanged": 22
     },
     "contextBridge": {
      "key": "api+member",
@@ -6296,7 +6337,7 @@
       "https://api.punchclock.example/v3/entries/${…}"
      ],
      "changed": [],
-     "relocated": 12,
+     "relocated": 11,
      "unchanged": 0
     },
     "storage": {
@@ -6316,7 +6357,6 @@
     "complete": true,
     "limitations": [
      "webpreferences_unattached",
-     "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
      "webpreferences_computed"
     ],
@@ -6571,8 +6611,13 @@
     "contextBridge": [
      {
       "api": "inkwell",
-      "member": null,
-      "channel": null
+      "member": "listNotes",
+      "channel": "vault:list"
+     },
+     {
+      "api": "inkwell",
+      "member": "searchNotes",
+      "channel": "vault:search"
      },
      {
       "api": "inkwell",
@@ -6807,7 +6852,6 @@
     "complete": true,
     "limitations": [
      "webpreferences_unattached",
-     "context_bridge_members_unreadable",
      "ipc_channel_unresolved",
      "webpreferences_computed"
     ],
@@ -7062,8 +7106,13 @@
     "contextBridge": [
      {
       "api": "inkwell",
-      "member": null,
-      "channel": null
+      "member": "listNotes",
+      "channel": "vault:list"
+     },
+     {
+      "api": "inkwell",
+      "member": "searchNotes",
+      "channel": "vault:search"
      },
      {
       "api": "inkwell",
@@ -7762,6 +7811,22 @@
       "ops": [
        "delete"
       ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "inkwell.theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "inkwell.sidebarWidth",
+      "ops": [
+       "read",
+       "write"
+      ]
      }
     ]
    }
@@ -7782,12 +7847,14 @@
     },
     "contextBridge": {
      "key": "api+member",
-     "added": [],
+     "added": [
+      "inkwell.renameNote"
+     ],
      "removed": [
       "inkwell.setTitle"
      ],
      "changed": [],
-     "relocated": 21,
+     "relocated": 22,
      "unchanged": 0
     },
     "webPreferences": {
@@ -7829,9 +7896,7 @@
   "holdout2/music-player.plain.asar": {
    "electron": {
     "complete": true,
-    "limitations": [
-     "ipc_channel_unresolved"
-    ],
+    "limitations": [],
     "ipcChannels": [
      {
       "channel": "app:get-version",
@@ -7953,14 +8018,18 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "playlists:save",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:changed",
@@ -7976,14 +8045,18 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:set",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "window:minimize",
@@ -8235,9 +8308,7 @@
      }
     ],
     "endpointsUnreadable": 1,
-    "ipcUnreadable": [
-     "ipcMain.handle at undefined:309"
-    ],
+    "ipcUnreadable": [],
     "storage": [
      {
       "kind": "electron-store",
@@ -8328,9 +8399,7 @@
   "holdout2/music-player.bundled.asar": {
    "electron": {
     "complete": true,
-    "limitations": [
-     "ipc_channel_unresolved"
-    ],
+    "limitations": [],
     "ipcChannels": [
      {
       "channel": "app:get-version",
@@ -8452,14 +8521,18 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "playlists:save",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:changed",
@@ -8475,14 +8548,18 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:set",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "window:minimize",
@@ -8709,9 +8786,7 @@
      }
     ],
     "endpointsUnreadable": 1,
-    "ipcUnreadable": [
-     "ipcMain.handle at undefined:392"
-    ],
+    "ipcUnreadable": [],
     "storage": [
      {
       "kind": "electron-store",
@@ -8802,9 +8877,7 @@
   "holdout2/music-player.minified.asar": {
    "electron": {
     "complete": true,
-    "limitations": [
-     "ipc_channel_unresolved"
-    ],
+    "limitations": [],
     "ipcChannels": [
      {
       "channel": "app:get-version",
@@ -8926,14 +8999,18 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "playlists:save",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:changed",
@@ -8949,14 +9026,18 @@
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "settings:set",
       "senders": [
        "preload.js"
       ],
-      "receivers": []
+      "receivers": [
+       "main.js"
+      ]
      },
      {
       "channel": "window:minimize",
@@ -9171,9 +9252,7 @@
      }
     ],
     "endpointsUnreadable": 2,
-    "ipcUnreadable": [
-     "ipcMain.handle at undefined:2"
-    ],
+    "ipcUnreadable": [],
     "storage": [
      {
       "kind": "electron-store",
@@ -9691,6 +9770,12 @@
       "kind": "websocket",
       "method": null,
       "evidence": "template"
+     },
+     {
+      "value": "https://api.driftwood.example/v1/directory/top",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
      },
      {
       "value": "https://api.driftwood.example/v1/episodes/${…}/chapters",
@@ -10229,6 +10314,12 @@
       "evidence": "template"
      },
      {
+      "value": "https://api.driftwood.example/v1/directory/top",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
       "value": "https://api.driftwood.example/v1/episodes/${…}/chapters",
       "kind": "fetch",
       "method": null,
@@ -10765,6 +10856,12 @@
       "evidence": "template"
      },
      {
+      "value": "https://api.driftwood.example/v1/directory/top",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
       "value": "https://api.driftwood.example/v1/episodes/${…}/chapters",
       "kind": "fetch",
       "method": null,
@@ -10922,7 +11019,7 @@
      "removed": [],
      "changed": [],
      "relocated": 6,
-     "unchanged": 2
+     "unchanged": 3
     },
     "storage": {
      "key": "file+kind+value+op",
@@ -12006,6 +12103,1575 @@
     }
    }
   },
+  "holdout5/tidemark.plain.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "app:info",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "export:html",
+      "senders": [],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "export:json",
+      "senders": [],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "export:markdown",
+      "senders": [],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "preview:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:ping",
+      "senders": [
+       "preload-preview.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:pong",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-preview.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [
+       "main/handlers.js"
+      ],
+      "receivers": [
+       "preload-preview.js"
+      ]
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "publish:progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "publish:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "release:delete",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "release:load",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "release:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "releases:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main/windows.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "preview",
+      "member": "onRender",
+      "channel": "preview:render"
+     },
+     {
+      "api": "preview",
+      "member": "ping",
+      "channel": "preview:ping"
+     },
+     {
+      "api": "preview",
+      "member": "onPong",
+      "channel": "preview:pong"
+     },
+     {
+      "api": "tidemark",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "listReleases",
+      "channel": "releases:list"
+     },
+     {
+      "api": "tidemark",
+      "member": "loadRelease",
+      "channel": "release:load"
+     },
+     {
+      "api": "tidemark",
+      "member": "saveRelease",
+      "channel": "release:save"
+     },
+     {
+      "api": "tidemark",
+      "member": "deleteRelease",
+      "channel": "release:delete"
+     },
+     {
+      "api": "tidemark",
+      "member": "getSettings",
+      "channel": "settings:get"
+     },
+     {
+      "api": "tidemark",
+      "member": "setSettings",
+      "channel": "settings:set"
+     },
+     {
+      "api": "tidemark",
+      "member": "exportMarkdown",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "exportHtml",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "publish",
+      "channel": "publish:start"
+     },
+     {
+      "api": "tidemark",
+      "member": "onPublishProgress",
+      "channel": "publish:progress"
+     },
+     {
+      "api": "tidemark",
+      "member": "markDirty",
+      "channel": "editor:dirty"
+     },
+     {
+      "api": "tidemark",
+      "member": "openPreview",
+      "channel": "preview:open"
+     },
+     {
+      "api": "tidemark",
+      "member": "updatePreview",
+      "channel": "preview:update"
+     },
+     {
+      "api": "tidemark",
+      "member": "appInfo",
+      "channel": "app:info"
+     },
+     {
+      "api": "tidemark",
+      "member": "sendDiagnostics",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://updates.tidemark.example/desktop/latest.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://cdn.tidemark.example/preview/themes/${…}.css",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.tidemark.example/v2/projects/${…}/releases",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.tidemark.example/v2/releases",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://code.tidemark.example/api/v1/repos/${…}/contributors",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcRenderer.invoke at undefined:9",
+     "ipcRenderer.invoke at undefined:22",
+     "ipcRenderer.invoke at undefined:23",
+     "ipcRenderer.send at undefined:37",
+     "ipcMain.on at undefined:64",
+     "ipcMain.handle at undefined:16",
+     "ipcMain.on at undefined:28"
+    ],
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "preview.theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.${…}",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "tidemark.${…}",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "tidemark.cursor",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.fontSize",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.lastProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout5/tidemark.bundled.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "app:info",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "export:html",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "export:json",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "export:markdown",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:ping",
+      "senders": [
+       "preload-preview.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:pong",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-preview.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-preview.js"
+      ]
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "publish:progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "publish:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "release:delete",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "release:load",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "release:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "releases:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "preview",
+      "member": "onRender",
+      "channel": "preview:render"
+     },
+     {
+      "api": "preview",
+      "member": "ping",
+      "channel": "preview:ping"
+     },
+     {
+      "api": "preview",
+      "member": "onPong",
+      "channel": "preview:pong"
+     },
+     {
+      "api": "tidemark",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "listReleases",
+      "channel": "releases:list"
+     },
+     {
+      "api": "tidemark",
+      "member": "loadRelease",
+      "channel": "release:load"
+     },
+     {
+      "api": "tidemark",
+      "member": "saveRelease",
+      "channel": "release:save"
+     },
+     {
+      "api": "tidemark",
+      "member": "deleteRelease",
+      "channel": "release:delete"
+     },
+     {
+      "api": "tidemark",
+      "member": "getSettings",
+      "channel": "settings:get"
+     },
+     {
+      "api": "tidemark",
+      "member": "setSettings",
+      "channel": "settings:set"
+     },
+     {
+      "api": "tidemark",
+      "member": "exportMarkdown",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "exportHtml",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "publish",
+      "channel": "publish:start"
+     },
+     {
+      "api": "tidemark",
+      "member": "onPublishProgress",
+      "channel": "publish:progress"
+     },
+     {
+      "api": "tidemark",
+      "member": "markDirty",
+      "channel": "editor:dirty"
+     },
+     {
+      "api": "tidemark",
+      "member": "openPreview",
+      "channel": "preview:open"
+     },
+     {
+      "api": "tidemark",
+      "member": "updatePreview",
+      "channel": "preview:update"
+     },
+     {
+      "api": "tidemark",
+      "member": "appInfo",
+      "channel": "app:info"
+     },
+     {
+      "api": "tidemark",
+      "member": "sendDiagnostics",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.tidemark.example/v2/projects/${…}/releases",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.tidemark.example/v2/releases",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://updates.tidemark.example/desktop/latest.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://cdn.tidemark.example/preview/themes/${…}.css",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://code.tidemark.example/api/v1/repos/${…}/contributors",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:48",
+     "ipcMain.on at undefined:59",
+     "ipcMain.on at undefined:282",
+     "ipcRenderer.invoke at undefined:52",
+     "ipcRenderer.invoke at undefined:53",
+     "ipcRenderer.send at undefined:66"
+    ],
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "preview.theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.fontSize",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.lastProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "tidemark.cursor",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout5/tidemark.minified.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "app:info",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "editor:dirty",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "export:html",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "export:json",
+      "senders": [],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "export:markdown",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:ping",
+      "senders": [
+       "preload-preview.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:pong",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-preview.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-preview.js"
+      ]
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "publish:progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "publish:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "release:delete",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "release:load",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "release:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "releases:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "preview",
+      "member": "onRender",
+      "channel": "preview:render"
+     },
+     {
+      "api": "preview",
+      "member": "ping",
+      "channel": "preview:ping"
+     },
+     {
+      "api": "preview",
+      "member": "onPong",
+      "channel": "preview:pong"
+     },
+     {
+      "api": "tidemark",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "listReleases",
+      "channel": "releases:list"
+     },
+     {
+      "api": "tidemark",
+      "member": "loadRelease",
+      "channel": "release:load"
+     },
+     {
+      "api": "tidemark",
+      "member": "saveRelease",
+      "channel": "release:save"
+     },
+     {
+      "api": "tidemark",
+      "member": "deleteRelease",
+      "channel": "release:delete"
+     },
+     {
+      "api": "tidemark",
+      "member": "getSettings",
+      "channel": "settings:get"
+     },
+     {
+      "api": "tidemark",
+      "member": "setSettings",
+      "channel": "settings:set"
+     },
+     {
+      "api": "tidemark",
+      "member": "exportMarkdown",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "exportHtml",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "publish",
+      "channel": "publish:start"
+     },
+     {
+      "api": "tidemark",
+      "member": "onPublishProgress",
+      "channel": "publish:progress"
+     },
+     {
+      "api": "tidemark",
+      "member": "markDirty",
+      "channel": "editor:dirty"
+     },
+     {
+      "api": "tidemark",
+      "member": "openPreview",
+      "channel": "preview:open"
+     },
+     {
+      "api": "tidemark",
+      "member": "updatePreview",
+      "channel": "preview:update"
+     },
+     {
+      "api": "tidemark",
+      "member": "appInfo",
+      "channel": "app:info"
+     },
+     {
+      "api": "tidemark",
+      "member": "sendDiagnostics",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://api.tidemark.example/v2/projects/${…}/releases",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.tidemark.example/v2/releases",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://updates.tidemark.example/desktop/latest.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://cdn.tidemark.example/preview/themes/${…}.css",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://code.tidemark.example/api/v1/repos/${…}/contributors",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcMain.handle at undefined:1",
+     "ipcMain.on at undefined:1",
+     "ipcMain.on at undefined:3",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.invoke at undefined:1",
+     "ipcRenderer.send at undefined:1"
+    ],
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "preview.theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "tidemark.cursor",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.fontSize",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.lastProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout5/tidemark-v2.plain.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved",
+     "window_options_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "app:info",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "export:html",
+      "senders": [],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "export:json",
+      "senders": [],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "export:markdown",
+      "senders": [],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "export:text",
+      "senders": [],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "preview:open",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:ping",
+      "senders": [
+       "preload-preview.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "preview:pong",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-preview.js"
+      ]
+     },
+     {
+      "channel": "preview:render",
+      "senders": [
+       "main/handlers.js"
+      ],
+      "receivers": [
+       "preload-preview.js"
+      ]
+     },
+     {
+      "channel": "preview:update",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "publish:progress",
+      "senders": [],
+      "receivers": [
+       "preload.js"
+      ]
+     },
+     {
+      "channel": "publish:start",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "release:duplicate",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "release:load",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "release:save",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "releases:list",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "settings:get",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     },
+     {
+      "channel": "settings:set",
+      "senders": [
+       "preload.js"
+      ],
+      "receivers": [
+       "main/handlers.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload.js",
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main/windows.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "preview",
+      "member": "onRender",
+      "channel": "preview:render"
+     },
+     {
+      "api": "preview",
+      "member": "ping",
+      "channel": "preview:ping"
+     },
+     {
+      "api": "preview",
+      "member": "onPong",
+      "channel": "preview:pong"
+     },
+     {
+      "api": "tidemark",
+      "member": "listReleases",
+      "channel": "releases:list"
+     },
+     {
+      "api": "tidemark",
+      "member": "loadRelease",
+      "channel": "release:load"
+     },
+     {
+      "api": "tidemark",
+      "member": "saveRelease",
+      "channel": "release:save"
+     },
+     {
+      "api": "tidemark",
+      "member": "duplicateRelease",
+      "channel": "release:duplicate"
+     },
+     {
+      "api": "tidemark",
+      "member": "getSettings",
+      "channel": "settings:get"
+     },
+     {
+      "api": "tidemark",
+      "member": "setSettings",
+      "channel": "settings:set"
+     },
+     {
+      "api": "tidemark",
+      "member": "exportMarkdown",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "exportHtml",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "exportText",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "publish",
+      "channel": "publish:start"
+     },
+     {
+      "api": "tidemark",
+      "member": "onPublishProgress",
+      "channel": "publish:progress"
+     },
+     {
+      "api": "tidemark",
+      "member": "openPreview",
+      "channel": "preview:open"
+     },
+     {
+      "api": "tidemark",
+      "member": "updatePreview",
+      "channel": "preview:update"
+     },
+     {
+      "api": "tidemark",
+      "member": "appInfo",
+      "channel": "app:info"
+     },
+     {
+      "api": "tidemark",
+      "member": "sendDiagnostics",
+      "channel": null
+     },
+     {
+      "api": "tidemark",
+      "member": "platform",
+      "channel": null
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://updates.tidemark.example/desktop/latest.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://cdn.tidemark.example/preview/themes/${…}.css",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.lingoflow.example/v1/translate",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://api.tidemark.example/v2/projects/${…}/releases",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://api.tidemark.example/v2/releases",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://code.tidemark.example/api/v1/repos/${…}/contributors",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcRenderer.invoke at undefined:9",
+     "ipcRenderer.invoke at undefined:21",
+     "ipcRenderer.invoke at undefined:22",
+     "ipcRenderer.invoke at undefined:23",
+     "ipcRenderer.send at undefined:36",
+     "ipcMain.on at undefined:58",
+     "ipcMain.handle at undefined:16",
+     "ipcMain.on at undefined:28"
+    ],
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "preview.theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.${…}",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "tidemark.${…}",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "tidemark.cursor",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.fontSize",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "tidemark.lastProject",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
   "compare:holdout5/tidemark.plain.asar|holdout5/tidemark-v2.plain.asar": {
    "compare": {
     "ipcChannels": {
@@ -12061,8 +13727,1758 @@
      "added": [],
      "removed": [],
      "changed": [],
-     "relocated": 0,
+     "relocated": 7,
      "unchanged": 7
+    }
+   }
+  },
+  "holdout6/snapdeck.plain.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "annotator:dirty",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main/windows.js"
+      ]
+     },
+     {
+      "channel": "app:version",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "capture:start",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "library:delete",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "library:list",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "library:reveal",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "menu:command",
+      "senders": [
+       "main/menu.js"
+      ],
+      "receivers": [
+       "preload-annotator.js",
+       "preload-library.js"
+      ]
+     },
+     {
+      "channel": "overlay:cancel",
+      "senders": [
+       "preload-overlay.js"
+      ],
+      "receivers": [
+       "main/capture.js"
+      ]
+     },
+     {
+      "channel": "overlay:frame",
+      "senders": [
+       "main/capture.js"
+      ],
+      "receivers": [
+       "preload-overlay.js"
+      ]
+     },
+     {
+      "channel": "overlay:select",
+      "senders": [
+       "preload-overlay.js"
+      ],
+      "receivers": [
+       "main/capture.js"
+      ]
+     },
+     {
+      "channel": "prefs:get",
+      "senders": [
+       "preload-annotator.js",
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/prefs.js"
+      ]
+     },
+     {
+      "channel": "prefs:set",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/prefs.js"
+      ]
+     },
+     {
+      "channel": "shot:loaded",
+      "senders": [
+       "main/windows.js"
+      ],
+      "receivers": [
+       "preload-annotator.js"
+      ]
+     },
+     {
+      "channel": "shot:open",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "shot:save",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "shot:share",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload-overlay.js",
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main/windows.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "annotator",
+      "member": "loadImage",
+      "channel": null
+     },
+     {
+      "api": "annotator",
+      "member": "saveShot",
+      "channel": "shot:save"
+     },
+     {
+      "api": "annotator",
+      "member": "shareShot",
+      "channel": "shot:share"
+     },
+     {
+      "api": "annotator",
+      "member": "getPrefs",
+      "channel": "prefs:get"
+     },
+     {
+      "api": "annotator",
+      "member": "setDirty",
+      "channel": "annotator:dirty"
+     },
+     {
+      "api": "annotator",
+      "member": "onShotLoaded",
+      "channel": "shot:loaded"
+     },
+     {
+      "api": "annotator",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "snapdeck",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "snapdeck",
+      "member": "listShots",
+      "channel": "library:list"
+     },
+     {
+      "api": "snapdeck",
+      "member": "deleteShot",
+      "channel": "library:delete"
+     },
+     {
+      "api": "snapdeck",
+      "member": "openShot",
+      "channel": "shot:open"
+     },
+     {
+      "api": "snapdeck",
+      "member": "getPrefs",
+      "channel": "prefs:get"
+     },
+     {
+      "api": "snapdeck",
+      "member": "setPrefs",
+      "channel": "prefs:set"
+     },
+     {
+      "api": "snapdeck",
+      "member": "revealShot",
+      "channel": "library:reveal"
+     },
+     {
+      "api": "snapdeck",
+      "member": "startCapture",
+      "channel": "capture:start"
+     },
+     {
+      "api": "snapdeck",
+      "member": "appVersion",
+      "channel": "app:version"
+     },
+     {
+      "api": "snapdeck",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "overlay",
+      "member": "select",
+      "channel": "overlay:select"
+     },
+     {
+      "api": "overlay",
+      "member": "cancel",
+      "channel": "overlay:cancel"
+     },
+     {
+      "api": "overlay",
+      "member": "onFrame",
+      "channel": "overlay:frame"
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://cdn.snapdeck.example/stickers/${…}/index.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://share.snapdeck.example/api/v3/shots",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "${…}/shots/${…}",
+      "kind": "fetch",
+      "method": "DELETE",
+      "evidence": "template"
+     },
+     {
+      "value": "https://releases.snapdeck.example/feed/stable.json",
+      "kind": "http-client",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://gallery.snapdeck.example/api/trending?window=week",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     }
+    ],
+    "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcRenderer.on at undefined:11",
+     "ipcRenderer.invoke at undefined:18",
+     "ipcMain.handle at undefined:20"
+    ],
+    "storage": [
+     {
+      "kind": "sessionStorage",
+      "value": "annotator.activeTool",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "library.scrollTop",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "overlay.lastRegion",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "annotator.recentColors",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:strokeWidth",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:lastFolder",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:gridSize",
+      "ops": [
+       "write",
+       "read"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout6/snapdeck.bundled.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "annotator:dirty",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:version",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "capture:start",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:delete",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:list",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:reveal",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:command",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-annotator.js",
+       "preload-library.js"
+      ]
+     },
+     {
+      "channel": "overlay:cancel",
+      "senders": [
+       "preload-overlay.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "overlay:frame",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-overlay.js"
+      ]
+     },
+     {
+      "channel": "overlay:select",
+      "senders": [
+       "preload-overlay.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "prefs:get",
+      "senders": [
+       "preload-annotator.js",
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "prefs:set",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "shot:loaded",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-annotator.js"
+      ]
+     },
+     {
+      "channel": "shot:open",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "shot:save",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "shot:share",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload-overlay.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "annotator",
+      "member": "loadImage",
+      "channel": null
+     },
+     {
+      "api": "annotator",
+      "member": "saveShot",
+      "channel": "shot:save"
+     },
+     {
+      "api": "annotator",
+      "member": "shareShot",
+      "channel": "shot:share"
+     },
+     {
+      "api": "annotator",
+      "member": "getPrefs",
+      "channel": "prefs:get"
+     },
+     {
+      "api": "annotator",
+      "member": "setDirty",
+      "channel": "annotator:dirty"
+     },
+     {
+      "api": "annotator",
+      "member": "onShotLoaded",
+      "channel": "shot:loaded"
+     },
+     {
+      "api": "annotator",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "snapdeck",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "snapdeck",
+      "member": "listShots",
+      "channel": "library:list"
+     },
+     {
+      "api": "snapdeck",
+      "member": "deleteShot",
+      "channel": "library:delete"
+     },
+     {
+      "api": "snapdeck",
+      "member": "openShot",
+      "channel": "shot:open"
+     },
+     {
+      "api": "snapdeck",
+      "member": "getPrefs",
+      "channel": "prefs:get"
+     },
+     {
+      "api": "snapdeck",
+      "member": "setPrefs",
+      "channel": "prefs:set"
+     },
+     {
+      "api": "snapdeck",
+      "member": "revealShot",
+      "channel": "library:reveal"
+     },
+     {
+      "api": "snapdeck",
+      "member": "startCapture",
+      "channel": "capture:start"
+     },
+     {
+      "api": "snapdeck",
+      "member": "appVersion",
+      "channel": "app:version"
+     },
+     {
+      "api": "snapdeck",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "overlay",
+      "member": "select",
+      "channel": "overlay:select"
+     },
+     {
+      "api": "overlay",
+      "member": "cancel",
+      "channel": "overlay:cancel"
+     },
+     {
+      "api": "overlay",
+      "member": "onFrame",
+      "channel": "overlay:frame"
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://share.snapdeck.example/api/v3/shots",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://share.snapdeck.example/api/v3/shots/${…}",
+      "kind": "fetch",
+      "method": "DELETE",
+      "evidence": "template"
+     },
+     {
+      "value": "https://releases.snapdeck.example/feed/stable.json",
+      "kind": "http-client",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://cdn.snapdeck.example/stickers/${…}/index.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://gallery.snapdeck.example/api/trending?window=week",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     }
+    ],
+    "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcRenderer.invoke at undefined:48"
+    ],
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "annotator.recentColors",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:strokeWidth",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "annotator.activeTool",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:lastFolder",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:theme",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:gridSize",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "library.scrollTop",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "overlay.lastRegion",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout6/snapdeck.minified.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "annotator:dirty",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "app:version",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "capture:start",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:delete",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:list",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "library:reveal",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "menu:command",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-annotator.js",
+       "preload-library.js"
+      ]
+     },
+     {
+      "channel": "overlay:cancel",
+      "senders": [
+       "preload-overlay.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "overlay:frame",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-overlay.js"
+      ]
+     },
+     {
+      "channel": "overlay:select",
+      "senders": [
+       "preload-overlay.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "prefs:get",
+      "senders": [
+       "preload-annotator.js",
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "prefs:set",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "shot:loaded",
+      "senders": [
+       "main.js"
+      ],
+      "receivers": [
+       "preload-annotator.js"
+      ]
+     },
+     {
+      "channel": "shot:open",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "shot:save",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "shot:share",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload-overlay.js",
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "annotator",
+      "member": "loadImage",
+      "channel": null
+     },
+     {
+      "api": "annotator",
+      "member": "saveShot",
+      "channel": "shot:save"
+     },
+     {
+      "api": "annotator",
+      "member": "shareShot",
+      "channel": "shot:share"
+     },
+     {
+      "api": "annotator",
+      "member": "getPrefs",
+      "channel": "prefs:get"
+     },
+     {
+      "api": "annotator",
+      "member": "setDirty",
+      "channel": "annotator:dirty"
+     },
+     {
+      "api": "annotator",
+      "member": "onShotLoaded",
+      "channel": "shot:loaded"
+     },
+     {
+      "api": "annotator",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "snapdeck",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "snapdeck",
+      "member": "listShots",
+      "channel": "library:list"
+     },
+     {
+      "api": "snapdeck",
+      "member": "deleteShot",
+      "channel": "library:delete"
+     },
+     {
+      "api": "snapdeck",
+      "member": "openShot",
+      "channel": "shot:open"
+     },
+     {
+      "api": "snapdeck",
+      "member": "getPrefs",
+      "channel": "prefs:get"
+     },
+     {
+      "api": "snapdeck",
+      "member": "setPrefs",
+      "channel": "prefs:set"
+     },
+     {
+      "api": "snapdeck",
+      "member": "revealShot",
+      "channel": "library:reveal"
+     },
+     {
+      "api": "snapdeck",
+      "member": "startCapture",
+      "channel": "capture:start"
+     },
+     {
+      "api": "snapdeck",
+      "member": "appVersion",
+      "channel": "app:version"
+     },
+     {
+      "api": "snapdeck",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "overlay",
+      "member": "select",
+      "channel": "overlay:select"
+     },
+     {
+      "api": "overlay",
+      "member": "cancel",
+      "channel": "overlay:cancel"
+     },
+     {
+      "api": "overlay",
+      "member": "onFrame",
+      "channel": "overlay:frame"
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "${…}/shots",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "template"
+     },
+     {
+      "value": "${…}/shots/${…}",
+      "kind": "fetch",
+      "method": "DELETE",
+      "evidence": "template"
+     },
+     {
+      "value": "https://releases.snapdeck.example/feed/stable.json",
+      "kind": "http-client",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://cdn.snapdeck.example/stickers/${…}/index.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     }
+    ],
+    "endpointsUnreadable": 2,
+    "ipcUnreadable": [
+     "ipcRenderer.invoke at undefined:1"
+    ],
+    "storage": [
+     {
+      "kind": "localStorage",
+      "value": "annotator.recentColors",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:strokeWidth",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "annotator.activeTool",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:lastFolder",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:theme",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:gridSize",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "library.scrollTop",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "overlay.lastRegion",
+      "ops": [
+       "read",
+       "write"
+      ]
+     }
+    ]
+   }
+  },
+  "holdout6/snapdeck-v2.plain.asar": {
+   "electron": {
+    "complete": true,
+    "limitations": [
+     "ipc_channel_unresolved"
+    ],
+    "ipcChannels": [
+     {
+      "channel": "annotator:modified",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main/windows.js"
+      ]
+     },
+     {
+      "channel": "app:version",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "capture:start",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "library:delete",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "library:list",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "menu:command",
+      "senders": [
+       "main/menu.js"
+      ],
+      "receivers": [
+       "preload-annotator.js",
+       "preload-library.js"
+      ]
+     },
+     {
+      "channel": "overlay:cancel",
+      "senders": [
+       "preload-overlay.js"
+      ],
+      "receivers": [
+       "main/capture.js"
+      ]
+     },
+     {
+      "channel": "overlay:frame",
+      "senders": [
+       "main/capture.js"
+      ],
+      "receivers": [
+       "preload-overlay.js"
+      ]
+     },
+     {
+      "channel": "overlay:select",
+      "senders": [
+       "preload-overlay.js"
+      ],
+      "receivers": [
+       "main/capture.js"
+      ]
+     },
+     {
+      "channel": "prefs:get",
+      "senders": [
+       "preload-annotator.js",
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/prefs.js"
+      ]
+     },
+     {
+      "channel": "prefs:set",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main/prefs.js"
+      ]
+     },
+     {
+      "channel": "shot:loaded",
+      "senders": [
+       "main/windows.js"
+      ],
+      "receivers": [
+       "preload-annotator.js"
+      ]
+     },
+     {
+      "channel": "shot:ocr",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "shot:open",
+      "senders": [
+       "preload-library.js"
+      ],
+      "receivers": [
+       "main.js"
+      ]
+     },
+     {
+      "channel": "shot:save",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     },
+     {
+      "channel": "shot:share",
+      "senders": [
+       "preload-annotator.js"
+      ],
+      "receivers": [
+       "main/ipc.js"
+      ]
+     }
+    ],
+    "webPreferences": [
+     {
+      "key": "preload",
+      "value": "preload-overlay.js",
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "webSecurity",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": false,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "nodeIntegration",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "contextIsolation",
+      "value": true,
+      "file": "main/windows.js"
+     },
+     {
+      "key": "sandbox",
+      "value": false,
+      "file": "main/windows.js"
+     }
+    ],
+    "contextBridge": [
+     {
+      "api": "annotator",
+      "member": "loadImage",
+      "channel": null
+     },
+     {
+      "api": "annotator",
+      "member": "saveShot",
+      "channel": "shot:save"
+     },
+     {
+      "api": "annotator",
+      "member": "shareShot",
+      "channel": "shot:share"
+     },
+     {
+      "api": "annotator",
+      "member": "recognizeText",
+      "channel": "shot:ocr"
+     },
+     {
+      "api": "annotator",
+      "member": "getPrefs",
+      "channel": "prefs:get"
+     },
+     {
+      "api": "annotator",
+      "member": "setDirty",
+      "channel": "annotator:modified"
+     },
+     {
+      "api": "annotator",
+      "member": "onShotLoaded",
+      "channel": "shot:loaded"
+     },
+     {
+      "api": "annotator",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "snapdeck",
+      "member": "listShots",
+      "channel": "library:list"
+     },
+     {
+      "api": "snapdeck",
+      "member": "deleteShot",
+      "channel": "library:delete"
+     },
+     {
+      "api": "snapdeck",
+      "member": "openShot",
+      "channel": "shot:open"
+     },
+     {
+      "api": "snapdeck",
+      "member": "getPrefs",
+      "channel": "prefs:get"
+     },
+     {
+      "api": "snapdeck",
+      "member": "setPrefs",
+      "channel": "prefs:set"
+     },
+     {
+      "api": "snapdeck",
+      "member": "startCapture",
+      "channel": "capture:start"
+     },
+     {
+      "api": "snapdeck",
+      "member": "appVersion",
+      "channel": "app:version"
+     },
+     {
+      "api": "snapdeck",
+      "member": "onMenuCommand",
+      "channel": "menu:command"
+     },
+     {
+      "api": "snapdeck",
+      "member": "platform",
+      "channel": null
+     },
+     {
+      "api": "overlay",
+      "member": "select",
+      "channel": "overlay:select"
+     },
+     {
+      "api": "overlay",
+      "member": "cancel",
+      "channel": "overlay:cancel"
+     },
+     {
+      "api": "overlay",
+      "member": "onFrame",
+      "channel": "overlay:frame"
+     }
+    ],
+    "endpoints": [
+     {
+      "value": "https://cdn.snapdeck.example/stickers/${…}/index.json",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "template"
+     },
+     {
+      "value": "https://share.snapdeck.example/api/v3/shots",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "${…}/shots/${…}",
+      "kind": "fetch",
+      "method": "DELETE",
+      "evidence": "template"
+     },
+     {
+      "value": "https://ocr.textlens.example/v2/recognize",
+      "kind": "fetch",
+      "method": "POST",
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://releases.snapdeck.example/feed/stable.json",
+      "kind": "http-client",
+      "method": null,
+      "evidence": "inferred"
+     },
+     {
+      "value": "https://gallery.snapdeck.example/api/trending?window=week",
+      "kind": "fetch",
+      "method": null,
+      "evidence": "inferred"
+     }
+    ],
+    "endpointsUnreadable": 1,
+    "ipcUnreadable": [
+     "ipcRenderer.on at undefined:14",
+     "ipcRenderer.invoke at undefined:21",
+     "ipcMain.handle at undefined:22"
+    ],
+    "storage": [
+     {
+      "kind": "sessionStorage",
+      "value": "annotator.activeTool",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "sessionStorage",
+      "value": "library.scrollTop",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "overlay.lastRegion",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "annotator.recentColors",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:strokeWidth",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:ocrLanguage",
+      "ops": [
+       "read",
+       "write"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:lastFolder",
+      "ops": [
+       "read",
+       "write",
+       "delete"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:theme",
+      "ops": [
+       "write",
+       "read"
+      ]
+     },
+     {
+      "kind": "localStorage",
+      "value": "snapdeck:gridSize",
+      "ops": [
+       "write",
+       "read"
+      ]
+     }
+    ]
+   }
+  },
+  "compare:holdout6/snapdeck.plain.asar|holdout6/snapdeck-v2.plain.asar": {
+   "compare": {
+    "ipcChannels": {
+     "key": "channel",
+     "added": [
+      "annotator:modified",
+      "shot:ocr"
+     ],
+     "removed": [
+      "annotator:dirty",
+      "library:reveal"
+     ],
+     "changed": [],
+     "relocated": 0,
+     "unchanged": 14
+    },
+    "contextBridge": {
+     "key": "api+member",
+     "added": [
+      "annotator.recognizeText"
+     ],
+     "removed": [
+      "snapdeck.revealShot"
+     ],
+     "changed": [
+      "annotator.setDirty"
+     ],
+     "relocated": 18,
+     "unchanged": 0
+    },
+    "webPreferences": {
+     "key": "file+windowName+key",
+     "added": [],
+     "removed": [],
+     "changed": [
+      "nodeIntegration: false -> true"
+     ],
+     "relocated": 10,
+     "unchanged": 0
+    },
+    "endpoints": {
+     "key": "file+kind+value",
+     "added": [
+      "https://ocr.textlens.example/v2/recognize"
+     ],
+     "removed": [],
+     "changed": [],
+     "relocated": 6,
+     "unchanged": 0
+    },
+    "storage": {
+     "key": "file+kind+value+op",
+     "added": [
+      "localStorage snapdeck:ocrLanguage",
+      "localStorage snapdeck:ocrLanguage"
+     ],
+     "removed": [],
+     "changed": [
+      "localStorage overlay.lastRegion",
+      "localStorage overlay.lastRegion"
+     ],
+     "relocated": 18,
+     "unchanged": 0
     }
    }
   },
