@@ -33,11 +33,18 @@ import {
   MAX_KEY_CALLS_PER_FILE,
   type Replaced,
   linkWrappers,
+  factsFor,
   type ParamIpc,
   type ReadModule,
   type WrapperFacts,
   WrapperReader,
 } from "./wrappers.js";
+
+/** A module for one cross-file wrapper stage, with the facts of that stage only. */
+function withFacts(m: JsModule, wrappers: WrapperFacts | undefined): JsModule {
+  const { wrappers: _all, ...rest } = m;
+  return wrappers ? { ...rest, wrappers } : rest;
+}
 
 /** The objects a parameter used as the IPC object may be (see `ParamIpc`). */
 const IPC_OBJECTS: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]);
@@ -63,6 +70,8 @@ export function paramIpcRows(
    * functions. A function or method another module may call is then undecided.
    */
   cut: { methods: boolean; fns: boolean } = { methods: false, fns: false },
+  /** Modules another module imports: their functions may be called there. */
+  imported: ReadonlySet<string> = new Set(),
 ): void {
   const all = new Map<
     string,
@@ -77,6 +86,9 @@ export function paramIpcRows(
           : cut.methods && Object.keys(m.wrappers?.exports ?? {}).length
       )
         continue;
+      // other modules are read only for what looks like IPC: in a module another one imports,
+      // anything else may be called there with any object, unread
+      if (imported.has(m.id) && !e.calls.some((c) => c.ipcLike)) continue;
       all.set(`${m.id}\u0000${e.key}\u0000${e.index}`, {
         m,
         e,
@@ -1763,8 +1775,8 @@ const BRIDGE_WALK_BUDGET = 400_000;
 const BRIDGE_STEP_COST = 8;
 /** Charged per `api[k] = …` whose scope and loop rounds are read. */
 const BRIDGE_ROUND_COST = 2000;
-/** Charged per `api.x = …` whose scope is read. */
-const BRIDGE_SCOPE_COST = 50;
+/** Charged per `api.x = …` that is read as a member (a write to another binding is not). */
+const BRIDGE_SCOPE_COST = 8;
 const BRIDGE_MODIFIERS = new Set(["async", "get", "set", "static"]);
 const CHANNEL_CALLS = new Set([
   "invoke",
@@ -2365,13 +2377,19 @@ export function bridgeMembers(
             // the bracket's match from the resolver's table, not a walk
             const close = resolver.closeOf(k + 1);
             if (close === -1 || !is(close + 1, "=") || is(close + 2, "=")) continue;
+            // only a write to the exposed object itself (the scope reading is charged to the
+            // resolver's own work; a write to another binding of the name costs no more here)
+            const which = sameObject(k);
+            if (which === "unknown" && resolver.exhausted()) {
+              truncated = true;
+              break;
+            }
+            if (which !== "same") continue;
             budget -= BRIDGE_ROUND_COST;
             if (budget <= 0) {
               truncated = true;
               break;
             }
-            // only a write to the exposed object itself
-            if (sameObject(k) !== "same") continue;
             const rounds = resolver.loopAssignments(k);
             if (!rounds) push(null, null, tokens[k]!.line);
             else
@@ -2402,13 +2420,14 @@ export function bridgeMembers(
           }
           // a write to another binding of the same name (`function (e) { e.A = 1 }` in a file
           // whose exposed object is a `const e` elsewhere) is no member; the scope is read
-          // within the walk's budget
+          // within the resolver's own work; only a write that stays a member is charged here
+          const which = sameObject(k);
+          if (which === "other") continue;
           budget -= BRIDGE_SCOPE_COST;
           if (budget <= 0) {
             truncated = true;
             break;
           }
-          if (sameObject(k) === "other") continue;
           readMember(k + 2, end, 0, -1);
         }
     }
@@ -4496,13 +4515,30 @@ export function analyzeJavaScriptTree(
     return modulesRead.get(path) ?? null;
   };
   const linked = linkWrappers({
-    modules,
+    // the channel-forwarding wrappers only: this stage reads what it read before IPC object
+    // parameters existed, within the same budgets
+    modules: modules.map((m) => withFacts(m, factsFor(m.wrappers, false))),
     edges,
     resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
     open: openModule,
   });
-  // Parameters used as the IPC object: rows once every call site, here and elsewhere, is known.
-  paramIpcRows(modules, linked.sites, linked.objectsCut);
+  // Parameters used as the IPC object: a stage of its own, with its own budgets (what it could
+  // not read leaves the functions another module may call undecided, see `paramIpcRows`); rows
+  // once every call site, here and elsewhere, is known.
+  const objectLinked = modules.some((m) => factsFor(m.wrappers, true))
+    ? linkWrappers({
+        modules: modules.map((m) => withFacts(m, factsFor(m.wrappers, true))),
+        edges,
+        resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
+        open: openModule,
+      })
+    : null;
+  paramIpcRows(
+    modules,
+    objectLinked?.sites ?? new Map(),
+    objectLinked?.objectsCut ?? { methods: false, fns: false },
+    new Set(edges.filter((e) => e.resolved && e.from !== e.to).map((e) => e.to)),
+  );
   if (linked.capped.length)
     limitations.push({
       code: "ipc_wrappers_capped",

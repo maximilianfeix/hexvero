@@ -867,12 +867,12 @@ export function scanJavaScript(
     wrapperScan = { rows: [], inner: new Set(), facts: null, calls: new Map() };
     const named = /ipcMain|ipcRenderer|webContents/.test(source);
     // A file that names no IPC object may still take one as a parameter: read for that only
-    // when it calls a method only IPC objects have, or names `ipc` and calls one they share.
+    // when its text names `ipc` (`register(ipc)`, a comment, an import of ipcMain) and it calls
+    // a method IPC objects have. A library that never says `ipc` is not read for it.
     const objectsMaybe =
-      named ||
-      /\.(handle|handleOnce|invoke|sendSync)\(/.test(source) ||
-      (/ipc/i.test(source) && /\.(on|once|send|postMessage)\(/.test(source));
-    if (!objectsMaybe) return wrapperScan;
+      /ipc/i.test(source) &&
+      /\.(on|once|handle|handleOnce|invoke|sendSync|send|postMessage)\(/.test(source);
+    if (!named && !objectsMaybe) return wrapperScan;
     const punct = (k: number, v: string): boolean =>
       tokens[k]?.type === "punct" && tokens[k]!.value === v;
     // IPC calls whose channel is a lone name: the calls a wrapper method can make
@@ -909,7 +909,11 @@ export function scanJavaScript(
     // call site passes ipcMain for (`register(ipc) { … }`, called as `prefs.register(ipcMain)`)
     const objects: Array<{ at: number; call: ObjectCall }> = [];
     let payloads: PayloadReader | null = null;
-    for (let k = 0; k + 3 < tokens.length && objects.length < MAX_OBJECT_CALLS; k++) {
+    for (
+      let k = 0;
+      objectsMaybe && k + 3 < tokens.length && objects.length < MAX_OBJECT_CALLS;
+      k++
+    ) {
       const method = tokens[k + 2]!;
       if (
         tokens[k]!.type !== "ident" ||
@@ -966,7 +970,7 @@ export function scanJavaScript(
     const objectsCut = objects.length >= MAX_OBJECT_CALLS;
     const read = objects.length ? reader.paramIpc() : [];
     const paramIpc = reader.objectsCapped || objectsCut ? [] : read;
-    if (!reader.classes.length && !paramIpc.length && !objectsCut) return wrapperScan;
+    if (!reader.classes.length && !paramIpc.length) return wrapperScan;
     const rows = reader.rows();
     const facts = reader.facts();
     wrapperScan = {
@@ -974,7 +978,8 @@ export function scanJavaScript(
       inner: reader.inner,
       facts,
       calls: new Map(rows.map((r) => [r.at, { api: r.usage.api, arg: r.arg }])),
-      ...(reader.capped || reader.objectsCapped || objectsCut ? { capped: true as const } : {}),
+      // what the search for IPC object parameters could not read only leaves its own rows out
+      ...(reader.capped ? { capped: true as const } : {}),
       ...(paramIpc.length ? { paramIpc } : {}),
     };
     return wrapperScan;

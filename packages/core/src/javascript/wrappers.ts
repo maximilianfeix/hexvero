@@ -36,7 +36,22 @@ export interface ObjectCall {
   channelRef?: IpcUsage["channelRef"];
   /** For a call that sends: the payload shape (see `IpcUsage.args`). */
   args?: string;
+  /**
+   * The call looks like IPC: the parameter's name says `ipc`, or the method is one only IPC
+   * objects have (`handle`, `handleOnce`, `invoke`, `sendSync`). Only such functions are offered
+   * to other modules (`facts`); one in a module another module imports that does not look like
+   * IPC gives no rows (its calls there are not read).
+   */
+  ipcLike?: true;
 }
+
+/** Methods only IPC objects have, of those read on a parameter. */
+const IPC_ONLY_METHODS: ReadonlySet<string> = new Set([
+  "handle",
+  "handleOnce",
+  "invoke",
+  "sendSync",
+]);
 
 /** One IPC call a wrapper method makes with one of its parameters, whole, as the channel. */
 export interface Forward {
@@ -630,6 +645,31 @@ export class WrapperReader {
         (before?.type === "punct" && (before.value === "++" || before.value === "--"))
       )
         return true;
+      // `for (ipc of …)`, `for (ipc in …)`: bound again in each round
+      if (
+        (this.is(j + 1, "ident", "of") || this.is(j + 1, "ident", "in")) &&
+        this.punct(j - 1, "(") &&
+        this.is(j - 2, "ident", "for")
+      )
+        return true;
+      // `({ ipc } = …)`, `[ipc] = …`, `({ a: ipc } = …)`: a destructuring assignment
+      if (
+        this.punct(j - 1, "[") ||
+        this.punct(j - 1, ",") ||
+        this.punct(j - 1, "{") ||
+        this.punct(j - 1, ":")
+      ) {
+        const open = this.container(j);
+        const close = open === -1 ? -1 : this.r.closeOf(open);
+        const word = this.tokens[open - 1];
+        if (
+          close !== -1 &&
+          (this.punct(open, "{") || this.punct(open, "[")) &&
+          this.punct(close + 1, "=") &&
+          !(word?.type === "ident" && /^(const|let|var)$/.test(word.value))
+        )
+          return true;
+      }
     }
     return false;
   }
@@ -1215,7 +1255,14 @@ export class WrapperReader {
       const { def, index } = b;
       if (def.params[index]?.kind !== "name" || def.name === null) continue;
       if (this.declares(def, name, true)) continue;
-      const forward: Forward = { api: call.method, index, object: call };
+      const forward: Forward = {
+        api: call.method,
+        index,
+        object:
+          /ipc/i.test(name) || IPC_ONLY_METHODS.has(call.method)
+            ? { ...call, ipcLike: true }
+            : call,
+      };
       if ((def.owner !== null && !def.arrow) || def.member) {
         this.register(def, forward);
         continue;
@@ -1223,7 +1270,7 @@ export class WrapperReader {
       if (def.owner !== null || def.static) continue;
       const by = this.objectFns.get(def) ?? new Map<number, ObjectCall[]>();
       const calls = by.get(index) ?? [];
-      calls.push(call);
+      calls.push(forward.object!);
       by.set(index, calls);
       this.objectFns.set(def, by);
     }
@@ -1258,7 +1305,8 @@ export class WrapperReader {
           add(`${cls.id}.${method}`, `${cls.name}.${method}`, index, calls);
       }
     }
-    for (const f of this.objectFunctions()) add(f.key, f.label, f.index, f.calls);
+    for (const [def, by] of this.objectFns)
+      for (const [index, calls] of by) add(`fn@${def.paramsAt}`, def.name!, index, calls);
     return out;
   }
 
@@ -1280,6 +1328,65 @@ export class WrapperReader {
     if (!list.some((x) => x.site === site)) list.push({ site, target });
     by.set(index, list);
     this.objectSeeds.set(def, by);
+  }
+
+  /**
+   * The uses of a plain function of this file other than a call by its name and an export of it:
+   * `reg.call(…)` (with the `(` of that call), `reg.apply(…)`, `reg.bind(…)`, `forEach(reg)`,
+   * `setTimeout(reg, …)`, `const f = reg`. Each may call it with something else.
+   */
+  private otherUses(def: FnDef): Array<{ at: number; call: number | null }> {
+    const out: Array<{ at: number; call: number | null }> = [];
+    if (def.name === null) return out;
+    const { r } = this;
+    const outer = r.outerOf(def);
+    const [from, to] = outer ? outer.body : [0, this.tokens.length];
+    for (const j of r.namePositions(def.name, from, to)) {
+      if (this.work-- <= 0) break;
+      if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
+      if (this.is(j - 1, "ident", "function") || j + 1 === def.paramsAt) continue;
+      if (this.punct(j + 1, "(")) continue; // a call by name: `callSitesOf`
+      // a key of an object literal, `{ reg: … }`, or the name's own declaration
+      if (this.punct(j + 1, ":") && (this.punct(j - 1, "{") || this.punct(j - 1, ","))) continue;
+      if (this.is(j - 1, "ident") && /^(const|let|var|class)$/.test(this.tokens[j - 1]!.value))
+        continue;
+      if (this.exportUse(j)) continue;
+      const b = r.binding(j, def.name);
+      if (b && !(b.kind === "function" && b.def === def)) continue;
+      const call =
+        this.punct(j + 1, ".") && this.is(j + 2, "ident", "call") && this.punct(j + 3, "(")
+          ? j + 3
+          : null;
+      out.push({ at: j, call });
+    }
+    return out;
+  }
+
+  /**
+   * The use of a name at j exports it, as such: `module.exports = reg`, `exports.K = reg`,
+   * `module.exports = { reg, K: reg }`, `export { reg }`, `export default reg`.
+   */
+  private exportUse(j: number): boolean {
+    if (this.is(j - 1, "ident", "default") && this.is(j - 2, "ident", "export")) return true;
+    if (this.punct(j - 1, "=") && this.is(j - 2, "ident") && this.punct(j - 3, ".")) {
+      const holder = this.tokens[j - 4];
+      return (
+        this.tokens[j - 2]!.value === "exports" ||
+        (holder?.type === "ident" && (holder.value === "exports" || holder.value === "module"))
+      );
+    }
+    const inObject =
+      (this.punct(j - 1, "{") || this.punct(j - 1, ",") || this.punct(j - 1, ":")) &&
+      (this.punct(j + 1, ",") || this.punct(j + 1, "}") || this.is(j + 1, "ident", "as"));
+    if (!inObject) return false;
+    const open = this.container(j);
+    if (open === -1 || !this.punct(open, "{")) return false;
+    if (this.is(open - 1, "ident", "export")) return true;
+    return (
+      this.punct(open - 1, "=") &&
+      this.is(open - 2, "ident", "exports") &&
+      (this.punct(open - 3, ".") || !this.punct(open - 3, "."))
+    );
   }
 
   /** `ipcMain` / `ipcRenderer` when the argument from `arg` is one, as far as it is read. */
@@ -1313,8 +1420,17 @@ export class WrapperReader {
       for (const method of names) {
         for (const j of r.namePositions(method)) {
           if (this.work-- <= 0) return out;
-          if (!(this.punct(j - 1, ".") || this.punct(j - 1, "?.")) || !this.punct(j + 1, "("))
-            continue;
+          if (!(this.punct(j - 1, ".") || this.punct(j - 1, "?."))) continue;
+          // `inst.register.call(t, ipcMain)` reads its argument after `this`; any other use
+          // of the method that is not a call (`.apply`, `.bind`, a callback) passes what it
+          // passes unread, which counts as something else
+          const direct = this.punct(j + 1, "(");
+          const viaCall =
+            !direct &&
+            this.punct(j + 1, ".") &&
+            this.is(j + 2, "ident", "call") &&
+            this.punct(j + 3, "(");
+          if (!direct && this.punct(j + 1, "=") && !this.punct(j + 2, "=")) continue;
           let start = r.receiverAt(j - 1);
           if (start === null) continue;
           if (this.is(start - 1, "ident", "new")) start--;
@@ -1332,7 +1448,11 @@ export class WrapperReader {
               v.cls.methods[method]!.filter((f) => f.object).map((f) => f.index),
             );
             for (const index of indexes) {
-              const arg = r.argumentAt(j + 1, index);
+              const arg = direct
+                ? r.argumentAt(j + 1, index)
+                : viaCall
+                  ? r.argumentAt(j + 3, index + 1)
+                  : null;
               const target = arg === null || this.punct(arg, ")") ? null : this.objectTarget(arg);
               out.push({
                 home: v.cls.file,
@@ -1347,13 +1467,20 @@ export class WrapperReader {
       }
       if (!onlySeeded)
         for (const [def, by] of this.objectFns)
-          for (const index of by.keys())
+          for (const index of by.keys()) {
+            const key = `fn@${def.paramsAt}`;
             for (const open of this.callSitesOf(def)) {
               const arg = r.argumentAt(open, index);
               const target = arg === null || this.punct(arg, ")") ? null : this.objectTarget(arg);
-              const key = `fn@${def.paramsAt}`;
               out.push({ home: this.file, key, index, site: `${this.file}:${open}`, target });
             }
+            for (const ref of this.otherUses(def)) {
+              // `reg.call(t, ipcMain)`: its argument after `this`; anything else unread
+              const arg = ref.call === null ? null : r.argumentAt(ref.call, index + 1);
+              const target = arg === null || this.punct(arg, ")") ? null : this.objectTarget(arg);
+              out.push({ home: this.file, key, index, site: `${this.file}:${ref.at}`, target });
+            }
+          }
       // what calls of other modules pass (the stage decides for the functions that have such a
       // parameter; for any other function the seed matches nothing)
       for (const [def, by] of this.objectSeeds)
@@ -1577,11 +1704,21 @@ export class WrapperReader {
 
   /** The export keys of this file that name one of its wrappers or an instance of one. */
   facts(): WrapperFacts | null {
-    if (!this.classes.length && !this.objectFns.size) return null;
+    // only what another module can use: channel-forwarding wrappers, and functions with an IPC
+    // object parameter that look like IPC (see `ObjectCall.ipcLike`)
+    const offered = this.classes.filter((c) =>
+      Object.values(c.methods).some((forwards) =>
+        forwards.some((f) => !f.object || f.object.ipcLike),
+      ),
+    );
+    const offeredFns = [...this.objectFns].some(([, by]) =>
+      [...by.values()].some((calls) => calls.some((c) => c.ipcLike)),
+    );
+    if (!offered.length && !offeredFns) return null;
     const { r, tokens } = this;
     const keys = new Set<string>();
     const names = new Set<string>();
-    for (const cls of this.classes) {
+    for (const cls of offered) {
       const start = this.startOf(cls);
       // the name the class or object is bound to
       for (let j = start - 1; j >= 0 && j > start - 21; j--)
@@ -1633,8 +1770,10 @@ export class WrapperReader {
     }
     // plain functions with an IPC object parameter, by the keys they are exported under
     const fns: string[] = [];
-    for (const def of this.objectFns.keys())
+    for (const [def, by] of this.objectFns) {
+      if (![...by.values()].some((calls) => calls.some((c) => c.ipcLike))) continue;
       for (const key of this.exportKeysOf(def)) if (!fns.includes(key)) fns.push(key);
+    }
     if (!Object.keys(exports).length && !fns.length) return null;
     return {
       classes: this.classes
@@ -1690,7 +1829,34 @@ export class WrapperReader {
   }
 }
 
-/** A module as the cross-file stage reads it. */
+/**
+ * The facts of a module for one of the two cross-file stages: the channel-forwarding wrappers
+ * only (`objects: false`, the stage of 0.9.8), or only what has a parameter used as the IPC object
+ * (`objects: true`). The two stages run apart, each with its own budgets.
+ */
+export function factsFor(
+  facts: WrapperFacts | undefined,
+  objects: boolean,
+): WrapperFacts | undefined {
+  if (!facts) return undefined;
+  const classes: WrapperFacts["classes"] = [];
+  for (const cls of facts.classes) {
+    const methods: Record<string, Forward[]> = {};
+    for (const [m, forwards] of Object.entries(cls.methods)) {
+      const kept = forwards.filter((f) => (objects ? !!f.object?.ipcLike : !f.object));
+      if (kept.length) methods[m] = kept;
+    }
+    if (Object.keys(methods).length) classes.push({ ...cls, methods });
+  }
+  const ids = new Set(classes.map((c) => c.id));
+  const exports: WrapperFacts["exports"] = {};
+  for (const [key, e] of Object.entries(facts.exports)) if (ids.has(e.id)) exports[key] = e;
+  const fns = objects ? (facts.fns ?? []) : [];
+  if (!Object.keys(exports).length && !fns.length) return undefined;
+  return { classes, exports, ...(fns.length ? { fns } : {}) };
+}
+
+/** A module as the cross-file stage reads it. */ /** A module as the cross-file stage reads it. */
 export interface WrapperModule {
   id: string;
   /** The names the module exports itself (scan.ts), not through `export *`. */

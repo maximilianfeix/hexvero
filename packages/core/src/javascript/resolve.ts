@@ -187,7 +187,37 @@ const MAX_STRING = 1000;
 const MAX_NESTING = 64;
 const UNKNOWN: Val = { kind: "unknown" };
 /** Methods that change the list or map they are called on. */
-const MUTATORS = /^(push|unshift|splice|set|delete|clear|fill|copyWithin|sort|reverse)$/;
+const MUTATORS = /^(push|pop|shift|unshift|splice|set|delete|clear|fill|copyWithin|sort|reverse)$/;
+/** Words that make what follows them in a loop round conditional (see `conditionalBefore`). */
+const CONTROL_WORDS: ReadonlySet<string> = new Set([
+  "if",
+  "else",
+  "continue",
+  "break",
+  "return",
+  "throw",
+  "switch",
+  "case",
+  "for",
+  "while",
+  "do",
+  "try",
+]);
+const CONTROL_PUNCT: ReadonlySet<string> = new Set(["?", "&&", "||", "??"]);
+/** The tokens that assign to what is before them (`|=`, `&=`, `^=`, `%=` are two tokens). */
+const ASSIGNS: ReadonlySet<string> = new Set([
+  "=",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "**=",
+  "<<=",
+  ">>=",
+  "&&=",
+  "||=",
+  "??=",
+]);
 /** Names whose value exists only at run time; reading one says so in the reason. */
 const RUNTIME = new Set([
   "Math",
@@ -359,10 +389,33 @@ export class ExpressionResolver {
   private partial = false;
   private readonly siteCache = new Map<FnDef, number[]>();
   private readonly literalOwners = new Map<FnDef, string | null>();
-  private readonly bindingCache = new Map<
+  private readonly bindingCaches = [
+    new Map<FnDef, { envs: Env[] | null; partial: boolean; lines: number[] }>(),
+    new Map<FnDef, { envs: Env[] | null; partial: boolean; lines: number[] }>(),
+  ];
+  /** The bindings read so far, apart for the strict reading (see `strict`). */
+  private get bindingCache(): Map<
     FnDef,
     { envs: Env[] | null; partial: boolean; lines: number[] }
-  >();
+  > {
+    return this.bindingCaches[this.strict ? 1 : 0]!;
+  }
+  /**
+   * Set while a table built into IPC is read (bridge members, routes, a list a callback reads
+   * through a parameter): a literal table that is aliased, passed to something that may write
+   * it, or changed in any way the evaluation cannot follow, is not read (see `escapes`).
+   */
+  private strict = 0;
+
+  /** Runs `read` with the strict reading of tables (see `strict`). */
+  private strictly<T>(read: () => T): T {
+    this.strict++;
+    try {
+      return read();
+    } finally {
+      this.strict--;
+    }
+  }
   private readonly newSites = new Map<string, Array<{ name: string; open: number }>>();
   /**
    * Token visits for scanning function bodies and call sites, for the whole file. When it is used
@@ -538,7 +591,9 @@ export class ExpressionResolver {
    * top-level `,` or `)`.
    */
   resolveArgument(k: number): ResolvedValues | null {
-    return this.guarded(null, () => this.resolveArgumentIn(k));
+    // a table the channel is read from must not be changed through an alias, a function it is
+    // passed to, or anything else the evaluation cannot follow (see `strict`)
+    return this.guarded(null, () => this.strictly(() => this.resolveArgumentIn(k)));
   }
 
   /**
@@ -881,7 +936,9 @@ export class ExpressionResolver {
     const computed =
       this.punct(init, "(") ||
       (this.is(init, "ident") && (this.punct(init + 1, "(") || this.punct(init + 1, ".")));
-    if (!computed) return false;
+    // the readers of tables built into IPC (`strict`): a literal table too, as an alias, a
+    // function that writes its parameter or anything unknown it is passed to may change it
+    if (!computed && !this.strict) return false;
     return this.changedIn(name, decl, from, to, owner, 0);
   }
 
@@ -1098,21 +1155,105 @@ export class ExpressionResolver {
     for (const j of this.positions(name)) {
       if (j === decl || this.punct(j - 1, ".")) continue;
       if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j)) return true;
+      if (this.writesAt(j)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Whether the use of a name at k (not after a `.`) writes to what it holds: a member or element
+   * of it, at any depth (`T.k = …`, `T[k] += …`, `R[0].channel = …`, `T.a.b++`), `delete T.k`,
+   * a mutating method (`push`, `splice`, `set`, …) on it or on a member of it,
+   * `Object.assign` / `defineProperty` / `defineProperties` / `setPrototypeOf` and
+   * `Reflect.set` / `defineProperty` / `deleteProperty` / `setPrototypeOf` with it as the target,
+   * and, for a list, a member write to a loop variable or callback parameter that runs over it
+   * (`for (const r of R) r.channel = …`, `R.forEach((r) => { r.kind = … })`). An assignment to
+   * the name itself is not looked at here.
+   */
+  private writesAt(k: number, element = false): boolean {
+    const tokens = this.tokens;
+    if (this.is(k - 1, "ident", "delete")) return true;
+    if (
+      this.punct(k - 1, "(") &&
+      this.is(k - 2, "ident") &&
+      /^(assign|defineProperty|defineProperties|setPrototypeOf|set|deleteProperty)$/.test(
+        tokens[k - 2]!.value,
+      ) &&
+      this.punct(k - 3, ".") &&
+      (this.is(k - 4, "ident", "Object") || this.is(k - 4, "ident", "Reflect")) &&
+      (this.punct(k + 1, ",") || this.punct(k + 1, ")"))
+    )
+      return true;
+    let j = k + 1;
+    let members = 0;
+    for (let guard = 0; guard < 32; guard++) {
+      if (this.punct(j, ".") && this.is(j + 1, "ident")) {
+        if (MUTATORS.test(tokens[j + 1]!.value) && this.punct(j + 2, "(")) return true;
+        j += 2;
+        members++;
+      } else if (this.punct(j, "[") && this.match[j] !== -1) {
+        j = this.match[j]! + 1;
+        members++;
+      } else break;
+    }
+    if (members > 0) {
+      const t = tokens[j];
+      if (t?.type === "punct" && ASSIGNS.has(t.value)) return true;
       if (
-        this.punct(j + 1, ".") &&
-        this.is(j + 2, "ident") &&
-        ((this.punct(j + 3, "=") && !this.punct(j + 4, "=")) ||
-          (MUTATORS.test(this.tokens[j + 2]!.value) && this.punct(j + 3, "(")))
+        this.punct(j, "++") ||
+        this.punct(j, "--") ||
+        this.punct(k - 1, "++") ||
+        this.punct(k - 1, "--")
       )
         return true;
-      if (
-        this.punct(j + 1, "[") &&
-        this.match[j + 1] !== -1 &&
-        this.punct(this.match[j + 1]! + 1, "=") &&
-        !this.punct(this.match[j + 1]! + 2, "=")
-      )
-        return true;
-      if (this.punct(j - 1, "(") && this.is(j - 2, "ident", "assign")) return true;
+    }
+    if (element) return false;
+    // `for (const r of R) …`: the loop variable is each element
+    if (this.is(k - 1, "ident", "of") && this.punct(k + 1, ")")) {
+      const close = k + 1;
+      const open = this.opener[close]!;
+      if (open > 0 && this.is(open - 1, "ident", "for")) {
+        let v = open + 1;
+        if (/^(const|let|var)$/.test(tokens[v]?.value ?? "")) v++;
+        if (this.is(v, "ident") && v + 1 === k - 1) {
+          const end = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
+          if (this.writesMember(tokens[v]!.value, close + 1, end)) return true;
+        }
+      }
+    }
+    // `R.forEach((r) => …)`, `R.map(function (r) { … })`: the parameter is each element
+    if (
+      this.punct(k + 1, ".") &&
+      this.is(k + 2, "ident") &&
+      /^(forEach|map|filter|find|findLast|some|every|reduce|flatMap)$/.test(tokens[k + 2]!.value) &&
+      this.punct(k + 3, "(")
+    ) {
+      const close = this.match[k + 3]!;
+      let p = k + 4;
+      if (this.is(p, "ident", "async")) p++;
+      if (this.is(p, "ident", "function")) {
+        p++;
+        if (this.is(p, "ident")) p++;
+      }
+      // the element is the first parameter (the second of `reduce`)
+      const second = tokens[k + 2]!.value === "reduce";
+      let name: string | null = null;
+      if (this.is(p, "ident") && this.punct(p + 1, "=>") && !second) name = tokens[p]!.value;
+      else if (this.punct(p, "(")) {
+        const at = second ? p + 3 : p + 1;
+        if (this.is(at, "ident") && (!second || this.punct(p + 2, ","))) name = tokens[at]!.value;
+      }
+      if (name !== null && close !== -1 && this.writesMember(name, p, close)) return true;
+    }
+    return false;
+  }
+
+  /** A member write (see `writesAt`) to the name anywhere in [from, to). */
+  private writesMember(name: string, from: number, to: number): boolean {
+    for (const j of this.occurrences(name, from, to)) {
+      if (this.work-- <= 0) return true;
+      if (this.punct(j - 1, ".")) continue;
+      if (this.writesAt(j, true)) return true;
     }
     return false;
   }
@@ -2912,7 +3053,8 @@ export class ExpressionResolver {
             this.punct(listed[0] + 4, "{"));
         const mod = this.evalRange(listed[0], listed[1], new Map(), depth + 1);
         if (mod?.kind === "cjs") return mod;
-        if (literal && (mod?.kind === "obj" || mod?.kind === "arr")) return mod;
+        if (literal && (mod?.kind === "obj" || mod?.kind === "arr"))
+          return this.unlessChanged(name, listed[0] - 2, mod, 0, this.tokens.length, null);
         if (this.listedValues && (mod?.kind === "str" || mod?.kind === "fn"))
           return this.unlessChanged(name, listed[0] - 2, mod, 0, this.tokens.length, null);
       }
@@ -3108,35 +3250,16 @@ export class ExpressionResolver {
         k += 2;
         continue;
       }
-      // A later assignment `NAME = …`, a write to a property (`NAME.KEY = …`, `NAME[k] = …`),
-      // or a call that changes a list or map (`push`, `set`, `Object.assign(NAME, …)`): the
-      // declaration no longer says what the name holds.
-      if (
-        t.value === "assign" &&
-        this.is(k - 2, "ident", "Object") &&
-        this.punct(k + 1, "(") &&
-        this.is(k + 2, "ident")
-      )
-        assigned.add(tokens[k + 2]!.value);
+      // A later assignment `NAME = …`, a write to a property or an element (`NAME.KEY = …`,
+      // `NAME[k] = …`, `NAME[0].p = …`, `delete NAME.k`), a call that changes it (`push`,
+      // `set`, `Object.assign(NAME, …)`, `Object.defineProperty(NAME, …)`), or a write to the
+      // members of a loop variable that runs over it: the declaration no longer says what the
+      // name holds.
       if (this.punct(k - 1, ".")) continue;
       const prev = tokens[k - 1];
       const declares = prev?.type === "ident" && /^(const|let|var)$/.test(prev.value);
       if (this.punct(k + 1, "=") && !this.punct(k + 2, "=") && !declares) assigned.add(t.value);
-      else if (
-        (this.punct(k + 1, ".") &&
-          this.is(k + 2, "ident") &&
-          this.punct(k + 3, "=") &&
-          !this.punct(k + 4, "=")) ||
-        (this.punct(k + 1, ".") &&
-          this.is(k + 2, "ident") &&
-          MUTATORS.test(tokens[k + 2]!.value) &&
-          this.punct(k + 3, "(")) ||
-        (this.punct(k + 1, "[") &&
-          this.match[k + 1] !== -1 &&
-          this.punct(this.match[k + 1]! + 1, "=") &&
-          !this.punct(this.match[k + 1]! + 2, "="))
-      )
-        assigned.add(t.value);
+      else if (this.writesAt(k)) assigned.add(t.value);
     }
     this.s.topDeclsLoose = new Map(decls);
     for (const name of assigned) if (decls.has(name)) decls.set(name, null);
@@ -3704,6 +3827,10 @@ export class ExpressionResolver {
     }
     if (!def) return this.throughLoop(start, end, depth);
     if (!used.size) return this.throughLoop(start, end, depth);
+    // a round of a `forEach` / `map` callback: a call after a condition, `continue` or `return`
+    // in it is not made in every round
+    if (def.calledBy && def.name === null && this.conditionalBefore(def.body[0], start))
+      return null;
     // a parameter the function assigns to (`channel = "x:" + channel`) no longer holds what the
     // call sites pass: not read
     for (const name of used) {
@@ -3736,6 +3863,8 @@ export class ExpressionResolver {
   private throughLoop(start: number, end: number, depth: number): string[] | null {
     const loop = this.loopEnvs(start, end, depth);
     if (!loop) return null;
+    // a call after a condition, `continue`, `break` or `return` is not made in every round
+    if (this.conditionalBefore(loop.body, start)) return null;
     const values: string[] = [];
     for (const env of loop.envs) {
       const v = this.evalRange(start, end, env, depth + 1);
@@ -3757,7 +3886,7 @@ export class ExpressionResolver {
     start: number,
     end: number,
     depth: number,
-  ): { envs: Env[]; line: number; at: number } | null {
+  ): { envs: Env[]; line: number; at: number; body: number } | null {
     for (let j = start - 1; j >= 0 && j > start - 4000; j--) {
       // the walk back is charged to the file's work, so the questions together stay bounded
       if (this.work-- <= 0) return null;
@@ -3777,8 +3906,12 @@ export class ExpressionResolver {
       if (!param) return null;
       const envs: Env[] = [];
       // the list may read a parameter of the function the loop is in: once per binding of it
-      for (const caller of this.envsFor(patternEnd + 1, patternEnd + 1, close, depth + 1)) {
-        const list = this.evalRange(patternEnd + 1, close, caller, depth + 1);
+      const outer = this.envsFor(patternEnd + 1, patternEnd + 1, close, depth + 1, true);
+      const throughParams = outer.length !== 1 || outer[0]!.size > 0;
+      for (const caller of outer) {
+        const list = throughParams
+          ? this.strictly(() => this.evalRange(patternEnd + 1, close, caller, depth + 1))
+          : this.evalRange(patternEnd + 1, close, caller, depth + 1);
         if (!list) return null;
         // a list longer than is read: the rounds read are not all there are
         if (list.kind === "arr" && list.more) this.partial = true;
@@ -3800,7 +3933,7 @@ export class ExpressionResolver {
           envs.push(env);
         }
       }
-      return { envs, line: this.tokens[patternEnd + 1]!.line, at: j };
+      return { envs, line: this.tokens[patternEnd + 1]!.line, at: j, body: close + 1 };
     }
     return null;
   }
@@ -3815,7 +3948,14 @@ export class ExpressionResolver {
     k: number,
     ranges: ReadonlyArray<[number, number]>,
   ): { rows: Array<Array<Val | null>>; line: number } | null {
-    return this.guarded(null, () => {
+    return this.guarded(null, () => this.strictly(() => this.perElementIn(k, ranges)));
+  }
+
+  private perElementIn(
+    k: number,
+    ranges: ReadonlyArray<[number, number]>,
+  ): { rows: Array<Array<Val | null>>; line: number } | null {
+    {
       if (this.work <= 0) return null;
       this.begin(20_000);
       let cb = this.enclosing(k);
@@ -3830,17 +3970,40 @@ export class ExpressionResolver {
       let envs: Env[] | null;
       let line: number;
       if (cb && (!loop || cb.paramsAt > loop.at)) {
+        // a call after a condition, `continue`, `break` or `return` in the round is not made
+        // in every round
+        if (this.conditionalBefore(cb.body[0], k)) return null;
         envs = this.bindings(cb, 0);
         const receiver = this.receiverStart(cb.calledBy!.receiverEnd);
         line = this.tokens[receiver ?? cb.paramsAt]!.line;
       } else {
+        if (loop && this.conditionalBefore(loop.body, k)) return null;
         envs = loop?.envs ?? null;
         line = loop?.line ?? 0;
       }
       if (!envs?.length || envs.length > MAX_ITERATIONS || this.partial) return null;
       const rows = envs.map((env) => ranges.map(([a, b]) => this.evalRange(a, b, env, 1)));
       return { rows, line };
-    });
+    }
+  }
+
+  /**
+   * Whether anything in [from, to) may skip what follows in the same round or make it
+   * conditional: `if`, `else`, `continue`, `break`, `return`, `throw`, `switch`, `case`, a
+   * nested loop, `try`, `?`, `&&`, `||`, `??`. A round with any of them is not read.
+   */
+  private conditionalBefore(from: number, to: number): boolean {
+    for (let j = Math.max(0, from); j < to; j++) {
+      if (this.work-- <= 0) return true;
+      const t = this.tokens[j]!;
+      if (
+        t.type === "ident"
+          ? CONTROL_WORDS.has(t.value)
+          : t.type === "punct" && CONTROL_PUNCT.has(t.value)
+      )
+        return true;
+    }
+    return false;
   }
 
   /**
@@ -3851,31 +4014,66 @@ export class ExpressionResolver {
    * read.
    */
   loopAssignments(k: number): Array<{ key: string; value: Val | null }> | null {
-    return this.guarded(null, () => {
-      if (this.work <= 0) return null;
-      this.begin(20_000);
-      const name = this.tokens[k];
-      if (name?.type !== "ident" || !this.punct(k + 1, "[")) return null;
-      const close = this.match[k + 1]!;
-      if (close === -1 || !this.punct(close + 1, "=") || this.punct(close + 2, "=")) return null;
-      const valueEnd = this.exprEnd(close + 2);
-      this.partial = false;
-      let envs: Env[] | null = null;
-      const def = this.enclosing(k);
-      if (def?.calledBy && def.name === null) {
-        if (paramNames(def.params).includes(name.value) || this.declaredLocally(k, name.value))
-          return null;
-        envs = this.bindings(def, 0);
-      } else envs = this.loopEnvs(k, valueEnd, 0)?.envs ?? null;
-      if (!envs?.length || envs.length > MAX_ITERATIONS || this.partial) return null;
-      const out: Array<{ key: string; value: Val | null }> = [];
-      for (const env of envs) {
-        const key = this.oneString(this.evalRange(k + 2, close, env, 1));
-        if (key === null) return null;
-        out.push({ key, value: this.evalRange(close + 2, valueEnd, env, 1) });
+    return this.guarded(null, () => this.strictly(() => this.loopAssignmentsIn(k)));
+  }
+
+  private loopAssignmentsIn(k: number): Array<{ key: string; value: Val | null }> | null {
+    if (this.work <= 0) return null;
+    this.begin(20_000);
+    const name = this.tokens[k];
+    if (name?.type !== "ident" || !this.punct(k + 1, "[")) return null;
+    const close = this.match[k + 1]!;
+    if (close === -1 || !this.punct(close + 1, "=") || this.punct(close + 2, "=")) return null;
+    const valueEnd = this.exprEnd(close + 2);
+    this.partial = false;
+    let envs: Env[] | null = null;
+    const def = this.enclosing(k);
+    if (def?.calledBy && def.name === null) {
+      if (paramNames(def.params).includes(name.value) || this.declaredLocally(k, name.value))
+        return null;
+      // a write after a condition, `continue` or `return` is not made in every round
+      if (this.conditionalBefore(def.body[0], k)) return null;
+      envs = this.bindings(def, 0);
+    } else {
+      const loop = this.loopEnvs(k, valueEnd, 0);
+      if (loop && this.conditionalBefore(loop.body, k)) return null;
+      envs = loop?.envs ?? null;
+      // `api["open"] = …`, `api[KEY] = …` outside any loop: the one key it names, as `api.open`
+      if (!loop && !this.insideLoop(k)) {
+        const key = this.oneString(this.evalRange(k + 2, close, new Map(), 1));
+        return key === null
+          ? null
+          : [{ key, value: this.evalRange(close + 2, valueEnd, new Map(), 1) }];
       }
-      return out;
-    });
+    }
+    if (!envs?.length || envs.length > MAX_ITERATIONS || this.partial) return null;
+    const out: Array<{ key: string; value: Val | null }> = [];
+    for (const env of envs) {
+      const key = this.oneString(this.evalRange(k + 2, close, env, 1));
+      if (key === null) return null;
+      out.push({ key, value: this.evalRange(close + 2, valueEnd, env, 1) });
+    }
+    return out;
+  }
+
+  /** Whether a `for`, `while` or `do` loop of the function around k has k in its body. */
+  private insideLoop(k: number): boolean {
+    const own = this.enclosing(k);
+    for (let j = k - 1; j >= 0 && j > k - 4000; j--) {
+      if (this.work-- <= 0) return true;
+      const t = this.tokens[j]!;
+      if (t.type !== "ident") continue;
+      if (own && j < own.body[0]) return false;
+      if (t.value === "do" && this.punct(j + 1, "{")) {
+        if (this.match[j + 1]! > k) return true;
+      } else if ((t.value === "for" || t.value === "while") && this.punct(j + 1, "(")) {
+        const head = this.match[j + 1]!;
+        if (head === -1) continue;
+        const end = this.punct(head + 1, "{") ? this.match[head + 1]! : this.exprEnd(head + 1);
+        if (head < k && k <= end) return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -3891,19 +4089,21 @@ export class ExpressionResolver {
     receiver: (from: number, to: number) => boolean,
     methods: ReadonlySet<string>,
   ): Array<{ member: string; method: string; channels: string[] | null }> | null {
-    return this.guarded(null, () => {
-      if (this.work <= 0) return null;
-      this.begin(20_000);
-      const v = this.evalRange(k, this.exprEnd(k), new Map(), 0);
-      if (v?.kind !== "obj" || v.open || !v.props.size) return null;
-      const out: Array<{ member: string; method: string; channels: string[] | null }> = [];
-      for (const [member, fn] of v.props) {
-        const call = this.forwardCall(fn, receiver, methods);
-        if (!call) return null;
-        out.push({ member, ...call });
-      }
-      return out;
-    });
+    return this.guarded(null, () =>
+      this.strictly(() => {
+        if (this.work <= 0) return null;
+        this.begin(20_000);
+        const v = this.evalRange(k, this.exprEnd(k), new Map(), 0);
+        if (v?.kind !== "obj" || v.open || !v.props.size) return null;
+        const out: Array<{ member: string; method: string; channels: string[] | null }> = [];
+        for (const [member, fn] of v.props) {
+          const call = this.forwardCall(fn, receiver, methods);
+          if (!call) return null;
+          out.push({ member, ...call });
+        }
+        return out;
+      }),
+    );
   }
 
   /** See `forwardingMembers`: one function value. Public for the loop-built members. */
@@ -3972,9 +4172,14 @@ export class ExpressionResolver {
       // The list may read a parameter of the function the call is in (`Object.entries(table)`
       // in `function invokers(table)`): once per binding of that function. The callback's own
       // environment keeps those bindings, so its body reads them too.
-      const outer = this.envsFor(receiver, receiver, def.calledBy.receiverEnd, depth + 1);
+      const outer = this.envsFor(receiver, receiver, def.calledBy.receiverEnd, depth + 1, true);
+      const throughParams = outer.length !== 1 || outer[0]!.size > 0;
       for (const caller of outer) {
-        const list = this.evalRange(receiver, def.calledBy.receiverEnd, caller, depth + 1);
+        const list = throughParams
+          ? this.strictly(() =>
+              this.evalRange(receiver, def.calledBy!.receiverEnd, caller, depth + 1),
+            )
+          : this.evalRange(receiver, def.calledBy.receiverEnd, caller, depth + 1);
         if (!list) return null;
         // a list longer than is read: the rounds read are not all there are
         if (list.kind === "arr" && list.more) this.partial = true;
@@ -4045,7 +4250,7 @@ export class ExpressionResolver {
    * local const built from them), else that function's bindings. A function whose bindings
    * cannot be read makes the result partial.
    */
-  private envsFor(at: number, from: number, to: number, depth: number): Env[] {
+  private envsFor(at: number, from: number, to: number, depth: number, strict = false): Env[] {
     const caller = this.enclosing(at);
     if (!caller || depth > 3) return [new Map()];
     const close = to;
@@ -4062,7 +4267,9 @@ export class ExpressionResolver {
             reads = true;
     }
     if (!reads) return [new Map()];
-    const outer = this.bindings(caller, depth + 1);
+    const outer = strict
+      ? this.strictly(() => this.bindings(caller, depth + 1))
+      : this.bindings(caller, depth + 1);
     if (!outer?.length) {
       this.partial = true;
       return [new Map()];

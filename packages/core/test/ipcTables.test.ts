@@ -556,3 +556,155 @@ one(); two();
     expect(rows(info)).toEqual(["one:a ipcMain.on main.js"]);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Review findings (R7 on 06bbc5d and 482fcc6): each reads as an unreadable entry or an
+// unresolved row, or as 0.9.8 read it, never as a guessed member, channel or receiver.
+
+const PRE = 'const { contextBridge, ipcRenderer } = require("electron");\n';
+const FORWARD =
+  "Object.fromEntries(Object.entries(T).map(([m, c]) => [m, (...x) => ipcRenderer.invoke(c, ...x)]))";
+const preload = (body: string): JsAppInfo => analyze({ "main.js": "", "preload.js": PRE + body });
+const mainOnly = (body: string): JsAppInfo =>
+  analyze({ "main.js": `const { ipcMain } = require("electron");\n${body}` });
+const codes = (info: JsAppInfo): string[] => info.limitations.map((l) => l.code);
+
+describe("review: budgets of the step-by-step bridge members", () => {
+  it("does not charge writes to other bindings of a short name before the scope says so", () => {
+    // as a minifier writes 300 helpers that all name their parameter `e`
+    const helpers = Array.from(
+      { length: 300 },
+      (_, i) => `function f${i}(e,t){e[t]=${i};return e}`,
+    ).join("");
+    const info = preload(
+      `${helpers}\nconst T = { x: "t:x", y: "t:y" };\nconst e = {};\nfor (const [k, c] of Object.entries(T)) e[k] = () => ipcRenderer.invoke(c);\ncontextBridge.exposeInMainWorld("api", e);\n`,
+    );
+    expect(members(info)).toEqual(["api.x t:x", "api.y t:y"]);
+    expect(codes(info)).not.toContain("context_bridge_truncated");
+  });
+
+  it("does not cut real members after thousands of unrelated `e.k = …` writes", () => {
+    const helpers = Array.from(
+      { length: 10_000 },
+      (_, i) => `function g${i}(e){e.k${i}=${i};}`,
+    ).join("");
+    const info = preload(
+      `${helpers}\nconst e = {};\ne.a = () => ipcRenderer.invoke("d:a");\ncontextBridge.exposeInMainWorld("api", e);\n`,
+    );
+    expect(members(info)).toEqual(["api.a d:a"]);
+    expect(codes(info)).not.toContain("context_bridge_truncated");
+  });
+});
+
+describe("review: tables and lists that may change", () => {
+  for (const [name, write] of [
+    ["delete T.b", "delete T.b;"],
+    ["delete T[k]", 'delete T["b"];'],
+    ["Object.defineProperty", 'Object.defineProperty(T, "c", { value: "t:c", enumerable: true });'],
+    ["an alias write", 'const U = T; U.c = "t:c";'],
+    ["a function that writes its parameter", 'function more(t) { t.c = "t:c"; }\nmore(T);'],
+  ] as const)
+    it(`reads no member or channel after ${name}`, () => {
+      const info = preload(
+        `const T = { a: "t:a", b: "t:b" };\n${write}\ncontextBridge.exposeInMainWorld("x", ${FORWARD});\n`,
+      );
+      expect(members(info)).toEqual(["x.null null"]);
+      expect(rows(info)).toEqual([]);
+      expect(codes(info)).toContain("ipc_channel_unresolved");
+    });
+
+  it("reads no channel when the function that builds the members writes the table", () => {
+    const info = preload(
+      `const A = { a: "t:a" };\nfunction invokers(t) { t.z = "t:z"; return Object.fromEntries(Object.entries(t).map(([m, c]) => [m, (...x) => ipcRenderer.invoke(c, ...x)])); }\ncontextBridge.exposeInMainWorld("x", { ...invokers(A) });\n`,
+    );
+    expect(rows(info)).toEqual([]);
+    expect(codes(info)).toContain("ipc_channel_unresolved");
+  });
+
+  for (const [name, write] of [
+    ["an element's member", 'R[0].channel = "r:changed";'],
+    ["the loop variable's member", 'for (const r of R) r.channel = "x:" + r.channel;'],
+    ["a forEach parameter's member", 'R.forEach((r) => { r.kind = "on"; });'],
+    ["a push through an alias", 'const Q = R; Q.push({ channel: "r:b", kind: "on" });'],
+    [
+      "a push in a function",
+      'function add(l) { l.push({ channel: "r:b", kind: "on" }); }\nadd(R);',
+    ],
+  ] as const)
+    it(`leaves a route list unresolved after a write to ${name}`, () => {
+      const info = mainOnly(
+        `const R = [{ channel: "r:a", kind: "handle" }];\n${write}\nfor (const r of R) ipcMain[r.kind](r.channel, () => 1);\nfor (const r of R) ipcMain.handle(r.channel, () => 1);\nR.forEach((r) => ipcMain.on(r.channel, () => 1));\n`,
+      );
+      expect(rows(info)).toEqual([]);
+      expect(unresolved(info)).toBe(3);
+    });
+});
+
+describe("review: control flow in a round", () => {
+  it("gives an unreadable entry for a member written after a condition or `continue`", () => {
+    const info = preload(
+      `const T = { a: "t:a", secret: "t:s" };\nconst api = {};\nObject.keys(T).forEach((k) => { if (k !== "secret") api[k] = (...x) => ipcRenderer.invoke(T[k], ...x); });\nfor (const [k, c] of Object.entries(T)) { if (k.startsWith("s")) continue; api[k] = () => ipcRenderer.send(c); }\ncontextBridge.exposeInMainWorld("x", api);\n`,
+    );
+    expect(members(info)).toEqual(["x.null null", "x.null null"]);
+    expect(rows(info)).toEqual([]);
+  });
+
+  it("leaves a route call after a condition or `break` unresolved", () => {
+    const info = mainOnly(
+      `const R = [{ channel: "r:a", kind: "handle" }, { channel: "r:stop" }];\nfor (const r of R) { if (!r.kind) break; ipcMain[r.kind](r.channel, () => 1); }\nR.forEach((r) => { if (r.kind) ipcMain.handle(r.channel, () => 1); });\n`,
+    );
+    expect(rows(info)).toEqual([]);
+    expect(unresolved(info)).toBe(2);
+  });
+});
+
+describe("review: what an IPC object parameter is bound to", () => {
+  it("counts a destructuring assignment and a for-of head as writes of the parameter", () => {
+    const info = mainOnly(
+      `function a(ipc) { ({ ipc } = { ipc: make() }); ipc.handle("rw:e", () => 1); }\na(ipcMain);\nfunction b(ipc) { for (ipc of [make()]) ipc.handle("rw:f", () => 1); }\nb(ipcMain);\n`,
+    );
+    expect(rows(info)).toEqual([]);
+  });
+
+  it("counts .call, .apply, .bind and callback uses as call sites that pass something else", () => {
+    for (const use of [
+      "reg.apply(null, [make()]);",
+      "const r2 = reg.bind(null, make()); r2();",
+      "[make()].forEach(reg);",
+      "setTimeout(reg, 0, make());",
+      "reg.call(null, make());",
+    ]) {
+      const info = mainOnly(
+        `function reg(ipc) { ipc.handle("u:a", () => 1); }\nreg(ipcMain);\n${use}\n`,
+      );
+      expect(rows(info)).toEqual([]);
+    }
+    // `.call(this, ipcMain)` is read: its argument after `this` is ipcMain
+    expect(
+      rows(
+        mainOnly('function reg(ipc) { ipc.handle("u:b", () => 1); }\nreg.call(null, ipcMain);\n'),
+      ),
+    ).toEqual(["u:b ipcMain.handle main.js"]);
+  });
+
+  it("offers other modules only functions that look like IPC", () => {
+    const info = analyze({
+      // a library that mentions IPC once, with a function that listens on a stream
+      "lib.js":
+        '// not an ipc helper\nfunction listen(stream) { stream.on("data", () => 1); }\nmodule.exports = { listen };\n',
+      "main.js":
+        'const { ipcMain } = require("electron");\nconst { listen } = require("./lib");\nlisten(ipcMain);\nlisten(process.stdin);\n',
+    });
+    expect(info.modules.find((m) => m.id === "lib.js")?.wrappers).toBeUndefined();
+    expect(rows(info)).toEqual([]);
+  });
+});
+
+describe("review: literal keys outside a loop", () => {
+  it('reads `api["lit"] = …` and `api[KEY] = …` as the member that key names', () => {
+    const info = preload(
+      'const K = "konst";\nconst api = {};\napi["lit"] = () => ipcRenderer.invoke("l:lit");\napi[K] = () => ipcRenderer.invoke("l:k");\ncontextBridge.exposeInMainWorld("x", api);\n',
+    );
+    expect(members(info)).toEqual(["x.konst l:k", "x.lit l:lit"]);
+  });
+});
