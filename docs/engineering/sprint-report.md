@@ -161,7 +161,7 @@ cross-module mutation of options objects; class-field options read as computed; 
 options spread an unknown object reads as computed; storage wrappers called from another module
 or declared twice in a file stay unread; a
 same-size in-place edit of an app-folder file is not detected; table widths count code points
-(wide CJK characters misalign); HTTP clients bound through webpack ids of another chunk, a client held in a variable, `got(url)`/`axios(url)` called directly, options passed as a name; IPC payload keys compared as written (`{1.5: x}` vs `{"1.5": x}`), transpiler spread helpers, what a handler reads from the payload; `ipcRenderer?.send(…)` gives no row.
+(wide CJK characters misalign); HTTP clients bound through webpack ids of another chunk, a client passed as an argument or property, options passed as a name, interceptors and hooks; IPC payload keys compared as written (`{1.5: x}` vs `{"1.5": x}`), transpiler spread helpers, what a handler reads from the payload; `ipcRenderer?.send(…)` gives no row.
 
 Next five tasks:
 

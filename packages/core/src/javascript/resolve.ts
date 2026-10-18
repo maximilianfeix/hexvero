@@ -3613,19 +3613,42 @@ export class ExpressionResolver {
   private enclosing(k: number): FnDef | null {
     if (!this.s.innermost) {
       const defs = this.functions();
-      const table = new Int32Array(this.tokens.length).fill(-1);
-      // larger bodies first, so a nested body overwrites the function around it
+      const n = this.tokens.length;
+      const table = new Int32Array(n).fill(-1);
+      // The smallest body around each token wins (equal bodies: the earlier function). Bodies
+      // nest, so one sweep with a stack of the open bodies gives it in linear time; a body that
+      // overlaps another without nesting is written over the part it covers, as larger-first
+      // filling did. Writing each body whole made a deep nesting of functions quadratic.
       const order = defs
         .map((_, i) => i)
+        .filter((i) => defs[i]!.body[1] > defs[i]!.body[0])
         .toSorted(
           (a, b) =>
-            defs[b]!.body[1] - defs[b]!.body[0] - (defs[a]!.body[1] - defs[a]!.body[0]) ||
-            // equal sizes: the earlier function is written last and wins, as the scan did
+            defs[a]!.body[0] - defs[b]!.body[0] ||
+            // the same start: the larger body first, so the smaller is on top of the stack
+            defs[b]!.body[1] - defs[a]!.body[1] ||
             b - a,
         );
-      for (const i of order) {
-        const [from, to] = defs[i]!.body;
-        table.fill(i, Math.max(0, from), Math.min(this.tokens.length, to));
+      const stack: number[] = [];
+      let next = 0;
+      for (let at = 0; at < n; at++) {
+        while (stack.length && defs[stack.at(-1)!]!.body[1] <= at) stack.pop();
+        while (next < order.length && defs[order[next]!]!.body[0] <= at) {
+          const i = order[next++]!;
+          if (defs[i]!.body[1] > at) {
+            // keep the stack ordered by end: a body that outlives the one on top is no nested one
+            const end = defs[i]!.body[1];
+            const top = stack.length ? defs[stack.at(-1)!]!.body[1] : Infinity;
+            if (end <= top) stack.push(i);
+            else {
+              // an overlapping body: insert it below the ones that end before it
+              let place = stack.length;
+              while (place > 0 && defs[stack[place - 1]!]!.body[1] < end) place--;
+              stack.splice(place, 0, i);
+            }
+          }
+        }
+        if (stack.length) table[at] = stack.at(-1)!;
       }
       this.s.innermost = table;
     }
@@ -4757,8 +4780,17 @@ export class ExpressionResolver {
     string,
     Array<{ name: number; word: number; from: number; to: number }>
   >();
-  /** Per name and excluded declaration: binding ranges sorted by start, with running maximum ends. */
-  private readonly coverTables = new Map<string, { from: number[]; maxTo: number[] }>();
+  /** Per name: the name tokens of its binding sites (see `writesTo`). */
+  private readonly bindingNames = new Map<string, Set<number>>();
+  /** Per name: binding ranges sorted by start, with the three furthest-reaching of each prefix. */
+  private readonly coverTables = new Map<
+    string,
+    {
+      sites: Array<{ name: number; word: number; from: number; to: number }>;
+      from: number[];
+      top: Array<[number, number, number]>;
+    }
+  >();
 
   /**
    * Every declaration of `name` in the file: `const|let|var|function|class NAME`, a name in a
@@ -4848,17 +4880,24 @@ export class ExpressionResolver {
 
   /** A declaration of the name other than `decl` (its name or pattern token) is visible at k. */
   private covered(k: number, name: string, decl: number): boolean {
-    const key = `${name}\u0000${decl}`;
-    let table = this.coverTables.get(key);
+    // One table per name: the sites in order of where they start, and for each prefix the three
+    // sites that reach furthest. The furthest-reaching site that is not `decl` decides; a decl
+    // matching all three (never in practice) is answered by a walk over the sites.
+    let table = this.coverTables.get(name);
     if (!table) {
-      const sites = this.bindingSites(name)
-        .filter((b) => b.name !== decl && b.word !== decl - 1)
-        .toSorted((a, b) => a.from - b.from);
-      const maxTo: number[] = [];
-      let max = -1;
-      for (const b of sites) maxTo.push((max = Math.max(max, b.to)));
-      table = { from: sites.map((b) => b.from), maxTo };
-      this.coverTables.set(key, table);
+      const sites = this.bindingSites(name).toSorted((a, b) => a.from - b.from);
+      const top: Array<[number, number, number]> = [];
+      let best: [number, number, number] = [-1, -1, -1];
+      for (let i = 0; i < sites.length; i++) {
+        const to = sites[i]!.to;
+        const reach = (x: number): number => (x === -1 ? -Infinity : sites[x]!.to);
+        if (to > reach(best[0])) best = [i, best[0], best[1]];
+        else if (to > reach(best[1])) best = [best[0], i, best[1]];
+        else if (to > reach(best[2])) best = [best[0], best[1], i];
+        top.push(best);
+      }
+      table = { sites, from: sites.map((b) => b.from), top };
+      this.coverTables.set(name, table);
     }
     let lo = 0;
     let hi = table.from.length;
@@ -4867,7 +4906,19 @@ export class ExpressionResolver {
       if (table.from[mid]! <= k) lo = mid + 1;
       else hi = mid;
     }
-    return lo > 0 && table.maxTo[lo - 1]! >= k;
+    if (lo === 0) return false;
+    const other = (b: { name: number; word: number }): boolean =>
+      b.name !== decl && b.word !== decl - 1;
+    for (const i of table.top[lo - 1]!) {
+      if (i === -1) return false;
+      const b = table.sites[i]!;
+      if (other(b)) return b.to >= k;
+    }
+    for (let i = 0; i < lo; i++) {
+      const b = table.sites[i]!;
+      if (other(b) && b.to >= k) return true;
+    }
+    return false;
   }
 
   /**
@@ -4917,6 +4968,15 @@ export class ExpressionResolver {
    * own, where the name means that declaration.
    */
   writesTo(j: number, name: string, decl: number): boolean {
+    return this.assignsName(j, name) && this.refersTo(j, name, decl);
+  }
+
+  /**
+   * The token at j is an assignment of the name (`NAME = …`, `NAME += …`, `NAME++`) that is no
+   * declaration, parameter default, class field or pattern binding of its own; which binding it
+   * writes is not asked.
+   */
+  assignsName(j: number, name: string): boolean {
     if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) return false;
     const after = this.tokens[j + 1];
     const before = this.tokens[j - 1];
@@ -4928,7 +4988,12 @@ export class ExpressionResolver {
       (before?.type === "punct" && (before.value === "++" || before.value === "--"));
     if (!writes) return false;
     if (before?.type === "ident" && /^(const|let|var)$/.test(before.value)) return false;
-    if (this.bindingSites(name).some((b) => b.name === j)) return false;
+    let names = this.bindingNames.get(name);
+    if (!names) {
+      names = new Set(this.bindingSites(name).map((b) => b.name));
+      this.bindingNames.set(name, names);
+    }
+    if (names.has(j)) return false;
     this.innermostBlock(0, null);
     const p = this.s.parents![j] ?? -1;
     // a parameter default (`function f(https = x)`)
@@ -4949,7 +5014,7 @@ export class ExpressionResolver {
           return false;
       }
     }
-    return this.refersTo(j, name, decl);
+    return true;
   }
 
   private callSites(def: FnDef): number[] {
@@ -5041,6 +5106,14 @@ export class ExpressionResolver {
     return this.enclosing(k);
   }
 
+  /**
+   * False when the file has more functions than are read (MAX_FUNCTIONS): scopes past them are
+   * not known, and a caller that relies on them must not take its answers as proven.
+   */
+  readsAllFunctions(): boolean {
+    return this.functions().length < MAX_FUNCTIONS;
+  }
+
   /** The function around def; null at the top of the file. */
   outerOf(def: FnDef): FnDef | null {
     return this.enclosing(def.paramsAt - 1);
@@ -5054,6 +5127,12 @@ export class ExpressionResolver {
       this.s.defsByParams = byParams;
     }
     return this.s.defsByParams.get(k) ?? null;
+  }
+
+  /** The innermost bracket open around token k (for a bracket, the one around it), or -1. */
+  bracketAround(k: number): number {
+    if (!this.s.parents) this.bracketTables();
+    return this.s.parents![k] ?? -1;
   }
 
   /** The bracket that closes the one at k, or -1. */
