@@ -591,9 +591,9 @@ export class ExpressionResolver {
    * top-level `,` or `)`.
    */
   resolveArgument(k: number): ResolvedValues | null {
-    // a table the channel is read from must not be changed through an alias, a function it is
-    // passed to, or anything else the evaluation cannot follow (see `strict`)
-    return this.guarded(null, () => this.strictly(() => this.resolveArgumentIn(k)));
+    // the reading 0.9.8 had: a table passed to a function whose body is not read is taken as it
+    // is written (the new readers read strictly, see `strict`)
+    return this.guarded(null, () => this.resolveArgumentIn(k));
   }
 
   /**
@@ -988,13 +988,14 @@ export class ExpressionResolver {
       if (this.exportedAt(j)) continue;
       if (this.externalConstructorArgument(j)) continue;
       if (this.assignSource(j)) continue;
-      // `Object.freeze(T)`, `Object.keys(T)`, …: the whole argument, read only
+      // `Object.freeze(T)`, `console.info("x", T)`, `JSON.stringify(T)`, …: a whole argument of a
+      // function known to only read it
+      if (this.readOnlyArgument(j)) continue;
+      // `${T}` in a template: turned into a string, read only
       if (
-        this.punct(j - 1, "(") &&
-        this.punct(j + 1, ")") &&
-        /^(freeze|keys|values|entries)$/.test(this.tokens[j - 2]?.value ?? "") &&
-        this.punct(j - 3, ".") &&
-        this.is(j - 4, "ident", "Object")
+        this.tokens[j - 1]?.type === "template" &&
+        this.tokens[j - 1]!.value.endsWith("${…}") &&
+        this.tokens[j + 1]?.type === "template"
       )
         continue;
       // an argument of a function of this file that only reads that parameter
@@ -1011,6 +1012,42 @@ export class ExpressionResolver {
       return true;
     }
     return false;
+  }
+
+  /**
+   * The name at j is a whole argument of a call known to only read its arguments: `console.*`,
+   * `JSON.stringify`, `String`, `Array.isArray`, `Object.freeze` / `isFrozen` / `keys` /
+   * `entries` / `values`.
+   */
+  private readOnlyArgument(j: number): boolean {
+    if (!(this.punct(j - 1, "(") || this.punct(j - 1, ","))) return false;
+    if (!(this.punct(j + 1, ",") || this.punct(j + 1, ")"))) return false;
+    // the `(` of the call: back over the arguments before it
+    let open = j - 1;
+    for (let guard = 0; this.punct(open, ",") && guard < 32; guard++) {
+      let i = open - 1;
+      for (let steps = 0; i >= 0 && steps < 400; steps++, i--) {
+        const t = this.tokens[i]!;
+        if (t.type !== "punct") continue;
+        if (t.value === ")" || t.value === "]" || t.value === "}") {
+          i = this.opener[i]!;
+          if (i === -1) return false;
+        } else if (t.value === "(" || t.value === "," || t.value === "[" || t.value === "{") break;
+      }
+      open = i;
+    }
+    if (!this.punct(open, "(")) return false;
+    const name = this.tokens[open - 1];
+    if (name?.type !== "ident") return false;
+    if (this.punct(open - 2, ".") && this.is(open - 3, "ident") && !this.punct(open - 4, ".")) {
+      const base = this.tokens[open - 3]!.value;
+      if (base === "console") return true;
+      if (base === "JSON") return name.value === "stringify";
+      if (base === "Array") return name.value === "isArray";
+      if (base === "Object") return /^(freeze|isFrozen|keys|entries|values)$/.test(name.value);
+      return false;
+    }
+    return name.value === "String" && !this.punct(open - 2, ".");
   }
 
   /** A whole argument after the first of `Object.assign(target, …)`: read, never written. */

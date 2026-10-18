@@ -310,6 +310,13 @@ const OBJECT_METHODS: ReadonlySet<string> = new Set([
   "sendSync",
   "postMessage",
 ]);
+/** Of those, the methods only IPC objects have: read on a parameter in any file. */
+const IPC_ONLY_METHODS: ReadonlySet<string> = new Set([
+  "handle",
+  "handleOnce",
+  "invoke",
+  "sendSync",
+]);
 const OBJECT_SENDS: ReadonlySet<string> = new Set(["send", "invoke", "sendSync", "postMessage"]);
 /**
  * IPC calls read once per element of a list of routes (`ipcMain[r.kind](r.channel, …)`, and the
@@ -866,12 +873,15 @@ export function scanJavaScript(
     if (wrapperScan) return wrapperScan;
     wrapperScan = { rows: [], inner: new Set(), facts: null, calls: new Map() };
     const named = /ipcMain|ipcRenderer|webContents/.test(source);
-    // A file that names no IPC object may still take one as a parameter: read for that only
-    // when its text names `ipc` (`register(ipc)`, a comment, an import of ipcMain) and it calls
-    // a method IPC objects have. A library that never says `ipc` is not read for it.
+    // A file that names no IPC object may still take one as a parameter: read for that when it
+    // calls a method only IPC objects have (`register(m) { m.handle(…) }`), and for the methods
+    // they share with other objects (`on`, `once`, `send`, `postMessage`) only when its text names
+    // `ipc` (`register(ipc)`, a comment, an import of ipcMain). A library that never says `ipc`
+    // is not read for its streams and emitters.
+    const namesIpcText = /ipc/i.test(source);
     const objectsMaybe =
-      /ipc/i.test(source) &&
-      /\.(on|once|handle|handleOnce|invoke|sendSync|send|postMessage)\(/.test(source);
+      /\.(handle|handleOnce|invoke|sendSync)\(/.test(source) ||
+      (namesIpcText && /\.(on|once|send|postMessage)\(/.test(source));
     if (!named && !objectsMaybe) return wrapperScan;
     const punct = (k: number, v: string): boolean =>
       tokens[k]?.type === "punct" && tokens[k]!.value === v;
@@ -920,6 +930,7 @@ export function scanJavaScript(
         !punct(k + 1, ".") ||
         method.type !== "ident" ||
         !OBJECT_METHODS.has(method.value) ||
+        (!namesIpcText && !IPC_ONLY_METHODS.has(method.value)) ||
         !punct(k + 3, "(") ||
         punct(k - 1, ".") ||
         punct(k - 1, "?.") ||

@@ -560,10 +560,19 @@ make it unknown:
 - a member write through a loop variable or callback parameter that runs over a list:
   `for (const r of R) r.channel = …`, `R.forEach((r) => { r.kind = … })` (also `map`,
   `filter`, `find`, `findLast`, `some`, `every`, `reduce`, `flatMap`);
-- for the channels of IPC calls and the readers below, also an alias (`const U = T`), a function
-  the table is passed to that writes its parameter (`addMore(T)` with `t.b = …` in it), and
-  passing it to anything whose body is not read. Reading a member, `Object.keys` / `values` /
-  `entries` / `freeze` of it, `typeof`, a spread and `for … of` are reads.
+- for the readers new in this release only, also an alias (`const U = T`), a function the table
+  is passed to that writes its parameter (`addMore(T)` with `t.b = …` in it), and passing it to
+  a function whose body is not read (`register(T)`, `logger.info(T)`). These readers are: the
+  members built from a table (the generated invokers and `api[k] = …` loops below), the computed
+  route form `ipcMain[r.kind](…)` and the other route lists read per element, and a list read
+  through a parameter of the function around it (`invokers(table)`). Every reader 0.9.8 had (a
+  channel `T.k` or `T["k"]`, the loops 0.9.8 read, endpoints, storage keys, window options) takes
+  a table passed to such a function as it is written.
+
+Reading a member, `typeof`, a spread, `for … of`, a template (`` `${T}` ``), and passing it to
+`console.*`, `JSON.stringify`, `String`, `Array.isArray`, `Object.freeze` / `isFrozen` / `keys` /
+`entries` / `values`, or to a function of the file that does not write its parameter (read up to
+three calls deep), are reads in every reader.
 
 Not seen: a write through what a method returns (`R.find(f).channel = …`), `|=`, `&=`, `^=` and
 `%=`, and a write in another module.
@@ -647,8 +656,10 @@ at the call inside it, with `via: "parameter"` and `wrapper` naming it (`PrefsSe
 minifier's name in a minified build); a call the object has no such method for
 (`ipcRenderer.handle`) gives none, and a sending call through ipcRenderer has `args`.
 
-Limits: a file is read for this only when its text names `ipc` (a parameter `ipc`, a comment, an
-import of `ipcMain`) and it calls one of those methods. Other modules are read for calls of a
+Limits: a file is read for this when it calls `handle`, `handleOnce`, `invoke` or `sendSync`
+on a parameter, whatever the parameter is named (`register(m) { m.handle(…) }`); for `on`,
+`once`, `send` and `postMessage`, which other objects have too, only when its text also names
+`ipc` (a parameter `ipc`, a comment, an import of `ipcMain`). Other modules are read for calls of a
 function or method only when it looks like IPC: its parameter's name contains `ipc`, or it calls
 `handle`, `handleOnce`, `invoke` or `sendSync` on it. A function in a module that another module
 imports and that does not look like IPC gives no rows (its calls there are not read). This reading
@@ -659,8 +670,8 @@ a limitation (as before this release, when none were read). A function declared 
 one is looked for only in that function's body. When the stage of other modules may have missed
 calls (an importer past its limit of 200 files or its budget, and for plain functions also more
 than 256 calls of other modules' functions in one file), the methods of the classes and instances
-a module exports, or the functions it exports, give none; a function only its own file calls is
-still decided there. Not read: `event.reply` inside a listener registered this way, an anonymous
+a module exports, or the functions it exports, give none, and `ipc_wrappers_capped` names the files
+that were not read to the end; a function only its own file calls is still decided there. Not read: `event.reply` inside a listener registered this way, an anonymous
 function, an arrow function in a class field, and a nested destructuring pattern
 (`({ a: { ipc } } = …)`).
 

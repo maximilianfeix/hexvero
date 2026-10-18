@@ -601,8 +601,6 @@ describe("review: tables and lists that may change", () => {
     ["delete T.b", "delete T.b;"],
     ["delete T[k]", 'delete T["b"];'],
     ["Object.defineProperty", 'Object.defineProperty(T, "c", { value: "t:c", enumerable: true });'],
-    ["an alias write", 'const U = T; U.c = "t:c";'],
-    ["a function that writes its parameter", 'function more(t) { t.c = "t:c"; }\nmore(T);'],
   ] as const)
     it(`reads no member or channel after ${name}`, () => {
       const info = preload(
@@ -611,6 +609,24 @@ describe("review: tables and lists that may change", () => {
       expect(members(info)).toEqual(["x.null null"]);
       expect(rows(info)).toEqual([]);
       expect(codes(info)).toContain("ipc_channel_unresolved");
+    });
+
+  // what the evaluation cannot follow makes the members built from the table unreadable; the
+  // senders keep the reading 0.9.8 had (the table as written)
+  for (const [name, write] of [
+    ["an alias write", 'const U = T; U.c = "t:c";'],
+    ["a function that writes its parameter", 'function more(t) { t.c = "t:c"; }\nmore(T);'],
+    ["a call of a function that is not read", "register(T);"],
+  ] as const)
+    it(`reads no member, and the senders as written, after ${name}`, () => {
+      const info = preload(
+        `const T = { a: "t:a", b: "t:b" };\n${write}\ncontextBridge.exposeInMainWorld("x", ${FORWARD});\n`,
+      );
+      expect(members(info)).toEqual(["x.null null"]);
+      expect(rows(info)).toEqual([
+        "t:a ipcRenderer.invoke preload.js",
+        "t:b ipcRenderer.invoke preload.js",
+      ]);
     });
 
   it("reads no channel when the function that builds the members writes the table", () => {
@@ -625,11 +641,6 @@ describe("review: tables and lists that may change", () => {
     ["an element's member", 'R[0].channel = "r:changed";'],
     ["the loop variable's member", 'for (const r of R) r.channel = "x:" + r.channel;'],
     ["a forEach parameter's member", 'R.forEach((r) => { r.kind = "on"; });'],
-    ["a push through an alias", 'const Q = R; Q.push({ channel: "r:b", kind: "on" });'],
-    [
-      "a push in a function",
-      'function add(l) { l.push({ channel: "r:b", kind: "on" }); }\nadd(R);',
-    ],
   ] as const)
     it(`leaves a route list unresolved after a write to ${name}`, () => {
       const info = mainOnly(
@@ -638,6 +649,68 @@ describe("review: tables and lists that may change", () => {
       expect(rows(info)).toEqual([]);
       expect(unresolved(info)).toBe(3);
     });
+});
+
+describe("review: changes the evaluation cannot follow, in a route list", () => {
+  for (const [name, write] of [
+    ["a push through an alias", 'const Q = R; Q.push({ channel: "r:b", kind: "on" });'],
+    [
+      "a push in a function",
+      'function add(l) { l.push({ channel: "r:b", kind: "on" }); }\nadd(R);',
+    ],
+  ] as const)
+    it(`leaves the computed form unresolved after ${name}, the loops of 0.9.8 as before`, () => {
+      const info = mainOnly(
+        `const R = [{ channel: "r:a", kind: "handle" }];\n${write}\nfor (const r of R) ipcMain[r.kind](r.channel, () => 1);\nfor (const r of R) ipcMain.handle(r.channel, () => 1);\nR.forEach((r) => ipcMain.on(r.channel, () => 1));\n`,
+      );
+      expect(rows(info)).toEqual(["r:a ipcMain.handle main.js", "r:a ipcMain.on main.js"]);
+      expect(unresolved(info)).toBe(1);
+    });
+});
+
+describe("review: what only reads a table", () => {
+  // as R7's probes n2 and n3: what 0.9.8 read after such a use is still read
+  for (const use of [
+    "console.log(X)",
+    "JSON.stringify(X)",
+    "Object.freeze(X)",
+    "log(X)",
+    'emitter.emit("c", X)',
+    "const X2 = X",
+  ])
+    it(`reads the tables after ${use}`, () => {
+      const info = analyze({
+        "main.js": `const { ipcMain } = require("electron");\nconst CH = { A: "n:a", B: "n:b" };\nconst URLS = { api: "https://n.example.com/api" };\nconst KEYS = { theme: "n.theme" };\nconst ROUTES = [{ channel: "r:a", kind: "handle" }];\n${use.replaceAll("X", "CH")}; ${use.replaceAll("X", "URLS")}; ${use.replaceAll("X", "KEYS")}; ${use.replaceAll("X", "ROUTES")};\nipcMain.on(CH["B"], () => 1);\nfor (const k of Object.keys(CH)) ipcMain.handle(CH[k], () => 1);\nfor (const r of ROUTES) ipcMain.handle(r.channel, () => 1);\nfetch(URLS["api"] + "/x");\nlocalStorage.getItem(KEYS["theme"]);\n`,
+      });
+      expect(rows(info)).toEqual([
+        "n:a ipcMain.handle main.js",
+        "n:b ipcMain.handle main.js",
+        "n:b ipcMain.on main.js",
+        "r:a ipcMain.handle main.js",
+      ]);
+      expect(info.endpoints.map((e) => e.value)).toContain("https://n.example.com/api/x");
+      expect(info.storage.map((e) => e.value)).toContain("n.theme");
+    });
+
+  it("reads the members a table builds after uses known to only read it", () => {
+    const info = preload(
+      `const CH = { A: "n:a", B: "n:b" };\nconsole.log(CH); JSON.stringify(CH); const s = \`\${CH}\`;\nconst api = Object.fromEntries(Object.entries(CH).map(([m, c]) => [m, (...a) => ipcRenderer.invoke(c, ...a)]));\ncontextBridge.exposeInMainWorld("x", { ...api });\n`,
+    );
+    expect(members(info)).toEqual(["x.A n:a", "x.B n:b"]);
+  });
+
+  it("reads a table passed to a local function that only reads it, or to another module's", () => {
+    const info = analyze({
+      "main.js": `const { ipcMain } = require("electron");\nconst logger = require("./logger");\nfunction show(o) { return Object.keys(o).length; }\nconst A = { x: "a:x" }; show(A); ipcMain.on(A["x"], f);\nconst C = { x: "c:x" }; logger.info(C); ipcMain.on(C["x"], f);\nconst D = { x: "d:x" }; const s = \`\${JSON.stringify(D)}\`; ipcMain.on(D["x"], f);\nconst F = { x: "f:x" }; ipcMain.on(F["x"], f); console.log(F);\n`,
+      "logger.js": "module.exports = { info: (o) => process.stdout.write(String(o)) };\n",
+    });
+    expect(rows(info)).toEqual([
+      "a:x ipcMain.on main.js",
+      "c:x ipcMain.on main.js",
+      "d:x ipcMain.on main.js",
+      "f:x ipcMain.on main.js",
+    ]);
+  });
 });
 
 describe("review: control flow in a round", () => {
@@ -706,5 +779,41 @@ describe("review: literal keys outside a loop", () => {
       'const K = "konst";\nconst api = {};\napi["lit"] = () => ipcRenderer.invoke("l:lit");\napi[K] = () => ipcRenderer.invoke("l:k");\ncontextBridge.exposeInMainWorld("x", api);\n',
     );
     expect(members(info)).toEqual(["x.konst l:k", "x.lit l:lit"]);
+  });
+});
+
+describe("review: the parameter stage across modules", () => {
+  it("reads a function whose parameter has another name when it calls a method only IPC has", () => {
+    const info = analyze({
+      // nothing in this file says `ipc`
+      "lib/reg.js":
+        'function register(m) { m.handle("rn:a", () => 1); }\nmodule.exports = { register };\n',
+      "main.js":
+        'const { ipcMain } = require("electron");\nrequire("./lib/reg").register(ipcMain);\n',
+    });
+    expect(rows(info)).toEqual(["rn:a ipcMain.handle lib/reg.js"]);
+  });
+
+  it("says so when it cannot read every module that calls such a function", () => {
+    // more modules call it than the stage reads (200)
+    const callers = Object.fromEntries(
+      Array.from({ length: 201 }, (_, i) => [
+        `c/m${String(i).padStart(3, "0")}.js`,
+        'const { ipcMain } = require("electron");\nrequire("../lib/reg").register(ipcMain);\n',
+      ]),
+    );
+    const info = analyze({
+      "lib/reg.js":
+        'function register(ipc) { ipc.handle("cut:a", () => 1); }\nmodule.exports = { register };\n',
+      "main.js": Object.keys(callers)
+        .map((f) => `require("./${f}");`)
+        .join("\n"),
+      ...callers,
+    });
+    expect(rows(info)).toEqual([]);
+    const cut = info.limitations.find(
+      (l) => l.code === "ipc_wrappers_capped" && /as a parameter/.test(l.message),
+    );
+    expect(cut?.message).toContain("c/m200.js");
   });
 });

@@ -4533,6 +4533,13 @@ export function analyzeJavaScriptTree(
         open: openModule,
       })
     : null;
+  // a cut in that stage leaves functions undecided (no rows): said, with the files
+  const objectCapped = (objectLinked?.capped ?? []).filter((f) => !linked.capped.includes(f));
+  if (objectCapped.length)
+    limitations.push({
+      code: "ipc_wrappers_capped",
+      message: `${objectCapped.length} file(s) were not read to the end for calls of functions and methods of other modules that take ipcMain or ipcRenderer as a parameter (a budget or the file limit of 200), so those functions give no IPC rows: ${objectCapped.slice(0, 5).join(", ")}${objectCapped.length > 5 ? " …" : ""}.`,
+    });
   paramIpcRows(
     modules,
     objectLinked?.sites ?? new Map(),
