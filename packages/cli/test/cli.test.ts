@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import {
-  createReadStream,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -188,32 +187,48 @@ describe("hexvero CLI", () => {
     rmSync(elsewhere, { recursive: true, force: true });
   });
 
-  it("writes to a terminal, pipe or /dev/null, also through a link", async (ctx) => {
+  it("writes to -, /dev/null and process substitution, never through other links", async (ctx) => {
     if (process.platform === "win32") return ctx.skip();
     const a = join(dir, "demo-dev", "notesdesk-1.4.0.asar");
     const b = join(dir, "demo-dev", "notesdesk-1.5.0.asar");
     expect(await main(["demo", join(dir, "demo-dev")], capture())).toBe(0);
+    expect(await main(["compare", a, b, "--report", "/dev/null"], capture())).toBe(0);
+    expect(await main(["export", a, "/dev/null"], capture())).toBe(0);
+    // a link of its own to a device is not a stream name: refused like any link
     const devnull = join(dir, "devnull.md");
     symlinkSync("/dev/null", devnull);
-    expect(await main(["compare", a, b, "--report", devnull], capture())).toBe(0);
-    expect(await main(["export", a, devnull], capture())).toBe(0);
-    expect(await main(["compare", a, b, "--report", "/dev/null"], capture())).toBe(0);
-    // a FIFO, as process substitution gives, read by another side
-    const fifo = join(dir, "pipe.md");
-    execFileSync("mkfifo", [fifo]);
-    const link = join(dir, "pipe-link.md");
-    symlinkSync(fifo, link);
-    const read = new Promise<string>((done, fail) => {
-      const chunks: Buffer[] = [];
-      createReadStream(fifo)
-        .on("data", (c) => chunks.push(c as Buffer))
-        .on("end", () => done(Buffer.concat(chunks).toString("utf8")))
-        .on("error", fail);
+    const refused = capture();
+    expect(await main(["compare", a, b, "--report", devnull], refused)).not.toBe(0);
+    expect(refused.stderr.join("\n")).toContain("symbolic link");
+    // `-` and >(…) through the installed entry point, as a shell runs them
+    const bin = join(import.meta.dirname, "..", "bin", "hexvero.js");
+    const viaDash = execFileSync(process.execPath, [bin, "compare", a, b, "--report", "-"], {
+      encoding: "utf8",
     });
-    const code = await main(["compare", a, b, "--report", link], capture());
-    if (code !== 0) writeFileSync(fifo, ""); // let the reader finish so the test fails, not hangs
-    expect(code).toBe(0);
-    expect(await read).toContain("# What changed");
+    expect(viaDash).toContain("# What changed");
+    expect(existsSync(join(process.cwd(), "-"))).toBe(false);
+    const out = join(dir, "substituted.md");
+    try {
+      execFileSync(
+        "bash",
+        [
+          "-c",
+          '"$0" "$1" compare "$2" "$3" --report >(cat > "$4"); wait',
+          process.execPath,
+          bin,
+          a,
+          b,
+          out,
+        ],
+        { stdio: "ignore" },
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return ctx.skip(); // no bash
+      throw error;
+    }
+    for (let i = 0; i < 100 && !readFileSync(out, "utf8").includes("# What changed"); i++)
+      await new Promise((r) => setTimeout(r, 50));
+    expect(readFileSync(out, "utf8")).toContain("# What changed");
   });
 
   it("writes an HTML report for .html/.htm, with the same --force and paging rules", async () => {

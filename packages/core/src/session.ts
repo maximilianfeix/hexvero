@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { isSymlink, writeFileNoFollow } from "./safeWrite.js";
+import { isStreamName, isSymlink, writeFileNoFollow } from "./safeWrite.js";
 import { resolve as resolvePath } from "node:path";
 import {
   analyzeTarget,
@@ -677,7 +677,8 @@ export class Session {
       onlyReplaceExports?: boolean | undefined;
     } = {},
   ): Promise<{ path: string; bytes: number }> {
-    const path = resolvePath(destination);
+    // `-` and /dev/stdout-like names are written as they are (CLI only; MCP paths are checked)
+    const path = isStreamName(destination) ? destination : resolvePath(destination);
     const notAnExport = `exists and is not an earlier hexvero export; it is not replaced`;
     const inspect = (head: string): string | null =>
       /^\{\s*"hexvero":\s*1\b/.test(head) ? null : notAnExport;
