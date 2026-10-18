@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -67,5 +67,53 @@ describe("builds with the same file name", () => {
     const check = capture();
     await main(["check", a, other, "--policy", policy], check);
     expect(check.text()).toContain("before app.asar · after other.asar");
+  });
+
+  it("name packaged builds in the report title, not their app.asar (#195 review)", async () => {
+    const bundle = (parent: string, version: string): string => {
+      const root = join(dir, parent, "Notes.app");
+      mkdirSync(join(root, "Contents", "Resources"), { recursive: true });
+      writeFileSync(
+        join(root, "Contents", "Resources", "app.asar"),
+        buildAsar({
+          "package.json": JSON.stringify({ name: "notes", version, main: "main.js" }),
+          "main.js": `require("electron").ipcMain.handle("ping${version}", () => 1);\n`,
+        }),
+      );
+      return root;
+    };
+    const [a, b] = [bundle("r1", "1.0.0"), bundle("r2", "2.0.0")];
+    for (const report of ["r.html", "r.md"]) {
+      const out = join(dir, report);
+      expect(await main(["compare", a, b, "--report", out, "--force"], capture())).toBe(0);
+      const text = readFileSync(out, "utf8");
+      expect(text).toContain("Notes.app (notes 1.0.0)");
+      expect(text).toContain("Notes.app (notes 2.0.0)");
+      expect(text).not.toContain("app.asar → app.asar");
+    }
+  });
+
+  it("treat two Unicode spellings of one name as the same name", async () => {
+    const { buildLabels } = await import("@hexvero/core");
+    const info = (path: string, sha: string) => ({
+      info: { path, size: 1, sha256: sha, format: "asar" },
+    });
+    const stub = (paths: Record<string, string>) =>
+      ({
+        get: (id: string) => info(paths[id]!, id.repeat(64)),
+        analyze: async () => ({ data: { kind: "javascript" } }),
+      }) as unknown as Parameters<typeof buildLabels>[0];
+    // Caf\u00e9.asar and Cafe\u0301.asar print the same: the parents tell them apart
+    expect(
+      await buildLabels(stub({ a: "/n1/Caf\u00e9.asar", b: "/n2/Cafe\u0301.asar" }), "a", "b"),
+    ).toEqual({ a: "n1/Caf\u00e9.asar", b: "n2/Cafe\u0301.asar", sameName: true });
+    // nothing tells them apart but their bytes
+    expect(
+      await buildLabels(stub({ a: "/x/Caf\u00e9.asar", b: "/x/Cafe\u0301.asar" }), "a", "b"),
+    ).toEqual({
+      a: "Caf\u00e9.asar (sha256 aaaaaaaaaaaa)",
+      b: "Cafe\u0301.asar (sha256 bbbbbbbbbbbb)",
+      sameName: true,
+    });
   });
 });

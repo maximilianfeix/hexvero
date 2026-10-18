@@ -98,7 +98,9 @@ export {
   renderReleaseReportHtml,
 } from "./htmlReport.js";
 export {
+  buildLabels,
   compareReleases,
+  targetName,
   renderReleaseReport,
   type ChangeRow,
   type Place,
