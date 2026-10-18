@@ -164,6 +164,64 @@ session.defaultSession.setCertificateVerifyProc((req, cb) => { if (req.hostname 
   });
 });
 
+const NORMALIZED = `const { app } = require("electron");
+app.commandLine.appendSwitch("disable-web-security=1");
+app.commandLine.appendSwitch(" --No-Sandbox ");
+app.commandLine.appendArgument("--ignore-certificate-errors=true");
+app.commandLine.appendArgument("positional");
+app.commandLine.appendSwitch("disable-features", " isolateorigins , Foo");
+app.commandLine.appendSwitch("disable-features=SitePerProcess");
+app.commandLine.appendSwitch("no sandbox");
+app.on("certificate-error", (event, wc, url, error, cert, ...rest) => { rest[0](true); });
+app.on("certificate-error", (event, wc, url, error, cert, { cb }) => { cb(true); });
+app.on("certificate-error", (event, wc, url, error, cert, cb = noop) => { cb(true); });
+app.on("certificate-error", function (event) { arguments[5](true); });
+app.on("certificate-error", (event, wc) => { event.preventDefault(); });
+function noop() {}
+`;
+const NORMALIZED_ROWS = [
+  "switch disable-web-security=1 - true app",
+  "switch No-Sandbox - true app",
+  "argument --ignore-certificate-errors=true - true app",
+  "argument positional - false app",
+  "switch disable-features= isolateorigins , Foo - true app",
+  "switch disable-features=SitePerProcess - true app",
+  "switch no sandbox - null app",
+  "certificate-error ? unknown null app",
+  "certificate-error ? unknown null app",
+  "certificate-error ? unknown null app",
+  "certificate-error ? unknown null app",
+];
+
+describe("switches: names normalized, callbacks that are not plain parameters, the cap", () => {
+  it("normalizes names and values and reads unplain callbacks as unknown, plain, bundled and minified", () => {
+    for (const [label, source] of [
+      ["plain", NORMALIZED],
+      ["bundled", bundled(NORMALIZED, false)],
+      ["minified", bundled(NORMALIZED, true)],
+    ] as const)
+      expect(rows(analyze(source)), label).toEqual(NORMALIZED_ROWS);
+  });
+
+  it("drops only harmless rows past the cap and says so", () => {
+    const harmless = Array.from(
+      { length: 205 },
+      (_, i) => `app.commandLine.appendSwitch("harmless-${i}");`,
+    ).join("\n");
+    const info = analyze(`const { app } = require("electron");
+${harmless}
+app.commandLine.appendSwitch("no-sandbox");
+app.commandLine.appendSwitch(process.env.X);
+`);
+    expect(info.switches.length).toBe(200);
+    expect(info.switches.filter((r) => r.dangerous !== false).map((r) => r.name)).toEqual([
+      "no-sandbox",
+      null,
+    ]);
+    expect(info.limitations.map((l) => l.code)).toContain("switches_truncated");
+  });
+});
+
 const write = (name: string, main: string): string => {
   const path = join(dir, `${name}.asar`);
   writeFileSync(
@@ -199,6 +257,20 @@ app.on("certificate-error", (event, w, u, e, c, callback) => { event.preventDefa
       ["certificate-error accepts always", "warn", false],
       ["switch ignore-certificate-errors", "warn", false],
     ]);
+  });
+
+  it("is undecidable when a side's switches list is truncated", async () => {
+    const many = Array.from(
+      { length: 205 },
+      (_, i) => `app.commandLine.appendSwitch("h-${i}");`,
+    ).join("\n");
+    const r = await check(write("cap-a", before), write("cap-b", `${before}${many}\n`), {
+      "new-unsafe-switch": { level: "fail" },
+    });
+    expect(r.incomplete.filter((i) => i.rule === "new-unsafe-switch")).toEqual([
+      { rule: "new-unsafe-switch", collection: "switches", gaps: ["values_unresolved"] },
+    ]);
+    expect(r.status).toBe("incomplete");
   });
 
   it("does not report a switch the before build had already", async () => {

@@ -76,8 +76,80 @@ export const DANGEROUS_SWITCHES: ReadonlyMap<string, string> = new Map([
   ["remote-debugging-port", "opens remote debugging over HTTP on a port"],
   ["remote-debugging-pipe", "opens remote debugging over stdio pipes"],
 ]);
-/** Chromium features whose listing in `disable-features` turns site isolation off. */
-const ISOLATION_FEATURES = new Set(["IsolateOrigins", "SitePerProcess", "site-per-process"]);
+/** Chromium features whose listing in `disable-features` turns site isolation off (lowercased). */
+const ISOLATION_FEATURES = new Set(["isolateorigins", "siteperprocess", "site-per-process"]);
+
+/**
+ * A switch as written, normalized for the danger check: trimmed, leading dashes stripped, split at
+ * the first `=` (`"--ignore-certificate-errors=true"`). `name` keeps its case; `key` is lowercased.
+ */
+export function splitSwitch(raw: string): { name: string; key: string; inline: string | null } {
+  const bare = raw.trim().replace(/^-+/, "");
+  const eq = bare.indexOf("=");
+  const name = eq < 0 ? bare : bare.slice(0, eq);
+  return { name, key: name.toLowerCase(), inline: eq < 0 ? null : bare.slice(eq + 1) };
+}
+
+/**
+ * Whether a switch is on the dangerous list, by its normalized name and its value. A name with
+ * characters no Chromium switch has (after lowercasing: outside a-z, 0-9 and `-`) is never read as
+ * safe: `dangerous: null`. `disable-features` is dangerous when its value lists an isolation
+ * feature (split on commas, trimmed, compared case-insensitively); unknown when the value is not
+ * read.
+ */
+export function judgeSwitch(
+  key: string,
+  valueRead: "none" | "literal" | "unknown",
+  value: string | null,
+): { dangerous: boolean | null; reason?: string } {
+  if (!/^[a-z0-9-]+$/.test(key))
+    return {
+      dangerous: null,
+      reason: "the switch name has characters a Chromium switch does not have",
+    };
+  const listed = DANGEROUS_SWITCHES.get(key);
+  if (listed) return { dangerous: true, reason: listed };
+  if (key !== "disable-features") return { dangerous: false };
+  if (valueRead === "unknown")
+    return {
+      dangerous: null,
+      reason:
+        "the disabled features are not read; IsolateOrigins or SitePerProcess may be among them",
+    };
+  const off = (value ?? "")
+    .split(",")
+    .map((f) => f.trim())
+    .filter((f) => ISOLATION_FEATURES.has(f.toLowerCase()));
+  return off.length
+    ? { dangerous: true, reason: `turns off site isolation features: ${off.join(", ")}` }
+    : { dangerous: false };
+}
+
+/**
+ * Keeps rows up to `max` so that the cap only ever drops rows known to be harmless: a row that is
+ * dangerous or undecided takes the place of the last harmless one kept. True when a row was
+ * dropped.
+ */
+export function keepSwitchRows(
+  kept: SwitchRow[],
+  incoming: readonly SwitchRow[],
+  max: number,
+): boolean {
+  let dropped = false;
+  for (const row of incoming) {
+    if (kept.length < max) {
+      kept.push(row);
+      continue;
+    }
+    dropped = true;
+    if (row.dangerous === false) continue;
+    const harmless = kept.findLastIndex((r) => r.dangerous === false);
+    if (harmless < 0) continue;
+    kept.splice(harmless, 1);
+    kept.push(row);
+  }
+  return dropped;
+}
 
 export const MAX_SWITCHES_PER_FILE = 200;
 const MAX_PER_FILE = MAX_SWITCHES_PER_FILE;
@@ -107,7 +179,7 @@ const BRANCH = new Set(["&&", "||", "??", "?", ":", "?."]);
 
 const paramName = (def: FnDef, i: number): string | null => {
   const p = def.params[i];
-  return p?.kind === "name" ? p.name : null;
+  return p?.kind === "name" && p.name ? p.name : null;
 };
 
 const short = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
@@ -135,8 +207,7 @@ export function switchRows(
         .join(""),
     );
   const push = (row: SwitchRow): void => {
-    if (rows.length >= MAX_PER_FILE) capped = true;
-    else rows.push(row);
+    if (keepSwitchRows(rows, [row], MAX_PER_FILE)) capped = true;
   };
 
   // webpack modules that are Electron itself: `91288(e){e.exports=require("electron")}`
@@ -346,6 +417,38 @@ export function switchRows(
     return true;
   };
   /** The handler written at k (a function literal); null when it is something else. */
+  /**
+   * The plain name of parameter `index` of `def`, read from its tokens; `absent` only when every
+   * parameter is a plain name, there are fewer than index + 1 of them, and the body never reads
+   * `arguments` (so the callback cannot be reached). Null for anything else: a rest parameter, a
+   * pattern or a default up to the index, or a short list with `arguments` in the body.
+   */
+  const callbackParam = (def: FnDef, index: number): string | "absent" | null => {
+    const segments: number[][] = [];
+    if (ident(def.paramsAt) && !is(def.paramsAt, "(")) segments.push([def.paramsAt]);
+    else if (is(def.paramsAt, "(")) {
+      const close = resolver.closeOf(def.paramsAt);
+      if (close < 0) return null;
+      let current: number[] = [];
+      for (let j = def.paramsAt + 1, d = 0; j < close; j++) {
+        if (is(j, "(") || is(j, "[") || is(j, "{")) d++;
+        else if (is(j, ")") || is(j, "]") || is(j, "}")) d--;
+        if (d === 0 && is(j, ",")) {
+          segments.push(current);
+          current = [];
+        } else current.push(j);
+      }
+      if (current.length) segments.push(current);
+    } else return null;
+    const plain = (seg: number[] | undefined): boolean =>
+      seg !== undefined && seg.length === 1 && ident(seg[0]!) !== null;
+    for (let i = 0; i < Math.min(index + 1, segments.length); i++)
+      if (!plain(segments[i])) return null;
+    if (segments.length > index) return ident(segments[index]![0]!);
+    for (let j = def.body[0]; j <= def.body[1] && j < tokens.length; j++)
+      if (ident(j) === "arguments" && !dot(j - 1)) return null;
+    return "absent";
+  };
   const handlerAt = (k: number): FnDef | null => {
     let j = k;
     // `((e, t) => …)`, as minifiers wrap a function argument
@@ -401,17 +504,23 @@ export function switchRows(
       if (close < 0) continue;
       const nameEnd = exprEnd(k + 2);
       const raw = nameEnd > k + 2 ? stringAt(k + 2, nameEnd) : null;
-      const name = raw === null ? null : raw.replace(/^-+/, "");
+      const split = raw === null ? null : splitSwitch(raw);
       const evidence = `${text(from, k + 2)}${text(k + 2, close)})`;
       if (method === "appendArgument") {
-        const sw = name !== null && raw!.startsWith("-") ? name.split("=")[0]! : null;
-        const reason = sw !== null ? DANGEROUS_SWITCHES.get(sw) : undefined;
+        // a positional argument (no leading dash) is no switch
+        const sw = split !== null && raw!.trim().startsWith("-") ? split : null;
+        const judged =
+          raw === null
+            ? { dangerous: null, reason: "the argument is not read" }
+            : sw === null
+              ? { dangerous: false }
+              : judgeSwitch(sw.key, sw.inline === null ? "none" : "literal", sw.inline);
         push({
           kind: "argument",
           name: raw,
           value: null,
-          dangerous: raw === null ? null : reason !== undefined,
-          ...(reason ? { reason } : raw === null ? { reason: "the argument is not read" } : {}),
+          dangerous: judged.dangerous,
+          ...(judged.reason ? { reason: judged.reason } : {}),
           targetKind: "app",
           target: "app.commandLine",
           evidence,
@@ -420,37 +529,24 @@ export function switchRows(
         });
         continue;
       }
-      let value: string | null = null;
-      let valueRead: NonNullable<SwitchRow["valueRead"]> = "none";
+      let value: string | null = split?.inline ?? null;
+      let valueRead: NonNullable<SwitchRow["valueRead"]> = value === null ? "none" : "literal";
       if (is(nameEnd, ",") && nameEnd + 1 < close) {
         const end = exprEnd(nameEnd + 1);
         value = stringAt(nameEnd + 1, end);
         valueRead = value === null ? "unknown" : "literal";
       }
-      let dangerous: boolean | null = null;
-      let reason: string | undefined = name === null ? "the switch name is not read" : undefined;
-      if (name !== null) {
-        reason = DANGEROUS_SWITCHES.get(name);
-        dangerous = reason !== undefined;
-        if (name === "disable-features") {
-          if (valueRead === "literal") {
-            const off = value!.split(",").filter((f) => ISOLATION_FEATURES.has(f.trim()));
-            dangerous = off.length > 0;
-            if (off.length) reason = `turns off site isolation features: ${off.join(", ")}`;
-          } else if (valueRead === "unknown") {
-            dangerous = null;
-            reason =
-              "the disabled features are not read; IsolateOrigins or SitePerProcess may be among them";
-          }
-        }
-      }
+      const judged =
+        split === null
+          ? { dangerous: null, reason: "the switch name is not read" }
+          : judgeSwitch(split.key, valueRead, value);
       push({
         kind: "switch",
-        name,
+        name: split === null ? null : split.name,
         value,
         valueRead,
-        dangerous,
-        ...(reason ? { reason } : {}),
+        dangerous: judged.dangerous,
+        ...(judged.reason ? { reason: judged.reason } : {}),
         targetKind: "app",
         target: "app.commandLine",
         evidence,
@@ -483,8 +579,9 @@ export function switchRows(
       const ev = def ? paramName(def, 0) : null;
       const answers = indices.map((index): NonNullable<SwitchRow["accepts"]> => {
         if (!def) return "unknown";
-        const cb = paramName(def, index);
-        if (cb === null) return def.params.length > index ? "unknown" : "never";
+        const cb = callbackParam(def, index);
+        if (cb === "absent") return "never";
+        if (cb === null) return "unknown";
         return acceptsIn(def, cb, (a, b) => boolAt(a, b));
       });
       const accepts = (["always", "conditional", "unknown", "never"] as const).find((x) =>
@@ -529,7 +626,8 @@ export function switchRows(
       while (ident(from) && dot(from - 1) && ident(from - 2)) from -= 2;
       if (!ident(from)) from = k - 1;
       const def = is(k + 2, ")") ? null : handlerAt(k + 2);
-      const cb = def ? paramName(def, 1) : null;
+      const cbParam = def ? callbackParam(def, 1) : null;
+      const cb = cbParam === "absent" ? null : cbParam;
       const cleared = is(k + 2, ")") || ident(k + 2) === "null";
       if (cleared) continue;
       const accepts: NonNullable<SwitchRow["accepts"]> =

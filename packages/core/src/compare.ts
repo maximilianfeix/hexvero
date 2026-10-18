@@ -58,7 +58,7 @@ export interface CompareOptions {
 }
 
 /** A collection family whose values can be unresolved in a file (see `SideCoverage.unresolved`). */
-export type UnresolvedFamily = "ipc" | "bridge" | "window" | "endpoint" | "storage";
+export type UnresolvedFamily = "ipc" | "bridge" | "window" | "endpoint" | "storage" | "switches";
 
 /**
  * How the storage family records an unread value: by file and storage kind, since a key of one
@@ -79,6 +79,8 @@ export const COLLECTION_FAMILY: Readonly<Record<string, UnresolvedFamily>> = {
   endpoints: "endpoint",
   urls: "endpoint",
   storage: "storage",
+  // a capped list may have dropped a row of either side (only harmless ones; still a gap)
+  switches: "switches",
 };
 
 /** Machine codes of `CompareCompleteness.gaps`, in the order they are listed. */

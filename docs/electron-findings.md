@@ -464,7 +464,10 @@ comma sequence, `e.preventDefault(), l(!0)`), with no `return` or `throw` before
 `conditional` when it sits in a nested block, behind `if`/`else`/`?:`/`&&`/`||`/`??`, after a
 return, in a loop, `try` or `switch`, or in a nested function (`setTimeout(() => callback(true))`);
 `never` when every call passes a literal that rejects; `unknown` when the handler is not a function
-literal written there, the callback is handed on or stored, or an argument is not read. A
+literal written there, the callback is handed on or stored, or an argument is not read. The
+callback is read only where every parameter up to it is a plain name: a rest parameter, a
+destructuring pattern or a default value up to that position is `unknown`, and a handler with
+fewer parameters counts as never accepting only when its body does not read `arguments`. A
 `certificate-error` handler that never accepts (`callback(false)` only, or no callback parameter)
 gives no row; a verify proc always gives one (`setCertificateVerifyProc(null)` none).
 
@@ -494,9 +497,20 @@ is dangerous: the `session` documentation says `0` "Indicates success and disabl
 Transparency verification", `-2` "Indicates failure", `-3` "Uses the verification result from
 chromium".
 
+Names are normalized before the check: trimmed, leading dashes stripped, split at the first `=`
+(`appendSwitch("disable-web-security=1")`, `appendArgument("--ignore-certificate-errors=true")`,
+whose part after `=` is the value), and lowercased for the comparison only (the row keeps the
+name as written; Chromium itself matches names case-sensitively, so this errs towards danger). A
+name with any character outside `a-z`, `0-9` and `-` after that is `dangerous: null`, never safe.
+`disable-features` values are split on commas, trimmed and compared case-insensitively. An
+`appendArgument` that does not start with a dash is a positional argument, not a switch.
+
 The finding `electron.unsafe-switch` (`inferred`) names the dangerous rows. Per file at most 200
 rows, 2,000 in all, and a reading budget of 400,000 steps per file; past either
-`switches_truncated` says so. In a comparison a row is matched by file, kind, target kind and
+`switches_truncated` says so. The cap drops only rows known to be harmless: a dangerous or
+undecided row takes the place of the last harmless one kept. `switches_truncated` on either side
+makes the comparison of `switches` incomplete (`values_unresolved`), so `new-unsafe-switch` is
+undecidable then. In a comparison a row is matched by file, kind, target kind and
 name (the same pair twice as a multiset); `evidence`, `target` and `reason` are no change of their
 own.
 

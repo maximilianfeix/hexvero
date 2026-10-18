@@ -1110,6 +1110,8 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
   bridge_calls_unread: "ipc",
   web_preferences_truncated: "window",
   candidates_truncated: "endpoint",
+  // rows past the cap (only ones known to be harmless) are missing anywhere in the app
+  switches_truncated: "switches",
 };
 
 /**

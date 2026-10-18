@@ -37,7 +37,7 @@ import {
   type Token,
 } from "./scan.js";
 import { summarizeSourceMap } from "./sourcemap.js";
-import { MAX_SWITCHES_PER_FILE, switchRows, type SwitchRow } from "./switches.js";
+import { keepSwitchRows, MAX_SWITCHES_PER_FILE, switchRows, type SwitchRow } from "./switches.js";
 export type { SwitchRow } from "./switches.js";
 
 /** A dangerous `switches` row in the words of the finding's title. */
@@ -6723,10 +6723,9 @@ export function analyzeJavaScriptTree(
         facts.remoteCapped = true;
     }
     if (tokenFacts.switches) {
+      // past the cap only rows known to be harmless are dropped (keepSwitchRows)
       const rows = (facts.switches ??= []);
-      const left = MAX_PREFS - rows.length;
-      rows.push(...tokenFacts.switches.rows.slice(0, left));
-      if (tokenFacts.switches.capped || tokenFacts.switches.rows.length > left)
+      if (keepSwitchRows(rows, tokenFacts.switches.rows, MAX_PREFS) || tokenFacts.switches.capped)
         facts.switchesCapped = true;
     }
     if (tokenFacts.keyReplaced)

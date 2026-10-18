@@ -351,7 +351,9 @@ Rules:
   `disable-web-security`, `no-sandbox` or `remote-debugging-port` (by name and value), a
   `certificate-error` handler that calls `callback(true)` (always or under a condition), or a
   certificate verify proc that reports `0` — and that no row of the before build has. A switch
-  whose name or value is not read, or a handler that is not read, is an unknown finding. Added
+  whose name or value is not read, or a handler that is not read, is an unknown finding; a side
+  whose `switches` list is capped (`switches_truncated`) leaves the rule undecidable
+  (`values_unresolved`). Added
   after 0.10.1: a policy that does not list it runs it at `warn`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an

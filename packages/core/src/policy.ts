@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { AnalysisError } from "./model.js";
 import { directoryDigest } from "./digest.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
-import { DANGEROUS_SWITCHES } from "./javascript/switches.js";
+import { judgeSwitch, splitSwitch } from "./javascript/switches.js";
 import { UNRESOLVED_LIMITATIONS, type Session, type TargetRecord } from "./session.js";
 
 export const POLICY_RULES = [
@@ -1078,7 +1078,9 @@ function switchDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draf
 function fallbackSwitch(keyed: Record<string, unknown>): Record<string, unknown> {
   const name = keyed["name"] === "null" ? null : keyed["name"];
   const kind = String(keyed["kind"]);
-  const listed = typeof name === "string" && DANGEROUS_SWITCHES.has(name.replace(/^-+/, ""));
+  // the key holds the name as read; judged as the scan judges it, with the value not at hand
+  const judged =
+    typeof name === "string" ? judgeSwitch(splitSwitch(name).key, "unknown", null) : null;
   return {
     ...keyed,
     name,
@@ -1087,7 +1089,7 @@ function fallbackSwitch(keyed: Record<string, unknown>): Record<string, unknown>
     dangerous:
       kind === "security-warnings"
         ? false
-        : (kind === "switch" || kind === "argument") && listed
+        : (kind === "switch" || kind === "argument") && judged?.dangerous === true
           ? true
           : null,
     reason: "the row's other fields could not be read back from the comparison",
