@@ -4104,17 +4104,24 @@ export function readFileTokens(
             // A method of such a wrapper the file replaces, in any form the stage across modules
             // reads (`({ a: local.get } = …)`, `local.get ??= f`, `Object.assign(local, o)`,
             // `Reflect.set(local, k, f)`): its calls give no row in the file either.
-            const own = reader.readOwnReplacements();
-            if (own.unchecked) ownKeyUnchecked = true;
-            if (own.found.length) {
-              ownKeyReplaced = [
-                ...new Set(own.found.map((x) => `${x.via}:${reader.lineOf(x.at)}`)),
-              ].slice(0, 20);
-              // the rows the resolver's own reading gave through such a method go as well
-              const gone = new Set(own.found.map((x) => x.via));
-              candidates.storage = candidates.storage.filter((r) => !r.via || !gone.has(r.via));
+            // Read only where a call of such a method in the file gives a row.
+            let calls = reader.keyCalls(false, true);
+            const through = new Set(
+              reader.classes.flatMap((c) => Object.keys(c.methods).map((m) => `${c.name}.${m}`)),
+            );
+            if (calls.length || candidates.storage.some((r) => r.via && through.has(r.via))) {
+              const own = reader.readOwnReplacements();
+              if (own.unchecked) ownKeyUnchecked = true;
+              if (own.found.length) {
+                ownKeyReplaced = [
+                  ...new Set(own.found.map((x) => `${x.via}:${reader.lineOf(x.at)}`)),
+                ].slice(0, 20);
+                // the rows the resolver's own reading gave through such a method go as well
+                const gone = new Set(own.found.map((x) => x.via));
+                candidates.storage = candidates.storage.filter((r) => !r.via || !gone.has(r.via));
+                calls = reader.keyCalls(false, true);
+              }
             }
-            const calls = reader.keyCalls(false, true);
             if (reader.keyCallsCut) candidates.keyCallsCapped = true;
             if (calls.length) {
               const unknownKinds = new Set<string>(
@@ -4424,7 +4431,7 @@ export function analyzeJavaScriptTree(
     if ((scan.wrappersUnchecked || tokenFacts.keyUnchecked) && facts.limitations.length < 200)
       facts.limitations.push({
         code: "wrapper_replacements_unchecked",
-        message: `${file.path}: the writes in the file that may replace a method of its own ${scan.wrappersUnchecked && tokenFacts.keyUnchecked ? "IPC and storage" : scan.wrappersUnchecked ? "IPC" : "storage"} wrappers were not all read within the replacement budget of the file (10,000 steps); calls of those methods in the file are read without that check, so a method replaced there would not be seen.`,
+        message: `${file.path}: the writes in the file that may replace a method of its own ${scan.wrappersUnchecked && tokenFacts.keyUnchecked ? "IPC and storage" : scan.wrappersUnchecked ? "IPC" : "storage"} wrappers were not all read within the replacement budget of the file (200,000 steps); calls of those methods in the file are read without that check, so a method replaced there would not be seen.`,
       });
     if (scan.wrappersReplaced && facts.limitations.length < 200)
       facts.limitations.push({

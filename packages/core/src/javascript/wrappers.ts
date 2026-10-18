@@ -182,10 +182,12 @@ const OBJECT_WORK = 400_000;
 /** Work for reading the receivers of member writes in one file (`replacements`). */
 const REPLACEMENT_WORK = 200_000;
 /**
- * The same for the writes in a wrapper's own file (`readOwnReplacements`), which every file with
- * wrappers pays, also a large bundle: smaller, as a write past it only leaves the file unchecked.
+ * The same for the writes in a wrapper's own file (`readOwnReplacements`), read only where a call
+ * of a wrapper method there gives a row; only the writes of wrapper method names, computed member
+ * writes and the `Object`/`Reflect` calls are read there. On Discord, Claude.app and Electron
+ * Fiddle the largest bundle needs 86,000 steps.
  */
-const OWN_REPLACEMENT_WORK = 10_000;
+const OWN_REPLACEMENT_WORK = 200_000;
 /** Work of the replacement scan of one application: tokens of the files opened plus receivers. */
 const REPLACEMENT_APP_WORK = 3_000_000;
 /** Tokens of an argument of a key-forwarding wrapper call the resolver reads, at most. */
@@ -300,7 +302,7 @@ export class WrapperReader {
    */
   readOwnReplacements(): { found: Array<{ via: string; at: number }>; unchecked: boolean } {
     if (!this.classes.length) return { found: [], unchecked: false };
-    const all = this.replacements(OWN_REPLACEMENT_WORK);
+    const all = this.replacements(OWN_REPLACEMENT_WORK, true);
     // A write whose receiver was not read within the budget proves nothing here: the calls are
     // read as before the check existed, and the caller says the file was not checked whole.
     const found = all.filter((x) => !x.budget);
@@ -335,12 +337,17 @@ export class WrapperReader {
    */
   replacements(
     limit = REPLACEMENT_WORK,
+    /**
+     * In the wrapper's own file: the export a module object holds (`m.store = …`) is not asked
+     * for, as there the wrapper is reached by its own name.
+     */
+    ownFile = false,
   ): Array<{ cls: WrapperClass; method: string; at: number; budget?: true }> {
     // a budget of its own, so that the calls read later have theirs
     const saved = this.work;
     this.work = limit;
     try {
-      return this.replacementsIn();
+      return this.replacementsIn(ownFile);
     } finally {
       this.replacementWork = limit - Math.max(0, this.work);
       this.work = saved;
@@ -350,7 +357,7 @@ export class WrapperReader {
   /** The work the last `replacements` used. */
   replacementWork = 0;
 
-  private replacementsIn(): Array<{
+  private replacementsIn(ownFile: boolean): Array<{
     cls: WrapperClass;
     method: string;
     at: number;
@@ -422,6 +429,14 @@ export class WrapperReader {
       return false;
     };
     const touch = (start: number, k: number, method: string, at: number): void => {
+      // A name no wrapper has as a method replaces none: only the export itself is asked for
+      // (the receivers of the many other member writes of a bundle are not read).
+      if (!methods.has(method)) {
+        if (ownFile || this.work <= 0) return;
+        const v = exportAt(start, k);
+        if (v?.kind === "inst" || v?.kind === "cls") add([v.cls], null, at);
+        return;
+      }
       const classes = owners(start, k - 1);
       if (classes === "budget")
         return add(anyOf(methods.has(method) ? method : null), method, at, true);
@@ -444,6 +459,7 @@ export class WrapperReader {
           if (start0 !== null && written(j, start0)) touch(start0, j, t.value, j);
           continue;
         }
+        if (ownFile && !methods.has(t.value)) continue;
         const start = r.receiverAt(j - 1);
         if (start !== null && written(j, start)) touch(start, j, t.value, j);
         continue;

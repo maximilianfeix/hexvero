@@ -1042,15 +1042,27 @@ export function scanJavaScript(
     );
     if (calls.length) reader.findClasses(calls);
     if (objects.length) reader.findObjectParams(objects);
-    // A method of the file's own wrappers that the file replaces (`Svc.prototype.register = f`,
-    // `w.handle = () => {}` on an instance): its calls give no row here, as across modules.
-    const own = reader.readOwnReplacements();
     // a search cut short may have missed a call site that passes something else: no decision
     const objectsCut = objects.length >= MAX_OBJECT_CALLS;
-    const read = objects.length ? reader.paramIpc() : [];
-    const paramIpc = reader.objectsCapped || objectsCut ? [] : read;
+    const paramsOf = (): ParamIpc[] => {
+      const read = objects.length ? reader.paramIpc() : [];
+      return reader.objectsCapped || objectsCut ? [] : read;
+    };
+    let paramIpc = paramsOf();
     if (!reader.classes.length && !paramIpc.length) return wrapperScan;
-    const rows = reader.rows();
+    let rows = reader.rows();
+    // A method of the file's own wrappers that the file replaces (`Svc.prototype.register = f`,
+    // `w.handle = () => {}` on an instance): its calls give no row here, as across modules.
+    // Read only where a call of such a method in the file gives a row; then the rows are read
+    // again without the replaced methods.
+    let own: ReturnType<typeof reader.readOwnReplacements> = { found: [], unchecked: false };
+    if (rows.length || paramIpc.some((p) => p.sites.length)) {
+      own = reader.readOwnReplacements();
+      if (own.found.length) {
+        paramIpc = paramsOf();
+        rows = reader.rows();
+      }
+    }
     const replacedAt = [...new Set(own.found.map((x) => `${x.via}:${reader.lineOf(x.at)}`))];
     const facts = reader.facts();
     wrapperScan = {

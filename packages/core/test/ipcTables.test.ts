@@ -1039,3 +1039,28 @@ describe("where a bridge member is written, as the review of #207 found (RC)", (
         expect(members(info)).toEqual(want);
       });
 });
+
+describe("the in-file replacement check of a large bundle (RC 7)", () => {
+  it("reads past the other member writes of the file and finds the replacement", () => {
+    // many member writes that replace no wrapper method, then one that does
+    const main = [
+      'const { ipcMain } = require("electron");',
+      "class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }",
+      "const w = new Ipc();",
+      Array.from({ length: 6000 }, (_, i) => `o${i % 50}.k${i} = v${i};`).join("\n"),
+      "w.handle = () => {};",
+      'w.handle("late:replaced", () => 1);',
+      "module.exports = { w };",
+    ].join("\n");
+    const info = analyze({ "main.js": main });
+    expect(rows(info)).toEqual([]);
+    expect(codes(info)).toContain("wrapper_method_replaced");
+    expect(codes(info)).not.toContain("wrapper_replacements_unchecked");
+  });
+
+  it("does not read a file whose wrappers give no row there", () => {
+    const main =
+      'const { ipcMain } = require("electron");\nclass Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst w = new Ipc();\nw.handle = () => {};\nmodule.exports = { w };\n';
+    expect(codes(analyze({ "main.js": main }))).not.toContain("wrapper_method_replaced");
+  });
+});
