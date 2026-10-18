@@ -805,9 +805,10 @@ describe("IPC through esbuild's ES-module interop", () => {
   });
 });
 
+const each = (lines: string[]): string[] => lines.flatMap((l) => show(find(l).endpoints));
+
 describe("a URL argument derived from a string (#196)", () => {
   // one file per call: rows of the same value fold into one
-  const each = (lines: string[]): string[] => lines.flatMap((l) => show(find(l).endpoints));
   it("never takes the receiver's text for a method or member of it", () => {
     expect(
       each([

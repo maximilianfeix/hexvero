@@ -241,6 +241,9 @@ const safeName = (name: string): boolean =>
   !/[\\\0]/.test(name) &&
   !name.split("/").some((part) => part === ".." || part === ".");
 
+const depth = (resources: string, layout: string): number =>
+  resources.split("/").length - (layout === "macos" ? 2 : 1);
+
 /** The groups of candidates in a ZIP: one per resources directory, nearest the root first. */
 function zipGroups(
   zip: ZipArchive,
@@ -269,8 +272,6 @@ function zipGroups(
       groups.set(win[1]!, "windows-linux");
   }
   // the depth of the build itself: the `.app`, or the install directory
-  const depth = (resources: string, layout: string): number =>
-    resources.split("/").length - (layout === "macos" ? 2 : 1);
   return [...groups]
     .map(([resources, layout]) => ({ resources, layout }))
     .toSorted(

@@ -34,6 +34,23 @@ const place = (parent: string, pkg: Record<string, string>): string => {
   return path;
 };
 
+const bundle = (parent: string, version: string): string => {
+  const root = join(dir, parent, "Notes.app");
+  mkdirSync(join(root, "Contents", "Resources"), { recursive: true });
+  writeFileSync(
+    join(root, "Contents", "Resources", "app.asar"),
+    buildAsar({
+      "package.json": JSON.stringify({ name: "notes", version, main: "main.js" }),
+      "main.js": `require("electron").ipcMain.handle("ping${version}", () => 1);\n`,
+    }),
+  );
+  return root;
+};
+
+const info = (path: string, sha: string) => ({
+  info: { path, size: 1, sha256: sha, format: "asar" },
+});
+
 describe("builds with the same file name", () => {
   it("are named by their package.json name and version in compare and check", async () => {
     const a = place("v1", { name: "notes", version: "1.0.0" });
@@ -70,18 +87,6 @@ describe("builds with the same file name", () => {
   });
 
   it("name packaged builds in the report title, not their app.asar (#195 review)", async () => {
-    const bundle = (parent: string, version: string): string => {
-      const root = join(dir, parent, "Notes.app");
-      mkdirSync(join(root, "Contents", "Resources"), { recursive: true });
-      writeFileSync(
-        join(root, "Contents", "Resources", "app.asar"),
-        buildAsar({
-          "package.json": JSON.stringify({ name: "notes", version, main: "main.js" }),
-          "main.js": `require("electron").ipcMain.handle("ping${version}", () => 1);\n`,
-        }),
-      );
-      return root;
-    };
     const [a, b] = [bundle("r1", "1.0.0"), bundle("r2", "2.0.0")];
     for (const report of ["r.html", "r.md"]) {
       const out = join(dir, report);
@@ -95,9 +100,6 @@ describe("builds with the same file name", () => {
 
   it("treat two Unicode spellings of one name as the same name", async () => {
     const { buildLabels } = await import("@hexvero/core");
-    const info = (path: string, sha: string) => ({
-      info: { path, size: 1, sha256: sha, format: "asar" },
-    });
     const stub = (paths: Record<string, string>) =>
       ({
         get: (id: string) => info(paths[id]!, id.repeat(64)),
