@@ -829,8 +829,10 @@ The calls on the parameter become rows only when there is at least one call site
 passes the same object: `ipcMain` (or `ipcRenderer`) itself, another name for it,
 `electron.ipcMain`, or a parameter whose own call sites all pass it. A name `ipcMain` that is
 declared where it is passed with a value that is not Electron's (`{ const ipcMain = new
-EventEmitter(); register(ipcMain); }`) is that other object: the value must name `"electron"`, or
-the IPC object as a member (`electron.ipcMain`). One call site that passes
+EventEmitter(); register(ipcMain); }`) is that other object, when the value is provably not
+Electron's: `new X(…)`, a literal, an object or array literal, a function or class, with nothing
+after it. Any other value (`getIpc()`, a condition) may be Electron's ipcMain, and is read as
+before. One call site that passes
 anything else, or that is not read, gives no rows at all. The rows are in the file of the function,
 at the call inside it, with `via: "parameter"` and `wrapper` naming it (`PrefsService.register`, a
 minifier's name in a minified build); a call the object has no such method for

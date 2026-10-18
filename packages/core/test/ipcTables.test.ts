@@ -960,10 +960,21 @@ describe("a block's own ipcMain passed to a function", () => {
         'function register(ipc) { ipc.handle("r2:x", () => 1); }',
         'function kept(ipc) { ipc.handle("kept:x", () => 1); }',
         "kept(ipcMain);",
+        // a value that may be Electron's is read as before (review RC of #207)
+        'function getIpc() { return require("electron").ipcMain; }',
+        'function viaCall(ipc) { ipc.handle("call:x", () => 1); }',
+        "{",
+        "  const ipcMain = getIpc();",
+        "  viaCall(ipcMain);",
+        "}",
         "module.exports = {};",
       ].join("\n");
       const info = analyze(build({ "main.js": main }, ["main.js"], how));
-      expect(rows(info)).toEqual(["kept:x ipcMain.handle main.js"]);
+      // (a bundle renames the block's name, which is then not read as ipcMain at all)
+      expect(rows(info)).toEqual([
+        ...(how === "plain" ? ["call:x ipcMain.handle main.js"] : []),
+        "kept:x ipcMain.handle main.js",
+      ]);
     });
 });
 

@@ -988,24 +988,53 @@ export function scanJavaScript(
         if (tokens[k]?.type === "ident" && tokens[k]!.value === name) {
           const site = resolver!.boundAround(k, name);
           const decl = site?.kind === "local" ? site.site?.name : undefined;
+          // Only a value that is provably another object: `new X(…)`, a literal, an object or
+          // array literal, a function or class. Anything else (`getIpc()`, `a ? b : c`) may be
+          // Electron's ipcMain, and is read as before.
           if (decl !== undefined && is(decl + 1, "punct", "=")) {
-            let electron = false;
-            for (let j = decl + 2, d = 0; j < tokens.length && j < decl + 42; j++) {
-              const x = tokens[j]!;
-              if (x.type === "punct" && /^[([{]$/.test(x.value)) d++;
-              else if (x.type === "punct" && /^[)\]}]$/.test(x.value)) d--;
-              else if (d <= 0 && x.type === "punct" && (x.value === ";" || x.value === ",")) break;
-              if (d < 0) break;
-              // `require("electron")`, a name for it, or a member of that name (`e.ipcMain`)
-              if (
-                (x.type === "string" && x.value === "electron") ||
-                aliases.get(j) === name ||
-                aliases.get(j) === "electron" ||
-                (x.type === "ident" && x.value === name)
-              )
-                electron = true;
+            const v = tokens[decl + 2];
+            const other =
+              v !== undefined &&
+              (v.type === "string" ||
+                v.type === "number" ||
+                v.type === "template" ||
+                (v.type === "punct" && (v.value === "{" || v.value === "[")) ||
+                (v.type === "ident" &&
+                  /^(new|function|class|async|true|false|null|undefined|void)$/.test(v.value)) ||
+                (v.type === "punct" &&
+                  v.value === "(" &&
+                  is(resolver!.closeOf(decl + 2) + 1, "punct", "=>")));
+            // a value that ends there: `new Emitter()` alone, not `new X().ipcMain`
+            if (other) {
+              let end = decl + 2;
+              for (let d = 0; end < tokens.length && end < decl + 2000; end++) {
+                const x = tokens[end]!;
+                if (x.type !== "punct") continue;
+                if (/^[([{]$/.test(x.value)) d++;
+                else if (/^[)\]}]$/.test(x.value)) {
+                  if (d === 0) break;
+                  d--;
+                } else if (d === 0 && (x.value === ";" || x.value === ",")) break;
+              }
+              let member = false;
+              for (let d = 0, p = decl + 2; p < end; p++) {
+                const x = tokens[p]!;
+                if (x.type === "punct" && /^[([{]$/.test(x.value)) d++;
+                else if (x.type === "punct" && /^[)\]}]$/.test(x.value)) d--;
+                else if (
+                  d === 0 &&
+                  x.type === "punct" &&
+                  (x.value === "." ||
+                    x.value === "?." ||
+                    x.value === "?" ||
+                    x.value === "||" ||
+                    x.value === "&&" ||
+                    x.value === "??")
+                )
+                  member = true;
+              }
+              if (!member || v!.value === "function" || v!.value === "class") return null;
             }
-            if (!electron) return null;
           }
         }
         return name;
