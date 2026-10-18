@@ -6,6 +6,8 @@ import { parseSourceMapJson } from "./sourcemap.js";
 
 export interface RecoveredFile {
   path: string;
+  /** The module or source name the file was written for, as the bundle or map has it. */
+  name?: string;
   bytes: number;
   origin: "bundle-module" | "source-map";
   moduleId?: string;
@@ -36,6 +38,11 @@ export function safeRelativePath(name: string, fallback: string): string {
   clean = clean
     .split("/")
     .map((segment) => segment.replace(/^\./, "_"))
+    // Names Windows reserves for devices, also with an extension (`con.js`, `LPT1.ts`): a file of
+    // that name cannot be created there, and the manifest maps the original name to the file.
+    .map((segment) =>
+      /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(segment) ? `_${segment}` : segment,
+    )
     .join("/");
   if (!/\.[a-z0-9]{1,8}$/i.test(clean)) clean += ".js";
   return clean;
@@ -186,7 +193,13 @@ function bundleInto(
         : `${header}module.exports = ${factory};\n`;
     try {
       const bytes = writeInside(root, relative, text, guard);
-      written.push({ path: relative, bytes, origin: "bundle-module", moduleId: m.id });
+      written.push({
+        path: relative,
+        bytes,
+        origin: "bundle-module",
+        moduleId: m.id,
+        ...(m.name ? { name: m.name } : {}),
+      });
       fileOf.push(relative);
     } catch (error) {
       if (error instanceof GuardStop) throw error;
@@ -265,6 +278,7 @@ function sourcesInto(
         path: relative,
         bytes: writeInside(root, relative, content, guard),
         origin: "source-map",
+        name: label,
       });
     } catch (error) {
       if (error instanceof GuardStop) throw error;
@@ -276,6 +290,8 @@ function sourcesInto(
     file: map.file ?? null,
     sources: sources.length,
     written: written.length,
+    // which source each file holds: names are changed to be safe paths on every platform
+    files: written.map((w) => ({ source: w.name ?? null, file: w.path })),
     skipped,
   };
   writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard);
