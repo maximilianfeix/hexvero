@@ -754,14 +754,27 @@ contextBridge copies the object when `exposeInMainWorld` is called, so only a wr
 call is a member: one in the same function body as the call, in source order, or in the callback
 of an array method there (`forEach`, `map`, `filter`, `reduce`, …), which runs where it is
 written. A write after the call is not exposed (also when the same object is exposed again
-later: the second exposure takes the members written up to it, the first does not). A write
-inside any other function (an event listener, a helper that may run before the call or after
-it) cannot be placed, and gives one entry with `member: null`. When the name is assigned a
-whole new object (`let api = {}; …; api = { only }`), the members are those of the object it
-holds at the call, read only when that is proven: every assignment of the name is in the call's
-function before the call, and the last one is a statement `api = {…}` in the call's own block,
-not the body of a condition or loop; anything else is one entry with `member: null`. Writes to
-the object before that assignment went to the object it held then, and are no member.
+later: the second exposure takes the members written up to it, the first does not). When the
+call is in a function that runs from the top of the file, the writes at the top are placed
+against where it runs from: a function declared there whose every other mention is at the top
+(`function expose() {…}` and `expose();`, `setTimeout(later, 0)`), or a function written in
+place there (a listener `window.addEventListener("DOMContentLoaded", () => {…})`,
+`process.once("loaded", …)`, an IIFE). A write at the top before that place is a member; one
+after a call `expose()` is not exposed; one after a listener or a function handed on may run
+before it or not, and gives one entry with `member: null`. A write in a function that runs from
+the top before the exposure (`setup()` called there, also a function declared below and
+hoisted, an IIFE) is a member as well. A write in a loop that the call is in too (`for (…) { if
+(i === 1) expose(…); api.x = …; }`, also a loop without braces) may run before the call in a
+later round, and gives one entry with `member: null`, as does a write inside any other function
+(an event listener, a promise callback, a helper called from somewhere else). When the name is
+assigned a whole new object (`let api = {}; …; api = { only }`), the members are those of the
+object it holds at the call, read only when that is proven: every assignment of the name is in
+the call's function before the call, and the last one is a statement `api = {…}` (or a part of a
+comma sequence that is one, as minifiers join statements; also in a declaration list
+`var { a } = x, api = {…}`) in the call's own block, not the body of a condition or loop;
+anything else is one entry with `member: null`. Writes to the object before that assignment went
+to the object it held then, and are no member. Not seen: a reassignment by destructuring
+(`[api] = …`, `({ api } = …)`), which leaves the first object's members listed.
 
 The senders are read with the same evaluation: `ipcRenderer.invoke(ch, ...a)` inside such a
 callback gives one row per channel (`via: "resolved"`, method `element`). The list a `forEach` /

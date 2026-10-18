@@ -966,3 +966,63 @@ describe("a block's own ipcMain passed to a function", () => {
       expect(rows(info)).toEqual(["kept:x ipcMain.handle main.js"]);
     });
 });
+
+// Review RC of #207: an exposure inside a function or listener that runs from the top of the
+// file, a setup function or IIFE that runs before it, a loop the call and a write share, and
+// statements a minifier joins with commas.
+const RC_PRELOADS: Record<string, { source: string; members: string[] }> = {
+  called: {
+    source:
+      'const api = { a: () => ipcRenderer.send("a") };\nfunction expose() { contextBridge.exposeInMainWorld("api", api); }\napi.x = () => ipcRenderer.send("x");\nexpose();\napi.y = () => ipcRenderer.send("y");\n',
+    // y is written after the call that exposes the object
+    members: ["api.a a", "api.x x"],
+  },
+  timer: {
+    source:
+      'const api = {};\nfunction later() { contextBridge.exposeInMainWorld("api", api); }\napi.z = () => ipcRenderer.send("z");\nsetTimeout(later, 0);\n',
+    members: ["api.z z"],
+  },
+  listener: {
+    source:
+      'const api = { a: () => ipcRenderer.send("a") };\napi.b = () => ipcRenderer.send("b");\nwindow.addEventListener("DOMContentLoaded", () => { contextBridge.exposeInMainWorld("api", api); });\napi.x = () => ipcRenderer.send("x");\n',
+    // x is written after the listener is registered: it may or may not run first
+    members: ["api.a a", "api.b b", "api.null null"],
+  },
+  hoisted: {
+    source:
+      'const api = {};\nsetup();\ncontextBridge.exposeInMainWorld("api", api);\nfunction setup() { api.h = () => ipcRenderer.send("hoisted"); }\n',
+    members: ["api.h hoisted"],
+  },
+  iife: {
+    source:
+      'const api = {};\n(function () { api.i = () => ipcRenderer.send("iife"); })();\ncontextBridge.exposeInMainWorld("api", api);\n',
+    members: ["api.i iife"],
+  },
+  loop: {
+    source:
+      'const api = { a: () => ipcRenderer.send("a") };\nfor (let i = 0; i < 2; i++) { if (i === 1) contextBridge.exposeInMainWorld("api", api); api.x = () => ipcRenderer.send("loopx"); }\n',
+    members: ["api.a a", "api.null null"],
+  },
+  loopWithoutBraces: {
+    source:
+      'const api = { a: () => ipcRenderer.send("a") };\nlet n = 0;\nwhile (n++ < 2) { if (n === 2) { contextBridge.exposeInMainWorld("api", api); break; } api.w = () => ipcRenderer.send("whilew"); }\n',
+    members: ["api.a a", "api.null null"],
+  },
+  reassigned: {
+    source:
+      'let api = { old: () => ipcRenderer.send("old") };\napi = { neu: () => ipcRenderer.send("neu") };\napi.more = () => ipcRenderer.send("more");\ncontextBridge.exposeInMainWorld("api", api);\n',
+    members: ["api.more more", "api.neu neu"],
+  },
+};
+
+describe("where a bridge member is written, as the review of #207 found (RC)", () => {
+  for (const [name, { source, members: want }] of Object.entries(RC_PRELOADS))
+    for (const how of BUILDS)
+      it(`${name} (${how})`, () => {
+        const text = `const { contextBridge, ipcRenderer } = require("electron");\n${source}`;
+        const info = analyze(
+          build({ "main.js": "", "preload.js": text }, ["main.js", "preload.js"], how),
+        );
+        expect(members(info)).toEqual(want);
+      });
+});

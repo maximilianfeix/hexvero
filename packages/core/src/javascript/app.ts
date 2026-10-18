@@ -10,6 +10,7 @@ import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js"
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
 import {
   type Binding,
+  type FnDef,
   builtIdentifierIndex,
   ExpressionResolver,
   type ModuleHost,
@@ -2136,6 +2137,32 @@ export function bridgeMembers(
         .join(""),
     );
   /**
+   * The statement token j stands in, walking back at its own bracket level over a comma sequence:
+   * `head` null when it is a statement of its own (after `;`, `{`, `}` or at the start), else the
+   * `)` of the `if`/`for`/`while`/`with` header or the `else`/`do` it is the body of (or -1 for
+   * anything else that may make it conditional: a label or `case`). `loop`: that head is a loop.
+   */
+  const statementOf = (j: number): { head: number | null; loop: boolean } => {
+    for (let p = j - 1, guard = 0; guard < 4000; p--, guard++) {
+      const x = tokens[p];
+      if (!x) return { head: null, loop: false };
+      if (x.type === "ident" && (x.value === "else" || x.value === "do"))
+        return { head: p, loop: x.value === "do" };
+      if (x.type !== "punct") continue;
+      if (x.value === ";" || x.value === "{" || x.value === "}") return { head: null, loop: false };
+      if (x.value === ":") return { head: -1, loop: false };
+      if (x.value === ")" || x.value === "]") {
+        const open = openOf(p);
+        if (open < 0) return { head: -1, loop: false };
+        const word = tokens[open - 1];
+        if (x.value === ")" && word?.type === "ident" && /^(if|for|while|with)$/.test(word.value))
+          return { head: p, loop: word.value === "for" || word.value === "while" };
+        p = open;
+      } else if (x.value === "(" || x.value === "[") return { head: -1, loop: false };
+    }
+    return { head: -1, loop: false };
+  };
+  /**
    * How the binding the name at k (used by the exposing call at `call`) is assigned as a whole
    * besides its declaration (`api = …`, `api ||= …`; the resolver's `writesTo`): `none`, the
    * name token of the write whose object literal it holds at the call, or `unknown`. A write is
@@ -2147,8 +2174,13 @@ export function bridgeMembers(
     resolver ??= new ExpressionResolver(tokens, context.constants);
     const r = resolver;
     const bound = r.binding(k, name, true);
-    if (bound?.kind !== "value") return bound === null ? "unknown" : "none";
-    const init = bound.range[0];
+    // A declaration in a list the resolver does not read (`var { a } = x, api = {…}`, as
+    // minifiers write it): the file's only declaration of the name, when no parameter around
+    // the use or the call has it.
+    const listed =
+      bound === null && !r.paramAround(k, name) && !r.paramAround(call, name) ? objectOf(name) : -1;
+    if (bound?.kind !== "value" && listed < 0) return bound === null ? "unknown" : "none";
+    const init = bound?.kind === "value" ? bound.range[0] : listed;
     const decl = is(init - 1, "=") && tokens[init - 2]?.value === name ? init - 2 : -1;
     if (decl === -1) return "unknown";
     const sites = r.namePositions(name);
@@ -2163,8 +2195,9 @@ export function bridgeMembers(
       !is(last + 1, "=") ||
       !is(last + 2, "{") ||
       r.bracketAround(last) !== r.bracketAround(call) ||
-      // a statement of its own, not the body of `if (…)`, `else` or a loop without braces
-      !(last === 0 || is(last - 1, ";") || is(last - 1, "{") || is(last - 1, "}"))
+      // a statement of its own (or a part of a comma sequence that is one, as minifiers join
+      // statements), not the body of `if (…)`, `else` or a loop without braces
+      statementOf(last).head !== null
     )
       return "unknown";
     return last;
@@ -2473,21 +2506,109 @@ export function bridgeMembers(
       stepwise.add(stepKey);
       budget -= tokens.length;
       resolver ??= new ExpressionResolver(tokens, context.constants);
-      const callFunction = resolver.functionAt(i)?.paramsAt ?? -1;
+      const r = resolver;
+      const callDef = r.functionAt(i);
+      const callFunction = callDef?.paramsAt ?? -1;
       let unplaced = false;
-      /** `before`: a member; `after`: not exposed; `elsewhere`: written in another function. */
-      // A callback of an array method (`Object.keys(T).forEach((k) => { api[k] = … })`) runs
-      // where it is written; a write before the name was given the exposed object went to the
-      // object it held then.
-      const placeOf = (k: number): "before" | "after" | "elsewhere" => {
-        let d = resolver!.functionAt(k);
+      /**
+       * The function a write at k is in, past the callbacks of array methods there
+       * (`Object.keys(T).forEach((k) => { api[k] = … })`), which run where they are written: its
+       * `paramsAt`, -1 at the top of the file, or null for a function guard could not climb.
+       */
+      const homeOf = (k: number): FnDef | null | undefined => {
+        let d = r.functionAt(k);
         for (let guard = 0; d && d.paramsAt !== callFunction; guard++) {
-          if (guard > 8 || !d.calledBy || !SYNC_CALLBACKS.has(d.calledBy.method))
-            return "elsewhere";
-          d = resolver!.outerOf(d);
+          if (guard > 8 || !d.calledBy || !SYNC_CALLBACKS.has(d.calledBy.method)) return d;
+          d = r.outerOf(d);
         }
-        if (!d && callFunction !== -1) return "elsewhere";
-        return k < i && k > replacedAt ? "before" : "after";
+        return d;
+      };
+      /**
+       * Where a function of the top of the file runs, when every use of it is there: a function
+       * declared (`function setup() {…}`, `const go = () => {…}`) whose every other mention is at
+       * the top, not inside a function (`direct`: the first is a call `go()`; else it is handed
+       * on, `setTimeout(later)`, and runs later), or a function written in place at the top (a
+       * listener `window.addEventListener("DOMContentLoaded", () => {…})`, an IIFE): it runs from
+       * where it is written, at once or later (`registered`). Null otherwise.
+       */
+      const runsAt = (def: FnDef): { at: number; direct: boolean } | null => {
+        if (r.outerOf(def)) return null;
+        const name = def.name;
+        const declared =
+          name !== null &&
+          (tokens[def.paramsAt - 2]?.value === "function" ||
+            (is(def.paramsAt - 1, "=") && tokens[def.paramsAt - 2]?.value === name));
+        if (!declared) return { at: def.paramsAt, direct: false };
+        const uses = r
+          .namePositions(name)
+          .filter((j) => j !== def.paramsAt - 1 && j !== def.paramsAt - 2 && !is(j - 1, "."));
+        if (!uses.length || uses.some((j) => r.functionAt(j))) return null;
+        return { at: uses[0]!, direct: is(uses[0]! + 1, "(") };
+      };
+      /** A function written where it is called: `(function () {…})()`, `(() => {…})()`. */
+      const iife = (def: FnDef): boolean => {
+        const end = def.body[1];
+        return is(end, "(") || (is(end, ")") && is(end + 1, "("));
+      };
+      /** Where the exposure happens at the top of the file, when its function runs from there. */
+      const exposedFrom = callDef ? runsAt(callDef) : null;
+      /** The loop bodies around the call (`for (…) { … }`, `while`, `do`), as [open, close]. */
+      const loops: Array<[number, number]> = [];
+      for (let p = r.bracketAround(i), guard = 0; p > 0 && guard < 64; guard++) {
+        if (callDef && p <= callDef.paramsAt) break;
+        if (is(p, "{")) {
+          const head = is(p - 1, ")") ? r.openOf(p - 1) : -1;
+          const word = head > 0 ? tokens[head - 1]?.value : tokens[p - 1]?.value;
+          if (word === "for" || word === "while" || word === "do") loops.push([p, r.closeOf(p)]);
+        }
+        p = r.bracketAround(p);
+      }
+      {
+        // `for (…) a(), expose(…), api.x = …;` and `for (…) if (c) expose(…);`: a loop without
+        // braces whose body is the statement the call stands in
+        let from = i;
+        for (let guard = 0; guard < 8; guard++) {
+          const { head, loop } = statementOf(from);
+          if (head === null || head < 0) break;
+          if (loop) {
+            let end = i;
+            for (let d = 0; end < tokens.length && end < i + 20_000; end++) {
+              const x = tokens[end]!;
+              if (x.type !== "punct") continue;
+              if (x.value === "(" || x.value === "[" || x.value === "{") d++;
+              else if (x.value === ")" || x.value === "]" || x.value === "}") {
+                if (d === 0) break;
+                d--;
+              } else if (x.value === ";" && d === 0) break;
+            }
+            loops.push([head, end]);
+            break;
+          }
+          from = is(head, ")") ? openOf(head) - 1 : head;
+        }
+      }
+      /** `before`: a member; `after`: not exposed; `elsewhere`: cannot be placed. */
+      // A write before the name was given the exposed object went to the object it held then.
+      const placeOf = (k: number): "before" | "after" | "elsewhere" => {
+        // a write in the loop the exposure is in may run before it in a later round
+        if (loops.some(([open, close]) => k > open && k < close)) return "elsewhere";
+        const home = homeOf(k);
+        const homeAt = home?.paramsAt ?? -1;
+        if (homeAt === callFunction) return k < i && k > replacedAt ? "before" : "after";
+        // the exposure runs from the top of the file: a write at the top, before that place
+        if (exposedFrom && homeAt === -1) {
+          if (k < exposedFrom.at && k > replacedAt) return "before";
+          return exposedFrom.direct ? "after" : "elsewhere";
+        }
+        // a write in a function that runs from the top before the exposure (`setup()` called
+        // there, an IIFE); after it, or in any other function, it cannot be placed
+        if (home && (callFunction === -1 || exposedFrom)) {
+          const ran = runsAt(home);
+          const until = exposedFrom ? exposedFrom.at : i;
+          if (ran && ran.at < until && ran.at > replacedAt && (ran.direct || iife(home)))
+            return "before";
+        }
+        return "elsewhere";
       };
       const unreadable = (k: number): void => {
         if (unplaced) return;
