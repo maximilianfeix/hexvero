@@ -117,6 +117,18 @@ export interface SideCoverage {
   /** Files (module ids) where a value of this collection family could not be resolved,
    *  e.g. an IPC call whose channel is not a literal. "*" = somewhere, file unknown. */
   unresolved: ReadonlyMap<UnresolvedFamily, ReadonlySet<string>>;
+  /**
+   * The contextBridge apis (`window.<api>`) of this side whose exposed value was not read whole,
+   * so a member passing its channel on may be missing and with it the page calls through it
+   * (rows `via: "bridge"`, #229). "*" = any api.
+   */
+  bridgeUnread?: ReadonlySet<string>;
+  /**
+   * The IPC channels of this side that only page calls through the bridge use, each with the
+   * apis those calls go through: a channel row (`ipcChannels`) the other side lacks is unknown
+   * when every one of them is in the other side's `bridgeUnread`.
+   */
+  bridgeChannels?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** An item present on one side whose file the other side did not read. */
@@ -558,6 +570,26 @@ function filesOf(item: unknown): string[] {
   return out;
 }
 
+/**
+ * The contextBridge apis an IPC item goes through when it exists only by page calls through the
+ * bridge: a row `via: "bridge"` (its `member` is `<api>.<path>`), or a channel row whose channel
+ * the item's side uses only that way (`SideCoverage.bridgeChannels`). Undefined otherwise.
+ */
+function bridgeApisOf(
+  item: unknown,
+  own: SideCoverage | null | undefined,
+): ReadonlySet<string> | undefined {
+  if (!isRecord(item)) return undefined;
+  if (item["via"] === "bridge" && typeof item["member"] === "string") {
+    const api = item["member"].split(".")[0];
+    return api ? new Set([api]) : undefined;
+  }
+  const channel = item["channel"];
+  if (typeof channel === "string" && Array.isArray(item["senders"]))
+    return own?.bridgeChannels?.get(channel);
+  return undefined;
+}
+
 export function compareItems(
   left: readonly unknown[],
   right: readonly unknown[],
@@ -689,6 +721,7 @@ export function compareItems(
       return;
     }
     const other = side === "a" ? options.coverage?.b : options.coverage?.a;
+    const own = side === "a" ? options.coverage?.a : options.coverage?.b;
     if (other) {
       const files = filesOf(item);
       const unreadable = files.find((f) => other.unreadable.has(f));
@@ -749,6 +782,25 @@ export function compareItems(
           });
           return;
         }
+      }
+      // A page call through the bridge, or a channel only such calls use, while the other side
+      // could not read the bridge value of its api: the member that carries it may be there.
+      const carried = family === "ipc" ? bridgeApisOf(item, own) : undefined;
+      const unread = other.bridgeUnread;
+      if (
+        carried !== undefined &&
+        carried.size > 0 &&
+        unread !== undefined &&
+        unread.size > 0 &&
+        (unread.has("*") || [...carried].every((api) => unread.has(api)))
+      ) {
+        unknown.push({
+          key: shown,
+          side,
+          file: files[0] ?? "",
+          reason: "the other side has values there that could not be resolved",
+        });
+        return;
       }
     }
     (side === "a" ? removed : added).push(shown);
@@ -903,7 +955,14 @@ function completenessOf(
     found.add("files_unread");
   if (sides.some((c) => c.unreadable.size > 0 || c.unreadableUnlisted))
     found.add("files_unreadable");
-  if (family !== undefined && sides.some((c) => (c.unresolved.get(family)?.size ?? 0) > 0))
+  if (
+    family !== undefined &&
+    (sides.some((c) => (c.unresolved.get(family)?.size ?? 0) > 0) ||
+      // page rows opened by a bridge value the other side did not read (#229)
+      unknown.some(
+        (u) => u.reason === "the other side has values there that could not be resolved",
+      ))
+  )
     found.add("values_unresolved");
   const gaps = COMPLETENESS_GAPS.filter((g) => found.has(g));
   return { compared: { a, b }, total, complete: gaps.length === 0, gaps };

@@ -426,6 +426,8 @@ export class Session {
     for (const row of app.storage)
       if (computedValue(row.value)) unresolved.add("storage", storageSlot(row.file, row.kind));
     unresolved.fromLimitations(analysis.limitations);
+    const bridgeUnread = bridgeUnreadApis(app.contextBridge, analysis.limitations);
+    const bridgeChannels = bridgeOnlyChannels(app.modules);
     // Files cut past the ones named: any read file may be one of them. (Files passed over are
     // never in `read`, and with any of them the side is not complete.)
     const unlisted = (app.coverage.partial ?? 0) > (app.coverage.partialFiles?.length ?? 0);
@@ -438,6 +440,8 @@ export class Session {
       ]),
       ...(unlisted ? { unreadableUnlisted: true } : {}),
       unresolved: unresolved.map,
+      ...(bridgeUnread.size ? { bridgeUnread } : {}),
+      ...(bridgeChannels.size ? { bridgeChannels } : {}),
     };
   }
 
@@ -1127,6 +1131,63 @@ export const FILE_SCOPED_LIMITATIONS: ReadonlySet<string> = new Set([
   "bridge_calls_capped",
   "bridge_calls_unread",
 ]);
+
+/**
+ * The contextBridge apis whose exposed value was not read whole, so a member that passes its
+ * channel on, and the page calls through it, may be missing (`SideCoverage.bridgeUnread`, #229):
+ * an entry whose value could not be read (`member` null), the entries a context_bridge_module_unread
+ * names (`(from file:line)`), and any api ("*") when it names only some of them or the inventory
+ * was cut (context_bridge_truncated).
+ */
+export function bridgeUnreadApis(
+  contextBridge: readonly { api: string; member: string | null; file: string; line: number }[],
+  limitations: readonly Limitation[],
+): Set<string> {
+  const out = new Set<string>();
+  for (const b of contextBridge) if (b.member === null) out.add(b.api);
+  for (const l of limitations) {
+    if (l.code === "context_bridge_truncated") out.add("*");
+    if (l.code !== "context_bridge_module_unread") continue;
+    const count = Number(/^(\d+) /.exec(l.message)?.[1] ?? NaN);
+    const places = [...l.message.matchAll(/\(from (.+?):(\d+)\)/g)];
+    // `some` lists the first five: past them the entries are not named
+    if (places.length !== count) {
+      out.add("*");
+      continue;
+    }
+    for (const [, file, line] of places) {
+      const apis = contextBridge.filter((b) => b.file === file && b.line === Number(line));
+      if (!apis.length) out.add("*");
+      for (const b of apis) out.add(b.api);
+    }
+  }
+  return out;
+}
+
+/**
+ * The channels only page calls through the bridge use (rows `via: "bridge"`), each with the apis
+ * of those calls (`SideCoverage.bridgeChannels`).
+ */
+export function bridgeOnlyChannels(
+  modules: readonly { ipc: readonly { channel: string | null; via?: string; member?: string }[] }[],
+): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  const other = new Set<string>();
+  for (const m of modules)
+    for (const u of m.ipc) {
+      if (u.channel === null) continue;
+      const api = u.via === "bridge" ? u.member?.split(".")[0] : undefined;
+      if (!api) {
+        other.add(u.channel);
+        continue;
+      }
+      const apis = out.get(u.channel);
+      if (apis) apis.add(api);
+      else out.set(u.channel, new Set([api]));
+    }
+  for (const c of other) out.delete(c);
+  return out;
+}
 
 /** The files per family where a value could not be resolved (`SideCoverage.unresolved`). */
 export class Unresolved {
