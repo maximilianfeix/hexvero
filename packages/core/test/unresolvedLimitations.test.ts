@@ -410,3 +410,108 @@ contextBridge.exposeInMainWorld("api", api);
     ]);
   });
 });
+
+/**
+ * An ES module app whose preload exposes `api` from api.js, a generic forwarder the page calls
+ * (#229). `unread` makes the bridge module unreadable (another module patches it); `drop` takes
+ * the page call of "gone" out with the bridge still read.
+ */
+const pageApp = (opts: {
+  unread?: boolean;
+  drop?: boolean;
+  other?: boolean;
+  dropOther?: boolean;
+  pageOnly?: boolean;
+}): Uint8Array =>
+  buildAsar({
+    "package.json": JSON.stringify({ name: "u", main: "main.js", type: "module" }),
+    "main.js": `import { ipcMain } from "electron";\nipcMain.handle("x", () => 1);\nipcMain.handle("gone", () => 1);\n`,
+    "preload.js": `import { contextBridge, ipcRenderer } from "electron";
+import { api } from "./api.js";
+contextBridge.exposeInMainWorld("api", api);
+${opts.other ? `contextBridge.exposeInMainWorld("other", { call: (channel, ...a) => ipcRenderer.invoke(channel, ...a) });\n` : ""}`,
+    "api.js": `import { ipcRenderer } from "electron";
+export const api = { call: (channel, ...a) => ipcRenderer.invoke(channel, ...a) };
+`,
+    ...(opts.unread
+      ? { "patch.js": `import { api } from "./api.js";\napi.extra = () => 1;\n` }
+      : {}),
+    "renderer.js": `window.api.call("x");\n${opts.drop ? "" : `window.api.call("gone");\n`}${opts.other && !opts.dropOther ? `window.other.call("o");\n` : ""}${opts.pageOnly ? `window.api.call("p");\n` : ""}`,
+  });
+
+/** Opens v1 and v2 of `pageApp` in a new session. */
+const openPair = async (
+  a: Parameters<typeof pageApp>[0],
+  b: Parameters<typeof pageApp>[0],
+  name: string,
+): Promise<{ session: Session; v1: string; v2: string }> => {
+  writeFileSync(join(dir, `${name}1.asar`), pageApp(a));
+  writeFileSync(join(dir, `${name}2.asar`), pageApp(b));
+  const session = new Session();
+  const v1 = (await session.open(join(dir, `${name}1.asar`))).id;
+  const v2 = (await session.open(join(dir, `${name}2.asar`))).id;
+  return { session, v1, v2 };
+};
+
+describe("page IPC through a bridge that could not be read (#229)", () => {
+  it("opens the page rows as unknown, not removed, when v2 cannot read the bridge module", async () => {
+    const { session, v1, v2 } = await openPair({}, { unread: true }, "pu");
+    const ipc = (await session.compareCollection(v1, v2, "ipc")).diff;
+    expect(ipc.removed).toEqual([]);
+    expect(ipc.unknown.map((u) => u.key).toSorted()).toEqual([
+      "renderer.js::ipcRenderer.invoke::gone",
+      "renderer.js::ipcRenderer.invoke::x",
+    ]);
+    // and the other way round: rows v2 gains once the module is read again
+    const back = (await session.compareCollection(v2, v1, "ipc")).diff;
+    expect(back.added).toEqual([]);
+    expect(back.unknown).toHaveLength(2);
+  });
+
+  it("leaves a page row removed when the bridge is read whole on both sides", async () => {
+    const { session, v1, v2 } = await openPair({}, { drop: true }, "pr");
+    const ipc = (await session.compareCollection(v1, v2, "ipc")).diff;
+    expect(ipc.removed).toEqual(["renderer.js::ipcRenderer.invoke::gone"]);
+    expect(ipc.unknown).toEqual([]);
+  });
+
+  it("opens only the rows of the api the unread bridge exposes", async () => {
+    // v2 cannot read the value of `api` but reads `other` whole, and drops the call of `other`
+    const { session, v1, v2 } = await openPair(
+      { other: true },
+      { unread: true, other: true, dropOther: true },
+      "po",
+    );
+    const ipc = (await session.compareCollection(v1, v2, "ipc")).diff;
+    expect(ipc.removed).toEqual(["renderer.js::ipcRenderer.invoke::o"]);
+    expect(ipc.unknown.map((u) => u.key).toSorted()).toEqual([
+      "renderer.js::ipcRenderer.invoke::gone",
+      "renderer.js::ipcRenderer.invoke::x",
+    ]);
+    // the channel rows: "o" is used by page calls of `other` only, which v2 reads whole
+    const channels = (await session.compareCollection(v1, v2, "ipcChannels")).diff;
+    expect(channels.removed).toEqual(["o"]);
+  });
+
+  it("opens a channel only page calls through the unread bridge use", async () => {
+    const { session, v1, v2 } = await openPair(
+      { other: true },
+      { unread: true, other: true },
+      "pc",
+    );
+    const channels = (await session.compareCollection(v1, v2, "ipcChannels")).diff;
+    // "gone" and "x" have a main-process handler on both sides: changed senders, not one-sided
+    expect(channels.removed).toEqual([]);
+    expect(channels.unknown).toEqual([]);
+    // a channel no main-process code handles, sent only through `api`: unknown, not removed
+    const page = await openPair({ pageOnly: true }, { unread: true, pageOnly: true }, "pp");
+    const only = (await page.session.compareCollection(page.v1, page.v2, "ipcChannels")).diff;
+    expect(only.removed).toEqual([]);
+    expect(only.unknown.map((u) => [u.key, u.file])).toEqual([["p", "renderer.js"]]);
+    const cov = await session.coverage(v2);
+    expect(cov?.bridgeUnread).toEqual(new Set(["api"]));
+    expect((await session.coverage(v1))?.bridgeChannels).toEqual(
+      new Map([["o", new Set(["other"])]]),
+    );
+  });
+});
