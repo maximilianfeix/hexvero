@@ -24,6 +24,7 @@
     "docs/case-studies/*.report.md",
     "docs/case-studies/*.report.html",
     "corpus/holdout5/*/src/**",
-    "corpus/holdout6/*/src/**"
+    "corpus/holdout6/*/src/**",
+    "corpus/holdout7/*/src/**"
   ]
 }

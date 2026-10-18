@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'" />
+    <title>Update firmware</title>
+  </head>
+  <body>
+    <p id="guide"></p>
+    <p id="warning" hidden>The last update was interrupted.</p>
+    <input id="version" value="3.2.0" />
+    <button id="start">Start</button>
+    <button id="cancel">Cancel</button>
+    <p id="stage"></p>
+    <progress id="bar" max="100"></progress>
+    <p id="result"></p>
+    <script type="module" src="renderer-flasher.js"></script>
+  </body>
+</html>

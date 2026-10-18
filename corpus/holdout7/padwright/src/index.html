@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://share.padwright.example" />
+    <title>Padwright</title>
+  </head>
+  <body>
+    <aside>
+      <ul id="devices"></ul>
+      <button id="update" hidden>Update to <span id="update-version"></span></button>
+    </aside>
+    <main>
+      <div id="keys"></div>
+      <button id="save">Write to pad</button>
+      <input id="layout-name" placeholder="Layout name" />
+      <button id="share">Share</button>
+      <label>Key repeat <input id="repeat" type="range" min="100" max="600" /></label>
+      <select id="theme">
+        <option>system</option>
+        <option>light</option>
+        <option>dark</option>
+      </select>
+    </main>
+    <section id="gallery"></section>
+    <footer>
+      Gallery: <span id="gallery-base"></span> · recent <span id="recent-count">0</span>
+      <button id="forget-recent">Forget</button>
+    </footer>
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>

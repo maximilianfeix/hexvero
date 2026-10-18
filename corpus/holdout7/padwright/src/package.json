@@ -1,0 +1,9 @@
+{
+  "name": "padwright",
+  "productName": "Padwright",
+  "version": "3.2.0",
+  "description": "Configurator for Padwright programmable macro keypads",
+  "license": "MIT",
+  "main": "main.js",
+  "author": "Padwright contributors"
+}
