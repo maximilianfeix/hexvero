@@ -131,7 +131,10 @@ describe("hexvero check", () => {
     const app = (name: string, files: Record<string, string>): string => {
       const at = join(dir, "nothing", name);
       mkdirSync(at, { recursive: true });
-      for (const [file, text] of Object.entries(files)) writeFileSync(join(at, file), text);
+      for (const [file, text] of Object.entries(files)) {
+        mkdirSync(join(at, file, ".."), { recursive: true });
+        writeFileSync(join(at, file), text);
+      }
       return at;
     };
     const pkg = JSON.stringify({ name: "x", version: "1.0.0", main: "main.js" });
@@ -139,7 +142,7 @@ describe("hexvero check", () => {
     const noJs = app("no-js", { "package.json": pkg, "README.md": "hello" });
     const noPackage = app("no-package", { "main.js": "console.log(1);\n" });
     const real = app("real", { "package.json": pkg, "main.js": "console.log(1);\n" });
-    for (const build of [empty, noJs, noPackage]) {
+    for (const build of [empty, noJs]) {
       for (const [x, y] of [
         [build, build],
         [real, build],
@@ -151,6 +154,29 @@ describe("hexvero check", () => {
       }
     }
     expect((await check(real, real, "--policy", examplePolicy)).code).toBe(0);
+    // no package.json at the top: checked, with a warning (electron-vite out/, linux-unpacked/)
+    const loose = await check(noPackage, noPackage, "--policy", examplePolicy);
+    expect(loose.code).toBe(0);
+    expect(loose.io.text()).toContain(
+      "no package.json at the top: entry and Electron version unknown",
+    );
+    const unpacked = app("linux-unpacked", {
+      "chrome.js": "console.log(0);\n",
+      "resources/app/package.json": pkg,
+      "resources/app/main.js": "console.log(1);\n",
+    });
+    const nested = await check(unpacked, unpacked, "--policy", examplePolicy, "--format", "json");
+    expect(nested.code).toBe(0);
+    expect(JSON.parse(nested.io.stdout.join("\n")).warnings.join("\n")).toContain(
+      join(unpacked, "resources", "app", "package.json"),
+    );
+    // a build directory whose app is an archive: the refusal names it
+    const packed = app("mac-build", { "resources/app.asar": "not read" });
+    const refusedPacked = await check(packed, packed, "--policy", examplePolicy);
+    expect(refusedPacked.code).toBe(1);
+    expect(refusedPacked.io.text()).toContain(
+      `check ${join(packed, "resources", "app.asar")} instead`,
+    );
     // JavaScript that is only a link out of the build is not read
     const secret = join(dir, "nothing", "secret.js");
     writeFileSync(secret, "console.log(2);\n");

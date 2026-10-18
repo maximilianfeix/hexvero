@@ -99,6 +99,7 @@ export function formatCheck(
         ),
       );
   }
+  for (const w of r.warnings ?? []) lines.push(`  ${paint(io, "yellow", "!")} ${safe(w)}`);
   if (r.incomplete.length) {
     lines.push("", paint(io, "bold", "  Not decidable"));
     for (const i of r.incomplete)

@@ -19,6 +19,8 @@
  *   refused with a message, never matched silently.
  */
 import { createHash } from "node:crypto";
+import { readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { AnalysisError } from "./model.js";
 import { directoryDigest } from "./digest.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
@@ -97,6 +99,8 @@ export interface PolicyResult {
   findings: PolicyFinding[];
   /** Coverage gaps that made the check undecidable for a rule. */
   incomplete: Array<{ rule: string; collection: string; gaps: string[] }>;
+  /** What the check could not tell about the builds, without changing the status. */
+  warnings?: string[];
   /** `warnings`: the baseline was written for another policy or another before build. */
   baseline?: { file: string; created: string; matched: number; warnings?: string[] };
   policy: { file: string; sha256: string };
@@ -1275,6 +1279,32 @@ const RULE_LISTS = [
   "urls",
 ];
 
+/**
+ * For an app directory without package.json or JavaScript: an archive or nested app that is the
+ * likelier thing to check (`resources/app.asar`, `resources/app/package.json`). Looks only at the
+ * top and at `resources/`, by name.
+ */
+function appHints(dir: string): { asar?: string; nestedPackage?: string } {
+  const out: { asar?: string; nestedPackage?: string } = {};
+  for (const sub of ["", "resources"]) {
+    let names: string[];
+    try {
+      names = readdirSync(join(dir, sub)).toSorted();
+    } catch {
+      continue;
+    }
+    const asar = names.find((n) => n.toLowerCase().endsWith(".asar"));
+    if (asar && !out.asar) out.asar = join(dir, sub, asar);
+  }
+  const nested = join(dir, "resources", "app", "package.json");
+  try {
+    if (statSync(nested).isFile()) out.nestedPackage = nested;
+  } catch {
+    // no nested app
+  }
+  return out;
+}
+
 async function sidesOf(session: Session, idA: string, idB: string): Promise<CheckSides> {
   const side = async (id: string) => {
     const [analysis, lists] = await Promise.all([session.analyze(id), session.collections(id)]);
@@ -1312,24 +1342,33 @@ export async function checkRelease(
       `hexvero check compares two builds of the same kind; before is ${sides.kind.a}, after is ${sides.kind.b}`,
     );
   // An app with nothing hexvero could read (an empty directory, one without JavaScript, files
-  // that are only links out of it) would pass every rule for lack of findings: refuse it.
+  // that are only links out of it) would pass every rule for lack of findings: refuse it. A
+  // missing package.json at the top is only a warning: an electron-vite `out/` directory or a
+  // `linux-unpacked/` build with resources/app are real things to check.
+  const warnings: string[] = [];
   if (sides.kind.a === "javascript-app")
     for (const side of ["a", "b"] as const) {
       const id = side === "a" ? idA : idB;
       const { data } = await session.analyze(id);
       if (data.kind !== "javascript-app") continue;
-      const app = data.app;
-      const why =
-        app.modules.length === 0
-          ? "has no JavaScript module hexvero could read (an empty directory, no .js files, or only links that lead out of it)"
-          : app.package === null
-            ? "has no package.json, so it is not an application hexvero can check"
-            : null;
-      if (why)
+      const info = session.get(id).info;
+      const name = side === "a" ? "before" : "after";
+      const hints = info.format === "directory" ? appHints(info.path) : null;
+      if (data.app.modules.length === 0)
         throw new AnalysisError(
           "invalid_input",
-          `nothing to check: the ${side === "a" ? "before" : "after"} build ${session.get(id).info.path} ${why}`,
+          `nothing to check: the ${name} build ${info.path} has no JavaScript module hexvero could read (an empty directory, no .js files, or only links that lead out of it)${
+            hints?.asar ? `; check ${hints.asar} instead` : ""
+          }`,
           { side },
+        );
+      if (data.app.package === null)
+        warnings.push(
+          `${name} build: no package.json at the top: entry and Electron version unknown${
+            hints?.nestedPackage
+              ? ` (${hints.nestedPackage} exists; check that directory instead)`
+              : ""
+          }`,
         );
     }
   let comparison = await comparisonForCheck(session, idA, idB);
@@ -1347,6 +1386,7 @@ export async function checkRelease(
     };
   }
   const result = evaluatePolicy(comparison, policy, { ...options, sides: options.sides ?? sides });
+  if (warnings.length) result.warnings = warnings;
   // The digest only matters for a baseline: say there when it does not cover the whole build.
   if (result.baseline && partial.length)
     result.baseline = {
@@ -1430,6 +1470,11 @@ export function renderPolicyMarkdown(result: PolicyResult): string {
         );
     }
     out.push("", "</details>", "");
+  }
+  if (result.warnings?.length) {
+    out.push("## Warnings", "");
+    for (const w of result.warnings) out.push(`- ${cell(w)}`);
+    out.push("");
   }
   if (result.incomplete.length) {
     out.push("## Not decidable", "");
