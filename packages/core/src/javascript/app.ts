@@ -545,6 +545,8 @@ function windowRanges(
    * else null.
    */
   externalOf: (k: number) => { specifier: string; property: string } | null = () => null,
+  /** The string a name at k is a constant of (`const NI = "nodeIntegration"`), else null. */
+  stringAt: (k: number) => string | null = () => null,
 ): WindowRanges & { declOf: (k: number) => Declared } {
   const traced = new Map<string, Set<number>>();
   const viaName = new Set<number>();
@@ -953,6 +955,22 @@ function windowRanges(
           wholePrefs.delete(window);
           hide(window, at ?? t.start);
         }
+      }
+      // A computed key in a webPreferences object whose name is not read (`[process.env.K]:
+      // false`) may write any setting, and replaces whatever the object wrote for that key
+      // before it: the keys before it are not known. `["sandbox"]` and `[NI]` with NI a string
+      // constant are read as the key they name. At a level decided elsewhere it may be either.
+      if (window !== null && is(k, "[") && (is(k - 1, "{") || is(k - 1, ","))) {
+        const brace = braceAround(k, open);
+        const prefsHere =
+          brace === root
+            ? level === "prefs" || level === null
+            : brace !== -1 && is(brace - 1, ":") && tokens[brace - 2]?.value === "webPreferences";
+        const inner = tokens[k + 1];
+        const read =
+          is(k + 2, "]") &&
+          (inner?.type === "string" || (inner?.type === "ident" && stringAt(k + 1) !== null));
+        if (prefsHere && !read) hide(window, at ?? t.start);
       }
       // `__proto__: x` replaces no own key, but Electron reads the options by property access,
       // so a key the literal does not write is taken from x. In a window's options that matters
@@ -3426,6 +3444,8 @@ export function readFileTokens(
             const specifier = context.constants.requireOf(name.value, k);
             return specifier ? { specifier, property: member.value } : null;
           },
+          (k) =>
+            tokens[k]?.type === "ident" ? context.constants.stringOf(tokens[k]!.value, k) : null,
         );
         located = where;
         ranges = located.ranges;
@@ -3610,12 +3630,67 @@ export function readFileTokens(
         for (let k = 0; k + 2 < tokens.length; k++) {
           const t = tokens[k]!;
           const colon = tokens[k + 1]!;
-          if (t.type !== "ident" || colon.type !== "punct" || colon.value !== ":") continue;
-          if (t.value === "preload") preloadsAt.add(t.start);
-          else if (BOOLEAN_KEYS.has(t.value)) {
-            const key = t.value as Exclude<PreferenceKey, "preload">;
-            const v = tokens[k + 2]!;
-            const n = tokens[k + 3];
+          const isP = (i: number, value: string): boolean =>
+            tokens[i]?.type === "punct" && tokens[i]!.value === value;
+          /** The key of a member that starts at k, and the token its value starts at. */
+          let name: string | null = null;
+          let valueAt = k + 2;
+          /** `get sandbox() {…}`, `nodeIntegration() {…}`: the value is not read here. */
+          let accessor = false;
+          const member = isP(k - 1, "{") || isP(k - 1, ",");
+          if (t.type === "ident" && colon.type === "punct" && colon.value === ":") name = t.value;
+          else if (member && t.type === "string" && isP(k + 1, ":")) {
+            // `"nodeIntegration": true`, which a minifier writes unquoted
+            name = t.value;
+          } else if (member && isP(k, "[") && isP(k + 2, "]") && isP(k + 3, ":")) {
+            // `[NI]: true` with `NI = "nodeIntegration"` a constant, or `["sandbox"]: …`; a
+            // key that cannot be read is handled where the window's options are located.
+            const inner = tokens[k + 1]!;
+            name =
+              inner.type === "string"
+                ? inner.value
+                : inner.type === "ident"
+                  ? context.constants.stringOf(inner.value, k + 1)
+                  : null;
+            valueAt = k + 4;
+          } else if (
+            member &&
+            t.type === "ident" &&
+            (t.value === "get" || t.value === "set" || t.value === "async") &&
+            (tokens[k + 1]?.type === "ident" || tokens[k + 1]?.type === "string") &&
+            isP(k + 2, "(")
+          ) {
+            name = tokens[k + 1]!.value;
+            accessor = true;
+          } else if (member && (t.type === "ident" || t.type === "string") && isP(k + 1, "(")) {
+            name = t.value;
+            accessor = true;
+            valueAt = k + 1;
+          }
+          if (accessor) {
+            // a method only when a body follows the parameters: `f(a, sandbox(x))` is a call
+            let close = valueAt;
+            for (let d = 0; close < tokens.length && close < valueAt + 200; close++) {
+              if (isP(close, "(")) d++;
+              else if (isP(close, ")") && --d === 0) break;
+            }
+            if (!isP(close + 1, "{")) name = null;
+          }
+          if (name === null || !tokens[valueAt]) continue;
+          if (name === "preload") {
+            if (t.type === "ident" && valueAt === k + 2 && !accessor) preloadsAt.add(t.start);
+          } else if (BOOLEAN_KEYS.has(name) && accessor) {
+            // A getter or method decides the value when the window reads it: not a literal.
+            settingsAt.push({
+              key: name as Exclude<PreferenceKey, "preload">,
+              value: null,
+              computed: `${t.value === name ? "" : `${t.value} `}${name}() {…}`,
+              start: t.start,
+            });
+          } else if (BOOLEAN_KEYS.has(name)) {
+            const key = name as Exclude<PreferenceKey, "preload">;
+            const v = tokens[valueAt]!;
+            const n = tokens[valueAt + 1];
             // true, false, and what minifiers write for them: !0 and !1
             const value =
               v.type === "ident" && (v.value === "true" || v.value === "false")
@@ -3627,7 +3702,7 @@ export function readFileTokens(
                   ? n.value === "0"
                   : null;
             // `sandbox: true && flag` is not the setting `true`: the value must end there.
-            const after = tokens[v.type === "ident" ? k + 3 : k + 4];
+            const after = tokens[v.type === "ident" ? valueAt + 1 : valueAt + 2];
             const ends =
               !after || (after.type === "punct" && (after.value === "," || after.value === "}"));
             if (value !== null && ends) settingsAt.push({ key, value, start: t.start });
@@ -3635,8 +3710,8 @@ export function readFileTokens(
               // Not a literal: the value is decided at run time. The expression is kept, up
               // to the `,` or `}` that ends the property, so a reader sees what decides it.
               let nested = 0;
-              let end = k + 2;
-              for (; end < tokens.length && end < k + 60; end++) {
+              let end = valueAt;
+              for (; end < tokens.length && end < valueAt + 58; end++) {
                 const p = tokens[end]!;
                 if (p.type !== "punct") continue;
                 if (p.value === "(" || p.value === "[" || p.value === "{") nested++;

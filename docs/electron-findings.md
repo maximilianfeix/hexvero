@@ -45,7 +45,13 @@ A setting also reads as `computed` where the code next to the window does not de
   a window's options it makes `webPreferences` unknown unless the options write their own, and in
   a `webPreferences` object every key it does not write reads as computed (the ones it writes
   stand). An accessor or async member that cannot be named (`get [k]()`, `async *gen()`,
-  `get 1()`) may be any key. The limitation
+  `get 1()`) may be any key. Inside a `webPreferences` object a key is read however it is
+  written: `"nodeIntegration": true` (which esbuild's minifier writes unquoted, so the plain and
+  the minified build read the same), `["sandbox"]: false`, and `[NI]: true` with
+  `const NI = "nodeIntegration"`. An accessor or method of a setting (`get contextIsolation() {…}`,
+  `sandbox() {…}`) makes that key computed. A computed key whose name is not read
+  (`[process.env.K]: false`) may be any setting, and replaces what the object wrote before it:
+  every key before it is computed, and a key written after it stands. The limitation
   `window_options_unresolved` names the windows whose settings are not all known;
 - the options object that was followed may be changed after its declaration. A write to one key
   (`prefs.sandbox = false`, `prefs.sandbox ||= x`, `delete prefs.sandbox`) makes that key

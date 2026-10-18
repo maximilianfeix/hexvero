@@ -818,3 +818,42 @@ describe("the minified-bundle finding", () => {
     ]);
   });
 });
+
+// Issue #200: keys written as strings, as constants in brackets, as accessors or methods, and
+// a computed key that cannot be read. esbuild's minifier unquotes `"nodeIntegration":`, so the
+// plain and minified sources must read the same.
+const QUOTED_KEYS = [
+  'const w1 = new BrowserWindow({ webPreferences: { "nodeIntegration": true, "contextIsolation": false } });',
+  'const NI = "nodeIntegration";',
+  "const w2 = new BrowserWindow({ webPreferences: { [NI]: true } });",
+  "const w3 = new BrowserWindow({ webPreferences: { sandbox: true, [process.env.K]: false } });",
+  "const w4 = new BrowserWindow({ webPreferences: { get contextIsolation() { return false; } } });",
+  'const w5 = new BrowserWindow({ webPreferences: { nodeIntegration: false, "nodeIntegration": true } });',
+  "const w6 = new BrowserWindow({ webPreferences: { [process.env.K]: false, sandbox: true } });",
+  'const w7 = new BrowserWindow({ webPreferences: { ["sandbox"]: false, title: pick(a, sandbox(x)) } });',
+  "module.exports = { w1, w2, w3, w4, w5, w6, w7 };",
+].join("\n");
+const QUOTED_STATES = [
+  "true false not written null not written",
+  "true not written not written null not written",
+  // the unread key may be any of them, and replaces the sandbox written before it
+  "computed computed computed null computed",
+  "not written computed not written null not written",
+  // the later of two writes of one key wins
+  "true not written not written null not written",
+  // written after the unread key: it stands
+  "computed computed true null computed",
+  // a call in a value is not a method `sandbox() {…}`
+  "not written not written false null not written",
+];
+
+describe("webPreferences keys that are not plain names (#200)", () => {
+  it("reads quoted and constant keys, and no key an accessor or an unread key may write", () => {
+    const main = `const { BrowserWindow } = require("electron");\n${QUOTED_KEYS}`;
+    expect(states(analyze({ "main.js": main }))).toEqual(QUOTED_STATES);
+    for (const minify of [false, true])
+      expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(
+        QUOTED_STATES,
+      );
+  });
+});
