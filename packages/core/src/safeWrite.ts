@@ -199,8 +199,9 @@ export async function writeFileNoFollow(
     if (created && opened) {
       try {
         const now = lstatSync(path);
-        // Windows may report inode 0: there only the size is compared
-        const same = WINDOWS || (now.dev === opened.dev && now.ino === opened.ino);
+        // a volume without file IDs reports inode 0: then only the size is compared
+        const ids = now.ino !== 0 && opened.ino !== 0;
+        const same = !ids || (now.dev === opened.dev && now.ino === opened.ino);
         if (same && now.size === 0) unlinkSync(path);
       } catch {
         // gone already

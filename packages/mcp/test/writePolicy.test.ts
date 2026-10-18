@@ -287,6 +287,30 @@ describe("MCP write policy", () => {
       writeFileSync(path, "{}");
       const opened = statSync(path);
       expect(() => verifyOpened(path, "export", opened)).not.toThrow();
+      // without links (Windows CI too): the file opened is another file than the one there now
+      const other = join(root, "f", "other.json");
+      writeFileSync(other, "{}");
+      const elsewhere = statSync(other);
+      if (elsewhere.ino !== 0)
+        expect(() => verifyOpened(path, "export", elsewhere)).toThrow(
+          /changed while it was opened/,
+        );
+      // and an export through the tool, whose opened file is checked after opening
+      const elf = join(root, "f", "fixture.elf");
+      writeFileSync(elf, buildElf());
+      const session = new Session();
+      const tools = createHandlers(session, {} as never);
+      const { id } = await session.open(elf);
+      const result = (await tools.hexvero_export({
+        targetId: id,
+        path: join(root, "f", "e.json"),
+      })) as {
+        path: string;
+      };
+      expect(result.path).toBe(join(root, "f", "e.json"));
+      expect(readFileSync(join(root, "f", "e.json"), "utf8").startsWith('{\n  "hexvero": 1')).toBe(
+        true,
+      );
       writeFileSync(join(victim, "x.json"), "{}");
       if (!trySymlink(victim, join(root, "probe2"))) return ctx.skip();
       swapDir(join(root, "f"), join(root, "g"))();

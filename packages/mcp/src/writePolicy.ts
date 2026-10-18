@@ -253,21 +253,34 @@ export function checkWritePath(target: string, kind: "export" | "recover"): stri
  * is the one at the real location the policy resolved (same device and inode). Catches a
  * directory on the way that was swapped for a link between the check and the open.
  */
+/** The native real path, or null when the path does not resolve. */
+function nativeReal(path: string): string | null {
+  try {
+    return realpath(path);
+  } catch {
+    return null;
+  }
+}
+
 export function verifyOpened(
   target: string,
   kind: "export" | "recover",
   opened: { dev: number; ino: number },
 ): void {
   const { absolute, real } = resolveWrite(target, kind);
-  // Windows may report inode 0 for both: there the policy check above is what holds.
-  if (process.platform === "win32") return;
   let now: { dev: number; ino: number } | null = null;
   try {
     now = lstatSync(real);
   } catch {
     // checked below
   }
-  if (!now || now.dev !== opened.dev || now.ino !== opened.ino)
+  // NTFS reports real file IDs, compared like inodes. A volume without them reports 0: then the
+  // opened path must still resolve, natively, to the real location the policy checked.
+  const ids = now !== null && now.ino !== 0 && opened.ino !== 0;
+  const same = ids
+    ? now!.dev === opened.dev && now!.ino === opened.ino
+    : now !== null && nativeReal(absolute) === real;
+  if (!same)
     throw new AnalysisError(
       "invalid_input",
       `${kind} refused for ${absolute}: the path changed while it was opened`,
