@@ -224,6 +224,7 @@ export {
   fingerprintOf,
   hostAllowed,
   hostKnown,
+  validAllowEntry,
   hostOf,
   parseBaseline,
   parsePolicy,

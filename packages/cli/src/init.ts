@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { constants, lstatSync } from "node:fs";
+import { mkdir, open } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   POLICY_RULES,
@@ -6,6 +7,7 @@ import {
   checkRelease,
   hostOf,
   parsePolicy,
+  validAllowEntry,
   type Session,
 } from "@hexvero/core";
 import { flagString, UsageError, type ParsedArgs } from "./args.js";
@@ -32,22 +34,77 @@ export function starterPolicy(allow: readonly string[]): Record<string, unknown>
   };
 }
 
-/** Every external host the request targets of a build name, sorted. */
-async function hostsOf(session: Session, id: string): Promise<string[]> {
+/**
+ * The external hosts a build sends requests to (its `endpoints`), sorted, split into those a
+ * policy can list and those it cannot (`validAllowEntry`: a name a URL may hold that the policy
+ * syntax refuses, such as `region-aiplatform-endpoint_id.p.googleapis.com`). Hosts only named in
+ * plain URL strings (`urls`) are counted, not allowed: nothing shows they are requested.
+ */
+async function hostsOf(
+  session: Session,
+  id: string,
+): Promise<{ allow: string[]; rejected: string[]; urlsOnly: number }> {
   const lists = await session.collections(id);
-  const hosts = new Set<string>();
-  for (const name of ["endpoints", "urls"]) {
-    if (!(name in lists)) continue;
+  const read = async (name: string): Promise<Set<string>> => {
+    const hosts = new Set<string>();
+    if (!(name in lists)) return hosts;
     for (const item of await session.items(id, name)) {
-      const v =
-        (item as { value?: unknown; url?: unknown } | null)?.value ??
-        (item as { url?: unknown } | null)?.url;
+      const v = (item as { value?: unknown } | null)?.value;
       if (typeof v !== "string") continue;
       const reading = hostOf(v);
       if (reading.kind === "host") hosts.add(reading.host);
     }
+    return hosts;
+  };
+  const requested = await read("endpoints");
+  const named = await read("urls");
+  const all = [...requested].toSorted();
+  return {
+    allow: all.filter(validAllowEntry),
+    rejected: all.filter((h) => !validAllowEntry(h)),
+    urlsOnly: [...named].filter((h) => !requested.has(h)).length,
+  };
+}
+
+/**
+ * Writes `text` to `path` without following a symbolic link in its last component, also a
+ * dangling one: a new file is created exclusively, an existing one replaced only with `force`,
+ * opened with O_NOFOLLOW where the platform has it.
+ */
+async function writeNoFollow(path: string, text: string, force: boolean): Promise<void> {
+  const link = (): boolean => {
+    try {
+      return lstatSync(path).isSymbolicLink();
+    } catch {
+      return false;
+    }
+  };
+  const refuse = (): UsageError =>
+    new UsageError(`${path} is a symbolic link; hexvero init does not write through one`);
+  if (link()) throw refuse();
+  let handle;
+  try {
+    handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o666);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    if (!force) throw new UsageError(`${path} exists; pass --force to replace it`);
+    if (link()) throw refuse();
+    try {
+      handle = await open(
+        path,
+        constants.O_WRONLY | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0),
+      );
+    } catch (reopen) {
+      const code = (reopen as NodeJS.ErrnoException).code;
+      if (code === "ELOOP" || code === "EMLINK") throw refuse();
+      throw reopen;
+    }
   }
-  return [...hosts].toSorted();
+  try {
+    await handle.writeFile(text);
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
@@ -61,6 +118,8 @@ export async function runInit(args: ParsedArgs, io: Io, session: Session): Promi
   if (extra !== undefined) throw new UsageError(`unexpected argument "${extra}"`);
   const out = flagString(args.flags, "out") ?? DEFAULT_POLICY_PATH;
   let allow: string[] = [];
+  let rejected: string[] = [];
+  let urlsOnly = 0;
   let id: string | undefined;
   if (build) {
     const target = await session.open(build);
@@ -70,23 +129,21 @@ export async function runInit(args: ParsedArgs, io: Io, session: Session): Promi
         `init reads hosts from an Electron app, an app directory or a JavaScript bundle; ${build} is ${kind}`,
       );
     id = target.id;
-    allow = await hostsOf(session, id);
+    ({ allow, rejected, urlsOnly } = await hostsOf(session, id));
   }
   const text = `${JSON.stringify(starterPolicy(allow), null, 2)}\n`;
+  // what is written must be a policy hexvero reads: checked before anything is written
+  const parsed = parsePolicy(text, out);
   await mkdir(dirname(resolve(out)), { recursive: true });
-  try {
-    await writeFile(out, text, { flag: args.flags["force"] ? "w" : "wx" });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST")
-      throw new UsageError(`${out} exists; pass --force to replace it`);
-    throw error;
-  }
-  const self = id ? await checkRelease(session, id, id, parsePolicy(text, out)) : undefined;
+  await writeNoFollow(out, text, Boolean(args.flags["force"]));
+  const self = id ? await checkRelease(session, id, id, parsed) : undefined;
   if (args.flags["json"]) {
     io.out(
       toJson({
         policy: out,
         allow,
+        rejected,
+        urlsOnly,
         ...(self ? { selfCheck: { status: self.status, incomplete: self.incomplete } } : {}),
       }),
     );
@@ -99,8 +156,20 @@ export async function runInit(args: ParsedArgs, io: Io, session: Session): Promi
   );
   for (const host of allow.slice(0, 20)) io.out(`    ${printable(host)}`);
   if (allow.length > 20) io.out(paint(io, "dim", `    … ${allow.length - 20} more in the file`));
+  if (rejected.length)
+    io.out(
+      `  ${paint(io, "yellow", "!")} not allowed, a policy cannot list them (not a host name in the policy syntax): ${rejected.map(printable).join(", ")}`,
+    );
+  if (urlsOnly)
+    io.out(
+      paint(
+        io,
+        "dim",
+        `  ${urlsOnly} host(s) occur only in plain URL strings (collection urls), not in requests; they are not allowed`,
+      ),
+    );
   if (self) {
-    io.out(`  ${build} checked against itself: ${STATUS_TEXT[self.status]}`);
+    io.out(`  ${printable(build!)} checked against itself: ${STATUS_TEXT[self.status]}`);
     if (self.status === "incomplete")
       io.out(
         paint(
