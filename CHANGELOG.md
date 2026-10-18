@@ -6,6 +6,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Comparing builds: the limitations that say bridge values or page calls of generic forwarders were not read now apply only in the files they name (#219), not to every file of the app. `context_bridge_module_unread` names the exposing entry and the module of the value (`at preload.js:3, at api.js:1`), `bridge_calls_capped` and `bridge_calls_unread` the page scripts not read (`at page.js:1`), and `bridge_forwarder_ambiguous` the page scripts read that name the api (`No page script read names its api` when none does: nothing is missing then). A one-sided item in those files is unknown, an item elsewhere (a main-process handler) is added or removed again; a message that names only some files (`… and N more`) still applies anywhere, and `ipc_wrappers_capped` stays app-wide. `bridge_global_written` stays out of the map. A test walks every limitation code the core can emit and fails when one is neither mapped nor in a commented exemption list.
+
 ## [0.10.1] - 2026-10-18
 
 ### Fixed

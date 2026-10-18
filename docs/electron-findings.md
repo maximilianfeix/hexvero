@@ -331,7 +331,11 @@ was not read (`build(ipcRenderer)`, a spread), its calls give no rows, and
 `bridge_forwarder_ambiguous` names it. Every use of a local that holds the api costs 64 of the work
 budget. At most 200 page scripts and 5,000,000 of their tokens
 are read, and 2,000 calls per file; past that `bridge_calls_capped` names the files. Which page a
-window loads is not read, so a call is matched to every preload that exposes the api.
+window loads is not read, so a call is matched to every preload that exposes the api. In a
+comparison these limitations, and `bridge_calls_unread` and `context_bridge_module_unread`, leave
+a one-sided IPC or contextBridge item unknown only in the files they name (`at file:line`; the page
+scripts that name the api for `bridge_forwarder_ambiguous`); one that names only some (`… and N
+more`) applies to every file.
 
 ## Navigation and new-window handlers (`navigationHandlers`)
 

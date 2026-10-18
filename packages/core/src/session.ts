@@ -1099,9 +1099,9 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
   ipc_wrappers_capped: "ipc",
   context_bridge_truncated: "bridge",
   context_bridge_members_unreadable: "bridge",
-  // values of other modules and page calls of generic forwarders that were not read; app-wide
-  // until their messages name files (#219). bridge_global_written is left out: nothing is
-  // missing when it fires, and mapping it hid real IPC changes across the app.
+  // values of other modules and page calls of generic forwarders that were not read, in the
+  // files their messages name (FILE_SCOPED_LIMITATIONS). bridge_global_written is left out:
+  // nothing is missing when it fires, and mapping it hid real IPC changes across the app.
   context_bridge_module_unread: "bridge",
   bridge_forwarder_ambiguous: "ipc",
   bridge_calls_capped: "ipc",
@@ -1110,8 +1110,20 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
   candidates_truncated: "endpoint",
 };
 
+/**
+ * Codes of UNRESOLVED_LIMITATIONS whose messages name every place they apply to (` at file:line`,
+ * `file:1` for a whole file): with none named they apply nowhere, not anywhere (`*`). A message
+ * that names only some (`… and N more`) still applies anywhere.
+ */
+export const FILE_SCOPED_LIMITATIONS: ReadonlySet<string> = new Set([
+  "context_bridge_module_unread",
+  "bridge_forwarder_ambiguous",
+  "bridge_calls_capped",
+  "bridge_calls_unread",
+]);
+
 /** The files per family where a value could not be resolved (`SideCoverage.unresolved`). */
-class Unresolved {
+export class Unresolved {
   readonly map = new Map<UnresolvedFamily, Set<string>>();
 
   add(family: UnresolvedFamily, file: string): void {
@@ -1122,7 +1134,8 @@ class Unresolved {
 
   /**
    * Families a limitation names. Its message lists the first places as `at file:line`; when it
-   * lists only some (`… and N more`) or none, the rest may be anywhere: `*`.
+   * lists only some (`… and N more`) or none, the rest may be anywhere: `*` (none is nowhere for
+   * FILE_SCOPED_LIMITATIONS).
    */
   fromLimitations(limitations: readonly Limitation[]): void {
     for (const l of limitations) {
@@ -1131,7 +1144,11 @@ class Unresolved {
       if (l.code === "candidates_truncated") this.add("storage", "*");
       const files = [...l.message.matchAll(/ at (.+?):\d+(?=, | …|\.$|$)/g)].map((m) => m[1]!);
       for (const f of files) this.add(family, f);
-      if (files.length === 0 || / … and \d+ more/.test(l.message)) this.add(family, "*");
+      if (
+        (files.length === 0 && !FILE_SCOPED_LIMITATIONS.has(l.code)) ||
+        / … and \d+ more/.test(l.message)
+      )
+        this.add(family, "*");
     }
   }
 }
