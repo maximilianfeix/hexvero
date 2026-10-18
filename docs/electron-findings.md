@@ -316,9 +316,14 @@ from the HTML files: each `<script …>` tag found by position and read within i
 4,096 bytes per tag and HTML files up to 1 MiB, 500 of them; one past those is named in
 `html_scripts_unread`): their calls of that api are not read. A write in a script no HTML file
 read loads leaves the rows and is named in `bridge_global_written`, as is a write that only fills
-in a missing api (`if (!window.api) window.api = …`, `window.api ??= …`, `window.api =
-window.api || …`), which leaves the rows too; every page script whose calls are not listed
-because of a write is named there with that write. Tags inside `<!-- … -->` load nothing. A write of a local or a
+in a missing api, which leaves the rows too: `window.api ??= …`, `||=`, `window.api =
+window.api || …` (or `??`), and a write directly in the consequent of an `if` whose condition is
+a test that the api is missing (`!window.api`, `!api`, `typeof api === "undefined"`,
+`window.api == null`, `=== undefined`, `!("api" in window)`); under any other condition, in an
+`else` or a deeper block it is a replacement; every page script whose calls are not listed
+because of a write is named there with that write. Tags inside `<!-- … -->` load nothing; comments are recognised in markup only, not in the text
+of `script`, `style`, `textarea` and `title` or in a quoted attribute, and a script tag inside a
+comment, or a comment that does not close, is named in `html_scripts_unread`. A write of a local or a
 parameter of that name is none. Not read, and named in `bridge_calls_unread` with the reason: a
 file that takes ipcMain from electron (by its tokens: `require("electron").ipcMain`, `{ ipcMain
 } = require("electron")`, `import { ipcMain } from "electron"`, `electron.ipcMain`), a worker

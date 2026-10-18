@@ -4022,41 +4022,69 @@ function htmlScripts(
     const dir = posix.dirname(f.path);
     const scripts: string[] = [];
     let cut = false;
-    // `<script …>` tags found by position, each read within its own bounded slice: no pattern
-    // runs over the page, so a page of unclosed tags stays linear
-    // `<!-- … -->` is no markup: a tag inside it loads nothing
-    const comments: Array<[number, number]> = [];
-    for (let c = lower.indexOf("<!--"); c !== -1;) {
-      const close = lower.indexOf("-->", c + 4);
-      comments.push([c, close === -1 ? lower.length : close + 3]);
-      if (close === -1) break;
-      c = lower.indexOf("<!--", close + 3);
-    }
-    let comment = 0;
-    for (let at = lower.indexOf("<script"); at !== -1; at = lower.indexOf("<script", at + 7)) {
-      while (comment < comments.length && comments[comment]![1] <= at) comment++;
-      if (comment < comments.length && comments[comment]![0] <= at) {
-        at = comments[comment]![1] - 7;
-        continue;
-      }
-      const end = lower.indexOf(">", at);
-      if (end === -1) break;
-      if (end - at > MAX_SCRIPT_TAG) {
-        cut = true;
-        at = end;
-        continue;
-      }
-      const tag = text.slice(at, end);
+    let hidden = false;
+    const add = (tag: string): void => {
       const src = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(tag);
-      at = end;
       const value = src?.[1] ?? src?.[2] ?? src?.[3];
-      if (!value) continue;
+      if (!value) return;
       const clean = value.split(/[?#]/)[0]!;
-      if (!clean || /^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith("//")) continue;
+      if (!clean || /^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith("//")) return;
       const path = posix.normalize(clean.startsWith("/") ? clean.slice(1) : posix.join(dir, clean));
       if (known.has(path)) scripts.push(path);
+    };
+    /** The `>` that ends the tag opened at `at`, past quoted attribute values; -1 if none. */
+    const tagEnd = (at: number): number => {
+      for (let q = at + 1; q < lower.length; q++) {
+        const c = lower.charCodeAt(q);
+        if (c === 62) return q; // >
+        if (c === 34 || c === 39) {
+          const close = lower.indexOf(c === 34 ? '"' : "'", q + 1);
+          if (close === -1) return -1;
+          q = close;
+        }
+      }
+      return -1;
+    };
+    // The HTML data state, step by step: markup, comments, and the raw text of `script`,
+    // `style`, `textarea` and `title`, where neither `<!--` nor `<script` means anything. Each
+    // step jumps forward by indexOf, so the page is read once.
+    for (let at = lower.indexOf("<"); at !== -1 && at < lower.length;) {
+      if (lower.startsWith("<!--", at)) {
+        const close = lower.indexOf("-->", at + 4);
+        if (close === -1) {
+          // an unclosed comment hides the rest; a script tag in it is said
+          if (lower.indexOf("<script", at) !== -1) hidden = true;
+          break;
+        }
+        if (lower.slice(at, close).includes("<script")) hidden = true;
+        at = lower.indexOf("<", close + 3);
+        continue;
+      }
+      const name = /^<([a-z][a-z0-9-]*)/.exec(lower.slice(at, at + 16))?.[1];
+      if (!name) {
+        at = lower.indexOf("<", at + 1);
+        continue;
+      }
+      const end = tagEnd(at);
+      if (end === -1) break;
+      if (name === "script") {
+        if (end - at > MAX_SCRIPT_TAG) cut = true;
+        else add(text.slice(at, end));
+      }
+      at = end + 1;
+      if (name === "script" || name === "style" || name === "textarea" || name === "title") {
+        const close = lower.indexOf(`</${name}`, at);
+        if (close === -1) break;
+        at = close;
+        // the end tag itself
+        const after = lower.indexOf(">", close);
+        if (after === -1) break;
+        at = after + 1;
+      }
+      at = lower.indexOf("<", at);
     }
     if (cut) skipped.push(`${f.path} (a <script> tag longer than ${MAX_SCRIPT_TAG} bytes)`);
+    if (hidden) skipped.push(`${f.path} (a <script> tag inside a comment, which loads nothing)`);
     pages.set(f.path, scripts);
   }
   return { pages, skipped };
@@ -4229,7 +4257,9 @@ function bridgeCallRows(input: {
     );
     /**
      * The write of the target [from, to) only fills in a missing api: `??=`, `||=`, `= <target>
-     * || …` / `?? …`, or inside `if (…)` whose condition names the api.
+     * || …` / `?? …`, or directly in the consequent of an `if` whose condition is a test that the
+     * api is missing (`!window.api`, `typeof api === "undefined"`, `window.api == null`,
+     * `!("api" in window)`). Any other condition makes it a replacement.
      */
     const fillsIn = (from: number, to: number, api: string): boolean => {
       const op = tokens[to]?.value;
@@ -4242,19 +4272,33 @@ function bridgeCallRows(input: {
         if (same && (is(q, "||") || is(q, "??"))) return true;
       }
       // `if (!window.api) window.api = …`, `if (typeof api === "undefined") { api = … }`
-      const guardedBy = (head: number): boolean => {
+      // `if (<missing api>) <the write>` or `if (<missing api>) { …; <the write>; … }`, the write
+      // directly in the if's own consequent
+      const missing = (open: number, close: number): boolean => {
+        const condition = tokens
+          .slice(open + 1, close)
+          .map((t) => (t.type === "string" ? JSON.stringify(t.value) : t.value))
+          .join("");
+        const host = "(?:(?:window|globalThis|self)\\.)?";
+        const name = `${host}${api.replace(/\$/g, "\\$")}`;
+        return new RegExp(
+          `^(?:!${name}|typeof${name}(?:===|==)"undefined"|"undefined"(?:===|==)typeof${name}|${name}(?:==|===)(?:null|undefined|void0)|!\\("${api}"in(?:window|globalThis|self)\\))$`,
+        ).test(condition);
+      };
+      const consequentOf = (head: number): boolean => {
         if (!is(head, ")")) return false;
         const open = r.openOf(head);
-        if (open <= 0 || tokens[open - 1]?.value !== "if") return false;
-        for (let k = open + 1; k < head; k++) if (tokens[k]!.value === api) return true;
-        return false;
+        return open > 0 && tokens[open - 1]?.value === "if" && missing(open, head);
       };
-      if (guardedBy(from - 1)) return true;
-      for (let p = r.bracketAround(from), guard = 0; p >= 0 && is(p, "{") && guard < 8; guard++) {
-        if (guardedBy(p - 1)) return true;
-        p = r.bracketAround(p);
-      }
-      return false;
+      // the statement starts right after the if's `)`
+      if (consequentOf(from - 1)) return true;
+      const block = r.bracketAround(from);
+      return (
+        block >= 0 &&
+        is(block, "{") &&
+        (is(from - 1, "{") || is(from - 1, ";") || is(from - 1, "}")) &&
+        consequentOf(block - 1)
+      );
     };
     for (const api of named)
       for (const j of r.namePositions(api)) {

@@ -210,6 +210,41 @@ describe("R1: page scripts and preloads that may give the api something else", (
     }))
       expect(pageRows(analyze({ ...base, ...files })), name).toEqual(["a:one -", "z:bad -"]);
   });
+  it("reads comments only in markup, and only missing-api tests as a fill-in", () => {
+    const shim = `window.api = { call: (c) => fetch(c) };\n`;
+    // `<!--` in a script's text or an attribute value starts no comment: the shim is loaded
+    for (const html of [
+      `<script>var s = "<!--";</script><script src="shim.js"></script><script src="renderer.js"></script>`,
+      `<div title="<!--"></div><script src="shim.js"></script><script src="renderer.js"></script>`,
+    ])
+      expect(pageRows(analyze({ ...base, "index.html": html, "shim.js": shim })), html).toEqual([]);
+    // an unclosed comment is said
+    const open = analyze({
+      ...base,
+      "index.html": `<script src="renderer.js"></script><!-- <script src="shim.js"></script>`,
+      "shim.js": shim,
+    });
+    expect(pageRows(open)).toEqual(["a:one -", "z:bad -"]);
+    expect(open.limitations.map((l) => l.code)).toContain("html_scripts_unread");
+    // a condition that is no test of a missing api, or an else branch, replaces it
+    for (const write of [
+      `if (window.api.ready) window.api = { call: (c) => fetch(c) };`,
+      `if (!window.api) {} else window.api = { call: (c) => fetch(c) };`,
+      `if (!window.api) { if (x) { window.api = { call: (c) => fetch(c) }; } }`,
+    ]) {
+      const info = analyze({
+        ...base,
+        "index.html": `<script src="shim.js"></script><script src="renderer.js"></script>`,
+        "shim.js": `${write}\n`,
+      });
+      expect(pageRows(info), write).toEqual([]);
+      expect(
+        info.limitations.map((l) => l.code),
+        write,
+      ).toContain("bridge_global_written");
+    }
+  });
+
   it("names the calls it does not list because another page's script replaces the api", () => {
     const info = analyze({
       ...base,
