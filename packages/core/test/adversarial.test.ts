@@ -112,7 +112,9 @@ describe("policy and baseline files nested deeper than the stack", () => {
         caught = error;
       }
       expect(caught).toBeInstanceOf(PolicyError);
-      expect((caught as PolicyError).issues.join("\n")).toMatch(/a nested list/);
+      // Whether JSON.stringify can write the value back depends on the runtime (Node 25 can):
+      // the quote is then a prefix cut short, otherwise the fallback text.
+      expect((caught as PolicyError).issues.join("\n")).toMatch(/a nested list|\[{59}…/);
     });
 
   it("ignores __proto__ and constructor keys as unknown keys", () => {
