@@ -6,7 +6,14 @@ import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "../forma
 import type { Finding, Limitation } from "../model.js";
 import { AnalysisError } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
-import { ASSIGNMENT_OPERATORS, chainEnd, writesMember, writesName } from "./writes.js";
+import {
+  ASSIGNMENT_OPERATORS,
+  chainEnd,
+  declaredAt as declaredHere,
+  writesMember,
+  writesName,
+  writtenByCallAt,
+} from "./writes.js";
 import { type AmbientFacts, collectAmbient, resolveAmbient } from "./ambient.js";
 import { findCandidates, resolvePending, type Candidate } from "./candidates.js";
 import {
@@ -1254,6 +1261,35 @@ export interface BridgeMember {
   line: number;
   /** A channel named by a constant of another module, until that module has been read. */
   channelRef?: { specifier: string; property: string; before?: string; after?: string };
+  /**
+   * Internal, never in the result: the value is another module's export (`property` `*`: its
+   * namespace, `default`: its default export), read once modules are known (`linkBridgeValues`).
+   */
+  valueRef?: { specifier: string; property: string };
+  /** Internal, never in the result: the member's value as tokens, for calls of other modules' wrappers. */
+  body?: [number, number];
+}
+
+/**
+ * A value of this file that another file exposes (cross-module bridge objects, R3): an object
+ * literal read member by member (`open`), or one member's value (`value`), under `api` and with
+ * the member names prefixed by `prefix` (`auth` gives `auth.loginRequest`).
+ */
+export interface VirtualExposure {
+  api: string;
+  world: "main" | "isolated";
+  prefix: string | null;
+  /** The `{` of an object literal to read. */
+  open?: number;
+  /** One member named `prefix` whose value is the expression [from, to). */
+  value?: [number, number];
+  /**
+   * The export of this file of that name (`default`, `*` for the namespace), found here: an
+   * object literal gives its members, any other value one member named `prefix`.
+   */
+  export?: string;
+  /** The line of the exposing call, for an entry that cannot be read. */
+  line: number;
 }
 
 /**
@@ -1284,6 +1320,8 @@ export interface BridgeExposure {
 
 /** What one source file exposes, and whether a cap or an unclosed literal cut the reading short. */
 export interface BridgeScan {
+  /** For a virtual exposure of an export: the file does not define that export where it is read. */
+  unfound?: true;
   members: BridgeMember[];
   /** Members (or whole values) that are a privileged object itself, not a wrapper around it. */
   exposures: BridgeExposure[];
@@ -1842,6 +1880,19 @@ const SYNC_CALLBACKS: ReadonlySet<string> = new Set([
 const BRIDGE_STEP_COST = 8;
 /** Charged per `api[k] = …` whose scope and loop rounds are read. */
 const BRIDGE_ROUND_COST = 2000;
+/** Tokens of a member's value kept for calls of other modules' wrappers (`BridgeMember.body`). */
+const MAX_BODY_TOKENS = 4000;
+/** `auth` and `loginRequest` give `auth.loginRequest`. */
+const qualify = (prefix: string | null, name: string): string =>
+  prefix === null ? name : `${prefix}.${name}`;
+/** Helpers bundlers wrap a `require` in; the module object stays what it is. */
+const REQUIRE_INTEROP = new Set([
+  "__toESM",
+  "__importStar",
+  "__importDefault",
+  "_interopRequireWildcard",
+  "_interopRequireDefault",
+]);
 /** Charged per `api.x = …` that is read as a member (a write to another binding is not). */
 const BRIDGE_SCOPE_COST = 8;
 const BRIDGE_MODIFIERS = new Set(["async", "get", "set", "static"]);
@@ -1867,6 +1918,8 @@ const textOf = (t: Token | undefined): string | null =>
 export function bridgeMembers(
   source: string | { tokens: Token[]; truncated: boolean; context?: ScanContext },
   file: string,
+  /** Values of this file exposed by another one: read instead of the file's own exposures. */
+  virtuals?: readonly VirtualExposure[],
 ): BridgeScan {
   const { tokens, truncated: cut } = typeof source === "string" ? tokenize(source) : source;
   const context: ScanContext =
@@ -1887,6 +1940,7 @@ export function bridgeMembers(
         })();
   const members: BridgeMember[] = [];
   let truncated = cut;
+  let unfound = false;
   let budget = BRIDGE_WALK_BUDGET;
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
@@ -1957,6 +2011,423 @@ export function bridgeMembers(
       for (const [id, count] of declared) if (count > 1) objects.delete(id);
     }
     return objects.get(name) ?? -1;
+  };
+  /** `import X from "s"` (default) and `import * as X from "s"` (namespace) of this file, by name. */
+  let importForms: Map<string, { specifier: string; property: string; at: number } | null> | null =
+    null;
+  const importFormOf = (
+    name: string,
+  ): { specifier: string; property: string; at: number } | null => {
+    if (!importForms) {
+      importForms = new Map();
+      for (let k = 0; k + 3 < tokens.length; k++) {
+        if (tokens[k]!.type !== "ident" || tokens[k]!.value !== "import") continue;
+        let j = k + 1;
+        const add = (at: number, property: string): void => {
+          const n = tokens[at]!.value;
+          importForms!.set(n, importForms!.has(n) ? null : { specifier: "", property, at });
+        };
+        const found: Array<[number, string]> = [];
+        if (tokens[j]?.type === "ident" && tokens[j]!.value !== "type") {
+          found.push([j, "default"]);
+          j++;
+          if (is(j, ",")) j++;
+        }
+        if (is(j, "*") && tokens[j + 1]?.value === "as" && tokens[j + 2]?.type === "ident") {
+          found.push([j + 2, "*"]);
+          j += 3;
+        }
+        if (!found.length || tokens[j]?.value !== "from" || tokens[j + 1]?.type !== "string")
+          continue;
+        const specifier = tokens[j + 1]!.value;
+        for (const [at, property] of found) {
+          add(at, property);
+          const v = importForms.get(tokens[at]!.value);
+          if (v) v.specifier = specifier;
+        }
+      }
+    }
+    return importForms.get(name) ?? null;
+  };
+  let requires: boolean | null = null;
+  /** Whether the file calls `require` at all (else no name of it can hold a required module). */
+  const hasRequire = (): boolean =>
+    (requires ??= tokens.some((x) => x.type === "ident" && x.value === "require"));
+  /** The specifier of `require("s")` (or a bundler's interop around it) in [a, b), or null. */
+  const requireIn = (a: number, b: number): string | null => {
+    let x = a;
+    let y = b;
+    if (tokens[x]?.type === "ident" && REQUIRE_INTEROP.has(tokens[x]!.value) && is(x + 1, "(")) {
+      const close = (resolver ??= new ExpressionResolver(tokens, context.constants)).closeOf(x + 1);
+      if (close !== y - 1) return null;
+      x += 2;
+      // `__toESM(require("x"), 1)`
+      y = is(close - 2, ",") && tokens[close - 1]?.type === "number" ? close - 2 : close;
+    }
+    return tokens[x]?.value === "require" &&
+      is(x + 1, "(") &&
+      tokens[x + 2]?.type === "string" &&
+      is(x + 3, ")") &&
+      x + 4 === y
+      ? tokens[x + 2]!.value
+      : null;
+  };
+  /** Whether a name (at any of its positions in the file) is written, or its members are. */
+  const writtenNames = new Map<string, boolean>();
+  const writtenAnywhere = (name: string): boolean => {
+    const known = writtenNames.get(name);
+    if (known !== undefined) return known;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const sites = resolver.namePositions(name);
+    budget -= sites.length * BRIDGE_SCOPE_COST;
+    const written = sites.some(
+      (j) =>
+        !is(j - 1, ".") &&
+        (writesName(tokens, j) || writesMember(tokens, j) !== null || writtenByCallAt(tokens, j)),
+    );
+    writtenNames.set(name, written);
+    return written;
+  };
+  /**
+   * The value at k is another module's export: `X` with `import { X }`, `import X` (default) or
+   * `import * as X` (namespace); `X` with `const X = require("s")` (its exports); `X.P` and
+   * `X.default` on such a module object, as tsc and esbuild write an import. Null for anything
+   * else, also for a name that a parameter or local binds where it is used, or that is written.
+   */
+  const moduleValueRef = (k: number): { specifier: string; property: string } | null => {
+    const t = tokens[k];
+    if (t?.type !== "ident" || is(k - 1, ".") || budget <= 0) return null;
+    const ends = (j: number): boolean => is(j, ")") || is(j, ",") || is(j, "}") || is(j, ";");
+    const member =
+      is(k + 1, ".") && tokens[k + 2]?.type === "ident" && ends(k + 3)
+        ? tokens[k + 2]!.value
+        : null;
+    if (member === null && !ends(k + 1)) return null;
+    // the cheap tables first: most names are no import of a module of the application
+    const named = context.constants.importOf(t.value, k);
+    const form = named ? null : importFormOf(t.value);
+    const required = named || form ? null : context.constants.requireOf(t.value, k);
+    if (named && !named.specifier.startsWith(".")) return null;
+    if (form && !form.specifier.startsWith(".")) return null;
+    if (required !== null && !required.startsWith(".")) return null;
+    // `const x_1 = __importDefault(require("./x"))` (tsc) is read from the declaration
+    if (!named && !form && required === null && !hasRequire()) return null;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const r = resolver;
+    if (r.paramAround(k, t.value)) return null;
+    const bound = r.binding(k, t.value);
+    let base: { specifier: string; property: string } | null = null;
+    if (bound) {
+      if (bound.kind !== "value") return null;
+      const spec = requireIn(bound.range[0], bound.range[1]);
+      if (spec === null) return null;
+      base = { specifier: spec, property: "*" };
+    } else {
+      if (r.boundAround(k, t.value)?.kind === "param") return null;
+      base = named ?? (form?.specifier ? form : null);
+      // `const X = require("s")` that the resolver does not bind (declared in a list)
+      if (base === null && required !== null) base = { specifier: required, property: "*" };
+      if (base === null) return null;
+      if (writtenAnywhere(t.value)) return null;
+    }
+    if (!base.specifier.startsWith(".")) return null;
+    if (member === null) return { specifier: base.specifier, property: base.property };
+    // a member of a module object: the export of that name
+    return base.property === "*" ? { specifier: base.specifier, property: member } : null;
+  };
+  /**
+   * What the name at k holds in this file: a `const` object literal nothing writes (its `{`), or
+   * the tokens of a function or of a value (`makeInvoker("x")`). Null for a parameter, a pattern,
+   * a class, a name written after its declaration, or none.
+   */
+  const localValue = (k: number): { object?: number; from: number; to: number } | null => {
+    const t = tokens[k];
+    if (t?.type !== "ident" || budget <= 0) return null;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const r = resolver;
+    const bound = r.binding(k, t.value);
+    if (!bound) return null;
+    if (bound.kind === "function") return { from: bound.def.paramsAt, to: bound.def.body[1] };
+    if (bound.kind !== "value") return null;
+    const [a, b] = bound.range;
+    let open = -1;
+    if (is(a, "{") && r.closeOf(a) === b - 1) open = a;
+    else if (
+      tokens[a]?.value === "Object" &&
+      is(a + 1, ".") &&
+      tokens[a + 2]?.value === "freeze" &&
+      is(a + 3, "(") &&
+      is(a + 4, "{") &&
+      r.closeOf(a + 4) === b - 2
+    )
+      open = a + 4;
+    if (open === -1) return { from: a, to: b };
+    // an object some code changes is not read as written
+    return writtenAnywhere(t.value) ? null : { object: open, from: a, to: b };
+  };
+  /**
+   * The getters esbuild's `__export(target, { k: () => v })` defines on an empty object, as it writes
+   * `import * as NS`: each getter's name and value. Null when the name is no such target;
+   * `unknown` when it is used in some other way that may add members (another call, a write).
+   */
+  const exportGetters = (
+    name: string,
+  ): Array<{ name: string; value: [number, number]; line: number }> | "unknown" | null => {
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const r = resolver;
+    let found: Array<{ name: string; value: [number, number]; line: number }> | null = null;
+    for (const j of r.namePositions(name)) {
+      if (is(j - 1, ".") || declaredHere(tokens, j)) continue;
+      if (writesName(tokens, j) || writesMember(tokens, j) !== null || writtenByCallAt(tokens, j))
+        return "unknown";
+      const arg = (is(j - 1, "(") || is(j - 1, ",")) && (is(j + 1, ",") || is(j + 1, ")"));
+      if (!arg) continue;
+      // `__export(name, { … })`: the helper defines a getter per key (`get: all[name]`)
+      const helper = is(j - 1, "(") && tokens[j - 2]?.type === "ident" ? j - 2 : -1;
+      if (helper === -1 || !is(j + 1, ",") || !is(j + 2, "{") || found) return "unknown";
+      const def = r.binding(helper, tokens[helper]!.value);
+      const range =
+        def?.kind === "value"
+          ? def.range
+          : def?.kind === "function"
+            ? ([def.def.paramsAt, def.def.body[1]] as [number, number])
+            : null;
+      if (!range || range[1] - range[0] > 80) return "unknown";
+      let getter = false;
+      for (let q = range[0]; q + 3 < range[1]; q++)
+        if (tokens[q]!.value === "get" && is(q + 1, ":") && is(q + 3, "[")) getter = true;
+      if (!getter) return "unknown";
+      const close = r.closeOf(j + 2);
+      if (close === -1) return "unknown";
+      found = [];
+      for (let q = j + 3; q < close;) {
+        // `k: () => v,`
+        const key = tokens[q];
+        if (
+          !(key?.type === "ident" || key?.type === "string") ||
+          !is(q + 1, ":") ||
+          !is(q + 2, "(") ||
+          !is(q + 3, ")") ||
+          !is(q + 4, "=>")
+        )
+          return "unknown";
+        let e = q + 5;
+        for (let d = 0; e < close; e++) {
+          if (is(e, "(") || is(e, "[") || is(e, "{")) d++;
+          else if (is(e, ")") || is(e, "]") || is(e, "}")) d--;
+          else if (d === 0 && is(e, ",")) break;
+        }
+        found.push({ name: key.value, value: [q + 5, e], line: key.line });
+        q = e + 1;
+      }
+    }
+    return found;
+  };
+  /**
+   * The object literal a function of the file returns, when it has one return and that is
+   * `return {…}` as its last statement (or `=> ({…})`): its `{`. -1 otherwise.
+   */
+  const returnedObject = (k: number): number => {
+    const t = tokens[k];
+    if (t?.type !== "ident" || budget <= 0) return -1;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const r = resolver;
+    const bound = r.binding(k, t.value);
+    let def = bound?.kind === "function" ? bound.def : null;
+    if (bound?.kind === "value") def = r.functionAt(bound.range[0] + 1) ?? null;
+    if (!def || def.name !== t.value) return -1;
+    const [b0, b1] = def.body;
+    if (!def.block)
+      return is(b0, "(") && is(b0 + 1, "{") && r.closeOf(b0 + 1) === r.closeOf(b0) - 1
+        ? b0 + 1
+        : -1;
+    let open = -1;
+    budget -= b1 - b0;
+    for (let j = b0 + 1; j < b1; j++) {
+      if (tokens[j]!.type !== "ident" || tokens[j]!.value !== "return") continue;
+      if (r.functionAt(j)?.paramsAt !== def.paramsAt) continue;
+      if (open !== -1 || !is(j + 1, "{")) return -1;
+      const close = r.closeOf(j + 1);
+      if (close === -1) return -1;
+      // the body's `}` is at b1 - 1
+      const after = is(close + 1, ";") ? close + 2 : close + 1;
+      if (after !== b1 - 1) return -1;
+      open = j + 1;
+    }
+    return open;
+  };
+  /**
+   * Where this file defines its export `property`: the value's tokens, or for `*` (the namespace
+   * an `import * as` or a whole `require` gives) every named export, or `module.exports = …`
+   * itself. Forms: `export const|let|var P = …`, `export function P`, `export default …`,
+   * `export { L as P }`, `exports.P = …` / `module.exports.P = …` (tsc's `exports.P = void 0`
+   * says nothing), `module.exports = …` (also for `default`, as a CommonJS module is imported),
+   * and a key of `module.exports = { P: v }`. Null when the export is not found, is defined
+   * twice, or (for `*`) the file also re-exports another module (`export *`, `__exportStar`,
+   * `Object.defineProperty(exports, …)`), so its names are not all known.
+   */
+  const exportValue = (
+    property: string,
+  ):
+    | { value: [number, number] }
+    | { names: Array<{ name: string; value: [number, number] }> }
+    | null => {
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const r = resolver;
+    const ident = (j: number, v?: string): boolean =>
+      tokens[j]?.type === "ident" && (v === undefined || tokens[j]!.value === v);
+    const valueEnd = (a: number): number => {
+      if (is(a, "{") || is(a, "[")) {
+        const c = r.closeOf(a);
+        return c === -1 ? -1 : c + 1;
+      }
+      return r.endOf(a);
+    };
+    const named = new Map<string, Array<[number, number]>>();
+    let whole: Array<[number, number]> = [];
+    let defaults: Array<[number, number]> = [];
+    let open = false;
+    const add = (name: string, a: number, b: number): void => {
+      if (b <= a) return;
+      named.set(name, [...(named.get(name) ?? []), [a, b]]);
+    };
+    budget -= tokens.length;
+    for (let j = 0; j < tokens.length; j++) {
+      const t = tokens[j]!;
+      if (t.type !== "ident") continue;
+      if (t.value === "export" && !is(j - 1, ".")) {
+        if (ident(j + 1, "default")) {
+          const a = ident(j + 2, "async") ? j + 3 : j + 2;
+          if (ident(a, "function") || ident(a, "class")) {
+            const def = r.functionAt(a + 2) ?? r.functionAt(a + 3);
+            if (def && ident(a, "function")) defaults.push([def.paramsAt, def.body[1]]);
+            else open = true;
+          } else defaults.push([j + 2, valueEnd(j + 2)]);
+        } else if (ident(j + 1, "const") || ident(j + 1, "let") || ident(j + 1, "var")) {
+          if (ident(j + 2) && is(j + 3, "=")) add(tokens[j + 2]!.value, j + 2, j + 3);
+          else open = true;
+        } else if (
+          ident(j + 1, "function") ||
+          (ident(j + 1, "async") && ident(j + 2, "function"))
+        ) {
+          const n = ident(j + 1, "async") ? j + 3 : j + 2;
+          if (ident(n)) add(tokens[n]!.value, n, n + 1);
+        } else if (ident(j + 1, "class") && ident(j + 2)) add(tokens[j + 2]!.value, j + 2, j + 3);
+        else if (is(j + 1, "*")) open = true;
+        else if (is(j + 1, "{")) {
+          const close = r.closeOf(j + 1);
+          if (close === -1) {
+            open = true;
+            continue;
+          }
+          // `export { a } from "./b"` passes another module's names on: not followed here
+          if (ident(close + 1, "from")) {
+            open = true;
+            continue;
+          }
+          for (let q = j + 2; q < close; q++) {
+            if (!ident(q) || !(is(q - 1, "{") || is(q - 1, ","))) continue;
+            const renamed =
+              ident(q + 1, "as") && (ident(q + 2) || tokens[q + 2]?.type === "string");
+            const name = renamed ? tokens[q + 2]!.value : tokens[q]!.value;
+            if (name === "default") defaults.push([q, q + 1]);
+            else add(name, q, q + 1);
+          }
+        }
+        continue;
+      }
+      // `exports.P = …`, `module.exports.P = …`, `module.exports = …`
+      if (t.value !== "exports" || is(j - 1, "?.")) continue;
+      const viaModule = is(j - 1, ".") && ident(j - 2, "module") && !is(j - 3, ".");
+      if (is(j - 1, ".") && !viaModule) continue;
+      if (is(j + 1, "=") && !is(j + 2, "=")) {
+        // `module.exports = …`; a bare `exports = …` rebinds the name and exports nothing
+        if (viaModule) whole.push([j + 2, valueEnd(j + 2)]);
+        else open = true;
+        continue;
+      }
+      if (!is(j + 1, ".") || !ident(j + 2)) {
+        // handed to a call: `Object.defineProperty(exports, "P", …)`, `__exportStar(m, exports)`
+        const esModule = ident(j - 2, "defineProperty") && tokens[j + 2]?.value === "__esModule";
+        if ((is(j + 1, ",") || is(j + 1, ")")) && !esModule) open = true;
+        continue;
+      }
+      if (!is(j + 3, "=") || is(j + 4, "=")) continue;
+      // tsc's export hoisting: `exports.a = exports.b = void 0`
+      let v = j + 4;
+      while (ident(v, "exports") && is(v + 1, ".") && ident(v + 2) && is(v + 3, "=")) v += 4;
+      if (ident(v, "void")) continue;
+      const name = tokens[j + 2]!.value;
+      if (name === "__esModule") continue;
+      if (name === "default") defaults.push([j + 4, valueEnd(j + 4)]);
+      else add(name, j + 4, valueEnd(j + 4));
+    }
+    // `export const P = …` was recorded at its name: the value follows `=`
+    const valueOf = ([a, b]: [number, number]): [number, number] =>
+      b === a + 1 &&
+      is(a + 1, "=") &&
+      tokens[a - 1]?.type === "ident" &&
+      /^(const|let|var)$/.test(tokens[a - 1]!.value)
+        ? [a + 2, valueEnd(a + 2)]
+        : b === a + 1 && (ident(a - 1, "function") || ident(a - 1, "class"))
+          ? (() => {
+              const def = r.functionAt(a + 1);
+              return def
+                ? ([def.paramsAt, def.body[1]] as [number, number])
+                : ([a, a + 1] as [number, number]);
+            })()
+          : [a, b];
+    whole = whole.filter(([, b]) => b !== -1);
+    defaults = defaults.filter(([, b]) => b !== -1);
+    // a name of the file that is written after its declaration, or a key of `exports` written
+    // again (`exports.api.extra = f`), is not read as written
+    const changed = (name: string, defs: Array<[number, number]>): boolean => {
+      const declared = defs.some(
+        ([a, b]) =>
+          b === a + 1 && (is(a + 1, "=") || ident(a - 1, "function") || ident(a - 1, "class")),
+      );
+      if (declared && writtenAnywhere(name)) return true;
+      let writes = 0;
+      for (const j of r.namePositions("exports")) {
+        if (is(j - 1, ".") && !ident(j - 2, "module")) continue;
+        // tsc's export hoisting `exports.a = exports.b = void 0` declares, it writes nothing
+        let v = j;
+        while (ident(v, "exports") && is(v + 1, ".") && ident(v + 2) && is(v + 3, "=")) v += 4;
+        if (v > j && ident(v, "void")) continue;
+        const marker = is(j + 1, ",") && tokens[j + 2]?.value === "__esModule";
+        if (writesMember(tokens, j) === name || (writtenByCallAt(tokens, j) && !marker)) writes++;
+      }
+      return writes > (declared ? 0 : 1);
+    };
+    if (property === "*") {
+      if (whole.length === 1 && !named.size) return { value: whole[0]! };
+      if (whole.length || open) return null;
+      const names: Array<{ name: string; value: [number, number] }> = [];
+      for (const [name, defs] of named) {
+        if (defs.length !== 1 || changed(name, defs)) return null;
+        names.push({ name, value: valueOf(defs[0]!) });
+      }
+      return { names };
+    }
+    if (property === "default") {
+      const all = [...defaults, ...whole];
+      if (whole.length && named.size) return null;
+      return all.length === 1 && !named.has("default") ? { value: valueOf(all[0]!) } : null;
+    }
+    const defs = named.get(property) ?? [];
+    if (defs.length === 1 && !whole.length)
+      return changed(property, defs) ? null : { value: valueOf(defs[0]!) };
+    // a key of `module.exports = { P: v }`
+    if (!defs.length && whole.length === 1 && is(whole[0]![0], "{")) {
+      const [a, b] = whole[0]!;
+      for (let q = a + 1; q < b - 1; q++) {
+        if (!(is(q - 1, "{") || is(q - 1, ","))) continue;
+        if (tokens[q]?.value !== property) continue;
+        if (is(q + 1, ",") || is(q + 1, "}")) return { value: [q, q + 1] };
+        if (is(q + 1, ":")) return { value: [q + 2, r.endOf(q + 2)] };
+      }
+    }
+    return null;
   };
   /** The opening bracket that matches the closing one at `close`, or -1. */
   const openOf = (close: number): number => {
@@ -2185,17 +2656,15 @@ export function bridgeMembers(
       return "unknown";
     return last;
   };
-  for (let i = 0; i < tokens.length; i++) {
+  const exposure = (i: number, virtual?: VirtualExposure): void => {
     const t = tokens[i]!;
-    if (t.type !== "ident") continue;
-    if (t.value !== "exposeInMainWorld" && t.value !== "exposeInIsolatedWorld") continue;
-    if (!(is(i - 1, ".") || is(i - 1, "?.")) || !is(i + 1, "(")) continue;
-    const world = t.value === "exposeInMainWorld" ? "main" : "isolated";
+    const world = virtual ? virtual.world : t.value === "exposeInMainWorld" ? "main" : "isolated";
     const push = (
       member: string | null,
       channel: string | null,
       line: number,
       channelRef?: BridgeMember["channelRef"],
+      extra?: Pick<BridgeMember, "valueRef" | "body">,
     ): void => {
       if (members.length >= MAX_BRIDGE_PER_FILE) truncated = true;
       else
@@ -2207,6 +2676,8 @@ export function bridgeMembers(
           file,
           line,
           ...(channelRef ? { channelRef } : {}),
+          ...(extra?.valueRef ? { valueRef: extra.valueRef } : {}),
+          ...(extra?.body ? { body: extra.body } : {}),
         });
     };
     /** Records the value from `from` to `end` when it is a privileged object as it is. */
@@ -2228,7 +2699,7 @@ export function bridgeMembers(
       });
     };
     let at = i + 2;
-    if (world === "isolated") {
+    if (world === "isolated" && !virtual) {
       // isolated worlds take a world id first
       let depth = 0;
       for (; at < tokens.length && budget > 0; at++, budget--) {
@@ -2240,17 +2711,18 @@ export function bridgeMembers(
           depth--;
         } else if (p.value === "," && depth === 0) break;
       }
-      if (!is(at, ",")) continue;
+      if (!is(at, ",")) return;
       at++;
     }
     const keyToken = tokens[at];
     const simple = is(at + 1, ",");
     const apiName =
       simple && keyToken?.type === "ident" ? context.constants.stringOf(keyToken.value, at) : null;
-    const api =
-      (simple ? textOf(keyToken) : null) ??
-      apiName ??
-      (simple && keyToken?.type === "ident" ? `[${keyToken.value}]` : "[computed]");
+    const api = virtual
+      ? virtual.api
+      : ((simple ? textOf(keyToken) : null) ??
+        apiName ??
+        (simple && keyToken?.type === "ident" ? `[${keyToken.value}]` : "[computed]"));
     /**
      * The object literals the exposed value at `k` is made of, and the token after it: `{…}`, a
      * name declared as `const x = {…}` in this file, `Object.freeze(…)` (also `seal`,
@@ -2306,6 +2778,15 @@ export function bridgeMembers(
         }
         return null;
       }
+      // `createApi(new IpcClient("x"))`: a function of the file whose one return is an object
+      // literal; its members are read as written there
+      if (is(k + 1, "(")) {
+        resolver ??= new ExpressionResolver(tokens, context.constants);
+        const close = resolver.closeOf(k + 1);
+        if (close === -1 || boundLocally(i, v.value)) return null;
+        const returned = returnedObject(k);
+        return returned === -1 ? null : { opens: [returned], next: close + 1 };
+      }
       if (is(k + 1, ")") || is(k + 1, ",")) {
         // A loop variable or a parameter is not the object some other line declares under the
         // same name: `for (const [t, n] of Object.entries(u)) exposeInMainWorld(t, n)`.
@@ -2322,22 +2803,27 @@ export function bridgeMembers(
       }
       return null;
     };
-    const value = simple ? valueOpens(at + 2, 0) : null;
+    const value = virtual ? null : simple ? valueOpens(at + 2, 0) : null;
     // `exposeInMainWorld("api", value,)`: a trailing comma, as formatters write it.
-    const opens =
-      value &&
-      (value.next === -1 || is(value.next, ")") || (is(value.next, ",") && is(value.next + 1, ")")))
+    const opens = virtual
+      ? []
+      : value &&
+          (value.next === -1 ||
+            is(value.next, ")") ||
+            (is(value.next, ",") && is(value.next + 1, ")")))
         ? value.opens
         : null;
     // `exposeInMainWorld("api", Object.fromEntries(…))`, or a name declared as such: members
     // built from a table, when every one forwards to an ipcRenderer call
-    const built = simple && !opens && value === null ? forwarded(at + 2) : null;
+    const built = !virtual && simple && !opens && value === null ? forwarded(at + 2) : null;
     if (built) {
       for (const b of built) push(b.member, b.channel, t.line);
-      continue;
+      return;
     }
     if (!opens) {
-      push(null, null, t.line);
+      // `exposeInMainWorld("api", X)` with X another module's export: read once modules are known
+      const ref = simple ? moduleValueRef(at + 2) : null;
+      push(null, null, t.line, undefined, ref ? { valueRef: ref } : undefined);
       // `exposeInMainWorld("ipc", ipcRenderer)`: the value as a whole, up to the call's end;
       // also under a key that is not read (`exposeInMainWorld(prefix + "ipc", ipcRenderer)`)
       let start = simple ? at + 2 : -1;
@@ -2361,20 +2847,39 @@ export function bridgeMembers(
         }
         if (is(end, ")") || (is(end, ",") && is(end + 1, ")"))) expose(null, start, end);
       }
-      continue;
+      return;
     }
     /** One member, from token `from` to `end` (its `,` or `}`), of the object at `objectOpen`. */
-    const readMember = (from: number, end: number, level: number, objectOpen: number): void => {
+    const readMember = (
+      from: number,
+      end: number,
+      level: number,
+      objectOpen: number,
+      prefix: string | null = null,
+    ): void => {
       let s = from;
       if (s >= end) return;
       const first = tokens[s]!;
       if (is(s, "...")) {
         // `...libraryApi` with `const libraryApi = {…}` in this file: its members, in place
         const spread = tokens[s + 1];
+        // `...Library` with `import * as Library from "./library"`: read once modules are known
+        const ref = s + 2 === end ? moduleValueRef(s + 1) : null;
+        if (ref) return push(null, null, first.line, undefined, { valueRef: ref });
         const base =
           spread?.type === "ident" && s + 2 === end && level < 3 ? objectOf(spread.value) : -1;
+        // `var library_exports = {}; __export(library_exports, { openDialog: () => openDialog })`,
+        // as esbuild writes `import * as Library`: the getters are the members
+        const getters = base !== -1 && is(base + 1, "}") ? exportGetters(spread!.value) : null;
+        if (getters === "unknown") return push(null, null, first.line);
+        if (getters) {
+          for (const g of getters)
+            if (!memberValue(qualify(prefix, g.name), g.value, g.line, level + 1))
+              push(qualify(prefix, g.name), null, g.line);
+          return;
+        }
         if (base !== -1 && base !== objectOpen) {
-          if (!walk(base, level + 1)) truncated = true;
+          if (!walk(base, level + 1, prefix)) truncated = true;
           return;
         }
         // `...invokers(TABLE)`, `...Object.fromEntries(…)`: members built from a table
@@ -2395,21 +2900,42 @@ export function bridgeMembers(
         s++;
       if (is(s, "*") && s + 1 < end) s++;
       const nameToken = tokens[s]!;
-      const name =
+      const bare =
         nameToken.type === "ident" || nameToken.type === "number"
           ? nameToken.value
           : textOf(nameToken);
-      if (name === null) return push(null, null, first.line);
+      if (bare === null) return push(null, null, first.line);
+      const name = qualify(prefix, bare);
       // `{ ipcRenderer }`, `ipc: ipcRenderer`, `api.ipc = ipcRenderer`: the value itself
       if (s === from && s + 1 === end && nameToken.type === "ident") expose(name, s, end);
       else if (s === from && (is(s + 1, ":") || is(s + 1, "="))) expose(name, s + 2, end);
+      // `{ auth }`, `auth: authApi`: a name of the file or an import, read for what it holds
+      const valueAt =
+        s === from && s + 1 === end && nameToken.type === "ident"
+          ? s
+          : s === from && is(s + 1, ":") && s + 3 === end
+            ? s + 2
+            : -1;
+      if (valueAt !== -1 && memberValue(name, [valueAt, valueAt + 1], first.line, level)) return;
+      // `auth: auth_1.default`, `platform: m.platform`: a member of a module object
+      if (s === from && is(s + 1, ":") && s + 5 === end && is(s + 3, ".")) {
+        const ref = moduleValueRef(s + 2);
+        if (ref) return push(name, null, first.line, undefined, { valueRef: ref });
+      }
+      pushChannels(name, s + 1, end, first.line);
+    };
+    /** The channel of the IPC calls in [from, end), when they name exactly one: the member's row. */
+    const pushChannels = (name: string, from: number, end: number, line: number): void => {
       const channels = new Set<string>();
       const refs: Array<NonNullable<BridgeMember["channelRef"]>> = [];
       // `on(CH, f)` and `off(CH, f)` in one member name one channel
       const addRef = (ref: NonNullable<BridgeMember["channelRef"]>): void => {
         if (!refs.some((r) => JSON.stringify(r) === JSON.stringify(ref))) refs.push(ref);
       };
-      for (let j = s + 1; j + 2 < end; j++) {
+      let calls = false;
+      for (let j = from; j + 2 < end; j++) {
+        // a call: `client.invoke(…)`, `makeInvoker("x")`, `(0, ipc_1.makeInvoker)("x")`
+        if (!calls && is(j + 1, "(") && (tokens[j]!.type === "ident" || is(j, ")"))) calls = true;
         const callee = tokens[j + 2]!;
         if (
           tokens[j]!.type === "ident" &&
@@ -2449,17 +2975,56 @@ export function bridgeMembers(
       push(
         name,
         only && channels.size === 1 ? [...channels][0]! : null,
-        first.line,
+        line,
         only && refs.length === 1 ? refs[0] : undefined,
+        // a call of a method another module's wrapper may make the member's call (filled in
+        // once modules are known); none was read here
+        !channels.size && !refs.length && calls && end - from <= MAX_BODY_TOKENS
+          ? { body: [from, end] }
+          : undefined,
       );
     };
+    /**
+     * A member whose value is the name at [k, k + 1) (or, from another module, any expression):
+     * an import is read once modules are known; a `const` object literal of the file that nothing
+     * writes gives its members under `name.` (three levels at most); a function of the file, or a
+     * `const` whose value is a function or a call, gives the channel of the calls in it. False when
+     * it is none of these (the caller reads the value as written).
+     */
+    const memberValue = (
+      name: string,
+      [k, to]: [number, number],
+      line: number,
+      level: number,
+    ): boolean => {
+      if (to !== k + 1 || tokens[k]?.type !== "ident") {
+        if (to <= k) return false;
+        // an expression of another module's export: as a member's value is read
+        pushChannels(name, k, to, line);
+        return true;
+      }
+      const ref = moduleValueRef(k);
+      if (ref) {
+        push(name, null, line, undefined, { valueRef: ref });
+        return true;
+      }
+      const local = localValue(k);
+      if (!local) return false;
+      if (local.object !== undefined) {
+        if (level >= 3) return false;
+        if (!walk(local.object, level + 1, name)) truncated = true;
+        return true;
+      }
+      pushChannels(name, local.from, local.to, line);
+      return true;
+    };
     /** Walks the members of the object literal at `objectOpen`; spreads of named objects inside. */
-    const walk = (objectOpen: number, level: number): boolean => {
+    const walk = (objectOpen: number, level: number, prefix: string | null = null): boolean => {
       let start = objectOpen + 1;
       const flush = (end: number): void => {
         const from = start;
         start = end + 1;
-        readMember(from, end, level, objectOpen);
+        readMember(from, end, level, objectOpen, prefix);
       };
       let depth = 0;
       for (let k = objectOpen; k < tokens.length && budget > 0; k++, budget--) {
@@ -2476,6 +3041,35 @@ export function bridgeMembers(
       }
       return false;
     };
+    if (virtual) {
+      /** A value of this file under the virtual's prefix: its members, or one member. */
+      const valueIn = (prefix: string | null, [a, b]: [number, number]): void => {
+        if (is(a, "{") && openOf(b - 1) === a) {
+          if (!walk(a, 0, prefix)) truncated = true;
+        } else if (prefix === null) {
+          // the whole exposed value: an object of the file by name, else not read
+          const local = b === a + 1 ? localValue(a) : null;
+          if (local?.object !== undefined) {
+            if (!walk(local.object, 0, null)) truncated = true;
+          } else {
+            const ref = b === a + 1 ? moduleValueRef(a) : null;
+            push(null, null, virtual.line, undefined, ref ? { valueRef: ref } : undefined);
+          }
+        } else if (!memberValue(prefix, [a, b], tokens[a]?.line ?? virtual.line, 0))
+          pushChannels(prefix, a, b, tokens[a]?.line ?? virtual.line);
+      };
+      if (virtual.export !== undefined) {
+        const found = exportValue(virtual.export);
+        if (!found) unfound = true;
+        else if ("value" in found) valueIn(virtual.prefix, found.value);
+        else
+          for (const { name, value: exported } of found.names)
+            valueIn(qualify(virtual.prefix, name), exported);
+      } else if (virtual.open !== undefined) {
+        if (!walk(virtual.open, 0, virtual.prefix)) truncated = true;
+      } else if (virtual.value) valueIn(virtual.prefix, virtual.value);
+      return;
+    }
     for (const open of opens) if (!walk(open, 0)) truncated = true;
     // An object put together in steps: `api.onChange = (fn) => …` after `const api = {…}`.
     const objectName =
@@ -2704,8 +3298,155 @@ export function bridgeMembers(
           readMember(k + 2, end, 0, -1);
         }
     }
+  };
+  if (virtuals) for (const v of virtuals) exposure(v.open ?? v.value?.[0] ?? 0, v);
+  else
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i]!;
+      if (t.type !== "ident") continue;
+      if (t.value !== "exposeInMainWorld" && t.value !== "exposeInIsolatedWorld") continue;
+      if (!(is(i - 1, ".") || is(i - 1, "?.")) || !is(i + 1, "(")) continue;
+      exposure(i);
+    }
+  return { members, exposures, truncated, ...(unfound ? { unfound: true as const } : {}) };
+}
+
+/** Modules opened for bridge values of other modules, per analysis. */
+const MAX_BRIDGE_MODULES = 64;
+/** Rounds of following a bridge value into another module (`auth` in `ipc` in the preload). */
+const MAX_BRIDGE_DEPTH = 3;
+/** Importers of one module checked for writes to the exported value. */
+const MAX_BRIDGE_IMPORTERS = 64;
+
+/**
+ * Reads the contextBridge entries whose value is another module's export (`valueRef`) in that
+ * module, with the member rules of `bridgeMembers` there, and puts its members in their place
+ * (`contextBridge` is changed in place). An entry stays as it is, and is named in `unread`, when
+ * the module is not among the files (a package, a file outside the app), cannot be read, does not
+ * define the export once, when a module that imports it may change it (a write to the export's
+ * members or a call of `Object.assign` and the like on it), or past the limits; `capped` when a
+ * read was cut. Nothing is run.
+ */
+function linkBridgeValues(input: {
+  contextBridge: BridgeMember[];
+  edges: readonly JsEdge[];
+  resolve(from: string, specifier: string): string | null;
+  read(path: string): string;
+  open(path: string): ReadModule | null;
+}): { unread: string[]; exposures: BridgeExposure[]; capped: boolean } {
+  const { contextBridge } = input;
+  const unread: string[] = [];
+  const exposures: BridgeExposure[] = [];
+  let capped = false;
+  if (!contextBridge.some((b) => b.valueRef)) return { unread, exposures, capped };
+  const sources = new Map<
+    string,
+    { tokens: Token[]; truncated: boolean; context: ScanContext } | null
+  >();
+  const source = (
+    path: string,
+  ): { tokens: Token[]; truncated: boolean; context: ScanContext } | null => {
+    if (!sources.has(path)) {
+      let got: { tokens: Token[]; truncated: boolean; context: ScanContext } | null = null;
+      if (sources.size < MAX_BRIDGE_MODULES)
+        try {
+          scanJavaScript(input.read(path), {
+            onTokens: (tokens, truncated, context) => {
+              got = { tokens, truncated, context };
+            },
+          });
+        } catch {
+          got = null;
+        }
+      else capped = true;
+      sources.set(path, got);
+    }
+    return sources.get(path) ?? null;
+  };
+  /** Whether a module importing `target` (other than `except`) writes the export `property`. */
+  const writtenElsewhere = new Map<string, boolean>();
+  const changedByImporters = (target: string, property: string, except: string): boolean => {
+    const key = `${target}\u0000${property}\u0000${except}`;
+    const known = writtenElsewhere.get(key);
+    if (known !== undefined) return known;
+    const importers = [
+      ...new Set(input.edges.filter((e) => e.resolved && e.to === target).map((e) => e.from)),
+    ].filter((f) => f !== except && f !== target);
+    let written = importers.length > MAX_BRIDGE_IMPORTERS;
+    for (const file of importers.slice(0, MAX_BRIDGE_IMPORTERS)) {
+      if (written) break;
+      const m = input.open(file);
+      if (!m) {
+        written = true;
+        break;
+      }
+      const { tokens, constants } = m;
+      for (let j = 0; j < tokens.length && !written; j++) {
+        const t = tokens[j]!;
+        if (t.type !== "ident") continue;
+        const member = writesMember(tokens, j);
+        if (member === null && !writtenByCallAt(tokens, j)) continue;
+        const named = constants.importOf(t.value, j);
+        if (named && input.resolve(file, named.specifier) === target) {
+          if (named.property === property) written = true;
+          continue;
+        }
+        const whole = constants.requireOf(t.value, j);
+        if (whole && input.resolve(file, whole) === target)
+          written =
+            property === "*" || property === "default" || member === property || member === "*";
+      }
+    }
+    writtenElsewhere.set(key, written);
+    return written;
+  };
+  for (let round = 0; round <= MAX_BRIDGE_DEPTH; round++) {
+    const pending = contextBridge.filter((b) => b.valueRef);
+    if (!pending.length) break;
+    const replaced = new Map<BridgeMember, BridgeMember[]>();
+    for (const b of pending) {
+      const ref = b.valueRef!;
+      delete b.valueRef;
+      const named = `${ref.property === "*" ? "the exports" : ref.property === "default" ? "the default export" : ref.property} of "${ref.specifier}" (from ${b.file}:${b.line})`;
+      if (round === MAX_BRIDGE_DEPTH) {
+        unread.push(`${named}: more than ${MAX_BRIDGE_DEPTH} modules deep`);
+        continue;
+      }
+      const target = input.resolve(b.file, ref.specifier);
+      if (!target) {
+        unread.push(`${named}: not among the files read`);
+        continue;
+      }
+      if (changedByImporters(target, ref.property, b.file)) {
+        unread.push(`${named}: another module that imports ${target} may change it`);
+        continue;
+      }
+      const src = source(target);
+      if (!src) {
+        unread.push(
+          `${named}: ${target} could not be read${capped ? ` (more than ${MAX_BRIDGE_MODULES} modules)` : ""}`,
+        );
+        continue;
+      }
+      const scan = bridgeMembers(src, target, [
+        { api: b.api, world: b.world, prefix: b.member, export: ref.property, line: b.line },
+      ]);
+      if (scan.unfound) {
+        unread.push(`${named}: ${target} does not define it once where it can be read`);
+        continue;
+      }
+      if (scan.truncated) capped = true;
+      exposures.push(...scan.exposures);
+      replaced.set(b, scan.members);
+    }
+    if (!replaced.size) continue;
+    const next: BridgeMember[] = [];
+    for (const b of contextBridge) next.push(...(replaced.get(b) ?? [b]));
+    if (next.length > MAX_BRIDGE) capped = true;
+    contextBridge.length = 0;
+    contextBridge.push(...next.slice(0, MAX_BRIDGE));
   }
-  return { members, exposures, truncated };
+  return { unread, exposures, capped };
 }
 
 /**
@@ -5341,6 +6082,38 @@ export function analyzeJavaScriptTree(
       code: "candidates_truncated",
       message: `More endpoints, storage accesses or URLs exist than the ${MAX_CANDIDATES} per list recorded.`,
     });
+  const moduleById = new Map(modules.map((m) => [m.id, m]));
+  const openModule = (path: string): ReadModule | null => {
+    if (!modulesRead.has(path)) {
+      try {
+        modulesRead.set(path, moduleResolver(path, decode(tree.read(path, maxFileBytes))));
+      } catch {
+        modulesRead.set(path, null);
+      }
+    }
+    return modulesRead.get(path) ?? null;
+  };
+
+  // Bridge objects another module defines (`exposeInMainWorld("ipc", ipc)` with `export const ipc
+  // = { auth, platform }` there): each entry whose value is another module's export is read in
+  // that module, by the same member rules, a few modules deep. See docs/electron-findings.md.
+  const bridgeLinks = linkBridgeValues({
+    contextBridge,
+    edges,
+    resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
+    read: (path) => decode(tree.read(path, maxFileBytes)),
+    open: openModule,
+  });
+  if (bridgeLinks.capped) bridgeCapped = true;
+  const linkedExposures = (facts.bridgeExposures ??= []);
+  linkedExposures.push(
+    ...bridgeLinks.exposures.slice(0, Math.max(0, MAX_BRIDGE - linkedExposures.length)),
+  );
+  if (bridgeLinks.unread.length)
+    limitations.push({
+      code: "context_bridge_module_unread",
+      message: `${bridgeLinks.unread.length} contextBridge ${bridgeLinks.unread.length === 1 ? "value comes" : "values come"} from another module whose export could not be read, so ${bridgeLinks.unread.length === 1 ? "its" : "their"} members are not listed: ${list(bridgeLinks.unread, 5)}.`,
+    });
   if (bridgeCapped)
     limitations.push({
       code: "context_bridge_truncated",
@@ -5413,17 +6186,6 @@ export function analyzeJavaScriptTree(
   // Calls of wrapper classes and objects that another module defines (wrappers.ts): read in the
   // modules that import one, now that every module's exports are known. Nothing is read again
   // when no module exports a wrapper.
-  const moduleById = new Map(modules.map((m) => [m.id, m]));
-  const openModule = (path: string): ReadModule | null => {
-    if (!modulesRead.has(path)) {
-      try {
-        modulesRead.set(path, moduleResolver(path, decode(tree.read(path, maxFileBytes))));
-      } catch {
-        modulesRead.set(path, null);
-      }
-    }
-    return modulesRead.get(path) ?? null;
-  };
   const linked = linkWrappers({
     // the channel-forwarding wrappers only: this stage reads what it read before IPC object
     // parameters existed, within the same budgets
@@ -5463,12 +6225,16 @@ export function analyzeJavaScriptTree(
       code: "ipc_wrappers_capped",
       message: `${linked.capped.length} file(s) that use IPC wrappers of other modules were not read to the end for calls of them (a budget or the file limit of 200): ${linked.capped.slice(0, 5).join(", ")}${linked.capped.length > 5 ? " …" : ""}.`,
     });
+  /** The rows of wrapper calls per file, by the token of the method name (bridge member bodies). */
+  const wrapperCallsAt = new Map<string, Array<{ at: number; usages: IpcUsage[] }>>();
   for (const [file, rows] of linked.rows) {
     const m = moduleById.get(file);
     if (!m) continue;
     const resolver = openModule(file)?.resolver;
     const have = new Set(m.ipc.map((u) => JSON.stringify(u)));
-    for (const { usage, arg, unread } of rows) {
+    const calls = wrapperCallsAt.get(file) ?? [];
+    wrapperCallsAt.set(file, calls);
+    for (const { usage, arg, unread, at } of rows) {
       let made: IpcUsage[] = [usage];
       if (unread && resolver) {
         // the argument read across modules, as the window options are
@@ -5484,6 +6250,7 @@ export function analyzeJavaScriptTree(
           ];
         else if (resolver.reason) usage.reason = `evaluation stopped: ${resolver.reason}`;
       }
+      calls.push({ at, usages: made });
       for (const u of made) {
         const key = JSON.stringify(u);
         if (have.has(key)) continue;
@@ -5573,6 +6340,30 @@ export function analyzeJavaScriptTree(
     if (found === null) continue;
     b.channel = `${b.channelRef.before ?? ""}${found}${b.channelRef.after ?? ""}`;
     delete b.channelRef;
+  }
+  // A member whose call is a method of another module's wrapper (`client.invoke(Channel.List)`
+  // with `client` an IpcClient made in place): the channel of the rows those calls gave, when
+  // they name exactly one.
+  for (const b of contextBridge) {
+    const body = b.body;
+    delete b.body;
+    if (!body || b.channel !== null || b.channelRef || b.member === null) continue;
+    const channels = new Set<string>();
+    let unknown = false;
+    for (const call of wrapperCallsAt.get(b.file) ?? []) {
+      if (call.at < body[0] || call.at >= body[1]) continue;
+      for (const u of call.usages) {
+        let channel = u.channel;
+        if (channel === null && u.channelRef) {
+          const found = lookUp(b.file, u.channelRef);
+          if (found !== null)
+            channel = `${u.channelRef.before ?? ""}${found}${u.channelRef.after ?? ""}`;
+        }
+        if (channel === null) unknown = true;
+        else channels.add(channel);
+      }
+    }
+    if (!unknown && channels.size === 1) b.channel = [...channels][0]!;
   }
 
   // IPC calls on names another file defines, now that the files are known.

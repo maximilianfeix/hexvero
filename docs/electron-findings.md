@@ -213,6 +213,56 @@ is `unknown`. Paths that end the reading for other reasons keep the row too: a w
 shadowing parameter that runs out of its range takes no shadowing, and a cut inventory is
 `context_bridge_truncated`.
 
+## Bridge objects of other modules and functions (`contextBridge`)
+
+A preload often exposes an object it does not write itself. These values are read member by
+member, by the same rules as an object literal in the preload (a member's channel, spreads,
+computed keys, privileged values), in the file where the members are written; a row's `file` and
+`line` are there:
+
+| Exposed value                                                                                                                   | Read as                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `X` imported from a module of the app (`import { X }`, `import X`, `import * as X`, `const X = require(…)`, also tsc's `x_1.X`) | the export's value in that module                        |
+| `createApi(…)`, a function of the file whose one return is `return {…}` as its last statement, or `=> ({…})`                    | the returned object literal, read where it is written    |
+| a member `{ auth }` or `auth: authApi` whose name is an object literal of the file (a `const` nothing writes) or an import      | its members as `auth.loginRequest`, three levels at most |
+| a member whose name is a function of the file, or a `const` whose value is a function or a call (`makeHandlerInvoker("x")`)     | one member with the channel of the IPC calls in it       |
+| `...NS` with `import * as NS` (or a whole `require`)                                                                            | every named export of NS as a member                     |
+| `...ns_exports` with esbuild's `var ns_exports = {}; __export(ns_exports, { k: () => k })` (`import * as` bundled)              | the getters' names, each read as the value it returns    |
+
+An export is found as `export const|let|var P = …`, `export function P`, `export default …`,
+`export { L as P }`, `exports.P = …` and `module.exports.P = …` (tsc's `exports.P = void 0` and
+`Object.defineProperty(exports, "__esModule", …)` say nothing), `module.exports = …`, and a key of
+`module.exports = { P: v }`; a default import of a CommonJS module takes `module.exports`. Followed
+three modules deep (`ipc` in the preload, `auth` in `preload.base`, its default export in
+`platform/auth`). A member of a nested object literal stays one member, as in a preload of its own
+(`versions: { app: … }` is `platform.versions`).
+
+A member is not read as written, and the entry stays as it was (the exposed value one entry with
+`member: null`, a named member with `channel: null`), when it may not be what is written: the
+module does not define the export once (two definitions, `export *`, `export { a } from "./b"`,
+`__exportStar`, `Object.defineProperty(exports, "P", …)` for a namespace), the name or a member of
+it is written in its module (the write forms of `writes.ts`, also `Object.assign` and the like), a
+module that imports it writes a member of it (every importer except the exposing preload, whose
+writes before the call are members as above; past 64 importers the value is not read), the module
+is not among the files (a package, a file outside the app; only relative specifiers are followed),
+or it is more than three modules deep, or past 64 modules opened. `context_bridge_module_unread`
+names each such value with its module and the reason. A function with more than one return, or
+whose return is not an object literal, gives one entry with `member: null`. Inside the other
+module an unreadable spread or computed key is one entry with `member: null` there.
+
+A member whose call goes through a method or function of another module (`listDevices: () =>
+client.invoke(Channel.ListDevices)` with `client` an instance made in place, `openDialog =
+makeHandlerInvoker("openDialog")` with the factory in another module) takes the channel of the
+rows those calls give (`ipc`, `via: wrapper`) when they name exactly one; the member's tokens are
+kept for that up to 4,000. The parameter of the function that returns the bridge is not bound
+to what the call passes beyond that (`createApi(ipcRenderer)` with `ipc.invoke("x")` inside gives
+`channel: null`).
+
+Corpus (hit of expected, per input): holdout7 Padwright bridge members 3 of 13 → 13 of 13 in each
+of the plain, bundled and minified builds and 2 of 13 → 13 of 13 in v2, bridge member channel
+all hit; holdout to holdout6 unchanged. Electron Fiddle 0.38.0 and 0.39.0, Discord and Claude.app:
+the same `contextBridge`, `bridgeExposures`, `ipc` and `ipcChannels` rows as before.
+
 ## Navigation and new-window handlers (`navigationHandlers`)
 
 Electron's security guide, section 13 (limit navigation: "you can call `event.preventDefault()` in
@@ -993,6 +1043,32 @@ read; an `api.x = …` that stays a member costs 8. Whether a write is to the ex
 charged to the resolver's own work, so writes to other bindings of the same name take nothing from
 that budget. Past it the file's members are marked as cut (`context_bridge_truncated`). The walks
 back to a loop and to a callback around a call are charged to the resolver's work for the file.
+
+**Channel-forwarding functions of another module.** A function a module exports that passes its
+first parameter on, whole, as the channel of an IPC call (`export function addHandler(channel,
+handler) { ipcMain.handle(channel, …) }`, `export const ipcMainHandle = (channel, listener) =>
+ipcMain.handle(channel, listener)`, the curried `export const makeHandlerInvoker = (channel) =>
+(...args) => ipcRenderer.invoke(channel, ...args)`; the helpers `findWrappers` reads in one file)
+gives a row at every call of it in another module, with the channel the call's first argument
+names: `addHandler("x", f)` after `import { addHandler }` (also renamed, `{ handle as
+handleOnMain }`), `ipc.addHandler(…)` after `import * as ipc`, `(0, ipc_1.addHandler)(…)` as tsc
+writes it, `require("./ipc").addHandler(…)` and `const { addHandler } = require("./ipc")`. The
+export counts when it is written as `export function f`, `export const f =`, `export { f as k }`,
+`exports.k = f`, `module.exports.k = f` or `module.exports = { k: f }`, and nothing writes `f`
+after its declaration. The rows have `via: "wrapper"` and `wrapper` naming the module and the
+export (`ipc/heroic.addHandler`); the call inside the function stays without a channel, as in one
+file. A parameter or local of the same name at the call is not the export. A helper whose body
+writes its parameter (`channel = "x:" + channel`) is no forwarder, now also in one file (before,
+its calls gave the channel as passed). The calls share the cross-module wrapper stage and its
+limits (200 importing files, the work budget per file, `ipc_wrappers_capped`); per file at most
+2,000 such calls are read, the rest named by `ipc_wrappers_capped` too.
+
+**A module of the app under the name `ipcMain`.** A file that binds `ipcMain` or `ipcRenderer` to a
+module of the application (a relative specifier: `import * as ipcMain from "./ipc-main"` as GitHub
+Desktop writes it, `import ipcMain from "./x"`, `import { a as ipcMain } from "./x"`, `const ipcMain
+= require("./x")`, also through `__importStar`, and `const { a: ipcMain } = require("./x")`) calls
+that module, not Electron's: `ipcMain.on("x", f)` there gives no row of its own (before, a direct
+`ipcMain.on` row); a forwarder the module exports gives its row as above.
 
 **Channel helpers inside a bundled module.** A `function guarded(channel, fn) { ipcMain.handle(channel,
 …) }` declared inside another function (the body of a module esbuild or webpack wraps, or an inner
