@@ -64,6 +64,8 @@ export interface ResolvedValues {
   lines: number[];
   /** Some bindings (call sites) could not be read: the values are not all there are. */
   partial: boolean;
+  /** Partial because a function has more call sites than are read (MAX_SITES). */
+  cut?: true;
 }
 
 /** The call sites of a wrapper function and what each passes (see `wrapperCalls`). */
@@ -72,6 +74,8 @@ export interface WrapperCalls {
   name: string;
   /** `at`: the token of the function or method name at the call; `values`: null when unread. */
   sites: Array<{ at: number; values: string[] | null }>;
+  /** More call sites than are read (MAX_SITES): keys passed at the others are not listed. */
+  capped?: true;
 }
 
 /** Where a literal value is written. */
@@ -187,6 +191,7 @@ const GROUPING_WORDS = new Set([
  */
 const MAX_FUNCTIONS = 60_000;
 const MAX_DEPTH = 10;
+/** Call sites read per function; past them its bindings are partial (see `sitesCapped`). */
 const MAX_SITES = 64;
 /** Rounds of one loop, `forEach` or `map`, and keys an evaluated object may get. */
 const MAX_ITERATIONS = 256;
@@ -400,16 +405,20 @@ export class ExpressionResolver {
   private method: ResolveMethod = "concatenation";
   private lines = new Set<number>();
   private partial = false;
+  /** Set with `partial` when the cause is the call-site cap (see `sitesCapped`). */
+  private cut = false;
   private readonly siteCache = new Map<FnDef, number[]>();
+  /** Functions with more call sites than MAX_SITES: the sites listed are not all there are. */
+  private readonly sitesCapped = new Set<FnDef>();
   private readonly literalOwners = new Map<FnDef, string | null>();
   private readonly bindingCaches = [
-    new Map<FnDef, { envs: Env[] | null; partial: boolean; lines: number[] }>(),
-    new Map<FnDef, { envs: Env[] | null; partial: boolean; lines: number[] }>(),
+    new Map<FnDef, { envs: Env[] | null; partial: boolean; cut?: boolean; lines: number[] }>(),
+    new Map<FnDef, { envs: Env[] | null; partial: boolean; cut?: boolean; lines: number[] }>(),
   ];
   /** The bindings read so far, apart for the strict reading (see `strict`). */
   private get bindingCache(): Map<
     FnDef,
-    { envs: Env[] | null; partial: boolean; lines: number[] }
+    { envs: Env[] | null; partial: boolean; cut?: boolean; lines: number[] }
   > {
     return this.bindingCaches[this.strict ? 1 : 0]!;
   }
@@ -631,6 +640,7 @@ export class ExpressionResolver {
     this.method = "concatenation";
     this.lines = new Set();
     this.partial = false;
+    this.cut = false;
     this.begin(20_000);
     const end = this.exprEnd(k);
     const direct = this.evalRange(k, end, new Map(), 0);
@@ -739,6 +749,8 @@ export class ExpressionResolver {
     const sites = this.callSites(def);
     if (!sites.length) return null;
     const out: WrapperCalls["sites"] = [];
+    // a caller's own bindings may be cut too (`b(q) { a("x" + q) }` with b called past the cap)
+    this.cut = false;
     for (const open of sites) {
       const close = this.match[open]!;
       if (close === -1) continue;
@@ -758,7 +770,12 @@ export class ExpressionResolver {
       out.push({ at: open - 1, values: unread && !values.length ? null : values });
     }
     const holder = def.owner ?? (def.member ? this.literalOwner(def) : null);
-    return out.length ? { name: holder ? `${holder}.${def.name}` : def.name!, sites: out } : null;
+    if (!out.length) return null;
+    return {
+      name: holder ? `${holder}.${def.name}` : def.name!,
+      sites: out,
+      ...(this.sitesCapped.has(def) || this.cut ? { capped: true as const } : {}),
+    };
   }
 
   private result(values: string[]): ResolvedValues | null {
@@ -769,6 +786,7 @@ export class ExpressionResolver {
       method: this.method,
       lines: [...this.lines].toSorted((a, b) => a - b),
       partial: this.partial,
+      ...(this.cut ? { cut: true as const } : {}),
     };
   }
 
@@ -867,7 +885,7 @@ export class ExpressionResolver {
     const index = def.params.findIndex((p) => p.kind === "name" && p.name === name);
     if (index === -1) return null;
     const sites = this.callSites(def);
-    if (!sites.length) return null;
+    if (!sites.length || this.sitesCapped.has(def)) return null;
     const out: number[] = [];
     for (const open of sites) {
       const at = this.argStart(open, this.match[open]!, index);
@@ -1605,6 +1623,7 @@ export class ExpressionResolver {
     if (this.work <= 0) return { values: [], partial: true };
     this.begin(40_000);
     this.partial = false;
+    this.cut = false;
     const end = this.exprEnd(k);
     const def = this.enclosing(k);
     const usesParameter =
@@ -4400,6 +4419,7 @@ export class ExpressionResolver {
       if (cb && !(cb.calledBy && cb.name === null)) cb = null;
       const end = Math.max(...ranges.map(([, b]) => b), k + 1);
       this.partial = false;
+      this.cut = false;
       const loop = this.loopEnvs(k, end, 0);
       let envs: Env[] | null;
       let line: number;
@@ -4460,6 +4480,7 @@ export class ExpressionResolver {
     if (close === -1 || !this.punct(close + 1, "=") || this.punct(close + 2, "=")) return null;
     const valueEnd = this.exprEnd(close + 2);
     this.partial = false;
+    this.cut = false;
     let envs: Env[] | null = null;
     const def = this.enclosing(k);
     if (def?.calledBy && def.name === null) {
@@ -4578,21 +4599,26 @@ export class ExpressionResolver {
     const cached = this.bindingCache.get(def);
     if (cached) {
       if (cached.partial) this.partial = true;
+      if (cached.cut) this.cut = true;
       for (const line of cached.lines) this.lines.add(line);
       if (cached.envs) this.note(def.calledBy && def.name === null ? "element" : "parameter");
       return cached.envs;
     }
     if (this.work <= 0) return null;
     const partialBefore = this.partial;
+    const cutBefore = this.cut;
     const linesBefore = new Set(this.lines);
     this.partial = false;
+    this.cut = false;
     const envs = this.bindingsUncached(def, depth);
     this.bindingCache.set(def, {
       envs,
       partial: this.partial,
+      cut: this.cut,
       lines: [...this.lines].filter((l) => !linesBefore.has(l)),
     });
     this.partial = this.partial || partialBefore;
+    this.cut = this.cut || cutBefore;
     return envs;
   }
 
@@ -4642,6 +4668,8 @@ export class ExpressionResolver {
     if (def.name === null && iife === -1) return null;
     const sites = iife !== -1 ? [iife] : this.callSites(def);
     if (!sites.length) return null;
+    // the calls past MAX_SITES bind it too: what the listed ones give is not every value
+    if (this.sitesCapped.has(def)) this.partial = this.cut = true;
     const envs: Env[] = [];
     for (const open of sites) {
       const close = this.match[open]!;
@@ -5407,8 +5435,9 @@ export class ExpressionResolver {
       !def.arrow &&
       this.is(def.paramsAt - 2, "ident", "function") &&
       this.enclosing(def.paramsAt - 1) !== null;
+    // One site past the cap is looked for, so a function called more often is known to be.
     for (const k of this.positions(def.name!)) {
-      if (out.length >= MAX_SITES) break;
+      if (out.length > MAX_SITES) break;
       if (!this.is(k, "ident", def.name!) || !this.punct(k + 1, "(") || k + 1 === def.paramsAt)
         continue;
       if (nested) {
@@ -5465,6 +5494,10 @@ export class ExpressionResolver {
         else if (open !== -1 && this.is(open - 1, "ident", def.name!) && out.includes(open))
           out.push(k + 1);
       }
+    }
+    if (out.length > MAX_SITES) {
+      out.length = MAX_SITES;
+      this.sitesCapped.add(def);
     }
     return out;
   }

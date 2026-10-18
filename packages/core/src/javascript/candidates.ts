@@ -275,6 +275,10 @@ interface Read {
   via?: string;
   /** Read through call sites, and some of them could not be read: the values are not all. */
   partial?: true;
+  /** Partial because the function is called at more places than are read (MAX_SITES). */
+  cut?: true;
+  /** With `cut` (set by `readArg`): the argument as written, for the unknown row of the rest. */
+  unread?: string;
 }
 
 export function findCandidates(
@@ -449,15 +453,17 @@ export function findCandidates(
       evidence: resolvedEvidence(first),
       ...(rest.length ? { more: rest } : {}),
       ...(found!.partial ? { partial: true as const } : {}),
+      ...(found!.cut ? { cut: true as const } : {}),
     };
   };
   /** A value with no fixed text at all (only `${…}`) says nothing: it is an unread argument. */
   const readArg = (k: number, url = false): Read | null => {
     const fast = read(k);
-    const r =
-      fast && (fast.value === null || fast.value.includes("${…}"))
-        ? (throughResolver(k, url) ?? fast)
-        : fast;
+    const through =
+      fast && (fast.value === null || fast.value.includes("${…}")) ? throughResolver(k, url) : null;
+    const r = through?.cut
+      ? { ...through, unread: fast?.expression ?? "<expression>" }
+      : (through ?? fast);
     if (r && r.value !== null && r.value.replaceAll("${…}", "") === "")
       return { value: null, evidence: "unknown", expression: "<expression>" };
     return r;
@@ -503,6 +509,8 @@ export function findCandidates(
         t,
         extra,
       );
+    // Values read at the call sites read are not all the call takes: the rest is an unknown row.
+    if (r.unread !== undefined) push(list, kind, unknownRead(r.unread ?? "<expression>"), t, extra);
   };
 
   // Storage wrappers: a key that is (or is built from) a parameter of the function or method the
@@ -552,7 +560,8 @@ export function findCandidates(
       if (r) push(out.storage, kind, adjust(r), t, extra);
       return;
     }
-    let unread = false;
+    // past the call sites read, a key may be anything: said by the unknown row below
+    let unread = !!calls.capped;
     for (const site of calls.sites) {
       if (!site.values) {
         unread = true;
@@ -2354,7 +2363,9 @@ export function findCandidates(
       if (merged) r = { ...merged, ...(r.partial ? { partial: true as const } : {}) };
     }
     if (r.value !== null && ADDRESS_START.test(r.value)) {
-      pushClient(r, t, method);
+      // the unread row is pushed here, under the cap of unknown client rows, not by push
+      const { unread: _unread, ...whole } = r;
+      pushClient(whole, t, method);
       // a call site that could not be read keeps the unread row too, so nothing unread is hidden
       if (r.partial)
         pushClient(

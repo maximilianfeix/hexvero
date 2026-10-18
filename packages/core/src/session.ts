@@ -426,6 +426,9 @@ export class Session {
     for (const row of app.storage)
       if (computedValue(row.value)) unresolved.add("storage", storageSlot(row.file, row.kind));
     unresolved.fromLimitations(analysis.limitations);
+    // Files cut past the ones named: any read file may be one of them. (Files passed over are
+    // never in `read`, and with any of them the side is not complete.)
+    const unlisted = (app.coverage.partial ?? 0) > (app.coverage.partialFiles?.length ?? 0);
     return {
       complete: app.coverage.complete,
       read: new Set(app.modules.map((m) => m.id)),
@@ -433,6 +436,7 @@ export class Session {
         ...(app.coverage.skippedFiles ?? []),
         ...(app.coverage.partialFiles ?? []),
       ]),
+      ...(unlisted ? { unreadableUnlisted: true } : {}),
       unresolved: unresolved.map,
     };
   }
@@ -1088,6 +1092,8 @@ const computedValue = (value: string | null): boolean => value === null || value
 export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> = {
   ipc_receiver_unresolved: "ipc",
   ipc_open_calls_capped: "ipc",
+  // calls of IPC wrappers or of functions taking ipcMain/ipcRenderer past what is read
+  ipc_wrappers_capped: "ipc",
   context_bridge_truncated: "bridge",
   context_bridge_members_unreadable: "bridge",
   web_preferences_truncated: "window",

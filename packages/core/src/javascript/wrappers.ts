@@ -177,6 +177,7 @@ export interface WrapperRow {
 /** Resolves another module's export for the cross-file stage. */
 export type ExternalLookup = (specifier: string, key: string) => WrapperValue | null;
 
+/** Call sites read per function; one past it is looked for, and makes the function capped. */
 const MAX_SITES = 64;
 /** Work for reading the functions with an IPC object parameter of one file, and their calls. */
 const OBJECT_WORK = 400_000;
@@ -1139,7 +1140,10 @@ export class WrapperReader {
     const seeded = this.seeds.get(def)?.get(index);
     if (seeded) return seeded;
     const out: WrapperValue[] = [];
-    for (const open of this.callSitesOf(def)) {
+    const sites = this.callSitesOf(def);
+    // a call past the sites read may pass anything: the parameter is not known
+    if (this.sitesCapped.has(def)) return [];
+    for (const open of sites) {
       const arg = this.r.argumentAt(open, index);
       if (arg === null) continue;
       for (const v of this.receiverValues(arg, this.r.endOf(arg), depth + 1))
@@ -1179,18 +1183,34 @@ export class WrapperReader {
     const out: number[] = [];
     this.siteCache.set(def, out);
     if (def.name === null) return out;
+    const sites = this.collectSites(def, out);
+    if (sites.length > MAX_SITES) {
+      sites.length = MAX_SITES;
+      this.sitesCapped.add(def);
+    }
+    return sites;
+  }
+
+  /** Functions called at more places than MAX_SITES: their call sites are not all read. */
+  private readonly sitesCapped = new Set<FnDef>();
+
+  /** Fills `out` with up to MAX_SITES + 1 call sites of def (see `callSitesOf`). */
+  private collectSites(def: FnDef, out: number[]): number[] {
     const { r } = this;
+    const fname = def.name;
+    if (fname === null) return out;
+    // up to one past the cap, by name and through export keys alike
     const add = (open: number): void => {
-      if (out.length < MAX_SITES && !out.includes(open)) out.push(open);
+      if (out.length <= MAX_SITES && !out.includes(open)) out.push(open);
     };
-    const names = new Set<string>(def.member ? [] : [def.name]);
+    const names = new Set<string>(def.member ? [] : [fname]);
     const keys = new Set<string>();
     // A function declared inside another one (a module a bundler wraps) is visible only in that
     // function's body: its name is looked for there, not in the whole file, where a minifier
     // reuses the same short name thousands of times.
     const outer = def.member || def.owner ? null : r.outerOf(def);
     const [from, to] = outer ? outer.body : [0, this.tokens.length];
-    for (const j of r.namePositions(def.name, from, to)) {
+    for (const j of r.namePositions(fname, from, to)) {
       if (this.work-- <= 0) break;
       if (
         this.punct(j - 1, ":") &&
@@ -1204,7 +1224,7 @@ export class WrapperReader {
         (this.punct(j - 1, "{") || this.punct(j - 1, ",")) &&
         (this.punct(j + 1, ",") || this.punct(j + 1, "}"))
       )
-        keys.add(def.name);
+        keys.add(fname);
     }
     for (const key of keys) {
       const v = this.keyValue(key);
@@ -1228,9 +1248,9 @@ export class WrapperReader {
       }
     }
     for (const name of names)
-      for (const j of name === def.name ? r.namePositions(name, from, to) : r.namePositions(name)) {
+      for (const j of name === fname ? r.namePositions(name, from, to) : r.namePositions(name)) {
         if (this.work-- <= 0) break;
-        if (out.length >= MAX_SITES) break;
+        if (out.length > MAX_SITES) break;
         if (!this.punct(j + 1, "(") || this.punct(j - 1, ".") || j + 1 === def.paramsAt) continue;
         if (this.is(j - 1, "ident", "function")) continue;
         const v = this.nameValue(j, 1);
@@ -1253,6 +1273,11 @@ export class WrapperReader {
   get objectsCapped(): boolean {
     return this.objectWork <= 0;
   }
+  /**
+   * A function with an IPC object parameter has more call sites than are read: its entry gets a
+   * site whose object is not known (no row from the others alone), and the file says so.
+   */
+  objectSitesCapped = false;
 
   /** Runs `read` on the budget of IPC object parameters. */
   private onObjectBudget<T>(read: () => T): T {
@@ -1541,6 +1566,17 @@ export class WrapperReader {
               const arg = r.argumentAt(open, index);
               const target = arg === null || this.punct(arg, ")") ? null : this.objectTarget(arg);
               out.push({ home: this.file, key, index, site: `${this.file}:${open}`, target });
+            }
+            // the calls past MAX_SITES: one site whose object is not known
+            if (this.sitesCapped.has(def)) {
+              this.objectSitesCapped = true;
+              out.push({
+                home: this.file,
+                key,
+                index,
+                site: `${this.file}:more@${def.paramsAt}`,
+                target: null,
+              });
             }
             for (const ref of this.otherUses(def)) {
               // `reg.call(t, ipcMain)`: its argument after `this`; anything else unread

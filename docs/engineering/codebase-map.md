@@ -331,7 +331,9 @@ batch" / "Read all remaining files" (`web/src/views/Workspace.tsx:29-42,148-172`
 **Completeness limits.** A run killed outside `all` mode loses that run's progress; the previous
 complete state stays because the replace is atomic. A worker timeout (120 s default,
 `worker.ts:18-20`) during `all` keeps the batches saved so far. `skippedFiles` and `partialFiles`
-are listed up to 200 each (`app.ts:2161`, `2212`).
+are listed up to 200 each; `skipped` and `partial` count every such file, and `filesUnlisted`
+says more exist than are named (a comparison then reads every file of that side as possibly cut).
+Per-file limitations are kept up to 200, always one per code; the rest are counted per code.
 
 **Errors.** Corrupt or foreign state is ignored silently (`loadScan` returns null); timeouts and OOM
 surface as `too_large` with `details.reason` `"timeout"` / `"memory"`; worker cancellation is

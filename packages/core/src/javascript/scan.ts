@@ -1060,7 +1060,11 @@ export function scanJavaScript(
       return reader.objectsCapped || objectsCut ? [] : read;
     };
     let paramIpc = paramsOf();
-    if (!reader.classes.length && !paramIpc.length) return wrapperScan;
+    // a search for IPC object parameters cut short: its rows are left out, and that is said
+    const objectsUnread =
+      objects.length > 0 && (reader.objectsCapped || objectsCut || reader.objectSitesCapped);
+    if (!reader.classes.length && !paramIpc.length)
+      return objectsUnread ? (wrapperScan = { ...wrapperScan, capped: true }) : wrapperScan;
     let rows = reader.rows();
     // A method of the file's own wrappers that the file replaces (`Svc.prototype.register = f`,
     // `w.handle = () => {}` on an instance): its calls give no row here, as across modules.
@@ -1081,8 +1085,9 @@ export function scanJavaScript(
       inner: reader.inner,
       facts,
       calls: new Map(rows.map((r) => [r.at, { api: r.usage.api, arg: r.arg }])),
-      // what the search for IPC object parameters could not read only leaves its own rows out
-      ...(reader.capped ? { capped: true as const } : {}),
+      // what the search for IPC object parameters could not read leaves its own rows out, and
+      // says so: a call site past the ones read may pass ipcMain or ipcRenderer
+      ...(reader.capped || objectsUnread ? { capped: true as const } : {}),
       ...(paramIpc.length ? { paramIpc } : {}),
       ...(replacedAt.length ? { replaced: replacedAt.slice(0, 20) } : {}),
       ...(own.unchecked ? { unchecked: true as const } : {}),

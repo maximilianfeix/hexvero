@@ -401,3 +401,32 @@ describe("Session", () => {
     );
   });
 });
+
+describe("a comparison where one side calls an IPC registration past the sites read", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hexvero-session-cap-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const session = new Session();
+  const build = async (calls: number): Promise<string> => {
+    const path = join(dir, `reg-${calls}.asar`);
+    writeFileSync(
+      path,
+      buildAsar({
+        "package.json": JSON.stringify({ name: "r", main: "main.js" }),
+        "main.js": [
+          'const { ipcMain } = require("electron");',
+          'function reg(ipc) { ipc.handle("fixed", () => 1); }',
+          ...Array.from({ length: calls }, () => "reg(ipcMain);"),
+        ].join("\n"),
+      }),
+    );
+    return (await session.open(path)).id;
+  };
+
+  it("leaves the channel unknown, not removed", async () => {
+    const [a, b] = [await build(64), await build(65)];
+    const { diff } = await session.compareCollection(a, b, "ipcChannels");
+    expect(diff.removed).toEqual([]);
+    expect(diff.unknown).toMatchObject([{ side: "a" }]);
+    expect(diff.completeness.gaps).toContain("values_unresolved");
+  });
+});

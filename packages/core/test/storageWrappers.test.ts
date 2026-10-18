@@ -831,3 +831,34 @@ describe("a storage wrapper method replaced in the same bundle (#202)", () => {
       );
   });
 });
+
+it("says a wrapper called at more sites than are read has keys not listed", () => {
+  const calls = Array.from({ length: 70 }, (_, i) => `save("k${i}");`);
+  const info = analyze({
+    "main.js": [
+      'require("electron");',
+      'function save(name) { localStorage.setItem("app." + name, "1"); }',
+      ...calls,
+    ].join("\n"),
+  });
+  expect(info.storage.filter((r) => r.via).length).toBe(64);
+  // the 65th and later calls: an unknown row at the wrapper, not silence
+  expect(info.storage.filter((r) => !r.via)).toMatchObject([
+    { value: "app.${…}", line: 2, kind: "localStorage", op: "write" },
+  ]);
+});
+
+it("says so when the wrapper is reached through a helper called past the sites read", () => {
+  const info = analyze({
+    "main.js": [
+      'const { ipcMain } = require("electron");',
+      'function a(p) { ipcMain.handle("app:" + p, () => 1); localStorage.setItem("k." + p, "1"); }',
+      'function b(q) { a("x" + q); }',
+      ...Array.from({ length: 65 }, (_, i) => `b("${i}");`),
+    ].join("\n"),
+  });
+  expect(info.storage.filter((r) => r.via).length).toBe(64);
+  expect(info.storage.filter((r) => !r.via)).toMatchObject([
+    { value: "k.${…}", line: 2, kind: "localStorage", op: "write" },
+  ]);
+});

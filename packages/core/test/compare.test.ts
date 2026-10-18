@@ -579,6 +579,31 @@ describe("items on one side only", () => {
     ).toBe(0);
   });
 
+  it("leaves an item open when the other side cut more files than it names", () => {
+    // every file was read, but more were cut at the token budget than are named
+    const cut: SideCoverage = {
+      ...wholeSide("main.js"),
+      unreadableUnlisted: true,
+    };
+    const diff = compareItems(
+      [ipcRow("main.js", "open"), ipcRow("main.js", "late")],
+      [ipcRow("main.js", "open")],
+      {
+        collection: "ipc",
+        coverage: { a: wholeSide("main.js"), b: cut },
+      },
+    );
+    expect(diff.removed).toEqual([]);
+    expect(diff.unknown).toMatchObject([
+      {
+        side: "a",
+        file: "main.js",
+        reason: "more files were cut on the other side than are named",
+      },
+    ]);
+    expect(diff.completeness.gaps).toEqual(["files_unreadable"]);
+  });
+
   it("places a summary row by every file it names, and one that names none by the side's coverage", () => {
     const partial: SideCoverage = {
       complete: false,
