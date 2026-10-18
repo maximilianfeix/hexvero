@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   statSync,
@@ -249,6 +250,33 @@ describe("MCP write policy", () => {
         tools.hexvero_recover({ targetId: js.id, outputDir: join(root, "e", "rec") }),
       ).rejects.toThrow(/outside/);
       expect(existsSync(join(victim, "rec"))).toBe(false);
+    });
+
+    it("removes a recovered file opened after a swap, before writing to it", async (ctx) => {
+      const victim = join(outside, "victim3");
+      mkdirSync(victim);
+      if (!trySymlink(victim, join(root, "probe3"))) return ctx.skip();
+      const bundle = join(root, "bundle3.js");
+      writeFileSync(bundle, "console.log(1);\n");
+      const session = new Session();
+      const { id } = await session.open(bundle);
+      const out = join(root, "rec3");
+      let swapped = false;
+      await expect(
+        session.recover(id, out, {
+          // the policy holds when checked; then the directory is swapped before the open
+          guard: (path) => {
+            checkWritePath(path, "recover");
+            if (!swapped && path.startsWith(out + sep) && path.endsWith(".json")) {
+              swapped = true;
+              swapDir(out, victim)();
+            }
+          },
+          check: (path, opened) => verifyOpened(path, "recover", opened),
+        }),
+      ).rejects.toThrow(/outside/);
+      expect(swapped).toBe(true);
+      expect(readdirSync(victim)).toEqual([]);
     });
 
     it("refuses an opened file that is not the one the policy resolved", async (ctx) => {

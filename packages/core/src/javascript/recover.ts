@@ -1,4 +1,15 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, normalize, resolve, sep } from "node:path";
 import { AnalysisError } from "../model.js";
 import { analyzeBundle, type JsBundleInfo } from "./bundle.js";
@@ -54,6 +65,12 @@ export function safeRelativePath(name: string, fallback: string): string {
  * write policy here, so a directory swapped for a link after the first check is caught.
  */
 export type WriteGuard = (path: string) => void;
+
+/**
+ * Called with each recovered file's path and fstat of its new descriptor, before anything is
+ * written to it; throws to stop. On a refusal the empty file is removed again.
+ */
+export type OpenedCheck = (path: string, opened: { dev: number; ino: number }) => void;
 
 /** A guard's refusal: ends the recovery instead of skipping one file. */
 class GuardStop extends Error {
@@ -139,6 +156,7 @@ function writeInside(
   relative: string,
   content: string | Uint8Array,
   guard?: WriteGuard,
+  check?: OpenedCheck,
 ): number {
   const target = resolve(root, relative);
   if (!target.startsWith(root + sep))
@@ -146,7 +164,27 @@ function writeInside(
   guarded(guard, dirname(target));
   mkdirSync(dirname(target), { recursive: true });
   guarded(guard, target);
-  writeFileSync(target, content, { flag: "wx" });
+  const fd = openSync(target, "wx", 0o666);
+  try {
+    if (check) {
+      const opened = fstatSync(fd);
+      try {
+        check(target, opened);
+      } catch (error) {
+        // Nothing was written yet: remove the empty file if the path still names it.
+        try {
+          const now = lstatSync(target);
+          if (now.dev === opened.dev && now.ino === opened.ino) unlinkSync(target);
+        } catch {
+          // gone already
+        }
+        throw new GuardStop(error);
+      }
+    }
+    writeFileSync(fd, content);
+  } finally {
+    closeSync(fd);
+  }
   return Buffer.byteLength(content);
 }
 
@@ -156,8 +194,9 @@ export function recoverBundle(
   outputDir: string,
   info: JsBundleInfo = analyzeBundle(source),
   guard?: WriteGuard,
+  check?: OpenedCheck,
 ): RecoveryResult {
-  return unguard(() => bundleInto(source, outputDir, info, guard));
+  return unguard(() => bundleInto(source, outputDir, info, guard, check));
 }
 
 function bundleInto(
@@ -165,6 +204,7 @@ function bundleInto(
   outputDir: string,
   info: JsBundleInfo,
   guard: WriteGuard | undefined,
+  check: OpenedCheck | undefined,
 ): RecoveryResult {
   const root = prepareOutput(outputDir, guard);
   const manifestPath = "hexvero-bundle.json";
@@ -192,7 +232,7 @@ function bundleInto(
           `${header}// scope-hoisted: names may be defined in another section of the bundle\n${body}`
         : `${header}module.exports = ${factory};\n`;
     try {
-      const bytes = writeInside(root, relative, text, guard);
+      const bytes = writeInside(root, relative, text, guard, check);
       written.push({
         path: relative,
         bytes,
@@ -228,7 +268,7 @@ function bundleInto(
     routes: info.routes,
     storage: info.storage,
   };
-  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard);
+  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard, check);
   return { outputDir: root, written, skipped, manifest: manifestPath };
 }
 
@@ -237,14 +277,16 @@ export function recoverSourceMap(
   mapText: string,
   outputDir: string,
   guard?: WriteGuard,
+  check?: OpenedCheck,
 ): RecoveryResult {
-  return unguard(() => sourcesInto(mapText, outputDir, guard));
+  return unguard(() => sourcesInto(mapText, outputDir, guard, check));
 }
 
 function sourcesInto(
   mapText: string,
   outputDir: string,
   guard: WriteGuard | undefined,
+  check: OpenedCheck | undefined,
 ): RecoveryResult {
   const map = parseSourceMapJson(mapText);
   const root = prepareOutput(outputDir, guard);
@@ -276,7 +318,7 @@ function sourcesInto(
     try {
       written.push({
         path: relative,
-        bytes: writeInside(root, relative, content, guard),
+        bytes: writeInside(root, relative, content, guard, check),
         origin: "source-map",
         name: label,
       });
@@ -294,6 +336,6 @@ function sourcesInto(
     files: written.map((w) => ({ source: w.name ?? null, file: w.path })),
     skipped,
   };
-  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard);
+  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard, check);
   return { outputDir: root, written, skipped, manifest: manifestPath };
 }

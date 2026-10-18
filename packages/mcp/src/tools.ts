@@ -385,7 +385,11 @@ export function createHandlers(
         str(a["targetId"]),
         checkWritePath(str(a["outputDir"]), "recover"),
         // every directory and file is checked again right before it is created
-        { guard: (path) => void checkWritePath(path, "recover") },
+        {
+          guard: (path) => void checkWritePath(path, "recover"),
+          // and each new file must be the one at the location the policy resolved
+          check: (path, opened) => verifyOpened(path, "recover", opened),
+        },
       );
       return {
         ...result,

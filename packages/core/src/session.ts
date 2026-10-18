@@ -13,6 +13,7 @@ import {
   recoverBundle,
   recoverSourceMap,
   type RecoveryResult,
+  type OpenedCheck,
   type WriteGuard,
 } from "./javascript/recover.js";
 import {
@@ -647,7 +648,7 @@ export class Session {
   async recover(
     id: string,
     outputDir: string,
-    options: { guard?: WriteGuard | undefined } = {},
+    options: { guard?: WriteGuard | undefined; check?: OpenedCheck | undefined } = {},
   ): Promise<RecoveryResult> {
     const analysis = await this.analyze(id);
     const e = this.entry(id);
@@ -661,9 +662,9 @@ export class Session {
         { outputDir: resolvePath(outputDir) },
       );
     if (analysis.data.kind === "javascript")
-      return recoverBundle(text(), outputDir, undefined, options.guard);
+      return recoverBundle(text(), outputDir, undefined, options.guard, options.check);
     if (analysis.data.kind === "source-map")
-      return recoverSourceMap(text(), outputDir, options.guard);
+      return recoverSourceMap(text(), outputDir, options.guard, options.check);
     throw new AnalysisError(
       "invalid_input",
       `recover needs a single JavaScript bundle file or a source map; this target is ${analysis.data.kind}.${

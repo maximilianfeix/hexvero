@@ -183,6 +183,7 @@ export {
   safeRelativePath,
   type RecoveryResult,
   type RecoveredFile,
+  type OpenedCheck,
   type WriteGuard,
 } from "./javascript/recover.js";
 export {
