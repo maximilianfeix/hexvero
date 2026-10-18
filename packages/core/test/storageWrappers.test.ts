@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { buildSync } from "esbuild";
 import { afterAll, describe, expect, it } from "vitest";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
+import { REPLACEMENT_APP_WORK } from "../src/javascript/wrappers.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 /**
@@ -16,7 +17,10 @@ import { buildAsar } from "./fixtures/asar.js";
 const dir = mkdtempSync(join(tmpdir(), "hexvero-storage-wrappers-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-function analyze(files: Record<string, string>): JsAppInfo {
+function analyze(
+  files: Record<string, string>,
+  options: Parameters<typeof analyzeJavaScriptTree>[1] = {},
+): JsAppInfo {
   return analyzeJavaScriptTree(
     asarTree(
       buildAsar({
@@ -26,6 +30,7 @@ function analyze(files: Record<string, string>): JsAppInfo {
       }),
       "app.asar",
     ),
+    options,
   );
 }
 
@@ -675,7 +680,10 @@ local.get("x");
   });
 
   describe("past the application's replacement budget (R5)", () => {
-    const filler = Array.from({ length: 70_000 }, (_, i) => `o.a${i % 50} = ${i};`).join("\n");
+    // The budget is set 200 times smaller than the production one, with modules 200 times
+    // smaller than a real application would need to reach it (20 × 70,000 statements).
+    const BUDGETS = { budgets: { replacementAppWork: REPLACEMENT_APP_WORK / 200 } };
+    const filler = Array.from({ length: 350 }, (_, i) => `o.a${i % 50} = ${i};`).join("\n");
     /** Ten big modules importing the first wrapper, named with the prefix. */
     const bigs = (prefix: string, mod: string): Record<string, string> =>
       Object.fromEntries(
@@ -694,8 +702,15 @@ local.get("x");
       ...bigs(prefix, "r1"),
       ...bigs(`${prefix}s`, "s1"),
     });
+    it("keeps the production budget", () => {
+      expect(REPLACEMENT_APP_WORK).toBe(3_000_000);
+      // the small fixture is within the production budget: every replacement is checked
+      expect(analyze(app("a_big")).limitations.map((l) => l.code)).not.toContain(
+        "wrapper_replacements_unchecked",
+      );
+    });
     it("IPC keeps its rows and says the replacements were not checked; storage stays conservative, flagged", () => {
-      const info = analyze(app("a_big"));
+      const info = analyze(app("a_big"), BUDGETS);
       expect(info.ipcChannels.map((c) => c.channel).toSorted()).toEqual(["ch_one", "ch_two"]);
       expect(
         info.limitations.find((l) => l.code === "wrapper_replacements_unchecked")?.message,
@@ -710,7 +725,7 @@ local.get("x");
     it("an importer growing between two builds changes no row", () => {
       const before = app("a_big");
       const after = { ...before, "a_big3.js": `${before["a_big3.js"]}${"// grown\n".repeat(500)}` };
-      expect(result(analyze(after))).toEqual(result(analyze(before)));
+      expect(result(analyze(after, BUDGETS))).toEqual(result(analyze(before, BUDGETS)));
     });
     it("over 200 calling files: the same 200 by path in both builds, whatever their sizes", () => {
       const ROUTER = `const { ipcMain } = require("electron");\nclass Router { handle(ch, f) { ipcMain.handle(ch, f); } }\nmodule.exports = { router: new Router() };\n`;

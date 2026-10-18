@@ -4187,9 +4187,18 @@ export function analyzeJavaScriptTree(
     onFacts?: (facts: JsScanFacts) => void;
     /** Token facts already read for some files (in worker threads); the rest is read here. */
     prepared?: ReadonlyMap<string, FileTokenFacts>;
+    /** Budgets of the analysis, for tests that reach one with a small input. */
+    budgets?: {
+      /** Work of the wrapper replacement scan of the application (default 3,000,000). */
+      replacementAppWork?: number;
+    };
   } = {},
 ): JsAppInfo {
   const maxJsFiles = options.maxJsFiles ?? 5000;
+  const replacementBudget =
+    options.budgets?.replacementAppWork === undefined
+      ? {}
+      : { replacementAppWork: options.budgets.replacementAppWork };
   const maxFileBytes = options.maxFileBytes ?? 16 << 20;
   const maxTotalBytes = options.maxTotalBytes ?? 256 << 20;
   const findings: Finding[] = [];
@@ -5041,6 +5050,7 @@ export function analyzeJavaScriptTree(
     edges,
     resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
     open: openModule,
+    ...replacementBudget,
   });
   // Parameters used as the IPC object: a stage of its own, with its own budgets (what it could
   // not read leaves the functions another module may call undecided, see `paramIpcRows`); rows
@@ -5051,6 +5061,7 @@ export function analyzeJavaScriptTree(
         edges,
         resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
         open: openModule,
+        ...replacementBudget,
       })
     : null;
   // a cut in that stage leaves functions undecided (no rows): said, with the files
@@ -5265,6 +5276,7 @@ export function analyzeJavaScriptTree(
       edges,
       resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
       open: openModule,
+      ...replacementBudget,
     }),
     openModule,
     (from, ref) => lookUp(from, ref),
