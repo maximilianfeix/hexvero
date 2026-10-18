@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.registerIpcHandlers = void 0;
+const recipes_1 = require("./recipes");
+const shell_1 = require("./shell");
+const store_bridge_1 = require("./store-bridge");
+const sync_1 = require("./sync");
+const timers_1 = require("./timers");
+const window_1 = require("./window");
+const { registerShoppingHandlers } = require("./shopping");
+const registerIpcHandlers = () => {
+    (0, recipes_1.registerRecipeHandlers)();
+    registerShoppingHandlers();
+    (0, sync_1.registerSyncHandlers)();
+    (0, timers_1.registerTimerHandlers)();
+    (0, shell_1.registerShellHandlers)();
+    (0, window_1.registerWindowHandlers)();
+    (0, store_bridge_1.registerStoreBridge)();
+};
+exports.registerIpcHandlers = registerIpcHandlers;
