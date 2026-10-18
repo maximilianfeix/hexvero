@@ -1923,6 +1923,22 @@ const REMOVE_METHODS: ReadonlySet<string> = new Set([
 ]);
 /** Tokens of a member's value kept for calls of other modules' wrappers (`BridgeMember.body`). */
 const MAX_BODY_TOKENS = 4000;
+/** Calls that only read the object handed to them (`Object.freeze(api)`, `JSON.stringify(api)`). */
+const READ_ONLY_CALLS: ReadonlySet<string> = new Set([
+  "freeze",
+  "isFrozen",
+  "keys",
+  "values",
+  "entries",
+  "stringify",
+  "String",
+  "Boolean",
+  "log",
+  "warn",
+  "error",
+  "info",
+  "debug",
+]);
 /** `auth` and `loginRequest` give `auth.loginRequest`. */
 const qualify = (prefix: string | null, name: string): string =>
   prefix === null ? name : `${prefix}.${name}`;
@@ -2428,7 +2444,7 @@ export function bridgeMembers(
         ([a, b]) =>
           b === a + 1 && (is(a + 1, "=") || ident(a - 1, "function") || ident(a - 1, "class")),
       );
-      if (declared && writtenAnywhere(name)) return true;
+      if (declared && (writtenAnywhere(name) || escapes(name, 0))) return true;
       let writes = 0;
       for (const j of r.namePositions("exports")) {
         if (is(j - 1, ".") && !ident(j - 2, "module")) continue;
@@ -2477,22 +2493,42 @@ export function bridgeMembers(
    * IPC method besides the removal ones (`removeListener`, `off`, `removeAllListeners`), or a
    * reference `ipcRenderer.send` (also `.bind(ipcRenderer)`). Null for anything else.
    */
+  /**
+   * The token at j is Electron's ipcRenderer: a name for it (`ipcRenderer`, a minifier's `e` from
+   * `{ ipcRenderer: e }`), or `X.ipcRenderer` with X the electron module (`electron_1`,
+   * `import_electron`, a minifier's `o = require("electron")`).
+   */
+  const rendererAt = (j: number): boolean => {
+    const t = tokens[j];
+    if (t?.type !== "ident" || (context.aliases.get(j) ?? t.value) !== "ipcRenderer") return false;
+    if (!is(j - 1, ".") && !is(j - 1, "?.")) return true;
+    const x = tokens[j - 2];
+    if (x?.type !== "ident" || is(j - 3, ".") || is(j - 3, "?.")) return false;
+    if (context.constants.requireOf(x.value, j - 2) === "electron") return true;
+    const form = importFormOf(x.value);
+    if (form?.specifier === "electron" && form.property === "*") return true;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const bound = resolver.binding(j - 2, x.value);
+    return bound?.kind === "value" && requireIn(bound.range[0], bound.range[1]) === "electron";
+  };
   const forwarderOf = (
     from: number,
     end: number,
   ): Omit<BridgeForwarder, "api" | "path" | "file" | "line"> | null => {
     if (budget <= 0 || end - from > MAX_BODY_TOKENS) return null;
     // `send: ipcRenderer.send`, `send: ipcRenderer.send.bind(ipcRenderer)`
-    if (
-      tokens[from]?.type === "ident" &&
-      (context.aliases.get(from) ?? tokens[from]!.value) === "ipcRenderer" &&
-      is(from + 1, ".") &&
-      tokens[from + 2]?.type === "ident" &&
-      CHANNEL_CALLS.has(tokens[from + 2]!.value) &&
-      (from + 3 === end ||
-        (is(from + 3, ".") && tokens[from + 4]?.value === "bind" && is(from + 5, "(")))
-    )
-      return { method: `ipcRenderer.${tokens[from + 2]!.value}` };
+    {
+      // `X.ipcRenderer.send` as well: start at the ipcRenderer token
+      const k = is(from + 1, ".") && rendererAt(from + 2) ? from + 2 : from;
+      if (
+        rendererAt(k) &&
+        is(k + 1, ".") &&
+        tokens[k + 2]?.type === "ident" &&
+        CHANNEL_CALLS.has(tokens[k + 2]!.value) &&
+        (k + 3 === end || (is(k + 3, ".") && tokens[k + 4]?.value === "bind" && is(k + 5, "(")))
+      )
+        return { method: `ipcRenderer.${tokens[k + 2]!.value}` };
+    }
     resolver ??= new ExpressionResolver(tokens, context.constants);
     const r = resolver;
     let def: FnDef | null = null;
@@ -2506,6 +2542,8 @@ export function bridgeMembers(
     const methods = new Set<string>();
     /** The ipcRenderer calls of the body: the token of `ipcRenderer`. */
     const calls: number[] = [];
+    /** The `(` of each of those calls. */
+    const callOpen: number[] = [];
     /** The tokens of the parameter as the channel argument of those calls. */
     const args = new Set<number>();
     let other = false;
@@ -2515,8 +2553,7 @@ export function bridgeMembers(
       const t = tokens[j]!;
       if (t.type !== "ident") continue;
       if (
-        (context.aliases.get(j) ?? t.value) === "ipcRenderer" &&
-        !is(j - 1, ".") &&
+        rendererAt(j) &&
         (is(j + 1, ".") || is(j + 1, "?.")) &&
         tokens[j + 2]?.type === "ident" &&
         is(j + 3, "(")
@@ -2532,6 +2569,7 @@ export function bridgeMembers(
         let callAt = j;
         while (is(callAt - 1, ".") && tokens[callAt - 2]?.type === "ident") callAt -= 2;
         calls.push(callAt);
+        callOpen.push(j + 3);
         args.add(j + 4);
         j += 4;
       }
@@ -2548,31 +2586,81 @@ export function bridgeMembers(
      */
     const enforced = (at: number, to: number): boolean => {
       if (r.functionAt(at)?.paramsAt !== def!.paramsAt) return false;
-      const exits = (k: number): boolean =>
-        tokens[k]?.value === "return" ||
-        tokens[k]?.value === "throw" ||
-        (is(k, "{") && (tokens[k + 1]?.value === "return" || tokens[k + 1]?.value === "throw"));
+      /** A statement that starts at k sits directly in the body (no block, loop, switch or try around it). */
+      const direct = (k: number): boolean => {
+        if (!def!.block) return k === b0;
+        if (r.bracketAround(k) !== b0) return false;
+        // a statement of its own, not the body of a loop or condition without braces
+        // (`for (…) if (…) return;`, `else if`, `do if`)
+        return is(k - 1, "{") || is(k - 1, ";") || is(k - 1, "}");
+      };
+      /** The end of the statement whose expression ends at the `)` of the call opened at `open`. */
+      const endsAfter = (open: number): boolean => {
+        const close = r.closeOf(open);
+        return close !== -1 && (is(close + 1, ";") || is(close + 1, "}") || close + 1 === b1);
+      };
+      /** An exit that leaves the function without any IPC call: `return;`, `throw …;`, `{ …; return; }`. */
+      const exits = (k: number): boolean => {
+        if (tokens[k]?.value === "return") return is(k + 1, ";") || is(k + 1, "}");
+        if (tokens[k]?.value === "throw") {
+          const stop = r.endOf(k + 1);
+          return stop < first;
+        }
+        if (!is(k, "{")) return false;
+        const close = r.closeOf(k);
+        if (close === -1 || close > first) return false;
+        // statements that do not use the channel may come first (Element: `console.error(…); return;`)
+        let leaves = false;
+        for (let q = k + 1; q < close; q++) {
+          if (tokens[q]!.type === "ident" && tokens[q]!.value === param) return false;
+          if (r.bracketAround(q) !== k) continue;
+          if (tokens[q]!.value === "return" && (is(q + 1, ";") || is(q + 1, "}"))) leaves = true;
+          if (tokens[q]!.value === "throw") leaves = true;
+        }
+        return leaves;
+      };
+      // `if (!check) return;` before every call
       if (is(at - 1, "!") && is(at - 2, "(") && tokens[at - 3]?.value === "if") {
-        return is(to, ")") && r.closeOf(at - 2) === to && exits(to + 1) && to < first;
+        return (
+          direct(at - 3) && is(to, ")") && r.closeOf(at - 2) === to && to < first && exits(to + 1)
+        );
       }
+      if (is(at - 1, "!")) return false;
+      // `if (check) { … every call … }`, `if (check) call;`
       if (is(at - 1, "(") && tokens[at - 2]?.value === "if" && is(to, ")")) {
-        if (r.closeOf(at - 1) !== to) return false;
+        if (!direct(at - 2) || r.closeOf(at - 1) !== to) return false;
         const c = to + 1;
         if (is(c, "{")) {
           const close = r.closeOf(c);
           return close !== -1 && first > c && last < close;
         }
-        return calls.length === 1 && first === c;
+        // `if (check) call;`, also `if (check) return call;` as esbuild writes the early exit
+        const at0 = tokens[c]?.value === "return" ? c + 1 : c;
+        return calls.length === 1 && first === at0 && endsAfter(callOpen[0]!);
       }
-      // `check && call`, as minifiers write the `if`
-      return is(to, "&&") && calls.length === 1 && first === to + 1;
+      // `check && call;` as minifiers write the `if`, a statement of its own (or the arrow's body)
+      const statement = def!.block ? direct(at) && (is(at - 1, "{") || is(at - 1, ";")) : at === b0;
+      return (
+        statement &&
+        is(to, "&&") &&
+        calls.length === 1 &&
+        first === to + 1 &&
+        endsAfter(callOpen[0]!)
+      );
     };
     for (let j = b0; j < b1; j++) {
       const t = tokens[j]!;
       if (t.type !== "ident" || t.value !== param || is(j - 1, ".") || is(j - 1, "?.")) continue;
       // the channel argument of an IPC call
       if (args.has(j)) continue;
-      if (r.binding(j, param)?.kind !== "param") continue;
+      // the parameter itself, not one of an inner function of the same name
+      const own = r.binding(j, param);
+      if (own?.kind !== "param" || own.def.paramsAt !== def.paramsAt) continue;
+      // the declaration of an inner function's parameter of the same name (`(ch) => …`)
+      const around = r.bracketAround(j);
+      const inner =
+        r.functionWithParamsAt(j) ?? (around >= 0 ? r.functionWithParamsAt(around) : null);
+      if (inner && inner.paramsAt !== def.paramsAt) continue;
       if (writesName(tokens, j)) return null;
       // `if (!LIST.includes(channel)) return;`, `ALLOWED.has(channel)`: a list of strings of the file
       if (
@@ -2615,6 +2703,21 @@ export function bridgeMembers(
     resolver ??= new ExpressionResolver(tokens, context.constants);
     const bound = resolver.binding(k, tokens[k]!.value);
     if (bound?.kind !== "value" || writtenAnywhere(tokens[k]!.value)) return null;
+    // every other use is a check: `L.includes(x)`, `L.has(x)`; anything else may change it
+    // (`S.add(…)`, `L.push(…)`, handed to a function)
+    const decl = bound.range[0] - 2;
+    for (const j of resolver.namePositions(tokens[k]!.value)) {
+      if (j === decl || is(j - 1, ".")) continue;
+      const m = tokens[j + 2]?.value;
+      if (
+        !(
+          (is(j + 1, ".") || is(j + 1, "?.")) &&
+          (m === "includes" || m === "has") &&
+          is(j + 3, "(")
+        )
+      )
+        return null;
+    }
     let [a, b] = bound.range;
     if (tokens[a]?.value === "new" && tokens[a + 1]?.value === "Set" && is(a + 2, "(")) {
       a += 3;
@@ -2669,6 +2772,52 @@ export function bridgeMembers(
       if (f && forwarders.length < MAX_BRIDGE_PER_FILE)
         forwarders.push({ api, path: sub, ...f, file, line: tokens[s]!.line ?? line });
     }
+  };
+  /**
+   * The object a name of the file holds may be changed through something else: another name for
+   * it that is written (`const p = platform; p.a = …`, a few names deep), or a function it is
+   * handed to (`patch(api)`) other than the few that only read.
+   */
+  const escapes = (name: string, depth: number): boolean => {
+    if (depth > 3 || budget <= 0) return depth > 3;
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    for (const j of resolver.namePositions(name)) {
+      budget -= BRIDGE_SCOPE_COST;
+      if (is(j - 1, ".") || is(j - 1, "?.")) continue;
+      const ends =
+        is(j + 1, ";") ||
+        is(j + 1, ",") ||
+        is(j + 1, ")") ||
+        is(j + 1, "}") ||
+        j + 1 >= tokens.length;
+      // `X = name`: X is another name for it
+      if (is(j - 1, "=") && tokens[j - 2]?.type === "ident" && !is(j - 3, ".") && ends) {
+        const other = tokens[j - 2]!.value;
+        if (other !== name && (writtenAnywhere(other) || escapes(other, depth + 1))) return true;
+        continue;
+      }
+      // handed to a call
+      if ((is(j - 1, "(") || is(j - 1, ",")) && (is(j + 1, ")") || is(j + 1, ","))) {
+        const open = is(j - 1, "(") ? j - 1 : resolver.bracketAround(j);
+        if (!is(open, "(")) continue;
+        const callee = tokens[open - 1];
+        const owner = is(open - 2, ".") ? tokens[open - 3]?.value : null;
+        if (callee?.type !== "ident") continue;
+        if (
+          READ_ONLY_CALLS.has(callee.value) &&
+          (owner === null || owner === "Object" || owner === "JSON" || owner === "console")
+        )
+          continue;
+        if (
+          owner === "console" ||
+          callee.value === "exposeInMainWorld" ||
+          callee.value === "exposeInIsolatedWorld"
+        )
+          continue;
+        return true;
+      }
+    }
+    return false;
   };
   /** The opening bracket that matches the closing one at `close`, or -1. */
   const openOf = (close: number): number => {
@@ -3658,11 +3807,32 @@ function linkBridgeValues(input: {
         break;
       }
       const { tokens, constants } = m;
+      // `import * as base from "./base"`: its members are the module's exports
+      const namespaces = new Set<string>();
+      for (let j = 0; j + 5 < tokens.length; j++)
+        if (
+          tokens[j]!.value === "import" &&
+          tokens[j + 1]!.value === "*" &&
+          tokens[j + 2]!.value === "as" &&
+          tokens[j + 4]!.value === "from" &&
+          tokens[j + 5]!.type === "string" &&
+          input.resolve(file, tokens[j + 5]!.value) === target
+        )
+          namespaces.add(tokens[j + 3]!.value);
       for (let j = 0; j < tokens.length && !written; j++) {
         const t = tokens[j]!;
         if (t.type !== "ident") continue;
         const member = writesMember(tokens, j);
         if (member === null && !writtenByCallAt(tokens, j)) continue;
+        if (namespaces.has(t.value) && tokens[j - 1]?.value !== ".") {
+          written =
+            property === "*" ||
+            property === "default" ||
+            member === property ||
+            member === "*" ||
+            member === null;
+          continue;
+        }
         const named = constants.importOf(t.value, j);
         if (named && input.resolve(file, named.specifier) === target) {
           if (named.property === property) written = true;
@@ -3735,6 +3905,8 @@ const BRIDGE_CALL_WORK = 5_000_000;
 const MAX_BRIDGE_CALLS_PER_FILE = 2000;
 /** Objects a page script reaches globals through. */
 const GLOBAL_HOSTS = new Set(["window", "globalThis", "self"]);
+/** Work charged for reading the scope of one use of an alias of the bridge. */
+const BRIDGE_BINDING_COST = 64;
 
 /**
  * The page scripts' calls of generic forwarders a preload exposes (R1): `window.api.invoke("x")`,
@@ -3771,8 +3943,16 @@ function bridgeCallRows(input: {
   for (const [key, f] of byPath) {
     const [api, path] = key.split("\u0000") as [string, string];
     // another preload exposes the member under the same name without forwarding it
+    // another preload (or a part of this exposure) gives the api something else at that path: a
+    // plain member, a member whose value holds it (`ipcRenderer` for `ipcRenderer.send`), or a
+    // value that was not read (`build(ipcRenderer)`, a spread), which may hold anything
     const plain = input.contextBridge.some(
-      (b) => b.api === api && b.member === path && !b.forwards && f !== null && b.file !== f.file,
+      (b) =>
+        b.api === api &&
+        f !== null &&
+        (b.member === null ||
+          (b.file !== f.file &&
+            ((b.member === path && !b.forwards) || path.startsWith(`${b.member}.`)))),
     );
     if (f === null || plain) {
       byPath.set(key, null);
@@ -3786,10 +3966,23 @@ function bridgeCallRows(input: {
   for (const f of input.forwarders) exposing.add(f.file);
   let work = BRIDGE_CALL_WORK;
   let files = 0;
+  // The page scripts, and what any of them does to the api names first: a script that assigns
+  // `window.api` (also `window["api"]`, `Object.assign(window, { api })`,
+  // `Object.defineProperty(window, "api", …)`) or declares `api` at its top (a classic script's
+  // `var api` is a global of the page) may replace the bridge for every script of the page, so
+  // those names are not read anywhere. Worker scripts (`new Worker("w.js")`) have no bridge, and
+  // a file that names ipcMain is a main-process file.
+  const workers = new Set<string>();
+  const pages: Array<{ m: JsModule; named: string[]; read: ReadModule }> = [];
+  const replaced = new Set<string>();
   for (const m of input.modules) {
-    if (m.role === "main" || exposing.has(m.id)) continue;
-    const text = input.text(m.id);
+    const text = m.role === "main" || exposing.has(m.id) ? null : input.text(m.id);
     if (text === null) continue;
+    for (const w of text.matchAll(
+      /new\s+(?:Shared)?Worker\s*\(\s*(?:new\s+URL\s*\(\s*)?["'`]([^"'`]+)["'`]/g,
+    ))
+      workers.add(w[1]!.split("/").pop()!);
+    if (/\bipcMain\b/.test(text)) continue;
     const named = apis.filter((a) => text.includes(a));
     if (!named.length) continue;
     if (files >= MAX_BRIDGE_CALL_FILES || work <= 0) {
@@ -3800,7 +3993,85 @@ function bridgeCallRows(input: {
     const read = input.open(m.id);
     if (!read) continue;
     work -= read.tokens.length;
+    pages.push({ m, named, read });
+    const { tokens, resolver: r } = read;
+    const is = (k: number, v: string): boolean =>
+      tokens[k]?.type === "punct" && tokens[k]!.value === v;
+    // a CommonJS or ES module keeps its top-level names to itself; only a classic script's are globals
+    const moduleScoped = tokens.some(
+      (t, k) =>
+        t.type === "ident" &&
+        (((t.value === "require" || t.value === "import") && tokens[k + 1]?.value === "(") ||
+          (t.value === "export" && !is(k - 1, ".")) ||
+          (t.value === "import" &&
+            (tokens[k + 1]?.type === "string" ||
+              tokens[k + 1]?.type === "ident" ||
+              is(k + 1, "{") ||
+              is(k + 1, "*")))),
+    );
+    for (const api of named)
+      for (const j of r.namePositions(api)) {
+        work--;
+        const before = tokens[j - 1]?.value;
+        const host = GLOBAL_HOSTS.has(tokens[j - 2]?.value ?? "");
+        // `window.api = …`, `window.api.m = …`
+        if (host && (is(j - 1, ".") || is(j - 1, "?.")) && writesMember(tokens, j - 2) === api)
+          replaced.add(api);
+        // a declaration at the top of the file that is no alias of the bridge (`const X = window.api`)
+        if (
+          !moduleScoped &&
+          r.functionAt(j) === null &&
+          (before === "var" ||
+            before === "let" ||
+            before === "const" ||
+            before === "function" ||
+            before === "class") &&
+          !(
+            is(j + 1, "=") &&
+            GLOBAL_HOSTS.has(tokens[j + 2]?.value ?? "") &&
+            is(j + 3, ".") &&
+            tokens[j + 4]?.value === api
+          )
+        )
+          replaced.add(api);
+        if (writesName(tokens, j) && !is(j - 1, ".")) replaced.add(api);
+      }
+    // `window["api"] = …`, `Object.assign(window, { api })`, `Object.defineProperty(window, "api", …)`
+    for (let j = 0; j + 3 < tokens.length; j++) {
+      const t = tokens[j]!;
+      if (t.type !== "ident" || !GLOBAL_HOSTS.has(t.value) || is(j - 1, ".")) continue;
+      if (
+        is(j + 1, "[") &&
+        tokens[j + 2]?.type === "string" &&
+        is(j + 3, "]") &&
+        writesMember(tokens, j) !== null
+      )
+        replaced.add(tokens[j + 2]!.value);
+      if (is(j - 1, "(") && writtenByCallAt(tokens, j)) {
+        // the keys the call can give the global: a literal, or (unknown) every api
+        const close = r.closeOf(j - 1);
+        const keys = new Set<string>();
+        let open = false;
+        for (let q = j + 1; q < close; q++)
+          if (tokens[q]!.type === "string" || tokens[q]!.type === "ident")
+            keys.add(tokens[q]!.value);
+          else if (is(q, "...") || is(q, "[")) open = true;
+        for (const api of named) if (open || keys.has(api)) replaced.add(api);
+        if (close === -1) for (const api of named) replaced.add(api);
+      }
+    }
+  }
+  for (const { m, named: all, read } of pages) {
+    const named = all.filter((a) => !replaced.has(a));
+    if (!named.length || workers.has(m.id.split("/").pop()!)) continue;
     const { tokens, constants, resolver: r } = read;
+    // `with (obj) { api.m() }` may be `obj.api`: such a file is not read
+    if (
+      tokens.some(
+        (t, k) => t.type === "ident" && t.value === "with" && tokens[k + 1]?.value === "(",
+      )
+    )
+      continue;
     const is = (k: number, v: string): boolean =>
       tokens[k]?.type === "punct" && tokens[k]!.value === v;
     const dot = (k: number): boolean => is(k, ".") || is(k, "?.");
@@ -3872,6 +4143,33 @@ function bridgeCallRows(input: {
         out.push(usage);
       }
     };
+    /** Locals that hold the api or a member of it, read once per name after the api names. */
+    const locals = new Map<
+      string,
+      Array<{
+        decl: number;
+        api: string;
+        prefix: string[];
+        pattern?: string;
+        from?: number;
+        value?: [number, number];
+      }>
+    >();
+    const addLocal = (
+      name: string,
+      decl: number,
+      how: {
+        api: string;
+        prefix: string[];
+        pattern?: string;
+        from?: number;
+        value?: [number, number];
+      },
+    ): void => {
+      const held = locals.get(name) ?? [];
+      if (held.length < 64) held.push({ decl, ...how });
+      locals.set(name, held);
+    };
     for (const api of named) {
       const positions = r.namePositions(api);
       // a write of the api in the file (`window.api = …`, `api = …`): what it holds is not the bridge
@@ -3909,13 +4207,7 @@ function bridgeCallRows(input: {
         if (close === -1 || !is(close + 1, "=") || !GLOBAL_HOSTS.has(ident(close + 2) ?? ""))
           continue;
         if (!global(close + 2) || dot(close + 3)) continue;
-        const name = ident(local)!;
-        for (const k of r.namePositions(name)) {
-          if (k === local || dot(k - 1)) continue;
-          const bound = r.binding(k, name);
-          if (bound?.kind === "pattern" && bound.key === api && bound.from[0] === close + 2)
-            readCall(api, k, []);
-        }
+        addLocal(ident(local)!, local, { api, prefix: [], pattern: api, from: close + 2 });
       }
       // aliases: `X = window.api` and patterns of members `{ invoke: call } = window.api`
       for (const j of positions) {
@@ -3929,13 +4221,7 @@ function bridgeCallRows(input: {
           )
         )
           continue;
-        const alias = ident(j - 4)!;
-        for (const k of r.namePositions(alias)) {
-          if (k === j - 4 || dot(k - 1)) continue;
-          const bound = r.binding(k, alias);
-          if (bound?.kind === "value" && bound.range[0] === j - 2 && bound.range[1] === j + 1)
-            readCall(api, k, []);
-        }
+        addLocal(ident(j - 4)!, j - 4, { api, prefix: [], value: [j - 2, j + 1] });
       }
       for (const j of positions) {
         if (!hosted(j) || !is(j - 3, "=") || !is(j - 4, "}")) continue;
@@ -3950,13 +4236,30 @@ function bridgeCallRows(input: {
           const local =
             is(q + 1, ":") && ident(q + 2) ? q + 2 : is(q + 1, ",") || q + 1 === close ? q : -1;
           if (local === -1) continue;
-          const name = ident(local)!;
-          for (const k of r.namePositions(name)) {
-            if (k === local || dot(k - 1)) continue;
-            const bound = r.binding(k, name);
-            if (bound?.kind === "pattern" && bound.key === key && bound.from[0] === j - 2)
-              readCall(api, k, [key]);
-          }
+          addLocal(ident(local)!, local, { api, prefix: [key], pattern: key, from: j - 2 });
+        }
+      }
+    }
+    // each local name once: its uses, each bound by scope to one of its declarations
+    for (const [name, decls] of locals) {
+      for (const k of r.namePositions(name)) {
+        // every use costs a scope reading: charged, so many aliases stay bounded
+        work -= BRIDGE_BINDING_COST;
+        if (work <= 0) {
+          if (!capped.includes(m.id)) capped.push(m.id);
+          break;
+        }
+        if (dot(k - 1) || decls.some((d) => d.decl === k)) continue;
+        const bound = r.binding(k, name);
+        if (!bound) continue;
+        for (const d of decls) {
+          const match =
+            d.value !== undefined
+              ? bound.kind === "value" &&
+                bound.range[0] === d.value[0] &&
+                bound.range[1] === d.value[1]
+              : bound.kind === "pattern" && bound.key === d.pattern && bound.from[0] === d.from;
+          if (match) readCall(d.api, k, d.prefix);
         }
       }
     }
@@ -4405,6 +4708,8 @@ export function remoteEnables(
       (is(j - 1, "(") && ident(j - 2) === "import");
     if (!required && !imported && !bare) continue;
     if (renderer) {
+      // one row per file that loads it, whatever entry it takes
+      if (rows.some((x) => x.kind === "use")) continue;
       push({
         kind: "use",
         target: null,
@@ -4430,6 +4735,34 @@ export function remoteEnables(
       if (is(start - 1, "(") && INTEROP.has(ident(start - 2) ?? "") && is(end, ")")) {
         start -= 2;
         end++;
+      }
+      // webpack: `12: (e) => { e.exports = require("@electron/remote/main") }` and later
+      // `var a = n(12)`: the name the module id is required under
+      if (
+        is(start - 1, "=") &&
+        ident(start - 2) === "exports" &&
+        is(start - 3, ".") &&
+        ident(start - 4)
+      ) {
+        let id: string | null = null;
+        for (let q = start - 5; q >= 0 && q > start - 24; q--)
+          if (tokens[q]!.type === "number" && is(q + 1, ":")) {
+            id = tokens[q]!.value;
+            break;
+          }
+        if (id !== null)
+          for (let q = 2; q + 3 < tokens.length; q++)
+            if (
+              tokens[q + 2]?.type === "number" &&
+              tokens[q + 2]!.value === id &&
+              is(q + 1, "(") &&
+              is(q + 3, ")") &&
+              ident(q) &&
+              is(q - 1, "=") &&
+              ident(q - 2)
+            )
+              addModule(q - 2);
+        continue;
       }
       if (is(start - 1, "=") && ident(start - 2)) {
         addModule(start - 2);
@@ -6617,6 +6950,23 @@ export function analyzeJavaScriptTree(
     }
     return modulesRead.get(path) ?? null;
   };
+
+  // `ipcMain` bound to a module of the app (`import * as ipcMain from "./ipc-main"`): the call is
+  // that module's function. When the module is read and exports a channel-forwarding function of
+  // the method's name, its row at the call (above) replaces the direct one; otherwise the direct
+  // row stays, as the module may hand Electron's object on (`export { ipcMain } from "electron"`).
+  for (const m of modules) {
+    if (!m.ipc.some((u) => u.appModule)) continue;
+    m.ipc = m.ipc.filter((u) => {
+      const spec = u.appModule;
+      if (!spec) return true;
+      delete u.appModule;
+      const target = resolveSpecifier(m.id, spec, known);
+      const method = u.api.slice(u.api.indexOf(".") + 1);
+      const forwarder = target ? moduleById.get(target)?.wrappers?.forwarders?.[method] : undefined;
+      return forwarder === undefined;
+    });
+  }
 
   // Bridge objects another module defines (`exposeInMainWorld("ipc", ipc)` with `export const ipc
   // = { auth, platform }` there): each entry whose value is another module's export is read in

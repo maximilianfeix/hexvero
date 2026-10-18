@@ -56,6 +56,12 @@ export interface IpcUsage {
   /** For a call of a wrapper method: `<Class>.<method>` (or the export key of a minified class). */
   wrapper?: string;
   /**
+   * Internal, never in the result: the call is on `ipcMain` / `ipcRenderer` bound to this
+   * module of the app (a relative specifier); app.ts keeps the row unless that module exports a
+   * channel-forwarding function of the method's name, whose rows replace it.
+   */
+  appModule?: string;
+  /**
    * For `via: "bridge"`: the exposed member a page script calls, `<api>.<path>`, which passes the
    * channel on to the IPC method of `api` (a generic forwarder of a preload, see app.ts).
    */
@@ -170,10 +176,39 @@ function findWrappers(
   };
   /** The IPC API called with `param` as its first argument between two token positions. */
   const forwards = (from: number, to: number, param: string): string | null => {
-    // A parameter the body writes (`channel = "x:" + channel`) is not what the caller passed.
-    for (let k = from; k < to; k++)
-      if (tokens[k]!.type === "ident" && tokens[k]!.value === param && writesName(tokens, k))
-        return null;
+    // A parameter the body writes (`channel = "x:" + channel`) is not what the caller passed, and
+    // an inner function that takes a parameter of the same name (`forEach((channel) => …)`)
+    // calls with its own.
+    for (let k = from; k < to; k++) {
+      if (tokens[k]!.type !== "ident" || tokens[k]!.value !== param) continue;
+      if (writesName(tokens, k)) return null;
+      if (is(k + 1, "punct", "=>")) return null;
+      // inside a parameter list: `(a, channel) =>`, `function (channel) {`
+      for (let j = k - 1, depth = 0; j >= from && j > k - 64; j--) {
+        const p = tokens[j]!;
+        if (p.type !== "punct") continue;
+        if (p.value === ")" || p.value === "]" || p.value === "}") depth++;
+        else if (p.value === "(" || p.value === "[" || p.value === "{") {
+          if (depth > 0) {
+            depth--;
+            continue;
+          }
+          if (p.value !== "(") break;
+          const close = match[j]!;
+          const arrow = close !== -1 && is(close + 1, "punct", "=>");
+          const fn =
+            is(j - 1, "ident", "function") ||
+            (is(j - 1, "ident") && is(j - 2, "ident", "function")) ||
+            (close !== -1 &&
+              is(close + 1, "punct", "{") &&
+              is(j - 1, "ident") &&
+              !/^(if|for|while|switch|catch|with)$/.test(tokens[j - 1]!.value) &&
+              !is(j - 2, "punct", "."));
+          if (arrow || fn) return null;
+          break;
+        }
+      }
+    }
     for (let k = from; k + 4 < to; k++) {
       const api = apiAt(k);
       // The parameter must be the whole first argument: `send(ns + ":" + name)` and
@@ -298,10 +333,28 @@ function exportedForwarders(
     if (wrappers.has(local)) keys.set(key, local);
   };
   const written = new Set<string>();
+  /** Definitions of each export key: a key defined twice is not known to be the helper. */
+  const defined = new Map<string, number>();
+  const define = (key: string): void => {
+    defined.set(key, (defined.get(key) ?? 0) + 1);
+  };
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "ident") continue;
     if (wrappers.has(t.value) && writesName(tokens, k)) written.add(t.value);
+    // `exports.k = …` / `module.exports.k = …` (not tsc's `exports.k = void 0` hoisting)
+    if (
+      t.value === "exports" &&
+      (!is(k - 1, ".") || ident(k - 2, "module")) &&
+      is(k + 1, ".") &&
+      ident(k + 2) &&
+      is(k + 3, "=") &&
+      !is(k + 4, "=")
+    ) {
+      let v = k + 4;
+      while (ident(v, "exports") && is(v + 1, ".") && ident(v + 2) && is(v + 3, "=")) v += 4;
+      if (!ident(v, "void")) define(tokens[k + 2]!.value);
+    }
     if (t.value === "export" && !is(k - 1, ".")) {
       let j = k + 1;
       if (ident(j, "async")) j++;
@@ -338,7 +391,8 @@ function exportedForwarders(
     }
   }
   const out: Record<string, string> = {};
-  for (const [key, local] of keys) if (!written.has(local)) out[key] = wrappers.get(local)!;
+  for (const [key, local] of keys)
+    if (!written.has(local) && (defined.get(key) ?? 0) <= 1) out[key] = wrappers.get(local)!;
   return Object.keys(out).length ? out : null;
 }
 
@@ -351,8 +405,8 @@ const IPC_OBJECT_NAMES: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]
  * `import { a as ipcMain } from "./x"`, `const ipcMain = require("./x")` (also through
  * `__importStar` / `__toESM`), `const { a: ipcMain } = require("./x")`.
  */
-export function appModuleNames(tokens: readonly Token[]): Set<string> {
-  const out = new Set<string>();
+export function appModuleNames(tokens: readonly Token[]): Map<string, string> {
+  const out = new Map<string, string>();
   const is = (k: number, v: string): boolean =>
     tokens[k]?.type === "punct" && tokens[k]!.value === v;
   const ident = (k: number, v?: string): boolean =>
@@ -365,7 +419,7 @@ export function appModuleNames(tokens: readonly Token[]): Set<string> {
     if (is(k - 1, ".") || is(k - 1, "?.")) continue;
     // `import * as N from "./x"`, `import N from "./x"`, `import { a as N } from "./x"`
     if (ident(k + 1, "from") && relative(k + 2)) {
-      if (ident(k - 1, "as") || ident(k - 1, "import")) out.add(t.value);
+      if (ident(k - 1, "as") || ident(k - 1, "import")) out.set(t.value, tokens[k + 2]!.value);
       continue;
     }
     if (ident(k - 1, "as") || is(k - 1, "{") || is(k - 1, ",") || is(k - 1, ":")) {
@@ -381,7 +435,8 @@ export function appModuleNames(tokens: readonly Token[]): Set<string> {
             relative(close + 4)))
       ) {
         // a key of a pattern (`{ ipcMain: other }`) binds the other name
-        if (!is(k + 1, ":")) out.add(t.value);
+        if (!is(k + 1, ":"))
+          out.set(t.value, tokens[ident(close + 1, "from") ? close + 2 : close + 4]!.value);
       }
       continue;
     }
@@ -389,7 +444,8 @@ export function appModuleNames(tokens: readonly Token[]): Set<string> {
     if (!is(k + 1, "=")) continue;
     let v = k + 2;
     if (ident(v) && is(v + 1, "(") && ident(v + 2, "require")) v += 2;
-    if (ident(v, "require") && is(v + 1, "(") && relative(v + 2)) out.add(t.value);
+    if (ident(v, "require") && is(v + 1, "(") && relative(v + 2))
+      out.set(t.value, tokens[v + 2]!.value);
   }
   return out;
 }
@@ -1027,7 +1083,7 @@ export function scanJavaScript(
   if (NAMES_SOMETHING.test(source)) {
     const own = new Set(constants.names());
     aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
-    if (namesIpc()) wrappers = findWrappers(tokens, aliases, appModuleAt);
+    if (namesIpc()) wrappers = findWrappers(tokens, aliases);
     if (wrappers.size) {
       for (const name of wrappers.keys()) own.add(name);
       aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
@@ -1073,8 +1129,7 @@ export function scanJavaScript(
         !IPC_METHODS.has(method.value) ||
         !punct(k + 3, "(") ||
         tokens[k + 4]!.type !== "ident" ||
-        !(punct(k + 5, ",") || punct(k + 5, ")")) ||
-        appModuleAt(k)
+        !(punct(k + 5, ",") || punct(k + 5, ")"))
       )
         continue;
       let owner = aliases.get(k) ?? tokens[k]!.value;
@@ -1588,8 +1643,7 @@ export function scanJavaScript(
       is(k + 1, "punct", ".") &&
       is(k + 2, "ident") &&
       IPC_METHODS.has(at(k + 2)!.value) &&
-      is(k + 3, "punct", "(") &&
-      !appModuleAt(k)
+      is(k + 3, "punct", "(")
     ) {
       let owner = aliases.get(k) ?? t.value;
       // `this.ipc.handle(…)` with the IPC object kept in a field of the class
@@ -1617,6 +1671,9 @@ export function scanJavaScript(
         if (named && "value" in named && named.via !== "literal")
           Object.assign(usage, viaOf(named));
         else if (owner !== t.value) usage.via = "alias";
+        // `ipcMain` bound to a module of the app: decided once modules are known (app.ts)
+        const appModule = appModuleAt(k) ? appModules.get(t.value) : undefined;
+        if (appModule) usage.appModule = appModule;
         const shape = SENDING_APIS.has(api) ? { args: payload.shapeAt(k + 3) } : {};
         Object.assign(usage, shape);
         // `for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, fn)`:
@@ -1656,7 +1713,7 @@ export function scanJavaScript(
     }
     // `ipcMain[route.kind](route.channel, route.fn)` in a loop over a list of routes: one row per
     // element, the method its `kind` when that is a method of the object (else unknown).
-    if (is(k + 1, "punct", "[") && namesIpc() && !appModuleAt(k)) {
+    if (is(k + 1, "punct", "[") && namesIpc()) {
       const owner = aliases.get(k) ?? t.value;
       if ((owner === "ipcMain" || owner === "ipcRenderer") && !is(k - 1, "punct", ".")) {
         resolver ??= new ExpressionResolver(tokens, constants);

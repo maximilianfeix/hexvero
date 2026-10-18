@@ -141,7 +141,7 @@ export const openDialog = makeHandlerInvoker("openDialog");
     expect(rows(info)).toEqual(["openDialog ipcRenderer.invoke library.js ipc.makeHandlerInvoker"]);
   });
 
-  it("takes a module of the app named ipcMain for that module, not Electron's (GitHub Desktop)", () => {
+  it("reads a forwarder of a module of the app named ipcMain at its calls (GitHub Desktop)", () => {
     const info = analyze({
       "ipc-main.js": `const electron = require("electron");
 function handle(channel, listener) {
@@ -156,9 +156,13 @@ ipcMain.handle("show-contextual-menu", async () => 1);
 ipcMain.on("not-ipc", () => {});
 `,
     });
-    // `ipcMain.on` there is the module's own `on`, which forwards nothing to Electron
-    expect(rows(info)).toEqual(["show-contextual-menu ipcMain.handle main.js ipc-main.handle"]);
-    expect(info.ipcChannels.map((c) => c.channel)).toEqual(["show-contextual-menu"]);
+    // `handle` is a forwarder of the module: its row replaces the direct one. The module's own
+    // `on` forwards nothing; as it is no forwarder, the direct row of 0.9.9 stays (a module of the
+    // app may as well hand Electron's object on: `export { ipcMain } from "electron"`)
+    expect(rows(info)).toEqual([
+      "not-ipc ipcMain.on main.js",
+      "show-contextual-menu ipcMain.handle main.js ipc-main.handle",
+    ]);
   });
 
   it("gives the same channels in an esbuild bundle, plain and minified (helpers in one file)", () => {

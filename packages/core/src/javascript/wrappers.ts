@@ -22,7 +22,7 @@ import type { Constants, Resolved } from "./aliases.js";
 import type { ExpressionResolver, FnDef } from "./resolve.js";
 import type { Candidate } from "./candidates.js";
 import type { IpcUsage, Token } from "./scan.js";
-import { ASSIGNMENT_OPERATORS, writesName } from "./writes.js";
+import { ASSIGNMENT_OPERATORS, writesMember, writesName, writtenByCallAt } from "./writes.js";
 
 /**
  * An IPC call on a parameter of a function or method, `ipc.handle(C.GET, …)` inside
@@ -286,6 +286,35 @@ export class WrapperReader {
   /** More calls of other modules' forwarders than `MAX_FORWARDER_CALLS`: the rest are not read. */
   private forwardersCut = false;
 
+  private readonly forwarderWrites = new Map<string, boolean>();
+  /** Whether this file writes the name at `start` (the callee or its module object) or its member `key`. */
+  private replacesForwarder(start: number, key: string): boolean {
+    const name = this.tokens[start]!.value;
+    const cacheKey = `${name}\u0000${key}`;
+    const known = this.forwarderWrites.get(cacheKey);
+    if (known !== undefined) return known;
+    let found = false;
+    for (const j of this.r.namePositions(name)) {
+      if (this.work-- <= 0) {
+        found = true;
+        break;
+      }
+      if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
+      const member = writesMember(this.tokens, j);
+      if (
+        writesName(this.tokens, j) ||
+        member === key ||
+        member === "*" ||
+        writtenByCallAt(this.tokens, j)
+      ) {
+        found = true;
+        break;
+      }
+    }
+    this.forwarderWrites.set(cacheKey, found);
+    return found;
+  }
+
   /**
    * One row per call of a channel-forwarding function another module exports (cross-file stage):
    * `addHandler("x", f)` with `import { addHandler }` (also renamed, `{ handle as handleOnMain }`),
@@ -335,6 +364,9 @@ export class WrapperReader {
       }
       const v = this.valueOf(calleeStart, calleeEnd);
       if (v?.kind !== "fwd") continue;
+      // the importer may replace what it calls: `ipc.addHandler = …`, `Object.assign(ipc, …)`,
+      // `addHandler = …`
+      if (this.replacesForwarder(start, v.key)) continue;
       if (out.length >= MAX_FORWARDER_CALLS) {
         this.forwardersCut = true;
         return out;

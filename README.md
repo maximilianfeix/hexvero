@@ -168,7 +168,7 @@ In Claude Code the server and the skill also come as one plugin: `/plugin market
 
 - It reads files and never runs the program, so a finding is what the code contains, not what it does at run time, and not whether anything is exploitable. A passing check means nothing new against the policy in what was read.
 - It misses things and can be wrong ([numbers](docs/accuracy.md)). Absence from a list is weaker evidence than presence.
-- `hexvero check` judges five rules; it is not a vulnerability scanner and a pass is not a security verdict. Content Security Policy, permission handlers and `shell.openExternal` calls are not checked, and fuses only for packaged builds ([what is not read](docs/electron-findings.md#not-read)).
+- `hexvero check` judges six rules; it is not a vulnerability scanner and a pass is not a security verdict. Content Security Policy, permission handlers and `shell.openExternal` calls are not checked, and fuses only for packaged builds ([what is not read](docs/electron-findings.md#not-read)).
 - Not executing the target is not a safety guarantee: parsing a hostile file still processes attacker-controlled bytes, within size, depth and time limits.
 
 The full list: [docs/accuracy.md](docs/accuracy.md#limits).

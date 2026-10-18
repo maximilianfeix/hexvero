@@ -241,8 +241,11 @@ A member is not read as written, and the entry stays as it was (the exposed valu
 `member: null`, a named member with `channel: null`), when it may not be what is written: the
 module does not define the export once (two definitions, `export *`, `export { a } from "./b"`,
 `__exportStar`, `Object.defineProperty(exports, "P", …)` for a namespace), the name or a member of
-it is written in its module (the write forms of `writes.ts`, also `Object.assign` and the like), a
-module that imports it writes a member of it (every importer except the exposing preload, whose
+it is written in its module (the write forms of `writes.ts`, also `Object.assign` and the like,
+through another name for it, `const p = platform; p.a = …`, three names deep, or it is handed to a
+function other than `Object.freeze` / `keys` / `values` / `entries`, `JSON.stringify` and
+`console`), a module that imports it writes a member of it (also as a namespace, `import * as
+base; base.api.a = …`) (every importer except the exposing preload, whose
 writes before the call are members as above; past 64 importers the value is not read), the module
 is not among the files (a package, a file outside the app; only relative specifiers are followed),
 or it is more than three modules deep, or past 64 modules opened. `context_bridge_module_unread`
@@ -275,21 +278,36 @@ there, and those calls use one IPC method besides `removeListener`, `off` and
 Members of nested object literals count, three levels deep (`electron.ipcRenderer.sendMessage`).
 The member's row says `forwards: "ipcRenderer.send"`, and the channel stays null.
 
-A check of the channel is recorded only in these shapes, at the body's own level: `if
-(!LIST.includes(channel)) return|throw …` (also `LIST.has`, `{ return …`) before every IPC call,
-`if (LIST.includes(channel)) { … }` or `if (LIST.includes(channel)) call` with every call inside,
-and `LIST.includes(channel) && call` as minifiers write it, `LIST` an array literal (or `new
-Set([…])`) of strings that nothing writes: `allowed` lists them. The same shapes with
-`channel.startsWith("x:")` (also `?.`) give `prefix`. Any other use of the parameter (a check
-that does not stop the call, `if (LIST.includes(channel)) log(channel)`, `const ok =
-LIST.includes(channel)`, `validate(channel)`, a log) gives `guard: "unknown"`.
+A check of the channel is recorded only where it decides every IPC call, in these shapes: `if
+(!LIST.includes(channel)) return;` or `throw …` (also `{ …; return; }` whose statements before the
+exit do not use the channel, as Element writes it) before every call; `if (LIST.includes(channel))
+{ … }` with every call inside, `if (LIST.includes(channel)) call;` and `if (…) return call;` (as
+esbuild rewrites the early exit); and `LIST.includes(channel) && call` as a statement of its own or
+an arrow's whole body. The check must be a statement of the function's own body: inside a block of
+another statement (`if (process.env.STRICT) { … }`, `try`, a loop, a `switch` case) or the body of
+a condition or loop without braces it is not read. The exit must leave without an IPC call (`if
+(!LIST.includes(channel)) return ipcRenderer.invoke(…)` is the opposite of a check), and a `!`
+before an `&&` check inverts it. `LIST` is an array literal (or `new Set([…])`) of strings that
+nothing writes and that is used only in `LIST.includes(…)` / `LIST.has(…)` (`S.add(…)`,
+`L.push(…)` or handing it to a function may change it): `allowed` lists them. The same shapes with
+`channel.startsWith("x:")` (also `?.`) give `prefix`. Any other use of the parameter (a check that
+does not stop the call, `if (LIST.includes(channel)) log(channel)`, `const ok =
+LIST.includes(channel)`, `validate(channel)`, a ternary, a log) gives `guard: "unknown"`; a
+parameter of the same name of an inner function is not the channel. The ipcRenderer calls are read
+on a name for it and on `X.ipcRenderer` with X the electron module (`electron_1`,
+`import_electron`, a minifier's `o`).
 
 The calls are read in every file that is not a main-process file and does not expose anything:
 `window.api.m(arg)`, `globalThis.api.m(arg)`, `self.api.m(arg)`, `api.m(arg)` where the file binds
 no `api` (no declaration, parameter, import or require of it where it is used), `const X =
 window.api; X.m(arg)`, `const { api } = window` (also renamed, `{ api: e }`, as minifiers write
-it), `const { m } = window.api; m(arg)`, with `?.` and nested members. A file that writes `api`
-or `window.api` is not read for it. Each call is one `ipc` row in the calling file: `api` the
+it), `const { m } = window.api; m(arg)`, with `?.` and nested members. A page script that
+replaces the api (`window.api = …`, `window["api"] = …`, `Object.assign(window, { api })`,
+`Object.defineProperty(window, "api", …)`, an assignment to `api`) or declares `api` at its top
+without being a CommonJS or ES module (a classic script's `var api` is a global of the page) may
+change it for every script of the page: that api's calls are read in no file. Not read either: a
+file that names `ipcMain` (a main-process file), a worker script (a file named in `new
+Worker("…")` or `new SharedWorker("…")`), and a file with a `with` statement. Each call is one `ipc` row in the calling file: `api` the
 forwarded method, `via: "bridge"`, `member` (`electron.ipcRenderer.sendMessage`), the channel its
 first argument names (a literal, a constant, another module's constant, or what the bounded
 resolver reads; else null, named in `ipc_channel_unresolved`), and with a recorded check
@@ -297,8 +315,11 @@ resolver reads; else null, named in `ipc_channel_unresolved`), and with a record
 is kept: the page asks for that channel. Where the name of such a call also read as a direct
 call of Electron's ipcRenderer (`const { ipcRenderer } = window; ipcRenderer.invoke("x")`), the
 bridge row replaces that row. When the preloads that expose the api do not forward the member the
-same way (another method or check, or one exposes it as a plain member), its calls give no rows,
-and `bridge_forwarder_ambiguous` names it. At most 200 page scripts and 5,000,000 of their tokens
+same way (another method or check, or one exposes it as a plain member, or a member whose value
+holds the path, `ipcRenderer` for `ipcRenderer.send`), or any exposure of the api has an entry that
+was not read (`build(ipcRenderer)`, a spread), its calls give no rows, and
+`bridge_forwarder_ambiguous` names it. Every use of a local that holds the api costs 64 of the work
+budget. At most 200 page scripts and 5,000,000 of their tokens
 are read, and 2,000 calls per file; past that `bridge_calls_capped` names the files. Which page a
 window loads is not read, so a call is matched to every preload that exposes the api.
 
@@ -381,6 +402,12 @@ most 200 rows, 2,000 in all; past that `remote_enabled_truncated` says so. The s
 shares the bounded work budget of the navigation reader (2,000,000 steps per file); past it no
 further call is taken. The existing `electron.remote` finding (a text match of `@electron/remote`,
 `require("electron").remote` or `enableRemoteModule: true`) is unchanged.
+
+Each file that loads `@electron/remote` gives one `use` row. In a webpack bundle, `12: (e) => {
+e.exports = require("@electron/remote/main") }` and `var a = n(12)` bind `a` to the main module.
+The policy rule's identity of an enable is its `targetKind` and the window's name, as windows are
+matched by name: a minifier that renames the window variable between two builds gives a newly
+enabled window (the same holds for `window-more-permissive`).
 
 Not read: `enable` called through another name than these (`const e = R.enable; e(w)`, a module
 object handed to a function), the module bundled into the app (its code is then the app's and its
@@ -1108,8 +1135,14 @@ gives no row and no limitation, and a forwarder declared inside a bundler's modu
 module of the application (a relative specifier: `import * as ipcMain from "./ipc-main"` as GitHub
 Desktop writes it, `import ipcMain from "./x"`, `import { a as ipcMain } from "./x"`, `const ipcMain
 = require("./x")`, also through `__importStar`, and `const { a: ipcMain } = require("./x")`) calls
-that module, not Electron's: `ipcMain.on("x", f)` there gives no row of its own (before, a direct
-`ipcMain.on` row); a forwarder the module exports gives its row as above.
+that module. When the module is read and exports a channel-forwarding function of the method's
+name, the row through it (above) replaces the direct `ipcMain.x` row. Otherwise the direct row
+stays, as before: such a module may hand Electron's object on (`export { ipcMain } from
+"electron"`, `module.exports = require("electron").ipcMain`). A key the module defines twice
+(`exports.addHandler = a; exports.addHandler = b`), a forwarder the importer replaces
+(`ipc.addHandler = …`, `Object.assign(ipc, …)`, `addHandler = …`), and a helper that calls IPC
+with a parameter of the same name of an inner function (`forEach((channel) =>
+ipcMain.handle(channel, …))`) give no rows through it.
 
 **Channel helpers inside a bundled module.** A `function guarded(channel, fn) { ipcMain.handle(channel,
 …) }` declared inside another function (the body of a module esbuild or webpack wraps, or an inner
