@@ -1431,3 +1431,33 @@ describe("#209: a loop body without semicolons ends at the line break (S01)", ()
       }
     });
 });
+
+describe("#209: a braceless loop body at the end of the file, and line starts that end a body", () => {
+  const head = `const { ipcMain, ipcRenderer } = require("electron")\nconst h = () => 1\nconst T = { A: "t:a", B: "t:b" }\nconst L = [["p:a", 1], ["p:b", 2]]\n`;
+  const cases: Array<[string, string, string[]]> = [
+    ["keys", `for (const o of Object.keys(T)) ipcMain.on(o, h)`, ["A ipcMain.on", "B ipcMain.on"]],
+    [
+      "entries",
+      `for (const [k, ch] of Object.entries(T)) ipcRenderer.on(ch, h)`,
+      ["t:a ipcRenderer.on", "t:b ipcRenderer.on"],
+    ],
+    ["pairs", `for (const [o, n] of L) ipcMain.on(o, h)`, ["p:a ipcMain.on", "p:b ipcMain.on"]],
+  ];
+  for (const [name, body, want] of cases)
+    for (const nl of ["", "\n"])
+      it(`reads a ${name} loop as the last statement${nl ? ", with a newline" : ""}`, () => {
+        expect(rows(analyze({ "main.js": head + body + nl }))).toEqual(
+          want.map((w) => `${w} main.js`),
+        );
+      });
+  for (const [name, after] of [
+    ["a prefix ++", `n = n\n  ++n, ipcMain.on(ch, h)`],
+    ["a `!`", `h(ch)\n  !globalThis.x && ipcMain.on(ch, h)`],
+    ["`return`", `if (ch) return\n  ipcMain.on(ch, h)`],
+    ["an arrow's block", `q = () => { h(ch) }\n  (ipcMain.on(ch, h))`],
+  ])
+    it(`ends the body before a line after ${name}`, () => {
+      const main = `${head}let ch = "g:outer"\nlet n = 0, q\nfunction a() {\n  for (const ch of ["g:in"]) ${after}\n}\na()\n`;
+      expect(rows(analyze({ "main.js": main })).filter((r) => r.startsWith("g:in"))).toEqual([]);
+    });
+});

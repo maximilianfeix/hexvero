@@ -4219,7 +4219,7 @@ export class ExpressionResolver {
       else if (t.value === "(") {
         const close = this.match[i]!;
         if (!this.forParen(i) || close === -1) return [i, close];
-        return [i, Math.max(close, this.forBodyEnd(close))];
+        return [i, Math.max(close, this.forBodyOrExpressionEnd(close))];
       }
     }
     return null;
@@ -5593,6 +5593,12 @@ export class ExpressionResolver {
     return next === -1 ? -1 : next - 1;
   }
 
+  /** `forBodyEnd`, or where the expression after the head ends when the body is not read. */
+  private forBodyOrExpressionEnd(close: number): number {
+    const end = this.forBodyEnd(close);
+    return end !== -1 ? end : this.exprEnd(close + 1);
+  }
+
   /** The token after the statement that starts at k (-1: not read). */
   private statementNext(k: number, depth: number): number {
     const n = this.tokens.length;
@@ -5664,16 +5670,42 @@ export class ExpressionResolver {
           this.endsValue(j - 1)
         )
           return j;
+        // `return` and `yield` before a line break end the statement (restricted productions)
+        if (
+          p.type === "ident" &&
+          (p.value === "return" || p.value === "yield") &&
+          (j + 1 >= n || this.tokens[j + 1]!.line !== p.line)
+        )
+          return j + 1;
         continue;
       }
+      // a prefix `++`, `--`, `!` or `~` at the start of a line after a complete value: a new
+      // statement (`a\n++b`; `a !b` is no expression)
+      if (
+        (p.value === "++" || p.value === "--" || p.value === "!" || p.value === "~") &&
+        j > k &&
+        p.line !== this.tokens[j - 1]!.line &&
+        this.endsValue(j - 1)
+      )
+        return j;
       if (p.value === "{" || p.value === "(" || p.value === "[") {
         const m = this.match[j]!;
         if (m === -1) return -1;
+        // an arrow's block body is never called: a line break after it ends the statement
+        if (
+          p.value === "{" &&
+          this.punct(j - 1, "=>") &&
+          m + 1 < n &&
+          this.tokens[m + 1]!.line !== this.tokens[m]!.line &&
+          !(this.tokens[m + 1]!.type === "punct" && /^[,;)\]}]$/.test(this.tokens[m + 1]!.value))
+        )
+          return m + 1;
         j = m;
       } else if (p.value === "}" || p.value === ")" || p.value === "]") return j;
       else if (p.value === ";") return j + 1;
     }
-    return -1;
+    // the end of the file ends the statement; the cap leaves it unread
+    return limit === n ? n : -1;
   }
 
   /** Where the expression that starts at k ends (exclusive): the next top-level `,`, `;` or closing bracket. */
@@ -5872,7 +5904,7 @@ export class ExpressionResolver {
     if (p === -1 || (d && p <= d.body[0])) return null;
     const close = this.match[p]!;
     if (this.punct(p, "(") && this.forParen(p) && close !== -1) {
-      return [p, Math.max(close, this.forBodyEnd(close))];
+      return [p, Math.max(close, this.forBodyOrExpressionEnd(close))];
     }
     return [p, close];
   }
