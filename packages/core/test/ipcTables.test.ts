@@ -1300,6 +1300,30 @@ describe("#209: a loop variable over a table's keys is bound by its own loop", (
       want: ["t:cb ipcMain.on main.js"],
     },
     {
+      // T05: a braceless `if … else …` body
+      name: "an if … else body of the keys loop",
+      body: `for (const o of Object.keys(T)) if (globalThis.x) f(o); else ipcMain.on(o, h);\n`,
+      want: ["A ipcMain.on main.js", "B ipcMain.on main.js"],
+    },
+    {
+      // T06
+      name: "an if … else body of an in loop",
+      body: `for (const o in T) if (o === "Z") f(o); else ipcMain.handle(o, h);\n`,
+      want: ["A ipcMain.handle main.js", "B ipcMain.handle main.js"],
+    },
+    {
+      // T16
+      name: "an if … else body of a loop over pairs",
+      body: `const L = [["p:a", 1], ["p:b", 2]];\nfor (const [o, n] of L) if (n > 5) f(o); else ipcMain.on(o, h);\n`,
+      want: ["p:a ipcMain.on main.js", "p:b ipcMain.on main.js"],
+    },
+    {
+      // T10
+      name: "a for await loop",
+      body: `async function g() { for await (const o of Object.keys(T)) ipcMain.on(o, h); }\ng();\n`,
+      want: ["A ipcMain.on main.js", "B ipcMain.on main.js"],
+    },
+    {
       name: "an entries loop's value",
       body: `for (const [k, o] of Object.entries(V)) { f(k); ipcMain.on(o, h); }\n`,
       want: ["v:x ipcMain.on main.js", "v:y ipcMain.on main.js"],
@@ -1362,5 +1386,48 @@ describe("#209: loop variables in the shapes a minifier writes", () => {
       expect(rows(analyze({ "main.js": head + body }))).toEqual(
         want.map((w) => `${w.replace(" t.", " ipcMain.")} main.js`),
       );
+    });
+});
+
+describe("#209: a loop body without semicolons ends at the line break (S01)", () => {
+  // as code without semicolons: the call after the loop reads the outer binding
+  const main = [
+    `const { ipcMain } = require("electron")`,
+    `const h = () => 1`,
+    `const T = { A: "t:a", B: "t:b" }`,
+    `let ch = "g:outer"`,
+    `function a() {`,
+    `  for (const ch of ["g:in"]) h(ch), h(ch)`,
+    `  ipcMain.on(ch, h)`,
+    `}`,
+    `let o = "t:outer"`,
+    `function b() {`,
+    `  for (const o of Object.keys(T)) h(o), h(o)`,
+    `  ipcMain.handle(o, h)`,
+    `}`,
+    `let url = "https://outer.example.com"`,
+    `function c() {`,
+    `  for (const url of ["https://in.example.com"]) h(url), h(url)`,
+    `  fetch(url)`,
+    `}`,
+    `let key = "store:outer"`,
+    `function d() {`,
+    `  for (const key of ["store:in"]) h(key)`,
+    `  localStorage.setItem(key, 1)`,
+    `}`,
+    `a(); b(); c(); d()`,
+    ``,
+  ].join("\n");
+  for (const how of BUILDS)
+    it(`reads no loop value after the loop (${how})`, () => {
+      const info = analyze(build({ "main.js": main }, ["main.js"], how));
+      const ipc = rows(info);
+      expect(ipc.filter((r) => /^(g:in|A|B) /.test(r))).toEqual([]);
+      expect(info.endpoints.map((e) => e.value)).not.toContain("https://in.example.com");
+      expect(info.storage.map((e) => e.value)).not.toContain("store:in");
+      if (how !== "plain") {
+        expect(ipc).toEqual(["g:outer ipcMain.on main.js", "t:outer ipcMain.handle main.js"]);
+        expect(info.storage.map((e) => e.value)).toContain("store:outer");
+      }
     });
 });

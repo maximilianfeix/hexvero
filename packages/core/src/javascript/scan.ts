@@ -1345,7 +1345,7 @@ export function scanJavaScript(
     const r = (resolver ??= new ExpressionResolver(tokens, constants));
     let open = r.bracketAround(nameAt);
     for (let s = 0; open > 0 && s < 4 && !is(open, "punct", "("); s++) open = r.bracketAround(open);
-    if (open <= 0 || !is(open, "punct", "(") || !is(open - 1, "ident", "for")) return false;
+    if (open <= 0 || !r.forParen(open)) return false;
     const close = r.closeOf(open);
     if (close === -1 || use <= close) return false;
     const end = r.forBodyEnd(close);
