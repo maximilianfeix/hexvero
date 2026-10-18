@@ -1,4 +1,10 @@
-# Claim registry for 0.9.0
+# Claim registry, 0.9.0 to 0.9.6 (historical)
+
+**Historical.** Each row was verified for the version its section names: the sections before
+"0.9.1" for 0.9.0, each later section for its own version (0.9.1 to 0.9.6).
+Nothing here was re-run for 0.9.7 or later; before quoting a row for a newer version, re-run its
+command with that version. The README after 0.9.9 links the accuracy numbers through
+[docs/accuracy.md](../accuracy.md).
 
 Every claim used in the README top, the website (`site/index.html`), the social preview, the
 release notes (`release-notes-0.9.0.md`), the technical article (`article.md`) and the posts must
