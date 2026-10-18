@@ -6,6 +6,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- IPC: a channel-forwarding helper's parameter is not bound where a nearer declaration of the name hides it (#227). `function reg(o) { { const o = "t:inner"; ipcMain.on(o, h); } } reg("t:p");` gave a false `t:p` row (via wrapper); the helper is now a forwarder only where the IPC call means its parameter by scope, the rule #225 applies to loop variables: a block's `let`/`const`/`class`/`function`, a pattern or `for … of` head, a `catch (o)` or a parameter of a function in between hides it, a `var` of the helper itself is the same binding (`var o = …` writes it), and a declaration in another block, before or after the call, does not hide it. In plain code the call then reads `t:inner` from the const, as bundled and minified builds did. The same holds for wrapper methods of classes and objects (where any declaration of the name in the method made it no wrapper, a `var o` or a declaration in another block no longer does) and for parameters the resolver binds from call sites (a `catch (o)` gave `t:p` via resolved). Where it cannot be decided (a nesting too deep to read) the helper is kept and the new limitation `ipc_wrapper_param_undecided` names it, file-scoped. JS_SCAN_SCHEMA 35.
+
 ## [0.11.0] - 2026-10-18
 
 ### Added

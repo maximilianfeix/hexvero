@@ -1265,7 +1265,16 @@ after its declaration. The rows have `via: "wrapper"` and `wrapper` naming the m
 export (`ipc/heroic.addHandler`); the call inside the function stays without a channel, as in one
 file. A parameter or local of the same name at the call is not the export. A helper whose body
 writes its parameter (`channel = "x:" + channel`) is no forwarder, now also in one file (before,
-its calls gave the channel as passed). The calls share the cross-module wrapper stage and its
+its calls gave the channel as passed). The parameter counts only where the IPC call means it by
+scope (#227): a nearer declaration of the name hides it (a block's `let`/`const`/`class`/`function`,
+a destructuring pattern or `for … of` head, a `catch (channel)`, a parameter of a function in
+between), so `function reg(o) { { const o = "t:inner"; ipcMain.on(o, h); } }` is no forwarder and
+the call inside reads `t:inner`; a `var` of the helper itself is the parameter's own binding (with a
+value, `var o = …`, it writes it: no forwarder), and a declaration in another block, before or
+after the call, does not hide it. The same rule holds for wrapper methods of classes and objects
+and for a parameter the resolver binds from call sites. Where it cannot be decided (a nesting too
+deep to read) the helper is kept and `ipc_wrapper_param_undecided` names it (` at file:line`); in
+a comparison it makes the IPC items of that file unknown. The calls share the cross-module wrapper stage and its
 limits (200 importing files, the work budget per file, `ipc_wrappers_capped`); per file at most
 2,000 such calls are read, the rest named by `ipc_wrappers_capped` too. Not read: a call through
 an import list longer than the file's constants read (about 200 names in one `import { … }`), which

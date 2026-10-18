@@ -5307,7 +5307,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 34;
+export const JS_SCAN_SCHEMA = 35;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -6742,6 +6742,11 @@ export function analyzeJavaScriptTree(
       fileLimitation(facts, file.path, {
         code: "wrapper_method_replaced",
         message: `${file.path}: ${scan.wrappersReplaced.length} method(s) of IPC wrappers of the file are replaced in the file by a member write on the class, its prototype or an instance (or one whose receiver was not read within the budget), so their calls there are not read (no IPC rows through them): ${scan.wrappersReplaced.join(", ")}.`,
+      });
+    if (scan.wrappersUndecided)
+      fileLimitation(facts, file.path, {
+        code: "ipc_wrapper_param_undecided",
+        message: `${file.path}: for ${scan.wrappersUndecided.length} channel-forwarding helper(s) of the file it could not be decided whether a nearer declaration of the parameter's name hides the parameter where it is passed on to IPC (a nesting too deep to read); their calls are read as passing their first argument on as the channel, which may be wrong: ${scan.wrappersUndecided.map((w) => `${w.slice(0, w.lastIndexOf(":"))} at ${file.path}:${w.slice(w.lastIndexOf(":") + 1)}`).join(", ")}.`,
       });
     if (scan.wrappersCapped)
       fileLimitation(facts, file.path, {

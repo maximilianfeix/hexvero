@@ -1503,6 +1503,362 @@ describe("#225: a loop variable is not bound where a nearer declaration hides it
   });
 });
 
+describe("#209: a loop variable over a table's keys is bound by its own loop", () => {
+  const head = `const { ipcMain } = require("electron");\nconst T = { A: "t:a", B: "t:b" };\nconst V = { x: "v:x", y: "v:y" };\nconst h = () => 1;\nconst f = (k) => globalThis.seen?.(k);\n`;
+  const cases: Array<{ name: string; body: string; want: string[] }> = [
+    {
+      // as h02: esbuild's minifier names both loop variables `o`
+      name: "another loop's callback parameter after the keys loop",
+      body: `for (const key of Object.keys(T)) f(key);\nObject.values(V).forEach((ch) => ipcMain.on(ch, h));\n`,
+      want: ["v:x ipcMain.on main.js", "v:y ipcMain.on main.js"],
+    },
+    {
+      name: "the same name reused by a callback parameter",
+      body: `for (let o of Object.keys(T)) f(o);\nObject.values(V).forEach((o) => ipcMain.on(o, h));\n`,
+      want: ["v:x ipcMain.on main.js", "v:y ipcMain.on main.js"],
+    },
+    {
+      // as h04: an outer binding of the name, read after the loop
+      name: "an outer binding read after the loop",
+      body: `let o = "t:outer";\nfor (let o of Object.keys(T)) f(o);\nipcMain.on(o, h);\n`,
+      want: ["t:outer ipcMain.on main.js"],
+    },
+    {
+      // as h07: a parameter of the same name
+      name: "a parameter of the same name",
+      body: `for (let o of Object.keys(T)) f(o);\nfunction reg(o) { ipcMain.on(o, h); }\nreg("t:param");\n`,
+      want: ["t:param ipcMain.on main.js"],
+    },
+    {
+      name: "the keys loop itself",
+      body: `for (const o of Object.keys(T)) ipcMain.on(o, h);\n`,
+      want: ["A ipcMain.on main.js", "B ipcMain.on main.js"],
+    },
+    {
+      name: "the entries loop itself, in a block",
+      body: `for (const [o, fn] of Object.entries(T)) { f(fn); ipcMain.handle(o, h); }\n`,
+      want: ["A ipcMain.handle main.js", "B ipcMain.handle main.js"],
+    },
+    {
+      name: "an in loop",
+      body: `for (const o in T) ipcMain.on(o, h);\n`,
+      want: ["A ipcMain.on main.js", "B ipcMain.on main.js"],
+    },
+    {
+      name: "a values loop nested in a keys loop with the same name",
+      body: `for (const o of Object.keys(T)) { for (const o of Object.values(V)) ipcMain.on(o, h); }\n`,
+      want: ["v:x ipcMain.on main.js", "v:y ipcMain.on main.js"],
+    },
+    {
+      name: "a keys loop nested in a values loop with the same name",
+      body: `for (const o of Object.values(V)) { for (const o of Object.keys(T)) ipcMain.on(o, h); }\n`,
+      want: ["A ipcMain.on main.js", "B ipcMain.on main.js"],
+    },
+    {
+      name: "a callback inside the keys loop with a parameter of the same name",
+      body: `for (const o of Object.keys(T)) ["t:cb"].forEach((o) => ipcMain.on(o, h));\n`,
+      want: ["t:cb ipcMain.on main.js"],
+    },
+    {
+      // T05: a braceless `if … else …` body
+      name: "an if … else body of the keys loop",
+      body: `for (const o of Object.keys(T)) if (globalThis.x) f(o); else ipcMain.on(o, h);\n`,
+      want: ["A ipcMain.on main.js", "B ipcMain.on main.js"],
+    },
+    {
+      // T06
+      name: "an if … else body of an in loop",
+      body: `for (const o in T) if (o === "Z") f(o); else ipcMain.handle(o, h);\n`,
+      want: ["A ipcMain.handle main.js", "B ipcMain.handle main.js"],
+    },
+    {
+      // T16
+      name: "an if … else body of a loop over pairs",
+      body: `const L = [["p:a", 1], ["p:b", 2]];\nfor (const [o, n] of L) if (n > 5) f(o); else ipcMain.on(o, h);\n`,
+      want: ["p:a ipcMain.on main.js", "p:b ipcMain.on main.js"],
+    },
+    {
+      // T10
+      name: "a for await loop",
+      body: `async function g() { for await (const o of Object.keys(T)) ipcMain.on(o, h); }\ng();\n`,
+      want: ["A ipcMain.on main.js", "B ipcMain.on main.js"],
+    },
+    {
+      name: "an entries loop's value",
+      body: `for (const [k, o] of Object.entries(V)) { f(k); ipcMain.on(o, h); }\n`,
+      want: ["v:x ipcMain.on main.js", "v:y ipcMain.on main.js"],
+    },
+  ];
+  for (const c of cases)
+    for (const how of BUILDS)
+      it(`${c.name} (${how})`, () => {
+        const info = analyze(build({ "main.js": head + c.body }, ["main.js"], how));
+        expect(rows(info)).toEqual(c.want);
+      });
+});
+
+describe("#209: loop variables in the shapes a minifier writes", () => {
+  const head = `var{ipcMain:t}=require("electron");var s={A:"t:a",B:"t:b"},v={x:"v:x",y:"v:y"},c=()=>1,e=o=>globalThis.seen?.(o);`;
+  const keys = ["A t.on", "B t.on"];
+  const cases: Array<[string, string, string[]]> = [
+    [
+      "a body of expressions joined with commas",
+      `for(let o of Object.keys(s))e(o),t.on(o,c);`,
+      keys,
+    ],
+    ["the statement after such a body", `for(let o of Object.keys(s))e(o),e(o);t.on(o,c);`, []],
+    [
+      "an entries value in such a body",
+      `for(let[o,n]of Object.entries(v))e(o),t.on(n,c);`,
+      ["v:x t.on", "v:y t.on"],
+    ],
+    [
+      "a values loop's variable in such a body",
+      `for(let o of Object.values(v))e(o),t.on(o,c);`,
+      ["v:x t.on", "v:y t.on"],
+    ],
+    ["a loop variable without a declaration", `var o;for(o of Object.keys(s))t.on(o,c);`, keys],
+    [
+      "a loop variable without a declaration, read after",
+      `var o;for(o of Object.keys(s))e(o);t.on(o,c);`,
+      [],
+    ],
+    ["a var read after its loop", `for(var o of Object.keys(s))e(o);t.on(o,c);`, []],
+    [
+      "a loop shadowing a parameter",
+      `function r(o){for(const o of Object.keys(s))t.on(o,c)}r(1);`,
+      keys,
+    ],
+    [
+      "an outer keys loop around an inner one",
+      `for(const o of Object.keys(s)){for(const n of Object.keys(v))e(n);t.on(o,c)}`,
+      keys,
+    ],
+    ["a test, not a loop", `function q(o){if(o in s)t.on(o,c)}q(globalThis.k);`, []],
+    [
+      "an in loop with a parameter of the same name inside",
+      `for(const o in s)[1].forEach(function(o){t.on(o,c)});`,
+      [],
+    ],
+  ];
+  for (const [name, body, want] of cases)
+    it(name, () => {
+      expect(rows(analyze({ "main.js": head + body }))).toEqual(
+        want.map((w) => `${w.replace(" t.", " ipcMain.")} main.js`),
+      );
+    });
+});
+
+describe("#225: a loop variable is not bound where a nearer declaration hides it", () => {
+  const head = `const { ipcMain } = require("electron");\nconst T = { A: "t:a", B: "t:b" };\nconst h = () => 1;\nconst f = (k) => globalThis.seen?.(k);\n`;
+  // Where the inner declaration keeps the loop variable's name, the channel is the inner
+  // constant, which is not followed past a second declaration of the name in the function: the
+  // row stays without a channel (no rows of the loop's list). A minifier renames the inner one,
+  // and an esbuild bundle may, and then it is read.
+  const cases: Array<{ name: string; body: string; want: Record<Build, string[]> }> = [
+    {
+      name: "a head without a declaration, the parameter it assigns hidden in the body",
+      body: `function reg(o) { for (o of Object.keys(T)) { const o = "t:inner"; ipcMain.on(o, h); } }\nreg("t:p");\n`,
+      want: {
+        plain: [],
+        bundled: ["t:inner ipcMain.on main.js"],
+        minified: ["t:inner ipcMain.on main.js"],
+      },
+    },
+    {
+      name: "a declared head over a table's keys, hidden in the body",
+      body: `for (const o of Object.keys(T)) { const o = "t:inner"; ipcMain.on(o, h); }\n`,
+      want: { plain: [], bundled: [], minified: ["t:inner ipcMain.on main.js"] },
+    },
+    {
+      name: "a declared head over a list, hidden in the body",
+      body: `for (const o of ["l:a", "l:b"]) { const o = "l:inner"; ipcMain.handle(o, h); }\n`,
+      want: { plain: [], bundled: [], minified: ["l:inner ipcMain.handle main.js"] },
+    },
+  ];
+  for (const c of cases)
+    for (const how of BUILDS)
+      it(`${c.name} (${how})`, () => {
+        const info = analyze(build({ "main.js": head + c.body }, ["main.js"], how));
+        expect(rows(info)).toEqual(c.want[how]);
+        // one row in all: without a channel when none is read
+        const ipc = info.modules.flatMap((m) => m.ipc);
+        expect(ipc.map((u) => u.channel === null)).toEqual([c.want[how].length === 0]);
+      });
+  // a `var` head: another `var` of the name in the same function is the same binding
+  const L = `const L = ["l:a", "l:b"];\n`;
+  const both = `for (var o of Object.keys(T)) { ipcMain.on(o, h); } for (var o of L) { ipcMain.handle(o, h); }`;
+  const varCases: Array<[string, string, string[]]> = [
+    [
+      "two var loops of one name in a function",
+      `${L}function reg() { ${both} }\nreg();\n`,
+      [
+        "A ipcMain.on main.js",
+        "B ipcMain.on main.js",
+        "l:a ipcMain.handle main.js",
+        "l:b ipcMain.handle main.js",
+      ],
+    ],
+    [
+      "two var loops of one name at the top of the file",
+      `${L}${both}\n`,
+      [
+        "A ipcMain.on main.js",
+        "B ipcMain.on main.js",
+        "l:a ipcMain.handle main.js",
+        "l:b ipcMain.handle main.js",
+      ],
+    ],
+    [
+      "a var loop and a var of the name after it",
+      `${L}for (var o of L) { ipcMain.handle(o, h); } var o = 1;\n`,
+      ["l:a ipcMain.handle main.js", "l:b ipcMain.handle main.js"],
+    ],
+  ];
+  for (const [name, body, want] of varCases)
+    for (const how of BUILDS)
+      it(`${name} (${how})`, () => {
+        expect(rows(analyze(build({ "main.js": head + body }, ["main.js"], how)))).toEqual(want);
+      });
+  it("does not bind a var loop's variable where a block's const hides it", () => {
+    for (const how of BUILDS) {
+      const got = rows(
+        analyze(
+          build(
+            {
+              "main.js": `${head}${L}for (var o of L) { { const o = "l:x"; ipcMain.on(o, h); } ipcMain.handle(o, h); }\n`,
+            },
+            ["main.js"],
+            how,
+          ),
+        ),
+      );
+      // the inner constant is read where the minifier renames it; never the loop's values
+      expect(
+        got.filter((r) => r.includes("ipcMain.handle")),
+        how,
+      ).toEqual(["l:a ipcMain.handle main.js", "l:b ipcMain.handle main.js"]);
+      expect(
+        got.filter((r) => r.includes("ipcMain.on")),
+        how,
+      ).toEqual(how === "minified" ? ["l:x ipcMain.on main.js"] : []);
+    }
+  });
+  it("binds the loop variable where only an inner block declares the name", () => {
+    for (const how of BUILDS)
+      expect(
+        rows(
+          analyze(
+            build(
+              {
+                "main.js": `${head}for (const o of ["l:a", "l:b"]) { { const o = "l:x"; f(o); } ipcMain.on(o, h); }\n`,
+              },
+              ["main.js"],
+              how,
+            ),
+          ),
+        ),
+        how,
+      ).toEqual(["l:a ipcMain.on main.js", "l:b ipcMain.on main.js"]);
+  });
+});
+
+/** A helper whose first parameter is `o`, called with t:p: as a function, and as a method. */
+const fn = (body: string): string => `function reg(o) { ${body} }\nreg("t:p");\n`;
+const method = (body: string): string => `class S { reg(o) { ${body} } }\nnew S().reg("t:p");\n`;
+
+describe("#227: a wrapper's parameter is not bound where a nearer declaration hides it", () => {
+  const head = `const { ipcMain } = require("electron");\nconst h = () => 1;\nconst f = (k) => globalThis.seen?.(k);\n`;
+  const P = ["t:p ipcMain.on main.js"];
+  // Every build reads the same rows: a bundler or minifier that renames the inner name gives
+  // the same answer as the scope rule on the plain source.
+  const cases: Array<[string, string, string[]]> = [
+    [
+      "a block's const (the issue)",
+      fn(`{ const o = "t:inner"; ipcMain.on(o, h); }`),
+      ["t:inner ipcMain.on main.js"],
+    ],
+    [
+      "a block's let",
+      fn(`if (f(1)) { let o = "t:inner"; ipcMain.on(o, h); }`),
+      ["t:inner ipcMain.on main.js"],
+    ],
+    [
+      "an arrow's parameter of the name",
+      fn(`["t:e"].forEach((o) => ipcMain.on(o, h));`),
+      ["t:e ipcMain.on main.js"],
+    ],
+    ["a var of the function itself: the parameter", fn(`var o; ipcMain.on(o, h);`), P],
+    [
+      "a var with a value: what it holds",
+      fn(`var o = "t:w"; ipcMain.on(o, h);`),
+      ["t:w ipcMain.on main.js"],
+    ],
+    ["a catch parameter", fn(`try { f(1); } catch (o) { ipcMain.on(o, h); }`), []],
+    [
+      "a nested function's parameter",
+      fn(`function g(o) { ipcMain.on(o, h); } g("t:g");`),
+      ["t:g ipcMain.on main.js"],
+    ],
+    [
+      "a declaration after the call in another block",
+      fn(`{ ipcMain.on(o, h); } { const o = "t:later"; f(o); }`),
+      P,
+    ],
+    [
+      "an arrow wrapper's block const",
+      `const reg = (o) => { { const o = "t:inner"; ipcMain.on(o, h); } };\nreg("t:p");\n`,
+      ["t:inner ipcMain.on main.js"],
+    ],
+    [
+      "a method's block const",
+      method(`{ const o = "t:inner"; ipcMain.on(o, h); }`),
+      ["t:inner ipcMain.on main.js"],
+    ],
+    ["a method's catch parameter", method(`try { f(1); } catch (o) { ipcMain.on(o, h); }`), []],
+    ["a method's var: the parameter", method(`var o; ipcMain.on(o, h);`), P],
+    [
+      "a method's declaration after the call in another block",
+      method(`{ ipcMain.on(o, h); } { const o = "t:later"; f(o); }`),
+      P,
+    ],
+    ["a plain wrapper (unchanged)", fn(`ipcMain.on(o, h);`), P],
+  ];
+  for (const [name, body, want] of cases)
+    for (const how of BUILDS)
+      it(`${name} (${how})`, () => {
+        const info = analyze(build({ "main.js": head + body }, ["main.js"], how));
+        expect(rows(info)).toEqual(want);
+        // the IPC call inside the helper stays a row, without a channel where none is read
+        expect(unresolved(info)).toBe(want.length === 0 || want === P ? 1 : 0);
+        expect(info.limitations.map((l) => l.code)).not.toContain("ipc_wrapper_param_undecided");
+      });
+  it("does not take a helper of another module whose parameter a block's const hides", () => {
+    const files = {
+      "ipc.js": `const { ipcMain } = require("electron");\nconst h = () => 1;\nfunction reg(o) { { const o = "t:inner"; ipcMain.on(o, h); } }\nfunction ok(o) { ipcMain.handle(o, h); }\nmodule.exports = { reg, ok };\n`,
+      "main.js": `const { reg, ok } = require("./ipc");\nreg("t:p");\nok("t:ok");\n`,
+    };
+    // a bundle wraps the module in a function, where a helper is not read across modules: only
+    // the plain build has t:ok, and no build has t:p
+    for (const how of BUILDS)
+      expect(
+        rows(analyze(build(files, ["main.js"], how))).map((r) =>
+          r.split(" ").slice(0, 2).join(" "),
+        ),
+        how,
+      ).toEqual(
+        how === "plain" ? ["t:inner ipcMain.on", "t:ok ipcMain.handle"] : ["t:inner ipcMain.on"],
+      );
+  });
+  it("keeps the row and says so where the nesting is too deep to decide", () => {
+    const deep = `${"{ ".repeat(300)}ipcMain.on(o, h);${" }".repeat(300)}`;
+    const info = analyze({ "main.js": head + fn(deep) });
+    expect(rows(info)).toEqual(P);
+    const l = info.limitations.find((x) => x.code === "ipc_wrapper_param_undecided");
+    expect(l?.message).toMatch(/reg at main\.js:4\.$/);
+  });
+});
+
 describe("#209: a loop body without semicolons ends at the line break (S01)", () => {
   // as code without semicolons: the call after the loop reads the outer binding
   const main = [

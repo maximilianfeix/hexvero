@@ -4265,16 +4265,38 @@ export class ExpressionResolver {
         const local = this.localConst(j, this.tokens[j]!.value);
         if (local && !reads.some(([a]) => a === local[0])) reads.push(local);
       }
+    // Names of def's parameters a nearer declaration hides where the expression reads them (a
+    // block's `const`, a `catch`, a parameter of a function in between; #227): not the
+    // parameter there, so not bound. Hidden at some reads and meant at others: not read.
+    const hidden = new Set<string>();
+    const meant = new Set<string>();
     for (let guard = 0; def && guard < 8; guard++) {
+      hidden.clear();
+      meant.clear();
       for (const [a, b] of reads)
-        for (let j = a; j < b; j++)
-          if (
-            this.is(j, "ident") &&
-            !this.punct(j - 1, ".") &&
-            (this.paramIndex(def, this.tokens[j]!.value) !== -1 ||
-              (this.tokens[j]!.value === "this" && def.owner !== null))
-          )
-            used.add(this.tokens[j]!.value);
+        for (let j = a; j < b; j++) {
+          if (!this.is(j, "ident") || this.punct(j - 1, ".")) continue;
+          const name = this.tokens[j]!.value;
+          if (name === "this") {
+            if (def.owner !== null) used.add(name);
+            continue;
+          }
+          if (this.paramIndex(def, name) === -1) continue;
+          // in def's body: whether the name means the parameter there (undecided: taken as the
+          // parameter, and the result is partial so the call is kept as unresolved as well)
+          const at =
+            j >= def.body[0] && j <= def.body[1]
+              ? this.parameterMeantAt(j, name, def.paramsAt)
+              : true;
+          if (at === false) {
+            hidden.add(name);
+            continue;
+          }
+          if (at === null) this.partial = true;
+          meant.add(name);
+          used.add(name);
+        }
+      for (const name of hidden) if (meant.has(name)) return null;
       if (used.size) break;
       def = this.enclosing(def.paramsAt - 1);
     }
@@ -4298,7 +4320,12 @@ export class ExpressionResolver {
     const envs = this.bindings(def, depth);
     if (!envs?.length) return null;
     const values: string[] = [];
-    for (const env of envs) {
+    for (const bound of envs) {
+      let env = bound;
+      if (hidden.size) {
+        env = new Map(bound);
+        for (const name of hidden) env.delete(name);
+      }
       const v = this.evalRange(start, end, env, depth + 1);
       // A call site whose argument cannot be read adds nothing; the result then says it is
       // partial, so the caller keeps the call as unresolved as well.
@@ -5393,6 +5420,55 @@ export class ExpressionResolver {
     let best: { name: number; word: number; from: number; to: number } | null = null;
     for (const b of sites) if (b.from <= k && k <= b.to && (!best || b.from >= best.from)) best = b;
     return best !== null && (best.name === decl || best.word === decl - 1);
+  }
+
+  /**
+   * The name at k means the parameter `name` of the function whose parameter list (or lone
+   * parameter) is at `paramsAt` (#227): k is in that function's body, no function between them
+   * has a parameter of the name (also in a parameter list k stands in), no `catch` inside the
+   * function binds it around k, and no declaration inside the function is visible at k other
+   * than a `var` of the function itself, which is the parameter's own binding. Null when that
+   * cannot be decided (the function or the nesting is not read); the caller keeps what it reads
+   * then and says so.
+   */
+  parameterMeantAt(k: number, name: string, paramsAt: number): boolean | null {
+    const def = this.functionWithParamsAt(paramsAt);
+    if (!def || this.paramIndex(def, name) === -1) return null;
+    const [from, to] = def.body;
+    if (k < from || k > to) return null;
+    this.innermostBlock(0, null); // builds the table of brackets
+    const parents = this.s.parents!;
+    // a parameter list or a `catch` around k inside the function
+    let p = parents[k] ?? -1;
+    for (let steps = 0; p >= from; steps++) {
+      if (steps >= 256) return null;
+      if (this.punct(p, "(")) {
+        const d = this.functionWithParamsAt(p);
+        if (d && d !== def && this.paramIndex(d, name) !== -1) return false;
+      }
+      if (this.punct(p, "{") && this.punct(p - 1, ")")) {
+        const open = this.opener[p - 1]!;
+        if (open > from && this.is(open - 1, "ident", "catch"))
+          for (let j = open + 1; j < p - 1; j++) if (this.is(j, "ident", name)) return false;
+      }
+      p = parents[p] ?? -1;
+    }
+    // a function between them with a parameter of the name
+    for (let d = this.enclosing(k), guard = 0; d !== def; guard++) {
+      if (!d || guard >= 64) return null;
+      if (this.paramIndex(d, name) !== -1) return false;
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    // a declaration inside the function visible at k: a block's let/const/class/function, a
+    // pattern or `for … of` head, any declaration of a function in between; not a `var` (or a
+    // `var` pattern) of the function itself
+    return !this.bindingSites(name).some(
+      (b) =>
+        b.from >= from &&
+        b.from <= k &&
+        k <= b.to &&
+        !(this.is(b.word, "ident", "var") && this.enclosing(b.word) === def),
+    );
   }
 
   /**

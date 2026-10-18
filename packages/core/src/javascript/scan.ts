@@ -130,6 +130,12 @@ export interface ScanResult {
   /** Writes in the file that may replace such a method were not all read within the budget. */
   wrappersUnchecked?: true;
   /**
+   * Channel-forwarding helpers of the file (`findWrappers`) kept although it could not be
+   * decided whether a nearer declaration hides their parameter at the IPC call, as `name:line`
+   * (at most 20): their rows may be wrong (#227).
+   */
+  wrappersUndecided?: string[];
+  /**
    * Functions and methods whose parameter is used as the IPC object (`register(ipc) {
    * ipc.handle(…) }`), with this file's call sites; the application stage decides (wrappers.ts).
    */
@@ -160,6 +166,13 @@ function findWrappers(
   aliases: Map<number, string>,
   /** The name at k is the application's own module, not Electron's (`appModuleAt`). */
   appModule: (k: number) => boolean = () => false,
+  /** A resolver of the tokens, for whether a use of the parameter means it (#227). */
+  resolver: (() => ExpressionResolver) | null = null,
+  /**
+   * Filled with `name:line` of the helpers kept although that could not be decided for the
+   * call that passes the parameter on (the caller flags their rows).
+   */
+  undecided: string[] = [],
 ): Map<string, string> {
   const wrappers = new Map<string, string>();
   const is = (k: number, type: Token["type"], value?: string): boolean => {
@@ -174,14 +187,33 @@ function findWrappers(
     const api = `${aliases.get(k) ?? tokens[k]!.value}.${tokens[k + 2]!.value}`;
     return IPC_APIS.has(api) && !api.startsWith("contextBridge.") ? api : null;
   };
-  /** The IPC API called with `param` as its first argument between two token positions. */
-  const forwards = (from: number, to: number, param: string): string | null => {
+  /**
+   * The IPC API called with `param` as its first argument between two token positions, where
+   * `paramsAt` is the function's parameter list (or its lone parameter). A call where a nearer
+   * declaration hides the parameter (a block's `const`, a `catch`, a parameter of a function in
+   * between) does not pass it on; a `var` of the function itself is the parameter (#227). With
+   * `onUndecided`, a call where that could not be decided still counts, and is reported.
+   */
+  const forwards = (
+    from: number,
+    to: number,
+    param: string,
+    paramsAt: number,
+    onUndecided: () => void,
+  ): string | null => {
     // A parameter the body writes (`channel = "x:" + channel`) is not what the caller passed, and
     // an inner function that takes a parameter of the same name (`forEach((channel) => …)`)
     // calls with its own.
     for (let k = from; k < to; k++) {
       if (tokens[k]!.type !== "ident" || tokens[k]!.value !== param) continue;
       if (writesName(tokens, k)) return null;
+      // `var channel = …` of the function itself writes the parameter's own binding (#227)
+      if (
+        is(k - 1, "ident", "var") &&
+        is(k + 1, "punct", "=") &&
+        (resolver ? resolver().parameterMeantAt(k, param, paramsAt) !== false : true)
+      )
+        return null;
       if (is(k + 1, "punct", "=>")) return null;
       // inside a parameter list: `(a, channel) =>`, `function (channel) {`
       for (let j = k - 1, depth = 0; j >= from && j > k - 64; j--) {
@@ -218,8 +250,12 @@ function findWrappers(
         is(k + 3, "punct", "(") &&
         is(k + 4, "ident", param) &&
         (is(k + 5, "punct", ",") || is(k + 5, "punct", ")"))
-      )
+      ) {
+        const meant = resolver ? resolver().parameterMeantAt(k + 4, param, paramsAt) : true;
+        if (meant === false) continue;
+        if (meant === null) onUndecided();
         return api;
+      }
     }
     return null;
   };
@@ -283,8 +319,10 @@ function findWrappers(
         name = t.value;
         params = v;
       } else if (is(v, "ident") && is(v + 1, "punct", "=>")) {
-        const api = forwards(v + 2, bodyEnd(v + 2), tokens[v]!.value);
+        let unsure = false;
+        const api = forwards(v + 2, bodyEnd(v + 2), tokens[v]!.value, v, () => (unsure = true));
         if (api) wrappers.set(t.value, api);
+        if (api && unsure) undecided.push(`${t.value}:${t.line}`);
         continue;
       }
     }
@@ -302,8 +340,10 @@ function findWrappers(
       }
     }
     const start = is(close + 1, "punct", "=>") ? close + 2 : close + 1;
-    const api = forwards(start, bodyEnd(start), param);
+    let unsure = false;
+    const api = forwards(start, bodyEnd(start), param, params, () => (unsure = true));
     if (api) wrappers.set(name, api);
+    if (api && unsure) undecided.push(`${name}:${t.line}`);
   }
   return wrappers;
 }
@@ -1068,10 +1108,18 @@ export function scanJavaScript(
     );
   let aliases = new Map<number, string>();
   let wrappers = new Map<string, string>();
+  const wrappersUndecided: string[] = [];
   if (NAMES_SOMETHING.test(source)) {
     const own = new Set(constants.names());
     aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
-    if (namesIpc()) wrappers = findWrappers(tokens, aliases);
+    if (namesIpc())
+      wrappers = findWrappers(
+        tokens,
+        aliases,
+        undefined,
+        () => (resolver ??= new ExpressionResolver(tokens, constants)),
+        wrappersUndecided,
+      );
     if (wrappers.size) {
       for (const name of wrappers.keys()) own.add(name);
       aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
@@ -1280,6 +1328,7 @@ export function scanJavaScript(
       }
     }
     const replacedAt = [...new Set(own.found.map((x) => `${x.via}:${reader.lineOf(x.at)}`))];
+    wrappersUndecided.push(...reader.undecided);
     const facts = reader.facts();
     wrapperScan = {
       rows,
@@ -1871,6 +1920,7 @@ export function scanJavaScript(
     ...(wrapped.paramIpc ? { paramIpc: wrapped.paramIpc } : {}),
     ...(wrapped.replaced ? { wrappersReplaced: wrapped.replaced } : {}),
     ...(wrapped.unchecked ? { wrappersUnchecked: true as const } : {}),
+    ...(wrappersUndecided.length ? { wrappersUndecided: wrappersUndecided.slice(0, 20) } : {}),
   };
 }
 
