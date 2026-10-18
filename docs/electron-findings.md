@@ -766,6 +766,10 @@ naming an IPC method of the object (`on`, `once`, `handle`, `handleOnce` for ipc
 `ipcMain.[unknown]`: the channel is listed, and the call is neither a sender nor a receiver in
 `ipcChannels`, `interfaces` and the release report. `ROUTES.forEach((r) => ipcMain.handle(r.channel,
 r.fn))` and `for (const r of ROUTES) ipcMain.handle(r.channel, r.fn)` give one row per element too.
+A computed method that is one string or a string constant (`ipcMain["handle"](…)`, `ipcMain[M](…)`
+with `const M = "handle"`) is read as that method, in or outside a loop, as esbuild's minifier
+writes the first form (`ipcMain.handle(…)`); before, both gave `ipcMain.[unknown]` in the source
+and the bundle, and the minified build listed `ipcMain[M]` twice.
 A list that may have changed (above, including `[...BASE, {…}]` spreads and writes to an element
 or through the loop variable), an element that is not read (not an object, a channel from
 `process.env`), and a call in a round after anything that may skip it give one row without a

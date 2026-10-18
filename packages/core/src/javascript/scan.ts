@@ -1199,6 +1199,34 @@ export function scanJavaScript(
     resolver ??= new ExpressionResolver(tokens, constants);
     const argEnd = resolver.endOf(arg);
     if (argEnd <= arg) return [unread];
+    // `ipcMain["handle"](…)`, or `ipcMain[M](…)` with `M = "handle"` a constant, outside a
+    // loop: the method it names, read as `ipcMain.handle(…)` (esbuild's minifier writes the
+    // literal form so).
+    const key = at(k + 2);
+    const keyName =
+      close === k + 3
+        ? key?.type === "string"
+          ? key.value
+          : key?.type === "ident"
+            ? constants.stringOf(key.value, k + 2)
+            : null
+        : null;
+    if (keyName !== null && IPC_APIS.has(`${owner}.${keyName}`) && !keyName.startsWith("expose")) {
+      const api = `${owner}.${keyName}`;
+      const named = channelAt(arg);
+      const usage: IpcUsage = {
+        api,
+        channel: named && "value" in named ? named.value : null,
+        line,
+      };
+      if (named && "ref" in named) usage.channelRef = named.ref;
+      if (named && "value" in named && named.via !== "literal") Object.assign(usage, viaOf(named));
+      else if (owner !== at(k)!.value) usage.via = "alias";
+      if (SENDING_APIS.has(api)) usage.args = payload.shapeAt(close + 1);
+      if (named === null) open.push({ usage, at: arg });
+      if (api === "ipcMain.on" || api === "ipcMain.once") replies(close + 1);
+      return [usage];
+    }
     if (routeReads >= MAX_ROUTE_READS) {
       unread.reason = `more calls with a computed method than are read per file (${MAX_ROUTE_READS})`;
       return [unread];
