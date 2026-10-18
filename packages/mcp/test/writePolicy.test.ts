@@ -1,6 +1,7 @@
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -8,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Session } from "@hexvero/core";
 import { checkWritePath } from "../src/writePolicy.js";
@@ -117,6 +118,43 @@ describe("MCP write policy", () => {
     // a link that points at a hidden file inside a root
     trySymlink(join(root, ".zshrc"), join(root, "rc.json"));
     expect(() => checkWritePath(join(root, "rc.json"), "export")).toThrow(/hidden|\.json/);
+  });
+
+  it("resolves `..` in a link target against the real directory, follows chains, bounds loops", (ctx) => {
+    // link targets are built with `sep`: path.join would remove the `..` as text
+    mkdirSync(join(outside, "deep", "inner"), { recursive: true });
+    mkdirSync(join(outside, "deep", "existing"));
+    // `hop` leads out; `hop/..` is outside/deep on disk, but the root as text
+    if (!trySymlink(join(outside, "deep", "inner"), join(root, "hop"))) return ctx.skip();
+    trySymlink(["hop", "..", "escape.json"].join(sep), join(root, "a.json"));
+    trySymlink(["hop", "..", "existing"].join(sep), join(root, "out"));
+    expect(() => checkWritePath(join(root, "a.json"), "export")).toThrow(/outside/);
+    expect(() => checkWritePath(join(root, "out"), "recover")).toThrow(/outside/);
+    expect(() => checkWritePath(join(root, "out", "x.json"), "export")).toThrow(/outside/);
+
+    // `..` inside the root through a linked directory that stays inside it
+    mkdirSync(join(root, "real", "sub"), { recursive: true });
+    trySymlink(join(root, "real", "sub"), join(root, "s"));
+    trySymlink(["s", "..", "target"].join(sep), join(root, "in"));
+    expect(checkWritePath(join(root, "in"), "recover")).toBe(join(root, "in"));
+
+    // a chain of links: judged by its end
+    trySymlink("l2", join(root, "l1"));
+    trySymlink("l3", join(root, "l2"));
+    trySymlink(join(outside, "chain"), join(root, "l3"));
+    expect(() => checkWritePath(join(root, "l1"), "recover")).toThrow(/outside/);
+    trySymlink("m2", join(root, "m1"));
+    trySymlink(join(root, "real"), join(root, "m2"));
+    expect(checkWritePath(join(root, "m1", "r.json"), "export")).toBe(join(root, "m1", "r.json"));
+
+    // a loop is refused, not followed for ever
+    trySymlink("y", join(root, "x"));
+    trySymlink("x", join(root, "y"));
+    expect(() => checkWritePath(join(root, "x", "r.json"), "export")).toThrow(/too many/);
+
+    // `..` below a component that does not exist cannot be resolved
+    trySymlink(["missing", "..", "..", "up.json"].join(sep), join(root, "up.json"));
+    expect(() => checkWritePath(join(root, "up.json"), "export")).toThrow(/missing directory/);
   });
 
   it("refuses to recover into a dangling symlink with invalid_input", async (ctx) => {
