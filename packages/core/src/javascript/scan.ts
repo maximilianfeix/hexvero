@@ -978,7 +978,34 @@ export function scanJavaScript(
       (k) => {
         // as the scan reads a call: another name for one, or the name itself
         const name = aliases.get(k) ?? tokens[k]!.value;
-        return name === "ipcMain" || name === "ipcRenderer" ? name : null;
+        if (name !== "ipcMain" && name !== "ipcRenderer") return null;
+        // The name itself, declared where it is used with a value that is not Electron's
+        // (`{ const ipcMain = new EventEmitter(); register(ipcMain); }`), is another object.
+        // (the aliases name every use of the name so, whatever it is bound to where it is used)
+        if (tokens[k]?.type === "ident" && tokens[k]!.value === name) {
+          const site = resolver!.boundAround(k, name);
+          const decl = site?.kind === "local" ? site.site?.name : undefined;
+          if (decl !== undefined && is(decl + 1, "punct", "=")) {
+            let electron = false;
+            for (let j = decl + 2, d = 0; j < tokens.length && j < decl + 42; j++) {
+              const x = tokens[j]!;
+              if (x.type === "punct" && /^[([{]$/.test(x.value)) d++;
+              else if (x.type === "punct" && /^[)\]}]$/.test(x.value)) d--;
+              else if (d <= 0 && x.type === "punct" && (x.value === ";" || x.value === ",")) break;
+              if (d < 0) break;
+              // `require("electron")`, a name for it, or a member of that name (`e.ipcMain`)
+              if (
+                (x.type === "string" && x.value === "electron") ||
+                aliases.get(j) === name ||
+                aliases.get(j) === "electron" ||
+                (x.type === "ident" && x.value === name)
+              )
+                electron = true;
+            }
+            if (!electron) return null;
+          }
+        }
+        return name;
       },
     );
     if (calls.length) reader.findClasses(calls);
@@ -1199,9 +1226,8 @@ export function scanJavaScript(
     resolver ??= new ExpressionResolver(tokens, constants);
     const argEnd = resolver.endOf(arg);
     if (argEnd <= arg) return [unread];
-    // `ipcMain["handle"](…)`, or `ipcMain[M](…)` with `M = "handle"` a constant, outside a
-    // loop: the method it names, read as `ipcMain.handle(…)` (esbuild's minifier writes the
-    // literal form so).
+    // `ipcMain["handle"](…)`, or `ipcMain[M](…)` with `M = "handle"` a constant: the method it
+    // names, read as `ipcMain.handle(…)` (esbuild's minifier writes the literal form so).
     const key = at(k + 2);
     const keyName =
       close === k + 3

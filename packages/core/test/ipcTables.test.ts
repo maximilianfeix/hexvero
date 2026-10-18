@@ -946,3 +946,23 @@ describe("a computed method that names one method, outside a loop", () => {
       expect(unresolved(info)).toBe(0);
     });
 });
+
+describe("a block's own ipcMain passed to a function", () => {
+  for (const how of BUILDS)
+    it(`is not Electron's, so the function gives no row (${how})`, () => {
+      const main = [
+        'const { ipcMain } = require("electron");',
+        'const { EventEmitter } = require("events");',
+        "{",
+        "  const ipcMain = new EventEmitter();",
+        "  register(ipcMain);",
+        "}",
+        'function register(ipc) { ipc.handle("r2:x", () => 1); }',
+        'function kept(ipc) { ipc.handle("kept:x", () => 1); }',
+        "kept(ipcMain);",
+        "module.exports = {};",
+      ].join("\n");
+      const info = analyze(build({ "main.js": main }, ["main.js"], how));
+      expect(rows(info)).toEqual(["kept:x ipcMain.handle main.js"]);
+    });
+});

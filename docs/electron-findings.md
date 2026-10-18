@@ -801,7 +801,10 @@ call site too: `f.call(thisArg, X)` passes X, and `f.apply(…)`, `f.bind(…)`,
 callback (`forEach(f)`, `setTimeout(f, …)`) or to another name pass something that is not read.
 The calls on the parameter become rows only when there is at least one call site and every one
 passes the same object: `ipcMain` (or `ipcRenderer`) itself, another name for it,
-`electron.ipcMain`, or a parameter whose own call sites all pass it. One call site that passes
+`electron.ipcMain`, or a parameter whose own call sites all pass it. A name `ipcMain` that is
+declared where it is passed with a value that is not Electron's (`{ const ipcMain = new
+EventEmitter(); register(ipcMain); }`) is that other object: the value must name `"electron"`, or
+the IPC object as a member (`electron.ipcMain`). One call site that passes
 anything else, or that is not read, gives no rows at all. The rows are in the file of the function,
 at the call inside it, with `via: "parameter"` and `wrapper` naming it (`PrefsService.register`, a
 minifier's name in a minified build); a call the object has no such method for
