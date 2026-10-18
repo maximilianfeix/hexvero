@@ -3678,6 +3678,9 @@ export function readFileTokens(
         // declared once where k sees it, with a value, and never assigned again
         const bound = r.binding(k, t.value);
         if (bound?.kind !== "value") return null;
+        // and no nearer binding `binding` does not see (`for (const SB of …)`, `catch (SB)`)
+        const near = r.boundAround(k, t.value);
+        if (near && (near.kind !== "local" || near.site?.name !== bound.range[0] - 2)) return null;
         const [from, to] = bound.range;
         const init = tokens[from];
         return to === from + 1 && init?.type === "string" && init.value === value ? value : null;

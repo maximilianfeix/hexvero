@@ -2058,7 +2058,27 @@ export class ExpressionResolver {
         // `[name]: …`: the key it evaluates to, when that is one string; any other computed key
         // (or `*gen()`) may be any key, also one written before, which it then replaces
         const bracket = this.punct(k, "[") ? this.match[k]! : -1;
-        const name = bracket > k ? this.evalRange(k + 1, bracket, env, depth + 1) : null;
+        // `[NAME]` with NAME a loop variable, a `catch` binding or a parameter this evaluation
+        // has no value for: not a constant of the same name further out
+        const inner = this.tokens[k + 1];
+        const shadowed =
+          bracket === k + 2 &&
+          inner?.type === "ident" &&
+          !env.has(inner.value) &&
+          (() => {
+            const near = this.boundAround(k + 1, inner.value);
+            return (
+              near !== null &&
+              (near.kind === "param" ||
+                !near.site ||
+                !this.punct(near.site.name + 1, "=") ||
+                this.is(near.site.name + 2, "ident", "of") ||
+                this.is(near.site.name + 1, "ident", "of") ||
+                this.is(near.site.name + 1, "ident", "in"))
+            );
+          })();
+        const name =
+          bracket > k && !shadowed ? this.evalRange(k + 1, bracket, env, depth + 1) : null;
         const single =
           name?.kind === "str" && name.values.length === 1 && !name.values[0]!.includes("${")
             ? name.values[0]!

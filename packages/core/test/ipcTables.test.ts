@@ -937,11 +937,13 @@ describe("a computed method that names one method, outside a loop", () => {
   for (const how of BUILDS)
     it(`reads ipcMain["handle"](…) and ipcMain[M](…) as that method (${how})`, () => {
       const main =
-        'const { ipcMain } = require("electron");\nconst M = "handle";\nipcMain["handle"]("lit:computed", () => 1);\nipcMain[M]("const:computed", () => 1);\nmodule.exports = {};\n';
+        'const { ipcMain } = require("electron");\nconst M = "handle";\nipcMain["handle"]("lit:computed", () => 1);\nipcMain[M]("const:computed", () => 1);\nfor (const M of ["on"]) ipcMain[M]("loop:m", () => 1);\nmodule.exports = {};\n';
       const info = analyze(build({ "main.js": main }, ["main.js"], how));
       expect(rows(info)).toEqual([
         "const:computed ipcMain.handle main.js",
         "lit:computed ipcMain.handle main.js",
+        // the loop's own M, not the constant
+        "loop:m ipcMain.on main.js",
       ]);
       expect(unresolved(info)).toBe(0);
     });

@@ -876,6 +876,8 @@ const RC_KEYS = [
   "const w8 = new BrowserWindow({ webPreferences: { nodeIntegration: true, inner: { get nodeIntegration() { return false; } } } });",
   'const w9 = new BrowserWindow({ webPreferences: { contextIsolation: false, f: () => ({ "contextIsolation": true }) } });',
   'const w10 = new BrowserWindow({ webPreferences: { ["preload"]: "q.js" } });',
+  'for (const SB of ["nodeIntegration"]) new BrowserWindow({ webPreferences: { nodeIntegration: false, [SB]: true } });',
+  "try { f(); } catch (SB) { new BrowserWindow({ webPreferences: { nodeIntegration: false, [SB]: true } }); }",
   "module.exports = { make, w2, w3, w4, w5, w6, w7, w8, w9, w10 };",
 ].join("\n");
 const RC_STATES = [
@@ -893,6 +895,9 @@ const RC_STATES = [
   // what a function there returns is read as written, as esbuild's minifier unquotes it
   "not written conflicting not written null not written",
   "not written not written not written q.js not written",
+  // a loop variable and a catch binding are not the constant either
+  "computed computed computed null computed",
+  "computed computed computed null computed",
 ];
 
 describe("keys the review of #207 found (RC)", () => {

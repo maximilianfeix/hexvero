@@ -1251,6 +1251,26 @@ export function scanJavaScript(
     routeResolver ??= new ExpressionResolver(tokens, constants, "", null, routeRef, false, true);
     return routeResolver.perElement(k, ranges);
   };
+  /**
+   * The string the name at k stands for, only where it is bound (by scope) to one declaration
+   * `NAME = "…"` never assigned again: a parameter or loop variable of the same name is not it.
+   */
+  const constantAt = (k: number): string | null => {
+    const t = at(k);
+    if (t?.type !== "ident") return null;
+    const value = constants.stringOf(t.value, k);
+    if (value === null) return null;
+    resolver ??= new ExpressionResolver(tokens, constants);
+    const bound = resolver.binding(k, t.value);
+    if (bound?.kind !== "value") return null;
+    // and no nearer binding the resolver's `binding` does not see (`for (const M of …)`)
+    const near = resolver.boundAround(k, t.value);
+    if (near && (near.kind !== "local" || near.site?.name !== bound.range[0] - 2)) return null;
+    const init = at(bound.range[0]);
+    return bound.range[1] === bound.range[0] + 1 && init?.type === "string" && init.value === value
+      ? value
+      : null;
+  };
   /** `ipcMain[expr](channel, …)` at k, with `]` at close. */
   const computedCalls = (k: number, owner: string, close: number): IpcUsage[] => {
     const line = at(k)!.line;
@@ -1267,7 +1287,7 @@ export function scanJavaScript(
         ? key?.type === "string"
           ? key.value
           : key?.type === "ident"
-            ? constants.stringOf(key.value, k + 2)
+            ? constantAt(k + 2)
             : null
         : null;
     if (keyName !== null && IPC_APIS.has(`${owner}.${keyName}`) && !keyName.startsWith("expose")) {
