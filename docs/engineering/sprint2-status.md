@@ -57,8 +57,8 @@ The good first issues #149–#153 stay with contributors.
 
 The sprint is closed; the report is [sprint2-report.md](sprint2-report.md), §6 lists what is open.
 
-1. H (`sprint2/h-http`, `~/hexvero-s2-h-http`): finish R6's conditions, short R6 look, rebase
-   onto main (JS_SCAN_SCHEMA 24), gates, PR, merge.
+1. H (`sprint2/h-http`, `~/hexvero-s2-h-http`, pushed at `2b23cef` with R6's conditions met): short
+   R6 look, rebase onto main (JS_SCAN_SCHEMA 24), gates, PR, merge.
 2. Release 0.9.9 (#191, H) on a quiet machine: in `~/hexvero-sprint` (main),
    `npm run release -- 0.9.9`, then `git push --atomic origin main v0.9.9`, watch the Release
    workflow, verify `npx hexvero@0.9.9` from an empty cache, update `docs/launch/status.json`.
