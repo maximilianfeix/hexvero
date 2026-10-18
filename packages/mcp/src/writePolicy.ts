@@ -47,6 +47,20 @@ function split(path: string): { root: string; parts: string[] } {
   return { root, parts };
 }
 
+/**
+ * Linux's protected_symlinks rule, applied on every platform: a link in a sticky directory (a
+ * shared temp directory) is followed only when it belongs to you or to root, because anyone can
+ * put a link there under a name you are about to use.
+ */
+export function linkMayBeFollowed(
+  linkUid: number,
+  parentMode: number,
+  uid: number | null = process.getuid?.() ?? null,
+): boolean {
+  if (uid === null) return true; // Windows: no POSIX ownership
+  return !(parentMode & 0o1000) || linkUid === uid || linkUid === 0;
+}
+
 /** At most this many links are followed for one path (Linux allows 40 as well). */
 const MAX_LINKS = 40;
 
@@ -86,18 +100,20 @@ function realLocation(path: string): string {
       continue;
     }
     const next = join(current, part);
-    let link: boolean;
+    let st: { uid: number; isSymbolicLink(): boolean };
     try {
-      link = lstatSync(next).isSymbolicLink();
+      st = lstatSync(next);
     } catch {
       tail = [part];
       continue;
     }
-    if (!link) {
+    if (!st.isSymbolicLink()) {
       current = next;
       continue;
     }
     if (++links > MAX_LINKS) refuse("too many symbolic links");
+    if (!linkMayBeFollowed(st.uid, lstatSync(current).mode))
+      refuse(`${next} is another user's link in a shared (sticky) directory; it is not followed`);
     const target = split(readlinkSync(next));
     if (target.root) current = target.root;
     pending.unshift(...target.parts);

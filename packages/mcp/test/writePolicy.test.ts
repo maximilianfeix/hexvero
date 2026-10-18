@@ -17,7 +17,12 @@ import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Session } from "@hexvero/core";
 import { createHandlers } from "../src/tools.js";
-import { checkWritePath, isUserPrivateGroup, verifyOpened } from "../src/writePolicy.js";
+import {
+  checkWritePath,
+  isUserPrivateGroup,
+  linkMayBeFollowed,
+  verifyOpened,
+} from "../src/writePolicy.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
 
 /** Creates a symlink, or returns false where the platform does not permit it (Windows without rights). */
@@ -347,5 +352,23 @@ describe("MCP write policy", () => {
         },
       }),
     ).toBe(false);
+  });
+
+  it("follows another user's link in a sticky directory only when root owns it", (ctx) => {
+    // the rule, with uids that a test cannot create links as
+    expect(linkMayBeFollowed(1001, 0o41777, 1000)).toBe(false);
+    expect(linkMayBeFollowed(1000, 0o41777, 1000)).toBe(true);
+    expect(linkMayBeFollowed(0, 0o41777, 1000)).toBe(true);
+    expect(linkMayBeFollowed(1001, 0o40755, 1000)).toBe(true);
+    expect(linkMayBeFollowed(1001, 0o41777, null)).toBe(true);
+    // your own link in a sticky directory is still followed
+    const shared = join(root, "sticky");
+    mkdirSync(join(shared, "real"), { recursive: true });
+    if (!trySymlink(join(shared, "real"), join(shared, "mine"))) return ctx.skip();
+    chmodSync(shared, 0o1777);
+    expect(checkWritePath(join(shared, "mine", "a.json"), "export")).toBe(
+      join(shared, "mine", "a.json"),
+    );
+    chmodSync(shared, 0o755);
   });
 });
