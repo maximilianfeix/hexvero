@@ -8,13 +8,13 @@
     "url": "https://github.com/maximilianfeix/hexvero",
     "source": "github"
   },
-  "version": "0.9.8",
+  "version": "0.9.9",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "hexvero",
-      "version": "0.9.8",
+      "version": "0.9.9",
       "runtimeHint": "npx",
       "transport": { "type": "stdio" },
       "packageArguments": [{ "type": "positional", "value": "mcp" }]
