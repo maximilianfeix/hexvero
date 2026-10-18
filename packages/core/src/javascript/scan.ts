@@ -9,6 +9,7 @@
 import { Constants, type Evaluator, type Resolved, resolveAliases } from "./aliases.js";
 import { PayloadReader } from "./payload.js";
 import { ExpressionResolver, type ResolveMethod, type Val } from "./resolve.js";
+import { writesName } from "./writes.js";
 import {
   channelArg,
   type ObjectCall,
@@ -135,7 +136,12 @@ export interface ScanContext {
  * `const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args)`,
  * `const emit = ipcRenderer.send.bind(ipcRenderer)`. Maps the function's name to the IPC API.
  */
-function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string, string> {
+function findWrappers(
+  tokens: Token[],
+  aliases: Map<number, string>,
+  /** The name at k is the application's own module, not Electron's (`appModuleAt`). */
+  appModule: (k: number) => boolean = () => false,
+): Map<string, string> {
   const wrappers = new Map<string, string>();
   const is = (k: number, type: Token["type"], value?: string): boolean => {
     const t = tokens[k];
@@ -145,11 +151,16 @@ function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string
     if (!is(k, "ident") || !is(k + 1, "punct", ".") || !is(k + 2, "ident")) return null;
     // the method name decides first: almost no token pair gets as far as building a string
     if (!IPC_METHODS.has(tokens[k + 2]!.value)) return null;
+    if (appModule(k)) return null;
     const api = `${aliases.get(k) ?? tokens[k]!.value}.${tokens[k + 2]!.value}`;
     return IPC_APIS.has(api) && !api.startsWith("contextBridge.") ? api : null;
   };
   /** The IPC API called with `param` as its first argument between two token positions. */
   const forwards = (from: number, to: number, param: string): string | null => {
+    // A parameter the body writes (`channel = "x:" + channel`) is not what the caller passed.
+    for (let k = from; k < to; k++)
+      if (tokens[k]!.type === "ident" && tokens[k]!.value === param && writesName(tokens, k))
+        return null;
     for (let k = from; k + 4 < to; k++) {
       const api = apiAt(k);
       // The parameter must be the whole first argument: `send(ns + ":" + name)` and
@@ -247,6 +258,127 @@ function findWrappers(tokens: Token[], aliases: Map<number, string>): Map<string
     if (api) wrappers.set(name, api);
   }
   return wrappers;
+}
+
+/**
+ * The file's channel-forwarding helpers (`findWrappers`) that it exports, by export key: `export
+ * function f`, `export const f =`, `export { f as k }`, `exports.k = f`, `module.exports.k = f`,
+ * `module.exports = { k: f }`. A helper whose name is written after its declaration is none.
+ */
+function exportedForwarders(
+  tokens: readonly Token[],
+  wrappers: ReadonlyMap<string, string>,
+): Record<string, string> | null {
+  if (!wrappers.size) return null;
+  const is = (k: number, v: string): boolean =>
+    tokens[k]?.type === "punct" && tokens[k]!.value === v;
+  const ident = (k: number, v?: string): boolean =>
+    tokens[k]?.type === "ident" && (v === undefined || tokens[k]!.value === v);
+  const ends = (k: number): boolean =>
+    k >= tokens.length ||
+    is(k, ";") ||
+    is(k, ",") ||
+    is(k, "}") ||
+    tokens[k]!.line !== tokens[k - 1]!.line;
+  const keys = new Map<string, string>();
+  const add = (key: string, local: string): void => {
+    if (wrappers.has(local)) keys.set(key, local);
+  };
+  const written = new Set<string>();
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident") continue;
+    if (wrappers.has(t.value) && writesName(tokens, k)) written.add(t.value);
+    if (t.value === "export" && !is(k - 1, ".")) {
+      let j = k + 1;
+      if (ident(j, "async")) j++;
+      if (ident(j, "function") && ident(j + 1)) add(tokens[j + 1]!.value, tokens[j + 1]!.value);
+      else if (
+        (ident(j, "const") || ident(j, "let") || ident(j, "var")) &&
+        ident(j + 1) &&
+        is(j + 2, "=")
+      )
+        add(tokens[j + 1]!.value, tokens[j + 1]!.value);
+      else if (is(j, "{")) {
+        for (let q = j + 1; q < tokens.length && q < j + 400 && !is(q, "}"); q++) {
+          if (!ident(q) || !(is(q - 1, "{") || is(q - 1, ","))) continue;
+          if (ident(q + 1, "as") && ident(q + 2)) add(tokens[q + 2]!.value, tokens[q]!.value);
+          else add(tokens[q]!.value, tokens[q]!.value);
+        }
+      }
+      continue;
+    }
+    if (t.value !== "exports") continue;
+    const viaModule = is(k - 1, ".") && ident(k - 2, "module");
+    if (is(k - 1, ".") && !viaModule) continue;
+    // `exports.k = f`
+    if (is(k + 1, ".") && ident(k + 2) && is(k + 3, "=") && ident(k + 4) && ends(k + 5))
+      add(tokens[k + 2]!.value, tokens[k + 4]!.value);
+    // `module.exports = { k: f, g }`
+    if (viaModule && is(k + 1, "=") && is(k + 2, "{")) {
+      for (let q = k + 3; q < tokens.length && q < k + 2000 && !is(q, "}"); q++) {
+        if (!ident(q) || !(is(q - 1, "{") || is(q - 1, ","))) continue;
+        if (is(q + 1, ":") && ident(q + 2) && (is(q + 3, ",") || is(q + 3, "}")))
+          add(tokens[q]!.value, tokens[q + 2]!.value);
+        else if (is(q + 1, ",") || is(q + 1, "}")) add(tokens[q]!.value, tokens[q]!.value);
+      }
+    }
+  }
+  const out: Record<string, string> = {};
+  for (const [key, local] of keys) if (!written.has(local)) out[key] = wrappers.get(local)!;
+  return Object.keys(out).length ? out : null;
+}
+
+/** Names of Electron's IPC objects that the name guard (`appModuleNames`) looks at. */
+const IPC_OBJECT_NAMES: ReadonlySet<string> = new Set(["ipcMain", "ipcRenderer"]);
+
+/**
+ * The names `ipcMain` / `ipcRenderer` that this file binds to a module of the application (a
+ * relative specifier): `import * as ipcMain from "./ipc-main"`, `import ipcMain from "./x"`,
+ * `import { a as ipcMain } from "./x"`, `const ipcMain = require("./x")` (also through
+ * `__importStar` / `__toESM`), `const { a: ipcMain } = require("./x")`.
+ */
+export function appModuleNames(tokens: readonly Token[]): Set<string> {
+  const out = new Set<string>();
+  const is = (k: number, v: string): boolean =>
+    tokens[k]?.type === "punct" && tokens[k]!.value === v;
+  const ident = (k: number, v?: string): boolean =>
+    tokens[k]?.type === "ident" && (v === undefined || tokens[k]!.value === v);
+  const relative = (k: number): boolean =>
+    tokens[k]?.type === "string" && tokens[k]!.value.startsWith(".");
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k]!;
+    if (t.type !== "ident" || !IPC_OBJECT_NAMES.has(t.value)) continue;
+    if (is(k - 1, ".") || is(k - 1, "?.")) continue;
+    // `import * as N from "./x"`, `import N from "./x"`, `import { a as N } from "./x"`
+    if (ident(k + 1, "from") && relative(k + 2)) {
+      if (ident(k - 1, "as") || ident(k - 1, "import")) out.add(t.value);
+      continue;
+    }
+    if (ident(k - 1, "as") || is(k - 1, "{") || is(k - 1, ",") || is(k - 1, ":")) {
+      // inside `{ … }` of an import or a require pattern
+      let close = k + 1;
+      while (close < tokens.length && close < k + 200 && !is(close, "}")) close++;
+      if (
+        is(close, "}") &&
+        ((ident(close + 1, "from") && relative(close + 2)) ||
+          (is(close + 1, "=") &&
+            ident(close + 2, "require") &&
+            is(close + 3, "(") &&
+            relative(close + 4)))
+      ) {
+        // a key of a pattern (`{ ipcMain: other }`) binds the other name
+        if (!is(k + 1, ":")) out.add(t.value);
+      }
+      continue;
+    }
+    // `const N = require("./x")`, `const N = __importStar(require("./x"))`
+    if (!is(k + 1, "=")) continue;
+    let v = k + 2;
+    if (ident(v) && is(v + 1, "(") && ident(v + 2, "require")) v += 2;
+    if (ident(v, "require") && is(v + 1, "(") && relative(v + 2)) out.add(t.value);
+  }
+  return out;
 }
 
 /** A file that contains none of these cannot have a finding that depends on following a name. */
@@ -865,12 +997,24 @@ export function scanJavaScript(
   // Whether the text names IPC at all: tested once per file, not at every `this.x.on(…)`.
   let ipcText: boolean | undefined;
   const namesIpc = (): boolean => (ipcText ??= /ipc|webContents/.test(source));
+  // `import * as ipcMain from "./ipc-main"` (GitHub Desktop), `const ipcRenderer =
+  // require("./ipc")`: a name of Electron's IPC objects bound to a module of the application is
+  // that module, not Electron's. Its calls give no IPC rows of their own; a channel-forwarding
+  // function the module exports gives rows at them in the cross-file stage (wrappers.ts).
+  const appModules = appModuleNames(tokens);
+  const appModuleAt = (k: number): boolean =>
+    appModules.size > 0 &&
+    appModules.has(tokens[k]!.value) &&
+    !(
+      tokens[k - 1]?.type === "punct" &&
+      (tokens[k - 1]!.value === "." || tokens[k - 1]!.value === "?.")
+    );
   let aliases = new Map<number, string>();
   let wrappers = new Map<string, string>();
   if (NAMES_SOMETHING.test(source)) {
     const own = new Set(constants.names());
     aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
-    if (namesIpc()) wrappers = findWrappers(tokens, aliases);
+    if (namesIpc()) wrappers = findWrappers(tokens, aliases, appModuleAt);
     if (wrappers.size) {
       for (const name of wrappers.keys()) own.add(name);
       aliases = resolveAliases(tokens, ALIAS_TARGETS, own);
@@ -916,7 +1060,8 @@ export function scanJavaScript(
         !IPC_METHODS.has(method.value) ||
         !punct(k + 3, "(") ||
         tokens[k + 4]!.type !== "ident" ||
-        !(punct(k + 5, ",") || punct(k + 5, ")"))
+        !(punct(k + 5, ",") || punct(k + 5, ")")) ||
+        appModuleAt(k)
       )
         continue;
       let owner = aliases.get(k) ?? tokens[k]!.value;
@@ -1430,7 +1575,8 @@ export function scanJavaScript(
       is(k + 1, "punct", ".") &&
       is(k + 2, "ident") &&
       IPC_METHODS.has(at(k + 2)!.value) &&
-      is(k + 3, "punct", "(")
+      is(k + 3, "punct", "(") &&
+      !appModuleAt(k)
     ) {
       let owner = aliases.get(k) ?? t.value;
       // `this.ipc.handle(…)` with the IPC object kept in a field of the class
@@ -1497,7 +1643,7 @@ export function scanJavaScript(
     }
     // `ipcMain[route.kind](route.channel, route.fn)` in a loop over a list of routes: one row per
     // element, the method its `kind` when that is a method of the object (else unknown).
-    if (is(k + 1, "punct", "[") && namesIpc()) {
+    if (is(k + 1, "punct", "[") && namesIpc() && !appModuleAt(k)) {
       const owner = aliases.get(k) ?? t.value;
       if ((owner === "ipcMain" || owner === "ipcRenderer") && !is(k - 1, "punct", ".")) {
         resolver ??= new ExpressionResolver(tokens, constants);
@@ -1631,7 +1777,14 @@ export function scanJavaScript(
     })(),
     ...(constants.evaluated.length ? { evaluated: constants.evaluated } : {}),
     ...(Object.keys(constants.unevaluated).length ? { unevaluated: constants.unevaluated } : {}),
-    ...(wrapped.facts ? { wrappers: wrapped.facts } : {}),
+    ...(() => {
+      // the file's channel-forwarding helpers it exports, for calls in other modules
+      const forwarders = exportedForwarders(tokens, wrappers);
+      if (!forwarders) return wrapped.facts ? { wrappers: wrapped.facts } : {};
+      return {
+        wrappers: { ...(wrapped.facts ?? { classes: [], exports: {} }), forwarders },
+      };
+    })(),
     ...(wrapped.capped ? { wrappersCapped: true as const } : {}),
     ...(wrapped.paramIpc ? { paramIpc: wrapped.paramIpc } : {}),
     ...(wrapped.replaced ? { wrappersReplaced: wrapped.replaced } : {}),

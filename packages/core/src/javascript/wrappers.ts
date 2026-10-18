@@ -103,6 +103,13 @@ export interface WrapperFacts {
   exports: Record<string, { kind: "cls" | "inst"; id: string }>;
   /** Export keys of plain functions with a parameter used as the IPC object (`ObjectCall`). */
   fns?: string[];
+  /**
+   * Export keys of plain functions that pass their first parameter on, whole and unwritten, as
+   * the channel of an IPC call (`export function addHandler(channel, fn) { ipcMain.handle(channel,
+   * …) }`, also a curried factory `(channel) => (...a) => ipcRenderer.invoke(channel, ...a)`), with
+   * the IPC API they call: their calls in other modules give rows (`forwarderRows`).
+   */
+  forwarders?: Record<string, string>;
 }
 
 /**
@@ -140,6 +147,8 @@ export type WrapperValue =
   | { kind: "xfn"; file: string; key: string }
   /** Another module's exports (`require("./x")`, `import * as x`). */
   | { kind: "module"; specifier: string }
+  /** A channel-forwarding function another module exports (`WrapperFacts.forwarders`). */
+  | { kind: "fwd"; file: string; key: string; api: string }
   /**
    * A bundler's module object in this file (`i(76675)`, `require_x()`): its members are keys.
    * `callee`: the function called, for `require_x()`.
@@ -179,6 +188,8 @@ export type ExternalLookup = (specifier: string, key: string) => WrapperValue | 
 
 /** Call sites read per function; one past it is looked for, and makes the function capped. */
 const MAX_SITES = 64;
+/** Calls of other modules' channel-forwarding functions read per file (`forwarderRows`). */
+const MAX_FORWARDER_CALLS = 2000;
 /** Work for reading the functions with an IPC object parameter of one file, and their calls. */
 const OBJECT_WORK = 400_000;
 /** Work for reading the receivers of member writes in one file (`replacements`). */
@@ -267,7 +278,81 @@ export class WrapperReader {
 
   /** The work budget ran out: calls of wrappers in this file may be missing. */
   get capped(): boolean {
-    return this.work <= 0;
+    return this.work <= 0 || this.forwardersCut;
+  }
+
+  /** Export keys of the channel-forwarding functions of other modules (cross-file stage). */
+  forwarderKeys: ReadonlySet<string> = new Set();
+  /** More calls of other modules' forwarders than `MAX_FORWARDER_CALLS`: the rest are not read. */
+  private forwardersCut = false;
+
+  /**
+   * One row per call of a channel-forwarding function another module exports (cross-file stage):
+   * `addHandler("x", f)` with `import { addHandler }` (also renamed, `{ handle as handleOnMain }`),
+   * `ipc.addHandler("x", f)` and `(0, ipc_1.addHandler)("x", f)` on a module object,
+   * `require("./ipc").addHandler(…)`, `const { addHandler } = require("./ipc")`. The callee must
+   * be that export by what is written (see `valueOf`): a parameter or local of the same name is
+   * not it. The row is at the call, with the channel its argument names, `via: "wrapper"` and
+   * `wrapper` naming the module and the export.
+   */
+  forwarderRows(): WrapperRow[] {
+    const out: WrapperRow[] = [];
+    if (!this.forwarderKeys.size) return out;
+    const { r, tokens } = this;
+    for (let j = 0; j + 1 < tokens.length; j++) {
+      const t = tokens[j]!;
+      if (t.type !== "ident") continue;
+      // `f(`, `N.f(`, `(0, N.f)(`
+      const direct = this.punct(j + 1, "(");
+      const grouped = this.punct(j + 1, ")") && this.punct(j + 2, "(");
+      if (!direct && !grouped) continue;
+      if (direct && this.is(j - 1, "ident", "function")) continue;
+      const key = this.punct(j - 1, ".")
+        ? t.value
+        : (this.constants.importOf(t.value, j)?.property ?? t.value);
+      if (!this.forwarderKeys.has(key)) continue;
+      if (this.work <= 0) return out;
+      // the callee's extent: the name, or the chain of names before it
+      let start = j;
+      while (this.punct(start - 1, ".") && this.is(start - 2, "ident")) start -= 2;
+      let open = j + 1;
+      let calleeStart = start;
+      let calleeEnd = j + 1;
+      if (grouped) {
+        const group = r.openOf(j + 1);
+        if (
+          group < 0 ||
+          !(this.is(group + 1, "number") && this.punct(group + 2, ",") && group + 3 === start)
+        )
+          continue;
+        calleeStart = group;
+        calleeEnd = j + 2;
+        open = j + 2;
+      } else if (start === j && this.punct(j - 1, ".") && this.punct(j - 2, ")")) {
+        // `require("./ipc").addHandler(…)`
+        const call = r.openOf(j - 2);
+        if (call > 0 && this.is(call - 1, "ident", "require")) calleeStart = call - 1;
+      }
+      const v = this.valueOf(calleeStart, calleeEnd);
+      if (v?.kind !== "fwd") continue;
+      if (out.length >= MAX_FORWARDER_CALLS) {
+        this.forwardersCut = true;
+        return out;
+      }
+      const arg = r.argumentAt(open, 0);
+      if (arg === null || this.punct(arg, ")")) continue;
+      const named = channelArg(this.tokens, this.constants, arg);
+      const usage: IpcUsage = {
+        api: v.api,
+        channel: named && "value" in named ? named.value : null,
+        line: t.line,
+        via: "wrapper",
+        wrapper: `${v.file.replace(/\.(m?js|cjs|jsx)$/, "")}.${v.key}`,
+      };
+      if (named && "ref" in named) usage.channelRef = named.ref;
+      out.push({ usage, arg, unread: !named, at: j });
+    }
+    return out;
   }
 
   constructor(
@@ -910,7 +995,9 @@ export class WrapperReader {
     // no binding the resolver can read: a parameter, local, pattern, `for … of` head or `catch`
     // of the name around k is something else than the import
     const imported = this.constants.importOf(name, k);
-    const required = imported ? null : this.constants.requireOf(name, k);
+    const required = imported
+      ? null
+      : (this.constants.requireOf(name, k) ?? this.namespaceImport(name));
     if (!imported && !required) return null;
     if (this.r.boundAround(k, name)) return null;
     if (imported) return this.external?.(imported.specifier, imported.property) ?? null;
@@ -918,6 +1005,28 @@ export class WrapperReader {
   }
 
   private readonly assignedCache = new Map<string, boolean>();
+
+  /** `import * as N from "s"` of this file, by name (a name imported twice: none). */
+  private namespaces: Map<string, string | null> | null = null;
+  private namespaceImport(name: string): string | null {
+    if (!this.namespaces) {
+      this.namespaces = new Map();
+      const { tokens } = this;
+      for (let j = 0; j + 5 < tokens.length; j++)
+        if (
+          this.is(j, "ident", "import") &&
+          this.punct(j + 1, "*") &&
+          this.is(j + 2, "ident", "as") &&
+          this.is(j + 3, "ident") &&
+          this.is(j + 4, "ident", "from") &&
+          this.is(j + 5, "string")
+        ) {
+          const n = tokens[j + 3]!.value;
+          this.namespaces.set(n, this.namespaces.has(n) ? null : tokens[j + 5]!.value);
+        }
+    }
+    return this.namespaces.get(name) ?? null;
+  }
 
   /**
    * Whether the name is assigned anywhere in the file, in any scope: `NAME = …`, `NAME += …`,
@@ -1965,8 +2074,14 @@ export function factsFor(
   const exports: WrapperFacts["exports"] = {};
   for (const [key, e] of Object.entries(facts.exports)) if (ids.has(e.id)) exports[key] = e;
   const fns = objects ? (facts.fns ?? []) : [];
-  if (!Object.keys(exports).length && !fns.length) return undefined;
-  return { classes, exports, ...(fns.length ? { fns } : {}) };
+  const forwarders = !objects && facts.forwarders ? facts.forwarders : undefined;
+  if (!Object.keys(exports).length && !fns.length && !forwarders) return undefined;
+  return {
+    classes,
+    exports,
+    ...(fns.length ? { fns } : {}),
+    ...(forwarders ? { forwarders } : {}),
+  };
 }
 
 /** A module as the cross-file stage reads it. */ /** A module as the cross-file stage reads it. */
@@ -2024,6 +2139,7 @@ export function linkWrappers(input: {
     keepPastBudget: true,
     read: (reader, onlySeeded) => [
       ...reader.rows(onlySeeded).map((row) => ({ row })),
+      ...(onlySeeded ? [] : reader.forwarderRows().map((row) => ({ row }))),
       ...reader.objectSites(onlySeeded).map((site) => ({ site })),
     ],
     same: (x, y) =>
@@ -2106,7 +2222,11 @@ function linkWrapperCalls<R>(input: {
   const providers = new Set(
     input.modules
       .filter(
-        (m) => m.wrappers && (Object.keys(m.wrappers.exports).length || m.wrappers.fns?.length),
+        (m) =>
+          m.wrappers &&
+          (Object.keys(m.wrappers.exports).length ||
+            m.wrappers.fns?.length ||
+            (m.wrappers.forwarders && Object.keys(m.wrappers.forwarders).length)),
       )
       .map((m) => m.id),
   );
@@ -2144,6 +2264,8 @@ function linkWrapperCalls<R>(input: {
         const cls = classOf(m.id, e.id);
         if (cls) return labelled({ kind: e.kind, cls, label: cls.name }, key);
       }
+      const forwarder = key ? m.wrappers?.forwarders?.[key] : undefined;
+      if (forwarder !== undefined) return { kind: "fwd", file: m.id, key, api: forwarder };
       const passed = m.reexports?.[key];
       if (passed) {
         const v = lookup(m.id, loose)(passed.specifier, passed.property, depth + 1);
@@ -2212,6 +2334,9 @@ function linkWrapperCalls<R>(input: {
   // importers not read at all: what they pass is not known for either kind
   if (importers.length < allImporters.length) objectsCut.methods = objectsCut.fns = true;
   const readers = new Map<string, WrapperReader | null>();
+  const forwarderKeys = new Set<string>();
+  for (const id of providers)
+    for (const key of Object.keys(byId.get(id)?.wrappers?.forwarders ?? {})) forwarderKeys.add(key);
   const readerOf = (file: string): WrapperReader | null => {
     if (readers.has(file)) return readers.get(file)!;
     const read = input.open(file);
@@ -2225,7 +2350,10 @@ function linkWrapperCalls<R>(input: {
           read.ipcAt ?? null,
         )
       : null;
-    if (reader) reader.replaced = replaced;
+    if (reader) {
+      reader.replaced = replaced;
+      reader.forwarderKeys = forwarderKeys;
+    }
     readers.set(file, reader);
     return reader;
   };
