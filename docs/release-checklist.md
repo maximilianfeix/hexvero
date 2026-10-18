@@ -43,12 +43,14 @@ A release is a tag `vX.Y.Z` on `main`; pushing the tag is the point of no return
 
 ## Publishing: `.github/workflows/release.yml` on the tag
 
-1. `verify` (no credentials, Node 24, npm 11.6.2): `npm ci`, `npm run check`, `npm run build`,
-   `release-verify.mjs <tag>`, the tagged commit is an ancestor of `origin/main`,
+1. `verify` (no credentials, no dependency cache, Node 24, npm 11.6.2): `npm ci`, `npm run check`,
+   `npm run e2e` (which builds), the committed examples unchanged, `build-site-demo.mjs --check`,
+   `corpus/build.mjs --check` and `corpus/gate.mjs`, `release-verify.mjs <tag>`, the tagged commit is an ancestor of `origin/main`,
    `smoke-tarballs.mjs --out release`, `publish-tarballs.mjs release --dry-run` (a version already
    on npm with other content stops here), release notes from the CHANGELOG section
    (`release-notes.mjs`), tarballs and manifest uploaded as an artifact.
-2. `publish` (`contents: write`, `id-token: write`): the downloaded tarballs must match the
+   `platforms` (no credentials): typecheck and tests on Windows and macOS, the same as CI.
+2. `publish` (`contents: write`, `id-token: write`), only after `verify` and `platforms` passed: the downloaded tarballs must match the
    manifest's SHA-256; a **draft** GitHub release with the tarballs; `publish-tarballs.mjs release`
    publishes in dependency order with provenance (npm dist-tag `next` for a pre-release version),
    accepts a version already published with the same integrity, and reads every package back

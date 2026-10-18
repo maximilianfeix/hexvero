@@ -1,8 +1,9 @@
 name: Release
 
 # A release is a tag vX.Y.Z on main. Order of events:
-#   verify          checks, build, pack, install the tarballs and exercise them, validate version
-#                   and source (no credentials)
+#   verify          checks, build, end-to-end flows, the site demo and corpus gates, pack, install
+#                   the tarballs and exercise them, validate version and source (no credentials)
+#   platforms       typecheck and tests on Windows and macOS (no credentials)
 #   publish         draft GitHub release -> npm publish of exactly those tarballs with provenance
 #                   -> read back from the registry until the integrity matches
 #   registry-smoke  install from the registry and exercise it (no credentials)
@@ -33,15 +34,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
+      # No dependency cache: what is released is built from a fresh install of the lockfile.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-          cache: npm
       - name: Pin npm so the packed tarballs are reproducible across runs
         run: npm install -g npm@11.6.2 && npm --version
       - run: npm ci
       - run: npm run check
-      - run: npm run build
+      - name: Electron, native, comparison and MCP-over-stdio flows (builds the packages)
+        run: npm run e2e
+      - name: The committed examples are what the generator produces
+        run: git diff --exit-code -- examples
+      - name: The website's example comparison is what the current build produces
+        run: node scripts/build-site-demo.mjs --check
+      - name: The corpus inputs rebuild to the committed bytes
+        run: node corpus/build.mjs --check
+      - name: No corpus result is worse than the committed one
+        run: node corpus/gate.mjs
       - name: Version is consistent (and matches the tag)
         id: version
         run: |
@@ -68,9 +79,27 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  platforms:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
   publish:
     name: Publish to npm
-    needs: verify
+    needs: [verify, platforms]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
