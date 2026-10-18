@@ -4,7 +4,7 @@ import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { readRegularFile } from "../binary/file.js";
 import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
-import { AnalysisError } from "../model.js";
+import { AnalysisError, NOTHING_MISSING } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
 import {
   ASSIGNMENT_OPERATORS,
@@ -218,6 +218,25 @@ function list(items: string[], max: number): string {
   return items.length > max
     ? `${items.slice(0, max).join(", ")} … and ${items.length - max} more`
     : items.join(", ");
+}
+
+/** A short comma list that says how many it left out, as `(N more)`: not `list`'s `… and N more`. */
+function some(items: string[], max: number): string {
+  return items.length > max
+    ? `${items.slice(0, max).join(", ")} (${items.length - max} more)`
+    : items.join(", ");
+}
+
+/**
+ * The places a limitation applies to, as `at file:line` (`file:1` for a whole file), which
+ * `Unresolved.fromLimitations` (session.ts) reads; past `max` the rest is counted (`… and N
+ * more`), and the limitation then applies anywhere.
+ */
+function atPlaces(at: string[], max: number): string {
+  return list(
+    at.map((p) => `at ${p}`),
+    max,
+  );
 }
 
 /** What may follow `object.key` when the key is only read. */
@@ -3879,16 +3898,29 @@ function linkBridgeValues(input: {
   open(path: string): ReadModule | null;
 }): {
   unread: string[];
+  /**
+   * Where the members of `unread` would be, as `file:line`: the exposing entry and, when it was
+   * located, the module that defines the value (`file:1`).
+   */
+  unreadAt: string[];
+  /**
+   * An entry of `unread` whose module was not located or lies deeper than is read: its members
+   * may be in any file, so `unreadAt` is not where they all are.
+   */
+  unreadAnywhere: boolean;
   exposures: BridgeExposure[];
   forwarders: BridgeForwarder[];
   capped: boolean;
 } {
   const { contextBridge } = input;
   const unread: string[] = [];
+  const unreadAt: string[] = [];
+  let unreadAnywhere = false;
   const exposures: BridgeExposure[] = [];
   const forwarders: BridgeForwarder[] = [];
   let capped = false;
-  if (!contextBridge.some((b) => b.valueRef)) return { unread, exposures, forwarders, capped };
+  if (!contextBridge.some((b) => b.valueRef))
+    return { unread, unreadAt, unreadAnywhere, exposures, forwarders, capped };
   const sources = new Map<
     string,
     { tokens: Token[]; truncated: boolean; context: ScanContext } | null
@@ -3979,17 +4011,26 @@ function linkBridgeValues(input: {
       const ref = b.valueRef!;
       delete b.valueRef;
       const named = `${ref.property === "*" ? "the exports" : ref.property === "default" ? "the default export" : ref.property} of "${ref.specifier}" (from ${b.file}:${b.line})`;
+      const target = input.resolve(b.file, ref.specifier);
+      const at = (): void => {
+        for (const place of [`${b.file}:${b.line}`, ...(target ? [`${target}:1`] : [])])
+          if (!unreadAt.includes(place)) unreadAt.push(place);
+      };
       if (round === MAX_BRIDGE_DEPTH) {
         unread.push(`${named}: more than ${MAX_BRIDGE_DEPTH} modules deep`);
+        // the module the members are in is further down, so they may be in any file
+        unreadAnywhere = true;
         continue;
       }
-      const target = input.resolve(b.file, ref.specifier);
       if (!target) {
         unread.push(`${named}: not among the files read`);
+        // the other build may locate it in a file of its own, so they may be in any file
+        unreadAnywhere = true;
         continue;
       }
       if (changedByImporters(target, ref.property, b.file)) {
         unread.push(`${named}: another module that imports ${target} may change it`);
+        at();
         continue;
       }
       const src = source(target);
@@ -3997,6 +4038,7 @@ function linkBridgeValues(input: {
         unread.push(
           `${named}: ${target} could not be read${sources.size >= MAX_BRIDGE_MODULES ? ` (or more than ${MAX_BRIDGE_MODULES} modules were opened)` : ""}`,
         );
+        at();
         continue;
       }
       const scan = bridgeMembers(src, target, [
@@ -4004,6 +4046,7 @@ function linkBridgeValues(input: {
       ]);
       if (scan.unfound) {
         unread.push(`${named}: ${target} does not define it once where it can be read`);
+        at();
         continue;
       }
       if (scan.truncated) capped = true;
@@ -4018,7 +4061,7 @@ function linkBridgeValues(input: {
     contextBridge.length = 0;
     contextBridge.push(...next.slice(0, MAX_BRIDGE));
   }
-  return { unread, exposures, forwarders, capped };
+  return { unread, unreadAt, unreadAnywhere, exposures, forwarders, capped };
 }
 
 /** Page scripts read for calls of generic bridge forwarders, per analysis. */
@@ -4053,14 +4096,27 @@ function bridgeCallRows(input: {
 }): {
   rows: Map<string, IpcUsage[]>;
   ambiguous: string[];
+  /** The page scripts read that name an api of an `ambiguous` path: where its calls are. */
+  ambiguousFiles: string[];
   capped: string[];
   unread: string[];
+  unreadFiles: string[];
   writes: string[];
 } {
   const rows = new Map<string, IpcUsage[]>();
   const ambiguous: string[] = [];
+  const ambiguousApis = new Set<string>();
   const capped: string[] = [];
-  if (!input.forwarders.length) return { rows, ambiguous, capped, unread: [], writes: [] };
+  if (!input.forwarders.length)
+    return {
+      rows,
+      ambiguous,
+      ambiguousFiles: [],
+      capped,
+      unread: [],
+      unreadFiles: [],
+      writes: [],
+    };
   // one forwarder per api and path, the same in every preload that exposes it
   const byPath = new Map<string, BridgeForwarder | null>();
   const sig = (f: BridgeForwarder): string =>
@@ -4088,6 +4144,7 @@ function bridgeCallRows(input: {
     if (f === null || plain) {
       byPath.set(key, null);
       ambiguous.push(`window.${api}.${path}`);
+      ambiguousApis.add(api);
     }
   }
   const apis = [...new Set(input.forwarders.map((f) => f.api))].filter((a) =>
@@ -4105,6 +4162,8 @@ function bridgeCallRows(input: {
   // files that take ipcMain from electron and files with a `with` statement are not read, and
   // named.
   const unread: string[] = [];
+  /** The files of `unread` whose page calls are not read (a worker that was not located has none). */
+  const unreadFiles: string[] = [];
   const workers = new Set<string>();
   const pages: Array<{ m: JsModule; named: string[]; read: ReadModule }> = [];
   const writes: string[] = [];
@@ -4145,6 +4204,7 @@ function bridgeCallRows(input: {
     // a file that takes ipcMain from electron runs in the main process
     if (takesIpcMain(tokens)) {
       unread.push(`${m.id} (takes ipcMain from electron)`);
+      unreadFiles.push(m.id);
       continue;
     }
     pages.push({ m, named, read });
@@ -4230,6 +4290,7 @@ function bridgeCallRows(input: {
     if (!named.length) continue;
     if (workers.has(m.id)) {
       unread.push(`${m.id} (a worker script: no bridge there)`);
+      unreadFiles.push(m.id);
       continue;
     }
     const { tokens, constants, resolver: r } = read;
@@ -4240,6 +4301,7 @@ function bridgeCallRows(input: {
       )
     ) {
       unread.push(`${m.id} (a with statement: a name may be a member of its object)`);
+      unreadFiles.push(m.id);
       continue;
     }
     const is = (k: number, v: string): boolean =>
@@ -4438,7 +4500,10 @@ function bridgeCallRows(input: {
     }
     if (out.length) rows.set(m.id, out);
   }
-  return { rows, ambiguous, capped, unread, writes };
+  const ambiguousFiles = pages
+    .filter((p) => p.named.some((a) => ambiguousApis.has(a)))
+    .map((p) => p.m.id);
+  return { rows, ambiguous, ambiguousFiles, capped, unread, unreadFiles, writes };
 }
 
 /**
@@ -5226,7 +5291,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 32;
+export const JS_SCAN_SCHEMA = 33;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -7246,12 +7311,26 @@ export function analyzeJavaScriptTree(
   if (bridgeCalls.ambiguous.length)
     limitations.push({
       code: "bridge_forwarder_ambiguous",
-      message: `${bridgeCalls.ambiguous.length} exposed member(s) pass their channel on, but the preloads that expose them do not do it the same way (another IPC method or another check), so which one a page script reaches is not known and its calls give no IPC rows: ${list(bridgeCalls.ambiguous, 5)}.`,
+      message: `${bridgeCalls.ambiguous.length} exposed member(s) pass their channel on, but the preloads that expose them do not do it the same way (another IPC method or another check), so which one a page script reaches is not known and its calls give no IPC rows: ${some(bridgeCalls.ambiguous, 5)}. ${
+        bridgeCalls.ambiguousFiles.length
+          ? `The page scripts read that name ${bridgeCalls.ambiguous.length === 1 ? "its api are" : "their apis are"} ${atPlaces(
+              bridgeCalls.ambiguousFiles.map((f) => `${f}:1`),
+              10,
+            )}.`
+          : `No page script read names ${bridgeCalls.ambiguous.length === 1 ? "its api" : "their apis"}. ${NOTHING_MISSING}`
+      }`,
     });
   if (bridgeCalls.unread.length)
     limitations.push({
       code: "bridge_calls_unread",
-      message: `${bridgeCalls.unread.length} file(s) were not read for page calls of exposed members that pass their channel on: ${list(bridgeCalls.unread, 5)}.`,
+      message: `${bridgeCalls.unread.length} file(s) were not read for page calls of exposed members that pass their channel on: ${some(bridgeCalls.unread, 5)}.${
+        bridgeCalls.unreadFiles.length
+          ? ` The calls not read are ${atPlaces(
+              bridgeCalls.unreadFiles.map((f) => `${f}:1`),
+              10,
+            )}.`
+          : ` Their calls are read as a page's. ${NOTHING_MISSING}`
+      }`,
     });
   if (bridgeCalls.writes.length)
     limitations.push({
@@ -7261,12 +7340,15 @@ export function analyzeJavaScriptTree(
   if (bridgeCalls.capped.length)
     limitations.push({
       code: "bridge_calls_capped",
-      message: `${bridgeCalls.capped.length} page script(s) were not read for calls of exposed members that pass their channel on (more than ${MAX_BRIDGE_CALL_FILES} files, ${BRIDGE_CALL_WORK} tokens, or ${MAX_BRIDGE_CALLS_PER_FILE} calls in one file), so their IPC through those members is missing: ${list(bridgeCalls.capped, 5)}.`,
+      message: `${bridgeCalls.capped.length} page script(s) were not read for calls of exposed members that pass their channel on (more than ${MAX_BRIDGE_CALL_FILES} files, ${BRIDGE_CALL_WORK} tokens, or ${MAX_BRIDGE_CALLS_PER_FILE} calls in one file), so their IPC through those members is missing ${atPlaces(
+        bridgeCalls.capped.map((f) => `${f}:1`),
+        10,
+      )}.`,
     });
   if (bridgeLinks.unread.length)
     limitations.push({
       code: "context_bridge_module_unread",
-      message: `${bridgeLinks.unread.length} contextBridge ${bridgeLinks.unread.length === 1 ? "value comes" : "values come"} from another module whose export could not be read, so ${bridgeLinks.unread.length === 1 ? "its" : "their"} members are not listed: ${list(bridgeLinks.unread, 5)}.`,
+      message: `${bridgeLinks.unread.length} contextBridge ${bridgeLinks.unread.length === 1 ? "value comes" : "values come"} from another module whose export could not be read, so ${bridgeLinks.unread.length === 1 ? "its" : "their"} members are not listed: ${some(bridgeLinks.unread, 5)}. ${bridgeLinks.unreadAnywhere ? "The module of one of them was not located or lies deeper than is read, so the members not listed may be in any file." : `The members not listed are ${atPlaces(bridgeLinks.unreadAt, 10)}.`}`,
     });
   if (bridgeCapped)
     limitations.push({

@@ -15,6 +15,13 @@ export interface Finding {
   location?: string | undefined;
 }
 
+/**
+ * The sentence a file-scoped limitation (session.ts, FILE_SCOPED_LIMITATIONS) ends with when its
+ * emitter has established that nothing is missing because of it: it then applies in no file. Any
+ * other such limitation that names no file applies in every file.
+ */
+export const NOTHING_MISSING = "No page calls are missing.";
+
 /** Something the analyzer could not establish; results stay honest about it. */
 export interface Limitation {
   code: string;
