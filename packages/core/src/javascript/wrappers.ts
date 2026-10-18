@@ -1104,7 +1104,16 @@ export class WrapperReader {
     // link read once
     if (this.punct(end - 1, ")")) {
       const open = this.r.openOf(end - 1);
-      if (open > start + 1 && this.is(open - 1, "ident") && this.punct(open - 2, ".")) {
+      // `new m.C(…)` is one construction, not a call of the method `C` on `new m`
+      let constructs = this.is(start, "ident", "new");
+      for (let j = start + 1; constructs && j < open; j++)
+        if (!this.is(j, "ident") && !this.punct(j, ".")) constructs = false;
+      if (
+        !constructs &&
+        open > start + 1 &&
+        this.is(open - 1, "ident") &&
+        this.punct(open - 2, ".")
+      ) {
         const key = `${start}:${end}`;
         const known = this.chains.get(key);
         if (known) return known;
