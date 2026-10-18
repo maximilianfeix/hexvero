@@ -1002,6 +1002,11 @@ describe("request libraries: review fixes", () => {
         'const https = require("https");\nfunction f({ https } = {}) { return https; }\nconst { a: { b } } = o;\nconst o2 = { https };\nhttps.get("https://kept.example/");',
         ["http-client GET https://kept.example/ [literal]"],
       ],
+      // a pattern later in a declaration list declares (Claude.app's minified main chunk)
+      [
+        'let He = require("electron");\nasync function q(r) { let t = f(r), [{ env: Fe }, [[He, Ue], Xe]] = await Promise.all([a, b]); return He; }\nfunction Qh(e) { return He.net.request({ method: "GET", url: e }); }',
+        ["http-client GET ?options.url [unknown]"],
+      ],
       // a name declared twice in one scope and written: either may be meant
       [
         'var h = require("https");\nvar h = require("https");\nh = other;\nh.get("https://dup.example/x");',
@@ -1067,25 +1072,91 @@ describe("request libraries: review fixes", () => {
       Array.from({ length: 2100 }, (_, i) => `h = o${i};`).join("\n") +
       '\nh.get("https://after-writes.example/");\nconst q = require("http");\nq.get("http://kept.example/");';
     const a = find(writes);
-    expect(a.clientsSkipped).toBe(true);
+    expect(a.clientWritesSkipped).toBe(true);
     expect(show(writes)).toEqual([
       "http-client GET ?<expression> [unknown]",
       "http-client GET http://kept.example/ [literal]",
     ]);
-    // 200 declarations of one name in one scope and 200 writes: past 32,000 questions
-    const many =
-      Array.from({ length: 200 }, () => 'var h = require("https");').join("\n") +
-      "\n" +
-      Array.from({ length: 200 }, (_, i) => `h = o${i};`).join("\n") +
-      '\nh.get("https://after.example/");\nfunction f() { const q = require("https"); q.get("https://unrelated.example/"); }';
-    expect(find(many).clientsSkipped).toBe(true);
-    expect(show(many)).toEqual([
+    // 40 nested functions declaring `h`, 900 writes in the innermost: past 32,000 questions
+    const depth = 40;
+    let nested = 'function f0() {\n  let h = require("https");\n';
+    for (let d = 1; d < depth; d++) nested += `function f${d}() { let h = require("https");\n`;
+    for (let i = 0; i < 900; i++) nested += `h = o${i};\n`;
+    nested += "}\n".repeat(depth - 1);
+    nested +=
+      '  h = other;\n  h.get("https://outer.example/after-cap");\n}\nfunction g() { const q = require("https"); q.get("https://unrelated.example/"); }';
+    expect(find(nested).clientWritesSkipped).toBe(true);
+    expect(show(nested)).toEqual([
       "http-client GET ?<expression> [unknown]",
       "http-client GET https://unrelated.example/ [literal]",
     ]);
   });
 
-  it("bounds the walk over a long argument list before a pattern, and flags it", () => {
+  it("does not charge writes of a function's own locals to the write bound", () => {
+    // a minified bundle: `o` and `a` are clients at the top; every other function declares and
+    // writes its own `o` and `a`
+    for (const n of [500, 999, 2500]) {
+      const source =
+        'var o=require("https"),a=require("axios"),c=a.create({baseURL:"https://api.example/v1"});\n' +
+        'function go(){o.get("https://known.example/x");c.get("/users");a.post("https://lib.example/p")}\n' +
+        Array.from(
+          { length: n },
+          (_, i) => `function f${i}(e){let o=e;o=o+1;var a=2;a=3;return o+a}`,
+        ).join("\n") +
+        '\no.request("https://known.example/end");';
+      const found = find(source);
+      expect(found.clientWritesSkipped, `${n}`).toBeUndefined();
+      expect(show(source), `${n}`).toEqual([
+        "http-client GET https://known.example/x [literal]",
+        "http-client GET https://api.example/v1/users [inferred]",
+        "http-client POST https://lib.example/p [literal]",
+        "http-client https://known.example/end [literal]",
+      ]);
+    }
+  });
+
+  it("resolves a write against a later declaration of its own scope first", () => {
+    const cases: Array<[string, string[]]> = [
+      // a hoisted `var` in the inner function: the write is of that one
+      [
+        'function g() {\n  function f() { h = other; var h = require("https"); }\n  let h = require("http");\n  h.default.get("https://r.example/1");\n  h.get("https://r.example/1b");\n}',
+        [
+          "http-client GET https://r.example/1 [literal]",
+          "http-client GET https://r.example/1b [literal]",
+        ],
+      ],
+      // a `const` later in the same function (the write is in its dead zone)
+      [
+        'function g() {\n  function f() { h = other; const h = require("https"); }\n  let h = require("http");\n  h.get("https://r.example/2");\n}',
+        ["http-client GET https://r.example/2 [literal]"],
+      ],
+      // a `let` later in an inner arrow
+      [
+        'const g = () => {\n  const h = require("https");\n  const k = () => { h = require("https"); let h = require("http"); };\n  h.post("https://r.example/3a");\n};',
+        ["http-client POST https://r.example/3a [literal]"],
+      ],
+      // the write is of the outer binding: unknown
+      [
+        'function g() {\n  function f() { h = other; }\n  let h = require("http");\n  h.get("https://r.example/4");\n}',
+        ["http-client GET ?<expression> [unknown]"],
+      ],
+    ];
+    for (const [source, rows] of cases) expect(show(source), source).toEqual(rows);
+  });
+
+  it("does not read a call on an undeclared global that the file assigns", () => {
+    expect(
+      show(
+        '{ const h = require("https"); }\nh = require("https");\nh = other;\nh.request("https://g.example/p");',
+      ),
+    ).toEqual(["http-client ?<expression> [unknown]"]);
+    // not assigned: the name rule reads the address at the call
+    expect(show('{ const h = require("https"); }\nh.request("https://g.example/q");')).toEqual([
+      "http-client https://g.example/q [literal]",
+    ]);
+  });
+
+  it("finds the parameter list of a pattern without walking a long argument list", () => {
     // each `{ api } = d` walked back over every argument before it: 50,000 took over a minute
     const n = 50_000;
     const source =
@@ -1097,7 +1168,7 @@ describe("request libraries: review fixes", () => {
     const started = performance.now();
     const found = find(source);
     expect(performance.now() - started).toBeLessThan(15_000);
-    expect(found.clientsSkipped).toBe(true);
+    expect(found.clientWritesSkipped).toBeUndefined();
     expect(show(source)).toEqual(["http-client GET ?<expression> [unknown]"]);
   });
 
@@ -1112,7 +1183,7 @@ describe("request libraries: review fixes", () => {
       const found = find(source);
       // generous: the point is bounded against quadratic (0.9.8: minutes or out of memory)
       expect(performance.now() - started).toBeLessThan(15_000);
-      expect(found.clientsSkipped).toBe(true);
+      expect(found.clientWritesSkipped).toBe(true);
       expect(found.endpoints.filter((e) => e.value !== null)).toEqual([]);
     }
     const n = 60_000;

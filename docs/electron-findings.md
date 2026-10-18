@@ -465,13 +465,32 @@ a function value gives no row (the binding does not exist there yet). Only write
 the declaration is seen in (the block of a `let`/`const`, else its function) are asked about, at
 most 64 per declaration and 32,000 per file; past that the binding counts as written. The same
 holds for the module bindings: a write is matched only with the declarations of its name whose
-range holds it, at most 2,000 writes and 32,000 such questions per file. A write that means no
-single declaration though the binding it sees is one of several declarations of the name in one
-scope (`var h = require("https"); var h = require("https"); h = x`) counts for all of them. Past
-these bounds, and in a file with more functions than the resolver reads (60,000), every name
-written from there on counts as written: its calls are unknown rows where they mean it, and the
-file is flagged (`client_calls_skipped`). Past the 2,000 checked calls, a call on a name with a
-declaration written again is an unknown row, not read by the name rule.
+range holds it. A declaration (`let o = e`, also later in a list) is no write, and a write of a
+local of the write's own scope is not charged to any client binding: a `var` of the function the
+write is in, a `let`/`const`/`class` of a block that holds the write (also one declared after it,
+in its dead zone), a function declaration or a parameter of that function (`function f(e) { let
+o = e; o = o + 1 }` in a minified bundle whose top-level `o` is `https`). The rest count against
+at most 2,000 writes and 32,000 questions per file. A write that means no single declaration
+though the binding it sees is one of several declarations of the name in one scope (`var h =
+require("https"); var h = require("https"); h = x`) counts for those declarations of that scope.
+Past these bounds, and in a file with more functions than the resolver reads (60,000), every name
+written from there on counts as written: its calls are unknown rows where they mean it, also
+where the address is a literal (a known row of such a name becomes unknown), and the file is
+flagged with its own limitation, `client_writes_skipped`. Past the 2,000 checked calls
+(`client_calls_skipped`), a call on a name with a declaration written again is an unknown row,
+not read by the name rule.
+
+Bindings follow block scopes: a `let`/`const` binds in its block (also before its declaration,
+in the dead zone), a `var` in its function; a call outside the block of a client's `let`/`const`
+does not mean it. A call whose receiver is a local of a function between it and the client's
+declaration (also a later declarator of a list, `var t = [], n = new WeakMap`, which the scope
+tables do not hold) is not a call of the client. This is stricter than 0.9.8, which took some writes
+and calls in an inner block or function for the outer binding: rows change both ways (an outer
+binding no longer charged with an inner local's write keeps its address; a write to an outer
+binding from an inner block now makes its calls unknown). A call on a name with no binding
+visible, where the file assigns that global (`h = require("https")`, `h = other` on an
+undeclared `h`), is an unknown row; with no such assignment the name rule of 0.9.2 reads the
+address written at the call, as it always did.
 
 An instance whose binding is used otherwise than for requests (`NAME.<verb>(…)`, `NAME(…)`) may
 have its defaults changed, so all its requests are unknown rows (`<expression>`):

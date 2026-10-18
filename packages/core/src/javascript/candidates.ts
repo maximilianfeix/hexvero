@@ -116,6 +116,11 @@ export interface Candidates {
   /** More HTTP client calls than MAX_CLIENT_CALLS were checked; the rest gave no rows. */
   clientsSkipped?: true;
   /**
+   * More writes of client names (or bindings made from clients) than are checked, or more
+   * functions than the resolver reads: names written past that point give unknown rows.
+   */
+  clientWritesSkipped?: true;
+  /**
    * Storage calls whose key could not be read where it is written (at most MAX_OPEN_KEYS): the
    * token the key starts at, for the wrappers other modules call (wrappers.ts).
    */
@@ -708,6 +713,23 @@ export function findCandidates(
     const kw = declarationKeyword(j);
     return kw !== -1 && is(tokens[kw - 1], "ident", "export");
   };
+  /** Positions of every identifier by name (the resolver's index when it is built). */
+  let ownNames: Map<string, number[]> | null = null;
+  const positionsOf = (name: string): readonly number[] => {
+    const built = builtIdentifierIndex(tokens);
+    if (built) return built.get(name) ?? [];
+    if (!ownNames) {
+      ownNames = new Map();
+      for (let k = 0; k < tokens.length; k++) {
+        const t = tokens[k]!;
+        if (t.type !== "ident") continue;
+        const list = ownNames.get(t.value);
+        if (list) list.push(k);
+        else ownNames.set(t.value, [k]);
+      }
+    }
+    return ownNames.get(name) ?? [];
+  };
   /**
    * The range of tokens the declaration at `at` can be seen in: the block of a `let`/`const`
    * (found back over at most 4,096 tokens), else the function it is in, else the file. A wider
@@ -719,20 +741,15 @@ export function findCandidates(
     const [start, end] = fn ? fn.body : [0, tokens.length];
     const kw = tokens[at]?.type === "ident" ? declarationKeyword(at) : -1;
     if (kw === -1 || tokens[kw]!.value === "var") return [start, end];
-    for (let m = kw - 1, steps = 0; m > start && steps < 4096; steps++) {
-      const x = tokens[m]!;
-      if (x.type === "punct" && (x.value === ")" || x.value === "]" || x.value === "}")) {
-        const o = res.openOf(m);
-        if (o === -1) break;
-        m = o - 1;
-        continue;
-      }
-      if (x.type === "punct" && x.value === "{") {
+    // the block around the keyword: up the brackets around it to the first brace
+    for (let m = res.bracketAround(kw), guard = 0; m >= start && m !== -1 && guard < 256; guard++) {
+      if (is(tokens[m], "punct", "{")) {
         const c = res.closeOf(m);
         return c === -1 ? [start, end] : [m, c + 1];
       }
-      if (x.type === "punct" && (x.value === "(" || x.value === "[")) break;
-      m--;
+      // a `for (let …)` head or a parenthesis: the function is wide enough
+      if (is(tokens[m], "punct", "(")) break;
+      m = res.bracketAround(m);
     }
     return [start, end];
   };
@@ -777,6 +794,65 @@ export function findCandidates(
     };
   };
   /**
+   * The write at k is of a declaration of the name in the write's own scope that is not one of
+   * `entries` (`function f(e) { let o = e; o = o + 1 }`, also a `var` or a `let`/`const` declared
+   * after the write, a parameter of the function the write is in): it writes that local, not a
+   * client binding further out. False when a client declaration is in the same scope too, or
+   * when more than 4,096 positions would have to be looked at.
+   */
+  let ownLocalWork = 0;
+  const ownLocal = (k: number, name: string, entries: ReadonlySet<number>): boolean =>
+    localIn(k, name, entries, (wrapperResolver ??= makeResolver()).functionAt(k)) === "local";
+  /**
+   * What declares the name at k in function `fn` (null: the top of the file): `local` a
+   * declaration that is none of `entries`, `client` one of them (or one too many positions to
+   * look at), `none` nothing.
+   */
+  const localIn = (
+    k: number,
+    name: string,
+    entries: ReadonlySet<number>,
+    fn: ReturnType<ExpressionResolver["functionAt"]>,
+  ): "local" | "client" | "none" => {
+    const res = (wrapperResolver ??= makeResolver());
+    if (fn && fn.params.some((p) => p.kind === "name" && p.name === name)) return "local";
+    const [start, end] = fn ? fn.body : [0, tokens.length];
+    const all = positionsOf(name);
+    let lo = 0;
+    let hi = all.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (all[mid]! < start) lo = mid + 1;
+      else hi = mid;
+    }
+    let local = false;
+    for (let i = lo, looked = 0; i < all.length && all[i]! < end; i++) {
+      // past the per-file work bound the write takes the questions below instead
+      if (looked++ >= 4096 || ownLocalWork++ >= 4_000_000) return "client";
+      const p = all[i]!;
+      if (p === k) continue;
+      const before = tokens[p - 1];
+      const named = is(before, "ident", "function") || is(before, "ident", "class");
+      if (
+        !named &&
+        !is(before, "punct", ",") &&
+        !(before?.type === "ident" && /^(const|let|var)$/.test(before.value))
+      )
+        continue;
+      if (res.functionAt(p) !== fn) continue;
+      const kw = named ? -1 : declarationKeyword(p);
+      if (kw === -1 && !named) continue;
+      // a `let`/`const`/`class` binds in its block only
+      if ((kw !== -1 && tokens[kw]!.value !== "var") || is(before, "ident", "class")) {
+        const [from, to] = scopeRange(p);
+        if (k < from || k >= to) continue;
+      }
+      if (entries.has(p)) return "client";
+      local = true;
+    }
+    return local ? "local" : "none";
+  };
+  /**
    * The name at k is written by a destructuring assignment (`({ api } = o)`, `({ k: api } = o)`,
    * `[api] = l`, nested, with a default or a rest) or a `for (api of …)` / `for (api in …)` head:
    * writes that have no operator after the name. A declaration pattern, a parameter pattern and
@@ -800,46 +876,22 @@ export function findCandidates(
     const res = (wrapperResolver ??= makeResolver());
     let j = k;
     for (let level = 0; level < 4; level++) {
-      // the bracket around j: back over complete groups to the one that is open
-      let o = j - 1;
-      for (let guard = 0; o >= 0 && guard < 300; guard++) {
-        const x = tokens[o]!;
-        if (x.type === "punct" && (x.value === ")" || x.value === "]" || x.value === "}")) {
-          const m = res.openOf(o);
-          if (m === -1) return false;
-          o = m - 1;
-          continue;
-        }
-        if (x.type === "punct" && (x.value === "(" || x.value === "[" || x.value === "{")) break;
-        o--;
-      }
+      // the bracket around j
+      const o = res.bracketAround(j);
       const opener = tokens[o];
       if (o < 0 || !opener || (opener.value !== "{" && opener.value !== "[")) return false;
       const c = res.closeOf(o);
       if (c === -1) return false;
       const next = tokens[c + 1];
-      const declared = /^(const|let|var)$/.test(tokens[o - 1]?.value ?? "");
+      // a declaration pattern, also later in a declaration list (`let a = f(), [b] = g()`)
+      const declared =
+        /^(const|let|var)$/.test(tokens[o - 1]?.value ?? "") ||
+        (is(tokens[o - 1], "punct", ",") && declarationKeyword(o) !== -1);
       if (is(next, "punct", "=")) {
         if (declared) return false;
         // a parameter pattern with a default: `function f({ api } = {})`
-        if (is(tokens[o - 1], "punct", "(") || is(tokens[o - 1], "punct", ",")) {
-          let q = o - 1;
-          for (let guard = 0; q >= 0 && !is(tokens[q], "punct", "("); guard++) {
-            // a parameter list too long to walk: taken as a write (an unknown row), flagged
-            if (guard >= 300) {
-              out.clientsSkipped = true;
-              return true;
-            }
-            const x = tokens[q]!;
-            if (x.type === "punct" && (x.value === ")" || x.value === "]" || x.value === "}")) {
-              const m = res.openOf(q);
-              if (m === -1) break;
-              q = m - 1;
-            } else if (x.type === "punct" && (x.value === "[" || x.value === "{")) break;
-            else q--;
-          }
-          if (q >= 0 && is(tokens[q], "punct", "(") && res.functionWithParamsAt(q)) return false;
-        }
+        const q = res.bracketAround(o);
+        if (q !== -1 && is(tokens[q], "punct", "(") && res.functionWithParamsAt(q)) return false;
         return true;
       }
       if (
@@ -1023,6 +1075,7 @@ export function findCandidates(
       (j: number, limit?: number) => Array<{ at: number; module: ClientModule }>
     >();
     const removed = new Set<{ at: number; module: ClientModule }>();
+    const entryAts = new Map<string, Set<number>>();
     const changed = new Set<string>();
     // Where the file's identifier index is already built (resolve.ts, shared by every resolver of
     // these tokens), only the places of the declared names are visited, in token order: the same
@@ -1040,7 +1093,7 @@ export function findCandidates(
      * counts as written (its calls are unknown rows where they mean it), and the file is flagged.
      */
     const giveUp = (from: number): void => {
-      out.clientsSkipped = true;
+      out.clientWritesSkipped = true;
       const unchecked = new Set<string>();
       for (let i = from; places ? i < places.length : i + 1 < tokens.length; i++) {
         const k = places ? places[i]! : i;
@@ -1088,9 +1141,20 @@ export function findCandidates(
         const pattern = !operator && patternWrite(k);
         if (!operator && !pattern) continue;
         const binder = (wrapperResolver ??= makeResolver());
+        // a declaration (`let o = e`, also later in a list) writes nothing
+        if (operator && is(after, "punct", "=") && declaresAt(k)) continue;
+        // a write of a local of the write's own scope: no question, and no part of the budget
+        let ats = entryAts.get(t.value);
+        if (!ats) {
+          ats = new Set(
+            [...(clients.get(t.value) ?? []), ...(functions.get(t.value) ?? [])].map((c) => c.at),
+          );
+          entryAts.set(t.value, ats);
+        }
+        if (ownLocal(k, t.value, ats)) continue;
         // More writes than are checked, or scopes the resolver does not read (a file with more
         // functions than MAX_FUNCTIONS): the names written from here on are not proven clients,
-        // and their calls are unknown rows (limitation `client_calls_skipped`).
+        // and their calls are unknown rows (limitation `client_writes_skipped`).
         if (writes++ >= MAX_CLIENT_CALLS || !binder.readsAllFunctions()) {
           giveUp(i);
           break;
@@ -1155,7 +1219,14 @@ export function findCandidates(
             found && found.name !== k && (pattern || binder.assignsName(k, t.value))
               ? found
               : undefined;
-          const same = site ? candidates : [];
+          // only the declarations in the scope of the one the write sees
+          const range = site ? scopeRange(site.name) : null;
+          const same = range
+            ? candidates.filter((c) => {
+                const [from, to] = scopeRange(c.at);
+                return from === range[0] && to === range[1];
+              })
+            : [];
           if (site && same.length > 1 && same.some((c) => c.at === site.name))
             for (const c of same) {
               if (removed.has(c)) continue;
@@ -1176,6 +1247,35 @@ export function findCandidates(
       else functions.delete(name);
     }
   }
+  /**
+   * The file assigns the name where no binding of it is visible (`h = require("https")` and
+   * `h = other` on an undeclared global). Only for a name with at most 4,096 positions; past
+   * that, false.
+   */
+  const globalWrites = new Map<string, boolean>();
+  const globalWritten = (name: string): boolean => {
+    const known = globalWrites.get(name);
+    if (known !== undefined) return known;
+    const binder = (wrapperResolver ??= makeResolver());
+    const all = positionsOf(name);
+    // a name used more often (a minifier's short name) is not looked at: the name rule, which
+    // reads only an address written at the call, applies as in 0.9.8
+    let result = false;
+    for (let i = 0; all.length <= 4096 && !result && i < all.length; i++) {
+      const p = all[i]!;
+      if (is(tokens[p - 1], "punct", ".") || is(tokens[p - 1], "punct", "?.")) continue;
+      const after = tokens[p + 1];
+      const operator =
+        after?.type === "punct" &&
+        (WRITE_OPERATORS.has(after.value) || after.value === "++" || after.value === "--");
+      if (!operator && !patternWrite(p)) continue;
+      if (operator && !binder.assignsName(p, name)) continue;
+      // no binding the scope tables see, nor a local the call's functions declare
+      if (binder.boundAround(p, name) === null && !localAt(p)) result = true;
+    }
+    globalWrites.set(name, result);
+    return result;
+  };
   let reassignQuestions = 0;
   /** Reassigned declarations of each name by the range they are seen in (see `reassignedAt`). */
   const reassignedByScope = new Map<string, (j: number, limit?: number) => Array<{ at: number }>>();
@@ -1192,7 +1292,7 @@ export function findCandidates(
     for (const { at } of around(j)) {
       // past the budget the declaration meant is not known: taken as written
       if (reassignQuestions++ >= MAX_WRITE_QUESTIONS) {
-        out.clientsSkipped = true;
+        out.clientWritesSkipped = true;
         return true;
       }
       if (binder.refersTo(j, name, at)) return true;
@@ -1210,8 +1310,20 @@ export function findCandidates(
       out.clientsSkipped = true;
       return false;
     }
+    const res = (wrapperResolver ??= makeResolver());
+    // a declaration in a function past those the resolver reads (MAX_FUNCTIONS) would look like
+    // one of the top of the file: its scope is not known, so it proves nothing
+    if (!res.readsAllFunctions() && res.functionAt(at) === null && res.bracketAround(at) !== -1) {
+      out.clientWritesSkipped = true;
+      return false;
+    }
+    // a `let`/`const` declared in a block is not seen outside it (`refersTo` asks the function)
+    let range = rangeCache.get(at);
+    if (!range) rangeCache.set(at, (range = scopeRange(at)));
+    if (j < range[0] || j >= range[1]) return false;
     return (wrapperResolver ??= makeResolver()).refersTo(j, tokens[j]!.value, at);
   };
+  const rangeCache = new Map<number, [number, number]>();
   const means = (j: number, list: Array<{ at: number }> | undefined): boolean =>
     !!list?.some((c) => refers(j, c.at));
   /**
@@ -1266,23 +1378,6 @@ export function findCandidates(
     derived?: true;
   };
   /** The binding of `clients` the name at j means, or null. */
-  /** Positions of every identifier by name (the resolver's index when it is built). */
-  let ownNames: Map<string, number[]> | null = null;
-  const positionsOf = (name: string): readonly number[] => {
-    const built = builtIdentifierIndex(tokens);
-    if (built) return built.get(name) ?? [];
-    if (!ownNames) {
-      ownNames = new Map();
-      for (let k = 0; k < tokens.length; k++) {
-        const t = tokens[k]!;
-        if (t.type !== "ident") continue;
-        const list = ownNames.get(t.value);
-        if (list) list.push(k);
-        else ownNames.set(t.value, [k]);
-      }
-    }
-    return ownNames.get(name) ?? [];
-  };
   /** The positions of `name` inside the function the token at `decl` is in (the file at the top). */
   const positionsAround = (
     name: string,
@@ -1323,7 +1418,7 @@ export function findCandidates(
     }
     for (const c of around(j)) {
       if (ownerQuestions++ >= MAX_WRITE_QUESTIONS) {
-        out.clientsSkipped = true;
+        out.clientWritesSkipped = true;
         return null;
       }
       if (binder.refersTo(j, name, c.at)) return c;
@@ -1510,7 +1605,7 @@ export function findCandidates(
   const writtenAgain = (name: string, decl: number): boolean => {
     const res = (wrapperResolver ??= makeResolver());
     if (!res.readsAllFunctions()) {
-      out.clientsSkipped = true;
+      out.clientWritesSkipped = true;
       return true;
     }
     if (!writeShapes) {
@@ -1549,7 +1644,7 @@ export function findCandidates(
       const { at: j, pattern } = list[i]!;
       if (j === decl) continue;
       if (asked++ >= 64 || derivedWrites++ >= MAX_WRITE_QUESTIONS) {
-        out.clientsSkipped = true;
+        out.clientWritesSkipped = true;
         return true;
       }
       if (pattern ? res.refersTo(j, name, decl) : res.writesTo(j, name, decl)) return true;
@@ -1581,7 +1676,7 @@ export function findCandidates(
         )
           continue;
         if (derived++ >= MAX_CLIENT_CALLS) {
-          out.clientsSkipped = true;
+          out.clientWritesSkipped = true;
           return;
         }
         const e = entryAt(v);
@@ -1694,7 +1789,7 @@ export function findCandidates(
       if (agent !== -1) {
         if (scopes().endOf(v) !== agent || !declaresAt(k)) continue;
         if (derived++ >= MAX_CLIENT_CALLS) {
-          out.clientsSkipped = true;
+          out.clientWritesSkipped = true;
           return;
         }
         if (head.value !== "require") {
@@ -1729,7 +1824,7 @@ export function findCandidates(
       if (valueEnd !== expected) continue;
       if (!declaresAt(k)) continue;
       if (derived++ >= MAX_CLIENT_CALLS) {
-        out.clientsSkipped = true;
+        out.clientWritesSkipped = true;
         return;
       }
       const unread = writtenAgain(name.value, k) ? "<expression>" : undefined;
@@ -1826,6 +1921,32 @@ export function findCandidates(
       ...(hit.unread ? { unread: hit.unread } : {}),
     };
   };
+  /**
+   * The name at j is a local of the function it stands in that is no client binding: also a
+   * declarator later in a list (`var t = [], n = new WeakMap`), which the scope tables do not
+   * hold. Then the call is not one of the client.
+   */
+  const callAts = new Map<string, Set<number>>();
+  const localAt = (j: number): boolean => {
+    const name = tokens[j]!.value;
+    let ats = callAts.get(name);
+    if (!ats) {
+      ats = new Set(
+        [...(clients.get(name) ?? []), ...(functions.get(name) ?? [])].map((c) => c.at),
+      );
+      callAts.set(name, ats);
+    }
+    // from the call's function outward, to the one that declares a client of the name
+    const res = (wrapperResolver ??= makeResolver());
+    let fn = res.functionAt(j);
+    for (let guard = 0; guard < 64; guard++) {
+      const found = localIn(j, name, ats, fn);
+      if (found !== "none") return found === "local";
+      if (!fn) return false;
+      fn = res.outerOf(fn);
+    }
+    return false;
+  };
   const clientAt = (k: number): ClientHit | null => {
     const t = tokens[k]!;
     if (clientChecks >= MAX_CLIENT_CALLS) {
@@ -1833,6 +1954,17 @@ export function findCandidates(
       out.clientsSkipped = true;
       return null;
     }
+    // the receiver (or the called name) is a local of the call's own function
+    const head =
+      !is(tokens[k - 1], "punct", ".") && !is(tokens[k - 1], "punct", "?.")
+        ? k
+        : is(tokens[k - 2], "ident") && !is(tokens[k - 3], "punct", ".")
+          ? k - 2
+          : is(tokens[k - 4], "ident") && is(tokens[k - 3], "punct", ".")
+            ? k - 4
+            : -1;
+    if (head !== -1 && (clients.has(tokens[head]!.value) || functions.has(tokens[head]!.value)))
+      if (localAt(head)) return null;
     if (!is(tokens[k - 1], "punct", ".") && !is(tokens[k - 1], "punct", "?.")) {
       if (is(tokens[k - 1], "ident", "function")) return null;
       const list = near(k, functions, "f", t.value);
@@ -2450,6 +2582,18 @@ export function findCandidates(
         if (bound?.kind === "param") {
           if (legacyClients.has(owner!.value)) client = false;
           else local = true;
+        }
+        // no binding visible, and the file assigns the global of that name: which object the
+        // call is on is not known, so the call is an unknown row
+        // a local the scope tables do not hold (a later declarator of a list): another object
+        else if (bound === null && localAt(k - 2)) client = false;
+        else if (bound === null && globalWritten(owner!.value)) {
+          pushClient(
+            unknownRead("<expression>"),
+            t,
+            t.value === "request" ? verb(k + 1) : { method: t.value.toUpperCase() },
+          );
+          continue;
         }
         // a local of the name is another object, unless it is bound to a module itself
         // (`const https = n(5)` in a webpack module, `const https = require("https")`)

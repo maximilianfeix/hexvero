@@ -3654,6 +3654,11 @@ export function analyzeJavaScriptTree(
           code: "client_calls_skipped",
           message: `${file.path}: more than 2,000 calls of HTTP client modules (node:https, node:http, Electron's net) were checked; the further ones give no endpoint rows.`,
         });
+      if (cand.clientWritesSkipped && facts.limitations.length < 200)
+        facts.limitations.push({
+          code: "client_writes_skipped",
+          message: `${file.path}: more writes of HTTP client names (or bindings made from clients) than are checked (2,000 writes, 32,000 questions), or more functions than the resolver reads (60,000); requests on a name written past that point are unknown rows, also where the address is a literal.`,
+        });
       if (cand.keyCallsCapped) {
         facts.keyCallsCapped = (facts.keyCallsCapped ?? 0) + 1;
         if ((facts.keyCallsCappedFiles ??= []).length < 5)

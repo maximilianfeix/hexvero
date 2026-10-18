@@ -4624,6 +4624,12 @@ export class ExpressionResolver {
     return this.s.defsByParams.get(k) ?? null;
   }
 
+  /** The innermost bracket open around token k (for a bracket, the one around it), or -1. */
+  bracketAround(k: number): number {
+    if (!this.s.parents) this.bracketTables();
+    return this.s.parents![k] ?? -1;
+  }
+
   /** The bracket that closes the one at k, or -1. */
   closeOf(k: number): number {
     return this.match[k] ?? -1;
