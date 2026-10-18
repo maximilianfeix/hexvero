@@ -49,7 +49,8 @@ hit / missed / false:
 
 - Gains: senders and receivers 223 → 239 found, 50 → 34 missed; the 10 false bridge members of
   0.9.8 are gone. No other class gained.
-- **A new false result in 0.10.0**: three changes in contextBridge, `~shopping.send`,
+- **Three results scored false in 0.10.0** (see the note below: on inspection they are a real
+  change the set's expectation does not count): three changes in contextBridge, `~shopping.send`,
   `~shopping.request` and `~shopping.receive`, are reported as changed between v1 and v2 although
   those members did not change. They are generic forwarder members, the shape 0.10.0 newly reads
   (`forwards`, `guard`); most likely the detail recorded on them differs between the two builds and
@@ -61,6 +62,16 @@ hit / missed / false:
 - Endpoints (11 of 28) and storage keys (27 of 48) did not move: the sprint's request and storage
   work does not cover the forms this app uses.
 - IPC channels were already all found by 0.9.8.
+
+## Note added after the measurement (2026-10-18, 16:05Z)
+
+Looking into the three false "changes in contextBridge" (issue #221) showed that hexvero's reading
+is right and the set's expectation disagrees with it: gristmill v2 renames `shopping:clear` to
+`shopping:clear-checked` inside the preload's allow-list (`validChannels` in
+`preload-shopping.js`), so the `allowed` channel list of the forwarder members `send`, `request`
+and `receive` really changed. hexvero reports that on the members; `expected.json` counts the
+rename only as a channel change. hexvero keeps reporting it: an allow-list that widens to admit an
+existing handler shows up nowhere else. The blind table above stays as it was measured.
 
 ## After the measurement (development set from here on)
 
