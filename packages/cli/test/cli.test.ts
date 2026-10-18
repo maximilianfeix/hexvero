@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -26,6 +35,9 @@ const payloadApp = (v2: boolean): Buffer =>
       'const { ipcRenderer } = require("electron");\n' +
       `ipcRenderer.send("save", { d${v2 ? ', ok\u202egnp, "\\u001b[31mred": 1' : ""} });\n`,
   });
+
+/** A word in POSIX single quotes, written out by hand to compare with the CLI's quoting. */
+const posix = (word: string): string => `'${word.replace(/'/g, "'\\''")}'`;
 
 describe("hexvero CLI", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-cli-"));
@@ -70,6 +82,51 @@ describe("hexvero CLI", () => {
     expect(plain.stdout.join("\n")).toMatch(/^ {4}hexvero compare /m);
   });
 
+  it("quotes paths in suggested commands for a POSIX shell", async (ctx) => {
+    // Windows quoting is covered by the shellWord tests in core
+    if (process.platform === "win32") return ctx.skip();
+    const target = join(dir, "demo-q $(touch PWNED) `id` it's");
+    const demo = capture();
+    expect(await main(["demo", target], demo)).toBe(0);
+    const a = join(target, "notesdesk-1.4.0.asar");
+    const b = join(target, "notesdesk-1.5.0.asar");
+    const text = demo.stdout.join("\n");
+    expect(text).toContain(`compare ${posix(a)} ${posix(b)} interfaces`);
+    expect(text).toContain(`--policy ${posix(join(target, "policy.json"))}`);
+    expect(text).not.toContain(JSON.stringify(a));
+    // a name with replacement patterns (`$&`, `$'`) and quotes, in text and in --json
+    const odd = join(dir, `b'q"$&$'.asar`);
+    writeFileSync(odd, readFileSync(a));
+    const json = capture();
+    expect(await main(["analyze", odd, "--json"], json)).toBe(0);
+    const next: Array<{ command: string }> = JSON.parse(json.stdout.join("\n")).next;
+    expect(next.length).toBeGreaterThan(0);
+    for (const step of next) {
+      expect(step.command).toContain(` ${posix(odd)}`);
+      expect(step.command).not.toContain("<path>");
+    }
+  });
+
+  it("escapes target text in the compare summary so it cannot forge lines", async () => {
+    const file = "w\nFORGED: approved\u001b[2J.js";
+    const build = (open: boolean): Buffer =>
+      buildAsar({
+        "package.json": JSON.stringify({ name: "f", main: file }),
+        [file]: `const { BrowserWindow } = require("electron");\nconst win = new BrowserWindow({ webPreferences: { nodeIntegration: ${open} } });\n`,
+      });
+    const a = join(dir, "forge-a.asar");
+    const b = join(dir, "forge-b.asar");
+    writeFileSync(a, build(false));
+    writeFileSync(b, build(true));
+    const io = capture();
+    expect(await main(["compare", a, b], io)).toBe(0);
+    const text = io.stdout.join("\n");
+    expect(text).toContain("window settings that changed what pages may do");
+    expect(text).toContain("nodeIntegration");
+    expect(text).not.toMatch(/^FORGED/m);
+    expect(text).not.toContain("\u001b[2J");
+  });
+
   it("shows a changed IPC payload with the target's key names escaped", async () => {
     const a = join(dir, "payload-a.asar");
     const b = join(dir, "payload-b.asar");
@@ -95,9 +152,148 @@ describe("hexvero CLI", () => {
     const refused = capture();
     expect(await main(["compare", a, b, "--report", out], refused)).toBe(2);
     expect(readFileSync(out, "utf8")).toBe("keep me");
-    expect(await main(["compare", a, b, "--report", out, "--force"], capture())).toBe(0);
+    const forced = capture();
+    expect(
+      await main(["compare", a, b, "--report", out, "--force"], forced),
+      forced.stderr.join("\n"),
+    ).toBe(0);
     expect(readFileSync(out, "utf8")).toContain("# What changed");
     expect(await main(["compare", a, b, "ipc", "--report", out], capture())).toBe(2);
+  });
+
+  it("never writes a report or an export through a symbolic link, even with --force", async (ctx) => {
+    const a = join(dir, "demo-l", "notesdesk-1.4.0.asar");
+    const b = join(dir, "demo-l", "notesdesk-1.5.0.asar");
+    expect(await main(["demo", join(dir, "demo-l")], capture())).toBe(0);
+    const elsewhere = mkdtempSync(join(tmpdir(), "hexvero-cli-elsewhere-"));
+    const missing = join(elsewhere, "planted.md");
+    const kept = join(elsewhere, "kept.md");
+    writeFileSync(kept, "keep me");
+    try {
+      symlinkSync(missing, join(dir, "dangling.md"));
+      symlinkSync(kept, join(dir, "kept.md"));
+      symlinkSync(missing, join(dir, "dangling.json"));
+    } catch (error) {
+      if (["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) ctx.skip();
+      throw error;
+    }
+    for (const out of ["dangling.md", "kept.md"]) {
+      const io = capture();
+      expect(await main(["compare", a, b, "--report", join(dir, out), "--force"], io)).not.toBe(0);
+      expect(io.stderr.join("\n")).toContain("symbolic link");
+    }
+    const io = capture();
+    expect(await main(["export", a, join(dir, "dangling.json")], io)).not.toBe(0);
+    expect(io.stderr.join("\n")).toContain("symbolic link");
+    expect(existsSync(missing)).toBe(false);
+    expect(existsSync(missing.replace(/md$/, "json"))).toBe(false);
+    expect(readFileSync(kept, "utf8")).toBe("keep me");
+    rmSync(elsewhere, { recursive: true, force: true });
+  });
+
+  it("writes to -, /dev/null and process substitution, never through other links", async (ctx) => {
+    if (process.platform === "win32") return ctx.skip();
+    const a = join(dir, "demo-dev", "notesdesk-1.4.0.asar");
+    const b = join(dir, "demo-dev", "notesdesk-1.5.0.asar");
+    expect(await main(["demo", join(dir, "demo-dev")], capture())).toBe(0);
+    expect(await main(["compare", a, b, "--report", "/dev/null"], capture())).toBe(0);
+    expect(await main(["export", a, "/dev/null"], capture())).toBe(0);
+    // a link of its own to a device is not a stream name: refused like any link
+    const devnull = join(dir, "devnull.md");
+    symlinkSync("/dev/null", devnull);
+    const refused = capture();
+    expect(await main(["compare", a, b, "--report", devnull], refused)).not.toBe(0);
+    expect(refused.stderr.join("\n")).toContain("symbolic link");
+    // `-` and >(…) through the installed entry point, as a shell runs them
+    const bin = join(import.meta.dirname, "..", "bin", "hexvero.js");
+    const viaDash = execFileSync(process.execPath, [bin, "compare", a, b, "--report", "-"], {
+      encoding: "utf8",
+    });
+    expect(viaDash).toContain("# What changed");
+    expect(existsSync(join(process.cwd(), "-"))).toBe(false);
+    const out = join(dir, "substituted.md");
+    try {
+      execFileSync(
+        "bash",
+        [
+          "-c",
+          '"$0" "$1" compare "$2" "$3" --report >(cat > "$4"); wait',
+          process.execPath,
+          bin,
+          a,
+          b,
+          out,
+        ],
+        { stdio: "ignore" },
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return ctx.skip(); // no bash
+      throw error;
+    }
+    // `--report /dev/stdout > file`: the common script pattern
+    const redirected = join(dir, "redirected.md");
+    execFileSync(
+      "bash",
+      [
+        "-c",
+        '"$0" "$1" compare "$2" "$3" --report /dev/stdout > "$4"',
+        process.execPath,
+        bin,
+        a,
+        b,
+        redirected,
+      ],
+      { stdio: "ignore" },
+    );
+    expect(readFileSync(redirected, "utf8")).toContain("# What changed");
+    for (let i = 0; i < 100 && !readFileSync(out, "utf8").includes("# What changed"); i++)
+      await new Promise((r) => setTimeout(r, 50));
+    expect(readFileSync(out, "utf8")).toContain("# What changed");
+  });
+
+  it("keeps stdout parseable when the output itself goes to stdout", async (ctx) => {
+    if (process.platform === "win32") return ctx.skip();
+    const a = join(dir, "demo-out", "notesdesk-1.4.0.asar");
+    const b = join(dir, "demo-out", "notesdesk-1.5.0.asar");
+    expect(await main(["demo", join(dir, "demo-out")], capture())).toBe(0);
+    const bin = join(import.meta.dirname, "..", "bin", "hexvero.js");
+    const run = (...argv: string[]) => {
+      const r = spawnSync(process.execPath, [bin, ...argv], { encoding: "utf8" });
+      return { code: r.status, out: r.stdout, err: r.stderr };
+    };
+    for (const argv of [
+      ["export", a, "-"],
+      ["analyze", a, "--out", "-"],
+      ["analyze", a, "--json", "--out", "/dev/stdout"],
+    ]) {
+      const r = run(...argv);
+      expect(r.code, `${argv.join(" ")}: ${r.err}`).toBe(0);
+      expect(r.out.endsWith("}\n"), argv.join(" ")).toBe(true);
+      expect(JSON.parse(r.out).hexvero).toBe(1);
+    }
+    expect(run("export", a, "-").err).toContain("bytes)");
+    const policy = join(dir, "demo-out", "policy.json");
+    const sarif = run("check", a, b, "--policy", policy, "--format", "sarif", "--out", "-");
+    expect(sarif.code).toBe(3);
+    expect(JSON.parse(sarif.out).version).toBe("2.1.0");
+    expect(sarif.err).toContain("hexvero check");
+    // the Markdown report on stdout is exactly the report
+    const file = join(dir, "demo-out", "report.md");
+    expect(run("compare", a, b, "--report", file).code).toBe(0);
+    const piped = run("compare", a, b, "--report", "-");
+    expect(piped.code).toBe(0);
+    expect(piped.out).toBe(readFileSync(file, "utf8"));
+    expect(piped.err).toContain("bytes)");
+    // a reader that stops early ends the output quietly
+    const head = spawnSync(
+      "sh",
+      ["-c", '"$0" "$1" analyze "$2" --out /dev/fd/1 | head -c 20', process.execPath, bin, a],
+      {
+        encoding: "utf8",
+      },
+    );
+    expect(head.stdout).toHaveLength(20);
+    expect(head.stderr).not.toMatch(/EPIPE|Error/);
   });
 
   it("writes an HTML report for .html/.htm, with the same --force and paging rules", async () => {

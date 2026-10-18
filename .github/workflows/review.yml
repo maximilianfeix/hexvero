@@ -4,20 +4,23 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# The pull request's code runs only in `gates`, with a read-only token. `comment` holds the write
+# permission and runs no code from the pull request: it posts the report `gates` produced.
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  review:
-    name: Quality gates and threaded report
+  gates:
+    name: Quality gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
@@ -30,28 +33,53 @@ jobs:
         run: node scripts/review-report.mjs
         env:
           REVIEW_REPORT_PATH: review-report.md
-      - name: Post or update the review thread
-        # Pull requests from forks run with a read-only token; the report then stays in the job log.
-        if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+      - name: Print the report
+        run: cat review-report.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: review-report
+          path: review-report.md
+          if-no-files-found: error
+          retention-days: 7
+      - name: Fail the job when a gate failed
+        if: steps.gates.outcome == 'failure'
+        run: exit 1
+
+  comment:
+    name: Post or update the review thread
+    needs: gates
+    # Also after failed gates (the report says which); pull requests from forks get a read-only
+    # token, so for them the report stays in the log of `gates`.
+    if: always() && needs.gates.result != 'cancelled' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: review-report
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const fs = require("fs");
-            const body = fs.readFileSync("review-report.md", "utf8");
+            // GitHub refuses comments over 65,536 characters; the full report stays in the gates log.
+            const LIMIT = 60000;
+            const report = fs.readFileSync("review-report.md", "utf8");
+            const body =
+              report.length > LIMIT
+                ? `${report.slice(0, LIMIT)}\n\n…cut at ${LIMIT} of ${report.length} characters; the full report is in the log of the Quality gates job.`
+                : report;
             const marker = "<!-- hexvero-review -->";
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
-            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            // only a comment this workflow wrote, not one that quotes the marker
+            const existing = comments.find(
+              (c) => c.user && c.user.login === "github-actions[bot]" && c.body && c.body.startsWith(marker),
+            );
             const full = `${marker}\n${body}`;
             if (existing) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: full });
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body: full });
             }
-      - name: Print the report for fork pull requests
-        if: github.event.pull_request.head.repo.full_name != github.repository
-        run: cat review-report.md
-      - name: Fail the job when a gate failed
-        if: steps.gates.outcome == 'failure'
-        run: exit 1

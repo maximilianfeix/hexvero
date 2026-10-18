@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -114,9 +122,135 @@ describe("hexvero check", () => {
     expect(refused.code).toBe(2);
     expect(refused.io.stderr.join("\n")).toContain("exists; pass --force to replace it");
     expect(readFileSync(out, "utf8")).toBe("keep me");
-    expect((await check(a, b, "--policy", examplePolicy, "--out", out, "--force")).code).toBe(3);
+    const forced = await check(a, b, "--policy", examplePolicy, "--out", out, "--force");
+    expect(forced.code, forced.io.text()).toBe(3);
     expect(readFileSync(out, "utf8")).toContain("hexvero check fail");
     expect(readFileSync(out, "utf8")).not.toContain("\u001b");
+  });
+
+  it("refuses builds with nothing to read instead of passing them", async (ctx) => {
+    const app = (name: string, files: Record<string, string>): string => {
+      const at = join(dir, "nothing", name);
+      mkdirSync(at, { recursive: true });
+      for (const [file, text] of Object.entries(files)) {
+        mkdirSync(join(at, file, ".."), { recursive: true });
+        writeFileSync(join(at, file), text);
+      }
+      return at;
+    };
+    const pkg = JSON.stringify({ name: "x", version: "1.0.0", main: "main.js" });
+    const empty = app("empty", {});
+    const noJs = app("no-js", { "package.json": pkg, "README.md": "hello" });
+    const noPackage = app("no-package", { "main.js": "console.log(1);\n" });
+    const real = app("real", { "package.json": pkg, "main.js": "console.log(1);\n" });
+    for (const build of [empty, noJs]) {
+      for (const [x, y] of [
+        [build, build],
+        [real, build],
+      ]) {
+        const run = await check(x!, y!, "--policy", examplePolicy);
+        expect(run.code).toBe(1);
+        expect(run.io.text()).toContain("nothing to check");
+        expect(run.io.text()).not.toContain("pass:");
+      }
+    }
+    expect((await check(real, real, "--policy", examplePolicy)).code).toBe(0);
+    // no package.json at the top: checked, with a warning (electron-vite out/, linux-unpacked/)
+    const loose = await check(noPackage, noPackage, "--policy", examplePolicy);
+    expect(loose.code).toBe(0);
+    expect(loose.io.text()).toContain(
+      "no package.json at the top: entry and Electron version unknown",
+    );
+    const unpacked = app("linux-unpacked", {
+      "chrome.js": "console.log(0);\n",
+      "resources/app/package.json": pkg,
+      "resources/app/main.js": "console.log(1);\n",
+    });
+    const nested = await check(unpacked, unpacked, "--policy", examplePolicy, "--format", "json");
+    expect(nested.code).toBe(0);
+    expect(JSON.parse(nested.io.stdout.join("\n")).warnings.join("\n")).toContain(
+      join(unpacked, "resources", "app", "package.json"),
+    );
+    // a build directory whose app is an archive: the refusal names it
+    const packed = app("mac-build", { "resources/app.asar": "not read" });
+    const refusedPacked = await check(packed, packed, "--policy", examplePolicy);
+    expect(refusedPacked.code).toBe(1);
+    expect(refusedPacked.io.text()).toContain(
+      `check ${join(packed, "resources", "app.asar")} instead`,
+    );
+    // JavaScript that is only a link out of the build is not read
+    const secret = join(dir, "nothing", "secret.js");
+    writeFileSync(secret, "console.log(2);\n");
+    const linked = app("linked", { "package.json": pkg });
+    try {
+      symlinkSync(secret, join(linked, "main.js"));
+    } catch (error) {
+      if (["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) ctx.skip();
+      throw error;
+    }
+    const run = await check(linked, linked, "--policy", examplePolicy);
+    expect(run.code).toBe(1);
+    expect(run.io.text()).toContain("nothing to check");
+  });
+
+  it("gives app directories a content digest, so a baseline tells their builds apart", async () => {
+    const at = (name: string, text: string): string => {
+      const path = join(dir, "digest", name);
+      mkdirSync(path, { recursive: true });
+      writeFileSync(join(path, "package.json"), JSON.stringify({ name: "d", main: "main.js" }));
+      writeFileSync(join(path, "main.js"), text);
+      return path;
+    };
+    const one = at("one", "console.log(1);\n");
+    const two = at("two", "console.log(2);\n");
+    const baseline = join(dir, "digest", "baseline.json");
+    const args = ["--policy", examplePolicy, "--baseline", baseline, "--format", "json"];
+    expect((await check(one, one, ...args, "--update-baseline")).code).toBe(0);
+    const written = JSON.parse(readFileSync(baseline, "utf8"));
+    expect(written.a).toMatch(/^[0-9a-f]{64}$/);
+    const same = JSON.parse((await check(one, one, ...args)).io.stdout.join("\n"));
+    expect(same.a.sha256).toBe(written.a);
+    expect(same.baseline.warnings ?? []).toEqual([]);
+    // without a baseline nothing is digested (it would read every file for nothing)
+    const plain = await check(one, one, "--policy", examplePolicy, "--format", "json");
+    expect(JSON.parse(plain.io.stdout.join("\n")).a.sha256).toBe("");
+    const other = JSON.parse((await check(two, one, ...args)).io.stdout.join("\n"));
+    expect(other.a.sha256).not.toBe(written.a);
+    expect((other.baseline.warnings ?? []).join("\n")).toContain("another before build");
+  });
+
+  it("never writes --out or a baseline through a symbolic link", async (ctx) => {
+    const elsewhere = mkdtempSync(join(tmpdir(), "hexvero-check-elsewhere-"));
+    const missing = join(elsewhere, "planted.txt");
+    const kept = join(elsewhere, "kept.txt");
+    writeFileSync(kept, "keep me");
+    try {
+      symlinkSync(missing, join(dir, "dangling.sarif"));
+      symlinkSync(kept, join(dir, "kept.sarif"));
+      symlinkSync(missing, join(dir, "dangling-baseline.json"));
+    } catch (error) {
+      if (["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) ctx.skip();
+      throw error;
+    }
+    for (const out of ["dangling.sarif", "kept.sarif"]) {
+      const run = await check(a, b, "--policy", examplePolicy, "--out", join(dir, out), "--force");
+      expect(run.code).not.toBe(0);
+      expect(run.code).not.toBe(3);
+      expect(run.io.text()).toContain("symbolic link");
+    }
+    const baseline = await check(
+      a,
+      b,
+      "--policy",
+      examplePolicy,
+      "--baseline",
+      join(dir, "dangling-baseline.json"),
+      "--update-baseline",
+    );
+    expect(baseline.code).not.toBe(0);
+    expect(existsSync(missing)).toBe(false);
+    expect(readFileSync(kept, "utf8")).toBe("keep me");
+    rmSync(elsewhere, { recursive: true, force: true });
   });
 
   it("accepts findings only with --update-baseline; the accepted builds then pass", async () => {

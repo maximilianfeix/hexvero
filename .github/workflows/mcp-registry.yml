@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # A Release run started by hand is a rehearsal that publishes nothing: follow only tag pushes.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,6 +26,7 @@ jobs:
         with:
           # the released commit, not whatever main is by now
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
       - name: Install mcp-publisher 1.8.1 (checksum verified)
         run: |
           curl -sSL -o mcp-publisher.tar.gz https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
@@ -33,6 +35,6 @@ jobs:
       - name: server.json names the published npm version
         run: |
           version=$(node -p "require('./server.json').version")
-          test "$(npm view hexvero@$version mcpName)" = "$(node -p "require('./server.json').name")"
+          test "$(npm view "hexvero@${version}" mcpName)" = "$(node -p "require('./server.json').name")"
       - run: ./mcp-publisher login github-oidc
       - run: ./mcp-publisher publish

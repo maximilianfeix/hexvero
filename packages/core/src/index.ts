@@ -60,6 +60,13 @@ export {
 } from "./analyzers/dispatch.js";
 export { suggestNextSteps, type NextStep } from "./next.js";
 export {
+  writeFileNoFollow,
+  isStdout,
+  isStreamName,
+  isSymlink,
+  type WriteFileOptions,
+} from "./safeWrite.js";
+export {
   findCandidates,
   type Candidate,
   type CandidateEvidence,
@@ -102,6 +109,7 @@ export {
   compareReleases,
   targetName,
   renderReleaseReport,
+  shellWord,
   type ChangeRow,
   type Place,
   type ReleaseComparison,
@@ -175,6 +183,8 @@ export {
   safeRelativePath,
   type RecoveryResult,
   type RecoveredFile,
+  type OpenedCheck,
+  type WriteGuard,
 } from "./javascript/recover.js";
 export {
   parseObjcMetadata,

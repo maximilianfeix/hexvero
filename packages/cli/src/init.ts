@@ -1,13 +1,16 @@
-import { constants, lstatSync } from "node:fs";
-import { mkdir, open } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
+  AnalysisError,
   POLICY_RULES,
   STATUS_TEXT,
   checkRelease,
   hostOf,
   parsePolicy,
+  isStdout,
+  isStreamName,
   validAllowEntry,
+  writeFileNoFollow,
   type Session,
 } from "@hexvero/core";
 import { flagString, UsageError, type ParsedArgs } from "./args.js";
@@ -66,48 +69,20 @@ async function hostsOf(
   };
 }
 
-/** Not defined on Windows; there the lstat check before opening is what refuses a link. */
-const NOFOLLOW: number | undefined = constants.O_NOFOLLOW;
-
 /**
- * Writes `text` to `path` without following a symbolic link in its last component, also a
- * dangling one: a new file is created exclusively (`wx`, which never follows a link), an existing
- * one replaced only with `force`, opened with O_NOFOLLOW where the platform has it. On Windows,
- * which has no O_NOFOLLOW, the lstat check right before opening refuses a link.
+ * Writes the policy the way every hexvero output is written (`writeFileNoFollow`): never through
+ * a symbolic link in the last component, also a dangling one, and an existing file only with
+ * `force`; `-` and /dev/stdout-like names write to the stream. Refusals become usage errors.
  */
-async function writeNoFollow(path: string, text: string, force: boolean): Promise<void> {
-  const link = (): boolean => {
-    try {
-      return lstatSync(path).isSymbolicLink();
-    } catch {
-      return false;
-    }
-  };
-  const refuse = (): UsageError =>
-    new UsageError(`${path} is a symbolic link; hexvero init does not write through one`);
-  if (link()) throw refuse();
-  let handle;
+async function writePolicyFile(path: string, text: string, force: boolean): Promise<void> {
   try {
-    handle = await open(path, "wx");
+    await writeFileNoFollow(path, text, { overwrite: force });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    if (!force) throw new UsageError(`${path} exists; pass --force to replace it`);
-    if (link()) throw refuse();
-    try {
-      handle = await open(
-        path,
-        NOFOLLOW === undefined ? "w" : constants.O_WRONLY | constants.O_TRUNC | NOFOLLOW,
-      );
-    } catch (reopen) {
-      const code = (reopen as NodeJS.ErrnoException).code;
-      if (code === "ELOOP" || code === "EMLINK") throw refuse();
-      throw reopen;
-    }
-  }
-  try {
-    await handle.writeFile(text);
-  } finally {
-    await handle.close();
+    if (error instanceof AnalysisError && error.details["code"] === "EEXIST")
+      throw new UsageError(`${path} exists; pass --force to replace it`);
+    if (error instanceof AnalysisError && error.details["code"] === "ELOOP")
+      throw new UsageError(`${path} is a symbolic link; hexvero init does not write through one`);
+    throw error;
   }
 }
 
@@ -138,8 +113,10 @@ export async function runInit(args: ParsedArgs, io: Io, session: Session): Promi
   const text = `${JSON.stringify(starterPolicy(allow), null, 2)}\n`;
   // what is written must be a policy hexvero reads: checked before anything is written
   const parsed = parsePolicy(text, out);
-  await mkdir(dirname(resolve(out)), { recursive: true });
-  await writeNoFollow(out, text, Boolean(args.flags["force"]));
+  if (!isStreamName(out)) await mkdir(dirname(resolve(out)), { recursive: true });
+  await writePolicyFile(out, text, Boolean(args.flags["force"]));
+  // the policy went to stdout: what init says about it goes to stderr
+  if (isStdout(out)) io = { ...io, out: io.err };
   const self = id ? await checkRelease(session, id, id, parsed) : undefined;
   if (args.flags["json"]) {
     io.out(

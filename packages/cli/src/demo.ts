@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ChangeRow, ReleaseComparison } from "@hexvero/core";
+import { shellWord, type ChangeRow, type ReleaseComparison } from "@hexvero/core";
 import { UsageError } from "./args.js";
 import { heading, paint, printable, suggest, type Io } from "./format.js";
 
@@ -109,7 +109,7 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
 }
 
 /** A path as it can be pasted into a shell. */
-const q = (p: string): string => (/^[\w./@:+-]+$/.test(p) ? p : JSON.stringify(p));
+const q = shellWord;
 
 /** The terminal summary of `hexvero demo`. */
 export function formatDemo(io: Io, r: ReleaseComparison, a: string, b: string): string {

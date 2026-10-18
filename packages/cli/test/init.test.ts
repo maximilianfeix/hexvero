@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -134,6 +135,15 @@ describe("hexvero init (#197)", () => {
     symlinkSync(join(dir, "nowhere.json"), dangling);
     expect(await main(["init", "--out", dangling], capture())).toBe(2);
     expect(await main(["init", "--out", dangling, "--force"], capture())).toBe(2);
+  });
+
+  it("writes the policy to stdout with -, saying so on stderr", async (ctx) => {
+    if (process.platform === "win32") return ctx.skip();
+    const bin = join(import.meta.dirname, "..", "bin", "hexvero.js");
+    const r = spawnSync(process.execPath, [bin, "init", "--out", "-"], { encoding: "utf8" });
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout).hexvero).toBe("policy");
+    expect(existsSync(join(process.cwd(), "-"))).toBe(false);
   });
 
   // Windows refuses control characters in file names; the name cannot exist there

@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 import {
+  AnalysisError,
   CHECK_EXIT,
   CORE_VERSION,
   PolicyError,
@@ -8,6 +9,8 @@ import {
   createBaseline,
   parseBaseline,
   parsePolicy,
+  isStdout,
+  shellWord,
   renderPolicyMarkdown,
   STATUS_TEXT,
   toSarif,
@@ -17,6 +20,7 @@ import {
   type PolicyRuleId,
   type PolicyResult,
   type Session,
+  writeFileNoFollow,
 } from "@hexvero/core";
 import { flagString, UsageError, type ParsedArgs } from "./args.js";
 import { paint, toJson, type Io } from "./format.js";
@@ -96,6 +100,7 @@ export function formatCheck(
         ),
       );
   }
+  for (const w of r.warnings ?? []) lines.push(`  ${paint(io, "yellow", "!")} ${safe(w)}`);
   if (r.incomplete.length) {
     lines.push("", paint(io, "bold", "  Not decidable"));
     for (const i of r.incomplete)
@@ -247,7 +252,7 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT")
           throw new UsageError(
-            `baseline ${baselineFile} does not exist; create it with --baseline ${baselineFile} --update-baseline`,
+            `baseline ${baselineFile} does not exist; create it with --baseline ${shellWord(baselineFile)} --update-baseline`,
           );
         throw error;
       }
@@ -265,12 +270,18 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
 
   const a = await session.open(before);
   const b = await session.open(after);
-  let result = await checkRelease(session, a.id, b.id, policy, { baseline });
+  // Directory digests read every file: only for a baseline, which is what compares them.
+  let result = await checkRelease(session, a.id, b.id, policy, {
+    baseline,
+    digest: Boolean(baselineFile),
+  });
   if (update && baselineFile) {
     const written = createBaseline(result);
     // a baseline usually lives in a directory of its own (.hexvero/baseline.json): create it
     await mkdir(dirname(resolvePath(baselineFile)), { recursive: true });
-    await writeFile(baselineFile, `${JSON.stringify(written, null, 2)}\n`);
+    await writeFileNoFollow(baselineFile, `${JSON.stringify(written, null, 2)}\n`, {
+      overwrite: true,
+    });
     const loaded = parseBaseline(JSON.stringify(written), baselineFile);
     result = await checkRelease(session, a.id, b.id, policy, { baseline: loaded });
     io.err(
@@ -287,13 +298,15 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
   );
   if (out) {
     try {
-      await writeFile(out, `${text}\n`, { flag: force ? "w" : "wx" });
+      await writeFileNoFollow(out, `${text}\n`, { overwrite: force });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST")
+      if (error instanceof AnalysisError && error.details["code"] === "EEXIST")
         throw new UsageError(`${out} exists; pass --force to replace it`);
       throw error;
     }
-    io.out(
+    // with --out - (SARIF to stdout in CI) the status line goes to stderr
+    const toStdout = isStdout(out);
+    (toStdout ? (t: string) => io.err(t) : (t: string) => io.out(t))(
       `${paint(io, "bold", "hexvero check")} ${STATUS_TEXT[result.status]} · ${result.findings.length} finding(s) · ${safe(out)}`,
     );
   } else io.out(text);

@@ -92,6 +92,43 @@ describe("recovery", () => {
     expect(safeRelativePath("/abs/path.js", "x")).toBe("abs/path.js");
     expect(safeRelativePath("..", "fallback.js")).toBe("fallback.js");
   });
+  it("never names a file after a Windows device and maps names to files in the manifest", () => {
+    expect(safeRelativePath("src/con.js", "x")).toBe("src/_con.js");
+    expect(safeRelativePath("NUL", "x")).toBe("_NUL.js");
+    expect(safeRelativePath("aux/index.ts", "x")).toBe("_aux/index.ts");
+    expect(safeRelativePath("lpt9.d.ts", "x")).toBe("_lpt9.d.ts");
+    expect(safeRelativePath("com0.js", "x")).toBe("com0.js");
+    expect(safeRelativePath("console.js", "x")).toBe("console.js");
+    const out = join(dir, "reserved");
+    const map = JSON.stringify({
+      version: 3,
+      sources: ["src/con.js", "src/ok.js"],
+      sourcesContent: ["1", "2"],
+      mappings: "",
+    });
+    const r = recoverSourceMap(map, out);
+    expect(r.written.map((w) => w.path)).toEqual(["src/_con.js", "src/ok.js"]);
+    const manifest = JSON.parse(readFileSync(join(out, r.manifest), "utf8"));
+    expect(manifest.files).toEqual([
+      { source: "src/con.js", file: "src/_con.js" },
+      { source: "src/ok.js", file: "src/ok.js" },
+    ]);
+  });
+  it("never names a hidden file or directory", () => {
+    expect(safeRelativePath("./.ssh/authorized_keys", "x")).toBe("_ssh/authorized_keys.js");
+    expect(safeRelativePath("webpack:///.git/hooks/post-checkout", "x")).toBe(
+      "_git/hooks/post-checkout.js",
+    );
+    expect(safeRelativePath("src/.env", "x")).toBe("src/_env.js");
+    expect(safeRelativePath("x/..bashrc", "x")).toBe("x/_.bashrc");
+    expect(safeRelativePath("src/a.min.js", "x")).toBe("src/a.min.js");
+    for (const name of [".a", "x/.b/c.js", "...", "./.", ".\\.cfg\\run"])
+      expect(
+        safeRelativePath(name, ".fallback.js")
+          .split("/")
+          .some((s) => s.startsWith(".")),
+      ).toBe(false);
+  });
   it("writes bundle modules and a manifest", () => {
     const out = join(dir, "bundle");
     const r = recoverBundle(webpack5, out);

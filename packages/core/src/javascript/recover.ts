@@ -1,4 +1,15 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, normalize, resolve, sep } from "node:path";
 import { AnalysisError } from "../model.js";
 import { analyzeBundle, type JsBundleInfo } from "./bundle.js";
@@ -6,6 +17,8 @@ import { parseSourceMapJson } from "./sourcemap.js";
 
 export interface RecoveredFile {
   path: string;
+  /** The module or source name the file was written for, as the bundle or map has it. */
+  name?: string;
   bytes: number;
   origin: "bundle-module" | "source-map";
   moduleId?: string;
@@ -32,12 +45,62 @@ export function safeRelativePath(name: string, fallback: string): string {
     .replace(/[^\w./@+-]/g, "_");
   clean = normalize(clean).split(sep).join("/");
   if (!clean || clean === "." || clean.startsWith("..")) clean = fallback;
+  // No hidden file or directory below the output directory (`.ssh/authorized_keys`, `.git/x`).
+  clean = clean
+    .split("/")
+    .map((segment) => segment.replace(/^\./, "_"))
+    // Names Windows reserves for devices, also with an extension (`con.js`, `LPT1.ts`): a file of
+    // that name cannot be created there, and the manifest maps the original name to the file.
+    .map((segment) =>
+      /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(segment) ? `_${segment}` : segment,
+    )
+    .join("/");
   if (!/\.[a-z0-9]{1,8}$/i.test(clean)) clean += ".js";
   return clean;
 }
 
-function prepareOutput(outputDir: string): string {
+/**
+ * Called with each absolute path right before it is created (the output directory, each
+ * directory and file below it); throws to stop the whole recovery. The MCP server re-checks its
+ * write policy here, so a directory swapped for a link after the first check is caught.
+ */
+export type WriteGuard = (path: string) => void;
+
+/**
+ * Called with each recovered file's path and fstat of its new descriptor, before anything is
+ * written to it; throws to stop. On a refusal the empty file is removed again.
+ */
+export type OpenedCheck = (path: string, opened: { dev: number; ino: number }) => void;
+
+/** A guard's refusal: ends the recovery instead of skipping one file. */
+class GuardStop extends Error {
+  constructor(readonly inner: unknown) {
+    super("write guard refused");
+  }
+}
+
+function guarded(guard: WriteGuard | undefined, path: string): void {
+  if (!guard) return;
+  try {
+    guard(path);
+  } catch (error) {
+    throw new GuardStop(error);
+  }
+}
+
+/** Runs a recovery and turns a guard's refusal back into its own error. */
+function unguard<T>(run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    if (error instanceof GuardStop) throw error.inner;
+    throw error;
+  }
+}
+
+function prepareOutput(outputDir: string, guard?: WriteGuard): string {
   const absolute = resolve(outputDir);
+  guarded(guard, absolute);
   if (existsSync(absolute)) {
     if (!statSync(absolute).isDirectory())
       throw new AnalysisError("invalid_input", `${absolute} exists and is not a directory`);
@@ -88,12 +151,40 @@ function hash(text: string): string {
   return (h >>> 0).toString(16);
 }
 
-function writeInside(root: string, relative: string, content: string | Uint8Array): number {
+function writeInside(
+  root: string,
+  relative: string,
+  content: string | Uint8Array,
+  guard?: WriteGuard,
+  check?: OpenedCheck,
+): number {
   const target = resolve(root, relative);
   if (!target.startsWith(root + sep))
     throw new AnalysisError("invalid_input", `refusing to write outside ${root}: ${relative}`);
+  guarded(guard, dirname(target));
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, content, { flag: "wx" });
+  guarded(guard, target);
+  const fd = openSync(target, "wx", 0o666);
+  try {
+    if (check) {
+      const opened = fstatSync(fd);
+      try {
+        check(target, opened);
+      } catch (error) {
+        // Nothing was written yet: remove the empty file if the path still names it.
+        try {
+          const now = lstatSync(target);
+          if (now.dev === opened.dev && now.ino === opened.ino) unlinkSync(target);
+        } catch {
+          // gone already
+        }
+        throw new GuardStop(error);
+      }
+    }
+    writeFileSync(fd, content);
+  } finally {
+    closeSync(fd);
+  }
   return Buffer.byteLength(content);
 }
 
@@ -102,8 +193,20 @@ export function recoverBundle(
   source: string,
   outputDir: string,
   info: JsBundleInfo = analyzeBundle(source),
+  guard?: WriteGuard,
+  check?: OpenedCheck,
 ): RecoveryResult {
-  const root = prepareOutput(outputDir);
+  return unguard(() => bundleInto(source, outputDir, info, guard, check));
+}
+
+function bundleInto(
+  source: string,
+  outputDir: string,
+  info: JsBundleInfo,
+  guard: WriteGuard | undefined,
+  check: OpenedCheck | undefined,
+): RecoveryResult {
+  const root = prepareOutput(outputDir, guard);
   const manifestPath = "hexvero-bundle.json";
   const written: RecoveredFile[] = [];
   const skipped: RecoveryResult["skipped"] = [];
@@ -129,10 +232,17 @@ export function recoverBundle(
           `${header}// scope-hoisted: names may be defined in another section of the bundle\n${body}`
         : `${header}module.exports = ${factory};\n`;
     try {
-      const bytes = writeInside(root, relative, text);
-      written.push({ path: relative, bytes, origin: "bundle-module", moduleId: m.id });
+      const bytes = writeInside(root, relative, text, guard, check);
+      written.push({
+        path: relative,
+        bytes,
+        origin: "bundle-module",
+        moduleId: m.id,
+        ...(m.name ? { name: m.name } : {}),
+      });
       fileOf.push(relative);
     } catch (error) {
+      if (error instanceof GuardStop) throw error;
       fileOf.push(null);
       skipped.push({
         name: m.name ?? m.id,
@@ -158,14 +268,28 @@ export function recoverBundle(
     routes: info.routes,
     storage: info.storage,
   };
-  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2));
+  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard, check);
   return { outputDir: root, written, skipped, manifest: manifestPath };
 }
 
 /** Writes the original sources embedded in a source map (`sourcesContent`) back to disk. */
-export function recoverSourceMap(mapText: string, outputDir: string): RecoveryResult {
+export function recoverSourceMap(
+  mapText: string,
+  outputDir: string,
+  guard?: WriteGuard,
+  check?: OpenedCheck,
+): RecoveryResult {
+  return unguard(() => sourcesInto(mapText, outputDir, guard, check));
+}
+
+function sourcesInto(
+  mapText: string,
+  outputDir: string,
+  guard: WriteGuard | undefined,
+  check: OpenedCheck | undefined,
+): RecoveryResult {
   const map = parseSourceMapJson(mapText);
-  const root = prepareOutput(outputDir);
+  const root = prepareOutput(outputDir, guard);
   const manifestPath = "hexvero-sources.json";
   const written: RecoveredFile[] = [];
   const skipped: RecoveryResult["skipped"] = [];
@@ -194,10 +318,12 @@ export function recoverSourceMap(mapText: string, outputDir: string): RecoveryRe
     try {
       written.push({
         path: relative,
-        bytes: writeInside(root, relative, content),
+        bytes: writeInside(root, relative, content, guard, check),
         origin: "source-map",
+        name: label,
       });
     } catch (error) {
+      if (error instanceof GuardStop) throw error;
       skipped.push({ name: label, reason: error instanceof Error ? error.message : String(error) });
     }
   });
@@ -206,8 +332,10 @@ export function recoverSourceMap(mapText: string, outputDir: string): RecoveryRe
     file: map.file ?? null,
     sources: sources.length,
     written: written.length,
+    // which source each file holds: names are changed to be safe paths on every platform
+    files: written.map((w) => ({ source: w.name ?? null, file: w.path })),
     skipped,
   };
-  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2));
+  writeInside(root, manifestPath, JSON.stringify(manifest, null, 2), guard, check);
   return { outputDir: root, written, skipped, manifest: manifestPath };
 }

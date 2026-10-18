@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { isStreamName, isSymlink, writeFileNoFollow, type WriteFileOptions } from "./safeWrite.js";
 import { resolve as resolvePath } from "node:path";
 import {
   analyzeTarget,
@@ -9,7 +9,13 @@ import {
   type JsScanRequest,
 } from "./analyzers/dispatch.js";
 import { analyzeInWorker } from "./analyzers/worker.js";
-import { recoverBundle, recoverSourceMap, type RecoveryResult } from "./javascript/recover.js";
+import {
+  recoverBundle,
+  recoverSourceMap,
+  type RecoveryResult,
+  type OpenedCheck,
+  type WriteGuard,
+} from "./javascript/recover.js";
 import {
   compareItems,
   positionalFields,
@@ -639,12 +645,26 @@ export class Session {
   }
 
   /** Writes recoverable sources (bundle modules or source-map originals) into a new directory. */
-  async recover(id: string, outputDir: string): Promise<RecoveryResult> {
+  async recover(
+    id: string,
+    outputDir: string,
+    options: { guard?: WriteGuard | undefined; check?: OpenedCheck | undefined } = {},
+  ): Promise<RecoveryResult> {
     const analysis = await this.analyze(id);
     const e = this.entry(id);
     const text = (): string => new TextDecoder().decode(e.loaded.bytes);
-    if (analysis.data.kind === "javascript") return recoverBundle(text(), outputDir);
-    if (analysis.data.kind === "source-map") return recoverSourceMap(text(), outputDir);
+    // A link whose target is missing: creating the directory would fail with EEXIST or create it
+    // wherever the link points. Refuse it as input instead.
+    if (isSymlink(outputDir) && !existsSync(outputDir))
+      throw new AnalysisError(
+        "invalid_input",
+        `${resolvePath(outputDir)} is a symbolic link to a missing location; choose a new directory`,
+        { outputDir: resolvePath(outputDir) },
+      );
+    if (analysis.data.kind === "javascript")
+      return recoverBundle(text(), outputDir, undefined, options.guard, options.check);
+    if (analysis.data.kind === "source-map")
+      return recoverSourceMap(text(), outputDir, options.guard, options.check);
     throw new AnalysisError(
       "invalid_input",
       `recover needs a single JavaScript bundle file or a source map; this target is ${analysis.data.kind}.${
@@ -667,17 +687,33 @@ export class Session {
       overwrite?: boolean | undefined;
       /** Replace an existing file only when it is an earlier hexvero export (MCP sets this). */
       onlyReplaceExports?: boolean | undefined;
+      /** Passed to writeFileNoFollow: re-check a write policy right before and after opening. */
+      beforeOpen?: WriteFileOptions["beforeOpen"];
+      afterOpen?: WriteFileOptions["afterOpen"];
     } = {},
   ): Promise<{ path: string; bytes: number }> {
-    const path = resolvePath(destination);
+    // `-` and /dev/stdout-like names are written as they are, for the CLI only: an MCP export
+    // (onlyReplaceExports) is always a regular file inside the write roots.
+    if (options.onlyReplaceExports && isStreamName(destination))
+      throw new AnalysisError("invalid_input", `${destination} is a stream; an export is a file`, {
+        path: destination,
+      });
+    const path = isStreamName(destination) ? destination : resolvePath(destination);
+    const notAnExport = `exists and is not an earlier hexvero export; it is not replaced`;
+    const inspect = (head: string): string | null =>
+      /^\{\s*"hexvero":\s*1\b/.test(head) ? null : notAnExport;
+    // Checked before the analysis so a refusal is quick; the write below checks again on the
+    // opened file, which is what counts. (The CLI may write to /dev/stdout, itself a link.)
+    if (options.onlyReplaceExports && isSymlink(path))
+      throw new AnalysisError(
+        "invalid_input",
+        `${path} is a symbolic link; hexvero does not write through one`,
+        { path, code: "ELOOP" },
+      );
     if (options.overwrite && options.onlyReplaceExports && existsSync(path)) {
       const head = lstatSync(path).isFile() ? readFileSync(path, "utf8").slice(0, 64) : "";
-      if (!/^\{\s*"hexvero":\s*1\b/.test(head))
-        throw new AnalysisError(
-          "invalid_input",
-          `${path} exists and is not an earlier hexvero export; it is not replaced`,
-          { path },
-        );
+      if (inspect(head))
+        throw new AnalysisError("invalid_input", `${path} ${notAnExport}`, { path });
     }
     const analysis = await this.analyze(id);
     const text = JSON.stringify(
@@ -698,15 +734,17 @@ export class Session {
       },
       replacer,
       2,
-    );
+    ).concat("\n");
     try {
-      await writeFile(path, text, { flag: options.overwrite ? "w" : "wx" });
+      await writeFileNoFollow(path, text, {
+        overwrite: options.overwrite,
+        inspect: options.onlyReplaceExports ? inspect : undefined,
+        beforeOpen: options.beforeOpen,
+        afterOpen: options.afterOpen,
+      });
     } catch (error) {
+      if (error instanceof AnalysisError) throw error;
       const code = (error as NodeJS.ErrnoException).code;
-      if (code === "EEXIST")
-        throw new AnalysisError("invalid_input", `${path} exists; pass overwrite to replace it`, {
-          path,
-        });
       if (code === "ENOENT" || code === "EACCES" || code === "EISDIR" || code === "EPERM")
         throw new AnalysisError("invalid_input", `cannot write ${path} (${code})`, { path, code });
       throw error;
