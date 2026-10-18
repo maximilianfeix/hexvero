@@ -223,6 +223,7 @@ export {
   evaluatePolicy,
   fingerprintOf,
   hostAllowed,
+  hostKnown,
   hostOf,
   parseBaseline,
   parsePolicy,

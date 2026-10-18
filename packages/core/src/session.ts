@@ -1032,7 +1032,7 @@ function bundleLists(
 const computedValue = (value: string | null): boolean => value === null || value.includes("${");
 
 /** Limitations that say values of a family exist somewhere that are not in its list. */
-const UNRESOLVED_LIMITATIONS: Record<string, UnresolvedFamily> = {
+export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> = {
   ipc_receiver_unresolved: "ipc",
   ipc_open_calls_capped: "ipc",
   context_bridge_truncated: "bridge",

@@ -12,7 +12,9 @@ import {
   STATUS_TEXT,
   toSarif,
   type LoadedBaseline,
+  type Policy,
   type PolicyFinding,
+  type PolicyRuleId,
   type PolicyResult,
   type Session,
 } from "@hexvero/core";
@@ -41,7 +43,7 @@ const STATE_MARK: Record<PolicyFinding["state"], string> = {
 };
 
 /** The result for a terminal: status first, then each finding with where it was read. */
-export function formatCheck(io: Io, r: PolicyResult): string {
+export function formatCheck(io: Io, r: PolicyResult, policy?: Policy): string {
   const color = r.status === "pass" ? "green" : r.status === "fail" ? "red" : "yellow";
   const lines = [
     `${paint(io, "bold", "hexvero check")} ${paint(io, color, STATUS_TEXT[r.status])}`,
@@ -105,23 +107,70 @@ export function formatCheck(io: Io, r: PolicyResult): string {
       ...(r.baseline.warnings ?? []).map((w) => `  ${paint(io, "yellow", "!")} ${safe(w)}`),
     );
   if (r.status === "fail" || r.status === "incomplete")
-    lines.push(
-      "",
-      paint(
-        io,
-        "dim",
-        "  Accept what is there now: add --baseline <file> --update-baseline, or a suppression with the fingerprint and a reason in the policy.",
-      ),
-    );
+    lines.push("", ...nextSteps(r, policy).map((l) => paint(io, "dim", `  ${safe(l)}`)));
   return lines.join("\n");
 }
 
-function render(
-  io: Io,
-  result: PolicyResult,
-  format: Format,
-  unknown: "fail" | "warn" | "allow",
-): string {
+/** What each coverage gap needs before a rule can be decided, as `check` names it. */
+const GAP_STEP: Record<string, string> = {
+  values_unresolved:
+    "a value in the list is computed at run time or could not be read; no run of hexvero reads it",
+  scan_partial:
+    'a build was read only in part: run "hexvero analyze <build> --all" on both, then check again',
+  files_unread:
+    'a file was read in one build only: run "hexvero analyze <build> --all" on both, then check again',
+  files_unreadable:
+    'a file could not be read ("hexvero collection <build> limitations" says which and why)',
+  budget: "the comparison has more rows than a check reads",
+  item_truncated: "an item was too large to compare whole",
+  collection_missing: "the builds do not both have the list (a bundle has no windows or bridge)",
+};
+
+/**
+ * The next step after a check that did not pass. A baseline or suppression accepts findings; a
+ * rule that could not be decided has none, so for it the step is what would decide it, or the
+ * policy's `unknown` setting, never a baseline that would accept nothing.
+ */
+export function nextSteps(r: PolicyResult, policy?: Policy): string[] {
+  const out: string[] = [];
+  const counted = r.findings.filter(
+    (f) => f.level === "fail" && (f.state === "new" || f.state === "suppression-expired"),
+  );
+  if (counted.length)
+    out.push(
+      "Accept what is there now: add --baseline <file> --update-baseline, or a suppression with the fingerprint and a reason in the policy.",
+    );
+  const open =
+    r.status === "incomplete"
+      ? r.incomplete.filter(
+          (i) => !policy || policy.rules[i.rule as PolicyRuleId]?.level === "fail",
+        )
+      : [];
+  if (open.length === 0) return out;
+  const rules = new Set(open.map((i) => i.rule)).size;
+  out.push(
+    `${counted.length ? "Besides, " : ""}${rules === 1 ? (counted.length ? "a rule" : "A rule") : `${rules} rules`} could not be decided. That is not a finding, and a baseline cannot accept it. What would decide it:`,
+  );
+  const gaps = [...new Set(open.flatMap((i) => i.gaps))];
+  for (const gap of gaps) {
+    const where = open
+      .filter((i) => i.gaps.includes(gap))
+      .map((i) => `${i.rule} on ${i.collection}`)
+      .join(", ");
+    const step =
+      gap === "values_unresolved" && open.every((i) => i.rule === "new-external-host")
+        ? "a request target whose host is not known: its value was not read, or a part computed at run time comes before the host ends. No run of hexvero reads it from the files"
+        : (GAP_STEP[gap] ?? "see the gap code in docs/cli.md");
+    out.push(`  ${gap} (${where}): ${step}`);
+  }
+  out.push(
+    `To pass while these stay open, set "unknown": "warn" (listed as warnings) or "allow" in ${baseName(r.policy.file)}; the gaps stay listed either way.`,
+  );
+  return out;
+}
+
+function render(io: Io, result: PolicyResult, format: Format, policy: Policy): string {
+  const { unknown } = policy;
   switch (format) {
     case "json":
       return toJson(result);
@@ -130,7 +179,7 @@ function render(
     case "sarif":
       return toJson(toSarif(result, { version: CORE_VERSION, unknown }));
     case "text":
-      return formatCheck(io, result);
+      return formatCheck(io, result, policy);
   }
 }
 
@@ -211,7 +260,7 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
     );
   }
 
-  const text = render(out ? { ...io, color: false } : io, result, format, policy.policy.unknown);
+  const text = render(out ? { ...io, color: false } : io, result, format, policy.policy);
   if (out) {
     try {
       await writeFile(out, `${text}\n`, { flag: force ? "w" : "wx" });
