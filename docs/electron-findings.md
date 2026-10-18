@@ -431,6 +431,91 @@ object handed to a function), the module bundled into the app (its code is then 
 The policy rule `remote-enabled` ([cli.md](cli.md)) reports an `enable` row whose target (kind and
 window) no `enable` row of the before build has.
 
+## Command-line switches and certificate checks (`switches`)
+
+Process-wide settings that weaken a check for every window, read from tokens (a comment or a
+string is never one) in files that contain `appendSwitch`, `appendArgument`,
+`certificate-error`, `setCertificateVerifyProc` or `ELECTRON_DISABLE_SECURITY_WARNINGS`.
+Literal-first: a name or value is known only where it is a string literal, a template without
+`${…}` or a constant the resolver reads; anything else is `null` and the row says so.
+
+| Written                                                                                                  | `kind`                    | read                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `app.commandLine.appendSwitch(name[, value])`                                                            | `switch`                  | `name` without leading dashes; `value` with `valueRead` `none` / `literal` / `unknown`                                          |
+| `app.commandLine.appendArgument(arg)`                                                                    | `argument`                | `name` is the argument; a `--switch` (also `--switch=…`) on the list below is dangerous                                         |
+| `app.on("certificate-error", (event, webContents, url, error, cert, callback) => …)`                     | `certificate-error`       | `accepts`: whether `callback(true)` (also `!0`) is called; `preventsDefault`: `event.preventDefault()` is called in the handler |
+| `ses.setCertificateVerifyProc((request, callback) => …)`                                                 | `certificate-verify-proc` | `accepts`: whether `callback(0)` is called; `-2`, `-3` and other numbers (also constants such as `var F = -2`) reject           |
+| `process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = …` (also `["…"]`), `window.` / `globalThis.` / `self.` | `security-warnings`       | the value as written (`true`, `"true"`, `!0` → `true`); never dangerous: it hides the console warnings only                     |
+
+`app` is Electron's only where it is bound to it by scope: `const { app } = require("electron")`
+(also renamed, `{ app: a }`), `import { app } from "electron"`, `X.app` with X bound to
+`require("electron")` (also through `__toESM` and the other interop helpers), `import * as X` or
+`import X from "electron"`, webpack's `n(91288)` for a module id whose body is `e.exports =
+require("electron")`, or `const cl = app.commandLine; cl.appendSwitch(…)`. A parameter named
+`app`, a local object `{ commandLine: … }`, or `commandLine` of anything else gives no row. A
+name of the electron module that is written again (Claude: `let T = require("electron"); T =
+u(T)`) is still taken for it; which value the write gives is not read. A `certificate-error`
+listener on `app` reads the sixth parameter as the callback; on `X.webContents` or `contents` the
+fifth (webContents' own event); on any other receiver both, and the less safe answer is kept
+(`targetKind: "unknown"`).
+
+`accepts` is `always` when the accepting call is a statement of the handler's own body (also in a
+comma sequence, `e.preventDefault(), l(!0)`), with no `return` or `throw` before it;
+`conditional` when it sits in a nested block, behind `if`/`else`/`?:`/`&&`/`||`/`??`, after a
+return, in a loop, `try` or `switch`, or in a nested function (`setTimeout(() => callback(true))`);
+`never` when every call passes a literal that rejects; `unknown` when the handler is not a function
+literal written there, the callback is handed on or stored, or an argument is not read. A
+`certificate-error` handler that never accepts (`callback(false)` only, or no callback parameter)
+gives no row; a verify proc always gives one (`setCertificateVerifyProc(null)` none).
+
+Dangerous switches (`dangerous: true`, with `reason`), each from the switch's own documentation:
+
+| Switch                                | Documentation                                                                                                                                                                   |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ignore-certificate-errors`           | "Ignores certificate related errors." ([Electron][switches])                                                                                                                    |
+| `ignore-certificate-errors-spki-list` | "A set of public key hashes for which to ignore certificate-related errors." ([Chromium][chromium-switches])                                                                    |
+| `allow-insecure-localhost`            | "Enables TLS/SSL errors on localhost to be ignored (no interstitial, no blocking of requests)." ([Chromium][chromium-switches])                                                 |
+| `disable-web-security`                | "Don't enforce the same-origin policy; meant for website testing only." ([Chromium][chromium-switches])                                                                         |
+| `allow-running-insecure-content`      | "By default, an HTTPS page cannot run JavaScript, CSS or resources from HTTP URLs. This provides an override to get the old insecure behavior." ([Chromium][chromium-switches]) |
+| `no-sandbox`                          | "Disables the Chromium sandbox. Forces renderer process and Chromium helper processes to run un-sandboxed." ([Electron][switches])                                              |
+| `disable-gpu-sandbox`                 | "Disables the GPU process sandbox." ([Chromium][chromium-switches])                                                                                                             |
+| `disable-site-isolation-trials`       | "Disables site isolation." ([Chromium][chromium-switches])                                                                                                                      |
+| `remote-debugging-port`               | "Enables remote debugging over HTTP on the specified `port`." ([Electron][switches])                                                                                            |
+| `remote-debugging-pipe`               | "Enables remote debug over stdio pipes" ([Chromium][chromium-switches])                                                                                                         |
+| `disable-features`                    | only when its value is read and lists `IsolateOrigins`, `SitePerProcess` or `site-per-process`; an unread value is `dangerous: null`                                            |
+
+Not on the list: `js-flags` (Electron: "Specifies the flags passed to the V8 engine"; whether a
+flag weakens anything depends on the flag, which is not judged), `enable-logging` and every other
+switch (`dangerous: false`). A switch whose name is not read is `dangerous: null`. A certificate
+handler that accepts is dangerous: Electron's `app` documentation says "to trust the certificate
+you should prevent the default behavior with `event.preventDefault()` and call `callback(true)`";
+whether `preventDefault` is also called is recorded, not required. A verify proc that reports `0`
+is dangerous: the `session` documentation says `0` "Indicates success and disables Certificate
+Transparency verification", `-2` "Indicates failure", `-3` "Uses the verification result from
+chromium".
+
+The finding `electron.unsafe-switch` (`inferred`) names the dangerous rows. Per file at most 200
+rows, 2,000 in all, and a reading budget of 400,000 steps per file; past either
+`switches_truncated` says so. In a comparison a row is matched by file, kind, target kind and
+name (the same pair twice as a multiset); `evidence`, `target` and `reason` are no change of their
+own.
+
+Not read: a switch appended through a function's parameter (Claude: `function F1(e, t, …) {
+e.appendSwitch(t, …) }` called as `F1(T.app.commandLine, …)`), names built in a loop (Discord:
+`for (let s of switches) app.commandLine.appendSwitch(s)` is a row with `name: null`), a
+certificate handler or verify proc passed by name (`app.on("certificate-error", onCertError)`:
+`accepts: "unknown"`), `session.setCertificateVerifyProc` judged per session (the receiver is kept
+as written), `<webview allowpopups>`, `will-attach-webview` handlers, and the `webPreferences`
+keys `experimentalFeatures`, `enableBlinkFeatures` and `commandLineSwitches` (see
+[Not read](#not-read); [Security, 9–12][sec]).
+
+The policy rule `new-unsafe-switch` ([cli.md](cli.md)) reports a dangerous row (a switch by name
+and value, a certificate handler or verify proc by what it accepts) that no row of the before
+build has; a row whose danger could not be told is an unknown finding.
+
+[switches]: https://www.electronjs.org/docs/latest/api/command-line-switches
+[chromium-switches]: https://peter.sh/experiments/chromium-command-line-switches/
+
 ## Storage keys through wrappers and enums (`storage`)
 
 A storage call whose key is (or is built from) a parameter of the function or method it is in

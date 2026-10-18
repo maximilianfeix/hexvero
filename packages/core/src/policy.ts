@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { AnalysisError } from "./model.js";
 import { directoryDigest } from "./digest.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
+import { DANGEROUS_SWITCHES } from "./javascript/switches.js";
 import { UNRESOLVED_LIMITATIONS, type Session, type TargetRecord } from "./session.js";
 
 export const POLICY_RULES = [
@@ -33,6 +34,7 @@ export const POLICY_RULES = [
   "new-bridge-exposure",
   "fuse-weakened",
   "remote-enabled",
+  "new-unsafe-switch",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
 
@@ -41,6 +43,7 @@ const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set([
   "new-bridge-exposure",
   "fuse-weakened",
   "remote-enabled",
+  "new-unsafe-switch",
 ]);
 
 export type RuleLevel = "fail" | "warn" | "off";
@@ -425,6 +428,7 @@ const KIND_LISTS: Record<string, ReadonlySet<string>> = {
     "contextBridge",
     "bridgeExposures",
     "remoteEnabled",
+    "switches",
     "windows",
     "endpoints",
     "urls",
@@ -452,6 +456,7 @@ export function checkableKind(kind: string): boolean {
 const DEFAULT_KEYS: Record<string, string> = {
   bridgeExposures: "file+api+member+exposed",
   remoteEnabled: "file+kind+targetKind+window",
+  switches: "file+kind+targetKind+name",
   interfaces: "file+api+member",
   contextBridge: "api+member",
   windows: "file+windowName",
@@ -719,6 +724,7 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   "new-bridge-exposure": () => ["bridgeExposures"],
   "fuse-weakened": () => ["runtime"],
   "remote-enabled": () => ["remoteEnabled"],
+  "new-unsafe-switch": () => ["switches"],
 };
 
 /**
@@ -733,6 +739,7 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   "new-bridge-exposure": () => ["contextBridge"],
   "fuse-weakened": () => [],
   "remote-enabled": () => [],
+  "new-unsafe-switch": () => [],
 };
 
 /**
@@ -1012,6 +1019,116 @@ function remoteDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draf
     });
   }
   return out;
+}
+
+/**
+ * A dangerous switch, or certificate errors accepted, that the before build does not have
+ * (`switches`): a switch by name and value, a certificate handler or verify proc by kind and what
+ * it accepts. A row whose danger could not be told (`dangerous: null`) is unknown.
+ */
+const switchIdentity = (f: Record<string, unknown>): string =>
+  `switch\0${String(f["kind"])}\0${String(f["name"])}\0${String(f["value"])}\0${String(f["accepts"])}`;
+
+function switchDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const before = new Set(beforeItems(r, "switches", sides).map(switchIdentity));
+  for (const row of r.changes) {
+    if (
+      row.collection !== "switches" ||
+      (row.change !== "added" && row.change !== "changed" && row.change !== "unknown")
+    )
+      continue;
+    const keyed = fieldsOf(r, row);
+    // the label holds the key fields only: the after side's items with those fields carry the rest
+    const matches = keyed
+      ? (sides?.items.b["switches"] ?? []).filter(
+          (i): i is Record<string, unknown> =>
+            isRecord(i) && Object.keys(keyed).every((n) => String(i[n]) === String(keyed[n])),
+        )
+      : [];
+    const candidates: Array<Record<string, unknown>> = matches.length
+      ? matches
+      : keyed
+        ? [fallbackSwitch(keyed)]
+        : [];
+    const seen = new Set<string>();
+    for (const f of candidates) {
+      const id = switchIdentity(f);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const d = switchDraft(row, f, before);
+      if (d) out.push(d);
+    }
+    if (!keyed || keyed["kind"] === undefined) {
+      out.push({
+        rule: "new-unsafe-switch",
+        identity: `label\0switches\0${row.key}`,
+        row,
+        key: row.key,
+        message: `A process-wide security check may be weakened (${plain(row.key)}): the row could not be read back from the comparison.`,
+        where: row.where,
+        unknown: true,
+      });
+    }
+  }
+  return out;
+}
+
+/** What a row's key fields alone say, when the after side's items are not at hand. */
+function fallbackSwitch(keyed: Record<string, unknown>): Record<string, unknown> {
+  const name = keyed["name"] === "null" ? null : keyed["name"];
+  const kind = String(keyed["kind"]);
+  const listed = typeof name === "string" && DANGEROUS_SWITCHES.has(name.replace(/^-+/, ""));
+  return {
+    ...keyed,
+    name,
+    value: null,
+    accepts: undefined,
+    dangerous:
+      kind === "security-warnings"
+        ? false
+        : (kind === "switch" || kind === "argument") && listed
+          ? true
+          : null,
+    reason: "the row's other fields could not be read back from the comparison",
+  };
+}
+
+function switchDraft(
+  row: ChangeRow,
+  f: Record<string, unknown>,
+  before: ReadonlySet<string>,
+): Draft | null {
+  {
+    if (f["dangerous"] === false) return null;
+    const identity = switchIdentity(f);
+    if (before.has(identity)) return null;
+    const kind = String(f["kind"]);
+    const unknown = f["dangerous"] !== true || row.change === "unknown";
+    const name = f["name"] === null ? "a switch whose name is not read" : String(f["name"]);
+    const value = typeof f["value"] === "string" ? `=${String(f["value"])}` : "";
+    const key =
+      kind === "switch" || kind === "argument"
+        ? `${kind} ${name}${value}`
+        : `${kind} accepts ${String(f["accepts"])}`;
+    const what =
+      kind === "switch" || kind === "argument"
+        ? `the command-line ${kind} ${plain(name + value)}`
+        : kind === "certificate-error"
+          ? `certificate errors accepted (${plain(String(f["accepts"]))})`
+          : `a certificate verify proc that reports success (${plain(String(f["accepts"]))})`;
+    return {
+      rule: "new-unsafe-switch",
+      identity: `${identity}\0${String(f["targetKind"])}`,
+      row,
+      key,
+      message: unknown
+        ? `The after build may weaken a process-wide security check: ${what}; ${plain(String(f["reason"] ?? "the comparison could not tell"))}.`
+        : `The after build weakens a process-wide security check: ${what}${f["reason"] ? ` (${plain(String(f["reason"]))})` : ""}.`,
+      where: row.where,
+      unknown,
+    };
+  }
 }
 
 function windowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
@@ -1373,6 +1490,7 @@ export function evaluatePolicy(
     if (rule === "new-bridge-exposure") drafts.push(...exposureDrafts(r, sides));
     if (rule === "fuse-weakened") drafts.push(...fuseDrafts(r, sides));
     if (rule === "remote-enabled") drafts.push(...remoteDrafts(r, sides));
+    if (rule === "new-unsafe-switch") drafts.push(...switchDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -1535,6 +1653,7 @@ const RULE_LISTS = [
   "contextBridge",
   "bridgeExposures",
   "remoteEnabled",
+  "switches",
   "windows",
   "endpoints",
   "urls",

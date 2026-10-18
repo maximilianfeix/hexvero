@@ -194,6 +194,7 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   bridgeExposures: ["line"],
   navigationHandlers: ["line"],
   remoteEnabled: ["line"],
+  switches: ["line"],
   interfaces: ["line"],
   ipc: ["line"],
   webPreferences: ["line", "window"],
@@ -229,6 +230,8 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   navigationHandlers: ["evidence", "target"],
   // the same: `target` restates `window` or is the argument as written
   remoteEnabled: ["evidence", "target"],
+  // the call as written and its receiver (renamed by minifiers); `reason` restates the row
+  switches: ["evidence", "target", "reason"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -326,6 +329,12 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   remoteEnabled: [
     ["file", "kind", "targetKind", "window"],
     ["file", "kind", "targetKind"],
+  ],
+  // a switch by its name, a certificate handler or verify proc by its kind and target kind;
+  // the same pair twice is matched as a multiset
+  switches: [
+    ["file", "kind", "targetKind", "name"],
+    ["kind", "targetKind", "name"],
   ],
   interfaces: [["file", "api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.

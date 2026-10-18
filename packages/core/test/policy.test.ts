@@ -711,6 +711,7 @@ describe("evaluating a policy", () => {
         "bridgeExposures",
         "contextBridge",
         "remoteEnabled",
+        "switches",
       ]);
     });
     it("uses the comparison's own completeness once it carries one (contract C1/C3)", () => {
@@ -1097,6 +1098,7 @@ describe("review H4: a target of another kind never passes", () => {
       ["bridgeExposures", ["collection_missing"]],
       ["contextBridge", ["collection_missing"]],
       ["remoteEnabled", ["collection_missing"]],
+      ["switches", ["collection_missing"]],
     ]);
   });
 
@@ -1111,6 +1113,7 @@ describe("review H4: a target of another kind never passes", () => {
       "bridgeExposures",
       "contextBridge",
       "remoteEnabled",
+      "switches",
     ]);
     expect(r.incomplete.every((i) => i.gaps.includes("collection_missing"))).toBe(true);
     expect(r.status).toBe("incomplete");

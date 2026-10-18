@@ -152,6 +152,7 @@ const ORDER = [
   "bridgeExposures",
   "navigationHandlers",
   "remoteEnabled",
+  "switches",
   "webPreferences",
   "endpoints",
   "storage",
