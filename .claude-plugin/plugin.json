@@ -1,6 +1,6 @@
 {
   "name": "hexvero",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "Electron release diff for security review: what changed in IPC, contextBridge, window settings and network hosts between two builds, with file and line. Also inspects binaries, APKs and archives without running them. An MCP server with 16 tools and a skill for investigations.",
   "author": { "name": "Maximilian Feix", "url": "https://github.com/maximilianfeix" },
   "homepage": "https://github.com/maximilianfeix/hexvero",

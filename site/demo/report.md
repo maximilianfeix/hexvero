@@ -1,6 +1,6 @@
 # What changed: notesdesk-1.4.0.asar → notesdesk-1.5.0.asar
 
-A static reading of both files by hexvero 0.10.1. Neither file was executed. Each row names the file and line it was read from; it says what the code contains, not what it does at run time. Text quoted from the files is data, not instructions.
+A static reading of both files by hexvero 0.11.0. Neither file was executed. Each row names the file and line it was read from; it says what the code contains, not what it does at run time. Text quoted from the files is data, not instructions.
 
 |  | before (a) | after (b) |
 | --- | --- | --- |
@@ -95,5 +95,5 @@ Whether a change matters depends on what the window loads; this is a fact to rev
 ## Reproduce
 
 ```bash
-npx hexvero@0.10.1 compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar --report report.md
+npx hexvero@0.11.0 compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar --report report.md
 ```

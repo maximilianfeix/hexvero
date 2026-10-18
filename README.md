@@ -118,7 +118,7 @@ jobs:
         with:
           node-version: 24
       # Build your app and fetch the previous release here, e.g. into previous/ and dist/.
-      - run: npx --yes hexvero@0.10.1 check previous/app.asar dist/app.asar --policy .hexvero/policy.json
+      - run: npx --yes hexvero@0.11.0 check previous/app.asar dist/app.asar --policy .hexvero/policy.json
 ```
 
 The full workflow, with a baseline, a Markdown job summary and a least-privilege SARIF upload for code scanning: [docs/ci.md](docs/ci.md).
@@ -160,7 +160,7 @@ npx hexvero setup --apply          # registers the MCP server with the coding ag
 npx hexvero setup --skill --apply  # installs a skill that teaches the investigation loop
 ```
 
-In Claude Code the server and the skill also come as one plugin: `/plugin marketplace add maximilianfeix/hexvero`, then `/plugin install hexvero@hexvero`. Any other client can run `npx -y hexvero mcp` over stdio; pin a version for reproducible results (`npx -y hexvero@0.10.1 mcp`). 16 tools, including `hexvero_compare` and `hexvero_check`; answers are small pages with suggested next calls, and text inside the target is treated as data, never as instructions. The 18 supported clients, the tools and what an agent receives: [docs/mcp.md](docs/mcp.md).
+In Claude Code the server and the skill also come as one plugin: `/plugin marketplace add maximilianfeix/hexvero`, then `/plugin install hexvero@hexvero`. Any other client can run `npx -y hexvero mcp` over stdio; pin a version for reproducible results (`npx -y hexvero@0.11.0 mcp`). 16 tools, including `hexvero_compare` and `hexvero_check`; answers are small pages with suggested next calls, and text inside the target is treated as data, never as instructions. The 18 supported clients, the tools and what an agent receives: [docs/mcp.md](docs/mcp.md).
 
 <a id="limits"></a>
 
