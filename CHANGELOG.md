@@ -6,6 +6,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Comparing builds: a bridge member whose value comes from a package (`import { api } from "apilib"; exposeInMainWorld("bridge", { sub: api })`, a default or namespace import, `require`) was read as fully known, so page calls through it that the other build lacks were reported removed (#235). The value is now followed like one from a local module; a module not among the files read gives `context_bridge_module_unread`, and those page rows are unknown. `electron`, `electron/*` and Node built-ins are not flagged. JS_SCAN_SCHEMA 36.
+- Comparing builds (#229, already in 0.11.1 but missing from its notes): page IPC rows that go through a contextBridge api whose value was not read whole in the other build (a module not read or not located, a chain deeper than is read, a value that could not be read, a truncated bridge) are unknown, not removed; the same holds for channels only those page calls use. Rows of other apis, and builds that read the bridge whole, are unchanged.
+
 ## [0.11.1] - 2026-10-18
 
 ### Fixed
