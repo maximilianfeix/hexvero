@@ -53,8 +53,8 @@ hit / missed / false:
   change the set's expectation does not count): three changes in contextBridge, `~shopping.send`,
   `~shopping.request` and `~shopping.receive`, are reported as changed between v1 and v2 although
   those members did not change. They are generic forwarder members, the shape 0.10.0 newly reads
-  (`forwards`, `guard`); most likely the detail recorded on them differs between the two builds and
-  counts as a change. This is a regression of 0.10.0 on a blind set.
+  (`forwards`, `guard`). At measurement time this was read as a regression of 0.10.0; that reading
+  was wrong (the note below).
 - Unchanged and large: 20 false and 21 missed window settings in both versions. Most of them are
   one attribution: hexvero names the file where a value is written (`config.js`), the set names the
   file that calls `new BrowserWindow` (`windows.js`, `app-window.js`; the set's README, "Format
