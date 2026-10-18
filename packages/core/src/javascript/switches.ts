@@ -164,8 +164,6 @@ export function keepSwitchRows(
 }
 
 export const MAX_SWITCHES_PER_FILE = 200;
-/** Steps charged for each row past the per-file cap. */
-const PAST_CAP_COST = 2000;
 const MAX_PER_FILE = MAX_SWITCHES_PER_FILE;
 const WORK = 2_000_000;
 const LISTEN = new Set(["on", "once", "addListener", "prependListener", "prependOnceListener"]);
@@ -190,6 +188,20 @@ const CONDITIONS = new Set([
   "catch",
 ]);
 const BRANCH = new Set(["&&", "||", "??", "?", ":", "?."]);
+
+/**
+ * A numeric literal as written (`10`, `0x1f`, `1e3`): its number; null for a BigInt, a literal
+ * with separators, or one that cannot be parsed, which is never read as a definite value.
+ */
+export function numericLiteral(raw: string): number | null {
+  // a BigInt (`0n`) is no number Electron's callback takes, and a separated literal (`1_0`) is
+  // not taken as written: neither gives a definite answer
+  if (raw.endsWith("n") || raw.includes("_")) return null;
+  const plain = raw;
+  // a legacy octal (`010`) is another number than Number() reads; zero or not is the same
+  const n = /^0[0-7]+$/.test(plain) ? Number.parseInt(plain, 8) : Number(plain);
+  return Number.isNaN(n) ? null : n;
+}
 
 const paramName = (def: FnDef, i: number): string | null => {
   const p = def.params[i];
@@ -222,12 +234,10 @@ export function switchRows(
         .join(""),
     );
   const push = (row: SwitchRow): void => {
-    if (keepSwitchRows(rows, [row], MAX_PER_FILE)) {
-      capped = true;
-      // rows past the cap are still read (a risky one replaces a harmless one), at a price that
-      // ends the reading of a file made of nothing else
-      work -= PAST_CAP_COST;
-    }
+    // rows past the cap are still read, at the cost of reading them (charged where their tokens
+    // are read), so a risky one later in the file replaces a harmless one; no extra charge, which
+    // harmless padding could use to hide a dangerous call behind the budget
+    if (keepSwitchRows(rows, [row], MAX_PER_FILE)) capped = true;
   };
 
   // webpack modules that are Electron itself: `91288(e){e.exports=require("electron")}`
@@ -352,7 +362,58 @@ export function switchRows(
    * `commandLine` of something not read, a destructured `commandLine`, a call); null only for a
    * name bound to an object literal of the file (a look-alike), or its member.
    */
-  const switchReceiver = (d: number): { from: number; app: boolean } | null => {
+  /**
+   * The key `key` of the object literal at `open`: the token its value starts at, `method` for
+   * `key() {}`, null when the literal does not have it, `unknown` for a spread, a computed key,
+   * a shorthand or an accessor, any of which may give it another value.
+   */
+  const keyOf = (open: number, key: string): number | "method" | "unknown" | null => {
+    const close = resolver.closeOf(open);
+    if (close < 0) return "unknown";
+    let found: number | "method" | null = null;
+    for (let j = open + 1, d = 0; j < close; j++) {
+      if (!spend()) return "unknown";
+      if (is(j, "{") || is(j, "(") || is(j, "[")) {
+        if (d === 0 && is(j, "[") && (is(j - 1, "{") || is(j - 1, ","))) return "unknown";
+        d++;
+        continue;
+      }
+      if (is(j, "}") || is(j, ")") || is(j, "]")) {
+        d--;
+        continue;
+      }
+      if (d !== 0 || !(is(j - 1, "{") || is(j - 1, ","))) continue;
+      if (is(j, "...")) return "unknown";
+      const t = tokens[j]!;
+      const name = t.type === "ident" || t.type === "string" ? t.value : null;
+      if (name === null) continue;
+      if ((name === "get" || name === "set" || name === "async") && tokens[j + 1]?.value === key)
+        return "unknown";
+      if (name !== key) continue;
+      if (is(j + 1, ":")) found = j + 2;
+      else if (is(j + 1, "(")) found = "method";
+      else return "unknown";
+    }
+    return found;
+  };
+  /** The receiver from `from` to `d` walks object literals from the one at `open` to its own method. */
+  const ownMethod = (open: number, from: number, d: number, method: string): boolean => {
+    let cur = open;
+    for (let j = from + 2; j < d; j += 2) {
+      const v = keyOf(cur, ident(j)!);
+      if (typeof v !== "number" || !is(v, "{")) return false;
+      cur = v;
+    }
+    const m = keyOf(cur, method);
+    if (m === "method") return true;
+    if (typeof m !== "number") return false;
+    return (
+      ident(m) === "function" ||
+      (ident(m) === "async" && ident(m + 1) === "function") ||
+      resolver.functionWithParamsAt(m) !== null
+    );
+  };
+  const switchReceiver = (d: number, method: string): { from: number; app: boolean } | null => {
     const proven = commandLineBefore(d);
     if (proven >= 0) return { from: proven, app: true };
     if (!ident(d - 1)) return { from: d - 1, app: false };
@@ -362,7 +423,11 @@ export function switchRows(
     if (base === "this" || !spend()) return { from, app: false };
     if (resolver.boundAround(from, base)?.kind === "param") return { from, app: false };
     const bound = resolver.binding(from, base, true);
-    if (bound?.kind === "value" && is(bound.range[0], "{")) return null;
+    // an object literal of the file: no row only when the path through it ends at its own
+    // `appendSwitch` function (a look-alike); a member it takes from elsewhere
+    // (`{ commandLine: app.commandLine }`), a spread or a computed key may be app's
+    if (bound?.kind === "value" && is(bound.range[0], "{"))
+      return ownMethod(bound.range[0], from, d, method) ? null : { from, app: false };
     if (bound?.kind === "pattern" && bound.key === "commandLine" && from === d - 1) {
       // `const { commandLine } = app`, `const { app: { commandLine } } = require("electron")`
       let [a, b] = bound.from;
@@ -383,11 +448,18 @@ export function switchRows(
     if (v?.kind === "str" && v.values.length === 1 && exprEnd(a) === b) return v.values[0]!;
     return null;
   };
-  /** The end of the argument starting at a: the `,` or `)` at depth 0. */
+  /**
+   * The end of the argument starting at a: the `,` or `)` at depth 0; -1 when it is not found
+   * within 4,000 tokens or the budget runs out (then the argument is not read, and the file's
+   * reading is marked capped).
+   */
   const exprEnd = (a: number): number => {
     let j = a;
     for (let d = 0; j < tokens.length && j < a + 4000; j++) {
-      if (--work < 0) return j;
+      if (--work < 0) {
+        capped = true;
+        return -1;
+      }
       const p = tokens[j]!;
       if (p.type !== "punct") continue;
       if (p.value === "(" || p.value === "[" || p.value === "{") d++;
@@ -396,7 +468,7 @@ export function switchRows(
         d--;
       } else if (p.value === "," && d === 0) return j;
     }
-    return j;
+    return -1;
   };
 
   /**
@@ -438,6 +510,10 @@ export function switchRows(
         continue;
       }
       const end = exprEnd(j + 2);
+      if (end < 0) {
+        unread = true;
+        continue;
+      }
       const verdict = accepting(j + 2, Math.min(end, close));
       if (verdict === null) unread = true;
       if (verdict !== true) continue;
@@ -514,18 +590,23 @@ export function switchRows(
     }
     return resolver.functionWithParamsAt(j);
   };
+  /** A number literal or `-literal` at [x, y): its number; null otherwise (a BigInt too). */
+  const signedNumber = (x: number, y: number): number | null => {
+    const at = y === x + 2 && is(x, "-") ? x + 1 : y === x + 1 ? x : -1;
+    if (at < 0 || tokens[at]!.type !== "number") return null;
+    const n = numericLiteral(tokens[at]!.value);
+    if (n === null) return null;
+    return at === x ? n : -n;
+  };
   const numberAt = (a: number, b: number): number | null => {
-    if (b === a + 1 && tokens[a]!.type === "number") return Number(tokens[a]!.value);
-    if (b === a + 2 && is(a, "-") && tokens[a + 1]!.type === "number")
-      return -Number(tokens[a + 1]!.value);
+    const direct = signedNumber(a, b);
+    if (direct !== null) return direct;
     if (b === a + 1 && ident(a)) {
       const bound = resolver.binding(a, ident(a)!);
       if (bound?.kind === "value") {
         let [x, y] = bound.range;
         while (is(y - 1, ";") || is(y - 1, ",")) y--;
-        if (y === x + 1 && tokens[x]!.type === "number") return Number(tokens[x]!.value);
-        if (y === x + 2 && is(x, "-") && tokens[x + 1]!.type === "number")
-          return -Number(tokens[x + 1]!.value);
+        return signedNumber(x, y);
       }
     }
     return null;
@@ -534,9 +615,16 @@ export function switchRows(
   const boolAt = (a: number, b: number, depth = 0): boolean | null => {
     if (b === a + 1 && (ident(a) === "true" || ident(a) === "false")) return ident(a) === "true";
     if (b === a + 1 && (ident(a) === "null" || ident(a) === "undefined")) return false;
-    if (b === a + 2 && is(a, "!") && tokens[a + 1]?.type === "number")
-      return Number(tokens[a + 1]!.value) === 0;
-    if (b === a + 1 && tokens[a]!.type === "number") return Number(tokens[a]!.value) !== 0;
+    // `!0`, `!1`, `1`, `0n`: what the literal is as a number or bigint; unparsable is not read
+    const numeric = (at: number): boolean | null => {
+      const n = numericLiteral(tokens[at]!.value);
+      return n === null ? null : n !== 0;
+    };
+    if (b === a + 2 && is(a, "!") && tokens[a + 1]?.type === "number") {
+      const v = numeric(a + 1);
+      return v === null ? null : !v;
+    }
+    if (b === a + 1 && tokens[a]!.type === "number") return numeric(a);
     if (b === a + 1 && tokens[a]!.type === "string") return tokens[a]!.value !== "";
     // a constant: `const OK = true`
     if (b === a + 1 && ident(a) && depth < 3 && spend()) {
@@ -570,7 +658,7 @@ export function switchRows(
       (!bracketed || is(k + 2, "("))
     ) {
       const open = bracketed ? k + 2 : k + 1;
-      const receiver = switchReceiver(k - 1);
+      const receiver = switchReceiver(k - 1, method);
       if (receiver === null) continue;
       const { from, app } = receiver;
       const close = resolver.closeOf(open);
@@ -590,6 +678,7 @@ export function switchRows(
               reason: `${j.reason ?? "a dangerous switch"}, on a receiver not read as Electron's app.commandLine`,
             };
       const nameEnd = exprEnd(open + 1);
+      // an argument whose end was not found is not read: never a value read from a cut range
       const raw = nameEnd > open + 1 ? stringAt(open + 1, nameEnd) : null;
       const split = raw === null ? null : splitSwitch(raw);
       const evidence = `${text(from, open + 1)}${text(open + 1, close)})`;
@@ -616,9 +705,12 @@ export function switchRows(
       }
       let value: string | null = split?.inline ?? null;
       let valueRead: NonNullable<SwitchRow["valueRead"]> = value === null ? "none" : "literal";
-      if (is(nameEnd, ",") && nameEnd + 1 < close) {
+      if (nameEnd < 0) {
+        value = null;
+        valueRead = "unknown";
+      } else if (is(nameEnd, ",") && nameEnd + 1 < close) {
         const end = exprEnd(nameEnd + 1);
-        value = stringAt(nameEnd + 1, end);
+        value = end < 0 ? null : stringAt(nameEnd + 1, end);
         valueRead = value === null ? "unknown" : "literal";
       }
       const judged =
@@ -752,8 +844,8 @@ export function switchRows(
       if (env && dot(k - 5)) continue;
       at++;
       const end = statementEnd(at);
-      const b = boolAt(at, end);
-      const s = b === null ? stringAt(at, end) : String(b);
+      const b = end < 0 ? null : boolAt(at, end);
+      const s = end < 0 ? null : b === null ? stringAt(at, end) : String(b);
       push({
         kind: "security-warnings",
         name: "ELECTRON_DISABLE_SECURITY_WARNINGS",
@@ -763,7 +855,7 @@ export function switchRows(
         reason: "turns off Electron's security warnings in the developer console",
         targetKind: env ? "process" : "window",
         target: env ? "process.env" : ident(k - 2)!,
-        evidence: text(env ? k - 4 : k - 2, Math.min(end, at + 6)),
+        evidence: text(env ? k - 4 : k - 2, end < 0 ? at + 6 : Math.min(end, at + 6)),
         file,
         line: t.line,
       });
@@ -780,8 +872,8 @@ export function switchRows(
     if (!(is(k - 1, "[") && is(k + 1, "]") && is(k + 2, "="))) continue;
     if (!(ident(k - 2) === "env" && is(k - 3, ".") && ident(k - 4) === "process")) continue;
     const end = statementEnd(k + 3);
-    const b = boolAt(k + 3, end);
-    const s = b === null ? stringAt(k + 3, end) : String(b);
+    const b = end < 0 ? null : boolAt(k + 3, end);
+    const s = end < 0 ? null : b === null ? stringAt(k + 3, end) : String(b);
     push({
       kind: "security-warnings",
       name: "ELECTRON_DISABLE_SECURITY_WARNINGS",
@@ -791,18 +883,23 @@ export function switchRows(
       reason: "turns off Electron's security warnings in the developer console",
       targetKind: "process",
       target: "process.env",
-      evidence: text(k - 4, Math.min(end, k + 8)),
+      evidence: text(k - 4, end < 0 ? k + 8 : Math.min(end, k + 8)),
       file,
       line: t.line,
     });
   }
+  // a budget used up anywhere is said, never read as nothing found
+  if (work < 0) capped = true;
   return { rows, capped };
 
   /** The end of the value assigned from a: the `;`, `,` or closing bracket at depth 0. */
   function statementEnd(a: number): number {
     let j = a;
     for (let d = 0; j < tokens.length && j < a + 2000; j++) {
-      if (--work < 0) return j;
+      if (--work < 0) {
+        capped = true;
+        return -1;
+      }
       const p = tokens[j]!;
       if (p.type !== "punct") continue;
       if (p.value === "(" || p.value === "[" || p.value === "{") d++;
@@ -811,6 +908,6 @@ export function switchRows(
         d--;
       } else if (d === 0 && (p.value === ";" || p.value === ",")) return j;
     }
-    return j;
+    return -1;
   }
 }

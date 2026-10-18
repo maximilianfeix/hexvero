@@ -453,8 +453,12 @@ receiver of `.appendSwitch(` / `.appendArgument(` (also `["appendSwitch"]`) stil
 Claude's `e.appendSwitch(t, …)` on a commandLine handed in), `commandLine` of a name not read as
 app, a destructured `commandLine` whose source is not read (a nested pattern
 `{ app: { commandLine } } = require("electron")` is not followed), a call's result. A dangerous
-name on such a receiver is `dangerous: null`, never safe. Only a name bound to an object literal of
-the file (`const app = { commandLine: … }`), or a member of one, gives no row.
+name on such a receiver is `dangerous: null`, never safe. Only a receiver whose path through object
+literals of the file ends at the literal's own function (`const app = { commandLine: { appendSwitch()
+{} } }`) gives no row; a member taken from elsewhere (`const x = { commandLine: app.commandLine }`),
+a spread, a computed key, a shorthand or an accessor on the path gives an `unknown` row. An argument
+whose end is not found within 4,000 tokens (or within the budget) is not read: its name or value is
+`null`, never a value read from a cut range.
 `const { commandLine } = app` reads as app's.
 
 `app` is Electron's only where it is bound to it by scope: `const { app } = require("electron")`
@@ -479,7 +483,10 @@ positions), patterns and defaults before it count as one parameter each, and at 
 name (also `cb = fallback`) is read while a pattern is `unknown`; a handler with fewer parameters
 counts as never accepting only when it has no rest parameter and its body does not read
 `arguments`. An accepting argument is what Electron takes as true: `true`, `!0`, a non-zero number,
-a non-empty string, or a constant holding one; `false`, `!1`, `0`, `""`, `null`, `undefined` reject. A
+a non-empty string, or a constant holding one; `false`, `!1`, `0`, `""`, `null`, `undefined` reject.
+Numbers are read in decimal, radix-prefixed and exponent form; a BigInt (`0n`, `-2n`) or a literal
+with separators (`1_0`) is `unknown`, in a certificate handler and a verify proc alike, and a
+literal that cannot be parsed is never a definite answer. A
 `certificate-error` handler that never accepts (`callback(false)` only, or no callback parameter)
 gives no row; a verify proc always gives one (`setCertificateVerifyProc(null)` none).
 
@@ -524,7 +531,8 @@ compared case-insensitively. An
 
 The finding `electron.unsafe-switch` (`inferred`) names the dangerous rows. Per file at most 200
 rows, 2,000 in all, and a reading budget of 2,000,000 steps per file (each token a handler body or
-an argument is read through costs one, each row past the per-file cap 2,000); past either
+an argument is read through costs one; rows past the cap cost only what reading them costs, so
+harmless padding cannot spend the budget before a dangerous call later in the file); past either
 `switches_truncated` says so. The cap drops only rows known to be harmless: a dangerous or
 undecided row takes the place of the last harmless one kept. `switches_truncated` on either side
 makes the comparison of `switches` incomplete (`values_unresolved`), so `new-unsafe-switch` is

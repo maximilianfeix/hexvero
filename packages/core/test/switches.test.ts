@@ -265,6 +265,132 @@ module.exports = { setup, apply };
     }
   });
 
+  it("finds a dangerous switch after 1,000 harmless ones", () => {
+    const padding = Array.from(
+      { length: 1000 },
+      (_, i) => `app.commandLine.appendSwitch("harmless-${i}", "v");`,
+    ).join("\n");
+    const info = analyze(
+      `const { app } = require("electron");\n${padding}\napp.commandLine.appendSwitch("no-sandbox");\n`,
+    );
+    expect(info.switches.filter((r) => r.dangerous === true).map((r) => r.name)).toEqual([
+      "no-sandbox",
+    ]);
+    expect(info.limitations.map((l) => l.code)).toContain("switches_truncated");
+  });
+
+  it("gives a row for a commandLine stored in or reached through an object literal", () => {
+    const info = analyze(`const { app } = require("electron");
+const x = { commandLine: app.commandLine };
+x.commandLine.appendSwitch("no-sandbox");
+const y = { ...x };
+y.commandLine.appendSwitch("disable-web-security");
+const z = { appendSwitch: (n) => n };
+z.appendSwitch("allow-insecure-localhost");
+const w = { commandLine: { appendSwitch() {} } };
+w.commandLine.appendSwitch("disable-gpu-sandbox");
+`);
+    expect(rows(info)).toEqual([
+      "switch no-sandbox - null unknown",
+      "switch disable-web-security - null unknown",
+    ]);
+  });
+
+  it("never reads a BigInt or a separated number as a definite answer", () => {
+    const info = analyze(`const { app, session } = require("electron");
+app.on("certificate-error", (e, w, u, er, c, cb) => { e.preventDefault(); cb(0n); });
+app.on("certificate-error", (e, w, u, er, c, cb) => { e.preventDefault(); cb(1n); });
+app.on("certificate-error", (e, w, u, er, c, cb) => { e.preventDefault(); cb(1_0); });
+app.on("certificate-error", (e, w, u, er, c, cb) => { e.preventDefault(); cb(!0n); });
+session.defaultSession.setCertificateVerifyProc((r, cb) => { cb(0n); });
+session.defaultSession.setCertificateVerifyProc((r, cb) => { cb(1_0); });
+session.defaultSession.setCertificateVerifyProc((r, cb) => { cb(-2n); });
+session.defaultSession.setCertificateVerifyProc((r, cb) => { cb(0x0); });
+`);
+    expect(rows(info)).toEqual([
+      "certificate-error ? unknown null app",
+      "certificate-error ? unknown null app",
+      "certificate-error ? unknown null app",
+      "certificate-error ? unknown null app",
+      "certificate-verify-proc ? unknown null session",
+      "certificate-verify-proc ? unknown null session",
+      "certificate-verify-proc ? unknown null session",
+      "certificate-verify-proc ? always true session",
+    ]);
+  });
+
+  // RV's fail-open probes of 15c5cf8
+  it("RV probes: padding, object literals, numbers and a cut argument stay unknown or dangerous", () => {
+    const H = `const { app } = require("electron");\n`;
+    for (const n of [1500, 5000]) {
+      const info = analyze(
+        H +
+          `app.commandLine.appendSwitch("harmless-x");\n`.repeat(n) +
+          `app.commandLine.appendSwitch("no-sandbox");`,
+      );
+      expect(
+        info.switches.filter((r) => r.dangerous === true).map((r) => r.name),
+        String(n),
+      ).toEqual(["no-sandbox"]);
+      expect(
+        info.findings.map((f) => f.kind),
+        String(n),
+      ).toContain("electron.unsafe-switch");
+    }
+    expect(
+      rows(
+        analyze(
+          H +
+            `const x = { commandLine: app.commandLine }; x.commandLine.appendSwitch("no-sandbox"); const y = { commandLine: { appendSwitch(){} } }; y.commandLine.appendSwitch("no-sandbox");`,
+        ),
+      ),
+    ).toEqual(["switch no-sandbox - null unknown"]);
+    expect(
+      rows(
+        analyze(
+          H +
+            `s.setCertificateVerifyProc((r,cb)=>cb(0n)); t.setCertificateVerifyProc((r,cb)=>cb(1_0)); u.setCertificateVerifyProc((r,cb)=>cb(-2n));`,
+        ),
+      ),
+    ).toEqual([
+      "certificate-verify-proc ? unknown null session",
+      "certificate-verify-proc ? unknown null session",
+      "certificate-verify-proc ? unknown null session",
+    ]);
+    expect(
+      rows(
+        analyze(
+          H +
+            `app.on("certificate-error",(e,a,b,c,d,cb)=>{e.preventDefault();cb(1n)}); app.on("certificate-error",(e,a,b,c,d,cb)=>{e.preventDefault();cb(0n)});app.on("certificate-error",(e,a,b,c,d,cb)=>{e.preventDefault();cb(1_0)});`,
+        ),
+      ),
+    ).toEqual([
+      "certificate-error ? unknown null app",
+      "certificate-error ? unknown null app",
+      "certificate-error ? unknown null app",
+    ]);
+    const cut = analyze(
+      H +
+        "x();".repeat(400_000) +
+        `app.commandLine.appendSwitch("disable-features", "A," + "IsolateOrigins");`,
+    );
+    // read whole (dangerous) or not read (unknown and said); never "A" alone, read as safe
+    expect(cut.switches.map((r) => r.dangerous)).not.toContain(false);
+    if (!cut.switches.some((r) => r.dangerous === true))
+      expect(cut.limitations.map((l) => l.code).join(" ")).toMatch(
+        /switches_truncated|scan_truncated/,
+      );
+  });
+
+  it("reads an argument whose end is not found as not read", () => {
+    const long = Array.from({ length: 3000 }, (_, i) => `"f${i}"`).join(",");
+    const info = analyze(`const { app } = require("electron");
+app.commandLine.appendSwitch("disable-features", [${long}].join(","));
+app.commandLine.appendSwitch([${long}].join("") , "1");
+`);
+    expect(rows(info)).toEqual(["switch disable-features=? - null app", "switch ?=? - null app"]);
+  });
+
   it("drops only harmless rows past the cap and says so", () => {
     const harmless = Array.from(
       { length: 205 },
