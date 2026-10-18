@@ -1473,6 +1473,15 @@ describe("new-bridge-exposure through checkRelease (the lists of both builds are
   });
 });
 
+const run = async (a: string, b: string) => {
+  const session = new Session();
+  const ta = await session.open(a);
+  const tb = await session.open(b);
+  return checkRelease(session, ta.id, tb.id, policy());
+};
+const hostGaps = (r: Awaited<ReturnType<typeof run>>) =>
+  r.incomplete.filter((i) => i.rule === "new-external-host");
+
 describe("new-external-host with values hexvero could not resolve (#196)", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-policy-hosts-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -1487,15 +1496,6 @@ describe("new-external-host with values hexvero could not resolve (#196)", () =>
     );
     return path;
   };
-  const run = async (a: string, b: string) => {
-    const session = new Session();
-    const ta = await session.open(a);
-    const tb = await session.open(b);
-    return checkRelease(session, ta.id, tb.id, policy());
-  };
-  const hostGaps = (r: Awaited<ReturnType<typeof run>>) =>
-    r.incomplete.filter((i) => i.rule === "new-external-host");
-
   it("reads a host as known when only the path after it is computed", () => {
     expect(hostKnown("https://api.example.com/users/${id}")).toBe(true);
     expect(hostKnown("https://api.example.com?q=${q}")).toBe(true);
