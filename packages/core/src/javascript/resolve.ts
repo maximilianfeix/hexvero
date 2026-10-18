@@ -4352,14 +4352,31 @@ export class ExpressionResolver {
       const bodyEnd = this.forBodyEnd(close);
       if (!(close < start && end <= bodyEnd + 1)) continue;
       let p = head + 1;
-      if (this.is(p, "ident", "const") || this.is(p, "ident", "let") || this.is(p, "ident", "var"))
-        p++;
+      const declared =
+        this.is(p, "ident", "const") || this.is(p, "ident", "let") || this.is(p, "ident", "var");
+      if (declared) p++;
       const patternEnd = this.punct(p, "[") || this.punct(p, "{") ? this.match[p]! + 1 : p + 1;
       if (!this.is(patternEnd, "ident", "of")) return null;
       const params = this.parseParams(p - 1, patternEnd);
       // parseParams expects `( … )`; fake the bounds around the single pattern
       const param = params[0];
       if (!param) return null;
+      // A name of the pattern that a nearer declaration hides in [start, end) (`for (o of T) {
+      // const o = …; f(o) }`) is not the loop variable there: it is not bound, so the name is
+      // read as what it is there. Hidden at some places and not at others: not read.
+      const hidden: string[] = [];
+      for (const name of paramNames([param])) {
+        let seen = false;
+        let hides = false;
+        for (const k of this.occurrences(name, start, end)) {
+          if (this.punct(k - 1, ".") || this.punct(k - 1, "?.")) continue;
+          const own = declared ? this.loopVariableAt(k, name, p) : this.sameBinding(k, name, p);
+          if (own) seen = true;
+          else hides = true;
+        }
+        if (hides && seen) return null;
+        if (hides) hidden.push(name);
+      }
       const envs: Env[] = [];
       // the list may read a parameter of the function the loop is in: once per binding of it
       const outer = this.envsFor(patternEnd + 1, patternEnd + 1, close, depth + 1, true);
@@ -4385,6 +4402,8 @@ export class ExpressionResolver {
           if (!e) return null;
           const env: Env = new Map(caller);
           this.bind([param], [e], env);
+          // a declaration nearer than the loop hides the function's parameter of the name too
+          for (const name of hidden) env.delete(name);
           envs.push(env);
         }
       }
@@ -5340,6 +5359,26 @@ export class ExpressionResolver {
       d = this.enclosing(d.paramsAt - 1);
     }
     return !this.covered(k, name, decl);
+  }
+
+  /**
+   * The name at k means the variable the `for (const|let|var PATTERN of …)` head at `decl` (the
+   * token after the keyword) declares: no parameter list or `catch` binds it there, no function
+   * between them has a parameter of the name, and the innermost declaration visible at k is that
+   * head's.
+   */
+  private loopVariableAt(k: number, name: string, decl: number): boolean {
+    if (this.catchBinds(k, name) || this.parameterListBinds(k, name)) return false;
+    const home = this.enclosing(decl);
+    for (let d = this.enclosing(k), guard = 0; d !== home; guard++) {
+      if (!d || guard >= 64) return false;
+      if (this.paramIndex(d, name) !== -1) return false;
+      d = this.enclosing(d.paramsAt - 1);
+    }
+    let best: { name: number; word: number; from: number; to: number } | null = null;
+    for (const b of this.bindingSites(name))
+      if (b.from <= k && k <= b.to && (!best || b.from >= best.from)) best = b;
+    return best !== null && (best.name === decl || best.word === decl - 1);
   }
 
   /**
