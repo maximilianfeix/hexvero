@@ -1021,6 +1021,12 @@ const RC_PRELOADS: Record<string, { source: string; members: string[] }> = {
       'const api = { a: () => ipcRenderer.send("a") };\nlet n = 0;\nwhile (n++ < 2) { if (n === 2) { contextBridge.exposeInMainWorld("api", api); break; } api.w = () => ipcRenderer.send("whilew"); }\n',
     members: ["api.a a", "api.null null"],
   },
+  calledTwice: {
+    source:
+      'const api = {};\nfunction expose() { contextBridge.exposeInMainWorld("api", api); }\nif (process.env.EARLY) expose();\napi.c = () => ipcRenderer.send("c-cond");\nif (!process.env.EARLY) expose();\n',
+    // written between two calls: exposed by the later one or not, as the conditions decide
+    members: ["api.null null"],
+  },
   reassigned: {
     source:
       'let api = { old: () => ipcRenderer.send("old") };\napi = { neu: () => ipcRenderer.send("neu") };\napi.more = () => ipcRenderer.send("more");\ncontextBridge.exposeInMainWorld("api", api);\n',
@@ -1072,4 +1078,52 @@ describe("the in-file replacement check of a large bundle (RC 7)", () => {
       'const { ipcMain } = require("electron");\nclass Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst w = new Ipc();\nw.handle = () => {};\nmodule.exports = { w };\n';
     expect(codes(analyze({ "main.js": main }))).not.toContain("wrapper_method_replaced");
   });
+});
+
+// RC re-review of #207: a replacement through a computed key that is a string constant, or a
+// loop over a list of strings, blocks that method in the wrapper's own file as across modules.
+const KEYED: Record<string, string> = {
+  constant:
+    'class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst a = new Ipc();\nconst k = "handle";\na[k] = () => {};\na.handle("keyed:const", () => 1);\n',
+  prototype:
+    'class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst k = "handle";\nIpc.prototype[k] = function () {};\nconst a = new Ipc();\na.handle("keyed:proto", () => 1);\n',
+  loop: 'class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } on(ch, fn) { ipcMain.on(ch, fn); } }\nfor (const m of ["handle", "on"]) Ipc.prototype[m] = function () {};\nconst a = new Ipc();\na.handle("keyed:loop", () => 1);\n',
+};
+
+describe("a wrapper method replaced through a computed key that is read (RC)", () => {
+  for (const [name, body] of Object.entries(KEYED))
+    for (const how of BUILDS)
+      it(`${name} (${how})`, () => {
+        const main = `const { ipcMain } = require("electron");\n${body}module.exports = {};\n`;
+        const info = analyze(build({ "main.js": main }, ["main.js"], how));
+        expect(rows(info).filter((r) => r.startsWith("keyed:"))).toEqual([]);
+        expect(codes(info)).toContain("wrapper_method_replaced");
+      });
+  for (const how of BUILDS)
+    it(`from another module, as one bundle (${how})`, () => {
+      const info = analyze(
+        build(
+          {
+            "ipc.js":
+              'const { ipcMain } = require("electron");\nclass Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nmodule.exports = { Ipc };\n',
+            "main.js":
+              'const { Ipc } = require("./ipc");\nconst k = "handle";\nIpc.prototype[k] = function () {};\nnew Ipc().handle("keyed:xmod", () => 1);\n',
+          },
+          ["main.js"],
+          how,
+        ),
+      );
+      expect(rows(info).filter((r) => r.startsWith("keyed:"))).toEqual([]);
+      expect(codes(info)).toContain("wrapper_method_replaced");
+    });
+  for (const how of BUILDS)
+    it(`a key that cannot be read leaves the file unchecked (${how})`, () => {
+      const main =
+        'const { ipcMain } = require("electron");\nclass Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst a = new Ipc();\na[process.env.M] = () => {};\na.handle("keyed:unknown", () => 1);\nmodule.exports = {};\n';
+      const info = analyze(build({ "main.js": main }, ["main.js"], how));
+      expect(rows(info).filter((r) => r.startsWith("keyed:"))).toEqual([
+        "keyed:unknown ipcMain.handle main.js",
+      ]);
+      expect(codes(info)).toContain("wrapper_replacements_unchecked");
+    });
 });

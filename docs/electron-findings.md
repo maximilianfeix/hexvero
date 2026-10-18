@@ -422,9 +422,12 @@ the file itself the writes are read only where a call of a wrapper method in tha
 row, and a write whose receiver is not read within the file's replacement budget (200,000 steps;
 the largest bundle of Discord, Claude.app and Electron Fiddle needs 86,000) proves nothing: the
 calls are read as before that check, and the limitation `wrapper_replacements_unchecked` names
-the file. So does a computed member write in the wrapper's own file (`this[key] = value` in a
-setter of the class, as Electron Fiddle's `AppState` and got's `Request` have): it may replace a
-method, which is not proven, and the calls are read. A write to another object of the same method name (`srv.handle = f`, lodash's
+the file. So does a computed member write in the wrapper's own file whose key is not read
+(`this[key] = value` in a setter of the class, as Electron Fiddle's `AppState` and got's
+`Request` have): it may replace a method, which is not proven, and the calls are read. A key
+that is one string constant bound by scope (`const k = "handle"; Ipc.prototype[k] = f`) or a
+loop over a list of strings (`for (const m of ["handle", "on"]) Ipc.prototype[m] = f`) replaces
+those methods there, as it does across modules. A write to another object of the same method name (`srv.handle = f`, lodash's
 `_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
 so a call there may still be read although the method was replaced: a replacement through a
 global (`window.__s.save = f` with `window.__s` set elsewhere), through `require.cache`, through
@@ -762,8 +765,10 @@ call is in a function that runs from the top of the file, the writes at the top 
 against where it runs from: a function declared there whose every other mention is at the top
 (`function expose() {…}` and `expose();`, `setTimeout(later, 0)`), or a function written in
 place there (a listener `window.addEventListener("DOMContentLoaded", () => {…})`,
-`process.once("loaded", …)`, an IIFE). A write at the top before that place is a member; one
-after a call `expose()` is not exposed; one after a listener or a function handed on may run
+`process.once("loaded", …)`, an IIFE). A write at the top before that place is a member (before the
+first call, when it is called more than once); one between two calls (`if (a) expose(); api.c =
+…; if (!a) expose();`) may be exposed by the later call or not, and gives one entry with
+`member: null`; one after the last call `expose()` is not exposed; one after a listener or a function handed on may run
 before it or not, and gives one entry with `member: null`. A write in a function that runs from
 the top before the exposure (`setup()` called there, also a function declared below and
 hoisted, an IIFE) is a member as well. A write in a loop that the call is in too (`for (…) { if

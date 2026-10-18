@@ -317,6 +317,37 @@ export class WrapperReader {
     };
   }
 
+  /**
+   * The strings the name at k stands for: one declaration `NAME = "…"` it is bound to by scope
+   * and never assigned again, or the head of a `for (const NAME of ["a", "b"])` around k. Null
+   * for anything else (a parameter, a computed value).
+   */
+  private keyStrings(k: number): string[] | null {
+    const t = this.tokens[k];
+    if (t?.type !== "ident") return null;
+    const { r } = this;
+    const near = r.boundAround(k, t.value);
+    if (near?.kind === "param") return null;
+    const site = near?.kind === "local" ? near.site : undefined;
+    if (site && this.is(site.name + 1, "ident", "of") && this.punct(site.name + 2, "[")) {
+      // `for (const m of ["handle", "on"]) …`: every element a string literal
+      const open = site.name + 2;
+      const close = r.closeOf(open);
+      if (close === -1 || !this.punct(close + 1, ")")) return null;
+      const out: string[] = [];
+      for (let j = open + 1; j < close; j += 2) {
+        if (!this.is(j, "string") || !(this.punct(j + 1, ",") || j + 1 === close)) return null;
+        out.push(this.tokens[j]!.value);
+      }
+      return out.length ? out : null;
+    }
+    const bound = r.binding(k, t.value);
+    if (bound?.kind !== "value") return null;
+    if (near && (near.kind !== "local" || near.site?.name !== bound.range[0] - 2)) return null;
+    const init = this.tokens[bound.range[0]];
+    return bound.range[1] === bound.range[0] + 1 && init?.type === "string" ? [init.value] : null;
+  }
+
   /** The line of token k. */
   lineOf(k: number): number {
     return this.tokens[k]?.line ?? 0;
@@ -489,10 +520,16 @@ export class WrapperReader {
         if (start === null) continue;
         const classes = owners(start, j);
         if (classes === "budget") add(anyOf(null), null, j, true);
-        // In the wrapper's own file such a write is mostly the class setting its own fields
-        // (`this[key] = value` in a setter): it may replace a method, which is not proven, so
-        // the file counts as not checked whole instead of every method as replaced.
-        else add(classes, null, j, ownFile);
+        else if (ownFile) {
+          // In the wrapper's own file: a key that is one string constant (`const k = "handle";
+          // a[k] = f`) or a loop over a list of strings (`for (const m of ["handle", "on"])
+          // P[m] = f`) replaces those methods. Any other key is mostly the class setting its own
+          // fields (`this[key] = value` in a setter): it may replace a method, which is not
+          // proven, so the file counts as not checked whole instead of every method as replaced.
+          const keys = close === j + 2 ? this.keyStrings(j + 1) : null;
+          if (keys) for (const key of keys) add(classes, key, j);
+          else add(classes, null, j, true);
+        } else add(classes, null, j);
         continue;
       }
       // `Object.assign(R, {…})`, `Object.defineProperty(R, "NAME", …)`, `Reflect.set(R, "NAME", …)`,

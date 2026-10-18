@@ -2526,24 +2526,25 @@ export function bridgeMembers(
       /**
        * Where a function of the top of the file runs, when every use of it is there: a function
        * declared (`function setup() {…}`, `const go = () => {…}`) whose every other mention is at
-       * the top, not inside a function (`direct`: the first is a call `go()`; else it is handed
-       * on, `setTimeout(later)`, and runs later), or a function written in place at the top (a
+       * the top, not inside a function (`at` the first mention, `last` the last; `direct`: every
+       * one is a call `go()`; else it is handed on, `setTimeout(later)`, and runs later), or a
+       * function written in place at the top (a
        * listener `window.addEventListener("DOMContentLoaded", () => {…})`, an IIFE): it runs from
        * where it is written, at once or later (`registered`). Null otherwise.
        */
-      const runsAt = (def: FnDef): { at: number; direct: boolean } | null => {
+      const runsAt = (def: FnDef): { at: number; last: number; direct: boolean } | null => {
         if (r.outerOf(def)) return null;
         const name = def.name;
         const declared =
           name !== null &&
           (tokens[def.paramsAt - 2]?.value === "function" ||
             (is(def.paramsAt - 1, "=") && tokens[def.paramsAt - 2]?.value === name));
-        if (!declared) return { at: def.paramsAt, direct: false };
+        if (!declared) return { at: def.paramsAt, last: def.paramsAt, direct: false };
         const uses = r
           .namePositions(name)
           .filter((j) => j !== def.paramsAt - 1 && j !== def.paramsAt - 2 && !is(j - 1, "."));
         if (!uses.length || uses.some((j) => r.functionAt(j))) return null;
-        return { at: uses[0]!, direct: is(uses[0]! + 1, "(") };
+        return { at: uses[0]!, last: uses.at(-1)!, direct: uses.every((j) => is(j + 1, "(")) };
       };
       /** A function written where it is called: `(function () {…})()`, `(() => {…})()`. */
       const iife = (def: FnDef): boolean => {
@@ -2598,6 +2599,9 @@ export function bridgeMembers(
         // the exposure runs from the top of the file: a write at the top, before that place
         if (exposedFrom && homeAt === -1) {
           if (k < exposedFrom.at && k > replacedAt) return "before";
+          // between two calls (`if (a) expose(); api.c = …; if (!a) expose();`): exposed by the
+          // later one, or not, as the conditions decide
+          if (k < exposedFrom.last) return "elsewhere";
           return exposedFrom.direct ? "after" : "elsewhere";
         }
         // a write in a function that runs from the top before the exposure (`setup()` called
