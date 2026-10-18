@@ -110,10 +110,11 @@ Real apps: Discord gains two true `webContents.send` senders; Electron Fiddle lo
 
 ## 6. Open at the end
 
-- **H, `sprint2/h-http`** (`~/hexvero-s2-h-http`, commits up to `ca1a6c8` plus uncommitted work):
-  R6's conditions — the write cap's wording and the rows it costs in minified code (one Claude.app
-  row), a write before a later inner declaration charged to the outer binding, docs. Then a short
-  R6 look, rebase onto main (JS_SCAN_SCHEMA 24 once #191 has 23), PR, release.
+- **H, `sprint2/h-http`** (pushed, `2b23cef`, not merged): H met R6's conditions in a third round
+  at the very end (own-scope writes no longer charged to the write cap, a limitation of its own
+  `client_writes_skipped`, writes resolved against their own scope first; the Claude.app row is
+  back; gates green; holdout endpoints 36/6/0 → 39/3/0, other sets unchanged). Still needed: R6's
+  short look at `2b23cef`, then rebase onto main (JS_SCAN_SCHEMA 24, #191 has 23), PR, merge.
 - **0.9.9**: release #191 (and H) on a quiet machine; the timing gates are meaningless under load.
 - The test "an importer growing between two builds changes no row" takes 18.7–20.6 s on the
   Windows runner against a 20 s limit: make its fixture smaller (the property it checks does not
