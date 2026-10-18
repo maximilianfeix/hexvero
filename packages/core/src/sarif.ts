@@ -68,6 +68,12 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       full: "The main process calls enable() of @electron/remote/main for a window (or every webContents, or one a helper is handed) that the previous build did not enable it for. Pages there reach main-process modules and objects through the remote module. A row the comparison could not decide is reported as unknown.",
       help: "Replace the remote calls with IPC handlers that do the one thing the page needs. If enabling it is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
     },
+    "new-unsafe-switch": {
+      name: "NewUnsafeSwitch",
+      short: "The build newly weakens a process-wide security check.",
+      full: "The main process appends a Chromium command-line switch that weakens a security boundary (ignore-certificate-errors, disable-web-security, no-sandbox, remote-debugging-port and the others listed in hexvero's Electron findings), a certificate-error handler accepts certificate errors (callback(true)), or a certificate verify proc reports success (callback(0)), and the previous build did not. A switch whose name or value hexvero could not read is reported as unknown.",
+      help: "Remove the switch or the accepting call, or limit it to development builds. If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
   };
 
 const uriOf = (file: string): string =>

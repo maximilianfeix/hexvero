@@ -205,6 +205,7 @@ describe("list meanings", () => {
       "bridgeExposures",
       "navigationHandlers",
       "remoteEnabled",
+      "switches",
       "webPreferences",
       "endpoints",
       "storage",

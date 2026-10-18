@@ -27,6 +27,8 @@ export const RULE: Record<string, string> = {
   "fuse-weakened":
     "a packaged build's runtime less locked down: a fuse, the ASAR integrity record, end of support",
   "remote-enabled": "@electron/remote newly enabled for a webContents",
+  "new-unsafe-switch":
+    "a dangerous command-line switch, or certificate errors accepted, that the before build did not have",
 };
 
 const STATE: Record<PolicyFinding["state"], string> = {

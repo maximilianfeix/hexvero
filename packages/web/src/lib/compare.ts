@@ -276,6 +276,8 @@ export const MEANING: Record<string, string> = {
     "setWindowOpenHandler and will-navigate handlers as written; whether they check URLs is not read",
   remoteEnabled:
     "@electron/remote enable and initialize calls, and files that load it; whose webContents is named where read",
+  switches:
+    "Chromium command-line switches, accepted certificate errors, custom certificate verification and security warnings turned off",
   webPreferences: "webPreferences keys as written in the code",
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",

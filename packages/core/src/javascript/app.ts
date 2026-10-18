@@ -37,6 +37,20 @@ import {
   type Token,
 } from "./scan.js";
 import { summarizeSourceMap } from "./sourcemap.js";
+import { keepSwitchRows, MAX_SWITCHES_PER_FILE, switchRows, type SwitchRow } from "./switches.js";
+export type { SwitchRow } from "./switches.js";
+
+/** A dangerous `switches` row in the words of the finding's title. */
+const unsafeSwitchLabel = (r: SwitchRow): string =>
+  r.kind === "switch" || r.kind === "argument"
+    ? `--${(r.name ?? "").replace(/^-+/, "")}${r.value !== null ? `=${r.value}` : ""}`
+    : r.kind === "certificate-error"
+      ? `certificate errors accepted${r.accepts === "conditional" ? " under a condition" : ""}`
+      : `custom certificate verification (${r.accepts === "always" ? "accepts every certificate" : "accepts some"})`;
+
+/** A file that contains none of these has no `switches` row. */
+const SWITCH_PROBE =
+  /appendSwitch|appendArgument|certificate-error|setCertificateVerifyProc|ELECTRON_DISABLE_SECURITY_WARNINGS/;
 import {
   keyCallRows,
   linkKeyWrappers,
@@ -5236,6 +5250,8 @@ export interface JsAppInfo {
   navigationHandlers: NavigationHandler[];
   /** `@electron/remote` turned on (`enable`, `initialize`) or loaded (`use`), with file and line. */
   remoteEnabled: RemoteEnable[];
+  /** Command-line switches, accepted certificate errors, verify procs, security warnings off. */
+  switches: SwitchRow[];
   ipcChannels: Array<{
     channel: string;
     senders: string[];
@@ -5291,7 +5307,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 33;
+export const JS_SCAN_SCHEMA = 34;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -5337,6 +5353,7 @@ export interface JsScanFacts {
   bridgeForwarders?: BridgeForwarder[];
   navigationHandlers: NavigationHandler[];
   remoteEnabled?: RemoteEnable[];
+  switches?: SwitchRow[];
   endpoints: AppCandidate[];
   storage: AppCandidate[];
   urls: AppCandidate[];
@@ -5357,6 +5374,8 @@ export interface JsScanFacts {
   navigationCapped?: boolean;
   /** A file had more `@electron/remote` rows than are kept. */
   remoteCapped?: boolean;
+  /** A file or the app had more `switches` rows than are kept. */
+  switchesCapped?: boolean;
   /** Files with more calls of their own storage wrappers than are read, and the first five. */
   keyCallsCapped?: number;
   keyCallsCappedFiles?: string[];
@@ -5387,6 +5406,7 @@ export function emptyJsScanFacts(): JsScanFacts {
     bridgeExposures: [],
     navigationHandlers: [],
     remoteEnabled: [],
+    switches: [],
     endpoints: [],
     storage: [],
     urls: [],
@@ -5840,6 +5860,7 @@ export interface FileTokenFacts {
   bridge: ReturnType<typeof bridgeMembers> | null;
   navigation: NavigationHandler[] | null;
   remote: { rows: RemoteEnable[]; capped: boolean } | null;
+  switches?: { rows: SwitchRow[]; capped: boolean } | null;
   /** Methods of the file's storage wrappers the file replaces (`Class.method:line`, at most 20). */
   keyReplaced?: string[];
   /** Writes that may replace one of them were not all read within the budget. */
@@ -5880,6 +5901,7 @@ export function readFileTokens(
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
   let navigation: NavigationHandler[] | null = null;
   let remote: { rows: RemoteEnable[]; capped: boolean } | null = null;
+  let switches: { rows: SwitchRow[]; capped: boolean } | null = null;
   const scan = scanJavaScript(source, {
     ...(maxTokens === undefined ? {} : { maxTokens }),
     onTokens: (tokens, truncated, context) => {
@@ -6388,6 +6410,13 @@ export function readFileTokens(
           new Set(ranges.flatMap((r) => (r.window !== null && r.name ? [r.name] : []))),
           new ExpressionResolver(tokens, context.constants),
         );
+      if (SWITCH_PROBE.test(source))
+        switches = switchRows(
+          tokens,
+          path,
+          new ExpressionResolver(tokens, context.constants),
+          context.constants,
+        );
       if (!source.includes("exposeIn")) return;
       bridge = bridgeMembers({ tokens, truncated, context }, path);
     },
@@ -6409,6 +6438,7 @@ export function readFileTokens(
     ...(ownKeyUnchecked ? { keyUnchecked: true as const } : {}),
     bridge,
     navigation,
+    switches,
     remote,
   };
 }
@@ -6691,6 +6721,12 @@ export function analyzeJavaScriptTree(
       rows.push(...tokenFacts.remote.rows.slice(0, left));
       if (tokenFacts.remote.capped || tokenFacts.remote.rows.length > left)
         facts.remoteCapped = true;
+    }
+    if (tokenFacts.switches) {
+      // past the cap only rows known to be harmless are dropped (keepSwitchRows)
+      const rows = (facts.switches ??= []);
+      if (keepSwitchRows(rows, tokenFacts.switches.rows, MAX_PREFS) || tokenFacts.switches.capped)
+        facts.switchesCapped = true;
     }
     if (tokenFacts.keyReplaced)
       fileLimitation(facts, file.path, {
@@ -7358,6 +7394,7 @@ export function analyzeJavaScriptTree(
   const bridgeExposures = facts.bridgeExposures ?? [];
   const navigation = facts.navigationHandlers ?? [];
   const remote = facts.remoteEnabled ?? [];
+  const switchList = facts.switches ?? [];
   // An unreadable entry whose value is itself a privileged object is established as such; any
   // other one may expose anything, which is said rather than reading "none exposed".
   const unestablished = contextBridge.filter(
@@ -7386,6 +7423,11 @@ export function analyzeJavaScriptTree(
     limitations.push({
       code: "remote_enabled_truncated",
       message: `More @electron/remote calls exist than the ${MAX_REMOTE_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a webpack module of it is required under more than ${MAX_WEBPACK_NAMES} names in one file (collection remoteEnabled).`,
+    });
+  if (facts.switchesCapped)
+    limitations.push({
+      code: "switches_truncated",
+      message: `More command-line switch and certificate rows exist than the ${MAX_SWITCHES_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection switches).`,
     });
   if (facts.navigationCapped)
     limitations.push({
@@ -8027,6 +8069,19 @@ export function analyzeJavaScriptTree(
         location: `${first.file}:${first.line}`,
       });
     }
+    const unsafe = switchList.filter((r) => r.dangerous === true);
+    if (unsafe.length) {
+      findings.push({
+        kind: "electron.unsafe-switch",
+        title: `Security checks weakened process-wide: ${list([...new Set(unsafe.map(unsafeSwitchLabel))], 4)}`,
+        detail: `${list(
+          unsafe.map((r) => `${r.evidence} at ${r.file}:${r.line}`),
+          4,
+        )} (collection switches). ${list([...new Set(unsafe.flatMap((r) => (r.reason ? [r.reason] : [])))], 4)}.`,
+        confidence: "inferred",
+        location: `${unsafe[0]!.file}:${unsafe[0]!.line}`,
+      });
+    }
     if (ipcChannels.length) {
       // evidence: the first handler registration in the main process
       const first = modules
@@ -8220,6 +8275,7 @@ export function analyzeJavaScriptTree(
     bridgeExposures,
     navigationHandlers: navigation,
     remoteEnabled: remote,
+    switches: switchList,
     endpoints,
     storage,
     urls: facts.urls,

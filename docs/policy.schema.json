@@ -20,7 +20,7 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "description": "One entry per rule. A rule that is not listed runs at level fail, except new-bridge-exposure (added in 0.9.7), fuse-weakened and remote-enabled (added after 0.9.9), which run at warn when not listed.",
+      "description": "One entry per rule. A rule that is not listed runs at level fail, except new-bridge-exposure (added in 0.9.7), fuse-weakened and remote-enabled (added after 0.9.9) and new-unsafe-switch (added after 0.10.1), which run at warn when not listed.",
       "properties": {
         "new-interface-member": {
           "$ref": "#/$defs/rule"
@@ -53,6 +53,9 @@
         },
         "remote-enabled": {
           "$ref": "#/$defs/rule"
+        },
+        "new-unsafe-switch": {
+          "$ref": "#/$defs/rule"
         }
       }
     },
@@ -75,7 +78,8 @@
               "window-more-permissive",
               "new-bridge-exposure",
               "fuse-weakened",
-              "remote-enabled"
+              "remote-enabled",
+              "new-unsafe-switch"
             ]
           },
           "fingerprint": {

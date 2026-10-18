@@ -345,6 +345,16 @@ Rules:
   window, every webContents (`web-contents-created`), one a helper is handed, or another receiver,
   the before build did not enable (in any file). A row the comparison could not decide is an
   unknown finding. Added after 0.9.9: a policy that does not list it runs it at `warn`.
+- **`new-unsafe-switch`**: A process-wide security check the after build newly weakens: a row
+  of `switches` (see [Electron findings](electron-findings.md#command-line-switches-and-certificate-checks-switches))
+  that is dangerous — a Chromium switch such as `ignore-certificate-errors`,
+  `disable-web-security`, `no-sandbox` or `remote-debugging-port` (by name and value), a
+  `certificate-error` handler that calls `callback(true)` (always or under a condition), or a
+  certificate verify proc that reports `0` — and that no row of the before build has. A switch
+  whose name or value is not read, or a handler that is not read, is an unknown finding; a side
+  whose `switches` list is capped (`switches_truncated`) leaves the rule undecidable
+  (`values_unresolved`). Added
+  after 0.10.1: a policy that does not list it runs it at `warn`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
 app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a
