@@ -1,9 +1,13 @@
 {
   "name": "@hexvero/mcp",
   "version": "0.9.9",
-  "description": "Compact Model Context Protocol server for hexvero analyzers.",
+  "description": "MCP server for hexvero: lets a coding agent diff two Electron releases and inspect app.asar, IPC, contextBridge and binaries, with file and line, without running them.",
   "keywords": [
+    "asar",
+    "diff",
+    "electron",
     "hexvero",
+    "ipc",
     "mcp",
     "mcp-server",
     "reverse-engineering",

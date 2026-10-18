@@ -41,7 +41,8 @@ import {
 
 export const VERSION = "0.9.9";
 
-const HELP = `hexvero ${VERSION} — the first look at a binary or app bundle, locally.
+const HELP = `hexvero ${VERSION} — Electron release diff for security review: IPC, bridge, windows, hosts.
+Also inspects binaries and other app formats. Reads files only; nothing is executed.
 
 Usage: hexvero <command> [options]
 
