@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # A Release run started by hand is a rehearsal that publishes nothing: follow only tag pushes.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,6 +35,6 @@ jobs:
       - name: server.json names the published npm version
         run: |
           version=$(node -p "require('./server.json').version")
-          test "$(npm view hexvero@$version mcpName)" = "$(node -p "require('./server.json').name")"
+          test "$(npm view "hexvero@${version}" mcpName)" = "$(node -p "require('./server.json').name")"
       - run: ./mcp-publisher login github-oidc
       - run: ./mcp-publisher publish
