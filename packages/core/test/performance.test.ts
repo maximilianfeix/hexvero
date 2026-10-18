@@ -40,12 +40,11 @@ describe("JavaScript scan performance", () => {
 
   it("tokenizes punctuation, strings and identifiers as before", () => {
     const { tokens } = tokenize(
-      `a>>>=b; c ??= d?.e; f **= 2; g !== h; ...i; j=>k; 'it\\'s' "a\\"b" \\u0041 ä𝒳1 $_ x.y`,
+      `a>>>=b; c ??= d?.e; f **= 2; g !== h; ...i; j=>k; 'it\\'s' "a\\"b" \\u0041 ä𝒳1 $_ x.y; l%=m&=n|=o^=p>>>q`,
     );
     expect(tokens.map((t) => t.value)).toEqual([
       "a",
-      ">>>",
-      "=",
+      ">>>=",
       "b",
       ";",
       "c",
@@ -78,6 +77,19 @@ describe("JavaScript scan performance", () => {
       "x",
       ".",
       "y",
+      ";",
+      // every compound assignment is one token (#198), `>>>` without `=` still a shift
+      "l",
+      "%=",
+      "m",
+      "&=",
+      "n",
+      "|=",
+      "o",
+      "^=",
+      "p",
+      ">>>",
+      "q",
     ]);
     // an unterminated string ends at the line end and keeps everything up to it
     // (with its escapes decoded: `\n` is a line break)

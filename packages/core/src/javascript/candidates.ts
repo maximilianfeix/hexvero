@@ -17,6 +17,7 @@
 import { Constants, resolveAliases } from "./aliases.js";
 import { builtIdentifierIndex, ExpressionResolver, type WrapperCalls } from "./resolve.js";
 import type { Token } from "./scan.js";
+import { ASSIGNMENT_OPERATORS } from "./writes.js";
 
 const OWN_TARGETS: ReadonlySet<string> = new Set(["fetch", "localStorage", "sessionStorage"]);
 
@@ -258,25 +259,7 @@ const STORE_OPS: Record<string, Candidate["op"]> = {
   set: "write",
   delete: "delete",
 };
-/** `=` and the compound assignments: what `/^([-+*\/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/` matches. */
-const WRITE_OPERATORS = new Set([
-  "=",
-  "+=",
-  "-=",
-  "*=",
-  "/=",
-  "%=",
-  "&=",
-  "|=",
-  "^=",
-  "**=",
-  "<<=",
-  ">>=",
-  ">>>=",
-  "&&=",
-  "||=",
-  "??=",
-]);
+const WRITE_OPERATORS = ASSIGNMENT_OPERATORS;
 const ABSOLUTE = /^(https?|wss?):\/\/[^\s"'<>]{3,}/i;
 
 const is = (t: Token | undefined, type: Token["type"], value?: string): boolean =>

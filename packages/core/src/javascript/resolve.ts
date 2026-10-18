@@ -35,6 +35,17 @@
  */
 import type { Constants } from "./aliases.js";
 import type { Token } from "./scan.js";
+import {
+  ASSIGNMENT_OPERATORS,
+  bindingAt,
+  chainEnd,
+  declaredAt,
+  keyOrLabelAt,
+  patternSourceAt,
+  shadowedAt,
+  writesMember,
+  writesName,
+} from "./writes.js";
 
 /** How a value was obtained, from the most direct to the most indirect. */
 export type ResolveMethod =
@@ -188,6 +199,18 @@ const MAX_NESTING = 64;
 const UNKNOWN: Val = { kind: "unknown" };
 /** Methods that change the list or map they are called on. */
 const MUTATORS = /^(push|pop|shift|unshift|splice|set|delete|clear|fill|copyWithin|sort|reverse)$/;
+/** Built-in functions a list method may be given that change nothing of an element. */
+const READ_ONLY_CALLBACKS: ReadonlySet<string> = new Set([
+  "String",
+  "Boolean",
+  "Number",
+  "parseInt",
+  "parseFloat",
+  "encodeURIComponent",
+  "decodeURIComponent",
+  "encodeURI",
+  "decodeURI",
+]);
 /** Words that make what follows them in a loop round conditional (see `conditionalBefore`). */
 const CONTROL_WORDS: ReadonlySet<string> = new Set([
   "if",
@@ -204,20 +227,8 @@ const CONTROL_WORDS: ReadonlySet<string> = new Set([
   "try",
 ]);
 const CONTROL_PUNCT: ReadonlySet<string> = new Set(["?", "&&", "||", "??"]);
-/** The tokens that assign to what is before them (`|=`, `&=`, `^=`, `%=` are two tokens). */
-const ASSIGNS: ReadonlySet<string> = new Set([
-  "=",
-  "+=",
-  "-=",
-  "*=",
-  "/=",
-  "**=",
-  "<<=",
-  ">>=",
-  "&&=",
-  "||=",
-  "??=",
-]);
+/** The tokens that assign to what is before them: `=` and every compound assignment. */
+const ASSIGNS = ASSIGNMENT_OPERATORS;
 /** Names whose value exists only at run time; reading one says so in the reason. */
 const RUNTIME = new Set([
   "Math",
@@ -343,6 +354,8 @@ interface Structure {
   topDecls: Map<string, [number, number] | null> | null;
   /** The same declarations before later writes are taken into account (see `binding`). */
   topDeclsLoose: Map<string, [number, number] | null> | null;
+  /** Names a member of which is written through another name for them (`const U = T; U.a = …`). */
+  writtenThrough: Set<string> | null;
   topPatterns: Map<string, { key: string; from: [number, number] } | null>;
   classes: Array<{ name: string; start: number; end: number }> | null;
   /** Positions of every identifier by name. */
@@ -491,6 +504,7 @@ export class ExpressionResolver {
         declCache: new Map(),
         topDecls: null,
         topDeclsLoose: null,
+        writtenThrough: null,
         topPatterns: new Map(),
         classes: null,
         names: null,
@@ -957,12 +971,20 @@ export class ExpressionResolver {
       // its own parameter or declaration of it
       if (/^(const|let|var|function|class)$/.test(this.tokens[j - 1]?.value ?? "")) continue;
       if (this.boundBetween(j, name, owner)) continue;
+      // no use of this binding: a parameter, a `catch` binding or a pattern element of its own
+      // (`function h(T)`, `(a, T) => a`, `const { a: T } = o`), an object key, a class member, a
+      // label (`T: for (;;) { break T }`), or a use inside a function that binds the name again
+      if (bindingAt(this.tokens, j) || keyOrLabelAt(this.tokens, j)) continue;
+      if (shadowedAt(this.tokens, j, name)) continue;
       if (this.is(j - 1, "ident", "delete")) return true;
       if (this.punct(j - 1, "++") || this.punct(j - 1, "--")) return true;
       // read only: `typeof T`, `...T`, `for (… of T)`, `k in T`, a call of it `T(…)`
       if (/^(typeof|of|in)$/.test(this.tokens[j - 1]?.value ?? "") || this.punct(j - 1, "..."))
         continue;
       if (this.punct(j + 1, "(")) continue;
+      // a write through the whole chain of members (`list[0].channel = …`, `T.a.b += …`,
+      // `[T.a] = …`), a mutating method on a member (`list[0].push(…)`), `Object.assign(T.a, …)`
+      if (this.writesAt(j)) return true;
       // a key read, unless it is written
       let after = -1;
       if ((this.punct(j + 1, ".") || this.punct(j + 1, "?.")) && this.is(j + 2, "ident"))
@@ -985,7 +1007,19 @@ export class ExpressionResolver {
           return true;
         continue;
       }
+      // what only tests or compares it, and the source of a destructuring
+      if (this.testedAt(j) || patternSourceAt(this.tokens, j)) continue;
       if (this.exportedAt(j)) continue;
+      // handed on as a value that goes nowhere that can write it: `const L = [T]` with L
+      // unchanged, `return T` from a function whose every result only feeds reads
+      if (
+        depth < 3 &&
+        this.handedOnAt(
+          j,
+          (alias, at) => alias !== name && !this.changedIn(alias, at, from, to, owner, depth + 1),
+        )
+      )
+        continue;
       if (this.externalConstructorArgument(j)) continue;
       if (this.assignSource(j)) continue;
       // `Object.freeze(T)`, `console.info("x", T)`, `JSON.stringify(T)`, …: a whole argument of a
@@ -998,6 +1032,17 @@ export class ExpressionResolver {
         this.tokens[j + 1]?.type === "template"
       )
         continue;
+      // `const X2 = T;`, `const y = T || {}`, `const z = x ? T : null`: another name for it,
+      // which changes it only where that name is changed
+      const alias = depth < 3 ? this.aliasAt(j) : null;
+      if (alias !== null) {
+        if (
+          alias.name !== name &&
+          !this.changedIn(alias.name, alias.at, from, to, owner, depth + 1)
+        )
+          continue;
+        return true;
+      }
       // an argument of a function of this file that only reads that parameter
       const arg = this.localCallArgument(j);
       if (arg && depth < 3) {
@@ -1012,6 +1057,186 @@ export class ExpressionResolver {
       return true;
     }
     return false;
+  }
+
+  /**
+   * The name at j is only tested or compared: `!T`, `T === x` (also `==`, `!=`, `!==`, `<`, `>`,
+   * `<=`, `>=`, `instanceof`), `case T:`, or a whole operand of the condition of `if (…)` /
+   * `while (…)` (`if (T)`, `if (T && T.A)`).
+   */
+  private testedAt(j: number): boolean {
+    const before = this.tokens[j - 1];
+    const after = this.tokens[j + 1];
+    const COMPARE = /^(===|!==|==|!=|<|>|<=|>=)$/;
+    if (before?.type === "punct" && (before.value === "!" || COMPARE.test(before.value)))
+      return true;
+    if (after?.type === "punct" && COMPARE.test(after.value)) return true;
+    if (this.is(j + 1, "ident", "instanceof")) return true;
+    if (this.is(j - 1, "ident", "case") && this.punct(j + 1, ":")) return true;
+    // a statement that only tests it, as minifiers write `if`: `T && f()`, `T || g()`, `T ? a() : b()`
+    if (
+      (!before || (before.type === "punct" && /^(;|\{|\})$/.test(before.value))) &&
+      after?.type === "punct" &&
+      /^(&&|\|\||\?\?|\?)$/.test(after.value)
+    )
+      return true;
+    // a whole operand of a condition
+    if (
+      !(before?.type === "punct" && /^(\(|&&|\|\||\?\?)$/.test(before.value)) ||
+      !(after?.type === "punct" && /^(\)|&&|\|\||\?\?)$/.test(after.value))
+    )
+      return false;
+    let open = j - 1;
+    for (let guard = 0; guard < 64 && open >= 0 && !this.punct(open, "("); guard++) {
+      const t = this.tokens[open]!;
+      if (t.type === "punct" && (t.value === ")" || t.value === "]" || t.value === "}")) {
+        open = this.opener[open]! - 1;
+        continue;
+      }
+      if (
+        t.type === "punct" &&
+        (t.value === "[" || t.value === "{" || t.value === ";" || t.value === ",")
+      )
+        return false;
+      open--;
+    }
+    return this.punct(open, "(") && /^(if|while)$/.test(this.tokens[open - 1]?.value ?? "");
+  }
+
+  /**
+   * The name at j handed on as a value that goes nowhere that can write it: an element of an
+   * array or object literal bound to a declaration (`const L = [T]`, `const W = { x: T }`) that
+   * `unchanged` says is not changed, or `return T` from a named function whose every call's
+   * result is discarded, destructured, or bound to a declaration `unchanged` accepts. Anything
+   * else (`[T][0].A = …`, `get().A = …`, `Object.assign(get(), …)`, a container passed to a
+   * call, a function handed around) may write it.
+   */
+  private handedOnAt(j: number, unchanged: (name: string, at: number) => boolean): boolean {
+    if (this.is(j - 1, "ident", "return")) {
+      const whole =
+        this.punct(j + 1, ";") ||
+        this.punct(j + 1, "}") ||
+        (this.tokens[j + 1]?.line ?? 0) > this.tokens[j]!.line;
+      return whole && this.resultsUnchanged(j, unchanged);
+    }
+    const before = this.tokens[j - 1];
+    const after = this.tokens[j + 1];
+    if (!(before?.type === "punct" && after?.type === "punct")) return false;
+    let open = -1;
+    if (/^(\[|,)$/.test(before.value) && /^(,|\])$/.test(after.value))
+      open = this.containerOf(j, "[");
+    else if (/^(\{|,|:)$/.test(before.value) && /^(,|\})$/.test(after.value))
+      open = this.containerOf(j, "{");
+    if (open < 0) return false;
+    const close = this.match[open]!;
+    if (close < 0) return false;
+    // `const L = [T];`, `var W = { x: T }, …`: the container under a name of its own
+    if (!this.punct(open - 1, "=") || !declaredAt(this.tokens, open - 2)) return false;
+    if (!this.valueEndsAt(close + 1, close)) return false;
+    return unchanged(this.tokens[open - 2]!.value, open - 2);
+  }
+
+  /** The token at k ends a declaration's value that ended at `last`: `;`, `,`, `}`, a line break. */
+  private valueEndsAt(k: number, last: number): boolean {
+    const t = this.tokens[k];
+    if (!t) return true;
+    if (t.type === "punct" && /^(;|,|\})$/.test(t.value)) return true;
+    return (
+      t.line > this.tokens[last]!.line && !(t.type === "punct" && /^(\.|\[|\(|\?\.)$/.test(t.value))
+    );
+  }
+
+  /** Call sites of a function read for `handedOnAt` before it gives up. */
+  private static readonly MAX_RESULT_SITES = 32;
+
+  /**
+   * The function around the `return` at j has a name, and every use of the name is a call whose
+   * result is discarded, destructured (`const { A } = get()`), or bound to a declaration that
+   * `unchanged` accepts (`const r = get()`).
+   */
+  private resultsUnchanged(j: number, unchanged: (name: string, at: number) => boolean): boolean {
+    const def = this.enclosing(j);
+    if (!def?.name || def.calledBy) return false;
+    const name = def.name;
+    let sites = 0;
+    for (const o of this.positions(name)) {
+      // the function's own name: `function get(`, `get() {`, `const get = …`
+      if (o === def.paramsAt - 1 || (declaredAt(this.tokens, o) && this.punct(o + 1, "=")))
+        continue;
+      if (this.is(o - 1, "ident", "function")) continue;
+      if (++sites > ExpressionResolver.MAX_RESULT_SITES || this.work-- <= 0) return false;
+      if (!this.punct(o + 1, "(")) return false;
+      const close = this.match[o + 1]!;
+      if (close < 0) return false;
+      const start =
+        this.punct(o - 1, ".") || this.punct(o - 1, "?.") ? this.receiverStart(o - 1) : o;
+      if (start === null) return false;
+      // discarded: `get();`
+      const lead = this.tokens[start - 1];
+      if (
+        (!lead || (lead.type === "punct" && /^(;|\{|\})$/.test(lead.value))) &&
+        this.valueEndsAt(close + 1, close)
+      )
+        continue;
+      if (!this.punct(start - 1, "=") || !this.valueEndsAt(close + 1, close)) return false;
+      // `const { A } = get()`: destructured, read only
+      if (this.punct(start - 2, "}") || this.punct(start - 2, "]")) {
+        const opened = this.opener[start - 2]!;
+        if (opened > 0 && /^(const|let|var)$/.test(this.tokens[opened - 1]?.value ?? "")) continue;
+        return false;
+      }
+      // `const r = get()`: r must be unchanged
+      if (!declaredAt(this.tokens, start - 2)) return false;
+      if (!unchanged(this.tokens[start - 2]!.value, start - 2)) return false;
+    }
+    return true;
+  }
+
+  /** The bracket of the kind `[` or `{` that holds the element at j directly, or -1. */
+  private containerOf(j: number, kind: "[" | "{"): number {
+    for (let i = j - 1, steps = 0; i >= 0 && steps < 4000; i--, steps++) {
+      const t = this.tokens[i]!;
+      if (t.type !== "punct") continue;
+      if (t.value === ")" || t.value === "]" || t.value === "}") {
+        i = this.opener[i]!;
+        if (i === -1) return -1;
+      } else if (t.value === "(" || t.value === "[" || t.value === "{")
+        return t.value === kind ? i : -1;
+    }
+    return -1;
+  }
+
+  /**
+   * The name at j is the value, or a whole branch of the value, of a declaration: `const X2 = T`,
+   * `const y = T || {}`, `const z = x ? T : null`. The declared name and its token, or null.
+   */
+  private aliasAt(j: number): { name: string; at: number } | null {
+    const before = this.tokens[j - 1];
+    const after = this.tokens[j + 1];
+    if (!(before?.type === "punct" && /^(=|\|\||&&|\?\?|\?|:)$/.test(before.value))) return null;
+    if (
+      after &&
+      !(after.type === "punct" && /^(;|,|\|\||&&|\?\?|:|\})$/.test(after.value)) &&
+      after.line === this.tokens[j]!.line
+    )
+      return null;
+    // back to the `=` of the declaration, within the same brackets
+    for (let i = j - 1, steps = 0; i >= 1 && steps < 64; i--, steps++) {
+      const t = this.tokens[i]!;
+      if (t.type === "punct" && (t.value === ")" || t.value === "]" || t.value === "}")) {
+        const o = this.opener[i]!;
+        if (o === -1) return null;
+        i = o;
+        continue;
+      }
+      if (t.type === "punct" && /^(;|,|\(|\[|\{)$/.test(t.value)) return null;
+      if (t.type === "punct" && t.value === "=") {
+        const declared = this.tokens[i - 1];
+        if (declared?.type !== "ident" || !declaredAt(this.tokens, i - 1)) return null;
+        return { name: declared.value, at: i - 1 };
+      }
+    }
+    return null;
   }
 
   /**
@@ -1044,10 +1269,14 @@ export class ExpressionResolver {
       if (base === "console") return true;
       if (base === "JSON") return name.value === "stringify";
       if (base === "Array") return name.value === "isArray";
-      if (base === "Object") return /^(freeze|isFrozen|keys|entries|values)$/.test(name.value);
+      if (base === "Object")
+        return /^(freeze|isFrozen|isSealed|isExtensible|keys|entries|values|getOwnPropertyNames|getOwnPropertyDescriptors|getOwnPropertySymbols)$/.test(
+          name.value,
+        );
       return false;
     }
-    return name.value === "String" && !this.punct(open - 2, ".");
+    // `String(T)`, `structuredClone(T)` (a copy: the table itself is not changed)
+    return /^(String|structuredClone)$/.test(name.value) && !this.punct(open - 2, ".");
   }
 
   /** A whole argument after the first of `Object.assign(target, …)`: read, never written. */
@@ -1189,6 +1418,9 @@ export class ExpressionResolver {
 
   /** Whether the name is assigned, changed or written to anywhere but at token `decl`. */
   private writtenElsewhere(name: string, decl: number): boolean {
+    // written through another name for it (`var c = {…}, o = c; o.A = …`)
+    this.topDeclarations();
+    if (this.s.writtenThrough?.has(name)) return true;
     for (const j of this.positions(name)) {
       if (j === decl || this.punct(j - 1, ".")) continue;
       if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j)) return true;
@@ -1210,6 +1442,8 @@ export class ExpressionResolver {
   private writesAt(k: number, element = false): boolean {
     const tokens = this.tokens;
     if (this.is(k - 1, "ident", "delete")) return true;
+    // `T.a = …`, `T.a += …`, `T[k]++`, `[T.a] = …`, `({ k: T.a } = …)`, `for (T.a of …)`
+    if (writesMember(tokens, k) !== null) return true;
     if (
       this.punct(k - 1, "(") &&
       this.is(k - 2, "ident") &&
@@ -1218,15 +1452,24 @@ export class ExpressionResolver {
       ) &&
       this.punct(k - 3, ".") &&
       (this.is(k - 4, "ident", "Object") || this.is(k - 4, "ident", "Reflect")) &&
-      (this.punct(k + 1, ",") || this.punct(k + 1, ")"))
+      // the target itself or a member of it: `Object.assign(R[0], …)`, `Reflect.set(T.a, …)`
+      (this.punct(chainEnd(tokens, k), ",") || this.punct(chainEnd(tokens, k), ")"))
     )
       return true;
     let j = k + 1;
     let members = 0;
     for (let guard = 0; guard < 32; guard++) {
-      if (this.punct(j, ".") && this.is(j + 1, "ident")) {
-        if (MUTATORS.test(tokens[j + 1]!.value) && this.punct(j + 2, "(")) return true;
+      if ((this.punct(j, ".") || this.punct(j, "?.")) && this.is(j + 1, "ident")) {
+        // `T.push(…)`, `T.splice?.(0, 1)`, `T[0].list.push(…)`
+        if (
+          MUTATORS.test(tokens[j + 1]!.value) &&
+          (this.punct(j + 2, "(") || (this.punct(j + 2, "?.") && this.punct(j + 3, "(")))
+        )
+          return true;
         j += 2;
+        members++;
+      } else if (this.punct(j, "?.") && this.punct(j + 1, "[") && this.match[j + 1] !== -1) {
+        j = this.match[j + 1]! + 1;
         members++;
       } else if (this.punct(j, "[") && this.match[j] !== -1) {
         j = this.match[j]! + 1;
@@ -1245,17 +1488,28 @@ export class ExpressionResolver {
         return true;
     }
     if (element) return false;
-    // `for (const r of R) …`: the loop variable is each element
-    if (this.is(k - 1, "ident", "of") && this.punct(k + 1, ")")) {
-      const close = k + 1;
+    // `for (const r of R) …`: the loop variable is each element; also over `R.entries()` and
+    // `R.values()`, where it is a name in the pattern (`for (const [i, r] of R.entries())`)
+    const listed =
+      this.punct(k + 1, ".") &&
+      /^(entries|values)$/.test(tokens[k + 2]?.value ?? "") &&
+      this.punct(k + 3, "(") &&
+      this.punct(k + 4, ")")
+        ? k + 5
+        : k + 1;
+    if (this.is(k - 1, "ident", "of") && this.punct(listed, ")")) {
+      const close = listed;
       const open = this.opener[close]!;
       if (open > 0 && this.is(open - 1, "ident", "for")) {
         let v = open + 1;
         if (/^(const|let|var)$/.test(tokens[v]?.value ?? "")) v++;
-        if (this.is(v, "ident") && v + 1 === k - 1) {
-          const end = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
-          if (this.writesMember(tokens[v]!.value, close + 1, end)) return true;
-        }
+        const names: string[] = [];
+        if (this.is(v, "ident") && v + 1 === k - 1) names.push(tokens[v]!.value);
+        else if ((this.punct(v, "[") || this.punct(v, "{")) && this.match[v] === k - 2)
+          for (let p = v + 1; p < k - 2; p++)
+            if (this.is(p, "ident") && !this.punct(p + 1, ":")) names.push(tokens[p]!.value);
+        const end = this.punct(close + 1, "{") ? this.match[close + 1]! : this.exprEnd(close + 1);
+        for (const name of names) if (this.writesMember(name, close + 1, end)) return true;
       }
     }
     // `R.forEach((r) => …)`, `R.map(function (r) { … })`: the parameter is each element
@@ -1281,16 +1535,59 @@ export class ExpressionResolver {
         if (this.is(at, "ident") && (!second || this.punct(p + 2, ","))) name = tokens[at]!.value;
       }
       if (name !== null && close !== -1 && this.writesMember(name, p, close)) return true;
+      // `R.forEach(tweak)`: a function of this file that writes its parameter, or a callee
+      // that is not read
+      if (this.is(k + 4, "ident") && this.punct(k + 5, ")") && !second) {
+        const callee = tokens[k + 4]!.value;
+        if (!READ_ONLY_CALLBACKS.has(callee) && this.calleeWritesFirst(callee)) return true;
+      }
     }
     return false;
   }
 
-  /** A member write (see `writesAt`) to the name anywhere in [from, to). */
-  private writesMember(name: string, from: number, to: number): boolean {
+  /**
+   * Whether the function declared as `function NAME(p, …) { … }` in this file writes a member of
+   * its first parameter; true when there is no such single declaration to read.
+   */
+  private calleeWritesFirst(name: string): boolean {
+    let found: number | null = null;
+    for (const j of this.positions(name)) {
+      if (!this.is(j - 1, "ident", "function") || !this.punct(j + 1, "(")) continue;
+      if (found !== null) return true;
+      found = j;
+    }
+    if (found === null) return true;
+    const open = found + 1;
+    const close = this.match[open]!;
+    if (close === -1 || !this.punct(close + 1, "{")) return true;
+    if (close === open + 1) return false;
+    if (!this.is(open + 1, "ident")) return true;
+    const end = this.match[close + 1]!;
+    return end === -1 || this.writesMember(this.tokens[open + 1]!.value, close + 1, end);
+  }
+
+  /**
+   * A member write (see `writesAt`) to the name anywhere in [from, to), also through another
+   * name for it there (`const x = r; x.channel = …`), a few links deep.
+   */
+  private writesMember(name: string, from: number, to: number, links = 0): boolean {
     for (const j of this.occurrences(name, from, to)) {
       if (this.work-- <= 0) return true;
-      if (this.punct(j - 1, ".")) continue;
+      if (this.punct(j - 1, ".") || this.punct(j - 1, "?.")) continue;
       if (this.writesAt(j, true)) return true;
+      // `const x = r;`, `x = r,`: x is the same object
+      if (
+        this.punct(j - 1, "=") &&
+        this.is(j - 2, "ident") &&
+        !this.punct(j - 3, ".") &&
+        (this.punct(j + 1, ";") ||
+          this.punct(j + 1, ",") ||
+          this.punct(j + 1, ")") ||
+          this.punct(j + 1, "}"))
+      ) {
+        if (links >= 3) return true;
+        if (this.writesMember(this.tokens[j - 2]!.value, j + 1, to, links + 1)) return true;
+      }
     }
     return false;
   }
@@ -1847,7 +2144,19 @@ export class ExpressionResolver {
       }
     }
     // name, name.prop, name(args), name(args)(args), name.prop(args)
-    let value = this.lookup(t.value, start, env, depth);
+    // `T[k]` with a computed key reads a table by a key the evaluation found: the table is read
+    // strictly (see `strict`), so an alias, an unread callee or a deeper write that may change
+    // it leaves it unknown, whichever reader asks.
+    // A key named by a constant of the file (`T[KEY]`) is read as a literal key is.
+    const key = this.tokens[start + 2];
+    const computedKey =
+      this.punct(start + 1, "[") &&
+      !(key?.type === "string" && this.punct(start + 3, "]")) &&
+      !(key?.type === "ident" && this.punct(start + 3, "]") && !env.has(key.value));
+    let value =
+      computedKey && !this.strict
+        ? this.strictly(() => this.lookup(t.value, start, env, depth))
+        : this.lookup(t.value, start, env, depth);
     let j = start + 1;
     // a member of a top-level table of this file: `CH.SAVE`
     if (value === null && this.punct(j, ".") && this.is(j + 1, "ident") && j + 2 === end) {
@@ -3288,6 +3597,11 @@ export class ExpressionResolver {
     if (this.s.topDecls) return this.s.topDecls;
     const decls = new Map<string, [number, number] | null>();
     const assigned = new Set<string>();
+    /** Names a member of which is written, and the names each is another name for. */
+    const memberWritten = new Set<string>();
+    const aliasesOf = new Map<string, string[]>();
+    const through = new Set<string>();
+    this.s.writtenThrough = through;
     let d = 0;
     const tokens = this.tokens;
     for (let k = 0; k < tokens.length; k++) {
@@ -3316,9 +3630,41 @@ export class ExpressionResolver {
       if (this.punct(k - 1, ".")) continue;
       const prev = tokens[k - 1];
       const declares = prev?.type === "ident" && /^(const|let|var)$/.test(prev.value);
-      if (this.punct(k + 1, "=") && !this.punct(k + 2, "=") && !declares) assigned.add(t.value);
-      else if (this.writesAt(k)) assigned.add(t.value);
+      // a plain `NAME = …` in any scope (not a parameter default or class field), any other
+      // write where it is not to a local of the same name
+      if (
+        writesName(tokens, k) &&
+        ((this.punct(k + 1, "=") && !declares) || !shadowedAt(tokens, k, t.value))
+      )
+        assigned.add(t.value);
+      else if (this.writesAt(k)) {
+        assigned.add(t.value);
+        memberWritten.add(t.value);
+      }
+      // `const U = T;`: a write through U writes T
+      if (
+        this.punct(k - 1, "=") &&
+        declaredAt(tokens, k - 2) &&
+        (this.punct(k + 1, ";") ||
+          this.punct(k + 1, ",") ||
+          (tokens[k + 1]?.line ?? Infinity) > t.line)
+      ) {
+        const list = aliasesOf.get(tokens[k - 2]!.value) ?? [];
+        list.push(t.value);
+        aliasesOf.set(tokens[k - 2]!.value, list);
+      }
     }
+    for (let round = 0; round < 3; round++)
+      for (const [alias, targets] of aliasesOf)
+        if (memberWritten.has(alias))
+          for (const target of targets) {
+            through.add(target);
+            // a table or list: a string constant cannot be written through a member
+            const range = decls.get(target);
+            if (range && (this.punct(range[0], "{") || this.punct(range[0], "[")))
+              assigned.add(target);
+            memberWritten.add(target);
+          }
     this.s.topDeclsLoose = new Map(decls);
     for (const name of assigned) if (decls.has(name)) decls.set(name, null);
     this.s.topDecls = decls;
@@ -3340,8 +3686,8 @@ export class ExpressionResolver {
     else
       for (const j of all) {
         if (this.punct(j - 1, ".")) continue;
-        // a later assignment: the pattern no longer says what the name holds
-        if (this.punct(j + 1, "=") && !this.punct(j + 2, "=")) {
+        // a later write: the pattern no longer says what the name holds
+        if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j)) {
           bound += 2;
           continue;
         }
@@ -3768,15 +4114,12 @@ export class ExpressionResolver {
     return null;
   }
 
-  /** `x += …`, `x++`, `--x` and the like at the name at j. */
+  /**
+   * The name at j is written there (see `writesName`): `x += …`, `x++`, `--x`, `[x] = …`,
+   * `({ x } = …)`, `for (x of …)`, and a plain `x = …` that is no declaration.
+   */
   private changes(j: number): boolean {
-    const after = this.tokens[j + 1];
-    const before = this.tokens[j - 1];
-    return (
-      (after?.type === "punct" &&
-        (after.value === "++" || after.value === "--" || /^[^=!<>]+=$/.test(after.value))) ||
-      (before?.type === "punct" && (before.value === "++" || before.value === "--"))
-    );
+    return writesName(this.tokens, j);
   }
 
   /**
@@ -3810,6 +4153,17 @@ export class ExpressionResolver {
           // `var a = 1, NAME = …`, as minifiers write declarations
           entries.push({ j, weight: 1, init: true, scope: null });
         else if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
+          entries.push({ j, weight: 2, init: false, scope: null });
+        // a member or element written (`T.A = …`, `T.A += …`, `T.push(…)`), as at the top
+        // (`topDeclarations`): the declaration no longer says what the name holds. The query
+        // of a URL (`url.searchParams.set(…)`, `url.search = …`) is no part of an address read.
+        else if (
+          !(
+            this.punct(j + 1, ".") &&
+            /^(searchParams|search|hash)$/.test(this.tokens[j + 2]?.value ?? "")
+          ) &&
+          this.writesAt(j)
+        )
           entries.push({ j, weight: 2, init: false, scope: null });
       }
       this.s.declCache.set(key, entries);
@@ -3988,11 +4342,10 @@ export class ExpressionResolver {
       const envs: Env[] = [];
       // the list may read a parameter of the function the loop is in: once per binding of it
       const outer = this.envsFor(patternEnd + 1, patternEnd + 1, close, depth + 1, true);
-      const throughParams = outer.length !== 1 || outer[0]!.size > 0;
       for (const caller of outer) {
-        const list = throughParams
-          ? this.strictly(() => this.evalRange(patternEnd + 1, close, caller, depth + 1))
-          : this.evalRange(patternEnd + 1, close, caller, depth + 1);
+        // read strictly (see `strict`): a list an alias, an unread callee or a deeper write
+        // may change is not read, as for the readers of tables built into IPC
+        const list = this.strictly(() => this.evalRange(patternEnd + 1, close, caller, depth + 1));
         if (!list) return null;
         // a list longer than is read: the rounds read are not all there are
         if (list.kind === "arr" && list.more) this.partial = true;
@@ -4254,13 +4607,11 @@ export class ExpressionResolver {
       // in `function invokers(table)`): once per binding of that function. The callback's own
       // environment keeps those bindings, so its body reads them too.
       const outer = this.envsFor(receiver, receiver, def.calledBy.receiverEnd, depth + 1, true);
-      const throughParams = outer.length !== 1 || outer[0]!.size > 0;
       for (const caller of outer) {
-        const list = throughParams
-          ? this.strictly(() =>
-              this.evalRange(receiver, def.calledBy!.receiverEnd, caller, depth + 1),
-            )
-          : this.evalRange(receiver, def.calledBy.receiverEnd, caller, depth + 1);
+        // read strictly, as `loopEnvs` reads a loop's list (see `strict`)
+        const list = this.strictly(() =>
+          this.evalRange(receiver, def.calledBy!.receiverEnd, caller, depth + 1),
+        );
         if (!list) return null;
         // a list longer than is read: the rounds read are not all there are
         if (list.kind === "arr" && list.more) this.partial = true;
@@ -5003,9 +5354,7 @@ export class ExpressionResolver {
     const before = this.tokens[j - 1];
     const writes =
       (after?.type === "punct" &&
-        (/^([-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=$/.test(after.value) ||
-          after.value === "++" ||
-          after.value === "--")) ||
+        (ASSIGNMENT_OPERATORS.has(after.value) || after.value === "++" || after.value === "--")) ||
       (before?.type === "punct" && (before.value === "++" || before.value === "--"));
     if (!writes) return false;
     if (before?.type === "ident" && /^(const|let|var)$/.test(before.value)) return false;
