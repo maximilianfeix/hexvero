@@ -32,6 +32,11 @@ export function safeRelativePath(name: string, fallback: string): string {
     .replace(/[^\w./@+-]/g, "_");
   clean = normalize(clean).split(sep).join("/");
   if (!clean || clean === "." || clean.startsWith("..")) clean = fallback;
+  // No hidden file or directory below the output directory (`.ssh/authorized_keys`, `.git/x`).
+  clean = clean
+    .split("/")
+    .map((segment) => segment.replace(/^\./, "_"))
+    .join("/");
   if (!/\.[a-z0-9]{1,8}$/i.test(clean)) clean += ".js";
   return clean;
 }

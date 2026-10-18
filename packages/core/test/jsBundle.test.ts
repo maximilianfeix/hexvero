@@ -92,6 +92,21 @@ describe("recovery", () => {
     expect(safeRelativePath("/abs/path.js", "x")).toBe("abs/path.js");
     expect(safeRelativePath("..", "fallback.js")).toBe("fallback.js");
   });
+  it("never names a hidden file or directory", () => {
+    expect(safeRelativePath("./.ssh/authorized_keys", "x")).toBe("_ssh/authorized_keys.js");
+    expect(safeRelativePath("webpack:///.git/hooks/post-checkout", "x")).toBe(
+      "_git/hooks/post-checkout.js",
+    );
+    expect(safeRelativePath("src/.env", "x")).toBe("src/_env.js");
+    expect(safeRelativePath("x/..bashrc", "x")).toBe("x/_.bashrc");
+    expect(safeRelativePath("src/a.min.js", "x")).toBe("src/a.min.js");
+    for (const name of [".a", "x/.b/c.js", "...", "./.", ".\\.cfg\\run"])
+      expect(
+        safeRelativePath(name, ".fallback.js")
+          .split("/")
+          .some((s) => s.startsWith(".")),
+      ).toBe(false);
+  });
   it("writes bundle modules and a manifest", () => {
     const out = join(dir, "bundle");
     const r = recoverBundle(webpack5, out);
