@@ -1,6 +1,6 @@
 {
   "name": "@hexvero/mcp",
-  "version": "0.9.9",
+  "version": "0.10.0",
   "description": "MCP server for hexvero: lets a coding agent diff two Electron releases and inspect app.asar, IPC, contextBridge and binaries, with file and line, without running them.",
   "keywords": [
     "asar",
@@ -42,7 +42,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@hexvero/core": "0.9.9",
+    "@hexvero/core": "0.10.0",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "zod": "^4.0.0"
   },

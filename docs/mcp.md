@@ -1,10 +1,10 @@
 # MCP server
 
-Start: `npx -y hexvero mcp` (stdio; pin a version, e.g. `npx -y hexvero@0.9.9 mcp`, for reproducible results). Register with `hexvero setup --apply` (dry run without `--apply`; existing files are backed up as `*.hexvero-backup`) or add it to your client's
+Start: `npx -y hexvero mcp` (stdio; pin a version, e.g. `npx -y hexvero@0.10.0 mcp`, for reproducible results). Register with `hexvero setup --apply` (dry run without `--apply`; existing files are backed up as `*.hexvero-backup`) or add it to your client's
 configuration manually:
 
 ```json
-{ "mcpServers": { "hexvero": { "command": "npx", "args": ["-y", "hexvero@0.9.9", "mcp"] } } }
+{ "mcpServers": { "hexvero": { "command": "npx", "args": ["-y", "hexvero@0.10.0", "mcp"] } } }
 ```
 
 ## Setting it up, and what an agent receives
@@ -24,7 +24,7 @@ In Claude Code the server and the skill also come as one plugin:
 /plugin install hexvero@hexvero
 ```
 
-`setup` knows 18 clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf, Gemini CLI, Antigravity, VS Code, Trae, OpenCode, GitHub Copilot CLI, Qwen Code, Qoder, Devin, Pi, Kiro, Amp, Zed) and writes each one's own config dialect, keeping comments in files that have them. The [client table](#detected-clients) says for every row what was checked against the client's documentation and which three were read back by the client itself; one row (Trae) is unverified. Any other client can run `npx -y hexvero mcp` over stdio; pin a version for reproducible results (`npx -y hexvero@0.9.9 mcp`).
+`setup` knows 18 clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf, Gemini CLI, Antigravity, VS Code, Trae, OpenCode, GitHub Copilot CLI, Qwen Code, Qoder, Devin, Pi, Kiro, Amp, Zed) and writes each one's own config dialect, keeping comments in files that have them. The [client table](#detected-clients) says for every row what was checked against the client's documentation and which three were read back by the client itself; one row (Trae) is unverified. Any other client can run `npx -y hexvero mcp` over stdio; pin a version for reproducible results (`npx -y hexvero@0.10.0 mcp`).
 
 `npx hexvero setup --apply` registers the MCP server with the coding agents it finds (Claude Code, Codex, Cursor, VS Code, and 14 more), and `npx hexvero setup --skill --apply` installs a skill that teaches the investigation loop. The agent then opens a target, reads a small first answer with suggested next calls, pages only the lists it needs, and cites `file:line` for each claim. Text inside the target is treated as data, never as instructions; a test plants such text in a target to check it.
 

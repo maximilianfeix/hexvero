@@ -1,6 +1,6 @@
 {
   "name": "@hexvero/core",
-  "version": "0.9.9",
+  "version": "0.10.0",
   "description": "Zero-dependency static parsers behind hexvero, the Electron release diff: app.asar, JavaScript bundles, IPC and contextBridge, plus ELF, PE, Mach-O, APK and more. Never runs what it reads.",
   "keywords": [
     "asar",
