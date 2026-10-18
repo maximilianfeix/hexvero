@@ -447,15 +447,24 @@ Literal-first: a name or value is known only where it is a string literal, a tem
 | `ses.setCertificateVerifyProc((request, callback) => …)`                                                 | `certificate-verify-proc` | `accepts`: whether `callback(0)` is called; `-2`, `-3` and other numbers (also constants such as `var F = -2`) reject           |
 | `process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = …` (also `["…"]`), `window.` / `globalThis.` / `self.` | `security-warnings`       | the value as written (`true`, `"true"`, `!0` → `true`); never dangerous: it hides the console warnings only                     |
 
+`targetKind: "app"` only where the receiver is Electron's app.commandLine by scope (below). Any other
+receiver of `.appendSwitch(` / `.appendArgument(` (also `["appendSwitch"]`) still gives a row with
+`targetKind: "unknown"`: a parameter (`function setup(a) { a.commandLine.appendSwitch(…) }`,
+Claude's `e.appendSwitch(t, …)` on a commandLine handed in), `commandLine` of a name not read as
+app, a destructured `commandLine` whose source is not read (a nested pattern
+`{ app: { commandLine } } = require("electron")` is not followed), a call's result. A dangerous
+name on such a receiver is `dangerous: null`, never safe. Only a name bound to an object literal of
+the file (`const app = { commandLine: … }`), or a member of one, gives no row.
+`const { commandLine } = app` reads as app's.
+
 `app` is Electron's only where it is bound to it by scope: `const { app } = require("electron")`
 (also renamed, `{ app: a }`), `import { app } from "electron"`, `X.app` with X bound to
 `require("electron")` (also through `__toESM` and the other interop helpers), `import * as X` or
 `import X from "electron"`, webpack's `n(91288)` for a module id whose body is `e.exports =
-require("electron")`, or `const cl = app.commandLine; cl.appendSwitch(…)`. A parameter named
-`app`, a local object `{ commandLine: … }`, or `commandLine` of anything else gives no row. A
+require("electron")`, or `const cl = app.commandLine; cl.appendSwitch(…)`. A
 name of the electron module that is written again (Claude: `let T = require("electron"); T =
 u(T)`) is still taken for it; which value the write gives is not read. A `certificate-error`
-listener on `app` reads the sixth parameter as the callback; on `X.webContents` or `contents` the
+listener (`on`, `once`, `addListener`, `prependListener`, `prependOnceListener`) on `app` reads the sixth parameter as the callback; on `X.webContents` or `contents` the
 fifth (webContents' own event); on any other receiver both, and the less safe answer is kept
 (`targetKind: "unknown"`).
 
@@ -465,27 +474,33 @@ comma sequence, `e.preventDefault(), l(!0)`), with no `return` or `throw` before
 return, in a loop, `try` or `switch`, or in a nested function (`setTimeout(() => callback(true))`);
 `never` when every call passes a literal that rejects; `unknown` when the handler is not a function
 literal written there, the callback is handed on or stored, or an argument is not read. The
-callback is read only where every parameter up to it is a plain name: a rest parameter, a
-destructuring pattern or a default value up to that position is `unknown`, and a handler with
-fewer parameters counts as never accepting only when its body does not read `arguments`. A
+callback is read by position: a rest parameter at or before it is `unknown` (it moves the
+positions), patterns and defaults before it count as one parameter each, and at its position a
+name (also `cb = fallback`) is read while a pattern is `unknown`; a handler with fewer parameters
+counts as never accepting only when it has no rest parameter and its body does not read
+`arguments`. An accepting argument is what Electron takes as true: `true`, `!0`, a non-zero number,
+a non-empty string, or a constant holding one; `false`, `!1`, `0`, `""`, `null`, `undefined` reject. A
 `certificate-error` handler that never accepts (`callback(false)` only, or no callback parameter)
 gives no row; a verify proc always gives one (`setCertificateVerifyProc(null)` none).
 
 Dangerous switches (`dangerous: true`, with `reason`), each from the switch's own documentation:
 
-| Switch                                | Documentation                                                                                                                                                                   |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ignore-certificate-errors`           | "Ignores certificate related errors." ([Electron][switches])                                                                                                                    |
-| `ignore-certificate-errors-spki-list` | "A set of public key hashes for which to ignore certificate-related errors." ([Chromium][chromium-switches])                                                                    |
-| `allow-insecure-localhost`            | "Enables TLS/SSL errors on localhost to be ignored (no interstitial, no blocking of requests)." ([Chromium][chromium-switches])                                                 |
-| `disable-web-security`                | "Don't enforce the same-origin policy; meant for website testing only." ([Chromium][chromium-switches])                                                                         |
-| `allow-running-insecure-content`      | "By default, an HTTPS page cannot run JavaScript, CSS or resources from HTTP URLs. This provides an override to get the old insecure behavior." ([Chromium][chromium-switches]) |
-| `no-sandbox`                          | "Disables the Chromium sandbox. Forces renderer process and Chromium helper processes to run un-sandboxed." ([Electron][switches])                                              |
-| `disable-gpu-sandbox`                 | "Disables the GPU process sandbox." ([Chromium][chromium-switches])                                                                                                             |
-| `disable-site-isolation-trials`       | "Disables site isolation." ([Chromium][chromium-switches])                                                                                                                      |
-| `remote-debugging-port`               | "Enables remote debugging over HTTP on the specified `port`." ([Electron][switches])                                                                                            |
-| `remote-debugging-pipe`               | "Enables remote debug over stdio pipes" ([Chromium][chromium-switches])                                                                                                         |
-| `disable-features`                    | only when its value is read and lists `IsolateOrigins`, `SitePerProcess` or `site-per-process`; an unread value is `dangerous: null`                                            |
+| Switch                                     | Documentation                                                                                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ignore-certificate-errors`                | "Ignores certificate related errors." ([Electron][switches])                                                                                                                    |
+| `ignore-certificate-errors-spki-list`      | "A set of public key hashes for which to ignore certificate-related errors." ([Chromium][chromium-switches])                                                                    |
+| `allow-insecure-localhost`                 | "Enables TLS/SSL errors on localhost to be ignored (no interstitial, no blocking of requests)." ([Chromium][chromium-switches])                                                 |
+| `disable-web-security`                     | "Don't enforce the same-origin policy; meant for website testing only." ([Chromium][chromium-switches])                                                                         |
+| `allow-running-insecure-content`           | "By default, an HTTPS page cannot run JavaScript, CSS or resources from HTTP URLs. This provides an override to get the old insecure behavior." ([Chromium][chromium-switches]) |
+| `no-sandbox`                               | "Disables the Chromium sandbox. Forces renderer process and Chromium helper processes to run un-sandboxed." ([Electron][switches])                                              |
+| `disable-gpu-sandbox`                      | "Disables the GPU process sandbox." ([Chromium][chromium-switches])                                                                                                             |
+| `disable-site-isolation-trials`            | "Disables site isolation." ([Chromium][chromium-switches])                                                                                                                      |
+| `remote-debugging-port`                    | "Enables remote debugging over HTTP on the specified `port`." ([Electron][switches])                                                                                            |
+| `remote-debugging-pipe`                    | "Enables remote debug over stdio pipes" ([Chromium][chromium-switches])                                                                                                         |
+| `unsafely-treat-insecure-origin-as-secure` | "Treat given (insecure) origins as secure origins." ([Chromium][chromium-switches])                                                                                             |
+| `disable-setuid-sandbox`                   | "Disable the setuid sandbox (Linux only)." ([Chromium][chromium-switches])                                                                                                      |
+| `allow-file-access-from-files`             | "By default, file:// URIs cannot read other file:// URIs. This is an override for developers who need the old behavior for testing." ([content_switches.cc][content-switches])  |
+| `disable-features`                         | only when its value is read and lists `IsolateOrigins`, `SitePerProcess` or `site-per-process`; an unread value is `dangerous: null`                                            |
 
 Not on the list: `js-flags` (Electron: "Specifies the flags passed to the V8 engine"; whether a
 flag weakens anything depends on the flag, which is not judged), `enable-logging` and every other
@@ -502,11 +517,14 @@ Names are normalized before the check: trimmed, leading dashes stripped, split a
 whose part after `=` is the value), and lowercased for the comparison only (the row keeps the
 name as written; Chromium itself matches names case-sensitively, so this errs towards danger). A
 name with any character outside `a-z`, `0-9` and `-` after that is `dangerous: null`, never safe.
-`disable-features` values are split on commas, trimmed and compared case-insensitively. An
+`disable-features` values are split on commas, trimmed, stripped of a leading `*` and of anything
+from `<` or `:` (`*IsolateOrigins`, `IsolateOrigins<Trial`, `IsolateOrigins:param/1`) and
+compared case-insensitively. An
 `appendArgument` that does not start with a dash is a positional argument, not a switch.
 
 The finding `electron.unsafe-switch` (`inferred`) names the dangerous rows. Per file at most 200
-rows, 2,000 in all, and a reading budget of 400,000 steps per file; past either
+rows, 2,000 in all, and a reading budget of 2,000,000 steps per file (each token a handler body or
+an argument is read through costs one, each row past the per-file cap 2,000); past either
 `switches_truncated` says so. The cap drops only rows known to be harmless: a dangerous or
 undecided row takes the place of the last harmless one kept. `switches_truncated` on either side
 makes the comparison of `switches` incomplete (`values_unresolved`), so `new-unsafe-switch` is
@@ -514,8 +532,8 @@ undecidable then. In a comparison a row is matched by file, kind, target kind an
 name (the same pair twice as a multiset); `evidence`, `target` and `reason` are no change of their
 own.
 
-Not read: a switch appended through a function's parameter (Claude: `function F1(e, t, …) {
-e.appendSwitch(t, …) }` called as `F1(T.app.commandLine, …)`), names built in a loop (Discord:
+Not read: which commandLine a parameter receiver is (Claude: `function F1(e, t, …) {
+e.appendSwitch(t, …) }` called as `F1(T.app.commandLine, …)` gives an `unknown` row), names built in a loop (Discord:
 `for (let s of switches) app.commandLine.appendSwitch(s)` is a row with `name: null`), a
 certificate handler or verify proc passed by name (`app.on("certificate-error", onCertError)`:
 `accepts: "unknown"`), `session.setCertificateVerifyProc` judged per session (the receiver is kept
@@ -529,6 +547,7 @@ build has; a row whose danger could not be told is an unknown finding.
 
 [switches]: https://www.electronjs.org/docs/latest/api/command-line-switches
 [chromium-switches]: https://peter.sh/experiments/chromium-command-line-switches/
+[content-switches]: https://chromium.googlesource.com/chromium/src/+/main/content/public/common/content_switches.cc
 
 ## Storage keys through wrappers and enums (`storage`)
 

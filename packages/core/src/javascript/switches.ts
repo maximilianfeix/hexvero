@@ -75,6 +75,9 @@ export const DANGEROUS_SWITCHES: ReadonlyMap<string, string> = new Map([
   ["disable-site-isolation-trials", "turns off site isolation"],
   ["remote-debugging-port", "opens remote debugging over HTTP on a port"],
   ["remote-debugging-pipe", "opens remote debugging over stdio pipes"],
+  ["unsafely-treat-insecure-origin-as-secure", "treats the given insecure origins as secure"],
+  ["disable-setuid-sandbox", "turns off the setuid sandbox on Linux"],
+  ["allow-file-access-from-files", "lets file:// URLs read other file:// URLs"],
 ]);
 /** Chromium features whose listing in `disable-features` turns site isolation off (lowercased). */
 const ISOLATION_FEATURES = new Set(["isolateorigins", "siteperprocess", "site-per-process"]);
@@ -119,7 +122,16 @@ export function judgeSwitch(
   const off = (value ?? "")
     .split(",")
     .map((f) => f.trim())
-    .filter((f) => ISOLATION_FEATURES.has(f.toLowerCase()));
+    // `*IsolateOrigins`, `IsolateOrigins<Trial`, `IsolateOrigins:param/value` name the feature too
+    .filter((f) =>
+      ISOLATION_FEATURES.has(
+        f
+          .replace(/^\*/, "")
+          .replace(/[<:].*$/, "")
+          .trim()
+          .toLowerCase(),
+      ),
+    );
   return off.length
     ? { dangerous: true, reason: `turns off site isolation features: ${off.join(", ")}` }
     : { dangerous: false };
@@ -152,9 +164,11 @@ export function keepSwitchRows(
 }
 
 export const MAX_SWITCHES_PER_FILE = 200;
+/** Steps charged for each row past the per-file cap. */
+const PAST_CAP_COST = 2000;
 const MAX_PER_FILE = MAX_SWITCHES_PER_FILE;
-const WORK = 400_000;
-const LISTEN = new Set(["on", "once", "addListener", "prependListener"]);
+const WORK = 2_000_000;
+const LISTEN = new Set(["on", "once", "addListener", "prependListener", "prependOnceListener"]);
 const INTEROP = new Set([
   "__toESM",
   "__importStar",
@@ -202,12 +216,18 @@ export function switchRows(
   const text = (from: number, to: number): string =>
     short(
       tokens
-        .slice(from, to)
+        // at most 80 tokens are joined: the text is cut to 80 characters anyway
+        .slice(from, Math.min(to, from + 80))
         .map((x) => (x.type === "string" ? JSON.stringify(x.value) : x.value))
         .join(""),
     );
   const push = (row: SwitchRow): void => {
-    if (keepSwitchRows(rows, [row], MAX_PER_FILE)) capped = true;
+    if (keepSwitchRows(rows, [row], MAX_PER_FILE)) {
+      capped = true;
+      // rows past the cap are still read (a risky one replaces a harmless one), at a price that
+      // ends the reading of a file made of nothing else
+      work -= PAST_CAP_COST;
+    }
   };
 
   // webpack modules that are Electron itself: `91288(e){e.exports=require("electron")}`
@@ -326,6 +346,33 @@ export function switchRows(
     return ident(b - 1) === "commandLine" && dot(b - 2) && appBefore(b - 2) === a ? d - 1 : -1;
   };
 
+  /**
+   * The receiver of `.appendSwitch` ending right before the `.` (or `[`) at `d`: `app: true` when it
+   * is Electron's app.commandLine; `app: false` for any other receiver (a parameter, a
+   * `commandLine` of something not read, a destructured `commandLine`, a call); null only for a
+   * name bound to an object literal of the file (a look-alike), or its member.
+   */
+  const switchReceiver = (d: number): { from: number; app: boolean } | null => {
+    const proven = commandLineBefore(d);
+    if (proven >= 0) return { from: proven, app: true };
+    if (!ident(d - 1)) return { from: d - 1, app: false };
+    let from = d - 1;
+    while (dot(from - 1) && ident(from - 2)) from -= 2;
+    const base = ident(from)!;
+    if (base === "this" || !spend()) return { from, app: false };
+    if (resolver.boundAround(from, base)?.kind === "param") return { from, app: false };
+    const bound = resolver.binding(from, base, true);
+    if (bound?.kind === "value" && is(bound.range[0], "{")) return null;
+    if (bound?.kind === "pattern" && bound.key === "commandLine" && from === d - 1) {
+      // `const { commandLine } = app`, `const { app: { commandLine } } = require("electron")`
+      let [a, b] = bound.from;
+      while (is(b - 1, ";") || is(b - 1, ",")) b--;
+      if (appExpr(a, b) || (b === a + 1 && appName(a)) || moduleExpr(a, b))
+        return { from, app: true };
+    }
+    return { from, app: false };
+  };
+
   /** A literal or constant string at [a, b), else null. */
   const stringAt = (a: number, b: number): string | null => {
     if (b === a + 1 && tokens[a]!.type === "string") return tokens[a]!.value;
@@ -340,6 +387,7 @@ export function switchRows(
   const exprEnd = (a: number): number => {
     let j = a;
     for (let d = 0; j < tokens.length && j < a + 4000; j++) {
+      if (--work < 0) return j;
       const p = tokens[j]!;
       if (p.type !== "punct") continue;
       if (p.value === "(" || p.value === "[" || p.value === "{") d++;
@@ -440,11 +488,17 @@ export function switchRows(
       }
       if (current.length) segments.push(current);
     } else return null;
-    const plain = (seg: number[] | undefined): boolean =>
-      seg !== undefined && seg.length === 1 && ident(seg[0]!) !== null;
+    // a rest parameter at or before the index moves every position after it
+    const rest = (seg: number[] | undefined): boolean => seg !== undefined && is(seg[0]!, "...");
     for (let i = 0; i < Math.min(index + 1, segments.length); i++)
-      if (!plain(segments[i])) return null;
-    if (segments.length > index) return ident(segments[index]![0]!);
+      if (rest(segments[i])) return null;
+    if (segments.length > index) {
+      // `cb` or `cb = fallback`; a pattern at the index is not read
+      const seg = segments[index]!;
+      const name = ident(seg[0]!);
+      return name !== null && (seg.length === 1 || is(seg[1]!, "=")) ? name : null;
+    }
+    if (segments.some(rest)) return null;
     for (let j = def.body[0]; j <= def.body[1] && j < tokens.length; j++)
       if (ident(j) === "arguments" && !dot(j - 1)) return null;
     return "absent";
@@ -476,36 +530,69 @@ export function switchRows(
     }
     return null;
   };
-  const boolAt = (a: number, b: number): boolean | null => {
+  /** Whether the argument at [a, b) is truthy, as Electron takes it; null when not read. */
+  const boolAt = (a: number, b: number, depth = 0): boolean | null => {
     if (b === a + 1 && (ident(a) === "true" || ident(a) === "false")) return ident(a) === "true";
+    if (b === a + 1 && (ident(a) === "null" || ident(a) === "undefined")) return false;
     if (b === a + 2 && is(a, "!") && tokens[a + 1]?.type === "number")
-      return tokens[a + 1]!.value === "0";
+      return Number(tokens[a + 1]!.value) === 0;
+    if (b === a + 1 && tokens[a]!.type === "number") return Number(tokens[a]!.value) !== 0;
+    if (b === a + 1 && tokens[a]!.type === "string") return tokens[a]!.value !== "";
+    // a constant: `const OK = true`
+    if (b === a + 1 && ident(a) && depth < 3 && spend()) {
+      const bound = resolver.binding(a, ident(a)!);
+      if (bound?.kind === "value") {
+        let [x, y] = bound.range;
+        while (is(y - 1, ";") || is(y - 1, ",")) y--;
+        return boolAt(x, y, depth + 1);
+      }
+    }
     return null;
   };
 
   for (let k = 1; k + 2 < tokens.length; k++) {
     const t = tokens[k]!;
-    if (t.type !== "ident") continue;
+    // `x["appendSwitch"](…)`
+    const bracketed = t.type === "string" && is(k - 1, "[");
+    if (t.type !== "ident" && !bracketed) continue;
     if (work <= 0) {
       // the budget of the reading below is spent: further calls are not read, which is said
       capped = true;
       break;
     }
     const method = t.value;
-    // app.commandLine.appendSwitch(name[, value]) / appendArgument(arg)
+    // app.commandLine.appendSwitch(name[, value]) / appendArgument(arg), also
+    // `app.commandLine["appendSwitch"](…)`
     if (
       (method === "appendSwitch" || method === "appendArgument") &&
-      dot(k - 1) &&
-      is(k + 1, "(")
+      (bracketed || dot(k - 1)) &&
+      is(k + 1, bracketed ? "]" : "(") &&
+      (!bracketed || is(k + 2, "("))
     ) {
-      const from = commandLineBefore(k - 1);
-      if (from < 0) continue;
-      const close = resolver.closeOf(k + 1);
+      const open = bracketed ? k + 2 : k + 1;
+      const receiver = switchReceiver(k - 1);
+      if (receiver === null) continue;
+      const { from, app } = receiver;
+      const close = resolver.closeOf(open);
       if (close < 0) continue;
-      const nameEnd = exprEnd(k + 2);
-      const raw = nameEnd > k + 2 ? stringAt(k + 2, nameEnd) : null;
+      const where = app
+        ? { targetKind: "app" as const, target: "app.commandLine" }
+        : { targetKind: "unknown" as const, target: text(from, k - 1) };
+      /** A switch on a receiver not read as app.commandLine: its danger is not known either. */
+      const unsure = (j: {
+        dangerous: boolean | null;
+        reason?: string;
+      }): { dangerous: boolean | null; reason?: string } =>
+        app || j.dangerous !== true
+          ? { dangerous: j.dangerous, ...(j.reason ? { reason: j.reason } : {}) }
+          : {
+              dangerous: null,
+              reason: `${j.reason ?? "a dangerous switch"}, on a receiver not read as Electron's app.commandLine`,
+            };
+      const nameEnd = exprEnd(open + 1);
+      const raw = nameEnd > open + 1 ? stringAt(open + 1, nameEnd) : null;
       const split = raw === null ? null : splitSwitch(raw);
-      const evidence = `${text(from, k + 2)}${text(k + 2, close)})`;
+      const evidence = `${text(from, open + 1)}${text(open + 1, close)})`;
       if (method === "appendArgument") {
         // a positional argument (no leading dash) is no switch
         const sw = split !== null && raw!.trim().startsWith("-") ? split : null;
@@ -519,10 +606,8 @@ export function switchRows(
           kind: "argument",
           name: raw,
           value: null,
-          dangerous: judged.dangerous,
-          ...(judged.reason ? { reason: judged.reason } : {}),
-          targetKind: "app",
-          target: "app.commandLine",
+          ...unsure(judged),
+          ...where,
           evidence,
           file,
           line: t.line,
@@ -545,10 +630,8 @@ export function switchRows(
         name: split === null ? null : split.name,
         value,
         valueRead,
-        dangerous: judged.dangerous,
-        ...(judged.reason ? { reason: judged.reason } : {}),
-        targetKind: "app",
-        target: "app.commandLine",
+        ...unsure(judged),
+        ...where,
         evidence,
         file,
         line: t.line,
@@ -690,6 +773,10 @@ export function switchRows(
   for (let k = 4; k + 2 < tokens.length; k++) {
     const t = tokens[k]!;
     if (t.type !== "string" || t.value !== "ELECTRON_DISABLE_SECURITY_WARNINGS") continue;
+    if (work <= 0) {
+      capped = true;
+      break;
+    }
     if (!(is(k - 1, "[") && is(k + 1, "]") && is(k + 2, "="))) continue;
     if (!(ident(k - 2) === "env" && is(k - 3, ".") && ident(k - 4) === "process")) continue;
     const end = statementEnd(k + 3);
@@ -715,6 +802,7 @@ export function switchRows(
   function statementEnd(a: number): number {
     let j = a;
     for (let d = 0; j < tokens.length && j < a + 2000; j++) {
+      if (--work < 0) return j;
       const p = tokens[j]!;
       if (p.type !== "punct") continue;
       if (p.value === "(" || p.value === "[" || p.value === "{") d++;

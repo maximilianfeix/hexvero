@@ -126,7 +126,8 @@ electronApp.on("certificate-error", (e, w, u, er, c, cb) => { cb(false); });
 electronApp.on("certificate-error", (e, w, u, er, c) => { e.preventDefault(); });
 module.exports = { f, s };
 `);
-    expect(rows(info)).toEqual([]);
+    // a parameter named app may well be Electron's app: a row whose receiver is not known
+    expect(rows(info)).toEqual(["switch no-sandbox - null unknown"]);
   });
 
   it("reads webpack's module of electron and a minified accepting handler", () => {
@@ -189,7 +190,7 @@ const NORMALIZED_ROWS = [
   "switch no sandbox - null app",
   "certificate-error ? unknown null app",
   "certificate-error ? unknown null app",
-  "certificate-error ? unknown null app",
+  "certificate-error ? always true app",
   "certificate-error ? unknown null app",
 ];
 
@@ -201,6 +202,67 @@ describe("switches: names normalized, callbacks that are not plain parameters, t
       ["minified", bundled(NORMALIZED, true)],
     ] as const)
       expect(rows(analyze(source)), label).toEqual(NORMALIZED_ROWS);
+  });
+
+  it("reads receivers not proven to be app.commandLine as unknown, and more listener forms", () => {
+    const source = `const electron = require("electron");
+const { app } = electron;
+const { app: { commandLine: nested } } = require("electron");
+const { commandLine } = app;
+function setup(a) { a.commandLine.appendSwitch("no-sandbox"); }
+function apply(cl, name) { cl.appendSwitch(name, "1"); }
+commandLine.appendSwitch("disable-web-security");
+nested.appendSwitch("allow-file-access-from-files");
+app.commandLine["appendSwitch"]("disable-features", "*IsolateOrigins,SitePerProcess<Trial");
+app.commandLine.appendSwitch("disable-features", "IsolateOrigins:param/1");
+app.commandLine.appendSwitch("disable-setuid-sandbox");
+const OK = true;
+app.prependOnceListener("certificate-error", (e, wc, u, err, { issuerName }, cb) => { e.preventDefault(); cb(true); });
+app.on("certificate-error", (e, wc, u, err, c, cb) => { e.preventDefault(); cb(1); });
+app.on("certificate-error", (e, wc, u, err, c, cb) => { e.preventDefault(); cb(OK); });
+app.on("certificate-error", (e, wc, u, err, c, cb) => { cb(0); cb(""); });
+module.exports = { setup, apply };
+`;
+    const expected = [
+      "switch no-sandbox - null unknown",
+      "switch ? =1 null unknown".replace(" =1", "=1 -"),
+      "switch disable-web-security - true app",
+      // a nested pattern is not followed to electron: a row, with the receiver unknown
+      "switch allow-file-access-from-files - null unknown",
+      "switch disable-features=*IsolateOrigins,SitePerProcess<Trial - true app",
+      "switch disable-features=IsolateOrigins:param/1 - true app",
+      "switch disable-setuid-sandbox - true app",
+      "certificate-error ? always true app",
+      "certificate-error ? always true app",
+      "certificate-error ? always true app",
+    ];
+    for (const [label, src] of [
+      ["plain", source],
+      ["bundled", bundled(source, false)],
+      ["minified", bundled(source, true)],
+    ] as const)
+      expect(rows(analyze(src)), label).toEqual(expected);
+  });
+
+  it("stays fast on nested and repeated calls (a cost bound, not a timing assertion)", () => {
+    const head = `const { app } = require("electron");\n`;
+    for (const hostile of [
+      head + "app.commandLine.appendSwitch(".repeat(20_000) + `"x"` + ")".repeat(20_000) + ";",
+      head + "app.commandLine.appendSwitch(f(".repeat(10_000) + "1" + "))".repeat(10_000) + ";",
+      head + `app.commandLine.appendSwitch("no-sandbox");\n`.repeat(60_000),
+      `process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"]=(`.repeat(20_000) +
+        "1" +
+        ")".repeat(20_000),
+      head +
+        `app.on("certificate-error",(e,a,b,c,d,cb)=>{e.preventDefault();cb(1);`.repeat(3000) +
+        "}".repeat(3000) +
+        ";",
+    ]) {
+      const started = performance.now();
+      const info = analyze(hostile);
+      expect(info.switches.length).toBeLessThanOrEqual(200);
+      expect(performance.now() - started).toBeLessThan(15_000);
+    }
   });
 
   it("drops only harmless rows past the cap and says so", () => {
