@@ -112,6 +112,7 @@ try {
     "holdout5",
     "holdout6",
     "holdout7",
+    "holdout8",
   ]) {
     const setDir = join(root, set);
     if (!existsSync(setDir)) continue;

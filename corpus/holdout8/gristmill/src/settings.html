@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src https://api.gristmill.example; style-src 'self' 'unsafe-inline'"
+    />
+    <title>Preferences</title>
+  </head>
+  <body>
+    <h2>Appearance</h2>
+    <label><input type="radio" name="theme" value="system" /> System</label>
+    <label><input type="radio" name="theme" value="light" /> Light</label>
+    <label><input type="radio" name="theme" value="dark" /> Dark</label>
+    <label>Units
+      <select id="units"><option value="metric">Metric</option><option value="us">US customary</option></select>
+    </label>
+    <h2>Account</h2>
+    <form id="sign-in">
+      <input name="email" type="email" placeholder="Email" />
+      <input name="password" type="password" placeholder="Password" />
+      <button>Sign in</button>
+      <span class="error"></span>
+    </form>
+    <button id="sign-out">Sign out</button>
+    <h2>Feedback</h2>
+    <form id="feedback">
+      <textarea name="message"></textarea>
+      <button>Send</button>
+      <span class="result"></span>
+    </form>
+    <p><a id="privacy" href="https://gristmill.example/privacy">Privacy</a></p>
+    <script type="module" src="renderer-settings.js"></script>
+  </body>
+</html>

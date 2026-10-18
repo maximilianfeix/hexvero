@@ -1,0 +1,2110 @@
+{
+  "case": "gristmill-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "inputs": ["holdout8/gristmill-v2.plain.asar"],
+  "base": "holdout8/gristmill.plain.asar",
+  "method": "Every expectation was written from the sources by reading them. No analysis tool was run on them, and no tool's detectors, source code or output were looked at. Line numbers were looked up by a scratch script that finds the line of a given piece of text and fails unless it occurs exactly once (in the tree derived from changes.json, prepended comment lines included). A second scratch script ran main.js and both preloads in Node against a stand-in for the electron and electron-store modules (and wrapped fs and the global fetch), called every registered handler, every menu click and every exposed member, and printed every ipcMain registration, ipcMain.emit, webContents.send, webContents.ipc listener, new BrowserWindow with its merged webPreferences, request (net.fetch, fetch), store and file access, and the channel each member uses, with file:line; its output agreed with the expectations, on the plain sources, on the v2 tree and on the extracted minified build. The renderers were checked by reading and by a listing of their window.<api>.<member>(...), storage and fetch calls. LANGUAGE: main.js, preload.js and the modules in main/ and common/ are CommonJS in the shape tsc emits (\"use strict\", exports.X = void 0 headers, __importDefault, imported functions called as (0, mod_1.fn)(...), a string enum and a numeric enum compiled to IIFEs); main/ipc/shopping.js and preload-shopping.js are plain JavaScript (allowJs); the renderers are ES modules and renderer.js imports renderer/*.js. FILE ATTRIBUTION: facts are attributed to the source file a reader sees them in. Senders that go through the local helpers invoke / send of preload.js name preload.js. The shopping window's channels go through the generic members shopping.send / request / receive, which take the channel from the caller; they are attributed to renderer-shopping.js, where the channel is named, and places gives the ipcRenderer call in preload-shopping.js. A window setting names the file whose code calls new BrowserWindow (main/windows.js for mainWindow, main/app-window.js for the two AppWindows, main/pdf-export.js for printWindow), even where the value is written in another file (main/config.js, main/windows.js); lineFile then names the file of line. In the bundled and minified inputs the modules are bundled into their entry file; bundledFiles maps each module to that file, and line numbers then do not apply. Channel names come from the object IPC_CHANNELS (common/channels.js), the compiled enum MessageToWebApp (common/messages.js), a module constant (main/app-window.js MOUNTED) and literals; all are resolvable by evaluating the source, and no channel name is computed at run time. webPreferences lists the keys preload, contextIsolation, nodeIntegration, sandbox, one entry per window and key the code writes (also through Object.assign of a frozen config object, a conditional spread and a wrapper class); window names the variable that holds the window; count in an absent entry is one more than the number of windows that have that value, as in holdout4 to holdout7. STORAGE kinds: file (an app data file the code names), electron-store (a key of the electron-store instance, as a dot path), localStorage, sessionStorage. IPC payloads are not a scored class; the object literals sent over IPC are listed under ipcPayloadsUnscored for a reader.",
+  "bundledFiles": {
+    "common/channels.js": "main.js, preload.js",
+    "common/messages.js": "main.js, preload.js",
+    "main/app-window.js": "main.js",
+    "main/config.js": "main.js",
+    "main/importer.js": "main.js",
+    "main/library.js": "main.js",
+    "main/menu.js": "main.js",
+    "main/pdf-export.js": "main.js",
+    "main/store.js": "main.js",
+    "main/updates.js": "main.js",
+    "main/windows.js": "main.js",
+    "main/ipc/index.js": "main.js",
+    "main/ipc/recipes.js": "main.js",
+    "main/ipc/shell.js": "main.js",
+    "main/ipc/shopping.js": "main.js",
+    "main/ipc/store-bridge.js": "main.js",
+    "main/ipc/sync.js": "main.js",
+    "main/ipc/timers.js": "main.js",
+    "main/ipc/window.js": "main.js",
+    "main/sync/api-client.js": "main.js",
+    "main/sync/sync-engine.js": "main.js",
+    "renderer/library-view.js": "renderer.js",
+    "renderer/nutrition.js": "renderer.js",
+    "renderer/planner.js": "renderer.js"
+  },
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "recipes:list",
+          "receivers": ["main/ipc/recipes.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.RECIPES_LIST in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_LIST, ...) in main/ipc/recipes.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member recipes.list, invoke(channels_1.IPC_CHANNELS.RECIPES_LIST, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args). Returns library.list().",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 9
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/recipes.js",
+                "line": 12
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 12
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "recipes:get",
+          "receivers": ["main/ipc/recipes.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.RECIPES_GET in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_GET, ...) in main/ipc/recipes.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member recipes.get, invoke(channels_1.IPC_CHANNELS.RECIPES_GET, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 10
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/recipes.js",
+                "line": 13
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 13
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "recipes:save",
+          "receivers": ["main/ipc/recipes.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.RECIPES_SAVE in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_SAVE, ...) in main/ipc/recipes.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member recipes.save, invoke(channels_1.IPC_CHANNELS.RECIPES_SAVE, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args). No renderer calls recipes.save; the member is exposed all the same.",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 11
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/recipes.js",
+                "line": 14
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 14
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "recipes:delete",
+          "receivers": ["main/ipc/recipes.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.RECIPES_DELETE in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_DELETE, ...) in main/ipc/recipes.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member recipes.trash, invoke(channels_1.IPC_CHANNELS.RECIPES_DELETE, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args). In v2 the member is named trash (it was remove); the channel is the same.",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 12
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/recipes.js",
+                "line": 15
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 15
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "recipes:duplicate",
+          "receivers": ["main/ipc/recipes.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.RECIPES_DUPLICATE in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_DUPLICATE, ...) in main/ipc/recipes.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member recipes.duplicate, invoke(channels_1.IPC_CHANNELS.RECIPES_DUPLICATE, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args). New in v2.",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 13
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/recipes.js",
+                "line": 16
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 16
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "recipes:import-url",
+          "receivers": ["main/ipc/recipes.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.RECIPES_IMPORT in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_IMPORT, ...) in main/ipc/recipes.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member recipes.importFromUrl, invoke(channels_1.IPC_CHANNELS.RECIPES_IMPORT, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args). The handler calls importRecipe (main/importer.js), a net.fetch of the address the user pasted.",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 15
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/recipes.js",
+                "line": 28
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 17
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "recipes:export-pdf",
+          "receivers": ["main/ipc/recipes.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.RECIPES_EXPORT_PDF in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_EXPORT_PDF, ...) in main/ipc/recipes.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member recipes.exportPdf, invoke(channels_1.IPC_CHANNELS.RECIPES_EXPORT_PDF, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args). The handler calls exportRecipePdf (main/pdf-export.js), which opens printWindow.",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 16
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/recipes.js",
+                "line": 22
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 18
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "shopping:add-recipe",
+          "receivers": ["main/ipc/shopping.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.SHOPPING_ADD in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.SHOPPING_ADD, ...) in main/ipc/shopping.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member recipes.addToShoppingList, invoke(channels_1.IPC_CHANNELS.SHOPPING_ADD, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args). main/ipc/shopping.js is plain JavaScript and calls ipcMain under the name ipc (const { ipcMain: ipc } = require('electron')).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 17
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/shopping.js",
+                "line": 33
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 19
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "shopping:open",
+          "receivers": ["main/ipc/shopping.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.SHOPPING_OPEN in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.on(channels_1.IPC_CHANNELS.SHOPPING_OPEN, ...) in main/ipc/shopping.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member desktop.openShoppingList, send(channels_1.IPC_CHANNELS.SHOPPING_OPEN, ...) through the local helper send = (channel, ...args) => ipcRenderer.send(channel, ...args). ipc.on with ipc = ipcMain (destructured alias).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 18
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/shopping.js",
+                "line": 47
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 38
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "settings:open",
+          "receivers": ["main/ipc/window.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.SETTINGS_OPEN in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.on(channels_1.IPC_CHANNELS.SETTINGS_OPEN, ...) in main/ipc/window.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member desktop.openSettings, send(channels_1.IPC_CHANNELS.SETTINGS_OPEN, ...) through the local helper send = (channel, ...args) => ipcRenderer.send(channel, ...args). Opens settingsWindow (main/windows.js openSettings).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 19
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/window.js",
+                "line": 12
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 39
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "sync:sign-in",
+          "receivers": ["main/ipc/sync.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.SYNC_SIGN_IN in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.SYNC_SIGN_IN, ...) in main/ipc/sync.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member sync.signIn, invoke(channels_1.IPC_CHANNELS.SYNC_SIGN_IN, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 20
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/sync.js",
+                "line": 10
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 22
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "sync:sign-out",
+          "receivers": ["main/ipc/sync.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.SYNC_SIGN_OUT in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.on(channels_1.IPC_CHANNELS.SYNC_SIGN_OUT, ...) in main/ipc/sync.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member sync.signOut, send(channels_1.IPC_CHANNELS.SYNC_SIGN_OUT, ...) through the local helper send = (channel, ...args) => ipcRenderer.send(channel, ...args).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 21
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/sync.js",
+                "line": 11
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 23
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "sync:now",
+          "receivers": ["main/ipc/sync.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.SYNC_NOW in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.SYNC_NOW, ...) in main/ipc/sync.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member sync.now, invoke(channels_1.IPC_CHANNELS.SYNC_NOW, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 22
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/sync.js",
+                "line": 12
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 24
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "timer:start",
+          "receivers": ["main/ipc/timers.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.TIMER_START in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.handle(channels_1.IPC_CHANNELS.TIMER_START, ...) in main/ipc/timers.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member timers.start, invoke(channels_1.IPC_CHANNELS.TIMER_START, ...) through the local helper invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 23
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/timers.js",
+                "line": 44
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 27
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "timer:cancel",
+          "receivers": ["main/ipc/timers.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.TIMER_CANCEL in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.on(channels_1.IPC_CHANNELS.TIMER_CANCEL, ...) in main/ipc/timers.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member timers.cancel, send(channels_1.IPC_CHANNELS.TIMER_CANCEL, ...) through the local helper send = (channel, ...args) => ipcRenderer.send(channel, ...args).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 24
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/timers.js",
+                "line": 50
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 28
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "store:get",
+          "receivers": ["main/ipc/store-bridge.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.STORE_GET. Receiver: ipcMain.on(channels_1.IPC_CHANNELS.STORE_GET, ...) in main/ipc/store-bridge.js, which answers through event.returnValue (a synchronous message). Sender: preload.js member settingsStore.get, ipcRenderer.sendSync(channels_1.IPC_CHANNELS.STORE_GET, key), called directly, not through the helpers.",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 25
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/store-bridge.js",
+                "line": 12
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 43
+              }
+            ]
+          }
+        },
+        {
+          "channel": "store:set",
+          "receivers": ["main/ipc/store-bridge.js"],
+          "senders": ["preload.js"],
+          "why": "IPC_CHANNELS.STORE_SET in common/channels.js (a plain exported object, Responsively style). Receiver: ipcMain.on(channels_1.IPC_CHANNELS.STORE_SET, ...) in main/ipc/store-bridge.js, registered by its register function, which main/ipc/index.js calls from registerIpcHandlers (main.js, at app ready). Sender: preload.js member settingsStore.set, send(channels_1.IPC_CHANNELS.STORE_SET, ...) through the local helper send = (channel, ...args) => ipcRenderer.send(channel, ...args).",
+          "places": {
+            "constant": {
+              "file": "common/channels.js",
+              "line": 26
+            },
+            "receivers": [
+              {
+                "file": "main/ipc/store-bridge.js",
+                "line": 20
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 44
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "gm::shell::open-external",
+          "receivers": ["main/ipc/shell.js"],
+          "senders": ["preload.js"],
+          "why": "A literal on both ends (Mark Text style \"ns::area::verb\" names). Receiver: ipcMain.handle(\"gm::shell::open-external\", ...) in main/ipc/shell.js. Sender: preload.js member desktop.openExternal, invoke(\"gm::shell::open-external\", ...) through the local helper invoke.",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/shell.js",
+                "line": 19
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 31
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "gm::shell::show-item",
+          "receivers": ["main/ipc/shell.js"],
+          "senders": ["preload.js"],
+          "why": "A literal on both ends (Mark Text style \"ns::area::verb\" names). Receiver: ipcMain.on(\"gm::shell::show-item\", ...) in main/ipc/shell.js. Sender: preload.js member desktop.showItemInFolder, send(\"gm::shell::show-item\", ...) through the local helper send.",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/shell.js",
+                "line": 27
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "gm::clipboard::write-text",
+          "receivers": ["main/ipc/shell.js"],
+          "senders": ["preload.js"],
+          "why": "A literal on both ends (Mark Text style \"ns::area::verb\" names). Receiver: ipcMain.on(\"gm::clipboard::write-text\", ...) in main/ipc/shell.js. Sender: preload.js member desktop.copyText, send(\"gm::clipboard::write-text\", ...) through the local helper send.",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/shell.js",
+                "line": 30
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 33
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "gm::win::minimize",
+          "receivers": ["main/ipc/window.js"],
+          "senders": ["preload.js"],
+          "why": "A literal on both ends (Mark Text style \"ns::area::verb\" names). Receiver: ipcMain.on(\"gm::win::minimize\", ...) in main/ipc/window.js. Sender: preload.js member desktop.minimize, send(\"gm::win::minimize\", ...) through the local helper send.",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/window.js",
+                "line": 13
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 34
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "gm::win::toggle-maximize",
+          "receivers": ["main/ipc/window.js"],
+          "senders": ["preload.js"],
+          "why": "A literal on both ends (Mark Text style \"ns::area::verb\" names). Receiver: ipcMain.on(\"gm::win::toggle-maximize\", ...) in main/ipc/window.js. Sender: preload.js member desktop.toggleMaximize, send(\"gm::win::toggle-maximize\", ...) through the local helper send.",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/window.js",
+                "line": 14
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 35
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "gm::win::close",
+          "receivers": ["main/ipc/window.js"],
+          "senders": ["preload.js"],
+          "why": "A literal on both ends (Mark Text style \"ns::area::verb\" names). Receiver: ipcMain.on(\"gm::win::close\", ...) in main/ipc/window.js. Sender: preload.js member desktop.close, send(\"gm::win::close\", ...) through the local helper send.",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/window.js",
+                "line": 23
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 36
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "gm::win::is-maximized",
+          "receivers": ["main/ipc/window.js"],
+          "senders": ["preload.js"],
+          "why": "A literal on both ends (Mark Text style \"ns::area::verb\" names). Receiver: ipcMain.handle(\"gm::win::is-maximized\", ...) in main/ipc/window.js. Sender: preload.js member desktop.isMaximized, invoke(\"gm::win::is-maximized\", ...) through the local helper invoke.",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/window.js",
+                "line": 24
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 9,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 37
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "timer-tick",
+          "receivers": ["preload.js"],
+          "senders": ["main/ipc/timers.js"],
+          "why": "MessageToWebApp.TimerTick = \"timer-tick\" in common/messages.js (a compiled TypeScript string enum, Standard Notes style). Sender: target.webContents.send(messages_1.MessageToWebApp.TimerTick, { id, remaining }) every second inside TimerService.start, target being the window of the timer:start request in main/ipc/timers.js. Receiver: preload.js member gristmillEvents.setTimerTickHandler, ipcRenderer.on(messages_1.MessageToWebApp.TimerTick, handler); the object is exposed inside process.once(\"loaded\", ...).",
+          "places": {
+            "constant": {
+              "file": "common/messages.js",
+              "line": 9
+            },
+            "receivers": [
+              {
+                "file": "preload.js",
+                "line": 58
+              }
+            ],
+            "senders": [
+              {
+                "file": "main/ipc/timers.js",
+                "line": 23
+              }
+            ]
+          }
+        },
+        {
+          "channel": "timer-done",
+          "receivers": ["preload.js"],
+          "senders": ["main/ipc/timers.js"],
+          "why": "MessageToWebApp.TimerDone = \"timer-done\" in common/messages.js (a compiled TypeScript string enum, Standard Notes style). Sender: target.webContents.send(messages_1.MessageToWebApp.TimerDone, { id, label }) in TimerService.finish in main/ipc/timers.js. Receiver: preload.js member gristmillEvents.setTimerDoneHandler, ipcRenderer.on(messages_1.MessageToWebApp.TimerDone, handler); the object is exposed inside process.once(\"loaded\", ...).",
+          "places": {
+            "constant": {
+              "file": "common/messages.js",
+              "line": 10
+            },
+            "receivers": [
+              {
+                "file": "preload.js",
+                "line": 59
+              }
+            ],
+            "senders": [
+              {
+                "file": "main/ipc/timers.js",
+                "line": 34
+              }
+            ]
+          }
+        },
+        {
+          "channel": "sync-status",
+          "receivers": ["preload.js"],
+          "senders": ["main/sync/sync-engine.js"],
+          "why": "MessageToWebApp.SyncStatus = \"sync-status\" in common/messages.js (a compiled TypeScript string enum, Standard Notes style). Sender: win.webContents.send(messages_1.MessageToWebApp.SyncStatus, status) in SyncEngine.broadcast, a loop over BrowserWindow.getAllWindows() in main/sync/sync-engine.js. Receiver: preload.js member gristmillEvents.setSyncStatusHandler, ipcRenderer.on(messages_1.MessageToWebApp.SyncStatus, handler); the object is exposed inside process.once(\"loaded\", ...).",
+          "places": {
+            "constant": {
+              "file": "common/messages.js",
+              "line": 11
+            },
+            "receivers": [
+              {
+                "file": "preload.js",
+                "line": 60
+              }
+            ],
+            "senders": [
+              {
+                "file": "main/sync/sync-engine.js",
+                "line": 18
+              }
+            ]
+          }
+        },
+        {
+          "channel": "update-available",
+          "receivers": ["preload.js"],
+          "senders": ["main/updates.js"],
+          "why": "MessageToWebApp.UpdateAvailable = \"update-available\" in common/messages.js (a compiled TypeScript string enum, Standard Notes style). Sender: getWindow()?.webContents.send(messages_1.MessageToWebApp.UpdateAvailable, {...}) in checkForUpdates, getWindow being windows.getMainWindow in main/updates.js. Receiver: preload.js member gristmillEvents.setUpdateAvailableHandler, ipcRenderer.on(messages_1.MessageToWebApp.UpdateAvailable, handler); the object is exposed inside process.once(\"loaded\", ...).",
+          "places": {
+            "constant": {
+              "file": "common/messages.js",
+              "line": 8
+            },
+            "receivers": [
+              {
+                "file": "preload.js",
+                "line": 61
+              }
+            ],
+            "senders": [
+              {
+                "file": "main/updates.js",
+                "line": 25
+              }
+            ]
+          }
+        },
+        {
+          "channel": "setting-changed",
+          "receivers": ["preload.js"],
+          "senders": ["main/ipc/store-bridge.js"],
+          "why": "A literal on both ends (Min style broadcast). Sender: main/ipc/store-bridge.js, in the store:set listener, win.webContents.send(\"setting-changed\", key, value) for every window except the one that set it. Receiver: preload.js member gristmillEvents.setSettingChangedHandler, ipcRenderer.on(\"setting-changed\", handler).",
+          "places": {
+            "receivers": [
+              {
+                "file": "preload.js",
+                "line": 62
+              }
+            ],
+            "senders": [
+              {
+                "file": "main/ipc/store-bridge.js",
+                "line": 29
+              }
+            ]
+          }
+        },
+        {
+          "channel": "app-window:mounted",
+          "receivers": ["main/app-window.js"],
+          "senders": ["preload.js", "preload-shopping.js"],
+          "why": "Receiver: main/app-window.js, the AppWindow constructor, this.browserWindow.webContents.ipc.once(MOUNTED, ...) with const MOUNTED = \"app-window:mounted\": the per-window IPC of webContents.ipc (Electron 17+), not ipcMain. Senders: preload.js, send(\"app-window:mounted\") at DOMContentLoaded (through the local helper send), and preload-shopping.js, ipcRenderer.send('app-window:mounted') at DOMContentLoaded. The main window, which is not an AppWindow, also loads preload.js and so sends it too; nothing listens for it there.",
+          "places": {
+            "constant": {
+              "file": "main/app-window.js",
+              "line": 12
+            },
+            "receivers": [
+              {
+                "file": "main/app-window.js",
+                "line": 31
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload.js",
+                "line": 10,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 67
+                }
+              },
+              {
+                "file": "preload-shopping.js",
+                "line": 40
+              }
+            ]
+          }
+        },
+        {
+          "channel": "shopping:items",
+          "receivers": ["main/ipc/shopping.js"],
+          "senders": ["renderer-shopping.js"],
+          "why": "A literal on both ends, and one of validChannels in preload-shopping.js. Receiver: ipc.handle('shopping:items', ...) in main/ipc/shopping.js (ipc = ipcMain). Sender: renderer-shopping.js, window.shopping.request(\"shopping:items\"), which is ipcRenderer.invoke(channel, data); the bridge member forwards any channel in validChannels to ipcRenderer (Simplenote style), so the channel is named in the renderer, not in the preload. Attributed to renderer-shopping.js, where the channel is handed to the bridge; the ipcRenderer call itself is in preload-shopping.js (places).",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/shopping.js",
+                "line": 51
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload-shopping.js",
+                "line": 24,
+                "entry": {
+                  "file": "renderer-shopping.js",
+                  "line": 26
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "shopping:toggle",
+          "receivers": ["main/ipc/shopping.js"],
+          "senders": ["renderer-shopping.js"],
+          "why": "A literal on both ends, and one of validChannels in preload-shopping.js. Receiver: ipc.on('shopping:toggle', ...) in main/ipc/shopping.js (ipc = ipcMain). Sender: renderer-shopping.js, window.shopping.send(\"shopping:toggle\", { index }), which is ipcRenderer.send(channel, data); the bridge member forwards any channel in validChannels to ipcRenderer (Simplenote style), so the channel is named in the renderer, not in the preload. Attributed to renderer-shopping.js, where the channel is handed to the bridge; the ipcRenderer call itself is in preload-shopping.js (places).",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/shopping.js",
+                "line": 55
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload-shopping.js",
+                "line": 19,
+                "entry": {
+                  "file": "renderer-shopping.js",
+                  "line": 11
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "shopping:clear-checked",
+          "receivers": ["main/ipc/shopping.js"],
+          "senders": ["renderer-shopping.js"],
+          "why": "A literal on both ends, and one of validChannels in preload-shopping.js. Receiver: ipc.on('shopping:clear-checked', ...) in main/ipc/shopping.js (ipc = ipcMain). Sender: renderer-shopping.js, window.shopping.send(\"shopping:clear-checked\"); the bridge member forwards any channel in validChannels to ipcRenderer (Simplenote style), so the channel is named in the renderer, not in the preload. Attributed to renderer-shopping.js, where the channel is handed to the bridge; the ipcRenderer call itself is in preload-shopping.js (places). New in v2: renamed from shopping:clear on all three places, and it now keeps unchecked items.",
+          "places": {
+            "receivers": [
+              {
+                "file": "main/ipc/shopping.js",
+                "line": 63
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload-shopping.js",
+                "line": 19,
+                "entry": {
+                  "file": "renderer-shopping.js",
+                  "line": 21
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "shopping:changed",
+          "receivers": ["renderer-shopping.js"],
+          "senders": ["main/ipc/shopping.js"],
+          "why": "A literal on both ends, and one of validChannels. Sender: main/ipc/shopping.js notify, win.webContents.send('shopping:changed', items) to the shopping window (windows.getShoppingWindow()). Receiver: renderer-shopping.js, window.shopping.receive(\"shopping:changed\", render), which is ipcRenderer.on(channel, newCallback) in preload-shopping.js; attributed to the renderer as for shopping:items.",
+          "places": {
+            "receivers": [
+              {
+                "file": "preload-shopping.js",
+                "line": 31,
+                "entry": {
+                  "file": "renderer-shopping.js",
+                  "line": 25
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "main/ipc/shopping.js",
+                "line": 17
+              }
+            ]
+          }
+        }
+      ],
+      "absent": [
+        {
+          "channel": "recipes:rename",
+          "why": "IPC_CHANNELS.RECIPES_RENAME in common/channels.js: a constant nothing uses"
+        },
+        {
+          "channel": "console-log",
+          "why": "MessageToWebApp.ConsoleLog in common/messages.js: an enum member nothing sends or listens to"
+        },
+        {
+          "channel": "shopping:export",
+          "why": "only an entry of validChannels in preload-shopping.js; no code sends, invokes, receives or handles it"
+        },
+        {
+          "channel": "Idle",
+          "why": "a member of the numeric enum SyncState (so are Pulling, Pushing, SignedOut, Failed), sent as the state field of sync-status"
+        },
+        {
+          "channel": "Pulling",
+          "why": "see Idle"
+        },
+        {
+          "channel": "file.sync",
+          "why": "main/menu.js: the id of a menu item (so are file.shopping, help.importing)"
+        },
+        {
+          "channel": "loaded",
+          "why": "preload.js: process.once(\"loaded\"), a process event"
+        },
+        {
+          "channel": "DOMContentLoaded",
+          "why": "a DOM event the preloads listen to"
+        },
+        {
+          "channel": "ready-to-show",
+          "why": "a BrowserWindow event (so are close and closed)"
+        },
+        {
+          "channel": "closed",
+          "why": "a BrowserWindow event"
+        },
+        {
+          "channel": "second-instance",
+          "why": "an app event (so are window-all-closed and activate)"
+        },
+        {
+          "channel": "shopping",
+          "why": "the name of the bridge API exposed by preload-shopping.js"
+        },
+        {
+          "channel": "dragstart",
+          "why": "a DOM event in renderer/library-view.js"
+        },
+        {
+          "channel": "shopping:clear",
+          "why": "renamed to shopping:clear-checked in v2"
+        },
+        {
+          "channel": "menu:sync-now",
+          "why": "removed in v2: the menu calls syncEngine.run() directly and the listener is gone"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main/windows.js",
+          "window": "mainWindow",
+          "line": 25,
+          "lineFile": "main/config.js",
+          "why": "createMainWindow (main/windows.js): winOptions = Object.assign({}, config_1.mainWinOptions), then new BrowserWindow(winOptions). mainWinOptions is a frozen object in main/config.js (Mark Text style); Object.assign copies its webPreferences object as it is; preload: path.join(__dirname, \"..\", \"preload.js\") from main/config.js"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "mainWindow",
+          "line": 22,
+          "lineFile": "main/config.js",
+          "why": "createMainWindow (main/windows.js): winOptions = Object.assign({}, config_1.mainWinOptions), then new BrowserWindow(winOptions). mainWinOptions is a frozen object in main/config.js (Mark Text style); Object.assign copies its webPreferences object as it is"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "mainWindow",
+          "line": 23,
+          "lineFile": "main/config.js",
+          "why": "createMainWindow (main/windows.js): winOptions = Object.assign({}, config_1.mainWinOptions), then new BrowserWindow(winOptions). mainWinOptions is a frozen object in main/config.js (Mark Text style); Object.assign copies its webPreferences object as it is"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "mainWindow",
+          "line": 31,
+          "lineFile": "main/config.js",
+          "why": "createMainWindow (main/windows.js): winOptions = Object.assign({}, config_1.mainWinOptions), then new BrowserWindow(winOptions). mainWinOptions is a frozen object in main/config.js (Mark Text style); Object.assign copies its webPreferences object as it is; sandbox: false comes from a conditional spread, ...(isTesting() ? undefined : { sandbox: false }) (YouTube Music style). isTesting() is process.env.GRISTMILL_E2E === \"1\", true only in the e2e runs; in every other run the window is unsandboxed. The code writes no other sandbox value for this window"
+        },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main/app-window.js",
+          "window": "settingsWindow",
+          "line": 55,
+          "lineFile": "main/windows.js",
+          "why": "openSettings (main/windows.js) calls new AppWindow({..., webPreferences: {...}}); the AppWindow constructor (main/app-window.js, Kap style) calls new BrowserWindow({ ...rest, webPreferences: { contextIsolation: true, nodeIntegration: false, ...rest.webPreferences }, show: false }), the caller's webPreferences spread last; preload from the caller. The settings window shares preload.js with the main window"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/app-window.js",
+          "window": "settingsWindow",
+          "line": 23,
+          "why": "openSettings (main/windows.js) calls new AppWindow({..., webPreferences: {...}}); the AppWindow constructor (main/app-window.js, Kap style) calls new BrowserWindow({ ...rest, webPreferences: { contextIsolation: true, nodeIntegration: false, ...rest.webPreferences }, show: false }), the caller's webPreferences spread last; from the AppWindow defaults"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/app-window.js",
+          "window": "settingsWindow",
+          "line": 24,
+          "why": "openSettings (main/windows.js) calls new AppWindow({..., webPreferences: {...}}); the AppWindow constructor (main/app-window.js, Kap style) calls new BrowserWindow({ ...rest, webPreferences: { contextIsolation: true, nodeIntegration: false, ...rest.webPreferences }, show: false }), the caller's webPreferences spread last; from the AppWindow defaults. No sandbox key is written for this window"
+        },
+        {
+          "key": "preload",
+          "value": "preload-shopping.js",
+          "file": "main/app-window.js",
+          "window": "shoppingWindow",
+          "line": 75,
+          "lineFile": "main/windows.js",
+          "why": "openShoppingList (main/windows.js) calls new AppWindow({..., webPreferences: {...}}); the AppWindow constructor (main/app-window.js, Kap style) calls new BrowserWindow({ ...rest, webPreferences: { contextIsolation: true, nodeIntegration: false, ...rest.webPreferences }, show: false }), the caller's webPreferences spread last; preload path.join(app.getAppPath(), \"preload-shopping.js\")"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/app-window.js",
+          "window": "shoppingWindow",
+          "line": 76,
+          "lineFile": "main/windows.js",
+          "why": "openShoppingList (main/windows.js) calls new AppWindow({..., webPreferences: {...}}); the AppWindow constructor (main/app-window.js, Kap style) calls new BrowserWindow({ ...rest, webPreferences: { contextIsolation: true, nodeIntegration: false, ...rest.webPreferences }, show: false }), the caller's webPreferences spread last; sandbox: true from the caller"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/app-window.js",
+          "window": "shoppingWindow",
+          "line": 23,
+          "why": "openShoppingList (main/windows.js) calls new AppWindow({..., webPreferences: {...}}); the AppWindow constructor (main/app-window.js, Kap style) calls new BrowserWindow({ ...rest, webPreferences: { contextIsolation: true, nodeIntegration: false, ...rest.webPreferences }, show: false }), the caller's webPreferences spread last; from the AppWindow defaults"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/app-window.js",
+          "window": "shoppingWindow",
+          "line": 24,
+          "why": "openShoppingList (main/windows.js) calls new AppWindow({..., webPreferences: {...}}); the AppWindow constructor (main/app-window.js, Kap style) calls new BrowserWindow({ ...rest, webPreferences: { contextIsolation: true, nodeIntegration: false, ...rest.webPreferences }, show: false }), the caller's webPreferences spread last; from the AppWindow defaults"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/pdf-export.js",
+          "window": "printWindow",
+          "line": 30,
+          "why": "exportRecipePdf (main/pdf-export.js): printWindow = new BrowserWindow({ show: false, ..., webPreferences: { nodeIntegration: false, sandbox } }) in a local variable, a hidden window that loads a data: URL and is printed to PDF; no preload and no contextIsolation key"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/pdf-export.js",
+          "window": "printWindow",
+          "line": 31,
+          "why": "exportRecipePdf (main/pdf-export.js): printWindow = new BrowserWindow({ show: false, ..., webPreferences: { nodeIntegration: false, sandbox } }) in a local variable, a hidden window that loads a data: URL and is printed to PDF; no preload and no contextIsolation key. v2 sets sandbox: true (it was false)"
+        }
+      ],
+      "absent": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window created in main/windows.js loads it (mainWindow); settingsWindow is created in main/app-window.js"
+        },
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main/app-window.js",
+          "count": 2,
+          "why": "exactly one AppWindow loads it (settingsWindow)"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/app-window.js",
+          "count": 3,
+          "why": "exactly two AppWindows (settingsWindow, shoppingWindow); the defaults are written once"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/app-window.js",
+          "count": 3,
+          "why": "exactly two AppWindows"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/app-window.js",
+          "count": 2,
+          "why": "exactly one AppWindow has it (shoppingWindow)"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window (mainWindow)"
+        },
+        {
+          "key": "contextIsolation",
+          "value": null,
+          "file": "main/pdf-export.js",
+          "window": "printWindow",
+          "why": "printWindow writes no contextIsolation key (Electron's default applies); an entry with a value is not in the code"
+        },
+        {
+          "key": "preload",
+          "value": null,
+          "file": "main/pdf-export.js",
+          "window": "printWindow",
+          "why": "printWindow has no preload"
+        },
+        {
+          "key": "sandbox",
+          "value": null,
+          "file": "main/app-window.js",
+          "window": "settingsWindow",
+          "why": "settingsWindow writes no sandbox key"
+        },
+        {
+          "key": "preload",
+          "value": "preload-onboarding.js",
+          "file": "main/config.js",
+          "why": "onboardingWinOptions in main/config.js: a frozen options object nothing uses (and preload-onboarding.js does not exist); no window is created from it"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/config.js",
+          "why": "onboardingWinOptions and mainWinOptions are objects in main/config.js; the window that uses mainWinOptions is created in main/windows.js"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/config.js",
+          "why": "see contextIsolation in main/config.js"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/config.js",
+          "why": "mainWinOptions is no window; the window is created in main/windows.js"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "recipes",
+          "member": "list",
+          "channel": "recipes:list",
+          "why": "invoke(IPC_CHANNELS.RECIPES_LIST); the object recipesAPI is exposed by contextBridge.exposeInMainWorld(\"recipes\", recipesAPI) inside a try block",
+          "line": 12
+        },
+        {
+          "api": "recipes",
+          "member": "get",
+          "channel": "recipes:get",
+          "why": "invoke(IPC_CHANNELS.RECIPES_GET, id)",
+          "line": 13
+        },
+        {
+          "api": "recipes",
+          "member": "save",
+          "channel": "recipes:save",
+          "why": "invoke(IPC_CHANNELS.RECIPES_SAVE, recipe)",
+          "line": 14
+        },
+        {
+          "api": "recipes",
+          "member": "trash",
+          "channel": "recipes:delete",
+          "why": "invoke(IPC_CHANNELS.RECIPES_DELETE, id); renamed from remove in v2",
+          "line": 15
+        },
+        {
+          "api": "recipes",
+          "member": "duplicate",
+          "channel": "recipes:duplicate",
+          "why": "invoke(IPC_CHANNELS.RECIPES_DUPLICATE, id); new in v2",
+          "line": 16
+        },
+        {
+          "api": "recipes",
+          "member": "importFromUrl",
+          "channel": "recipes:import-url",
+          "why": "invoke(IPC_CHANNELS.RECIPES_IMPORT, { url, tags })",
+          "line": 17
+        },
+        {
+          "api": "recipes",
+          "member": "exportPdf",
+          "channel": "recipes:export-pdf",
+          "why": "invoke(IPC_CHANNELS.RECIPES_EXPORT_PDF, { id })",
+          "line": 18
+        },
+        {
+          "api": "recipes",
+          "member": "addToShoppingList",
+          "channel": "shopping:add-recipe",
+          "why": "invoke(IPC_CHANNELS.SHOPPING_ADD, { recipeId, servings })",
+          "line": 19
+        },
+        {
+          "api": "sync",
+          "member": "signIn",
+          "channel": "sync:sign-in",
+          "why": "invoke(IPC_CHANNELS.SYNC_SIGN_IN, { email, password }); the object syncAPI is exposed by contextBridge.exposeInMainWorld(\"sync\", syncAPI) inside a try block",
+          "line": 22
+        },
+        {
+          "api": "sync",
+          "member": "signOut",
+          "channel": "sync:sign-out",
+          "why": "send(IPC_CHANNELS.SYNC_SIGN_OUT)",
+          "line": 23
+        },
+        {
+          "api": "sync",
+          "member": "now",
+          "channel": "sync:now",
+          "why": "invoke(IPC_CHANNELS.SYNC_NOW)",
+          "line": 24
+        },
+        {
+          "api": "timers",
+          "member": "start",
+          "channel": "timer:start",
+          "why": "invoke(IPC_CHANNELS.TIMER_START, { label, seconds }); the object timersAPI is exposed by contextBridge.exposeInMainWorld(\"timers\", timersAPI) inside a try block",
+          "line": 27
+        },
+        {
+          "api": "timers",
+          "member": "cancel",
+          "channel": "timer:cancel",
+          "why": "send(IPC_CHANNELS.TIMER_CANCEL, id)",
+          "line": 28
+        },
+        {
+          "api": "desktop",
+          "member": "isMac",
+          "channel": null,
+          "why": "a value, process.platform === \"darwin\"; no IPC; the object desktopAPI is exposed by contextBridge.exposeInMainWorld(\"desktop\", desktopAPI) inside a try block; moved from the first to the last member in v2",
+          "line": 40
+        },
+        {
+          "api": "desktop",
+          "member": "openExternal",
+          "channel": "gm::shell::open-external",
+          "why": "invoke(\"gm::shell::open-external\", url)",
+          "line": 31
+        },
+        {
+          "api": "desktop",
+          "member": "showItemInFolder",
+          "channel": "gm::shell::show-item",
+          "why": "send(\"gm::shell::show-item\", fullPath)",
+          "line": 32
+        },
+        {
+          "api": "desktop",
+          "member": "copyText",
+          "channel": "gm::clipboard::write-text",
+          "why": "send(\"gm::clipboard::write-text\", text)",
+          "line": 33
+        },
+        {
+          "api": "desktop",
+          "member": "minimize",
+          "channel": "gm::win::minimize",
+          "why": "send(\"gm::win::minimize\")",
+          "line": 34
+        },
+        {
+          "api": "desktop",
+          "member": "toggleMaximize",
+          "channel": "gm::win::toggle-maximize",
+          "why": "send(\"gm::win::toggle-maximize\")",
+          "line": 35
+        },
+        {
+          "api": "desktop",
+          "member": "close",
+          "channel": "gm::win::close",
+          "why": "send(\"gm::win::close\")",
+          "line": 36
+        },
+        {
+          "api": "desktop",
+          "member": "isMaximized",
+          "channel": "gm::win::is-maximized",
+          "why": "invoke(\"gm::win::is-maximized\")",
+          "line": 37
+        },
+        {
+          "api": "desktop",
+          "member": "openShoppingList",
+          "channel": "shopping:open",
+          "why": "send(IPC_CHANNELS.SHOPPING_OPEN)",
+          "line": 38
+        },
+        {
+          "api": "desktop",
+          "member": "openSettings",
+          "channel": "settings:open",
+          "why": "send(IPC_CHANNELS.SETTINGS_OPEN)",
+          "line": 39
+        },
+        {
+          "api": "settingsStore",
+          "member": "get",
+          "channel": "store:get",
+          "why": "ipcRenderer.sendSync(IPC_CHANNELS.STORE_GET, key); the object settingsStoreAPI is exposed by contextBridge.exposeInMainWorld(\"settingsStore\", settingsStoreAPI) inside a try block",
+          "line": 43
+        },
+        {
+          "api": "settingsStore",
+          "member": "set",
+          "channel": "store:set",
+          "why": "send(IPC_CHANNELS.STORE_SET, key, value)",
+          "line": 44
+        },
+        {
+          "api": "gristmillEvents",
+          "member": "setTimerTickHandler",
+          "channel": "timer-tick",
+          "why": "ipcRenderer.on(MessageToWebApp.TimerTick, handler): listens. The object mainEvents is exposed by exposeInMainWorld(\"gristmillEvents\", mainEvents) inside process.once(\"loaded\", ...) (Standard Notes style)",
+          "line": 58
+        },
+        {
+          "api": "gristmillEvents",
+          "member": "setTimerDoneHandler",
+          "channel": "timer-done",
+          "why": "ipcRenderer.on(MessageToWebApp.TimerDone, handler): listens. The object mainEvents is exposed by exposeInMainWorld(\"gristmillEvents\", mainEvents) inside process.once(\"loaded\", ...) (Standard Notes style)",
+          "line": 59
+        },
+        {
+          "api": "gristmillEvents",
+          "member": "setSyncStatusHandler",
+          "channel": "sync-status",
+          "why": "ipcRenderer.on(MessageToWebApp.SyncStatus, handler): listens. The object mainEvents is exposed by exposeInMainWorld(\"gristmillEvents\", mainEvents) inside process.once(\"loaded\", ...) (Standard Notes style)",
+          "line": 60
+        },
+        {
+          "api": "gristmillEvents",
+          "member": "setUpdateAvailableHandler",
+          "channel": "update-available",
+          "why": "ipcRenderer.on(MessageToWebApp.UpdateAvailable, handler): listens. The object mainEvents is exposed by exposeInMainWorld(\"gristmillEvents\", mainEvents) inside process.once(\"loaded\", ...) (Standard Notes style)",
+          "line": 61
+        },
+        {
+          "api": "gristmillEvents",
+          "member": "setSettingChangedHandler",
+          "channel": "setting-changed",
+          "why": "ipcRenderer.on(\"setting-changed\", handler): listens. The object mainEvents is exposed by exposeInMainWorld(\"gristmillEvents\", mainEvents) inside process.once(\"loaded\", ...) (Standard Notes style)",
+          "line": 62
+        },
+        {
+          "api": "shopping",
+          "member": "send",
+          "channel": null,
+          "why": "ipcRenderer.send(channel, data); a generic member (Simplenote style): it forwards whatever channel the caller passes, if validChannels includes it, so it has no channel of its own (channel null). preload-shopping.js exposes shoppingAPI with contextBridge.exposeInMainWorld('shopping', shoppingAPI)",
+          "line": 16
+        },
+        {
+          "api": "shopping",
+          "member": "request",
+          "channel": null,
+          "why": "ipcRenderer.invoke(channel, data); a generic member (Simplenote style): it forwards whatever channel the caller passes, if validChannels includes it, so it has no channel of its own (channel null). preload-shopping.js exposes shoppingAPI with contextBridge.exposeInMainWorld('shopping', shoppingAPI)",
+          "line": 22
+        },
+        {
+          "api": "shopping",
+          "member": "receive",
+          "channel": null,
+          "why": "ipcRenderer.on(channel, newCallback): listens; a generic member (Simplenote style): it forwards whatever channel the caller passes, if validChannels includes it, so it has no channel of its own (channel null). preload-shopping.js exposes shoppingAPI with contextBridge.exposeInMainWorld('shopping', shoppingAPI)",
+          "line": 28
+        },
+        {
+          "api": "shopping",
+          "member": "platform",
+          "channel": null,
+          "why": "a value, process.platform; no IPC",
+          "line": 34
+        }
+      ],
+      "absent": [
+        {
+          "api": "recipes",
+          "member": "invoke",
+          "why": "invoke and send are local helper functions of preload.js; they are not exposed"
+        },
+        {
+          "api": "desktop",
+          "member": "send",
+          "why": "see invoke"
+        },
+        {
+          "api": "gristmillEvents",
+          "member": "mainEvents",
+          "why": "the name of the local variable holding the exposed object"
+        },
+        {
+          "api": "shopping",
+          "member": "validChannels",
+          "why": "a local array of preload-shopping.js, not exposed"
+        },
+        {
+          "api": "electron",
+          "member": "send",
+          "why": "this app exposes no API named electron"
+        },
+        {
+          "api": "settingsStore",
+          "member": "delete",
+          "why": "settingsStore has only get and set"
+        },
+        {
+          "api": "recipes",
+          "member": "remove",
+          "why": "renamed to trash in v2"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "value": "https://api.gristmill.example/v2/auth/token",
+          "method": "POST",
+          "api": "electron net.fetch",
+          "file": "main/sync/sync-engine.js",
+          "line": 22,
+          "why": "main/sync/sync-engine.js signIn: api_client_1.api.post(\"/auth/token\", { email, password, client }) through the ApiClient instance api = new ApiClient(API_BASE, getToken) of main/sync/api-client.js, API_BASE = \"https://api.gristmill.example/v2\"; ApiClient.request calls electron net.fetch(`${this.baseUrl}${path}`, { method, headers, body }). Called by the sync:sign-in handler"
+        },
+        {
+          "prefix": "https://api.gristmill.example/v2/recipes?since=",
+          "method": "GET",
+          "api": "electron net.fetch",
+          "file": "main/sync/sync-engine.js",
+          "line": 50,
+          "why": "cycle: api.get(`/recipes?since=${since}`) through the ApiClient instance api = new ApiClient(API_BASE, getToken) of main/sync/api-client.js, API_BASE = \"https://api.gristmill.example/v2\"; ApiClient.request calls electron net.fetch(`${this.baseUrl}${path}`, { method, headers, body }); since is the stored sync.lastPulledAt"
+        },
+        {
+          "prefix": "https://api.gristmill.example/v2/recipes/",
+          "method": "PUT",
+          "api": "electron net.fetch",
+          "file": "main/sync/sync-engine.js",
+          "line": 59,
+          "why": "cycle: api.put(`/recipes/${encodeURIComponent(recipe.id)}`, recipe) for every recipe changed since the last pull, through the ApiClient instance api = new ApiClient(API_BASE, getToken) of main/sync/api-client.js, API_BASE = \"https://api.gristmill.example/v2\"; ApiClient.request calls electron net.fetch(`${this.baseUrl}${path}`, { method, headers, body })"
+        },
+        {
+          "prefix": "https://api.gristmill.example/v2/recipes/",
+          "method": "DELETE",
+          "api": "electron net.fetch",
+          "file": "main/sync/sync-engine.js",
+          "line": 62,
+          "why": "cycle: api.delete(`/recipes/${encodeURIComponent(id)}`) for every tombstone, through the ApiClient instance api = new ApiClient(API_BASE, getToken) of main/sync/api-client.js, API_BASE = \"https://api.gristmill.example/v2\"; ApiClient.request calls electron net.fetch(`${this.baseUrl}${path}`, { method, headers, body }). The same leading part as the PUT, another method"
+        },
+        {
+          "value": "https://media.gristmill.example/v1/upload",
+          "method": "POST",
+          "api": "electron net.fetch",
+          "file": "main/sync/sync-engine.js",
+          "line": 56,
+          "why": "new in v2: cycle uploads a recipe photo before the PUT, api_client_1.media.post(\"/upload\", {...}) through a second ApiClient instance, media = new ApiClient(MEDIA_BASE, getToken), MEDIA_BASE = \"https://media.gristmill.example/v1\"; a new host"
+        },
+        {
+          "prefix": "https://updates.gristmill.example/desktop/",
+          "method": "GET",
+          "api": "fetch",
+          "file": "main/updates.js",
+          "line": 17,
+          "why": "main/updates.js checkForUpdates: the global fetch of the main process (Hyper style), fetch(`${UPDATE_FEED}/${process.platform}-${process.arch}/latest.json`, { headers }), UPDATE_FEED = \"https://updates.gristmill.example/desktop\"; again every 6 hours through setTimeout. Called from main.js when app.isPackaged"
+        },
+        {
+          "prefix": "https://nutrition.gristmill.example/api/foods/search?q=",
+          "method": "GET",
+          "api": "fetch",
+          "file": "renderer/nutrition.js",
+          "line": 12,
+          "why": "renderer/nutrition.js lookup: fetch(`${NUTRITION_API}/foods/search?q=${encodeURIComponent(query)}&pageSize=5`), NUTRITION_API = \"https://nutrition.gristmill.example/api\"; called per ingredient by totals from renderer.js openRecipe"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "main/importer.js importRecipe: electron net.fetch(parsed.toString(), { headers }) where parsed = new URL(url) and url is the address the user pasted into the import form (recipes:import-url payload); only the protocol is checked. Its address cannot be known from the code. Method GET.",
+      "absent": [
+        {
+          "value": "https://api.gristmill.example/v2",
+          "why": "API_BASE, the base of the ApiClient; no request goes to it alone"
+        },
+        {
+          "value": "https://schema.org",
+          "why": "main/importer.js SCHEMA_ORG: compared with the @context of a page's JSON-LD; no request"
+        },
+        {
+          "value": "https://gristmill.example/help/importing",
+          "why": "main/menu.js HELP_URL, given to shell.openExternal from the Help menu"
+        },
+        {
+          "value": "https://gristmill.example/privacy",
+          "why": "renderer-settings.js PRIVACY_URL, given to window.desktop.openExternal; also an href in settings.html"
+        },
+        {
+          "value": "https://nutrition.gristmill.example/api",
+          "why": "NUTRITION_API, only the start of the lookup address"
+        },
+        {
+          "value": "https://nutrition.gristmill.example",
+          "why": "inside the ATTRIBUTION text shown in the footer; also an origin in the CSP of index.html"
+        },
+        {
+          "value": "https://updates.gristmill.example/desktop",
+          "why": "UPDATE_FEED, only the start of the feed address"
+        },
+        {
+          "value": "https://api.gristmill.example",
+          "why": "an origin in the CSP of settings.html (v1)"
+        },
+        {
+          "value": "index.html",
+          "why": "loadFile of a packaged page (so are settings.html and shopping.html through AppWindow)"
+        },
+        {
+          "value": "data:text/html;charset=utf-8,",
+          "why": "main/pdf-export.js: printWindow.loadURL of a data: URL built from the recipe; no network request"
+        },
+        {
+          "value": "https://api.gristmill.example/v2/feedback",
+          "why": "removed in v2; feedback now opens a mailto: address"
+        },
+        {
+          "value": "https://media.gristmill.example/v1",
+          "why": "MEDIA_BASE, the base of the second ApiClient"
+        },
+        {
+          "value": "mailto:feedback@gristmill.example?subject=Gristmill%20feedback",
+          "why": "FEEDBACK_MAIL, given to window.desktop.openExternal"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "file",
+          "value": "recipes.json",
+          "ops": ["read", "write"],
+          "why": "main/library.js Library.load / persist: fs.readFileSync / fs.writeFileSync of the whole library JSON at path.join(app.getPath(\"userData\"), \"library\", LIBRARY_FILE), LIBRARY_FILE = \"recipes.json\"; used by the recipe handlers, the shopping handlers and the sync engine"
+        },
+        {
+          "kind": "electron-store",
+          "value": "window.bounds",
+          "ops": ["read", "write"],
+          "why": "The electron-store instance store = new Store({ schema, migrations, clearInvalidConfig }) of main/store.js (Kap / Responsively style; the module is external to the bundle). Keys are dot paths into the store. main/windows.js createMainWindow: store.get(\"window.bounds\"), and store.set(\"window.bounds\", mainWindow.getBounds()) on close"
+        },
+        {
+          "kind": "electron-store",
+          "value": "ui.theme",
+          "ops": ["read", "write"],
+          "why": "The electron-store instance store = new Store({ schema, migrations, clearInvalidConfig }) of main/store.js (Kap / Responsively style; the module is external to the bundle). Keys are dot paths into the store. main/windows.js store.get(\"ui.theme\") for the background colour; renderer.js and renderer-settings.js window.settingsStore.get(\"ui.theme\"), which is store.get(key) in the store:get listener of main/ipc/store-bridge.js; renderer-settings.js window.settingsStore.set(\"ui.theme\", value), which is store.set(key, value) in the store:set listener. The key is named in the renderer and reaches the store through IPC"
+        },
+        {
+          "kind": "electron-store",
+          "value": "ui.lastView",
+          "ops": ["read", "write"],
+          "why": "The electron-store instance store = new Store({ schema, migrations, clearInvalidConfig }) of main/store.js (Kap / Responsively style; the module is external to the bundle). Keys are dot paths into the store. renderer.js window.settingsStore.get(\"ui.lastView\") in start and .set(\"ui.lastView\", view) in showView, through the store bridge"
+        },
+        {
+          "kind": "electron-store",
+          "value": "units.system",
+          "ops": ["read", "write"],
+          "why": "The electron-store instance store = new Store({ schema, migrations, clearInvalidConfig }) of main/store.js (Kap / Responsively style; the module is external to the bundle). Keys are dot paths into the store. main/store.js migration \">=1.4.0\" store.set(\"units.system\", ...); renderer.js and renderer-settings.js settingsStore.get(\"units.system\"); renderer-settings.js settingsStore.set(\"units.system\", ...), through the store bridge"
+        },
+        {
+          "kind": "electron-store",
+          "value": "measurement",
+          "ops": ["read", "delete"],
+          "why": "The electron-store instance store = new Store({ schema, migrations, clearInvalidConfig }) of main/store.js (Kap / Responsively style; the module is external to the bundle). Keys are dot paths into the store. main/store.js migration \">=1.4.0\": store.get(\"measurement\"), then store.delete(\"measurement\") (the 1.3 key); never written"
+        },
+        {
+          "kind": "electron-store",
+          "value": "sync.token",
+          "ops": ["read", "write", "delete"],
+          "why": "The electron-store instance store = new Store({ schema, migrations, clearInvalidConfig }) of main/store.js (Kap / Responsively style; the module is external to the bundle). Keys are dot paths into the store. main/sync/api-client.js getToken store.get(\"sync.token\") and sync-engine.js cycle store.get; sync-engine.js signIn store.set(\"sync.token\", token); signOut store.delete(\"sync.token\")"
+        },
+        {
+          "kind": "electron-store",
+          "value": "sync.lastPulledAt",
+          "ops": ["read", "write", "delete"],
+          "why": "The electron-store instance store = new Store({ schema, migrations, clearInvalidConfig }) of main/store.js (Kap / Responsively style; the module is external to the bundle). Keys are dot paths into the store. main/sync/sync-engine.js cycle: store.get(\"sync.lastPulledAt\", 0) and store.set(\"sync.lastPulledAt\", remote.serverTime); v2 signOut also calls store.delete(\"sync.lastPulledAt\")"
+        },
+        {
+          "kind": "electron-store",
+          "value": "shopping.items",
+          "ops": ["read", "write", "delete"],
+          "why": "The electron-store instance store = new Store({ schema, migrations, clearInvalidConfig }) of main/store.js (Kap / Responsively style; the module is external to the bundle). Keys are dot paths into the store. main/ipc/shopping.js readItems store.get(\"shopping.items\", []), writeItems store.set(\"shopping.items\", items), and store.delete(\"shopping.items\") in the shopping:clear-checked listener when no unchecked item is left"
+        },
+        {
+          "kind": "localStorage",
+          "value": "gristmill.plan.v2",
+          "ops": ["read", "write"],
+          "why": "renderer/planner.js loadPlan localStorage.getItem(PLAN_KEY) and savePlan localStorage.setItem(PLAN_KEY, ...), PLAN_KEY = \"gristmill.plan.v2\""
+        },
+        {
+          "kind": "localStorage",
+          "value": "gristmill.plan",
+          "ops": ["read", "delete"],
+          "why": "renderer/planner.js migrate: localStorage.getItem(LEGACY_PLAN_KEY), then localStorage.removeItem(LEGACY_PLAN_KEY), LEGACY_PLAN_KEY = \"gristmill.plan\" (the 1.2 plan); never written"
+        },
+        {
+          "kind": "localStorage",
+          "value": "gristmill.recentSearches",
+          "ops": ["read", "write"],
+          "why": "new in v2: renderer/library-view.js bindSearch localStorage.getItem(RECENT_KEY) and localStorage.setItem(RECENT_KEY, ...) on change, RECENT_KEY = \"gristmill.recentSearches\""
+        }
+      ],
+      "absent": [
+        {
+          "value": "ui.fontScale",
+          "why": "allowed by RENDERER_KEYS in main/store.js and in the schema with a default, but no code reads or writes it"
+        },
+        {
+          "value": "ui",
+          "why": "a property of the electron-store schema (so are window, units, sync, shopping); the stored keys are the dot paths"
+        },
+        {
+          "value": "sync",
+          "why": "a schema property, see ui"
+        },
+        {
+          "value": "config.json",
+          "why": "the default file name of electron-store; the code never names it, and the store entries are its keys"
+        },
+        {
+          "value": "userData",
+          "why": "the argument of app.getPath"
+        },
+        {
+          "value": "library",
+          "why": "the folder of recipes.json"
+        },
+        {
+          "value": "application/x-gristmill-recipe",
+          "why": "renderer/library-view.js RECIPE_MIME: a dataTransfer format during drag and drop"
+        },
+        {
+          "value": "X-Gristmill-Client",
+          "why": "a request header (so is X-Gristmill-Version)"
+        },
+        {
+          "value": "SEARCH_KEY",
+          "why": "a constant name; the key is its value"
+        },
+        {
+          "value": "gristmill.search",
+          "why": "removed in v2"
+        }
+      ]
+    },
+    "ipcPayloadsUnscored": {
+      "note": "Not a scored class (the scorer has none for payloads). The object literals sent over each channel, by field name, for a reader. Channels that send a bare value (an id, a key and a value, a recipe) are not listed.",
+      "present": [
+        {
+          "channel": "recipes:import-url",
+          "fields": ["url", "tags"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "recipes:export-pdf",
+          "fields": ["id"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "shopping:add-recipe",
+          "fields": ["recipeId", "servings"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "sync:sign-in",
+          "fields": ["email", "password"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "timer:start",
+          "fields": ["label", "seconds"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "timer-tick",
+          "fields": ["id", "remaining"],
+          "file": "main/ipc/timers.js"
+        },
+        {
+          "channel": "timer-done",
+          "fields": ["id", "label"],
+          "file": "main/ipc/timers.js"
+        },
+        {
+          "channel": "update-available",
+          "fields": ["version", "notesUrl"],
+          "file": "main/updates.js"
+        },
+        {
+          "channel": "shopping:toggle",
+          "fields": ["index"],
+          "file": "renderer-shopping.js"
+        }
+      ]
+    },
+    "changes": {
+      "ipcChannels": {
+        "added": [
+          {
+            "channel": "recipes:duplicate",
+            "why": "new constant IPC_CHANNELS.RECIPES_DUPLICATE, a new handler in main/ipc/recipes.js, the new member recipes.duplicate"
+          },
+          {
+            "channel": "shopping:clear-checked",
+            "why": "shopping:clear renamed on all three places (validChannels, renderer-shopping.js, the main/ipc/shopping.js listener)"
+          }
+        ],
+        "removed": [
+          {
+            "channel": "shopping:clear",
+            "why": "renamed to shopping:clear-checked"
+          },
+          {
+            "channel": "menu:sync-now",
+            "why": "the listener in main/ipc/sync.js and the ipcMain.emit in main/menu.js are gone; the menu calls syncEngine.run() directly"
+          }
+        ],
+        "absent": [
+          {
+            "channel": "recipes:delete",
+            "why": "its preload member was renamed from remove to trash; the channel, its sender file and its receiver are the same"
+          },
+          {
+            "channel": "recipes:import-url",
+            "why": "the payload gained a field (tags); same channel and ends"
+          },
+          {
+            "channel": "recipes:export-pdf",
+            "why": "its handler moved above the import handler"
+          },
+          {
+            "channel": "settings:open",
+            "why": "its listener moved to the top of registerWindowHandlers"
+          },
+          {
+            "channel": "update-available",
+            "why": "its enum member moved to the top of the enum; same value, same ends"
+          },
+          {
+            "channel": "sync-status",
+            "why": "unchanged; the sync cycle gained a photo upload, which is an endpoint change"
+          },
+          {
+            "channel": "app-window:mounted",
+            "why": "unchanged; only shifted"
+          }
+        ]
+      },
+      "contextBridge": {
+        "added": [
+          {
+            "api": "recipes",
+            "member": "trash",
+            "channel": "recipes:delete",
+            "why": "renamed from remove; same channel"
+          },
+          {
+            "api": "recipes",
+            "member": "duplicate",
+            "channel": "recipes:duplicate",
+            "why": "new member"
+          }
+        ],
+        "removed": [
+          {
+            "api": "recipes",
+            "member": "remove",
+            "channel": "recipes:delete",
+            "why": "renamed to trash"
+          }
+        ],
+        "absent": [
+          {
+            "api": "desktop",
+            "member": "isMac",
+            "why": "moved from the first to the last member; same value"
+          },
+          {
+            "api": "recipes",
+            "member": "importFromUrl",
+            "why": "same channel; only its payload gained tags"
+          },
+          {
+            "api": "shopping",
+            "member": "send",
+            "why": "unchanged; only the allowed channel list changed"
+          }
+        ]
+      },
+      "webPreferences": {
+        "changed": [
+          {
+            "window": "printWindow",
+            "key": "sandbox",
+            "from": false,
+            "to": true,
+            "direction": "more restrictive",
+            "file": "main/pdf-export.js",
+            "line": 31,
+            "why": "exportRecipePdf now creates printWindow with webPreferences { nodeIntegration: false, sandbox: true }"
+          }
+        ],
+        "absent": [
+          {
+            "window": "mainWindow",
+            "key": "sandbox",
+            "why": "still false; its line in main/config.js only shifted"
+          },
+          {
+            "window": "shoppingWindow",
+            "key": "sandbox",
+            "why": "still true"
+          },
+          {
+            "window": "settingsWindow",
+            "key": "preload",
+            "why": "still preload.js"
+          }
+        ]
+      },
+      "endpoints": {
+        "added": [
+          {
+            "value": "https://media.gristmill.example/v1/upload",
+            "method": "POST",
+            "why": "the photo upload of the sync cycle, through a second ApiClient instance on a new host"
+          }
+        ],
+        "removed": [
+          {
+            "value": "https://api.gristmill.example/v2/feedback",
+            "method": "POST",
+            "why": "the feedback form now opens a mailto: address instead of posting"
+          }
+        ],
+        "absent": [
+          {
+            "prefix": "https://api.gristmill.example/v2/recipes/",
+            "why": "the PUT and DELETE are unchanged; the upload was inserted above the PUT"
+          },
+          {
+            "value": "https://api.gristmill.example/v2/auth/token",
+            "why": "unchanged"
+          },
+          {
+            "prefix": "https://nutrition.gristmill.example/api/foods/search?q=",
+            "why": "unchanged"
+          }
+        ]
+      },
+      "storage": {
+        "added": [
+          {
+            "kind": "localStorage",
+            "value": "gristmill.recentSearches",
+            "ops": ["read", "write"],
+            "why": "the search box now remembers the last five searches"
+          }
+        ],
+        "removed": [
+          {
+            "kind": "sessionStorage",
+            "value": "gristmill.search",
+            "ops": ["read", "write"],
+            "why": "the search text is no longer kept in sessionStorage"
+          }
+        ],
+        "changed": [
+          {
+            "kind": "electron-store",
+            "value": "sync.lastPulledAt",
+            "fromOps": ["read", "write"],
+            "toOps": ["read", "write", "delete"],
+            "why": "signOut now also calls store.delete(\"sync.lastPulledAt\")"
+          }
+        ],
+        "absent": [
+          {
+            "kind": "electron-store",
+            "value": "shopping.items",
+            "why": "still read, written and deleted; the delete moved into an else branch of the renamed listener"
+          },
+          {
+            "kind": "electron-store",
+            "value": "sync.token",
+            "why": "unchanged"
+          },
+          {
+            "kind": "localStorage",
+            "value": "gristmill.plan.v2",
+            "why": "unchanged"
+          }
+        ]
+      }
+    },
+    "ipcPayloadChangesUnscored": {
+      "note": "Not scored and deliberately outside changes (the scorer scores every list under changes). The payload difference between gristmill and gristmill-v2.",
+      "changed": [
+        {
+          "channel": "recipes:import-url",
+          "added": ["tags"],
+          "file": "preload.js",
+          "line": 17,
+          "why": "importFromUrl(url, tags = []) now sends { url, tags }; the handler merges the tags"
+        }
+      ]
+    },
+    "unchangedMoves": [
+      {
+        "file": "common/messages.js",
+        "what": "MessageToWebApp.UpdateAvailable enum member (moved to the top of the enum)",
+        "fromLine": 9,
+        "toLine": 8
+      },
+      {
+        "file": "common/messages.js",
+        "what": "MessageToWebApp.TimerTick enum member (shifted)",
+        "fromLine": 6,
+        "toLine": 9
+      },
+      {
+        "file": "main/ipc/recipes.js",
+        "what": "recipes:export-pdf handler (moved above the recipes:import-url handler)",
+        "fromLine": 18,
+        "toLine": 22
+      },
+      {
+        "file": "main/ipc/recipes.js",
+        "what": "recipes:import-url handler (its payload gained tags; same channel and ends)",
+        "fromLine": 14,
+        "toLine": 28
+      },
+      {
+        "file": "main/ipc/window.js",
+        "what": "settings:open listener (moved to the top of registerWindowHandlers)",
+        "fromLine": 22,
+        "toLine": 12
+      },
+      {
+        "file": "main/ipc/window.js",
+        "what": "gm::win::minimize listener (shifted)",
+        "fromLine": 10,
+        "toLine": 13
+      },
+      {
+        "file": "preload.js",
+        "what": "desktop.isMac member (moved from the first to the last member)",
+        "fromLine": 28,
+        "toLine": 40
+      },
+      {
+        "file": "preload.js",
+        "what": "recipes:delete sender, now member trash (renamed member, same channel)",
+        "fromLine": 13,
+        "toLine": 15
+      },
+      {
+        "file": "preload.js",
+        "what": "gristmillEvents.setTimerTickHandler (shifted)",
+        "fromLine": 55,
+        "toLine": 58
+      },
+      {
+        "file": "preload-shopping.js",
+        "what": "shoppingAPI.send member (shifted)",
+        "fromLine": 14,
+        "toLine": 16
+      },
+      {
+        "file": "main/app-window.js",
+        "what": "app-window:mounted receiver (shifted)",
+        "fromLine": 29,
+        "toLine": 31
+      },
+      {
+        "file": "main/ipc/shopping.js",
+        "what": "shopping:changed send (shifted)",
+        "fromLine": 15,
+        "toLine": 17
+      },
+      {
+        "file": "main/ipc/shopping.js",
+        "what": "shopping:toggle listener (shifted)",
+        "fromLine": 53,
+        "toLine": 55
+      },
+      {
+        "file": "main/sync/sync-engine.js",
+        "what": "sync-status send (shifted)",
+        "fromLine": 16,
+        "toLine": 18
+      },
+      {
+        "file": "main/sync/sync-engine.js",
+        "what": "PUT recipes request (shifted by the inserted photo upload)",
+        "fromLine": 52,
+        "toLine": 59
+      },
+      {
+        "file": "main/sync/sync-engine.js",
+        "what": "DELETE recipes request (shifted)",
+        "fromLine": 55,
+        "toLine": 62
+      },
+      {
+        "file": "main/updates.js",
+        "what": "update feed request (shifted)",
+        "fromLine": 15,
+        "toLine": 17
+      },
+      {
+        "file": "renderer/nutrition.js",
+        "what": "nutrition lookup request (shifted)",
+        "fromLine": 10,
+        "toLine": 12
+      },
+      {
+        "file": "main/config.js",
+        "what": "mainWindow sandbox: false (shifted)",
+        "fromLine": 29,
+        "toLine": 31
+      },
+      {
+        "file": "main/windows.js",
+        "what": "shoppingWindow sandbox: true (shifted)",
+        "fromLine": 74,
+        "toLine": 76
+      },
+      {
+        "file": "main/windows.js",
+        "what": "window.bounds read (shifted)",
+        "fromLine": 21,
+        "toLine": 23
+      },
+      {
+        "file": "renderer/planner.js",
+        "what": "gristmill.plan.v2 write (shifted)",
+        "fromLine": 33,
+        "toLine": 35
+      },
+      {
+        "file": "main/ipc/shopping.js",
+        "what": "shopping.items delete (now inside an else branch)",
+        "fromLine": 62,
+        "toLine": 70
+      }
+    ]
+  }
+}

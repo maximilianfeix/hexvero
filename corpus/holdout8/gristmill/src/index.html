@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' https: data:; connect-src https://nutrition.gristmill.example; style-src 'self' 'unsafe-inline'"
+    />
+    <title>Gristmill</title>
+  </head>
+  <body>
+    <header id="titlebar">
+      <nav>
+        <button data-view="library">Library</button>
+        <button data-view="planner">Week</button>
+        <button id="open-shopping">Shopping list</button>
+        <button id="open-settings">Preferences</button>
+      </nav>
+      <span id="sync-status"></span>
+      <span class="controls"><button class="min">–</button><button class="max">□</button><button class="close">×</button></span>
+    </header>
+    <div id="update-banner" hidden><span></span> <a href="#">What's new</a></div>
+    <main>
+      <section id="library">
+        <input type="search" placeholder="Search recipes" />
+        <form id="import-form">
+          <input name="url" type="url" placeholder="Paste a recipe address" required />
+          <button>Import</button>
+          <span class="error"></span>
+        </form>
+        <ul></ul>
+      </section>
+      <section id="recipe" hidden>
+        <h1></h1>
+        <label>Servings <input class="servings" type="number" min="1" /></label>
+        <p class="nutrition"></p>
+        <ul class="ingredients"></ul>
+        <ol class="steps"></ol>
+        <button class="copy">Copy ingredients</button>
+        <button class="shop">Add to shopping list</button>
+        <button class="pdf">Save as PDF</button>
+        <button class="delete">Delete</button>
+        <a class="source" href="#">Original page</a>
+      </section>
+      <section id="planner" hidden>
+        <div class="board">
+          <div data-day="mon"><h3>Mon</h3><ul></ul></div>
+          <div data-day="tue"><h3>Tue</h3><ul></ul></div>
+          <div data-day="wed"><h3>Wed</h3><ul></ul></div>
+          <div data-day="thu"><h3>Thu</h3><ul></ul></div>
+          <div data-day="fri"><h3>Fri</h3><ul></ul></div>
+          <div data-day="sat"><h3>Sat</h3><ul></ul></div>
+          <div data-day="sun"><h3>Sun</h3><ul></ul></div>
+        </div>
+      </section>
+    </main>
+    <aside id="timers"></aside>
+    <footer><small class="attribution"></small></footer>
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>
