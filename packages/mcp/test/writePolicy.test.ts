@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  chownSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -257,13 +258,23 @@ describe("MCP write policy", () => {
       expect(checkWritePath(join(shared, "a.json"), "export")).toBe(join(shared, "a.json"));
       chmodSync(shared, 0o755);
       expect(checkWritePath(join(shared, "a.json"), "export")).toBe(join(shared, "a.json"));
-      // writable by its group: any member could swap an entry
+      // writable by the user's own primary group (user private groups, umask 002): allowed
+      const own = join(root, "own-group");
+      mkdirSync(join(own, "sub"), { recursive: true });
+      chownSync(own, process.getuid(), process.getgid!());
+      chmodSync(own, 0o775);
+      expect(checkWritePath(join(own, "sub", "a.json"), "export")).toBe(join(own, "sub", "a.json"));
+      // writable by another group: any member of it could swap an entry
+      const other = process.getgroups!().find((g) => g !== process.getgid!());
+      if (other === undefined) return; // no second group to test with
       const group = join(root, "group");
       mkdirSync(join(group, "sub"), { recursive: true });
+      chownSync(group, process.getuid(), other);
       chmodSync(group, 0o775);
       expect(() => checkWritePath(join(group, "sub", "a.json"), "export")).toThrow(/other users/);
       expect(() => checkWritePath(join(group, "rec"), "recover")).toThrow(/other users/);
       chmodSync(group, 0o755);
+      expect(checkWritePath(join(group, "rec"), "recover")).toBe(join(group, "rec"));
       // an ancestor of the root counts too
       const parent = realpathSync(mkdtempSync(join(tmpdir(), "hexvero-parent-")));
       mkdirSync(join(parent, "r"));
@@ -271,6 +282,7 @@ describe("MCP write policy", () => {
       expect(checkWritePath(join(parent, "r", "a.json"), "export")).toBe(
         join(parent, "r", "a.json"),
       );
+      chownSync(parent, process.getuid(), other);
       chmodSync(parent, 0o775);
       expect(() => checkWritePath(join(parent, "r", "a.json"), "export")).toThrow(/other users/);
       chmodSync(parent, 0o700);

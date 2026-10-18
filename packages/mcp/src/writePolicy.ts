@@ -113,8 +113,8 @@ function realLocation(path: string): string {
 
 /**
  * A directory where another user could swap an entry for a link between the check and the
- * write: not sticky, and owned by someone other than you or root, or writable by its group or by
- * everyone. (A shared temp directory such as /tmp is sticky, so only an entry's owner can rename
+ * write: not sticky, and owned by someone other than you or root, writable by everyone, or
+ * writable by a group that is not your primary group. (A shared temp directory such as /tmp is sticky, so only an entry's owner can rename
  * or remove it there.)
  */
 function swappable(dir: string): boolean {
@@ -123,7 +123,11 @@ function swappable(dir: string): boolean {
   try {
     const st = lstatSync(dir);
     if (!st.isDirectory() || st.mode & 0o1000) return false;
-    return (st.uid !== uid && st.uid !== 0) || (st.mode & 0o022) !== 0;
+    if (st.uid !== uid && st.uid !== 0) return true;
+    if (st.mode & 0o002) return true;
+    // Group write counts unless the group is the user's own primary group: with user private
+    // groups (umask 002 on Debian, Ubuntu and others) that group holds only the user.
+    return (st.mode & 0o020) !== 0 && st.gid !== process.getgid?.();
   } catch {
     return false;
   }
@@ -164,7 +168,7 @@ function resolveWrite(
   for (const dir of [...ancestors(root!), ...below])
     if (swappable(dir))
       refuse(
-        `${dir} can be changed by other users (not sticky, and owned by another user or writable by its group or by all)`,
+        `${dir} can be changed by other users (not sticky, and owned by another user, writable by all, or writable by a group other than yours)`,
       );
   return { absolute, real };
 }
