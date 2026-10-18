@@ -113,8 +113,9 @@ function realLocation(path: string): string {
 
 /**
  * A directory where another user could swap an entry for a link between the check and the
- * write: not sticky, and owned by someone else or writable by everyone. (A shared temp root such
- * as /tmp is sticky, so only an entry's owner can rename or remove it there.)
+ * write: not sticky, and owned by someone other than you or root, or writable by its group or by
+ * everyone. (A shared temp directory such as /tmp is sticky, so only an entry's owner can rename
+ * or remove it there.)
  */
 function swappable(dir: string): boolean {
   const uid = process.getuid?.();
@@ -122,9 +123,18 @@ function swappable(dir: string): boolean {
   try {
     const st = lstatSync(dir);
     if (!st.isDirectory() || st.mode & 0o1000) return false;
-    return st.uid !== uid || (st.mode & 0o002) !== 0;
+    return (st.uid !== uid && st.uid !== 0) || (st.mode & 0o022) !== 0;
   } catch {
     return false;
+  }
+}
+
+/** The directories from `/` (or the drive) down to `dir`, `dir` included. */
+function ancestors(dir: string): string[] {
+  const out: string[] = [];
+  for (let d = dir; ; d = dirname(d)) {
+    out.unshift(d);
+    if (dirname(d) === d) return out;
   }
 }
 
@@ -149,15 +159,13 @@ function resolveWrite(
     refuse("hidden files and directories are not written");
   if (kind === "export" && !real.toLowerCase().endsWith(".json"))
     refuse("an export must end in .json");
-  // The root and every existing directory below it on the way to the target.
-  let dir = root!;
-  for (const part of ["", ...parts.slice(0, -1)]) {
-    dir = part ? join(dir, part) : dir;
+  // Every directory on the way: the root's ancestors, the root, and those below it that exist.
+  const below = parts.slice(0, -1).map((_, i) => join(root!, ...parts.slice(0, i + 1)));
+  for (const dir of [...ancestors(root!), ...below])
     if (swappable(dir))
       refuse(
-        `${dir} can be changed by other users (not sticky, not owned by you or writable by all)`,
+        `${dir} can be changed by other users (not sticky, and owned by another user or writable by its group or by all)`,
       );
-  }
   return { absolute, real };
 }
 

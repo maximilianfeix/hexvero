@@ -257,6 +257,23 @@ describe("MCP write policy", () => {
       expect(checkWritePath(join(shared, "a.json"), "export")).toBe(join(shared, "a.json"));
       chmodSync(shared, 0o755);
       expect(checkWritePath(join(shared, "a.json"), "export")).toBe(join(shared, "a.json"));
+      // writable by its group: any member could swap an entry
+      const group = join(root, "group");
+      mkdirSync(join(group, "sub"), { recursive: true });
+      chmodSync(group, 0o775);
+      expect(() => checkWritePath(join(group, "sub", "a.json"), "export")).toThrow(/other users/);
+      expect(() => checkWritePath(join(group, "rec"), "recover")).toThrow(/other users/);
+      chmodSync(group, 0o755);
+      // an ancestor of the root counts too
+      const parent = realpathSync(mkdtempSync(join(tmpdir(), "hexvero-parent-")));
+      mkdirSync(join(parent, "r"));
+      process.env["HEXVERO_WRITE_ROOTS"] = join(parent, "r");
+      expect(checkWritePath(join(parent, "r", "a.json"), "export")).toBe(
+        join(parent, "r", "a.json"),
+      );
+      chmodSync(parent, 0o775);
+      expect(() => checkWritePath(join(parent, "r", "a.json"), "export")).toThrow(/other users/);
+      chmodSync(parent, 0o700);
     });
   });
 });
