@@ -20,7 +20,7 @@
  */
 import { createHash } from "node:crypto";
 import { AnalysisError } from "./model.js";
-import { directoryDigest } from "./target.js";
+import { directoryDigest } from "./digest.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
 import { UNRESOLVED_LIMITATIONS, type Session, type TargetRecord } from "./session.js";
 
@@ -1334,18 +1334,26 @@ export async function checkRelease(
     }
   let comparison = await comparisonForCheck(session, idA, idB);
   // A directory has no file digest; give it a content digest so a baseline can tell its builds.
+  const partial: string[] = [];
   for (const side of ["a", "b"] as const) {
     const info = comparison[side].info;
-    if (info.format === "directory" && !info.sha256)
-      comparison = {
-        ...comparison,
-        [side]: {
-          ...comparison[side],
-          info: { ...info, sha256: await directoryDigest(info.path) },
-        },
-      };
+    if (info.format !== "directory" || info.sha256) continue;
+    const digest = directoryDigest(info.path);
+    if (digest.partial)
+      partial.push(`${side === "a" ? "before" : "after"} build: ${digest.partial}`);
+    comparison = {
+      ...comparison,
+      [side]: { ...comparison[side], info: { ...info, sha256: digest.sha256 } },
+    };
   }
-  return evaluatePolicy(comparison, policy, { ...options, sides: options.sides ?? sides });
+  const result = evaluatePolicy(comparison, policy, { ...options, sides: options.sides ?? sides });
+  // The digest only matters for a baseline: say there when it does not cover the whole build.
+  if (result.baseline && partial.length)
+    result.baseline = {
+      ...result.baseline,
+      warnings: [...(result.baseline.warnings ?? []), ...partial],
+    };
+  return result;
 }
 
 /** Exit codes of `hexvero check` (contract C6). */

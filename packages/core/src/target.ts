@@ -1,4 +1,4 @@
-import { lstat, readdir, readFile, readlink, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { detectFormat } from "./formats/detect.js";
 import { findElectronApp, findElectronAppInZip } from "./formats/electronApp.js";
@@ -252,30 +252,4 @@ async function hashFile(path: string): Promise<string> {
 
 function readHead(path: string, length: number): Uint8Array {
   return readWindow(path, 0, length);
-}
-
-/**
- * A content digest of a directory, for identifying a build that is an app directory (its
- * `sha256` is empty, because a directory is not read whole when it is opened). SHA-256 over a
- * manifest in path order: each directory, each regular file with the SHA-256 of its bytes, and
- * each symbolic link with its target as text (never followed). Other entries are named only.
- */
-export async function directoryDigest(path: string): Promise<string> {
-  const digest = hash("sha256").update("hexvero-directory-v1\n");
-  const walk = async (dir: string, prefix: string): Promise<void> => {
-    const names = (await readdir(dir)).toSorted();
-    for (const name of names) {
-      const full = join(dir, name);
-      const rel = prefix ? `${prefix}/${name}` : name;
-      const s = await lstat(full);
-      if (s.isSymbolicLink()) digest.update(`L ${rel}\0${await readlink(full)}\n`);
-      else if (s.isDirectory()) {
-        digest.update(`D ${rel}\n`);
-        await walk(full, rel);
-      } else if (s.isFile()) digest.update(`F ${rel}\0${await hashFile(full)}\n`);
-      else digest.update(`O ${rel}\n`);
-    }
-  };
-  await walk(resolve(path), "");
-  return digest.digest("hex");
 }
