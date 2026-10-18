@@ -41,6 +41,7 @@ export interface IpcUsage {
    * at the call of the method and names it in `wrapper`. `parameter`: on a parameter of a
    * function or method (named in `wrapper`) that every call site of the application passes
    * ipcMain or ipcRenderer for (`register(ipc) { ipc.handle(…) }` with `prefs.register(ipcMain)`).
+   * `bridge`: a page script's call of an exposed member that passes its channel on (`member`).
    */
   via?:
     | "alias"
@@ -50,9 +51,21 @@ export interface IpcUsage {
     | "global"
     | "webContents"
     | "resolved"
-    | "parameter";
+    | "parameter"
+    | "bridge";
   /** For a call of a wrapper method: `<Class>.<method>` (or the export key of a minified class). */
   wrapper?: string;
+  /**
+   * For `via: "bridge"`: the exposed member a page script calls, `<api>.<path>`, which passes the
+   * channel on to the IPC method of `api` (a generic forwarder of a preload, see app.ts).
+   */
+  member?: string;
+  /**
+   * For `via: "bridge"` when the forwarder checks the channel: `yes` when this channel passes
+   * the check that was read (an allow-list, a prefix), `no` when it does not, `unknown` when the
+   * forwarder uses the channel in a way that was not read (`validate(channel)`).
+   */
+  allowed?: "yes" | "no" | "unknown";
   /**
    * For `via: "resolved"`: how the channel was read from an expression the fast scan could not
    * (see resolve.ts), and the lines of the call sites or lists it was bound at.

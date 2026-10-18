@@ -263,6 +263,45 @@ of the plain, bundled and minified builds and 2 of 13 → 13 of 13 in v2, bridge
 all hit; holdout to holdout6 unchanged. Electron Fiddle 0.38.0 and 0.39.0, Discord and Claude.app:
 the same `contextBridge`, `bridgeExposures`, `ipc` and `ipcChannels` rows as before.
 
+## Generic forwarders and the page's calls of them (`contextBridge`, `ipc` `via: bridge`)
+
+A member that passes its first parameter on as the channel (`invoke: (channel, ...args) =>
+ipcRenderer.invoke(channel, ...args)`, electron-react-boilerplate's
+`ipcRenderer: { sendMessage(channel, ...args) { ipcRenderer.send(channel, ...args) } }`) has no
+channel of its own; the page scripts name them. Such a member is a forwarder when its first
+parameter is never written in its body, is the whole first argument of every ipcRenderer call
+there, and those calls use one IPC method besides `removeListener`, `off` and
+`removeAllListeners` (a reference `ipcRenderer.send`, also `.bind(ipcRenderer)`, counts too).
+Members of nested object literals count, three levels deep (`electron.ipcRenderer.sendMessage`).
+The member's row says `forwards: "ipcRenderer.send"`, and the channel stays null.
+
+A check of the channel is recorded only in these shapes, at the body's own level: `if
+(!LIST.includes(channel)) return|throw …` (also `LIST.has`, `{ return …`) before every IPC call,
+`if (LIST.includes(channel)) { … }` or `if (LIST.includes(channel)) call` with every call inside,
+and `LIST.includes(channel) && call` as minifiers write it, `LIST` an array literal (or `new
+Set([…])`) of strings that nothing writes: `allowed` lists them. The same shapes with
+`channel.startsWith("x:")` (also `?.`) give `prefix`. Any other use of the parameter (a check
+that does not stop the call, `if (LIST.includes(channel)) log(channel)`, `const ok =
+LIST.includes(channel)`, `validate(channel)`, a log) gives `guard: "unknown"`.
+
+The calls are read in every file that is not a main-process file and does not expose anything:
+`window.api.m(arg)`, `globalThis.api.m(arg)`, `self.api.m(arg)`, `api.m(arg)` where the file binds
+no `api` (no declaration, parameter, import or require of it where it is used), `const X =
+window.api; X.m(arg)`, `const { api } = window` (also renamed, `{ api: e }`, as minifiers write
+it), `const { m } = window.api; m(arg)`, with `?.` and nested members. A file that writes `api`
+or `window.api` is not read for it. Each call is one `ipc` row in the calling file: `api` the
+forwarded method, `via: "bridge"`, `member` (`electron.ipcRenderer.sendMessage`), the channel its
+first argument names (a literal, a constant, another module's constant, or what the bounded
+resolver reads; else null, named in `ipc_channel_unresolved`), and with a recorded check
+`allowed`: `yes` or `no` against it, `unknown` with `guard: "unknown"`. A row with `allowed: no`
+is kept: the page asks for that channel. Where the name of such a call also read as a direct
+call of Electron's ipcRenderer (`const { ipcRenderer } = window; ipcRenderer.invoke("x")`), the
+bridge row replaces that row. When the preloads that expose the api do not forward the member the
+same way (another method or check, or one exposes it as a plain member), its calls give no rows,
+and `bridge_forwarder_ambiguous` names it. At most 200 page scripts and 5,000,000 of their tokens
+are read, and 2,000 calls per file; past that `bridge_calls_capped` names the files. Which page a
+window loads is not read, so a call is matched to every preload that exposes the api.
+
 ## Navigation and new-window handlers (`navigationHandlers`)
 
 Electron's security guide, section 13 (limit navigation: "you can call `event.preventDefault()` in
