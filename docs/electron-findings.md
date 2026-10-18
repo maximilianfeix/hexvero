@@ -727,6 +727,19 @@ name, as minifiers reuse `e`, is another object. Electron Fiddle 0.38.0 and 0.39
 false members of `window.__SENTRY_IPC__` that way (the writes of Sentry's enum IIFEs,
 `function (e) { e.EVENT = "…" }`).
 
+contextBridge copies the object when `exposeInMainWorld` is called, so only a write before the
+call is a member: one in the same function body as the call, in source order, or in the callback
+of an array method there (`forEach`, `map`, `filter`, `reduce`, …), which runs where it is
+written. A write after the call is not exposed (also when the same object is exposed again
+later: the second exposure takes the members written up to it, the first does not). A write
+inside any other function (an event listener, a helper that may run before the call or after
+it) cannot be placed, and gives one entry with `member: null`. When the name is assigned a
+whole new object (`let api = {}; …; api = { only }`), the members are those of the object it
+holds at the call, read only when that is proven: every assignment of the name is in the call's
+function before the call, and the last one is a statement `api = {…}` in the call's own block,
+not the body of a condition or loop; anything else is one entry with `member: null`. Writes to
+the object before that assignment went to the object it held then, and are no member.
+
 The senders are read with the same evaluation: `ipcRenderer.invoke(ch, ...a)` inside such a
 callback gives one row per channel (`via: "resolved"`, method `element`). The list a `forEach` /
 `map` callback or a `for … of` loop runs over may read a parameter of the function it is in

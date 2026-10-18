@@ -1796,6 +1796,21 @@ const MAX_BRIDGE = 2000;
 /** Tokens walked inside exposed objects per file; keeps repeated or unclosed calls linear. */
 const BRIDGE_WALK_BUDGET = 400_000;
 /** Charged per `api[…]` occurrence of a step-by-step object, before anything is read for it. */
+/** Array methods that call their callback before they return. */
+const SYNC_CALLBACKS: ReadonlySet<string> = new Set([
+  "forEach",
+  "map",
+  "filter",
+  "find",
+  "findIndex",
+  "findLast",
+  "findLastIndex",
+  "some",
+  "every",
+  "reduce",
+  "reduceRight",
+  "flatMap",
+]);
 const BRIDGE_STEP_COST = 8;
 /** Charged per `api[k] = …` whose scope and loop rounds are read. */
 const BRIDGE_ROUND_COST = 2000;
@@ -1847,7 +1862,7 @@ export function bridgeMembers(
   let budget = BRIDGE_WALK_BUDGET;
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
-  /** Named objects whose later `name.member = …` assignments were already collected. */
+  /** Exposures (name and call) whose earlier `name.member = …` assignments were collected. */
   const stepwise = new Set<string>();
   let resolver: ExpressionResolver | null = null;
   /**
@@ -2076,6 +2091,40 @@ export function bridgeMembers(
         .map((x) => (x.type === "string" ? JSON.stringify(x.value) : x.value))
         .join(""),
     );
+  /**
+   * How the binding the name at k (used by the exposing call at `call`) is assigned as a whole
+   * besides its declaration (`api = …`, `api ||= …`; the resolver's `writesTo`): `none`, the
+   * name token of the write whose object literal it holds at the call, or `unknown`. A write is
+   * taken only when it is provably the value at the call: every write of the name is in the
+   * call's function body before the call, and the last one is `name = {…}` in the call's own
+   * block, so nothing between them is conditional.
+   */
+  const assignedWhole = (k: number, name: string, call: number): "none" | "unknown" | number => {
+    resolver ??= new ExpressionResolver(tokens, context.constants);
+    const r = resolver;
+    const bound = r.binding(k, name, true);
+    if (bound?.kind !== "value") return bound === null ? "unknown" : "none";
+    const init = bound.range[0];
+    const decl = is(init - 1, "=") && tokens[init - 2]?.value === name ? init - 2 : -1;
+    if (decl === -1) return "unknown";
+    const sites = r.namePositions(name);
+    budget -= sites.length * BRIDGE_SCOPE_COST;
+    const writes = sites.filter((j) => j !== decl && r.writesTo(j, name, decl));
+    if (!writes.length) return "none";
+    const fn = (j: number): number => r.functionAt(j)?.paramsAt ?? -1;
+    const last = writes.at(-1)!;
+    if (
+      fn(decl) !== fn(call) ||
+      writes.some((j) => j > call || fn(j) !== fn(call)) ||
+      !is(last + 1, "=") ||
+      !is(last + 2, "{") ||
+      r.bracketAround(last) !== r.bracketAround(call) ||
+      // a statement of its own, not the body of `if (…)`, `else` or a loop without braces
+      !(last === 0 || is(last - 1, ";") || is(last - 1, "{") || is(last - 1, "}"))
+    )
+      return "unknown";
+    return last;
+  };
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
     if (t.type !== "ident") continue;
@@ -2148,6 +2197,8 @@ export function bridgeMembers(
      * `preventExtensions`) around one of those, or `Object.assign(a, b, …)` of them. Null when
      * any part is something else, so nothing is claimed for a value that is not read whole.
      */
+    /** Where the exposed name was last assigned a new object before the call (see assignedWhole). */
+    let replacedAt = -1;
     const valueOpens = (k: number, level: number): { opens: number[]; next: number } | null => {
       if (level > 3 || budget <= 0) return null;
       const v = tokens[k];
@@ -2200,7 +2251,14 @@ export function bridgeMembers(
         // same name: `for (const [t, n] of Object.entries(u)) exposeInMainWorld(t, n)`.
         if (boundLocally(i, v.value)) return null;
         const named = objectOf(v.value);
-        return named < 0 ? null : { opens: [named], next: k + 1 };
+        if (named < 0) return null;
+        // `let api = {…}; …; api = { only }`: the object declared is not the one exposed, but
+        // the one the last write gives it, when that is proven; otherwise the entry is unreadable.
+        const whole = assignedWhole(k, v.value, i);
+        if (whole === "unknown") return null;
+        if (whole === "none") return { opens: [named], next: k + 1 };
+        if (level === 0) replacedAt = whole;
+        return { opens: [whole + 2], next: k + 1 };
       }
       return null;
     };
@@ -2362,9 +2420,36 @@ export function bridgeMembers(
     // An object put together in steps: `api.onChange = (fn) => …` after `const api = {…}`.
     const objectName =
       simple && tokens[at + 2]?.type === "ident" && is(at + 3, ")") ? tokens[at + 2]!.value : null;
-    if (objectName && !stepwise.has(objectName)) {
-      stepwise.add(objectName);
+    // contextBridge copies the object when it is exposed: only what is written before the call,
+    // in the same function body, is a member. A write after it (also one of a second exposure of
+    // the same object) is not exposed; a write inside another function (a callback, a helper
+    // that may run before the call) cannot be placed, and is one unreadable entry.
+    const stepKey = `${objectName}\u0000${i}`;
+    if (objectName && !stepwise.has(stepKey)) {
+      stepwise.add(stepKey);
       budget -= tokens.length;
+      resolver ??= new ExpressionResolver(tokens, context.constants);
+      const callFunction = resolver.functionAt(i)?.paramsAt ?? -1;
+      let unplaced = false;
+      /** `before`: a member; `after`: not exposed; `elsewhere`: written in another function. */
+      // A callback of an array method (`Object.keys(T).forEach((k) => { api[k] = … })`) runs
+      // where it is written; a write before the name was given the exposed object went to the
+      // object it held then.
+      const placeOf = (k: number): "before" | "after" | "elsewhere" => {
+        let d = resolver!.functionAt(k);
+        for (let guard = 0; d && d.paramsAt !== callFunction; guard++) {
+          if (guard > 8 || !d.calledBy || !SYNC_CALLBACKS.has(d.calledBy.method))
+            return "elsewhere";
+          d = resolver!.outerOf(d);
+        }
+        if (!d && callFunction !== -1) return "elsewhere";
+        return k < i && k > replacedAt ? "before" : "after";
+      };
+      const unreadable = (k: number): void => {
+        if (unplaced) return;
+        unplaced = true;
+        push(null, null, tokens[k]!.line);
+      };
       /**
        * Whether the name at k is the binding the exposed object is (`same`), another one (a
        * parameter or local of the same name, as minifiers reuse short names), or not decided.
@@ -2409,6 +2494,12 @@ export function bridgeMembers(
               break;
             }
             if (which !== "same") continue;
+            const place = placeOf(k);
+            if (place === "after") continue;
+            if (place === "elsewhere") {
+              unreadable(k);
+              continue;
+            }
             budget -= BRIDGE_ROUND_COST;
             if (budget <= 0) {
               truncated = true;
@@ -2447,6 +2538,12 @@ export function bridgeMembers(
           // within the resolver's own work; only a write that stays a member is charged here
           const which = sameObject(k);
           if (which === "other") continue;
+          const place = placeOf(k);
+          if (place === "after") continue;
+          if (place === "elsewhere") {
+            unreadable(k);
+            continue;
+          }
           budget -= BRIDGE_SCOPE_COST;
           if (budget <= 0) {
             truncated = true;

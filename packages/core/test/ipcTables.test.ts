@@ -110,6 +110,75 @@ contextBridge.exposeInMainWorld(
 );
 `;
 
+// Issue #199: contextBridge copies the object when it is exposed. Members written after the
+// call, members of an object the name no longer holds, and a second exposure of one object.
+const PRELOAD_AFTER = `"use strict";
+const { contextBridge, ipcRenderer } = require("electron");
+const CH = { open: "doc:open", save: "doc:save" };
+const api = { ping: () => ipcRenderer.send("app:ping") };
+contextBridge.exposeInMainWorld("api", api);
+for (const [k, ch] of Object.entries(CH)) api[k] = (...a) => ipcRenderer.invoke(ch, ...a);
+api["late"] = () => ipcRenderer.invoke("late:x");
+api.later = () => ipcRenderer.invoke("later:x");
+let b = {};
+for (const [k, ch] of Object.entries(CH)) b[k] = (...a) => ipcRenderer.invoke(ch, ...a);
+b = { only: () => ipcRenderer.invoke("only:one") };
+contextBridge.exposeInMainWorld("b", b);
+let c = {};
+if (globalThis.flag) c = { maybe: () => ipcRenderer.invoke("maybe:x") };
+contextBridge.exposeInMainWorld("c", c);
+const d = {};
+ipcRenderer.on("ready", () => {
+  d.onReady = () => ipcRenderer.invoke("ready:x");
+});
+contextBridge.exposeInMainWorld("d", d);
+const e = {};
+e.one = () => ipcRenderer.invoke("e:one");
+contextBridge.exposeInMainWorld("first", e);
+e.two = () => ipcRenderer.invoke("e:two");
+contextBridge.exposeInMainWorld("second", e);
+`;
+
+describe("members written after the exposure (#199)", () => {
+  for (const how of BUILDS)
+    it(`are not exposed; an object that may be another one is unreadable (${how})`, () => {
+      const info = analyze(
+        build({ "main.js": "", "preload.js": PRELOAD_AFTER }, ["main.js", "preload.js"], how),
+      );
+      const got = members(info);
+      // never a member that is not exposed
+      for (const wrong of [
+        "api.open",
+        "api.save",
+        "api.late",
+        "api.later",
+        "b.open",
+        "b.save",
+        "c.maybe",
+        "d.onReady",
+        "first.two",
+      ])
+        expect(
+          got.some((m) => m.startsWith(`${wrong} `)),
+          wrong,
+        ).toBe(false);
+      expect(got).toEqual(
+        expect.arrayContaining([
+          "api.ping app:ping",
+          // the conditional object and the write in a callback: one unreadable entry each
+          "c.null null",
+          "d.null null",
+          "first.one e:one",
+          "second.one e:one",
+          "second.two e:two",
+        ]),
+      );
+      // the object the last unconditional write gives `b`
+      expect(got.filter((m) => m.startsWith("b."))).toEqual(["b.only only:one"]);
+      expect(got.filter((m) => m.startsWith("api."))).toEqual(["api.ping app:ping"]);
+    });
+});
+
 describe("bridge members and senders built from a channel table", () => {
   for (const how of BUILDS)
     it(`reads a member per key and a sender per channel (${how})`, () => {
