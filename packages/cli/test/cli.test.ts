@@ -104,6 +104,26 @@ describe("hexvero CLI", () => {
     }
   });
 
+  it("escapes target text in the compare summary so it cannot forge lines", async () => {
+    const file = "w\nFORGED: approved\u001b[2J.js";
+    const build = (open: boolean): Buffer =>
+      buildAsar({
+        "package.json": JSON.stringify({ name: "f", main: file }),
+        [file]: `const { BrowserWindow } = require("electron");\nconst win = new BrowserWindow({ webPreferences: { nodeIntegration: ${open} } });\n`,
+      });
+    const a = join(dir, "forge-a.asar");
+    const b = join(dir, "forge-b.asar");
+    writeFileSync(a, build(false));
+    writeFileSync(b, build(true));
+    const io = capture();
+    expect(await main(["compare", a, b], io)).toBe(0);
+    const text = io.stdout.join("\n");
+    expect(text).toContain("window settings that changed what pages may do");
+    expect(text).toContain("nodeIntegration");
+    expect(text).not.toMatch(/^FORGED/m);
+    expect(text).not.toContain("\u001b[2J");
+  });
+
   it("shows a changed IPC payload with the target's key names escaped", async () => {
     const a = join(dir, "payload-a.asar");
     const b = join(dir, "payload-b.asar");

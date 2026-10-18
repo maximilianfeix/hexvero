@@ -305,7 +305,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           `\n${heading(io, "Next")}\n${next
             .map(
               (step) =>
-                `  ${step.question}\n    ${paint(io, "cyan", suggest(io, step.cli.replace(/^hexvero /, "")))}`,
+                `  ${printable(step.question)}\n    ${paint(io, "cyan", printable(suggest(io, step.cli.replace(/^hexvero /, ""))))}`,
             )
             .join("\n")}`,
         );
@@ -472,15 +472,17 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           })),
         ))
           io.out(row);
-        if (all.onlyA.length) io.out(paint(io, "dim", `  only in a: ${all.onlyA.join(", ")}`));
-        if (all.onlyB.length) io.out(paint(io, "dim", `  only in b: ${all.onlyB.join(", ")}`));
+        if (all.onlyA.length)
+          io.out(paint(io, "dim", `  only in a: ${printable(all.onlyA.join(", "))}`));
+        if (all.onlyB.length)
+          io.out(paint(io, "dim", `  only in b: ${printable(all.onlyB.join(", "))}`));
         if (all.windowChanges.length) {
           io.out(
             paint(io, "bold", "  window settings that changed what pages may do (to review):"),
           );
           for (const w of all.windowChanges)
             io.out(
-              `    ${w.direction === "more permissive" ? paint(io, "yellow", "!") : " "} ${w.window} ${w.setting}: ${w.before} → ${w.after}${paint(io, "dim", ` (${w.direction})`)}`,
+              `    ${w.direction === "more permissive" ? paint(io, "yellow", "!") : " "} ${printable(`${w.window} ${w.setting}: ${w.before} → ${w.after}`)}${paint(io, "dim", ` (${printable(w.direction)})`)}`,
             );
         }
         for (const c of all.collections.filter((x) => x.partial))
@@ -488,7 +490,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             paint(
               io,
               "yellow",
-              `  ! ${c.collection} partial: ${c.completeness.gaps.join(", ")} (compared ${c.completeness.compared.a} of ${c.completeness.total.a} (a), ${c.completeness.compared.b} of ${c.completeness.total.b} (b))`,
+              `  ! ${printable(c.collection)} partial: ${printable(c.completeness.gaps.join(", "))} (compared ${c.completeness.compared.a} of ${c.completeness.total.a} (a), ${c.completeness.compared.b} of ${c.completeness.total.b} (b))`,
             ),
           );
         if (all.partialScan.a || all.partialScan.b)
@@ -506,7 +508,11 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             .find(Boolean) ?? differing[0];
         if (first)
           io.out(
-            paint(io, "dim", `  details: ${suggest(io, `compare <a> <b> ${first.collection}`)}`),
+            paint(
+              io,
+              "dim",
+              `  details: ${suggest(io, `compare <a> <b> ${shellWord(first.collection)}`)}`,
+            ),
           );
         return 0;
       }
@@ -607,12 +613,12 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           paint(
             io,
             "dim",
-            `  ${diff.relocated} item(s) only moved (${diff.positional.join("/")} changed${example}); --strict counts them as changed`,
+            `  ${diff.relocated} item(s) only moved (${printable(diff.positional.join("/"))} changed${example}); --strict counts them as changed`,
           ),
         );
       }
       if (diff.ignored.length)
-        io.out(paint(io, "dim", `  ignored on request: ${diff.ignored.join(", ")}`));
+        io.out(paint(io, "dim", `  ignored on request: ${printable(diff.ignored.join(", "))}`));
       if (diff.matchedByPosition)
         io.out(
           paint(
@@ -799,13 +805,13 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
       if (result.written.length === 0) {
         io.out(
           result.skipped.length
-            ? `${paint(io, "yellow", "!")} ${result.skipped.length} sources listed in the map carry no embedded content (sourcesContent); nothing but the manifest was written to ${result.outputDir}.`
-            : `${paint(io, "yellow", "!")} no module boundaries recognised; nothing but the manifest was written to ${result.outputDir}. Supported: webpack 4/5, Rspack, browserify, esbuild bundles (also scope-hoisted ones with path comments) and source maps with embedded sources; Rollup/Vite chunks keep no boundaries (the manifest lists the chunks they import).`,
+            ? `${paint(io, "yellow", "!")} ${result.skipped.length} sources listed in the map carry no embedded content (sourcesContent); nothing but the manifest was written to ${printable(result.outputDir)}.`
+            : `${paint(io, "yellow", "!")} no module boundaries recognised; nothing but the manifest was written to ${printable(result.outputDir)}. Supported: webpack 4/5, Rspack, browserify, esbuild bundles (also scope-hoisted ones with path comments) and source maps with embedded sources; Rollup/Vite chunks keep no boundaries (the manifest lists the chunks they import).`,
         );
         return 0;
       }
       io.out(
-        `${paint(io, "green", "✓")} ${result.written.length} files written to ${result.outputDir} (manifest ${result.manifest})`,
+        `${paint(io, "green", "✓")} ${result.written.length} files written to ${printable(result.outputDir)} (manifest ${printable(result.manifest)})`,
       );
       for (const w of result.written.slice(0, 30))
         io.out(`  ${paint(io, "dim", String(w.bytes).padStart(8))}  ${printable(w.path)}`);
