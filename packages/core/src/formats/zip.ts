@@ -19,6 +19,8 @@ export interface ZipArchive {
   /** Reads and decompresses one entry, bounded by `maxBytes`. */
   read(entry: ZipEntry, maxBytes?: number): Uint8Array;
   find(name: string): ZipEntry | undefined;
+  /** Entries a Unix extractor makes symbolic links (the mode in the external attributes). */
+  links: ReadonlySet<ZipEntry>;
 }
 
 const EOCD = 0x06054b50;
@@ -59,10 +61,12 @@ export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } =
   }
 
   const entries: ZipEntry[] = [];
+  const links = new Set<ZipEntry>();
   const cr = new ByteReader(bytes, cdOffset);
   for (let i = 0; i < entryCount && cr.remaining >= 46; i++) {
     if (cr.u32() !== CENTRAL) break;
-    cr.skip(4);
+    const madeBy = cr.u16();
+    cr.skip(2);
     const flags = cr.u16();
     const method = cr.u16();
     cr.skip(4);
@@ -72,7 +76,8 @@ export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } =
     const nameLength = cr.u16();
     const extraLength = cr.u16();
     const commentLen = cr.u16();
-    cr.skip(8);
+    cr.skip(4);
+    const external = cr.u32();
     let localHeaderOffset = cr.u32();
     const rawName = cr.bytesAt(nameLength);
     const name = flags & 0x800 ? utf8String(rawName) : latin1(rawName);
@@ -92,7 +97,7 @@ export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } =
         er.skip(Math.min(len, er.remaining));
       }
     }
-    entries.push({
+    const entry: ZipEntry = {
       name,
       compressedSize,
       size,
@@ -101,8 +106,15 @@ export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } =
       localHeaderOffset,
       isDirectory: name.endsWith("/"),
       encrypted: (flags & 1) !== 0,
-    });
+    };
+    entries.push(entry);
+    // made on Unix (3) or macOS (19) with the mode S_IFLNK
+    const host = madeBy >>> 8;
+    if ((host === 3 || host === 19) && ((external >>> 16) & 0o170000) === 0o120000)
+      links.add(entry);
   }
+  const byName = new Map<string, ZipEntry>();
+  for (const e of entries) if (!byName.has(e.name)) byName.set(e.name, e);
 
   const read = (entry: ZipEntry, maxBytes = 64 * 1024 * 1024): Uint8Array => {
     if (entry.encrypted)
@@ -127,7 +139,15 @@ export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } =
     const data = bytes.subarray(start, start + entry.compressedSize);
     if (data.length < entry.compressedSize)
       throw new AnalysisError("malformed", `${entry.name}: compressed data truncated`);
-    if (entry.method === "stored") return data;
+    if (entry.method === "stored") {
+      // a stored entry is its bytes: sizes that differ are a lie about one of them
+      if (entry.compressedSize !== entry.size)
+        throw new AnalysisError(
+          "malformed",
+          `${entry.name}: stored entry with ${entry.compressedSize} bytes declares ${entry.size}`,
+        );
+      return data;
+    }
     if (entry.size > budget)
       throw new AnalysisError(
         "too_large",
@@ -144,7 +164,8 @@ export function openZip(bytes: Uint8Array, options: { inflateBudget?: number } =
     entries,
     comment,
     read,
-    find: (name) => entries.find((e) => e.name === name),
+    find: (name) => byName.get(name),
+    links,
   };
 }
 

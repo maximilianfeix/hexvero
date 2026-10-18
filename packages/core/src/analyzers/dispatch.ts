@@ -1,6 +1,5 @@
 import { parseApk, type ApkInfo } from "../formats/apk.js";
 import { analyzeAppBundle, isAppBundle, type BundleInfo } from "../formats/bundle.js";
-import { findElectronAppInZip } from "../formats/electronApp.js";
 import { parseEvm, type EvmInfo } from "../formats/evm.js";
 import { parseDex, type DexInfo } from "../formats/dex.js";
 import { parseHar, type HarInfo } from "../formats/har.js";
@@ -241,6 +240,14 @@ async function analyzeTargetUnsafe(
     durationMs: Math.round(performance.now() - started),
   });
 
+  // a packaged build whose Electron app was not read, and a pick that may not be Electron's
+  if (info.appNotRead)
+    limitations.push({
+      code: "electron_app_not_read",
+      message: `The build holds an Electron app at ${info.appNotRead.entry}, but it was not read: ${info.appNotRead.reason}. What follows is the build itself.`,
+    });
+  if (info.container?.warning)
+    limitations.push({ code: "electron_app_pick_unverified", message: info.container.warning });
   switch (info.format) {
     case "elf":
     case "pe":
@@ -320,29 +327,6 @@ async function analyzeTargetUnsafe(
     }
     case "zip": {
       const zip = openZip(bytes);
-      const inside = findElectronAppInZip(zip.entries);
-      if (inside) {
-        const entry = zip.find(inside.entry) ?? zip.find(`${inside.entry}/package.json`);
-        const why =
-          inside.kind === "directory"
-            ? "it is an app/ directory, which hexvero reads from disk only"
-            : entry?.encrypted
-              ? "the entry is encrypted"
-              : entry?.method === "other"
-                ? "the entry uses an unsupported compression method"
-                : entry
-                  ? `it expands to ${entry.size} bytes, more than hexvero reads into memory`
-                  : "the entry could not be read";
-        limitations.push({
-          code: "electron_app_not_read",
-          message: `The archive holds an Electron app at ${inside.entry}, but it was not read: ${why}. Extract the archive and analyze ${
-            inside.entry
-              .split("/")
-              .slice(0, inside.layout === "macos" ? -3 : -2)
-              .join("/") || "the extracted directory"
-          }.`,
-        });
-      }
       return done(`ZIP archive with ${zip.entries.length} entries`, {
         kind: "zip",
         zip: { entries: zip.entries, comment: zip.comment },

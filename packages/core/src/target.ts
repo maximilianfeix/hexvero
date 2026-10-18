@@ -49,12 +49,18 @@ export async function loadTarget(
   if (plain.info.format === "directory") {
     const found = findElectronApp(plain.info.path);
     if (!found) return plain;
+    if (found.refused)
+      return {
+        ...plain,
+        info: { ...plain.info, appNotRead: { entry: found.entry, reason: found.refused } },
+      };
     const container = {
       path: plain.info.path,
       format: "directory" as const,
       entry: found.entry,
       layout: found.layout,
       ...(found.note ? { note: found.note } : {}),
+      ...(found.warning ? { warning: found.warning } : {}),
     };
     const inner = await loadFile(join(plain.info.path, ...found.entry.split("/")), maxBytes);
     return { ...inner, info: { ...inner.info, container } };
@@ -64,9 +70,9 @@ export async function loadTarget(
 
 /**
  * A ZIP archive with a packaged Electron build in it, as that build's `app.asar` read from the
- * archive; any other target is returned as it is. Files the archive keeps in
- * `app.asar.unpacked/` are not read from the archive (the analysis lists them as unread), and an
- * app kept as an `app/` directory is not extracted: the ZIP analysis then says where it is.
+ * archive, with the files of `app.asar.unpacked/` the scan reads; any other target is returned
+ * as it is. When the archive holds an app that is not read (an `app/` directory, an entry held
+ * twice, a link, an archive that is not one), the ZIP is returned with `appNotRead`.
  */
 export function electronInZip(loaded: LoadedTarget, maxBytes = DEFAULT_MAX_BYTES): LoadedTarget {
   if (loaded.info.format !== "zip" || loaded.lazy || loaded.bytes.length === 0) return loaded;
@@ -76,25 +82,27 @@ export function electronInZip(loaded: LoadedTarget, maxBytes = DEFAULT_MAX_BYTES
   } catch {
     return loaded; // the ZIP analysis reports what is wrong with it
   }
-  const found = findElectronAppInZip(zip.entries);
-  if (!found || found.kind !== "asar") return loaded;
-  const entry = zip.find(found.entry);
-  if (!entry || entry.encrypted || entry.method === "other" || entry.size > maxBytes) return loaded;
-  let bytes: Uint8Array;
-  try {
-    bytes = zip.read(entry, maxBytes);
-  } catch {
-    return loaded;
-  }
-  // Not a path on disk: nothing beside it (no `.unpacked` directory) is ever looked up.
+  const found = findElectronAppInZip(zip, maxBytes);
+  if (!found) return loaded;
+  if (found.refused || !found.bytes)
+    return {
+      ...loaded,
+      info: {
+        ...loaded.info,
+        appNotRead: { entry: found.entry, reason: found.refused ?? "it could not be read" },
+      },
+    };
+  const bytes = found.bytes;
+  // Not a path on disk: nothing beside it (no `.unpacked` directory) is ever looked up. The name
+  // ends in `.asar`, and the bytes were opened as an archive by the finder.
   const inner = targetFromBytes(bytes, `${basename(loaded.info.path)}!/${found.entry}`);
-  if (inner.info.format !== "asar") return loaded;
   const unpacked = unpackedFromZip(zip, bytes, `${found.entry}.unpacked/`);
   return {
     ...inner,
     ...(unpacked ? { unpacked } : {}),
     info: {
       ...inner.info,
+      format: "asar",
       container: {
         path: loaded.info.path,
         format: "zip",
@@ -136,10 +144,15 @@ function unpackedFromZip(
     if (!SCANNED_UNPACKED.test(path)) continue;
     const entry = zip.find(`${prefix}${path}`);
     if (!entry || entry.isDirectory || entry.encrypted || entry.method === "other") continue;
+    // a link is no file of the app here: an extractor makes it point anywhere
+    if (zip.links.has(entry)) continue;
     if (entry.size > MAX_UNPACKED_FILE || total + entry.size > MAX_UNPACKED_TOTAL) continue;
     try {
-      out[path] = zip.read(entry, MAX_UNPACKED_FILE);
-      total += entry.size;
+      const bytes = zip.read(entry, MAX_UNPACKED_FILE);
+      // the bytes returned count, not the size the entry declares
+      if (bytes.length > MAX_UNPACKED_FILE || total + bytes.length > MAX_UNPACKED_TOTAL) continue;
+      out[path] = bytes;
+      total += bytes.length;
     } catch {
       // left unread; the scan lists it with the reason
     }

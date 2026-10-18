@@ -187,17 +187,30 @@ app inside it, so its IPC, bridge, windows, endpoints and storage are read, not 
 - a macOS `.app`: its `Contents/Resources`,
 - a Windows or Linux install directory: its `resources/`, when a Chromium runtime file sits next
   to it (`resources.pak`, `chrome_100_percent.pak`, `icudtl.dat`, `v8_context_snapshot.bin` or
-  `snapshot_blob.bin`); a source tree with a `resources/` folder is still read as source,
+  `snapshot_blob.bin`) and a runtime binary too (an `.exe`, `ffmpeg.dll`, `libffmpeg.so`,
+  `chrome-sandbox` or `chrome_crashpad_handler`); a source tree with a `resources/` folder is
+  still read as source,
 - a ZIP of either (a release download): the app is read from the archive, with the files it
   keeps in `app.asar.unpacked/` that the scan reads (sources, `package.json`, source maps; up to
-  16 MiB each and 256 MiB in all). An app kept as an `app/` directory inside a ZIP is not
-  extracted; the limitation `electron_app_not_read` says where it is.
+  16 MiB each and 256 MiB in all, counted in bytes read; a stored entry whose sizes differ is
+  refused).
 
 In that directory hexvero takes what Electron runs: the first of `app/`, `app.asar` and
-`default_app.asar` that has a `package.json` (Electron's `lib/browser/init.ts`). Files kept in
-`app.asar.unpacked/` beside the archive are read as for an archive opened alone. When something
-else was there too, or an archive without `package.json` was passed over, the output says so; an
-archive with several builds is read at the one nearest its root and names the others. A
+`default_app.asar` whose `package.json` parses as JSON (Electron's `lib/browser/init.ts`), on
+disk and inside a ZIP. Files kept in `app.asar.unpacked/` beside the archive are read as for an
+archive opened alone. When something else was there too, or a candidate was passed over, the
+output says so; an archive with several builds is read at the one nearest its root and names the
+others. When `app/` is taken while an `app.asar` is there too, the limitation
+`electron_app_pick_unverified` says that the fuse `OnlyLoadAppFromAsar` would make Electron run
+`app.asar`; hexvero does not read fuses.
+
+The app is not read, and the build is read as it is with the limitation `electron_app_not_read`
+naming the entry and the reason, when the candidate Electron would run is a link out of the
+bundle (Electron would follow it; hexvero reads nothing outside the target, and does not fall
+through to the next candidate either), when a ZIP holds an entry of the app more than once (also
+as two Unicode spellings of one name: an extractor installs one copy, which may not be the one
+hexvero reads), when that entry is a symbolic link, encrypted or too large, when it is not an
+ASAR archive, and when a ZIP keeps the app as an `app/` directory (it is not extracted). A
 directory or archive without an Electron app is read as before.
 
 The output names the file it read: `analyze` prints `Electron app: Contents/Resources/app.asar`

@@ -127,16 +127,77 @@ describe("the Electron app inside a packaged build", () => {
     });
     const found = findElectronApp(root);
     expect(found?.entry).toBe("Contents/Resources/default_app.asar");
-    expect(found?.note).toContain("Passed over (no package.json): app.asar");
+    expect(found?.note).toContain("Passed over: app.asar (no package.json)");
   });
 
-  it("does not follow an app/ link that leads out of the bundle", () => {
+  it("reads neither an app/ link out of the bundle nor the candidate after it, and says so", async () => {
     const outside = join(dir, "outside-app");
     mkdirSync(outside, { recursive: true });
     writeFileSync(join(outside, "package.json"), "{}");
     const root = macApp("Linked.app", { "app.asar": buildAsar(app("api.linked.example")) });
     symlinkSync(outside, join(root, "Contents", "Resources", "app"));
-    expect(findElectronApp(root)?.entry).toBe("Contents/Resources/app.asar");
+    const found = findElectronApp(root);
+    expect(found?.entry).toBe("Contents/Resources/app");
+    expect(found?.refused).toContain("outside the bundle");
+    const t = await loadTarget(root);
+    expect(t.info.format).toBe("directory");
+    expect(t.info.container).toBeUndefined();
+    const analysis = await analyzeTarget(t);
+    expect(analysis.data.kind).toBe("bundle");
+    expect(analysis.limitations.find((l) => l.code === "electron_app_not_read")?.message).toContain(
+      "Contents/Resources/app is a link to",
+    );
+  });
+
+  it("refuses an app.asar or a Resources directory that is a link out of the bundle", () => {
+    const away = join(dir, "away");
+    mkdirSync(join(away, "Res"), { recursive: true });
+    writeFileSync(join(away, "evil.asar"), buildAsar(app("evil.example")));
+    writeFileSync(join(away, "Res", "app.asar"), buildAsar(app("evil.example")));
+    const one = macApp("LinkAsar.app", { ".keep": "" });
+    symlinkSync(join(away, "evil.asar"), join(one, "Contents", "Resources", "app.asar"));
+    expect(findElectronApp(one)).toMatchObject({ entry: "Contents/Resources/app.asar" });
+    expect(findElectronApp(one)?.refused).toContain("outside the bundle");
+    const two = join(dir, "LinkRes.app");
+    mkdirSync(join(two, "Contents"), { recursive: true });
+    writeFileSync(join(two, "Contents", "Info.plist"), plist);
+    symlinkSync(join(away, "Res"), join(two, "Contents", "Resources"));
+    expect(findElectronApp(two)?.refused).toContain("Contents/Resources is a link to");
+    // a link that stays inside the bundle is read
+    const three = macApp("LinkInside.app", { ".keep": "" });
+    writeFileSync(join(three, "Contents", "inner.asar"), buildAsar(app("inner.example")));
+    symlinkSync("../inner.asar", join(three, "Contents", "Resources", "app.asar"));
+    expect(findElectronApp(three)).toMatchObject({ entry: "Contents/Resources/app.asar" });
+    expect(findElectronApp(three)?.refused).toBeUndefined();
+  });
+
+  it("passes over an app/ whose package.json is not JSON, as Electron does", () => {
+    const root = macApp("BadJson.app", {
+      "app/package.json": "{ not json",
+      "app/main.js": "1;\n",
+      "app.asar": buildAsar(app("api.asar.example")),
+    });
+    const found = findElectronApp(root);
+    expect(found?.entry).toBe("Contents/Resources/app.asar");
+    expect(found?.note).toContain("app/ (package.json is not valid JSON)");
+    // and inside an archive
+    const asar = macApp("BadJsonAsar.app", {
+      "app.asar": buildAsar({ "package.json": "{ nope", "main.js": "1;\n" }),
+      "default_app.asar": buildAsar(app("default.example")),
+    });
+    expect(findElectronApp(asar)?.entry).toBe("Contents/Resources/default_app.asar");
+  });
+
+  it("warns that a fuse may make Electron run app.asar instead of app/", async () => {
+    const root = macApp("Fuse.app", {
+      "app/package.json": app("api.dir.example")["package.json"]!,
+      "app/main.js": app("api.dir.example")["main.js"]!,
+      "app.asar": buildAsar(app("api.asar.example")),
+    });
+    const t = await loadTarget(root);
+    expect(t.info.container?.warning).toContain("OnlyLoadAppFromAsar");
+    const analysis = await analyzeTarget(t);
+    expect(analysis.limitations.map((l) => l.code)).toContain("electron_app_pick_unverified");
   });
 
   it("finds resources/app.asar in a Windows or Linux install directory next to the runtime", async () => {
@@ -144,6 +205,7 @@ describe("the Electron app inside a packaged build", () => {
     mkdirSync(join(root, "resources"), { recursive: true });
     writeFileSync(join(root, "resources", "app.asar"), buildAsar(app("api.win.example")));
     writeFileSync(join(root, "resources.pak"), "pak");
+    writeFileSync(join(root, "Fixture.exe"), "MZ");
     const t = await loadTarget(root);
     expect(t.info.format).toBe("asar");
     expect(t.info.container).toMatchObject({
@@ -228,25 +290,133 @@ describe("the Electron app inside a packaged build", () => {
     expect(note?.message).toContain("analyze Fixture.app");
   });
 
+  it("applies the package.json test in a ZIP too", async () => {
+    const zip = buildZip({
+      "X.app/Contents/Resources/app/package.json": "{ not json",
+      "X.app/Contents/Resources/app.asar": buildAsar({ "main.js": "1;\n" }),
+      "X.app/Contents/Resources/default_app.asar": buildAsar(app("default.example")),
+    });
+    const loaded = electronInZip(targetFromBytes(zip, "r.zip"));
+    expect(loaded.info.container?.entry).toBe("X.app/Contents/Resources/default_app.asar");
+    expect(loaded.info.container?.note).toContain("app/ (package.json is not valid JSON)");
+    expect(loaded.info.container?.note).toContain("app.asar (no package.json)");
+  });
+
+  it("reads a ZIP as a ZIP when an entry of the app occurs twice", async () => {
+    const twice = buildZip(
+      { "X.app/Contents/Resources/app.asar": buildAsar(app("good.example")) },
+      { entries: [["X.app/Contents/Resources/app.asar", buildAsar(app("evil.example"))]] },
+    );
+    const loaded = electronInZip(targetFromBytes(twice, "r.zip"));
+    expect(loaded.info.format).toBe("zip");
+    expect(loaded.info.appNotRead?.reason).toContain("more than once");
+    const analysis = await analyzeTarget(loaded);
+    expect(analysis.limitations.map((l) => l.code)).toContain("electron_app_not_read");
+    // two Unicode spellings of one name count as the same name
+    const spelled = buildZip({
+      "Caf\u00e9.app/Contents/Resources/app.asar": buildAsar(app("good.example")),
+      "Cafe\u0301.app/Contents/Resources/app.asar": buildAsar(app("evil.example")),
+    });
+    expect(electronInZip(targetFromBytes(spelled, "r.zip")).info.appNotRead?.reason).toContain(
+      "more than once",
+    );
+    // an unpacked file held twice is refused as well
+    const unpacked = buildZip(
+      {
+        "X.app/Contents/Resources/app.asar": buildAsar({ ...app("u.example"), "w.js": "1;" }, [
+          "w.js",
+        ]),
+        "X.app/Contents/Resources/app.asar.unpacked/w.js": "1;",
+      },
+      { entries: [["X.app/Contents/Resources/app.asar.unpacked/w.js", "2;"]] },
+    );
+    expect(electronInZip(targetFromBytes(unpacked, "r.zip")).info.format).toBe("zip");
+  });
+
+  it("falls back to the ZIP for an app.asar entry that is a link or not an archive", async () => {
+    const link = buildZip(
+      { "X.app/Contents/Resources/app.asar": "../../../../etc/passwd" },
+      { links: ["X.app/Contents/Resources/app.asar"] },
+    );
+    const a = electronInZip(targetFromBytes(link, "r.zip"));
+    expect(a.info.format).toBe("zip");
+    expect(a.info.appNotRead?.reason).toContain("symbolic link");
+    const junk = buildZip({ "X.app/Contents/Resources/app.asar": new Uint8Array(4096) });
+    const b = electronInZip(targetFromBytes(junk, "r.zip"));
+    expect(b.info.format).toBe("zip");
+    expect(b.info.appNotRead?.reason).toContain("not an ASAR archive");
+    const analysis = await analyzeTarget(b);
+    expect(analysis.data.kind).toBe("zip");
+  });
+
+  it("takes no unpacked file that is a link in the ZIP", async () => {
+    const files = { ...app("l.example"), "w.js": 'fetch("https://linked.example/");\n' };
+    const zip = buildZip(
+      {
+        "X.app/Contents/Resources/app.asar": buildAsar(files, ["w.js"]),
+        "X.app/Contents/Resources/app.asar.unpacked/w.js": files["w.js"],
+      },
+      { links: ["X.app/Contents/Resources/app.asar.unpacked/w.js"] },
+    );
+    const loaded = electronInZip(targetFromBytes(zip, "r.zip"));
+    expect(loaded.info.format).toBe("asar");
+    expect(loaded.unpacked).toEqual({});
+    const skipped = (await analyzeTarget(loaded)).limitations.find(
+      (l) => l.code === "js_files_skipped",
+    );
+    expect(skipped?.message).toContain("were not taken from the ZIP it came from");
+  });
+
+  it("refuses a stored ZIP entry whose sizes differ", () => {
+    const zip = buildZip({ "big.store": "x".repeat(100) });
+    // the central directory's uncompressed size, 24 bytes into its header
+    const at = Buffer.from(zip).indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    new DataView(zip.buffer, zip.byteOffset).setUint32(at + 24, 40, true);
+    const opened = openZip(zip);
+    expect(() => opened.read(opened.entries[0]!)).toThrow(/stored entry/);
+  });
+
+  it("finds entries of a large ZIP by name in one pass", () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 40_000; i++) files[`d/f${i}.store`] = "";
+    const opened = openZip(buildZip(files));
+    const started = performance.now();
+    for (let i = 0; i < 40_000; i++) expect(opened.find(`d/f${i}.store`)).toBeDefined();
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("does not take a source tree with a copied runtime file for an install directory", async () => {
+    const root = join(dir, "w3");
+    mkdirSync(join(root, "resources", "app"), { recursive: true });
+    writeFileSync(join(root, "resources", "app", "package.json"), '{"name":"tpl","main":"i.js"}');
+    writeFileSync(join(root, "icudtl.dat"), "x");
+    writeFileSync(join(root, "package.json"), '{"name":"repo","main":"main.js"}');
+    const t = await loadTarget(root);
+    expect(t.info.format).toBe("directory");
+    expect(t.info.path).toBe(root);
+    expect(t.info.container).toBeUndefined();
+  });
+
   it("takes the app nearest the root of an archive with several, and names the others", () => {
     const zip = buildZip({
       "A.app/Contents/Resources/app.asar": buildAsar(app("a.example")),
       "nested/B.app/Contents/Resources/app.asar": buildAsar(app("b.example")),
       "win/resources/app.asar": buildAsar(app("c.example")),
       "win/resources.pak": "pak",
+      "win/app.exe": "MZ",
       "other/resources/app.asar": buildAsar(app("d.example")),
     });
-    const found = findElectronAppInZip(openZip(zip).entries);
+    const found = findElectronAppInZip(openZip(zip), 1 << 30);
     expect(found?.entry).toBe("A.app/Contents/Resources/app.asar");
-    expect(found?.note).toContain("nested/B.app/Contents/Resources/app.asar");
-    expect(found?.note).toContain("win/resources/app.asar");
+    expect(found?.note).toContain("nested/B.app");
+    expect(found?.note).toContain("win");
     // resources/ without a runtime beside it is not an install directory
     expect(found?.note).not.toContain("other/resources");
   });
 
   it("ignores archive entries that climb out of the archive", () => {
     const zip = buildZip({ "../X.app/Contents/Resources/app.asar": buildAsar(app("x.example")) });
-    expect(findElectronAppInZip(openZip(zip).entries)).toBeNull();
+    expect(findElectronAppInZip(openZip(zip), 1 << 30)).toBeNull();
   });
 
   it("keys a stored scan by the unpacked files taken from a ZIP", () => {

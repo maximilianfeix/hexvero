@@ -4539,7 +4539,9 @@ export function analyzeJavaScriptTree(
       );
     if (outside.length)
       parts.push(
-        `${outside.length} are stored outside the archive in its .unpacked directory, which was not found next to it (e.g. ${outside.slice(0, 3).join(", ")})`,
+        tree.unpackedStamp
+          ? `${outside.length} are stored outside the archive in its .unpacked directory and were not taken from the ZIP it came from (missing there, a link, or past the size limits; e.g. ${outside.slice(0, 3).join(", ")})`
+          : `${outside.length} are stored outside the archive in its .unpacked directory, which was not found next to it (e.g. ${outside.slice(0, 3).join(", ")})`,
       );
     limitations.push({
       code: "js_files_skipped",

@@ -32,6 +32,11 @@ export interface TargetInfo {
    * directory, a ZIP of either) and `path` is the Electron application found inside it.
    */
   container?: TargetContainer;
+  /**
+   * Set when the build holds an Electron app that was not read (a link out of the bundle, an
+   * entry a ZIP holds twice, an archive that is not one): the target is the build as it is.
+   */
+  appNotRead?: { entry: string; reason: string };
 }
 
 export interface TargetContainer {
@@ -43,6 +48,8 @@ export interface TargetContainer {
   layout: "macos" | "windows-linux";
   /** What else was there and why `entry` was read (Electron's search order). */
   note?: string;
+  /** Why the pick may not be what Electron runs (a fuse hexvero does not read). */
+  warning?: string;
 }
 
 export interface Analysis<T> {

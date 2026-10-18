@@ -7,10 +7,10 @@
  * directory (`process.resourcesPath`) it tries `app`, then `app.asar`, then `default_app.asar`,
  * and runs the first one whose `package.json` it can load. hexvero applies the same order.
  */
-import { realpathSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
-import { openAsarFile } from "./asar.js";
-import type { ZipEntry } from "./zip.js";
+import { openAsar, openAsarFile, type AsarArchive } from "./asar.js";
+import type { ZipArchive } from "./zip.js";
 
 /** Electron's search order in its resources directory. */
 export const ELECTRON_SEARCH = ["app", "app.asar", "default_app.asar"] as const;
@@ -28,6 +28,17 @@ export const RUNTIME_MARKERS = [
   "snapshot_blob.bin",
 ] as const;
 
+/**
+ * A runtime binary next to them: an `.exe`, or a file every Electron build for Linux or Windows
+ * ships. A source tree with a copied `icudtl.dat` has none of these.
+ */
+const RUNTIME_BINARY = (name: string): boolean =>
+  /\.exe$/i.test(name) ||
+  ["ffmpeg.dll", "libffmpeg.so", "chrome-sandbox", "chrome_crashpad_handler"].includes(name);
+
+/** package.json files larger than this are not parsed; the candidate is taken as it is. */
+const MAX_PACKAGE_JSON = 1 << 20;
+
 export interface ElectronLocation {
   /** The application, relative to the bundle, directory or archive, with `/` separators. */
   entry: string;
@@ -37,6 +48,15 @@ export interface ElectronLocation {
   layout: "macos" | "windows-linux";
   /** Set when something else was there too: what it was and why `entry` was taken. */
   note?: string;
+  /** Set when what Electron runs may be another candidate (a fuse hexvero does not read). */
+  warning?: string;
+  /**
+   * Set when the app at `entry` is not read: a link out of the bundle, an entry a ZIP holds
+   * twice, an archive that is not one. The build is then read as it is, with this reason.
+   */
+  refused?: string;
+  /** For an `.asar` read out of a ZIP: its bytes. */
+  bytes?: Uint8Array;
 }
 
 const isFile = (path: string): boolean => {
@@ -53,42 +73,110 @@ const isDirectory = (path: string): boolean => {
     return false;
   }
 };
-
-/** True when `path` resolves to a place inside `root` (links that lead out are not followed). */
-function inside(root: string, path: string): boolean {
+const exists = (path: string): boolean => {
   try {
-    const real = realpathSync(path);
-    const base = realpathSync(root);
-    return real === base || real.startsWith(base + sep);
+    lstatSync(path);
+    return true;
   } catch {
     return false;
   }
+};
+
+/** Where `path` resolves to when that is outside `root`; null when it stays inside. */
+function outside(root: string, path: string): string | null {
+  try {
+    const real = realpathSync(path);
+    const base = realpathSync(root);
+    return real === base || real.startsWith(base + sep) ? null : real;
+  } catch {
+    return null; // a dangling link: nothing to read there, handled as absent
+  }
 }
 
-/** Whether Electron could load `package.json` from this candidate; `null`: the header is unreadable. */
-function hasPackageJson(path: string, kind: "asar" | "directory"): boolean | null {
-  if (kind === "directory") return isFile(join(path, "package.json"));
+/** What Electron makes of a candidate's package.json; `unknown`: hexvero cannot tell, take it. */
+type PackageState = "valid" | "missing" | "invalid" | "unknown";
+
+const parses = (bytes: Uint8Array): boolean => {
   try {
-    return openAsarFile(path).find("package.json") !== undefined;
+    JSON.parse(new TextDecoder("utf-8", { fatal: false }).decode(bytes));
+    return true;
   } catch {
-    return null;
+    return false;
+  }
+};
+
+function packageInAsar(archive: AsarArchive): PackageState {
+  const entry = archive.find("package.json");
+  if (!entry) return "missing";
+  if (entry.unpacked || entry.size > MAX_PACKAGE_JSON) return "unknown";
+  try {
+    return parses(archive.read(entry, MAX_PACKAGE_JSON)) ? "valid" : "invalid";
+  } catch {
+    return "unknown";
+  }
+}
+
+function packageOnDisk(path: string, kind: "asar" | "directory", root: string): PackageState {
+  if (kind === "asar") {
+    try {
+      return packageInAsar(openAsarFile(path));
+    } catch {
+      return "unknown"; // an unreadable header: the analysis says why
+    }
+  }
+  const file = join(path, "package.json");
+  if (!isFile(file)) return "missing";
+  if (outside(root, file) !== null) return "unknown";
+  try {
+    if (statSync(file).size > MAX_PACKAGE_JSON) return "unknown";
+    return parses(readFileSync(file)) ? "valid" : "invalid";
+  } catch {
+    return "unknown";
   }
 }
 
 const label = (name: string): string => (name === "app" ? "app/" : name);
+const PASSED: Record<string, string> = {
+  missing: "no package.json",
+  invalid: "package.json is not valid JSON",
+};
 
-function sentence(resources: string, chosen: string, others: string[], skipped: string[]): string {
+function sentence(
+  resources: string,
+  chosen: string,
+  others: string[],
+  skipped: Array<{ name: string; why: string }>,
+): string {
   const parts = [
-    `Electron runs the first of app/, app.asar and default_app.asar in ${resources} that has a package.json: ${label(chosen)}.`,
+    `Electron runs the first of app/, app.asar and default_app.asar in ${resources} whose package.json it can load: ${label(chosen)}.`,
   ];
-  if (skipped.length) parts.push(`Passed over (no package.json): ${skipped.join(", ")}.`);
+  if (skipped.length)
+    parts.push(`Passed over: ${skipped.map((p) => `${label(p.name)} (${p.why})`).join(", ")}.`);
   if (others.length) parts.push(`Also there, not run by Electron: ${others.join(", ")}.`);
   return parts.join(" ");
 }
 
+const FUSE_WARNING =
+  "Electron runs app.asar instead of app/ when the fuse OnlyLoadAppFromAsar is on; hexvero does not read fuses and read app/.";
+
+/** True when `dir` holds a Chromium runtime of Windows or Linux beside its `resources/`. */
+function runtimeDirectory(dir: string): boolean {
+  if (!isDirectory(join(dir, "resources"))) return false;
+  if (!RUNTIME_MARKERS.some((m) => isFile(join(dir, m)))) return false;
+  let names: string[];
+  try {
+    names = readdirSync(dir).slice(0, 5000);
+  } catch {
+    return false;
+  }
+  return names.some((n) => RUNTIME_BINARY(n) && isFile(join(dir, n)));
+}
+
 /**
  * The Electron application of a macOS `.app` or a Windows/Linux install directory, or null when
- * the directory is neither (then it is read as it is today).
+ * the directory is neither (then it is read as it is today). A candidate that is a link out of
+ * the bundle is not read and not passed over either: Electron would follow it, so the result is
+ * `refused` with the reason.
  */
 export function findElectronApp(dir: string): ElectronLocation | null {
   const layouts: Array<{ resources: string; layout: ElectronLocation["layout"] }> = [];
@@ -98,26 +186,42 @@ export function findElectronApp(dir: string): ElectronLocation | null {
     (dir.endsWith(".app") && isDirectory(join(dir, "Contents", "Resources")))
   )
     layouts.push({ resources: "Contents/Resources", layout: "macos" });
-  if (isDirectory(join(dir, "resources")) && RUNTIME_MARKERS.some((m) => isFile(join(dir, m))))
-    layouts.push({ resources: "resources", layout: "windows-linux" });
+  if (runtimeDirectory(dir)) layouts.push({ resources: "resources", layout: "windows-linux" });
   for (const { resources, layout } of layouts) {
     const base = join(dir, ...resources.split("/"));
-    const present: Array<{ name: string; kind: "asar" | "directory"; ok: boolean | null }> = [];
+    const away = outside(dir, base);
+    if (away !== null)
+      return {
+        entry: resources,
+        kind: "directory",
+        layout,
+        refused: `${resources} is a link to ${away}, outside the bundle; Electron would read the app there, hexvero reads nothing outside the target`,
+      };
+    const skipped: Array<{ name: string; why: string }> = [];
+    let chosen: { name: string; kind: "asar" | "directory" } | null = null;
+    const others: string[] = [];
     for (const name of ELECTRON_SEARCH) {
       const path = join(base, name);
       const kind = name === "app" ? "directory" : "asar";
+      if (!exists(path)) continue;
+      const linked = outside(dir, path);
+      if (linked !== null && !chosen)
+        return {
+          entry: `${resources}/${name}`,
+          kind,
+          layout,
+          refused: `${resources}/${name} is a link to ${linked}, outside the bundle; Electron would follow it, hexvero reads nothing outside the target`,
+        };
       if (kind === "directory" ? !isDirectory(path) : !isFile(path)) continue;
-      // a link that leads out of the bundle is not part of it
-      if (!inside(dir, path)) continue;
-      present.push({ name, kind, ok: hasPackageJson(path, kind) });
+      if (chosen) {
+        others.push(label(name));
+        continue;
+      }
+      const state = packageOnDisk(path, kind, dir);
+      if (state === "missing" || state === "invalid") skipped.push({ name, why: PASSED[state]! });
+      else chosen = { name, kind };
     }
-    if (present.length === 0) continue;
-    // An archive whose header cannot be read is taken anyway, so the analysis says why it fails
-    // instead of silently reading the next candidate.
-    const chosen = present.find((p) => p.ok !== false);
     if (!chosen) continue;
-    const skipped = present.slice(0, present.indexOf(chosen)).map((p) => label(p.name));
-    const others = present.slice(present.indexOf(chosen) + 1).map((p) => label(p.name));
     return {
       entry: `${resources}/${chosen.name}`,
       kind: chosen.kind,
@@ -125,6 +229,7 @@ export function findElectronApp(dir: string): ElectronLocation | null {
       ...(skipped.length || others.length
         ? { note: sentence(resources, chosen.name, others, skipped) }
         : {}),
+      ...(chosen.name === "app" && others.includes("app.asar") ? { warning: FUSE_WARNING } : {}),
     };
   }
   return null;
@@ -136,14 +241,11 @@ const safeName = (name: string): boolean =>
   !/[\\\0]/.test(name) &&
   !name.split("/").some((part) => part === ".." || part === ".");
 
-/**
- * The Electron application inside a ZIP archive of a packaged build (`Name.app/…` from a macOS
- * release, or an install directory with `resources/app.asar` beside the runtime). With several
- * applications in one archive, the one nearest the archive root is taken and the others are
- * named in `note`.
- */
-export function findElectronAppInZip(entries: readonly ZipEntry[]): ElectronLocation | null {
-  const names = new Set(entries.filter((e) => safeName(e.name)).map((e) => e.name));
+/** The groups of candidates in a ZIP: one per resources directory, nearest the root first. */
+function zipGroups(
+  zip: ZipArchive,
+): Array<{ resources: string; layout: ElectronLocation["layout"] }> {
+  const names = new Set(zip.entries.filter((e) => safeName(e.name)).map((e) => e.name));
   const groups = new Map<string, ElectronLocation["layout"]>();
   for (const name of names) {
     const mac =
@@ -159,29 +261,134 @@ export function findElectronAppInZip(entries: readonly ZipEntry[]): ElectronLoca
     );
     if (!win) continue;
     const root = win[1]!.slice(0, -"resources".length);
-    if (RUNTIME_MARKERS.some((m) => names.has(`${root}${m}`))) groups.set(win[1]!, "windows-linux");
+    const top = [...names].filter((n) => n.startsWith(root) && !n.slice(root.length).includes("/"));
+    if (
+      RUNTIME_MARKERS.some((m) => names.has(`${root}${m}`)) &&
+      top.some((n) => RUNTIME_BINARY(n.slice(root.length)))
+    )
+      groups.set(win[1]!, "windows-linux");
   }
-  const found: ElectronLocation[] = [];
-  for (const [resources, layout] of groups) {
-    const present = ELECTRON_SEARCH.filter((name) =>
-      names.has(name === "app" ? `${resources}/app/package.json` : `${resources}/${name}`),
-    );
-    const chosen = present[0]!;
-    const others = present.slice(1).map(label);
-    found.push({
-      entry: `${resources}/${chosen}`,
-      kind: chosen === "app" ? "directory" : "asar",
-      layout,
-      ...(others.length ? { note: sentence(resources, chosen, others, []) } : {}),
-    });
-  }
-  if (found.length === 0) return null;
   // the depth of the build itself: the `.app`, or the install directory
-  const depth = (l: ElectronLocation): number =>
-    l.entry.split("/").length - (l.layout === "macos" ? 3 : 2);
-  found.sort((a, b) => depth(a) - depth(b) || (a.entry < b.entry ? -1 : 1));
-  const [first, ...rest] = found;
-  if (rest.length === 0) return first!;
-  const more = `The archive holds ${found.length} Electron applications; the one nearest its root was read, not ${rest.map((l) => l.entry).join(", ")}.`;
-  return { ...first!, note: first!.note ? `${first!.note} ${more}` : more };
+  const depth = (resources: string, layout: string): number =>
+    resources.split("/").length - (layout === "macos" ? 2 : 1);
+  return [...groups]
+    .map(([resources, layout]) => ({ resources, layout }))
+    .toSorted(
+      (a, b) =>
+        depth(a.resources, a.layout) - depth(b.resources, b.layout) ||
+        (a.resources < b.resources ? -1 : 1),
+    );
+}
+
+/**
+ * The Electron application inside a ZIP archive of a packaged build (`Name.app/…` from a macOS
+ * release, or an install directory with `resources/app.asar` beside the runtime), by the same
+ * order and package.json test as on disk. With several applications in one archive, the one
+ * nearest the archive root is taken and the others are named in `note`. The pick is `refused`
+ * (the archive is read as an archive) when an entry of that app occurs twice (also as two
+ * spellings of one Unicode name: extractors keep one, hexvero would read the other), when a
+ * candidate is a symbolic link, cannot be read, or is not an ASAR archive. `maxBytes` bounds
+ * the archive read out of the ZIP.
+ */
+export function findElectronAppInZip(zip: ZipArchive, maxBytes: number): ElectronLocation | null {
+  const groups = zipGroups(zip);
+  if (groups.length === 0) return null;
+  const [{ resources, layout }, ...rest] = groups as [(typeof groups)[number], ...typeof groups];
+  const more = rest.length
+    ? `The archive holds ${groups.length} Electron applications; the one nearest its root was read, not ${rest.map((g) => g.resources.replace(/\/(?:Contents\/Resources|resources)$/, "")).join(", ")}.`
+    : undefined;
+  const refuse = (entry: string, reason: string): ElectronLocation => ({
+    entry,
+    kind: "asar",
+    layout,
+    refused: reason,
+    ...(more ? { note: more } : {}),
+  });
+  const counts = new Map<string, number>();
+  for (const e of zip.entries) {
+    const key = e.name.normalize("NFC");
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const twice = zip.entries.find(
+    (e) =>
+      e.name.normalize("NFC").startsWith(`${resources.normalize("NFC")}/`) &&
+      (counts.get(e.name.normalize("NFC")) ?? 0) > 1,
+  );
+  if (twice)
+    return refuse(
+      twice.name,
+      `the archive holds ${twice.name} more than once (or in two Unicode spellings); an extractor keeps one copy, and which one hexvero would read is not the one installed`,
+    );
+  const skipped: Array<{ name: string; why: string }> = [];
+  for (const [i, name] of ELECTRON_SEARCH.entries()) {
+    const entryName = name === "app" ? `${resources}/app/package.json` : `${resources}/${name}`;
+    const entry = zip.find(entryName);
+    if (!entry || entry.isDirectory) continue;
+    const at = `${resources}/${name}`;
+    if (zip.links.has(entry)) return refuse(at, `${entryName} is a symbolic link in the archive`);
+    if (entry.encrypted) return refuse(at, "the entry is encrypted");
+    if (entry.method === "other")
+      return refuse(at, "the entry uses an unsupported compression method");
+    const others = ELECTRON_SEARCH.slice(i + 1)
+      .filter((n) => zip.find(n === "app" ? `${resources}/app/package.json` : `${resources}/${n}`))
+      .map(label);
+    const note = [
+      skipped.length || others.length ? sentence(resources, name, others, skipped) : "",
+      more ?? "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (name === "app") {
+      if (entry.size > MAX_PACKAGE_JSON) return refuse(at, "its package.json is too large to read");
+      let ok = false;
+      try {
+        ok = parses(zip.read(entry, MAX_PACKAGE_JSON));
+      } catch {
+        return refuse(at, "its package.json could not be read from the archive");
+      }
+      if (!ok) {
+        skipped.push({ name, why: PASSED["invalid"]! });
+        continue;
+      }
+      return {
+        entry: at,
+        kind: "directory",
+        layout,
+        refused: `it is an app/ directory, which hexvero reads from disk only. Extract the archive and analyze ${resources.replace(/\/(?:Contents\/Resources|resources)$/, "") || "the extracted directory"}`,
+        ...(note ? { note } : {}),
+      };
+    }
+    if (entry.size > maxBytes)
+      return refuse(at, `it expands to ${entry.size} bytes, more than hexvero reads into memory`);
+    let bytes: Uint8Array;
+    let archive: AsarArchive;
+    try {
+      bytes = zip.read(entry, maxBytes);
+    } catch (error) {
+      return refuse(
+        at,
+        `it could not be read (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+    try {
+      archive = openAsar(bytes);
+    } catch (error) {
+      return refuse(
+        at,
+        `it is not an ASAR archive (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+    const state = packageInAsar(archive);
+    if (state === "missing" || state === "invalid") {
+      skipped.push({ name, why: PASSED[state]! });
+      continue;
+    }
+    return { entry: at, kind: "asar", layout, bytes, ...(note ? { note } : {}) };
+  }
+  return skipped.length
+    ? refuse(
+        `${resources}/${ELECTRON_SEARCH[0]}`,
+        `no candidate has a package.json Electron could load (${skipped.map((p) => `${label(p.name)}: ${p.why}`).join(", ")})`,
+      )
+    : null;
 }
