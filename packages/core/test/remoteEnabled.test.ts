@@ -155,6 +155,20 @@ const s = "require('@electron/remote/main').enable(x)";
     expect(rows(info)).toEqual([]);
   });
 
+  it("stays linear on a webpack bundle with many modules and requires of them", () => {
+    const modules = Array.from(
+      { length: 3000 },
+      (_, i) => `${i}:e=>{e.exports=require("@electron/remote/main")}`,
+    ).join(",");
+    const requires = Array.from({ length: 60_000 }, (_, i) => `var a${i}=n(${i % 3000});`).join("");
+    const started = performance.now();
+    const info = analyze({
+      "main.js": `(()=>{var m={${modules}};${requires}a0.enable(w.webContents)})();`,
+    });
+    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(info.remoteEnabled.some((r) => r.kind === "enable")).toBe(true);
+  });
+
   it("stays linear on a file with many calls", () => {
     const calls = Array.from({ length: 5000 }, (_, i) => `r.enable(w${i}.webContents);`).join("\n");
     const started = performance.now();

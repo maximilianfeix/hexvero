@@ -4880,6 +4880,8 @@ const INTEROP = new Set([
   "__toCommonJS",
 ]);
 const MAX_REMOTE_PER_FILE = 200;
+/** Names one webpack module id of @electron/remote/main is required under, per file. */
+const MAX_WEBPACK_NAMES = 64;
 
 /**
  * Reads `@electron/remote` from one file's tokens: the names its main module is bound to, the
@@ -4913,13 +4915,19 @@ export function remoteEnables(
   const functions = new Map<string, Array<{ at: number; method: string }>>();
   const addModule = (name: number): void => {
     const v = tokens[name]!.value;
-    modules.set(v, [...(modules.get(v) ?? []), name]);
+    const at = modules.get(v);
+    if (at) at.push(name);
+    else modules.set(v, [name]);
   };
   const addFunction = (name: number, method: string): void => {
     if (method !== "enable" && method !== "initialize") return;
     const v = tokens[name]!.value;
-    functions.set(v, [...(functions.get(v) ?? []), { at: name, method }]);
+    const at = functions.get(v);
+    if (at) at.push({ at: name, method });
+    else functions.set(v, [{ at: name, method }]);
   };
+  /** webpack's `name = n(<id>)` positions by module id, built on first use. */
+  let webpackRequires: Map<string, number[]> | null = null;
   /** `{ enable, initialize: init }` from `open`: each binding with the key it takes. */
   const pattern = (open: number, close: number, add: (name: number, key: string) => void): void => {
     for (let j = open + 1; j < close; j++) {
@@ -4991,18 +4999,28 @@ export function remoteEnables(
             id = tokens[q]!.value;
             break;
           }
-        if (id !== null)
-          for (let q = 2; q + 3 < tokens.length; q++)
-            if (
-              tokens[q + 2]?.type === "number" &&
-              tokens[q + 2]!.value === id &&
-              is(q + 1, "(") &&
-              is(q + 3, ")") &&
-              ident(q) &&
-              is(q - 1, "=") &&
-              ident(q - 2)
-            )
-              addModule(q - 2);
+        if (id !== null) {
+          if (webpackRequires === null) {
+            // `name = n(<id>)`, every one, read once for the file
+            webpackRequires = new Map();
+            for (let q = 2; q + 3 < tokens.length; q++)
+              if (
+                tokens[q + 2]?.type === "number" &&
+                is(q + 1, "(") &&
+                is(q + 3, ")") &&
+                ident(q) &&
+                is(q - 1, "=") &&
+                ident(q - 2)
+              ) {
+                const at = webpackRequires.get(tokens[q + 2]!.value) ?? [];
+                at.push(q - 2);
+                webpackRequires.set(tokens[q + 2]!.value, at);
+              }
+          }
+          const names = webpackRequires.get(id) ?? [];
+          for (const n of names.slice(0, MAX_WEBPACK_NAMES)) addModule(n);
+          if (names.length > MAX_WEBPACK_NAMES) capped = true;
+        }
         continue;
       }
       if (is(start - 1, "=") && ident(start - 2)) {
@@ -7318,7 +7336,7 @@ export function analyzeJavaScriptTree(
   if (facts.remoteCapped)
     limitations.push({
       code: "remote_enabled_truncated",
-      message: `More @electron/remote calls exist than the ${MAX_REMOTE_PER_FILE} per file / ${MAX_PREFS} in total that are recorded (collection remoteEnabled).`,
+      message: `More @electron/remote calls exist than the ${MAX_REMOTE_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a webpack module of it is required under more than ${MAX_WEBPACK_NAMES} names in one file (collection remoteEnabled).`,
     });
   if (facts.navigationCapped)
     limitations.push({
