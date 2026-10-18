@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -98,6 +106,36 @@ describe("hexvero CLI", () => {
     expect(await main(["compare", a, b, "--report", out, "--force"], capture())).toBe(0);
     expect(readFileSync(out, "utf8")).toContain("# What changed");
     expect(await main(["compare", a, b, "ipc", "--report", out], capture())).toBe(2);
+  });
+
+  it("never writes a report or an export through a symbolic link, even with --force", async (ctx) => {
+    const a = join(dir, "demo-l", "notesdesk-1.4.0.asar");
+    const b = join(dir, "demo-l", "notesdesk-1.5.0.asar");
+    expect(await main(["demo", join(dir, "demo-l")], capture())).toBe(0);
+    const elsewhere = mkdtempSync(join(tmpdir(), "hexvero-cli-elsewhere-"));
+    const missing = join(elsewhere, "planted.md");
+    const kept = join(elsewhere, "kept.md");
+    writeFileSync(kept, "keep me");
+    try {
+      symlinkSync(missing, join(dir, "dangling.md"));
+      symlinkSync(kept, join(dir, "kept.md"));
+      symlinkSync(missing, join(dir, "dangling.json"));
+    } catch (error) {
+      if (["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) ctx.skip();
+      throw error;
+    }
+    for (const out of ["dangling.md", "kept.md"]) {
+      const io = capture();
+      expect(await main(["compare", a, b, "--report", join(dir, out), "--force"], io)).not.toBe(0);
+      expect(io.stderr.join("\n")).toContain("symbolic link");
+    }
+    const io = capture();
+    expect(await main(["export", a, join(dir, "dangling.json")], io)).not.toBe(0);
+    expect(io.stderr.join("\n")).toContain("symbolic link");
+    expect(existsSync(missing)).toBe(false);
+    expect(existsSync(missing.replace(/md$/, "json"))).toBe(false);
+    expect(readFileSync(kept, "utf8")).toBe("keep me");
+    rmSync(elsewhere, { recursive: true, force: true });
   });
 
   it("writes an HTML report for .html/.htm, with the same --force and paging rules", async () => {

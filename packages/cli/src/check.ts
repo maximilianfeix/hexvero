@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 import {
+  AnalysisError,
   CHECK_EXIT,
   CORE_VERSION,
   PolicyError,
@@ -17,6 +18,7 @@ import {
   type PolicyRuleId,
   type PolicyResult,
   type Session,
+  writeFileNoFollow,
 } from "@hexvero/core";
 import { flagString, UsageError, type ParsedArgs } from "./args.js";
 import { paint, toJson, type Io } from "./format.js";
@@ -270,7 +272,9 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
     const written = createBaseline(result);
     // a baseline usually lives in a directory of its own (.hexvero/baseline.json): create it
     await mkdir(dirname(resolvePath(baselineFile)), { recursive: true });
-    await writeFile(baselineFile, `${JSON.stringify(written, null, 2)}\n`);
+    await writeFileNoFollow(baselineFile, `${JSON.stringify(written, null, 2)}\n`, {
+      overwrite: true,
+    });
     const loaded = parseBaseline(JSON.stringify(written), baselineFile);
     result = await checkRelease(session, a.id, b.id, policy, { baseline: loaded });
     io.err(
@@ -287,9 +291,9 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
   );
   if (out) {
     try {
-      await writeFile(out, `${text}\n`, { flag: force ? "w" : "wx" });
+      await writeFileNoFollow(out, `${text}\n`, { overwrite: force });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST")
+      if (error instanceof AnalysisError && error.details["code"] === "EEXIST")
         throw new UsageError(`${out} exists; pass --force to replace it`);
       throw error;
     }

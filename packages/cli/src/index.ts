@@ -1,4 +1,3 @@
-import { writeFile } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import {
   AnalysisError,
@@ -17,6 +16,7 @@ import {
   runProvider,
   STRING_TAGS,
   tracePath,
+  writeFileNoFollow,
   type ProviderName,
   type ProviderOperation,
 } from "@hexvero/core";
@@ -414,9 +414,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           ? renderReleaseReportHtml(comparison, await collectReleaseSources(session, comparison))
           : renderReleaseReport(comparison);
         try {
-          await writeFile(report, text, { flag: args.flags["force"] ? "w" : "wx" });
+          await writeFileNoFollow(report, text, { overwrite: args.flags["force"] === true });
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "EEXIST")
+          if (error instanceof AnalysisError && error.details["code"] === "EEXIST")
             throw new UsageError(`${report} exists; pass --force to replace it`);
           throw error;
         }

@@ -6,9 +6,9 @@
  * home directory nor the filesystem root), never into a hidden file or directory below a root, and an
  * export always ends in `.json`. The CLI is not limited: there a person chooses the path.
  */
-import { existsSync, realpathSync } from "node:fs";
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { delimiter, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { AnalysisError } from "@hexvero/core";
 
 function roots(): string[] {
@@ -28,17 +28,49 @@ function roots(): string[] {
   });
 }
 
-/** The real path of a location that may not exist yet, through its nearest existing parent. */
-function realLocation(path: string): string {
-  const missing: string[] = [];
-  let current = path;
-  while (!existsSync(current)) {
-    const parent = dirname(current);
-    if (parent === current) break;
-    missing.unshift(basename(current));
-    current = parent;
+/**
+ * Where a write to `path` would land: every existing component is examined with lstat and each
+ * symbolic link is followed by reading it, so a link whose target does not exist yet (which
+ * realpath cannot resolve) still counts by where it points. Components that do not exist are
+ * taken as written. The existing part is passed through realpath so it compares with the roots.
+ */
+// In realLocation, a location is either an existing directory whose links are resolved, or one
+// below a link target that does not exist (then there is nothing left to resolve).
+function realOrSelf(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
   }
-  return resolve(realpathSync(current), ...missing);
+}
+
+function realLocation(path: string): string {
+  let hops = 0;
+  const walk = (target: string): string => {
+    const absolute = resolve(target);
+    const { root } = parse(absolute);
+    const parts = absolute.slice(root.length).split(sep).filter(Boolean);
+    let current = root;
+    for (let i = 0; i < parts.length; i++) {
+      const next = join(current, parts[i]!);
+      let link = false;
+      try {
+        link = lstatSync(next).isSymbolicLink();
+      } catch {
+        // realpath also expands short names (Windows), so the result compares with the roots
+        return resolve(realOrSelf(current), ...parts.slice(i));
+      }
+      if (!link) {
+        current = next;
+        continue;
+      }
+      if (++hops > 40)
+        throw new AnalysisError("invalid_input", `too many symbolic links in ${path}`, { path });
+      current = walk(resolve(current, readlinkSync(next)));
+    }
+    return realOrSelf(current);
+  };
+  return walk(path);
 }
 
 export function checkWritePath(target: string, kind: "export" | "recover"): string {

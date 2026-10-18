@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -117,6 +125,40 @@ describe("hexvero check", () => {
     expect((await check(a, b, "--policy", examplePolicy, "--out", out, "--force")).code).toBe(3);
     expect(readFileSync(out, "utf8")).toContain("hexvero check fail");
     expect(readFileSync(out, "utf8")).not.toContain("\u001b");
+  });
+
+  it("never writes --out or a baseline through a symbolic link", async (ctx) => {
+    const elsewhere = mkdtempSync(join(tmpdir(), "hexvero-check-elsewhere-"));
+    const missing = join(elsewhere, "planted.txt");
+    const kept = join(elsewhere, "kept.txt");
+    writeFileSync(kept, "keep me");
+    try {
+      symlinkSync(missing, join(dir, "dangling.sarif"));
+      symlinkSync(kept, join(dir, "kept.sarif"));
+      symlinkSync(missing, join(dir, "dangling-baseline.json"));
+    } catch (error) {
+      if (["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) ctx.skip();
+      throw error;
+    }
+    for (const out of ["dangling.sarif", "kept.sarif"]) {
+      const run = await check(a, b, "--policy", examplePolicy, "--out", join(dir, out), "--force");
+      expect(run.code).not.toBe(0);
+      expect(run.code).not.toBe(3);
+      expect(run.io.text()).toContain("symbolic link");
+    }
+    const baseline = await check(
+      a,
+      b,
+      "--policy",
+      examplePolicy,
+      "--baseline",
+      join(dir, "dangling-baseline.json"),
+      "--update-baseline",
+    );
+    expect(baseline.code).not.toBe(0);
+    expect(existsSync(missing)).toBe(false);
+    expect(readFileSync(kept, "utf8")).toBe("keep me");
+    rmSync(elsewhere, { recursive: true, force: true });
   });
 
   it("accepts findings only with --update-baseline; the accepted builds then pass", async () => {

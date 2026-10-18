@@ -6,6 +6,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- MCP `hexvero_export` and `hexvero_recover`: the write policy judges every component of a path by where it leads, also a symbolic link whose target does not exist yet; before, such a link was not resolved, and `hexvero_export` with `overwrite: true` could write through it outside the allowed roots. Exports (MCP and CLI) never write through a symbolic link at the path itself: a new file is created exclusively and an existing one is opened without following links (O_NOFOLLOW where the platform has it). `compare --report`, `check --out` and `check --update-baseline` refuse a symbolic link at their path the same way, also with `--force`.
+
 ### Electron analysis
 
 - IPC that an application builds from data is read (docs/electron-findings.md, "IPC built from data"), plain, bundled and minified:
