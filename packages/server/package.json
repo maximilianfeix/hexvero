@@ -1,6 +1,6 @@
 {
   "name": "@hexvero/server",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Loopback HTTP API and static host for the hexvero web UI (Electron release diff for security review).",
   "keywords": [
     "diff",
@@ -38,7 +38,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@hexvero/core": "0.11.0"
+    "@hexvero/core": "0.11.1"
   },
   "engines": {
     "node": ">=22.12.0"

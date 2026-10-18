@@ -1,6 +1,6 @@
 {
   "name": "hexvero",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Electron release diff for security review and audit: compare two builds (app.asar, .app, install directory, release ZIP) and see what changed in IPC, contextBridge, window settings, network hosts and storage, with file and line. CI check with SARIF, MCP server, local web UI. Reads files only, never runs the app.",
   "keywords": [
     "apk",
@@ -60,9 +60,9 @@
     "prepack": "node -e \"const fs=require('node:fs');fs.cpSync('../../skills','./skills',{recursive:true});fs.mkdirSync('./examples',{recursive:true});for(const v of ['1.4.0','1.5.0'])fs.copyFileSync('../../examples/notesdesk-'+v+'.asar','./examples/notesdesk-'+v+'.asar');fs.copyFileSync('../../examples/policy.json','./examples/policy.json')\""
   },
   "dependencies": {
-    "@hexvero/core": "0.11.0",
-    "@hexvero/mcp": "0.11.0",
-    "@hexvero/server": "0.11.0"
+    "@hexvero/core": "0.11.1",
+    "@hexvero/mcp": "0.11.1",
+    "@hexvero/server": "0.11.1"
   },
   "engines": {
     "node": ">=22.12.0"

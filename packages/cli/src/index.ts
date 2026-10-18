@@ -39,7 +39,7 @@ import {
   type Io,
 } from "./format.js";
 
-export const VERSION = "0.11.0";
+export const VERSION = "0.11.1";
 
 const HELP = `hexvero ${VERSION} — Electron release diff for security review: IPC, bridge, windows, hosts.
 Also inspects binaries and other app formats. Reads files only; nothing is executed.
