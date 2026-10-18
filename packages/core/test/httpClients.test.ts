@@ -1200,3 +1200,27 @@ describe("request libraries: review fixes", () => {
     expect(performance.now() - started).toBeLessThan(15_000);
   });
 });
+
+describe("axios with a base URL and a computed input (#196)", () => {
+  it("gives no address when the computed part may make the input absolute", () => {
+    const head =
+      'const axios = require("axios");\nconst c = axios.create({ baseURL: "https://api.x.com/" });\n';
+    expect(
+      [
+        'c.get("/" + p);',
+        "c.get(`${p}`);",
+        'c.get("api" + p);',
+        'c.get("https:" + p);',
+        'c.get("v1/" + p);',
+        'c.get("/v1/" + p);',
+      ].flatMap((call) => show(head + call)),
+    ).toEqual([
+      "http-client GET ?<expression> [unknown]",
+      "http-client GET ?<expression> [unknown]",
+      "http-client GET ?<expression> [unknown]",
+      "http-client GET ?<expression> [unknown]",
+      "http-client GET https://api.x.com/v1/${…} [template]",
+      "http-client GET https://api.x.com/v1/${…} [template]",
+    ]);
+  });
+});

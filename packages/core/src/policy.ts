@@ -579,9 +579,11 @@ export function hostOf(value: string): HostReading {
  * comes before the end of its host (`https://${region}.example.com`, `https://a.example${x}`) can
  * reach any host.
  */
-export function hostKnown(value: string | null | undefined): boolean {
+export function hostKnown(value: string | null | undefined, evidence?: unknown): boolean {
   if (typeof value !== "string") return false;
   if (!value.includes("${")) return true;
+  // a computed value is trusted only as the reader wrote it: text and gaps of the argument
+  if (evidence !== undefined && evidence !== "template") return false;
   if (hostOf(value).kind === "unknown") return false;
   const v = urlInput(value);
   const literal = v.slice(0, v.indexOf("${"));
@@ -610,7 +612,7 @@ function targetHostsKnown(
     for (const item of items) {
       if (!isRecord(item)) return false;
       const v = item["value"] ?? item["url"];
-      if (!hostKnown(typeof v === "string" ? v : null)) return false;
+      if (!hostKnown(typeof v === "string" ? v : null, item["evidence"] ?? "missing")) return false;
     }
   }
   return true;

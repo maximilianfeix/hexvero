@@ -346,6 +346,7 @@ export function findCandidates(
     for (let parts = 0; parts < 6; parts++) {
       const t = tokens[j];
       if (!t) break;
+      const before = value;
       if (t.type === "string") value += t.value;
       else if (t.type === "template") {
         // A template with expressions arrives as: text, the expression's tokens, text, … The
@@ -420,6 +421,13 @@ export function findCandidates(
       else {
         value += "${…}";
         return { value, evidence: "template" };
+      }
+      // `"…".replace(…)`, `` `…`.slice(8) ``, `s[0]`: a method or member of the part makes another
+      // string, which may be any address; the part's own text is not the value (#196).
+      const after = tokens[j + 1];
+      if (is(after, "punct", ".") || is(after, "punct", "?.") || is(after, "punct", "[")) {
+        if (parts === 0) return { value: null, evidence: "unknown", expression: "<expression>" };
+        return { value: `${before}\${…}`, evidence: "template" };
       }
       if (!is(tokens[j + 1], "punct", "+")) break;
       j += 2;
@@ -2302,6 +2310,11 @@ export function findCandidates(
       if (module === "axios") {
         // axios' buildFullPath and combineURLs
         if (/^([a-z][a-z\d+\-.]*:)?\/\//i.test(v)) return v;
+        // axios ignores the base for an absolute input (isAbsoluteURL). A computed part may make
+        // one unless the text before it already rules that out: `/${p}` may be `//elsewhere`,
+        // `${p}` and `api${p}` may be `https://elsewhere` (#196).
+        const head = v.includes("${…}") ? v.slice(0, v.indexOf("${…}")) : null;
+        if (head !== null && /^(?:[a-z][a-z\d+\-.]*(?::\/?)?)?$|^\/$/i.test(head)) return null;
         return v ? `${base.replace(/\/?\/$/, "")}/${v.replace(/^\/+/, "")}` : base;
       }
       // got and ky (1.x) prepend the prefix to a relative input and refuse a leading slash; what

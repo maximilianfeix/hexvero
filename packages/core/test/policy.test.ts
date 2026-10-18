@@ -1550,3 +1550,40 @@ describe("new-external-host with values hexvero could not resolve (#196)", () =>
     }
   });
 });
+
+describe("new-external-host and URLs derived from a string (#196 review)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hexvero-policy-derived-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const write = (name: string, main: string) => {
+    const path = join(dir, `${name}.asar`);
+    writeFileSync(
+      path,
+      buildAsar({ "package.json": JSON.stringify({ name, main: "main.js" }), "main.js": main }),
+    );
+    return path;
+  };
+  const base =
+    'fetch("https://api.x.com/v1/status");\nfunction g(id){ return fetch(`https://api.x.com/v1/${id}`); }\n';
+
+  it("trusts a computed value only with the reader's template evidence", () => {
+    expect(hostKnown("https://api.x.com/${…}", "template")).toBe(true);
+    expect(hostKnown("https://api.x.com/${…}", "inferred")).toBe(false);
+    expect(hostKnown("https://api.x.com/${…}", "missing")).toBe(false);
+  });
+
+  it("does not pass a build whose URL is a method of a string", async () => {
+    const before = write("d-before", base);
+    for (const [name, call] of [
+      ["rep", "function a(p){ return fetch(`https://api.x.com/${p}`.replace(/api/, p)); }"],
+      ["replit", 'function a(p){ return fetch("https://api.x.com/".replace("api.x.com", p)); }'],
+      ["slice", "function a(p){ return fetch(`https://api.x.com/${p}`.slice(8)); }"],
+      [
+        "axios",
+        'const axios = require("axios"); const c = axios.create({ baseURL: "https://api.x.com/" }); function a(p){ return c.get("/" + p); }',
+      ],
+    ] as const) {
+      const r = await run(before, write(`d-${name}`, `${base}${call}\n`));
+      expect(r.status, name).toBe("incomplete");
+    }
+  });
+});
