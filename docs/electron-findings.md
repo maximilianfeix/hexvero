@@ -438,7 +438,119 @@ read as a `fetch` URL is, when the name it is made on is bound to that module:
   request as r } from "node:http"`, and esbuild's `(0, X.get)(…)` for such an import;
 - Electron: `const { net } = require("electron")` or `import { net } from "electron"`, then
   `net.request(…)`, and `E.net.request(…)` with `E = require("electron")` (esbuild's
-  `import_electron.net.request(…)`).
+  `import_electron.net.request(…)`);
+- a request function held as a value, taken from a binding above: `const req = https.request`,
+  `const g = https.get`, `const g = require("https").get`, `const { get, request: r } = https`,
+  esbuild's `var send = import_https.default.request`, `const l = net.request`, `const l =
+  E.net.request`, and `const { net } = E`;
+- a request library called itself: `axios(url)`, `axios(url, config)`, `axios({ url, method })`,
+  `got(url)`, `got(url, options)`, `got({ url })`, `ky(url)`, `ky(url, options)`, `needle(method,
+  url, …)`, `needle.request(method, url, …)`, `superagent(method, url)`, `superagent(url)`, and
+  esbuild's `(0, import_axios.default)(url)` (also minified, `(0,o.default)(…)`);
+- an instance with a base URL: `const api = axios.create({ baseURL })` (also on esbuild's
+  `import_axios.default`, on `require("axios")` itself, and made where it is used,
+  `axios.create({…}).get(…)`), `got.extend({ prefixUrl })`, `ky.create({ prefixUrl })` and
+  `ky.extend({ prefixUrl })`; then `api.get(…)`, `api.post(…)`, `api(url)`, `api({ url })`.
+
+A function value or an instance must be a declaration (`const|let|var NAME = …`, also later in a
+declaration list, `var o = r(require("axios")), q = o.default.create(…)`) whose value is that one
+expression, made from a binding proven at the declaration; the name follows the rules below
+(shadowing, `refersTo`), and a declaration that an assignment writes to gives an unknown row
+(`<expression>`) where it is meant. A write is an assignment (`=`, a compound assignment, `++`,
+`--`), a destructuring assignment (`({ api } = o)`, `({ k: api } = o)`, `[api] = l`, nested, with
+a default or a rest) or a `for (api of …)` / `for (api in …)` head; a declaration pattern, a
+parameter pattern and an object literal are none. A pattern whose parameter list or argument list
+is more than 300 tokens long is taken for a write (and the file flagged) rather than walked. A call before the declaration of an instance or
+a function value gives no row (the binding does not exist there yet). Only writes in the range
+the declaration is seen in (the block of a `let`/`const`, else its function) are asked about, at
+most 64 per declaration and 32,000 per file; past that the binding counts as written. The same
+holds for the module bindings: a write is matched only with the declarations of its name whose
+range holds it. A declaration (`let o = e`, also later in a list) is no write, and a write of a
+local of the write's own scope is not charged to any client binding: a `var` of the function the
+write is in, a `let`/`const`/`class` of a block that holds the write (also one declared after it,
+in its dead zone), a function declaration or a parameter of that function (`function f(e) { let
+o = e; o = o + 1 }` in a minified bundle whose top-level `o` is `https`). The rest count against
+at most 2,000 writes and 32,000 questions per file. A write that means no single declaration
+though the binding it sees is one of several declarations of the name in one scope (`var h =
+require("https"); var h = require("https"); h = x`) counts for those declarations of that scope.
+Past these bounds, and in a file with more functions than the resolver reads (60,000), every name
+written from there on counts as written: its calls are unknown rows where they mean it, also
+where the address is a literal (a known row of such a name becomes unknown), and the file is
+flagged with its own limitation, `client_writes_skipped`. Past the 2,000 checked calls
+(`client_calls_skipped`), a call on a name with a declaration written again is an unknown row,
+not read by the name rule.
+
+Bindings follow block scopes: a `let`/`const` binds in its block (also before its declaration,
+in the dead zone), a `var` in its function; a call outside the block of a client's `let`/`const`
+does not mean it. A call whose receiver is a local of a function between it and the client's
+declaration (also a later declarator of a list, `var t = [], n = new WeakMap`, which the scope
+tables do not hold) is not a call of the client. This is stricter than 0.9.8, which took some writes
+and calls in an inner block or function for the outer binding: rows change both ways (an outer
+binding no longer charged with an inner local's write keeps its address; a write to an outer
+binding from an inner block now makes its calls unknown). A call on a name with no binding
+visible, where the file assigns that global (`h = require("https")`, `h = other` on an
+undeclared `h`), is an unknown row; with no such assignment the name rule of 0.9.2 reads the
+address written at the call, as it always did.
+
+An instance whose binding is used otherwise than for requests (`NAME.<verb>(…)`, `NAME(…)`) may
+have its defaults changed, so all its requests are unknown rows (`<expression>`):
+`api.defaults.baseURL = …`, `Object.assign(api.defaults, …)`, `api.interceptors.request.use(…)`
+(an interceptor can set `baseURL` or `url`), got's `g.defaults.options.prefixUrl = …`, the
+instance passed to a function (`setup(api)`), assigned, put in an object (`module.exports = {
+api }`) or exported (`export const api = …`). Another module that imports an exported instance
+can change it too, so an exported instance is never read with its base. At most 4,096 uses per
+instance are looked at (past that, unread). Where the file touches a library's own defaults,
+interceptors or hooks (`axios.defaults.baseURL = …`, also on esbuild's `import_axios.default`),
+a request of it with a relative address is an unknown row (the global base is not known), an
+absolute one is kept (an interceptor rewriting an absolute address is not followed), and an
+instance made from it is unread. A superagent agent (`const agent = superagent.agent()`,
+`require("superagent").agent()`) is read like superagent's verb methods, under the same rules.
+
+The method of a library call is the verb method (`get` → `GET`), the method argument (`needle`,
+`superagent`, a string literal of 3 to 7 letters), or the `method` option of a config object
+written at the call; without one it is the library's default, `GET` (for an axios instance the
+`method` of its `create` options when that is one literal). A config passed as a name
+(`axios(url, config)`) may set a method: the row has none; for an instance with a base
+(`api.get("/u", opts)`) it may also set the base, so the row is unknown (`expression` the name).
+`superagent(url)` and `superagent(url, callback)` (a function written there, or a first argument
+that is a string literal and no method name) are a GET of the first argument. A config written at the call (the
+second argument; the third for axios `post`, `put` and `patch`, whose second is the body) that
+changes the address is an unknown row whose `expression` names the option: `options.baseURL`,
+`options.allowAbsoluteUrls`, `options.socketPath`, `options.url` (axios); `options.prefixUrl`,
+`options.baseUrl`, `options.allowAbsoluteUrls`, `options.url` (got); `options.prefixUrl`,
+`options.prefix`, `options.baseUrl`, `options.url` (ky); `<options>` for a spread, a computed key
+or a method in it. A config passed as a name to the library itself is not read (the address is
+kept).
+
+An instance's base is read only from an object literal written in the `create`/`extend` call,
+and only when it is one known string (a literal or a constant, written as nothing else) that is
+absolute (`https://…`) or an absolute path, without a query or fragment (the base and the
+input are joined as text, so one would swallow the input; got refuses it). Anything else makes every request of the instance an unknown row: `options.baseURL` /
+`options.prefixUrl` for a base that is not known, `<options>` for options passed as a name or
+with a spread, `options.<key>` for one of the options above (ky 2's `prefix` and `baseUrl`, got
+9's `baseUrl`, `allowAbsoluteUrls`), `<expression>` for an instance made from an instance
+(`api.extend(…)`). The address is joined by each library's rule, as its source reads:
+
+- axios (`buildFullPath`, `combineURLs`): an input that is absolute (`scheme://` or `//`) is
+  used as it is; any other is joined with one `/`, without the base's trailing and the input's
+  leading slashes (`baseURL: "https://x/v1/"`, `"/users"` → `https://x/v1/users`); an empty input
+  (`api.get("")`) is an unknown row, as any argument with no text; an input that starts with a gap (`${…}/x`) or another module's constant is an
+  unknown row (whether it is absolute is not known);
+- got and ky 1 (`prefixUrl`): the base with a trailing `/` added, then the input as written
+  (`"users"` → `https://x/api/users`). An input with a leading slash (got and ky 1 throw), an
+  absolute one (got 16 uses it as it is, older got and ky 1 append it to the prefix) or one that
+  starts with a gap or another module's constant is an unknown row. ky 2 throws on `prefixUrl`; the
+  rows are those of ky 1.
+
+A protocol-relative result (`//cdn.example/x`) is not taken for an address: an unknown row.
+`fetch(new Request(url, init))` and `globalThis.fetch(…)` of it read the URL of the `Request` as
+a `fetch` URL is read, and `fetch(r)` with `const r = new Request(…)` (a declaration before the
+call, never written again; at most 64 such names per file). `Request` must be the global one: a
+binding of the name visible at the call (`const { Request } = require("undici")`), an import of
+the name anywhere in the file (`import Request from …`, `import { Request }`, `import { Foo as
+Request }`) or an assignment of the global (`globalThis.Request = …`, `window.`, `self.`, a bare
+`Request = …`) leaves the row unknown, as before. The method is the one of `fetch`'s own init when it writes one (an init that
+is not read, or one with a spread, gives no method), otherwise the `Request`'s init `method`.
 
 The name must mean that binding at the call: a parameter of the name in a function between the
 call and the binding (also in the parameter list the call stands in, `function f(https, a =
@@ -448,7 +560,7 @@ a `for (const https of …)` head; a named function expression binds its name in
 is another object. A declaration of the name in another function or block shadows only there,
 and a class field (`class A { https = 1 }`) or an object key binds nothing. An assignment whose
 name means the binding (`h = mock`) makes it no proven client. The declarations of a name are
-read once per file into ranges, so the check is linear.
+read once per file into ranges.
 
 Where no binding is proven, the rule of 0.9.2 applies: a call on `http`, `https`, `axios`, `got`,
 `ky`, `superagent`, `needle`, `$http` or a name bound to one of those modules anywhere in the file
@@ -476,9 +588,9 @@ checked per file (limitation `client_calls_skipped`); the further ones are read 
 a literal address past the cap is still a row. Unknown client rows past 200 per file are folded
 into one `<expression>` row with its count, so they cannot push known addresses out of the list
 (2,000 rows per list). The request libraries named by
-`require` (`axios`, `got`, `ky`, `superagent`, `needle`) count the same way. The method is `GET`
-for `get`, `POST` etc. for the verb methods, and for `request` the `method` option when the call
-writes one.
+`require` (`axios`, `got`, `ky`, `superagent`, `needle`) count the same way, read as above. For
+Node's modules the method is `GET` for `get`, `POST` etc. for the verb methods, and for `request`
+the `method` option when the call writes one.
 
 The URL argument is read like a `fetch` URL: a literal, a constant, a template, and a parameter of
 the function around the call, followed to the call sites of that function with the resolver's
@@ -533,8 +645,14 @@ object (`this.https.get(…)`), make it no client by name (only the shape rule f
 applies). Not read: modules a bundler refers to by number (webpack's `r = n(65692)` for
 `e.exports = require("https")`, as in Fiddle's main bundle, where Sentry's `t.net.request(…)` and
 `electron-devtools-installer`'s `s.net ? s.net.request : r.get` stay without a row in both
-versions), a client passed around as a value (`const l = net.request; l(url)`), wrappers called
-from another module, and `fetch(new Request(url))`.
+versions), a client passed around as a value other than by the declarations above (an argument,
+a property, a conditional `x ? net.request : https.get`, a value taken from an instance), wrappers
+called from another module, a call of an instance made where it is written
+(`axios.create({…})(url)`), interceptors and hooks that rewrite the address
+(`api.interceptors.request.use(…)`, got and ky `hooks`), query strings added by `params` /
+`searchParams`, needle's and superagent's requests without a method argument written as a
+literal (the address is read, the method is not), and a `Request` built from another `Request`
+or passed through a function.
 
 ## IPC built from data: tables, routes, parameters (`ipc`, `ipcChannels`, `contextBridge`)
 
