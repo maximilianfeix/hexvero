@@ -886,3 +886,49 @@ describe("review: the parameter stage across modules", () => {
     expect(cut?.message).toContain("c/m200.js");
   });
 });
+
+// Issue #201: a method of the file's own wrapper that the file replaces gives no row in the file,
+// as a replacement in another module already did. One build of one bundle each.
+const MAIN_REPLACED = `"use strict";
+const { ipcMain } = require("electron");
+const { Svc } = require("./svc");
+Svc.prototype.register = function (ipc) { ipc.handle("svc:new", () => 2); };
+new Svc().register(ipcMain);
+class T { register(ipc) { ipc.handle("t:orig", () => 1); } }
+const t = new T();
+t.register = (ipc) => {};
+t.register(ipcMain);
+class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }
+const w = new Ipc();
+w.handle = () => {};
+w.handle("w:replaced", () => 1);
+// not replaced: another object's method of the same name is written
+class Kept { register(ipc) { ipc.handle("kept:a", () => 1); } }
+const other = { register() {} };
+other.register = () => {};
+new Kept().register(ipcMain);
+// a write on one instance counts for the class, as across modules: no row for v either
+const v = new Ipc();
+v.handle("v:also", () => 1);
+module.exports = { t, w, v };
+`;
+
+describe("a wrapper method the file itself replaces (#201)", () => {
+  for (const how of BUILDS)
+    it(`gives no row of the original method (${how})`, () => {
+      const info = analyze(
+        build(
+          {
+            "main.js": MAIN_REPLACED,
+            "svc.js":
+              'class Svc { register(ipc) { ipc.handle("svc:orig", () => 1); } }\nmodule.exports = { Svc };\n',
+          },
+          ["main.js"],
+          how,
+        ),
+      );
+      const got = rows(info).map((r) => r.split(" ").slice(0, 2).join(" "));
+      expect(got).toEqual(["kept:a ipcMain.handle"]);
+      expect(info.limitations.map((l) => l.code)).toContain("wrapper_method_replaced");
+    });
+});

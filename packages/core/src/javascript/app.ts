@@ -4137,6 +4137,11 @@ export function analyzeJavaScriptTree(
       )
         facts.navigationCapped = true;
     }
+    if (scan.wrappersReplaced && facts.limitations.length < 200)
+      facts.limitations.push({
+        code: "wrapper_method_replaced",
+        message: `${file.path}: ${scan.wrappersReplaced.length} method(s) of IPC wrappers of the file are replaced in the file by a member write on the class, its prototype or an instance (or one whose receiver was not read within the budget), so their calls there are not read (no IPC rows through them): ${scan.wrappersReplaced.join(", ")}.`,
+      });
     if (scan.wrappersCapped && facts.limitations.length < 200)
       facts.limitations.push({
         code: "ipc_wrappers_capped",

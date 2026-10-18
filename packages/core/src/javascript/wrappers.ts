@@ -286,6 +286,23 @@ export class WrapperReader {
    */
   replaced: ReadonlySet<string> = new Set();
 
+  /**
+   * Reads the writes of this file that replace a method of its own wrapper classes
+   * (`replacements`) and counts those methods as replaced, as the cross-file stage does for
+   * writes in other modules: `Svc.prototype.register = function …`, `t.register = () => {}`,
+   * `w.handle = () => {}` on an instance. A call of one then gives no row in this file either.
+   * One past the budget counts as replaced as well. Returns the methods, with the write.
+   */
+  readOwnReplacements(): Array<{ via: string; at: number }> {
+    if (!this.classes.length) return [];
+    const found = this.replacements();
+    if (!found.length) return [];
+    const replaced = new Set(this.replaced);
+    for (const { cls, method } of found) replaced.add(methodKey(cls, method));
+    this.replaced = replaced;
+    return found.map(({ cls, method, at }) => ({ via: `${cls.name}.${method}`, at }));
+  }
+
   /** The line of token k. */
   lineOf(k: number): number {
     return this.tokens[k]?.line ?? 0;

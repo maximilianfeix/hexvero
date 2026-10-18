@@ -398,7 +398,14 @@ the calls are read as before the check existed, and the limitation `wrapper_repl
 names the modules not checked. Modules are read in an order that a file growing between two
 builds does not change: the modules that define wrappers, then the rest, each by path; the 200
 calling files whose calls are read are the first 200 by path. Calls of a wrapper whose methods all
-count as replaced are not read. A write to another object of the same method name (`srv.handle = f`, lodash's
+count as replaced are not read. The same writes in the wrapper's own file count as well, which
+is where they are in one bundle (esbuild, webpack): for IPC wrappers (`w.handle = () => {}` on an
+instance of a class whose `handle` forwards to `ipcMain.handle`) and for methods with an IPC object
+parameter (`Svc.prototype.register = function (ipc) {…}`, `t.register = (ipc) => {}`), a call of
+the replaced method in that file gives no row, and `wrapper_method_replaced` names the method
+and the line of the write (since #201; before, only a write in another module was seen). A write
+on one instance counts for the class, so the calls on its other instances give no row either. A
+write to another object of the same method name (`srv.handle = f`, lodash's
 `_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
 so a call there may still be read although the method was replaced: a replacement through a
 global (`window.__s.save = f` with `window.__s` set elsewhere), through `require.cache`, through
