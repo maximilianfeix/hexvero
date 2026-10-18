@@ -93,8 +93,14 @@ function outside(root: string, path: string): string | null {
   }
 }
 
-/** What Electron makes of a candidate's package.json; `unknown`: hexvero cannot tell, take it. */
-type PackageState = "valid" | "missing" | "invalid" | "unknown";
+/**
+ * What a candidate's package.json is. `missing`, `invalid` (not JSON, or unreadable) and
+ * `oversized` (larger than MAX_PACKAGE_JSON, not parsed) are passed over, on disk and in a ZIP
+ * alike; `unchecked` (an archive whose header or package.json hexvero cannot read) is taken, so
+ * the analysis says what is wrong, and the note says it was not checked; `outside`: the file is
+ * a link out of the bundle, and the pick stops there.
+ */
+type PackageState = "valid" | "missing" | "invalid" | "oversized" | "unchecked" | "outside";
 
 const parses = (bytes: Uint8Array): boolean => {
   try {
@@ -108,11 +114,12 @@ const parses = (bytes: Uint8Array): boolean => {
 function packageInAsar(archive: AsarArchive): PackageState {
   const entry = archive.find("package.json");
   if (!entry) return "missing";
-  if (entry.unpacked || entry.size > MAX_PACKAGE_JSON) return "unknown";
+  if (entry.size > MAX_PACKAGE_JSON) return "oversized";
+  if (entry.unpacked) return "unchecked";
   try {
     return parses(archive.read(entry, MAX_PACKAGE_JSON)) ? "valid" : "invalid";
   } catch {
-    return "unknown";
+    return "invalid";
   }
 }
 
@@ -121,34 +128,40 @@ function packageOnDisk(path: string, kind: "asar" | "directory", root: string): 
     try {
       return packageInAsar(openAsarFile(path));
     } catch {
-      return "unknown"; // an unreadable header: the analysis says why
+      return "unchecked"; // an unreadable header: the analysis says why
     }
   }
   const file = join(path, "package.json");
   if (!isFile(file)) return "missing";
-  if (outside(root, file) !== null) return "unknown";
+  if (outside(root, file) !== null) return "outside";
   try {
-    if (statSync(file).size > MAX_PACKAGE_JSON) return "unknown";
+    if (statSync(file).size > MAX_PACKAGE_JSON) return "oversized";
     return parses(readFileSync(file)) ? "valid" : "invalid";
   } catch {
-    return "unknown";
+    return "invalid";
   }
 }
 
 const label = (name: string): string => (name === "app" ? "app/" : name);
 const PASSED: Record<string, string> = {
   missing: "no package.json",
-  invalid: "package.json is not valid JSON",
+  invalid: "package.json is not valid JSON or could not be read",
+  oversized: `package.json is larger than ${MAX_PACKAGE_JSON >> 20} MiB and was not parsed`,
 };
+const passedOver = (state: PackageState): boolean =>
+  state === "missing" || state === "invalid" || state === "oversized";
 
 function sentence(
   resources: string,
   chosen: string,
   others: string[],
   skipped: Array<{ name: string; why: string }>,
+  unchecked = false,
 ): string {
   const parts = [
-    `Electron runs the first of app/, app.asar and default_app.asar in ${resources} whose package.json it can load: ${label(chosen)}.`,
+    unchecked
+      ? `Electron runs the first of app/, app.asar and default_app.asar in ${resources} whose package.json it can load. hexvero took ${label(chosen)} without checking its package.json (it could not be read here; the analysis says why).`
+      : `Electron runs the first of app/, app.asar and default_app.asar in ${resources} whose package.json it can load: ${label(chosen)}.`,
   ];
   if (skipped.length)
     parts.push(`Passed over: ${skipped.map((p) => `${label(p.name)} (${p.why})`).join(", ")}.`);
@@ -198,7 +211,7 @@ export function findElectronApp(dir: string): ElectronLocation | null {
         refused: `${resources} is a link to ${away}, outside the bundle; Electron would read the app there, hexvero reads nothing outside the target`,
       };
     const skipped: Array<{ name: string; why: string }> = [];
-    let chosen: { name: string; kind: "asar" | "directory" } | null = null;
+    let chosen: { name: string; kind: "asar" | "directory"; unchecked: boolean } | null = null;
     const others: string[] = [];
     for (const name of ELECTRON_SEARCH) {
       const path = join(base, name);
@@ -218,16 +231,23 @@ export function findElectronApp(dir: string): ElectronLocation | null {
         continue;
       }
       const state = packageOnDisk(path, kind, dir);
-      if (state === "missing" || state === "invalid") skipped.push({ name, why: PASSED[state]! });
-      else chosen = { name, kind };
+      if (state === "outside")
+        return {
+          entry: `${resources}/${name}`,
+          kind,
+          layout,
+          refused: `${resources}/${name}/package.json is a link outside the bundle; Electron would follow it, hexvero reads nothing outside the target`,
+        };
+      if (passedOver(state)) skipped.push({ name, why: PASSED[state]! });
+      else chosen = { name, kind, unchecked: state === "unchecked" };
     }
     if (!chosen) continue;
     return {
       entry: `${resources}/${chosen.name}`,
       kind: chosen.kind,
       layout,
-      ...(skipped.length || others.length
-        ? { note: sentence(resources, chosen.name, others, skipped) }
+      ...(skipped.length || others.length || chosen.unchecked
+        ? { note: sentence(resources, chosen.name, others, skipped, chosen.unchecked) }
         : {}),
       ...(chosen.name === "app" && others.includes("app.asar") ? { warning: FUSE_WARNING } : {}),
     };
@@ -340,15 +360,18 @@ export function findElectronAppInZip(zip: ZipArchive, maxBytes: number): Electro
       .filter(Boolean)
       .join(" ");
     if (name === "app") {
-      if (entry.size > MAX_PACKAGE_JSON) return refuse(at, "its package.json is too large to read");
       let ok = false;
-      try {
-        ok = parses(zip.read(entry, MAX_PACKAGE_JSON));
-      } catch {
-        return refuse(at, "its package.json could not be read from the archive");
-      }
+      if (entry.size <= MAX_PACKAGE_JSON)
+        try {
+          ok = parses(zip.read(entry, MAX_PACKAGE_JSON));
+        } catch {
+          ok = false;
+        }
       if (!ok) {
-        skipped.push({ name, why: PASSED["invalid"]! });
+        skipped.push({
+          name,
+          why: PASSED[entry.size > MAX_PACKAGE_JSON ? "oversized" : "invalid"]!,
+        });
         continue;
       }
       return {
@@ -380,11 +403,15 @@ export function findElectronAppInZip(zip: ZipArchive, maxBytes: number): Electro
       );
     }
     const state = packageInAsar(archive);
-    if (state === "missing" || state === "invalid") {
+    if (passedOver(state)) {
       skipped.push({ name, why: PASSED[state]! });
       continue;
     }
-    return { entry: at, kind: "asar", layout, bytes, ...(note ? { note } : {}) };
+    const said =
+      state === "unchecked"
+        ? [sentence(resources, name, others, skipped, true), more ?? ""].filter(Boolean).join(" ")
+        : note;
+    return { entry: at, kind: "asar", layout, bytes, ...(said ? { note: said } : {}) };
   }
   return skipped.length
     ? refuse(

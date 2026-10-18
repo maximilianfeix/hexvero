@@ -53,7 +53,8 @@ describe("hexvero init (#197)", () => {
       const again = capture();
       expect(await main(["init"], again)).toBe(2);
       expect(again.text()).toContain(".hexvero/policy.json exists; pass --force to replace it");
-      expect(await main(["init", "--force"], capture())).toBe(0);
+      const forced = capture();
+      expect(await main(["init", "--force"], forced), forced.text()).toBe(0);
       // the README's next step now finds it
       const a = build("own-a", "api.own.example");
       expect(await main(["check", a, a, "--policy", ".hexvero/policy.json"], capture())).toBe(0);
@@ -135,10 +136,14 @@ describe("hexvero init (#197)", () => {
     expect(await main(["init", "--out", dangling, "--force"], capture())).toBe(2);
   });
 
-  it("prints the build path without control characters", async () => {
-    const a = build("ctl\u001b[31m", "api.ctl.example");
-    const io = capture();
-    expect(await main(["init", a, "--out", join(dir, "ctl.json")], io)).toBe(0);
-    expect(io.text()).not.toContain("\u001b");
-  });
+  // Windows refuses control characters in file names; the name cannot exist there
+  it.skipIf(process.platform === "win32")(
+    "prints the build path without control characters",
+    async () => {
+      const a = build("ctl\u001b[31m", "api.ctl.example");
+      const io = capture();
+      expect(await main(["init", a, "--out", join(dir, "ctl.json")], io)).toBe(0);
+      expect(io.text()).not.toContain("\u001b");
+    },
+  );
 });

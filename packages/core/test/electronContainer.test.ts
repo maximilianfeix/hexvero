@@ -179,13 +179,63 @@ describe("the Electron app inside a packaged build", () => {
     });
     const found = findElectronApp(root);
     expect(found?.entry).toBe("Contents/Resources/app.asar");
-    expect(found?.note).toContain("app/ (package.json is not valid JSON)");
+    expect(found?.note).toContain("app/ (package.json is not valid JSON or could not be read)");
     // and inside an archive
     const asar = macApp("BadJsonAsar.app", {
       "app.asar": buildAsar({ "package.json": "{ nope", "main.js": "1;\n" }),
       "default_app.asar": buildAsar(app("default.example")),
     });
     expect(findElectronApp(asar)?.entry).toBe("Contents/Resources/default_app.asar");
+  });
+
+  it("passes over an oversized package.json on disk and in a ZIP alike", () => {
+    const big = JSON.stringify({ name: "big", main: "main.js", pad: "x".repeat(1_500_000) });
+    const root = macApp("Big.app", {
+      "app/package.json": big,
+      "app/main.js": "1;\n",
+      "app.asar": buildAsar(app("api.asar.example")),
+    });
+    const found = findElectronApp(root);
+    expect(found?.entry).toBe("Contents/Resources/app.asar");
+    expect(found?.note).toContain("app/ (package.json is larger than 1 MiB and was not parsed)");
+    const zip = buildZip({
+      "X.app/Contents/Resources/app/package.json": big,
+      "X.app/Contents/Resources/app.asar": buildAsar(app("api.asar.example")),
+    });
+    const inZip = findElectronAppInZip(openZip(zip), 1 << 30);
+    expect(inZip?.entry).toBe("X.app/Contents/Resources/app.asar");
+    expect(inZip?.refused).toBeUndefined();
+    expect(inZip?.note).toContain("app/ (package.json is larger than 1 MiB and was not parsed)");
+    // in an archive too
+    const asar = macApp("BigAsar.app", {
+      "app.asar": buildAsar({ "package.json": big }),
+      "default_app.asar": buildAsar(app("default.example")),
+    });
+    expect(findElectronApp(asar)?.entry).toBe("Contents/Resources/default_app.asar");
+  });
+
+  it("does not say Electron can load a package.json hexvero did not check", () => {
+    const root = macApp("Unchecked.app", {
+      "app.asar": buildAsar(app("u.example"), ["package.json"]),
+    });
+    const found = findElectronApp(root);
+    expect(found?.entry).toBe("Contents/Resources/app.asar");
+    expect(found?.note).toContain("without checking its package.json");
+  });
+
+  it("stops at a package.json that is a link out of the bundle", () => {
+    const away = join(dir, "away-pkg");
+    mkdirSync(away, { recursive: true });
+    writeFileSync(join(away, "package.json"), "{}");
+    const root = macApp("PkgLink.app", {
+      "app/main.js": "1;\n",
+      "app.asar": buildAsar(app("api.asar.example")),
+    });
+    symlinkSync(
+      join(away, "package.json"),
+      join(root, "Contents", "Resources", "app", "package.json"),
+    );
+    expect(findElectronApp(root)?.refused).toContain("package.json is a link outside the bundle");
   });
 
   it("warns that a fuse may make Electron run app.asar instead of app/", async () => {
@@ -298,7 +348,9 @@ describe("the Electron app inside a packaged build", () => {
     });
     const loaded = electronInZip(targetFromBytes(zip, "r.zip"));
     expect(loaded.info.container?.entry).toBe("X.app/Contents/Resources/default_app.asar");
-    expect(loaded.info.container?.note).toContain("app/ (package.json is not valid JSON)");
+    expect(loaded.info.container?.note).toContain(
+      "app/ (package.json is not valid JSON or could not be read)",
+    );
     expect(loaded.info.container?.note).toContain("app.asar (no package.json)");
   });
 

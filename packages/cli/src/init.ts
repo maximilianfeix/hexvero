@@ -66,10 +66,14 @@ async function hostsOf(
   };
 }
 
+/** Not defined on Windows; there the lstat check before opening is what refuses a link. */
+const NOFOLLOW: number | undefined = constants.O_NOFOLLOW;
+
 /**
  * Writes `text` to `path` without following a symbolic link in its last component, also a
- * dangling one: a new file is created exclusively, an existing one replaced only with `force`,
- * opened with O_NOFOLLOW where the platform has it.
+ * dangling one: a new file is created exclusively (`wx`, which never follows a link), an existing
+ * one replaced only with `force`, opened with O_NOFOLLOW where the platform has it. On Windows,
+ * which has no O_NOFOLLOW, the lstat check right before opening refuses a link.
  */
 async function writeNoFollow(path: string, text: string, force: boolean): Promise<void> {
   const link = (): boolean => {
@@ -84,7 +88,7 @@ async function writeNoFollow(path: string, text: string, force: boolean): Promis
   if (link()) throw refuse();
   let handle;
   try {
-    handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o666);
+    handle = await open(path, "wx");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     if (!force) throw new UsageError(`${path} exists; pass --force to replace it`);
@@ -92,7 +96,7 @@ async function writeNoFollow(path: string, text: string, force: boolean): Promis
     try {
       handle = await open(
         path,
-        constants.O_WRONLY | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0),
+        NOFOLLOW === undefined ? "w" : constants.O_WRONLY | constants.O_TRUNC | NOFOLLOW,
       );
     } catch (reopen) {
       const code = (reopen as NodeJS.ErrnoException).code;

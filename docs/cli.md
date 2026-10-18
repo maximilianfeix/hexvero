@@ -197,7 +197,10 @@ app inside it, so its IPC, bridge, windows, endpoints and storage are read, not 
 
 In that directory hexvero takes what Electron runs: the first of `app/`, `app.asar` and
 `default_app.asar` whose `package.json` parses as JSON (Electron's `lib/browser/init.ts`), on
-disk and inside a ZIP. Files kept in `app.asar.unpacked/` beside the archive are read as for an
+disk and inside a ZIP alike: a candidate without one, with one that is not JSON or cannot be read,
+or with one larger than 1 MiB (not parsed) is passed over, and one whose `package.json` is a link
+out of the bundle stops the pick. An archive whose header or `package.json` hexvero cannot read is
+taken, and the note says it was not checked. Files kept in `app.asar.unpacked/` beside the archive are read as for an
 archive opened alone. When something else was there too, or a candidate was passed over, the
 output says so; an archive with several builds is read at the one nearest its root and names the
 others. When `app/` is taken while an `app.asar` is there too, the limitation
