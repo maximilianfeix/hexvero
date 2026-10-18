@@ -122,7 +122,8 @@ describe("hexvero check", () => {
     expect(refused.code).toBe(2);
     expect(refused.io.stderr.join("\n")).toContain("exists; pass --force to replace it");
     expect(readFileSync(out, "utf8")).toBe("keep me");
-    expect((await check(a, b, "--policy", examplePolicy, "--out", out, "--force")).code).toBe(3);
+    const forced = await check(a, b, "--policy", examplePolicy, "--out", out, "--force");
+    expect(forced.code, forced.io.text()).toBe(3);
     expect(readFileSync(out, "utf8")).toContain("hexvero check fail");
     expect(readFileSync(out, "utf8")).not.toContain("\u001b");
   });

@@ -259,6 +259,8 @@ export function verifyOpened(
   opened: { dev: number; ino: number },
 ): void {
   const { absolute, real } = resolveWrite(target, kind);
+  // Windows may report inode 0 for both: there the policy check above is what holds.
+  if (process.platform === "win32") return;
   let now: { dev: number; ino: number } | null = null;
   try {
     now = lstatSync(real);

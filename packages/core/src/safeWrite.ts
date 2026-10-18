@@ -1,11 +1,19 @@
-import { constants, fstatSync, lstatSync, statSync, unlinkSync, type Stats } from "node:fs";
+import {
+  constants,
+  fstatSync,
+  lstatSync,
+  statSync,
+  unlinkSync,
+  writeSync,
+  type Stats,
+} from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
 import { AnalysisError } from "./model.js";
 
 // Not defined on Windows; there the lstat check before opening is what refuses a link.
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 const NONBLOCK = constants.O_NONBLOCK ?? 0;
-const NOCTTY = constants.O_NOCTTY ?? 0;
+const WINDOWS = process.platform === "win32";
 
 export interface WriteFileOptions {
   /** Replace an existing file. Without it an existing path is refused (EEXIST). */
@@ -66,19 +74,22 @@ export function isSymlink(path: string): boolean {
   }
 }
 
-/** Writes all of `data` to standard output. */
-function writeStdout(data: string | Uint8Array): Promise<void> {
+/** Writes all of `data` to a stream of this process (stdout, stderr). */
+function writeStream(stream: NodeJS.WriteStream, data: string | Uint8Array): Promise<void> {
   return new Promise((done, fail) => {
-    process.stdout.write(data, (error) => (error && !gone(error) ? fail(error) : done()));
+    stream.write(data, (error) => (error && !gone(error) ? fail(error) : done()));
   });
 }
+
+/** Writes all of `data` to standard output. */
+const writeStdout = (data: string | Uint8Array): Promise<void> => writeStream(process.stdout, data);
 
 /**
  * Writes `data` to `path` without following a symbolic link in the last component.
  *
  * A stream named as such (`-`, `/dev/stdout`, `/dev/stderr`, `/dev/null`, `/dev/fd/N`; not with
- * `inspect`) is opened once (appending) and written to when fstat of that descriptor says it is a
- * character device, FIFO or regular file: what the shell connected there (`> out.json`). Every other path: a
+ * `inspect`) writes to the descriptor of this process it names (1, 2 or N) as the shell connected
+ * it: a terminal, pipe, socket or the regular file of a redirection (`> out.json`). Every other path: a
  * new file is created exclusively (O_CREAT|O_EXCL, which never follows a link); an existing one
  * is replaced only with `overwrite`, opened with O_NOFOLLOW where the platform has it. Refusals
  * are AnalysisErrors with code invalid_input and `details.code` EEXIST, ELOOP, ENOTREG, ENXIO,
@@ -93,33 +104,38 @@ export async function writeFileNoFollow(
     new AnalysisError("invalid_input", `${path} ${why}`, { path, code });
   const linkRefusal = (): AnalysisError =>
     refuse("ELOOP", "is a symbolic link; hexvero does not write through one");
-  const opening = async (flags: number, mode?: number): Promise<FileHandle> => {
+  const opening = async (flags: number | string, mode?: number): Promise<FileHandle> => {
     options.beforeOpen?.();
     return open(path, flags, mode);
   };
 
   if (!options.inspect && path === "-") return writeStdout(data);
   if (!options.inspect && STREAM_NAME.test(path)) {
-    let stream: FileHandle;
-    try {
-      // Never blocks: a FIFO with no reader fails with ENXIO instead. O_APPEND: a file the shell
-      // opened for `>>` is appended to, and one opened for `>` is empty anyway.
-      stream = await opening(constants.O_WRONLY | constants.O_APPEND | NONBLOCK | NOCTTY);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENXIO")
-        throw refuse("ENXIO", "is a pipe that nothing reads");
-      throw error;
-    }
-    try {
-      // The kernel makes these names, and the user named one: whatever the shell connected
-      // there is the output (`--out /dev/stdout > out.json` is a regular file).
-      const st = await stream.stat();
-      // a socket too: libuv gives child processes socket pairs as pipes
+    // /dev/stdout, /dev/stderr and /dev/fd/N name a descriptor this process already has. It is
+    // written as it is, not opened again: on Linux they are links to `pipe:[n]` or `socket:[n]`,
+    // which cannot be opened (a socket gives ENXIO). Whatever the shell connected there is the
+    // output, a regular file of a redirection included (`--out /dev/stdout > out.json`).
+    const named = /^\/dev\/(?:std(out|err)|fd\/(\d+))$/.exec(path);
+    const fd = named ? (named[1] === "out" ? 1 : named[1] === "err" ? 2 : Number(named[2])) : null;
+    if (fd === 1) return writeStdout(data);
+    if (fd === 2) return writeStream(process.stderr, data);
+    if (fd !== null) {
+      let st: Stats;
+      try {
+        st = fstatSync(fd);
+      } catch {
+        throw refuse("EBADF", "is not an open descriptor of this process");
+      }
       if (!st.isCharacterDevice() && !st.isFIFO() && !st.isFile() && !st.isSocket())
         throw refuse("ENOTREG", "is not a file, terminal, pipe, socket or device");
-      await writeAll(stream, typeof data === "string" ? Buffer.from(data) : data);
+      return writeFd(fd, typeof data === "string" ? Buffer.from(data) : data);
+    }
+    // /dev/null: a device node of its own
+    const sink = await opening(constants.O_WRONLY);
+    try {
+      await sink.writeFile(data);
     } finally {
-      await stream.close();
+      await sink.close();
     }
     return;
   }
@@ -129,17 +145,17 @@ export async function writeFileNoFollow(
   let handle: FileHandle;
   let created = false;
   try {
-    handle = await opening(constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o666);
+    handle = await opening("wx", 0o666);
     created = true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     if (!options.overwrite) throw refuse("EEXIST", "exists; pass overwrite to replace it");
     // Either the file appeared or a link took its place since the check: O_NOFOLLOW refuses the link.
     if (isSymlink(path)) throw linkRefusal();
-    // A careful replace truncates only after the checks on the opened file.
-    const flags = careful
-      ? constants.O_RDWR | NOFOLLOW | NONBLOCK
-      : constants.O_WRONLY | constants.O_TRUNC | NOFOLLOW | NONBLOCK;
+    // Truncated only after the checks on the opened file. Windows has neither O_NOFOLLOW nor
+    // O_NONBLOCK, and its open refuses some numeric flag sets (EINVAL): "r+" there, with the
+    // lstat right before as the link check.
+    const flags = WINDOWS ? "r+" : constants.O_RDWR | NOFOLLOW | NONBLOCK;
     try {
       handle = await opening(flags);
     } catch (reopen) {
@@ -157,7 +173,7 @@ export async function writeFileNoFollow(
   try {
     // Only a stream name is written to as a stream: a FIFO or device at any other path is
     // refused (opened non-blocking above, so a FIFO without a reader does not hang).
-    if (!created && !careful && !(await handle.stat()).isFile())
+    if (!created && !(await handle.stat()).isFile())
       throw refuse(
         "ENOTREG",
         "is not a regular file; name a stream as -, /dev/stdout or /dev/fd/N",
@@ -174,8 +190,8 @@ export async function writeFileNoFollow(
         const why = options.inspect(head.subarray(0, bytesRead).toString("utf8"));
         if (why) throw refuse("EREFUSED", why);
       }
-      if (!created) await handle.truncate(0);
     }
+    if (!created) await handle.truncate(0);
   } catch (refused) {
     const opened = await handle.stat().catch(() => null);
     await handle.close();
@@ -183,7 +199,9 @@ export async function writeFileNoFollow(
     if (created && opened) {
       try {
         const now = lstatSync(path);
-        if (now.dev === opened.dev && now.ino === opened.ino && now.size === 0) unlinkSync(path);
+        // Windows may report inode 0: there only the size is compared
+        const same = WINDOWS || (now.dev === opened.dev && now.ino === opened.ino);
+        if (same && now.size === 0) unlinkSync(path);
       } catch {
         // gone already
       }
@@ -197,14 +215,13 @@ export async function writeFileNoFollow(
   }
 }
 
-/** Writes all bytes to a stream opened non-blocking, waiting while a pipe is full (EAGAIN). */
-async function writeAll(handle: FileHandle, bytes: Uint8Array): Promise<void> {
+/** Writes all bytes to a descriptor of this process, waiting while a pipe is full (EAGAIN). */
+async function writeFd(fd: number, bytes: Uint8Array): Promise<void> {
   let done = 0;
   let waits = 0;
   while (done < bytes.length) {
     try {
-      const { bytesWritten } = await handle.write(bytes, done, bytes.length - done);
-      done += bytesWritten;
+      done += writeSync(fd, bytes, done, bytes.length - done);
       waits = 0;
     } catch (error) {
       if (gone(error)) return;

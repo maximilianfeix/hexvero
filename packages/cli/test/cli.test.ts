@@ -152,7 +152,11 @@ describe("hexvero CLI", () => {
     const refused = capture();
     expect(await main(["compare", a, b, "--report", out], refused)).toBe(2);
     expect(readFileSync(out, "utf8")).toBe("keep me");
-    expect(await main(["compare", a, b, "--report", out, "--force"], capture())).toBe(0);
+    const forced = capture();
+    expect(
+      await main(["compare", a, b, "--report", out, "--force"], forced),
+      forced.stderr.join("\n"),
+    ).toBe(0);
     expect(readFileSync(out, "utf8")).toContain("# What changed");
     expect(await main(["compare", a, b, "ipc", "--report", out], capture())).toBe(2);
   });
@@ -263,7 +267,7 @@ describe("hexvero CLI", () => {
       ["analyze", a, "--json", "--out", "/dev/stdout"],
     ]) {
       const r = run(...argv);
-      expect(r.code, argv.join(" ")).toBe(0);
+      expect(r.code, `${argv.join(" ")}: ${r.err}`).toBe(0);
       expect(r.out.endsWith("}\n"), argv.join(" ")).toBe(true);
       expect(JSON.parse(r.out).hexvero).toBe(1);
     }
