@@ -4,17 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>hexvero: know what changed inside your Electron release</title>
+    <title>hexvero: Electron release diff for security review</title>
     <meta
       name="description"
-      content="Compare two builds of an Electron app: interfaces pages can call, window settings and network hosts that changed, with the file and line on both sides, what could not be established, and a CI policy gate. Locally, without executing the target."
+      content="Diff two builds of an Electron app (app.asar, .app, install directory, release ZIP) for security review: what changed in IPC, contextBridge, window settings and network hosts, with the file and line on both sides, and a CI policy gate. Reads files only; nothing is executed."
     />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://maximilianfeix.github.io/hexvero/" />
-    <meta property="og:title" content="hexvero: know what changed inside your Electron release" />
+    <meta property="og:title" content="hexvero: Electron release diff for security review" />
     <meta
       property="og:description"
-      content="New interfaces, window settings and hosts between two Electron builds, with file and line on both sides, what could not be established, and a CI policy gate. The target is never run."
+      content="What changed in IPC, contextBridge, window settings and hosts between two Electron builds, with file and line on both sides, and a CI policy gate. Reads files only; nothing is executed."
     />
     <meta
       property="og:image"
@@ -37,7 +37,7 @@
         "name": "hexvero",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS, Linux, Windows",
-        "description": "Static comparison of two Electron app builds with the file and line behind each change, a list of what could not be established, and a release policy check for CI. Also inspects binaries. CLI, MCP server for coding agents and a local web UI.",
+        "description": "Electron release diff for security review: compares two builds of an Electron app and reports what changed in IPC, contextBridge, window settings and network hosts, with the file and line behind each change, what could not be established, and a release policy check for CI. Reads files only. Also inspects binaries. CLI, MCP server for coding agents and a local web UI.",
         "url": "https://maximilianfeix.github.io/hexvero/",
         "codeRepository": "https://github.com/maximilianfeix/hexvero",
         "license": "https://opensource.org/licenses/MIT",
@@ -60,11 +60,13 @@
       </header>
 
       <section style="border-top: 0; padding-top: 36px">
-        <h1>Know what changed inside your Electron release.</h1>
+        <h1>Electron release diff for security review.</h1>
         <p class="lede">
-          The interfaces pages can call, window settings and network hosts that changed between two
-          builds, with the file and line on both sides, what could not be established, and a policy
-          gate for CI. Locally, without executing the target.
+          What changed between two builds of your Electron app: the IPC channels and
+          <code>contextBridge</code> members pages can call, window settings and network hosts, with
+          the file and line on both sides, what could not be established, and a policy gate for CI.
+          It takes an <code>app.asar</code>, a <code>.app</code>, an install directory or a release
+          ZIP.
         </p>
         <div class="cta">
           <a class="btn primary" href="demo/">See an example comparison</a>
@@ -75,6 +77,10 @@
           <code id="start">npx hexvero demo</code>
           <button class="btn copy" type="button" data-copy="start" hidden>Copy</button>
         </div>
+        <p class="note">
+          hexvero only reads files. Where this page says <em>target</em>, it means the build you
+          give it; nothing in it is executed, and nothing is uploaded.
+        </p>
         <p class="note">
           Needs Node.js 22.12 or newer. Copies two builds of an example Electron app and a policy
           into <code>./hexvero-demo</code> and shows what changed between them.
@@ -395,7 +401,10 @@ npx hexvero setup --skill --apply  # installs the skill</pre>
         </ul>
         <p class="note">
           Methods and numbers:
-          <a href="https://github.com/maximilianfeix/hexvero#limits">README, Limits</a> ·
+          <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/accuracy.md"
+            >Accuracy and limits</a
+          >
+          ·
           <a
             href="https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round5/README.md"
             >blind set holdout6 (round 5)</a

@@ -2,29 +2,253 @@
 
 All commands accept `--json` for machine-readable output and `--no-color`. Paths may be relative.
 
-| Command                                                                                                                                      | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `demo [dir]`                                                                                                                                 | Copies the two example builds (`notesdesk-1.4.0.asar`, `notesdesk-1.5.0.asar`) into `dir` (default `./hexvero-demo`) and prints what changed between them, with the place of each change and what was not established. A file of the same name with other content is never replaced.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `analyze <path> [--out file.json]`                                                                                                           | Detects the format, runs the analyzer, prints summary, findings, limitations and the collections that exist. `--out` also writes the complete JSON (an existing file is replaced, without `--force`). For a large JavaScript app see [Large applications](#large-applications).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `collection <path> <name> [--text s] [--limit n] [--offset n]`                                                                               | Pages one list. Unknown names return the available ones.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `strings <path> [--min n] [--utf16] [--tag t] [--text s] [--limit n] [--offset n]`                                                           | Printable strings with offsets and tags.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `bytes <path> <offset> [length]`                                                                                                             | Hex dump (max 64 KiB). Offset accepts `0x` hex.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]`                                                                       | Without a collection (or with `--all`): one row per collection both targets have, with the counts of added, removed, changed, relocated, unknown and unchanged items, and which comparisons were partial (past the comparison budget of 200,000 items or 256 MiB per side). For Electron apps it then lists window settings whose derived value changed what a page may do (`sandboxInEffect: on → off (more permissive)`); these are facts to review, not findings. With a collection: added, removed and changed items between two targets. Items are matched by an identity that hexvero picks (`name`, `channel`, `path`, `type+name` for methods …) or by `--key`. Nothing is ignored by default except that address fields of native symbols, exports, sections and segments which only moved are counted as `relocated` and shown with an example; `--strict` counts them as changed, `--ignore` excludes more fields. The output says when a comparison is partial or the analyses carry limitations.                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `compare <a> <b> --report file.md\|file.html [--force] [--offset n] [--limit n]`                                                             | Writes the comparison of every reviewed list as Markdown: a summary table, window settings to review, each change with the file and line it was read from on its side and how it was read (`literal`, `inferred`, `link direct`), a list that exists in one build only as added or removed, what was not established (limitations of both sides, unknown items), and the command to reproduce it. No dates and no directories, so the same inputs give the same bytes. Text from the targets is quoted so it cannot add Markdown of its own; control, bidi and zero-width characters in it show as `\u{202e}`. Refuses to replace an existing file unless `--force` is given. Rows are paged (200 per report; `--offset n`, `--limit n` up to 5,000) and the report says how many of how many are shown. A file name ending in `.html` or `.htm` writes one self-contained HTML page instead, from the same comparison: the same sections, before/after places with the seven source lines around each (at most 200 excerpts and 250,000 characters; the page says when it cut), and filters by kind, list and text. It loads nothing from the network, makes no link from target text, escapes every piece of target text (invisible characters show as `⟨U+202E⟩`) and carries a Content-Security-Policy that allows only its own inline script by hash; with JavaScript off it shows the same content without the filters. |
-| `check <before> <after> --policy <file> [--baseline file] [--update-baseline] [--format text\|json\|markdown\|sarif] [--out file] [--force]` | Applies a release policy to the comparison of two builds: new interface members, new external hosts, windows that became more permissive. Exit `0` pass, `1` technical error, `2` usage error or invalid policy, `3` policy violated, `4` not decidable under `unknown: fail`. See [Release policies](#release-policies-hexvero-check).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `init [build] [--out file] [--force]`                                                                                                        | Writes a starting release policy to `.hexvero/policy.json` (or `--out`): every rule at `fail`, `unknown: fail`, no suppressions, the shape of [`examples/policy.json`](../examples/policy.json). With a build, every external host its `endpoints` (its requests) name goes into the `new-external-host` allow list; hosts named only in plain URL strings (`urls`) are counted, not allowed, and a host the policy syntax cannot list (`region-aiplatform-endpoint_id.p.googleapis.com`) is left out and named. The policy is parsed before it is written, and no symbolic link is written through (also with `--force`); the policy is checked against the build itself; the output says whether that passes or which rules the build leaves undecidable. Never replaces a file without `--force`. See [Release policies](#release-policies-hexvero-check).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `export <path> <out.json>`                                                                                                                   | The complete analysis as JSON. An existing `out.json` is replaced (unlike `compare --report` and `check --out`, which need `--force`). Like every file hexvero writes (`analyze --out`, `compare --report`, `check --out`, a baseline), never through a symbolic link at that path: a link there is refused, also with `--force`. `-` writes to standard output. The names `/dev/stdout`, `/dev/stderr` and `/dev/fd/N` (what process substitution `>(gzip > r.gz)` passes) write to that descriptor of the hexvero process as the shell connected it, without opening the name again, and `/dev/null` discards: a terminal, a pipe, or the file of a redirection (`--out /dev/stdout > out.json`). Any other link is refused, and so is a FIFO or device at any other path. When the output goes to standard output (`-`, `/dev/stdout`, `/dev/fd/1`, or the file standard output is redirected to), hexvero's own summary and confirmation go to stderr, so `check --format sarif --out - > results.sarif` and `export app.asar -                                                                                                                                                                                                                                                                                                                                                                                           | jq` get only the data; JSON output ends with a newline, and a reader that stops early (` | head`) ends the output without an error. |
-| `recover <path> <outdir>`                                                                                                                    | Splits a JavaScript bundle into module files (webpack, Rspack, browserify, esbuild, and scope-hoisted bundles at their `// path` comments), or writes a source map's original sources, into a new directory. Rollup/Vite chunks have no module boundaries; the manifest lists the chunks they import. Names from the bundle never make a hidden file or directory: a leading dot in a path segment becomes `_` (`.ssh/authorized_keys` → `_ssh/authorized_keys.js`). A name Windows reserves for a device (`con`, `nul`, `aux`, `prn`, `com1`–`com9`, `lpt1`–`lpt9`, also `con.js`) gets a leading `_` too, on every platform; the manifest records which name each file was written for.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `provider <path> <engine> <operation> [--address a] [--text s] [--timeout ms]`                                                               | Runs radare2/rizin/ghidra operations: functions, disassemble, decompile, strings, imports, xrefs, callers, callees, callgraph, search.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `calls <path> <engine> <root> [--direction d] [--depth n] [--max n] [--goal g]`                                                              | Bounded call-graph neighborhood around a function, or the shortest call path to `--goal`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `mcp`                                                                                                                                        | Serves MCP over stdio.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `ui [--port n] [--host h] [--open] [--demo]`                                                                                                 | Starts the local web UI (default port 7331, loopback only unless `--host` is given, which prints a warning). `--demo` opens the example builds and starts on their comparison. The Compare view ends in a release gate; see [Web UI](#web-ui-hexvero-ui).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `doctor`                                                                                                                                     | Checks Node, `node:sqlite` and engines.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `setup [--client c] [--apply]`                                                                                                               | Registers the MCP server; dry run by default.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+## Overview
 
-Commands that hexvero suggests (next steps, the demo summary, hints) quote paths for the shell you run: single quotes for POSIX shells, double quotes on Windows for paths of plain ASCII (letters, digits, space and `_ . \ / : @ + - ( ) [ ] { } , = ~ #`); any other path, and a path with control characters or bidi or zero-width marks, is shown as `<path>` to fill in. A path that starts with `-` is written `./-…`. Reproduce lines inside reports use POSIX quoting on every platform.
+```text
+hexvero analyze <path> [--json] [--out file.json]     summary, findings, limitations, overview
+hexvero collection <path> <name> [--text s] [--limit n] [--offset n] [--max-bytes n]
+hexvero strings <path> [--min n] [--utf16] [--tag url|path|email|ip|format|secret-ish|base64-ish]
+hexvero bytes <path> <offset> [length]                hex dump (64 KiB per call)
+hexvero demo [dir]                                    copy two example builds into dir and show what changed
+hexvero compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
+                                                      added, removed, changed and relocated items between two builds;
+                                                      without a collection: counts for every shared one
+hexvero compare <a> <b> --report report.md|report.html [--force]
+                                                      release report: summary, changes with file:line, what was
+                                                      not established (.html: one offline page with the source
+                                                      lines of both builds); never overwrites without --force
+hexvero check <a> <b> --policy policy.json [--baseline f] [--update-baseline] [--format text|json|markdown|sarif] [--out file] [--force]
+                                                      release policy over the comparison; exit 0 pass, 3 violated,
+                                                      4 not decidable
+hexvero init [build] [--out file] [--force]           starting policy in .hexvero/policy.json; with a build,
+                                                      its external hosts are allowed
+hexvero export <path> <out.json>                      the complete analysis
+hexvero recover <bundle.js|map> <outdir>              split one JS bundle into module files, or write a source map's originals
+hexvero provider <path> radare2|rizin|ghidra <op> [--address a] [--text s]
+                                                      functions, disassemble, decompile, strings, imports,
+                                                      xrefs, callers, callees, callgraph, search
+hexvero calls <path> <engine> <root> [--direction callers|callees|both] [--depth n] [--goal g]
+hexvero mcp · hexvero ui [--port n] [--open] [--demo] · hexvero doctor · hexvero cache · hexvero setup [--client c] [--apply] [--all]
+```
 
-Exit codes: `0` success (including `--help`), `1` analysis error (`{"error":{"code","message","details"}}` with `--json`), `2` usage error. Set `HEXVERO_DEBUG=1` for stack traces. `check` adds `3` (policy violated) and `4` (not decidable); see below.
+Analysis commands take `--json`. Exit codes: `0` ok (including `--help`), `1` analysis failed (with
+a structured error), `2` usage; `check` adds `3` and `4`. Under npx, write `npx hexvero` for
+`hexvero`. Each command in detail:
+
+## Commands
+
+### `demo`
+
+```text
+hexvero demo [dir]
+```
+
+Copies the two example builds (`notesdesk-1.4.0.asar`, `notesdesk-1.5.0.asar`) into `dir` (default
+`./hexvero-demo`) and prints what changed between them, with the place of each change and what was
+not established. A file of the same name with other content is never replaced.
+
+### `analyze`
+
+```text
+hexvero analyze <path> [--out file.json]
+```
+
+Detects the format, runs the analyzer, prints summary, findings, limitations and the collections
+that exist. `--out` also writes the complete JSON (an existing file is replaced, without
+`--force`). For a large JavaScript app see [Large applications](#large-applications).
+
+### `collection`
+
+```text
+hexvero collection <path> <name> [--text s] [--limit n] [--offset n]
+```
+
+Pages one list. Unknown names return the available ones.
+
+### `strings`
+
+```text
+hexvero strings <path> [--min n] [--utf16] [--tag t] [--text s] [--limit n] [--offset n]
+```
+
+Printable strings with offsets and tags.
+
+### `bytes`
+
+```text
+hexvero bytes <path> <offset> [length]
+```
+
+Hex dump (max 64 KiB). Offset accepts `0x` hex.
+
+### `compare`
+
+```text
+hexvero compare <a> <b> [collection] [--key f[+g]] [--ignore f,g] [--strict]
+```
+
+Without a collection (or with `--all`): one row per collection both targets have, with the counts
+of added, removed, changed, relocated, unknown and unchanged items, and which comparisons were
+partial (past the comparison budget of 200,000 items or 256 MiB per side). For Electron apps it
+then lists window settings whose derived value changed what a page may do
+(`sandboxInEffect: on → off (more permissive)`); these are facts to review, not findings. With a
+collection: added, removed and changed items between two targets. Items are matched by an identity
+that hexvero picks (`name`, `channel`, `path`, `type+name` for methods …) or by `--key`. Nothing
+is ignored by default except that address fields of native symbols, exports, sections and segments
+which only moved are counted as `relocated` and shown with an example; `--strict` counts them as
+changed, `--ignore` excludes more fields. The output says when a comparison is partial or the
+analyses carry limitations.
+
+### `compare --report`
+
+```text
+hexvero compare <a> <b> --report file.md|file.html [--force] [--offset n] [--limit n]
+```
+
+Writes the comparison of every reviewed list as Markdown: a summary table, window settings to
+review, each change with the file and line it was read from on its side and how it was read
+(`literal`, `inferred`, `link direct`), a list that exists in one build only as added or removed,
+what was not established (limitations of both sides, unknown items), and the command to reproduce
+it. No dates and no directories, so the same inputs give the same bytes. Text from the targets is
+quoted so it cannot add Markdown of its own; control, bidi and zero-width characters in it show as
+`\u{202e}`. Refuses to replace an existing file unless `--force` is given. Rows are paged (200 per
+report; `--offset n`, `--limit n` up to 5,000) and the report says how many of how many are shown.
+A file name ending in `.html` or `.htm` writes one self-contained HTML page instead, from the same
+comparison: the same sections, before/after places with the seven source lines around each (at
+most 200 excerpts and 250,000 characters; the page says when it cut), and filters by kind, list
+and text. It loads nothing from the network, makes no link from target text, escapes every piece
+of target text (invisible characters show as `⟨U+202E⟩`) and carries a Content-Security-Policy
+that allows only its own inline script by hash; with JavaScript off it shows the same content
+without the filters.
+
+### `check`
+
+```text
+hexvero check <before> <after> --policy <file> [--baseline file] [--update-baseline] [--format text|json|markdown|sarif] [--out file] [--force]
+```
+
+Applies a release policy to the comparison of two builds: new interface members, new external
+hosts, windows that became more permissive, privileged objects newly handed to pages. Exit `0` pass, `1` technical error, `2` usage error or
+invalid policy, `3` policy violated, `4` not decidable under `unknown: fail`. See [Release
+policies](#release-policies-hexvero-check).
+
+### `init`
+
+```text
+hexvero init [build] [--out file] [--force]
+```
+
+Writes a starting release policy to `.hexvero/policy.json` (or `--out`): every rule at `fail`,
+`unknown: fail`, no suppressions, the shape of [`examples/policy.json`](../examples/policy.json).
+With a build, every external host its `endpoints` (its requests) name goes into the
+`new-external-host` allow list; hosts named only in plain URL strings (`urls`) are counted, not
+allowed, and a host the policy syntax cannot list
+(`region-aiplatform-endpoint_id.p.googleapis.com`) is left out and named. The policy is parsed
+before it is written, and no symbolic link is written through (also with `--force`); the policy is
+checked against the build itself; the output says whether that passes or which rules the build
+leaves undecidable. Never replaces a file without `--force`. See [Release
+policies](#release-policies-hexvero-check).
+
+### `export`
+
+```text
+hexvero export <path> <out.json>
+```
+
+The complete analysis as JSON. An existing `out.json` is replaced (unlike `compare --report` and
+`check --out`, which need `--force`). Like every file hexvero writes (`analyze --out`,
+`compare --report`, `check --out`, a baseline), never through a symbolic link at that path: a link
+there is refused, also with `--force`. `-` writes to standard output. The names `/dev/stdout`,
+`/dev/stderr` and `/dev/fd/N` (what process substitution `>(gzip > r.gz)` passes) write to that
+descriptor of the hexvero process as the shell connected it, without opening the name again, and
+`/dev/null` discards: a terminal, a pipe, or the file of a redirection
+(`--out /dev/stdout > out.json`). Any other link is refused, and so is a FIFO or device at any
+other path. When the output goes to standard output (`-`, `/dev/stdout`, `/dev/fd/1`, or the file
+standard output is redirected to), hexvero's own summary and confirmation go to stderr, so
+`check --format sarif --out - > results.sarif` and
+`export app.asar - | jq` get only the data; JSON output ends with a newline, and a reader that
+stops early (`| head`) ends the output without an error.
+
+### `recover`
+
+```text
+hexvero recover <path> <outdir>
+```
+
+Splits a JavaScript bundle into module files (webpack, Rspack, browserify, esbuild, and
+scope-hoisted bundles at their `// path` comments), or writes a source map's original sources,
+into a new directory. Rollup/Vite chunks have no module boundaries; the manifest lists the chunks
+they import. Names from the bundle never make a hidden file or directory: a leading dot in a path
+segment becomes `_` (`.ssh/authorized_keys` → `_ssh/authorized_keys.js`). A name Windows reserves
+for a device (`con`, `nul`, `aux`, `prn`, `com1`–`com9`, `lpt1`–`lpt9`, also `con.js`) gets a
+leading `_` too, on every platform; the manifest records which name each file was written for.
+
+### `provider`
+
+```text
+hexvero provider <path> <engine> <operation> [--address a] [--text s] [--timeout ms]
+```
+
+Runs radare2/rizin/ghidra operations: functions, disassemble, decompile, strings, imports, xrefs,
+callers, callees, callgraph, search.
+
+### `calls`
+
+```text
+hexvero calls <path> <engine> <root> [--direction d] [--depth n] [--max n] [--goal g]
+```
+
+Bounded call-graph neighborhood around a function, or the shortest call path to `--goal`.
+
+### `mcp`
+
+```text
+hexvero mcp
+```
+
+Serves MCP over stdio.
+
+### `ui`
+
+```text
+hexvero ui [--port n] [--host h] [--open] [--demo]
+```
+
+Starts the local web UI (default port 7331, loopback only unless `--host` is given, which prints a
+warning). `--demo` opens the example builds and starts on their comparison. The Compare view ends
+in a release gate; see [Web UI](#web-ui-hexvero-ui).
+
+### `doctor`
+
+```text
+hexvero doctor
+```
+
+Checks Node, `node:sqlite` and engines.
+
+### `setup`
+
+```text
+hexvero setup [--client c] [--apply]
+```
+
+Registers the MCP server; dry run by default. See
+[Setting up and removing agent clients](#setting-up-and-removing-agent-clients).
+
+## Suggested commands and exit codes
+
+Commands that hexvero suggests (next steps, the demo summary, hints) are written the way you
+started it: `npx hexvero …` under npx, `hexvero …` after `npm install -g hexvero`. They quote
+paths for the shell you run: single quotes for POSIX shells, double quotes on Windows for paths of
+plain ASCII (letters, digits, space and `_ . \ / : @ + - ( ) [ ] { } , = ~ #`); any other path, and
+a path with control characters or bidi or zero-width marks, is shown as `<path>` to fill in. A
+path that starts with `-` is written `./-…`. Reproduce lines inside reports use POSIX quoting on
+every platform.
+
+Exit codes: `0` success (including `--help`), `1` analysis error
+(`{"error":{"code","message","details"}}` with `--json`), `2` usage error. Set
+`HEXVERO_DEBUG=1` for stack traces. `check` adds `3` (policy violated) and `4` (not decidable);
+see [Release policies](#release-policies-hexvero-check).
 
 ## Release policies: `hexvero check`
 
@@ -62,21 +286,65 @@ writes one of that shape to `.hexvero/policy.json`, with the external hosts of `
 }
 ```
 
-| Rule                     | Reports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `new-interface-member`   | A member pages can call (`window.api.member`, from `contextBridge.exposeInMainWorld`) that the before build did not expose anywhere (a member that only moved to another preload file is not new). Read from `interfaces`, or `contextBridge` where there is no `interfaces` list.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `new-external-host`      | A host named by a new `endpoints` or `urls` row that is not in `allow` and that the before build did not already name (in any file, with any path: a renamed chunk or a new path on a known host is not a new host). The value is read as a WHATWG URL parser reads it: leading and trailing control characters and spaces and every tab and line break are dropped, any number of slashes may follow the scheme. `allow` takes exact host names and `*.domain` (every subdomain of `domain`, not `domain` itself); no scheme, port or path. Relative paths, `file:`, `data:`, app schemes and loopback are not external. A host built at run time (`https://${region}.api.example.com`) is unknown, never a pass. A value hexvero could not resolve leaves the rule undecidable (`values_unresolved`) unless it cannot hide a host: when every target of both builds has a literal host that a `/`, `?` or `#` closes before the computed part (`https://api.example.com/users/${id}`) or a literal scheme that reaches no host (`file://${path}`), the rule is decided, and a host next to such values is new or not, never "may be new". A value not read at all, a relative one (`/${p}` may become `//elsewhere.example`) or one computed before its host ends keeps it open. |
-| `window-more-permissive` | A window present in both builds whose derived `nodeIntegration`, `contextIsolation`, `sandbox` or page `require` changed so its pages may do more, and a new window (or one renamed: matched windows are matched by file and name) whose own settings already let its pages do more (`nodeIntegrationInEffect` on, `contextIsolationInEffect` off, `sandboxInEffect` off, `pageRequire` yes, or their defaults), with its file and line. When a removed window had the same permissive setting, the new one may be that window renamed, and the finding is unknown; so is a change whose direction cannot be told, a window row on a side that was not read, and a new window whose settings are not known.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `new-bridge-exposure`    | A privileged object a preload newly hands to pages as it is, through `contextBridge.exposeInMainWorld` and not wrapped: `ipcRenderer` or one of its methods, `shell`, the `electron` module, a Node module such as `fs` or `child_process`, `process`, `require` (read from `bridgeExposures`; the same exposure in another preload file of the before build is not new). An exposure hexvero kept but could not decide (`undecided`) is an unknown finding. Added in 0.9.7: a policy that does not list it runs it at `warn`, so an upgrade does not turn a passing check red; every other rule that is not listed runs at `fail`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+Rules:
+
+- **`new-interface-member`**: A member pages can call (`window.api.member`, from
+  `contextBridge.exposeInMainWorld`) that the before build did not expose anywhere (a member that
+  only moved to another preload file is not new). Read from `interfaces`, or `contextBridge` where
+  there is no `interfaces` list.
+- **`new-external-host`**: A host named by a new `endpoints` or `urls` row that is not in `allow`
+  and that the before build did not already name (in any file, with any path: a renamed chunk or a
+  new path on a known host is not a new host). The value is read as a WHATWG URL parser reads it:
+  leading and trailing control characters and spaces and every tab and line break are dropped, any
+  number of slashes may follow the scheme. `allow` takes exact host names and `*.domain` (every
+  subdomain of `domain`, not `domain` itself); no scheme, port or path. Relative paths, `file:`,
+  `data:`, app schemes and loopback are not external. A host built at run time
+  (`https://${region}.api.example.com`) is unknown, never a pass. A value hexvero could not resolve
+  leaves the rule undecidable (`values_unresolved`) unless it cannot hide a host: when every target
+  of both builds has a literal host that a `/`, `?` or `#` closes before the computed part
+  (`https://api.example.com/users/${id}`) or a literal scheme that reaches no host
+  (`file://${path}`), the rule is decided, and a host next to such values is new or not, never "may
+  be new". A value not read at all, a relative one (`/${p}` may become `//elsewhere.example`) or one
+  computed before its host ends keeps it open.
+- **`window-more-permissive`**: A window present in both builds whose derived `nodeIntegration`,
+  `contextIsolation`, `sandbox` or page `require` changed so its pages may do more, and a new window
+  (or one renamed: matched windows are matched by file and name) whose own settings already let its
+  pages do more (`nodeIntegrationInEffect` on, `contextIsolationInEffect` off, `sandboxInEffect`
+  off, `pageRequire` yes, or their defaults), with its file and line. When a removed window had the
+  same permissive setting, the new one may be that window renamed, and the finding is unknown; so is
+  a change whose direction cannot be told, a window row on a side that was not read, and a new
+  window whose settings are not known.
+- **`new-bridge-exposure`**: A privileged object a preload newly hands to pages as it is, through
+  `contextBridge.exposeInMainWorld` and not wrapped: `ipcRenderer` or one of its methods, `shell`,
+  the `electron` module, a Node module such as `fs` or `child_process`, `process`, `require` (read
+  from `bridgeExposures`; the same exposure in another preload file of the before build is not new).
+  An exposure hexvero kept but could not decide (`undecided`) is an unknown finding. Added in 0.9.7:
+  a policy that does not list it runs it at `warn`, so an upgrade does not turn a passing check red;
+  every other rule that is not listed runs at `fail`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
 app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a
 binary, an archive compared with a bundle) is refused with exit `1`; there is nothing to check
-there, and a check that found nothing must not read as a pass. The same holds for an app with no JavaScript to read: an empty directory, one without JavaScript, or one whose JavaScript files are only symbolic links out of it (they are not followed) is refused with exit `1`; when the directory holds an `.asar` at the top or in `resources/`, the message names it to check instead. An app without `package.json` at the top (an electron-vite `out/` directory, a `linux-unpacked/` build) is checked, with the warning `no package.json at the top: entry and Electron version unknown` in `warnings` (it names `resources/app/package.json` when that exists). With `--baseline` (or `--update-baseline`), an app directory is identified by a content digest in `a.sha256` / `b.sha256` (without one it stays empty, because the digest reads every file; SHA-256 over the files the analysis lists, paths in Unicode NFC, with the same limits on depth and file count, each by path and the SHA-256 of its bytes, plus the names of links that lead out of it), so a baseline written for other builds warns as it does for archives. Past 512 MB in all or 64 MB for one file, files count by path and size only; that, and more than 199 links out of the directory (only 200 are named), makes the digest partial, which the baseline warnings say. Two bundles have no windows or
+there, and a check that found nothing must not read as a pass. The same holds for an app with no
+JavaScript to read: an empty directory, one without JavaScript, or one whose JavaScript files are
+only symbolic links out of it (they are not followed) is refused with exit `1`; when the directory
+holds an `.asar` at the top or in `resources/`, the message names it to check instead. An app
+without `package.json` at the top (an electron-vite `out/` directory, a `linux-unpacked/` build)
+is checked, with the warning `no package.json at the top: entry and Electron version unknown` in
+`warnings` (it names `resources/app/package.json` when that exists). With `--baseline` (or
+`--update-baseline`), an app directory is identified by a content digest in `a.sha256` /
+`b.sha256` (without one it stays empty, because the digest reads every file; SHA-256 over the
+files the analysis lists, paths in Unicode NFC, with the same limits on depth and file count, each
+by path and the SHA-256 of its bytes, plus the names of links that lead out of it), so a baseline
+written for other builds warns as it does for archives. Past 512 MB in all or 64 MB for one file,
+files count by path and size only; that, and more than 199 links out of the directory (only 200
+are named), makes the digest partial, which the baseline warnings say. Two bundles have no windows
+or
 bridge lists, so those rules are undecidable for them (gap `collection_missing`).
 
-`level` is `fail`, `warn` or `off`; a rule the policy does not list runs at `fail`. A misspelt
-rule or key is an error, not a rule that never runs. `level` says what the policy makes of a
+`level` is `fail`, `warn` or `off`. A rule the policy does not list runs at `fail`, except
+`new-bridge-exposure` (added in 0.9.7), which runs at `warn` until the policy lists it;
+`hexvero init` and `examples/policy.json` list all four at `fail`. A misspelt rule or key is an error, not a rule that never runs. `level` says what the policy makes of a
 finding; how the fact was read (`literal`, `inferred`, `link direct`) is reported separately as
 `basis`.
 
@@ -114,7 +382,12 @@ the baseline, so a deadline set in the policy cannot be bypassed by an older bas
 is: active suppression (`suppressed`), expired suppression (`suppression-expired`, counts), in
 the baseline (`baselined`), otherwise `new`.
 
-**Names of the builds.** The text output of `check` names the builds by file name (`before notesdesk-1.4.0.asar · after notesdesk-1.5.0.asar`). When both have the same name (two `app.asar`, two `.app` bundles), it adds the app's `package.json` name and version (`before app.asar (notes 1.0.0) · after app.asar (notes 2.0.0)`), or, when those read the same, as many parent directories as tell them apart (`before build-old/out/app.asar`); `compare` without a collection prints the same names under its first line (`a … · b …`).
+**Names of the builds.** The text output of `check` names the builds by file name
+(`before notesdesk-1.4.0.asar · after notesdesk-1.5.0.asar`). When both have the same name (two
+`app.asar`, two `.app` bundles), it adds the app's `package.json` name and version
+(`before app.asar (notes 1.0.0) · after app.asar (notes 2.0.0)`), or, when those read the same, as
+many parent directories as tell them apart (`before build-old/out/app.asar`); `compare` without a
+collection prints the same names under its first line (`a … · b …`).
 
 **Output.** Text, `--format json` (the `PolicyResult`), `--format markdown` (for a pull request
 comment or job summary) and `--format sarif` (SARIF 2.1.0) all come from the same result.

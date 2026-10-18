@@ -6,6 +6,15 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Docs
+
+- README rewritten for a first-time user: what hexvero is in one sentence, what it catches with an example each, `npx hexvero demo`, where the app lives on macOS, Windows and Linux (a `.app`, an install directory and a release ZIP work directly), `hexvero init` then `hexvero check`, and a short CI job pinned to a version. From 6,064 to about 1,660 words.
+- The long README sections moved into their own pages, every fact kept: [docs/walkthrough.md](docs/walkthrough.md) (the demo, compare, check and analyze runs, rerun with 0.9.9; the web UI; how it works), [docs/accuracy.md](docs/accuracy.md) (blind results, real-app results, the full list of limits), [docs/formats.md](docs/formats.md) (the formats table, a native example rerun with 0.9.9, optional engines), [docs/comparison.md](docs/comparison.md) (REA, and a new section comparing with Electronegativity), [docs/mcp.md](docs/mcp.md) (setup, clients, what an agent receives) and [docs/cli.md](docs/cli.md) (the command overview).
+- docs/cli.md: one section per command instead of a table whose cells ran past 1,500 characters (the `export` row also broke the table with an unescaped `|`); the policy rules as a list. A rule a policy does not list runs at `fail`, except `new-bridge-exposure`, which runs at `warn`: the sentence that said every unlisted rule runs at `fail` now says so. Suggested commands are shown as `npx hexvero …` under npx.
+- docs/mcp.md: the JSON configuration example pins `hexvero@0.9.9`, as the text recommends; `npm run release` bumps it with the other pins.
+- One description everywhere: "Electron release diff for security review" in the README, the website, `hexvero --help`, the npm packages (with the keywords `diff`, `electron-security`, `ipc`, `audit`, `asar`, `release-diff`), `server.json`, the Claude plugin and `llms.txt` (which now says 16 MCP tools). The website says once that "target" means the build you give hexvero and that it only reads files.
+- docs/launch/claims.md is marked historical: its rows were verified for 0.9.0 to 0.9.6.
+
 ## [0.9.9] - 2026-10-18
 
 ### Security

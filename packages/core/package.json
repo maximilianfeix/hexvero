@@ -1,9 +1,13 @@
 {
   "name": "@hexvero/core",
   "version": "0.9.9",
-  "description": "Zero-dependency static analyzers for binaries, apps and web bundles.",
+  "description": "Zero-dependency static parsers behind hexvero, the Electron release diff: app.asar, JavaScript bundles, IPC and contextBridge, plus ELF, PE, Mach-O, APK and more. Never runs what it reads.",
   "keywords": [
+    "asar",
+    "diff",
+    "electron",
     "hexvero",
+    "ipc",
     "reverse-engineering",
     "static-analysis"
   ],

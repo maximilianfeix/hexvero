@@ -1,8 +1,10 @@
 {
   "name": "@hexvero/server",
   "version": "0.9.9",
-  "description": "Loopback HTTP API and static host for the hexvero web UI.",
+  "description": "Loopback HTTP API and static host for the hexvero web UI (Electron release diff for security review).",
   "keywords": [
+    "diff",
+    "electron",
     "hexvero",
     "reverse-engineering",
     "static-analysis"

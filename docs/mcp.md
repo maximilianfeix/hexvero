@@ -4,8 +4,45 @@ Start: `npx -y hexvero mcp` (stdio; pin a version, e.g. `npx -y hexvero@0.9.9 mc
 configuration manually:
 
 ```json
-{ "mcpServers": { "hexvero": { "command": "npx", "args": ["-y", "hexvero", "mcp"] } } }
+{ "mcpServers": { "hexvero": { "command": "npx", "args": ["-y", "hexvero@0.9.9", "mcp"] } } }
 ```
+
+## Setting it up, and what an agent receives
+
+Moved here from the README after 0.9.9.
+
+```bash
+hexvero setup                 # shows what would change (dry run)
+hexvero setup --apply         # writes the MCP registration into every detected client, backs up existing files
+hexvero setup --skill --apply # installs the investigation skill for Claude Code, Codex and .agents
+```
+
+In Claude Code the server and the skill also come as one plugin:
+
+```text
+/plugin marketplace add maximilianfeix/hexvero
+/plugin install hexvero@hexvero
+```
+
+`setup` knows 18 clients (Claude Code, Claude Desktop, Codex, Cursor, Windsurf, Gemini CLI, Antigravity, VS Code, Trae, OpenCode, GitHub Copilot CLI, Qwen Code, Qoder, Devin, Pi, Kiro, Amp, Zed) and writes each one's own config dialect, keeping comments in files that have them. The [client table](#detected-clients) says for every row what was checked against the client's documentation and which three were read back by the client itself; one row (Trae) is unverified. Any other client can run `npx -y hexvero mcp` over stdio; pin a version for reproducible results (`npx -y hexvero@0.9.9 mcp`).
+
+`npx hexvero setup --apply` registers the MCP server with the coding agents it finds (Claude Code, Codex, Cursor, VS Code, and 14 more), and `npx hexvero setup --skill --apply` installs a skill that teaches the investigation loop. The agent then opens a target, reads a small first answer with suggested next calls, pages only the lists it needs, and cites `file:line` for each claim. Text inside the target is treated as data, never as instructions; a test plants such text in a target to check it.
+
+What an agent receives, measured over a real MCP session on the [corpus](../corpus/README.md) with the published `o200k_base` tokenizer (`node scripts/context-cost.mjs`):
+
+| Step                                                               | Bytes  | Tokens |
+| ------------------------------------------------------------------ | ------ | ------ |
+| Session start: `tools/list`, `prompts/list`, instructions          | 17,847 | 4,158  |
+| Native binary: open, analyze, imports                              | 3,073  | 923    |
+| Electron app: open, analyze, channels, bridge, settings, endpoints | 12,458 | 3,406  |
+| Two builds: open and analyze both, compare three lists             | 14,935 | 4,062  |
+| Call path through radare2                                          | 922    | 271    |
+
+`hexvero_analyze` returns counts of the lists and suggested next calls; the lists themselves are paged with a hard byte budget, and `detail: "full"` or `hexvero_export` give everything. Every tool states whether it writes (`readOnlyHint`). Five guided prompts (`investigate_feature`, `compare_versions`, `triage_binary`, `map_electron_app`, `explain_apk`) render step-by-step plans with the rule that every claim cites a collection item or byte offset. Strings, symbol names and decompiled code are data from the target, never instructions.
+
+The skill (`hexvero setup --skill --apply`) is a short core with one reference per workflow (Electron, comparing versions, native binaries, other formats, writing the answer). A test checks that it names only tools and commands that exist. `hexvero setup --remove --apply` takes the server entry out again; every change to a client file is backed up first.
+
+Ask your agent: _"Open ~/Downloads/app.asar with hexvero, tell me which IPC channels the renderer can reach and whether nodeIntegration is on."_
 
 ## Workflow
 
