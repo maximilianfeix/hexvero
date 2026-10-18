@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
-import type { Limitation } from "../src/model.js";
+import { NOTHING_MISSING, type Limitation } from "../src/model.js";
 import {
   FILE_SCOPED_LIMITATIONS,
   Session,
@@ -21,7 +21,12 @@ import { buildAsar } from "./fixtures/asar.js";
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 
-/** Every literal limitation code in the sources: `code: "x"` (or a ternary of them) before `message:`. */
+/**
+ * Every literal limitation code in the sources: `code: "x"` (or a ternary of them) before
+ * `message:`. Its limits: a code built from a template or held in a variable (`code,`, `code:
+ * l.code`, the per-code counts of `limitationsUnlisted`, which repeat codes found here) is not
+ * found, nor one whose object puts `message` first; such a code must be added here by hand.
+ */
 function emittedCodes(): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const walk = (dir: string): void => {
@@ -202,6 +207,19 @@ const OTHER_PRELOAD = `const { contextBridge, ipcRenderer } = require("electron"
 contextBridge.exposeInMainWorld("api", { call: (channel, ...a) => ipcRenderer.send(channel, ...a) });
 `;
 
+/** An ES module app whose preload exposes `{ sub: api, k }` with `api` from `specifier`. */
+const moduleApp = (specifier: string): Uint8Array =>
+  buildAsar({
+    "package.json": JSON.stringify({ name: "u", main: "main.js", type: "module" }),
+    "main.js": `import { ipcMain } from "electron";\nipcMain.handle("x", () => 1);\n`,
+    "preload.js": `import { contextBridge } from "electron";
+import { api } from "${specifier}";
+const k = () => 1;
+contextBridge.exposeInMainWorld("x", { sub: api, k });
+`,
+    "api.js": `export const api = { a: () => 1, call: () => 2 };\n`,
+  });
+
 /** An app whose v2 makes the page's forwarder ambiguous and drops a main-process handler. */
 const ambiguousApp = (v2: boolean): Uint8Array =>
   buildAsar({
@@ -247,12 +265,21 @@ describe("limitation codes and the unresolved map", () => {
         },
       ]),
     ).toEqual(new Map([["ipc", new Set(["a.js", "b.js", "*"])]]));
-    // a file-scoped code that names no file applies nowhere
+    // a file-scoped code that names no file applies anywhere, as any other code does
+    for (const code of FILE_SCOPED_LIMITATIONS)
+      expect(unresolvedOf([{ code, message: "Some values were not read." }]), code).toEqual(
+        new Map([[UNRESOLVED_LIMITATIONS[code]!, new Set(["*"])]]),
+      );
+    // ... and nowhere only when its emitter wrote that nothing is missing
+    for (const code of FILE_SCOPED_LIMITATIONS)
+      expect(
+        unresolvedOf([{ code, message: `Some values were not read. ${NOTHING_MISSING}` }]),
+        code,
+      ).toEqual(new Map());
+    // the sentinel means nothing for a code that is not file-scoped
     expect(
-      unresolvedOf([
-        { code: "bridge_forwarder_ambiguous", message: "No page script read names their apis." },
-      ]),
-    ).toEqual(new Map());
+      unresolvedOf([{ code: "ipc_wrappers_capped", message: `x. ${NOTHING_MISSING}` }]),
+    ).toEqual(new Map([["ipc", new Set(["*"])]]));
   });
 
   it("scopes bridge_forwarder_ambiguous to the page scripts that name the api", () => {
@@ -274,6 +301,7 @@ describe("limitation codes and the unresolved map", () => {
     });
     const [none] = of(unnamed, "bridge_forwarder_ambiguous");
     expect(none?.message).toContain("No page script read names its api.");
+    expect(none?.message.endsWith(NOTHING_MISSING)).toBe(true);
     expect(unresolvedOf([none!])).toEqual(new Map());
   });
 
@@ -287,6 +315,16 @@ describe("limitation codes and the unresolved map", () => {
     const [l] = of(info, "bridge_calls_unread");
     expect(l?.message).toContain("(a with statement");
     expect(unresolvedOf([l!])).toEqual(new Map([["ipc", new Set(["renderer.js"])]]));
+    // a worker that was not located only: its calls are read as a page's, nothing is missing
+    const worker = analyze({
+      "main.js": MAIN,
+      "preload.js": ONE_PRELOAD,
+      "renderer.js": `new Worker("gone.js");\nwindow.api.call("x");\n`,
+    });
+    const [w] = of(worker, "bridge_calls_unread");
+    expect(w?.message).toContain("gone.js (a worker script named in renderer.js");
+    expect(w?.message.endsWith(NOTHING_MISSING)).toBe(true);
+    expect(unresolvedOf([w!])).toEqual(new Map());
   });
 
   it("scopes context_bridge_module_unread to the exposing entry and the module", () => {
@@ -308,6 +346,42 @@ contextBridge.exposeInMainWorld("api", api);
     const [l] = of(info, "context_bridge_module_unread");
     expect(l?.message).toContain("at preload.js:3, at api.js:1.");
     expect(unresolvedOf([l!])).toEqual(new Map([["bridge", new Set(["preload.js", "api.js"])]]));
+  });
+
+  it("applies context_bridge_module_unread anywhere when the module was not located or is too deep", async () => {
+    // RZ's probe: v2 imports a module that is not there, while api.js still is
+    writeFileSync(join(dir, "m1.asar"), moduleApp("./api.js"));
+    writeFileSync(join(dir, "m2.asar"), moduleApp("./missing.js"));
+    const session = new Session();
+    const m1 = (await session.open(join(dir, "m1.asar"))).id;
+    const m2 = (await session.open(join(dir, "m2.asar"))).id;
+    expect((await session.coverage(m2))?.unresolved.get("bridge")).toEqual(new Set(["*"]));
+    const bridge = (await session.compareCollection(m1, m2, "contextBridge")).diff;
+    expect(bridge.removed).toEqual([]);
+    expect(bridge.unknown.map((u) => u.key).toSorted()).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("sub.a"),
+        expect.stringContaining("sub.call"),
+      ]),
+    );
+    // more modules deep than are read
+    const deep = analyzeJavaScriptTree(
+      asarTree(
+        buildAsar({
+          "package.json": JSON.stringify({ name: "u", main: "main.js", type: "module" }),
+          "main.js": `import { ipcMain } from "electron";\nipcMain.handle("x", () => 1);\n`,
+          "preload.js": `import { contextBridge } from "electron";\nimport { a } from "./a.js";\ncontextBridge.exposeInMainWorld("api", { a });\n`,
+          "a.js": `import { b } from "./b.js";\nexport const a = { b };\n`,
+          "b.js": `import { c } from "./c.js";\nexport const b = { c };\n`,
+          "c.js": `import { d } from "./d.js";\nexport const c = { d };\n`,
+          "d.js": `export const d = { e: () => 1 };\n`,
+        }),
+        "app.asar",
+      ),
+    );
+    const [l] = of(deep, "context_bridge_module_unread");
+    expect(l?.message).toContain("modules deep");
+    expect(unresolvedOf([l!])).toEqual(new Map([["bridge", new Set(["*"])]]));
   });
 
   it("scopes bridge_calls_capped to the page scripts not read", () => {

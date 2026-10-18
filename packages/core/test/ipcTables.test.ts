@@ -1425,6 +1425,65 @@ describe("#225: a loop variable is not bound where a nearer declaration hides it
         const ipc = info.modules.flatMap((m) => m.ipc);
         expect(ipc.map((u) => u.channel === null)).toEqual([c.want[how].length === 0]);
       });
+  // a `var` head: another `var` of the name in the same function is the same binding
+  const L = `const L = ["l:a", "l:b"];\n`;
+  const both = `for (var o of Object.keys(T)) { ipcMain.on(o, h); } for (var o of L) { ipcMain.handle(o, h); }`;
+  const varCases: Array<[string, string, string[]]> = [
+    [
+      "two var loops of one name in a function",
+      `${L}function reg() { ${both} }\nreg();\n`,
+      [
+        "A ipcMain.on main.js",
+        "B ipcMain.on main.js",
+        "l:a ipcMain.handle main.js",
+        "l:b ipcMain.handle main.js",
+      ],
+    ],
+    [
+      "two var loops of one name at the top of the file",
+      `${L}${both}\n`,
+      [
+        "A ipcMain.on main.js",
+        "B ipcMain.on main.js",
+        "l:a ipcMain.handle main.js",
+        "l:b ipcMain.handle main.js",
+      ],
+    ],
+    [
+      "a var loop and a var of the name after it",
+      `${L}for (var o of L) { ipcMain.handle(o, h); } var o = 1;\n`,
+      ["l:a ipcMain.handle main.js", "l:b ipcMain.handle main.js"],
+    ],
+  ];
+  for (const [name, body, want] of varCases)
+    for (const how of BUILDS)
+      it(`${name} (${how})`, () => {
+        expect(rows(analyze(build({ "main.js": head + body }, ["main.js"], how)))).toEqual(want);
+      });
+  it("does not bind a var loop's variable where a block's const hides it", () => {
+    for (const how of BUILDS) {
+      const got = rows(
+        analyze(
+          build(
+            {
+              "main.js": `${head}${L}for (var o of L) { { const o = "l:x"; ipcMain.on(o, h); } ipcMain.handle(o, h); }\n`,
+            },
+            ["main.js"],
+            how,
+          ),
+        ),
+      );
+      // the inner constant is read where the minifier renames it; never the loop's values
+      expect(
+        got.filter((r) => r.includes("ipcMain.handle")),
+        how,
+      ).toEqual(["l:a ipcMain.handle main.js", "l:b ipcMain.handle main.js"]);
+      expect(
+        got.filter((r) => r.includes("ipcMain.on")),
+        how,
+      ).toEqual(how === "minified" ? ["l:x ipcMain.on main.js"] : []);
+    }
+  });
   it("binds the loop variable where only an inner block declares the name", () => {
     for (const how of BUILDS)
       expect(

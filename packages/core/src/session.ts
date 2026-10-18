@@ -32,7 +32,7 @@ import { pageOf, type CollectionPage, type CollectionQuery } from "./paging.js";
 export type { CollectionPage, CollectionQuery } from "./paging.js";
 import { disassembleEvm, evmBytesFrom } from "./formats/evm.js";
 import { classifyString, extractStrings } from "./binary/strings.js";
-import { AnalysisError, type Limitation, type TargetInfo } from "./model.js";
+import { AnalysisError, NOTHING_MISSING, type Limitation, type TargetInfo } from "./model.js";
 import { interfaceMap } from "./javascript/interfaces.js";
 import { loadTarget, type LoadedTarget } from "./target.js";
 import { CORE_VERSION } from "./version.js";
@@ -1112,8 +1112,10 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
 
 /**
  * Codes of UNRESOLVED_LIMITATIONS whose messages name every place they apply to (` at file:line`,
- * `file:1` for a whole file): with none named they apply nowhere, not anywhere (`*`). A message
- * that names only some (`… and N more`) still applies anywhere.
+ * `file:1` for a whole file). With none named they apply anywhere (`*`), as other codes do,
+ * unless the message ends with NOTHING_MISSING, which the emitter writes only when it has
+ * established that nothing is missing: then they apply nowhere. A message that names only some
+ * (`… and N more`) applies anywhere.
  */
 export const FILE_SCOPED_LIMITATIONS: ReadonlySet<string> = new Set([
   "context_bridge_module_unread",
@@ -1135,7 +1137,7 @@ export class Unresolved {
   /**
    * Families a limitation names. Its message lists the first places as `at file:line`; when it
    * lists only some (`… and N more`) or none, the rest may be anywhere: `*` (none is nowhere for
-   * FILE_SCOPED_LIMITATIONS).
+   * FILE_SCOPED_LIMITATIONS that end with NOTHING_MISSING).
    */
   fromLimitations(limitations: readonly Limitation[]): void {
     for (const l of limitations) {
@@ -1145,7 +1147,8 @@ export class Unresolved {
       const files = [...l.message.matchAll(/ at (.+?):\d+(?=, | …|\.$|$)/g)].map((m) => m[1]!);
       for (const f of files) this.add(family, f);
       if (
-        (files.length === 0 && !FILE_SCOPED_LIMITATIONS.has(l.code)) ||
+        (files.length === 0 &&
+          !(FILE_SCOPED_LIMITATIONS.has(l.code) && l.message.endsWith(NOTHING_MISSING))) ||
         / … and \d+ more/.test(l.message)
       )
         this.add(family, "*");

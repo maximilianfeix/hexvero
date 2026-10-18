@@ -4,7 +4,7 @@ import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { readRegularFile } from "../binary/file.js";
 import { openAsar, openAsarFile, readUnpacked, type AsarArchive } from "../formats/asar.js";
 import type { Finding, Limitation } from "../model.js";
-import { AnalysisError } from "../model.js";
+import { AnalysisError, NOTHING_MISSING } from "../model.js";
 import { Constants, resolveAliases } from "./aliases.js";
 import {
   ASSIGNMENT_OPERATORS,
@@ -3903,6 +3903,11 @@ function linkBridgeValues(input: {
    * located, the module that defines the value (`file:1`).
    */
   unreadAt: string[];
+  /**
+   * An entry of `unread` whose module was not located or lies deeper than is read: its members
+   * may be in any file, so `unreadAt` is not where they all are.
+   */
+  unreadAnywhere: boolean;
   exposures: BridgeExposure[];
   forwarders: BridgeForwarder[];
   capped: boolean;
@@ -3910,11 +3915,12 @@ function linkBridgeValues(input: {
   const { contextBridge } = input;
   const unread: string[] = [];
   const unreadAt: string[] = [];
+  let unreadAnywhere = false;
   const exposures: BridgeExposure[] = [];
   const forwarders: BridgeForwarder[] = [];
   let capped = false;
   if (!contextBridge.some((b) => b.valueRef))
-    return { unread, unreadAt, exposures, forwarders, capped };
+    return { unread, unreadAt, unreadAnywhere, exposures, forwarders, capped };
   const sources = new Map<
     string,
     { tokens: Token[]; truncated: boolean; context: ScanContext } | null
@@ -4012,12 +4018,14 @@ function linkBridgeValues(input: {
       };
       if (round === MAX_BRIDGE_DEPTH) {
         unread.push(`${named}: more than ${MAX_BRIDGE_DEPTH} modules deep`);
-        at();
+        // the module the members are in is further down, so they may be in any file
+        unreadAnywhere = true;
         continue;
       }
       if (!target) {
         unread.push(`${named}: not among the files read`);
-        at();
+        // the other build may locate it in a file of its own, so they may be in any file
+        unreadAnywhere = true;
         continue;
       }
       if (changedByImporters(target, ref.property, b.file)) {
@@ -4053,7 +4061,7 @@ function linkBridgeValues(input: {
     contextBridge.length = 0;
     contextBridge.push(...next.slice(0, MAX_BRIDGE));
   }
-  return { unread, unreadAt, exposures, forwarders, capped };
+  return { unread, unreadAt, unreadAnywhere, exposures, forwarders, capped };
 }
 
 /** Page scripts read for calls of generic bridge forwarders, per analysis. */
@@ -7309,7 +7317,7 @@ export function analyzeJavaScriptTree(
               bridgeCalls.ambiguousFiles.map((f) => `${f}:1`),
               10,
             )}.`
-          : `No page script read names ${bridgeCalls.ambiguous.length === 1 ? "its api" : "their apis"}.`
+          : `No page script read names ${bridgeCalls.ambiguous.length === 1 ? "its api" : "their apis"}. ${NOTHING_MISSING}`
       }`,
     });
   if (bridgeCalls.unread.length)
@@ -7321,7 +7329,7 @@ export function analyzeJavaScriptTree(
               bridgeCalls.unreadFiles.map((f) => `${f}:1`),
               10,
             )}.`
-          : ""
+          : ` Their calls are read as a page's. ${NOTHING_MISSING}`
       }`,
     });
   if (bridgeCalls.writes.length)
@@ -7340,7 +7348,7 @@ export function analyzeJavaScriptTree(
   if (bridgeLinks.unread.length)
     limitations.push({
       code: "context_bridge_module_unread",
-      message: `${bridgeLinks.unread.length} contextBridge ${bridgeLinks.unread.length === 1 ? "value comes" : "values come"} from another module whose export could not be read, so ${bridgeLinks.unread.length === 1 ? "its" : "their"} members are not listed: ${some(bridgeLinks.unread, 5)}. The members not listed are ${atPlaces(bridgeLinks.unreadAt, 10)}.`,
+      message: `${bridgeLinks.unread.length} contextBridge ${bridgeLinks.unread.length === 1 ? "value comes" : "values come"} from another module whose export could not be read, so ${bridgeLinks.unread.length === 1 ? "its" : "their"} members are not listed: ${some(bridgeLinks.unread, 5)}. ${bridgeLinks.unreadAnywhere ? "The module of one of them was not located or lies deeper than is read, so the members not listed may be in any file." : `The members not listed are ${atPlaces(bridgeLinks.unreadAt, 10)}.`}`,
     });
   if (bridgeCapped)
     limitations.push({

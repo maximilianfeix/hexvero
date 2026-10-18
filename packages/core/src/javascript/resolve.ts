@@ -5365,7 +5365,7 @@ export class ExpressionResolver {
    * The name at k means the variable the `for (const|let|var PATTERN of …)` head at `decl` (the
    * token after the keyword) declares: no parameter list or `catch` binds it there, no function
    * between them has a parameter of the name, and the innermost declaration visible at k is that
-   * head's.
+   * head's (for a `var` head: any `var` of the name in the same function).
    */
   private loopVariableAt(k: number, name: string, decl: number): boolean {
     if (this.catchBinds(k, name) || this.parameterListBinds(k, name)) return false;
@@ -5375,9 +5375,23 @@ export class ExpressionResolver {
       if (this.paramIndex(d, name) !== -1) return false;
       d = this.enclosing(d.paramsAt - 1);
     }
+    const sites = this.bindingSites(name);
+    if (this.is(decl - 1, "ident", "var")) {
+      // Every `var` of the name in the same function is the head's own binding (`for (var o of
+      // A) …; for (var o of B) …`, `var o = 1` after the loop). Only a declaration of another
+      // kind inside that function (a block's let/const/class/function) hides it; one further out
+      // is hidden by the head.
+      const from = home ? home.body[0] : 0;
+      return !sites.some(
+        (b) =>
+          b.from <= k &&
+          k <= b.to &&
+          b.from >= from &&
+          !(this.is(b.word, "ident", "var") && this.enclosing(b.word) === home),
+      );
+    }
     let best: { name: number; word: number; from: number; to: number } | null = null;
-    for (const b of this.bindingSites(name))
-      if (b.from <= k && k <= b.to && (!best || b.from >= best.from)) best = b;
+    for (const b of sites) if (b.from <= k && k <= b.to && (!best || b.from >= best.from)) best = b;
     return best !== null && (best.name === decl || best.word === decl - 1);
   }
 
