@@ -3991,28 +3991,52 @@ function htmlScripts(
   tree: FileTree,
   known: Set<string>,
   maxFileBytes: number,
-): Map<string, string[]> {
-  const out = new Map<string, string[]>();
+): { pages: Map<string, string[]>; skipped: string[] } {
+  const pages = new Map<string, string[]>();
+  const skipped: string[] = [];
   for (const f of tree.files) {
-    if (!/\.html?$/i.test(f.path) || out.size >= 500) continue;
+    if (!/\.html?$/i.test(f.path) || pages.size >= MAX_HTML_FILES) continue;
     let text: string;
     try {
-      text = new TextDecoder().decode(tree.read(f.path, maxFileBytes));
+      text = new TextDecoder().decode(tree.read(f.path, Math.min(maxFileBytes, MAX_HTML_BYTES)));
     } catch {
+      skipped.push(`${f.path} (not read: larger than ${MAX_HTML_BYTES} bytes, or unreadable)`);
       continue;
     }
+    const lower = text.toLowerCase();
     const dir = posix.dirname(f.path);
     const scripts: string[] = [];
-    for (const m of text.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"'#?]+)/gi)) {
-      const src = m[1]!;
-      if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) continue;
-      const path = posix.normalize(src.startsWith("/") ? src.slice(1) : posix.join(dir, src));
+    let cut = false;
+    // `<script …>` tags found by position, each read within its own bounded slice: no pattern
+    // runs over the page, so a page of unclosed tags stays linear
+    for (let at = lower.indexOf("<script"); at !== -1; at = lower.indexOf("<script", at + 7)) {
+      const end = lower.indexOf(">", at);
+      if (end === -1) break;
+      if (end - at > MAX_SCRIPT_TAG) {
+        cut = true;
+        at = end;
+        continue;
+      }
+      const tag = text.slice(at, end);
+      const src = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(tag);
+      at = end;
+      const value = src?.[1] ?? src?.[2] ?? src?.[3];
+      if (!value) continue;
+      const clean = value.split(/[?#]/)[0]!;
+      if (!clean || /^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith("//")) continue;
+      const path = posix.normalize(clean.startsWith("/") ? clean.slice(1) : posix.join(dir, clean));
       if (known.has(path)) scripts.push(path);
     }
-    out.set(f.path, scripts);
+    if (cut) skipped.push(`${f.path} (a <script> tag longer than ${MAX_SCRIPT_TAG} bytes)`);
+    pages.set(f.path, scripts);
   }
-  return out;
+  return { pages, skipped };
 }
+/** HTML files read for the scripts they load, and the bytes read of each. */
+const MAX_HTML_FILES = 500;
+const MAX_HTML_BYTES = 1 << 20;
+/** A `<script …>` tag longer than this is not read for its `src`. */
+const MAX_SCRIPT_TAG = 4096;
 
 /** Page scripts read for calls of generic bridge forwarders, per analysis. */
 const MAX_BRIDGE_CALL_FILES = 200;
@@ -7191,6 +7215,10 @@ export function analyzeJavaScriptTree(
     ...bridgeLinks.exposures.slice(0, Math.max(0, MAX_BRIDGE - linkedExposures.length)),
   );
   // The page scripts' calls of generic forwarders (R1): rows in the calling files.
+  const html =
+    (facts.bridgeForwarders ?? []).length > 0
+      ? htmlScripts(tree, known, maxFileBytes)
+      : { pages: new Map<string, string[]>(), skipped: [] };
   const bridgeCalls = bridgeCallRows({
     forwarders: facts.bridgeForwarders ?? [],
     contextBridge,
@@ -7204,8 +7232,13 @@ export function analyzeJavaScriptTree(
     },
     open: openModule,
     resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
-    htmlPages: htmlScripts(tree, known, maxFileBytes),
+    htmlPages: html.pages,
   });
+  if (html.skipped.length)
+    limitations.push({
+      code: "html_scripts_unread",
+      message: `${html.skipped.length} HTML file(s) were not read whole for the scripts they load, so which page a script belongs to may be missing: ${list(html.skipped, 5)}.`,
+    });
   for (const [file, made] of bridgeCalls.rows) {
     const m = moduleById.get(file);
     if (!m) continue;

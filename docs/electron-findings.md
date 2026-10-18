@@ -310,7 +310,9 @@ the global another value (`window.api = …`, `window["api"] = …`, `Object.ass
 })`, `Object.defineProperty(window, "api", …)`, and in a classic script, one that is no CommonJS
 or ES module, a top-level `var api` or an assignment to an unbound `api`) replaces the bridge for
 that file and for the scripts of every HTML page of the app that loads it (`<script src>` read
-from the HTML files): their calls of that api are not read. A write in a script no HTML file
+from the HTML files: each `<script …>` tag found by position and read within itself, up to
+4,096 bytes per tag and HTML files up to 1 MiB, 500 of them; one past those is named in
+`html_scripts_unread`): their calls of that api are not read. A write in a script no HTML file
 read loads leaves the rows and is named in `bridge_global_written`. A write of a local or a
 parameter of that name is none. Not read, and named in `bridge_calls_unread` with the reason: a
 file that takes ipcMain from electron (by its tokens: `require("electron").ipcMain`, `{ ipcMain

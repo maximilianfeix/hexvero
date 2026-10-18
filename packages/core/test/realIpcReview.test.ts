@@ -222,6 +222,21 @@ describe("R1: page scripts and preloads that may give the api something else", (
       expect(info.limitations.map((l) => l.code)).toContain("bridge_forwarder_ambiguous");
     }
   });
+  it("reads hostile HTML in linear time", () => {
+    for (const html of ["<script ".repeat(131_072), `<script ${'src="x" '.repeat(120_000)}`]) {
+      const started = performance.now();
+      const info = analyze({ ...base, "index.html": html });
+      expect(performance.now() - started, html.slice(0, 20)).toBeLessThan(1_000);
+      expect(pageRows(info)).toEqual(["a:one -", "z:bad -"]);
+    }
+    // a tag past the bound is named
+    const long = analyze({
+      ...base,
+      "index.html": `<script ${"a".repeat(5000)} src="renderer.js">`,
+    });
+    expect(long.limitations.map((l) => l.code)).toContain("html_scripts_unread");
+  });
+
   it("stays bounded on a page with many aliases of the bridge", () => {
     // one name declared 24,000 times: every use was read against every declaration (29 s)
     const page = Array.from(
