@@ -1503,6 +1503,108 @@ describe("#225: a loop variable is not bound where a nearer declaration hides it
   });
 });
 
+/** A helper whose first parameter is `o`, called with t:p: as a function, and as a method. */
+const wrapFn = (body: string): string => `function reg(o) { ${body} }\nreg("t:p");\n`;
+const wrapMethod = (body: string): string =>
+  `class S { reg(o) { ${body} } }\nnew S().reg("t:p");\n`;
+
+describe("#227: a wrapper's parameter is not bound where a nearer declaration hides it", () => {
+  const head = `const { ipcMain } = require("electron");\nconst h = () => 1;\nconst f = (k) => globalThis.seen?.(k);\n`;
+  const P = ["t:p ipcMain.on main.js"];
+  // Every build reads the same rows: a bundler or minifier that renames the inner name gives
+  // the same answer as the scope rule on the plain source.
+  const cases: Array<[string, string, string[]]> = [
+    [
+      "a block's const (the issue)",
+      wrapFn(`{ const o = "t:inner"; ipcMain.on(o, h); }`),
+      ["t:inner ipcMain.on main.js"],
+    ],
+    [
+      "a block's let",
+      wrapFn(`if (f(1)) { let o = "t:inner"; ipcMain.on(o, h); }`),
+      ["t:inner ipcMain.on main.js"],
+    ],
+    [
+      "an arrow's parameter of the name",
+      wrapFn(`["t:e"].forEach((o) => ipcMain.on(o, h));`),
+      ["t:e ipcMain.on main.js"],
+    ],
+    ["a var of the function itself: the parameter", wrapFn(`var o; ipcMain.on(o, h);`), P],
+    [
+      "a var with a value: what it holds",
+      wrapFn(`var o = "t:w"; ipcMain.on(o, h);`),
+      ["t:w ipcMain.on main.js"],
+    ],
+    ["a catch parameter", wrapFn(`try { f(1); } catch (o) { ipcMain.on(o, h); }`), []],
+    [
+      "a nested function's parameter",
+      wrapFn(`function g(o) { ipcMain.on(o, h); } g("t:g");`),
+      ["t:g ipcMain.on main.js"],
+    ],
+    [
+      "a declaration after the call in another block",
+      wrapFn(`{ ipcMain.on(o, h); } { const o = "t:later"; f(o); }`),
+      P,
+    ],
+    [
+      "an arrow wrapper's block const",
+      `const reg = (o) => { { const o = "t:inner"; ipcMain.on(o, h); } };\nreg("t:p");\n`,
+      ["t:inner ipcMain.on main.js"],
+    ],
+    [
+      "a method's block const",
+      wrapMethod(`{ const o = "t:inner"; ipcMain.on(o, h); }`),
+      ["t:inner ipcMain.on main.js"],
+    ],
+    ["a method's catch parameter", wrapMethod(`try { f(1); } catch (o) { ipcMain.on(o, h); }`), []],
+    ["a method's var: the parameter", wrapMethod(`var o; ipcMain.on(o, h);`), P],
+    [
+      "a method's declaration after the call in another block",
+      wrapMethod(`{ ipcMain.on(o, h); } { const o = "t:later"; f(o); }`),
+      P,
+    ],
+    ["a plain wrapper (unchanged)", wrapFn(`ipcMain.on(o, h);`), P],
+    [
+      "a curried wrapper (decided through the inner arrow)",
+      `const call = (o) => (...a) => ipcMain.on(o, ...a);\ncall("t:p")(h);\n`,
+      P,
+    ],
+  ];
+  for (const [name, body, want] of cases)
+    for (const how of BUILDS)
+      it(`${name} (${how})`, () => {
+        const info = analyze(build({ "main.js": head + body }, ["main.js"], how));
+        expect(rows(info)).toEqual(want);
+        // the IPC call inside the helper stays a row, without a channel where none is read
+        expect(unresolved(info)).toBe(want.length === 0 || want === P ? 1 : 0);
+        expect(info.limitations.map((l) => l.code)).not.toContain("ipc_wrapper_param_undecided");
+      });
+  it("does not take a helper of another module whose parameter a block's const hides", () => {
+    const files = {
+      "ipc.js": `const { ipcMain } = require("electron");\nconst h = () => 1;\nfunction reg(o) { { const o = "t:inner"; ipcMain.on(o, h); } }\nfunction ok(o) { ipcMain.handle(o, h); }\nmodule.exports = { reg, ok };\n`,
+      "main.js": `const { reg, ok } = require("./ipc");\nreg("t:p");\nok("t:ok");\n`,
+    };
+    // a bundle wraps the module in a function, where a helper is not read across modules: only
+    // the plain build has t:ok, and no build has t:p
+    for (const how of BUILDS)
+      expect(
+        rows(analyze(build(files, ["main.js"], how))).map((r) =>
+          r.split(" ").slice(0, 2).join(" "),
+        ),
+        how,
+      ).toEqual(
+        how === "plain" ? ["t:inner ipcMain.on", "t:ok ipcMain.handle"] : ["t:inner ipcMain.on"],
+      );
+  });
+  it("keeps the row and says so where the nesting is too deep to decide", () => {
+    const deep = `${"{ ".repeat(300)}ipcMain.on(o, h);${" }".repeat(300)}`;
+    const info = analyze({ "main.js": head + wrapFn(deep) });
+    expect(rows(info)).toEqual(P);
+    const l = info.limitations.find((x) => x.code === "ipc_wrapper_param_undecided");
+    expect(l?.message).toMatch(/reg at main\.js:4\.$/);
+  });
+});
+
 describe("#209: a loop body without semicolons ends at the line break (S01)", () => {
   // as code without semicolons: the call after the loop reads the outer binding
   const main = [

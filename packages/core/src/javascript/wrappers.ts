@@ -273,6 +273,8 @@ export class WrapperReader {
   private readonly chains = new Map<string, WrapperValue[]>();
   /** Channel arguments of the IPC calls inside wrapper methods (the calls of the method carry the channels). */
   readonly inner = new Set<number>();
+  /** Methods kept as wrappers although it could not be decided whether their parameter is hidden at the IPC call, as `name:line` (#227). */
+  readonly undecided: string[] = [];
   /** Token visits left for this file: used up, nothing more is read (and `capped` says so). */
   private work = 400_000;
 
@@ -735,7 +737,13 @@ export class WrapperReader {
         def = r.outerOf(def);
       }
       if (!def || index === -1) continue;
-      if (this.declares(def, param, true)) continue;
+      // A nearer declaration hides the parameter at the call (a block's `const`, a `catch`, a
+      // parameter of a function in between; #227), as one in another block does not; a `var`
+      // of the method itself is the parameter. Not decided: kept, and the file says so.
+      const meant = r.parameterMeantAt(arg, param, def.paramsAt);
+      if (meant === false) continue;
+      if (this.declares(def, param, true, true)) continue;
+      if (meant === null) this.undecided.push(`${def.name ?? "?"}:${this.tokens[arg]!.line}`);
       if (this.register(def, { api, index })) this.inner.add(arg);
     }
     this.findChains();
@@ -833,14 +841,18 @@ export class WrapperReader {
   /**
    * Whether the body of def declares the name (`const|let|var name`) or, with `assigns`, writes
    * to it (`name = …`, `name += …`, `name++`): then the parameter is not passed on unchanged.
+   * With `writesOnly` (where the caller has asked which binding the use means), a declaration
+   * counts only as a `var name = …`, which writes the parameter's own binding.
    */
-  private declares(def: FnDef, name: string, assigns = false): boolean {
+  private declares(def: FnDef, name: string, assigns = false, writesOnly = false): boolean {
     for (const j of this.r.namePositions(name, def.body[0], def.body[1])) {
       if (this.work-- <= 0) break;
       if (this.punct(j - 1, ".")) continue;
       const before = this.tokens[j - 1];
-      if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value))
-        return true;
+      if (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) {
+        if (!writesOnly || (before.value === "var" && this.punct(j + 1, "="))) return true;
+        continue;
+      }
       if (!assigns) continue;
       const after = this.tokens[j + 1];
       if (

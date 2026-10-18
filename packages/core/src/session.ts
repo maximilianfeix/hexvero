@@ -1103,6 +1103,8 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
   ipc_open_calls_capped: "ipc",
   // calls of IPC wrappers or of functions taking ipcMain/ipcRenderer past what is read
   ipc_wrappers_capped: "ipc",
+  // calls of a helper whose parameter may be hidden where it is passed on (#227), in its file
+  ipc_wrapper_param_undecided: "ipc",
   context_bridge_truncated: "bridge",
   context_bridge_members_unreadable: "bridge",
   // values of other modules and page calls of generic forwarders that were not read, in the
@@ -1130,6 +1132,7 @@ export const FILE_SCOPED_LIMITATIONS: ReadonlySet<string> = new Set([
   "bridge_forwarder_ambiguous",
   "bridge_calls_capped",
   "bridge_calls_unread",
+  "ipc_wrapper_param_undecided",
 ]);
 
 /**
