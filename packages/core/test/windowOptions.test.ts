@@ -857,3 +857,51 @@ describe("webPreferences keys that are not plain names (#200)", () => {
       );
   });
 });
+
+// Review RC of #207: a parameter that shadows a string constant, computed keys of accessors and
+// generators, an unread key in a later argument of Object.assign, quoted `preload`, and getters
+// in an object nested in the settings.
+const RC_KEYS = [
+  "const k = process.env.K;",
+  'const SB = "sandbox";',
+  "function make(SB) { return new BrowserWindow({ webPreferences: { nodeIntegration: false, [SB]: true } }); }",
+  "make(process.env.X);",
+  "const w2 = new BrowserWindow({ webPreferences: { nodeIntegration: false, get [k]() { return true; } } });",
+  'const NI = "nodeIntegration";',
+  "const w3 = new BrowserWindow({ webPreferences: { nodeIntegration: false, get [NI]() { return true; } } });",
+  "const w4 = new BrowserWindow({ webPreferences: { nodeIntegration: false, *[k]() {} } });",
+  "const w5 = new BrowserWindow({ webPreferences: { nodeIntegration: false, async [k]() {} } });",
+  "const w6 = new BrowserWindow({ webPreferences: Object.assign({ nodeIntegration: false }, { [k]: true }) });",
+  'const w7 = new BrowserWindow({ webPreferences: { "preload": "p.js", "nodeIntegration": true } });',
+  "const w8 = new BrowserWindow({ webPreferences: { nodeIntegration: true, inner: { get nodeIntegration() { return false; } } } });",
+  'const w9 = new BrowserWindow({ webPreferences: { contextIsolation: false, f: () => ({ "contextIsolation": true }) } });',
+  'const w10 = new BrowserWindow({ webPreferences: { ["preload"]: "q.js" } });',
+  "module.exports = { make, w2, w3, w4, w5, w6, w7, w8, w9, w10 };",
+].join("\n");
+const RC_STATES = [
+  // the parameter is not the constant: an unread key, which may be any setting
+  "computed computed computed null computed",
+  "computed computed computed null computed",
+  // a getter of a known key: that key is computed
+  "computed not written not written null not written",
+  "computed computed computed null computed",
+  "computed computed computed null computed",
+  "computed computed computed null computed",
+  "true not written not written p.js not written",
+  // a getter in an object nested in the settings is not one of them
+  "true not written not written null not written",
+  // what a function there returns is read as written, as esbuild's minifier unquotes it
+  "not written conflicting not written null not written",
+  "not written not written not written q.js not written",
+];
+
+describe("keys the review of #207 found (RC)", () => {
+  it("reads them alike in the source, the bundle and the minified bundle", () => {
+    const main = `const { BrowserWindow } = require("electron");\n${RC_KEYS}`;
+    expect(states(analyze({ "main.js": main }))).toEqual(RC_STATES);
+    for (const minify of [false, true])
+      expect(states(analyze(bundled({ "main.js": main }, minify))), String(minify)).toEqual(
+        RC_STATES,
+      );
+  });
+});

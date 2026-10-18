@@ -855,6 +855,33 @@ function windowRanges(
     }
     return -1;
   };
+  /**
+   * Whether the object literal at `brace` is an argument of `webPreferences: Object.assign(…)`
+   * (the call's `(` right around it).
+   */
+  const assignArgumentOfPrefs = (brace: number): boolean => {
+    if (!is(brace - 1, "(") && !is(brace - 1, ",")) return false;
+    for (let d = 0, j = brace - 1; j >= 0 && j > brace - 20_000; j--) {
+      const p = tokens[j]!;
+      if (p.type !== "punct") continue;
+      if (p.value === "}" || p.value === ")" || p.value === "]") d++;
+      else if (p.value === "{" || p.value === "(" || p.value === "[") {
+        if (d > 0) {
+          d--;
+          continue;
+        }
+        return (
+          p.value === "(" &&
+          tokens[j - 1]?.value === "assign" &&
+          is(j - 2, ".") &&
+          tokens[j - 3]?.value === "Object" &&
+          is(j - 4, ":") &&
+          tokens[j - 5]?.value === "webPreferences"
+        );
+      }
+    }
+    return false;
+  };
   /** Whether the object literal at `brace` writes the key `name` as an own key, at its top. */
   const writesOwn = (brace: number, name: string): boolean => {
     const end = close(brace);
@@ -960,16 +987,33 @@ function windowRanges(
       // false`) may write any setting, and replaces whatever the object wrote for that key
       // before it: the keys before it are not known. `["sandbox"]` and `[NI]` with NI a string
       // constant are read as the key they name. At a level decided elsewhere it may be either.
-      if (window !== null && is(k, "[") && (is(k - 1, "{") || is(k - 1, ","))) {
+      // The same for an accessor, method or generator under such a key (`get [k]() {…}`,
+      // `async [k]() {}`, `*[k]() {}`), and in an object literal that is a later argument of
+      // `webPreferences: Object.assign({…}, { [k]: true })`.
+      const memberStart = is(k - 1, "{") || is(k - 1, ",");
+      let bracket = -1;
+      if (memberStart && is(k, "[")) bracket = k;
+      else if (memberStart && is(k, "*") && is(k + 1, "[")) bracket = k + 1;
+      else if (
+        memberStart &&
+        t.type === "ident" &&
+        (t.value === "get" || t.value === "set" || t.value === "async")
+      ) {
+        if (is(k + 1, "[")) bracket = k + 1;
+        else if (is(k + 1, "*") && is(k + 2, "[")) bracket = k + 2;
+      }
+      if (window !== null && bracket !== -1) {
         const brace = braceAround(k, open);
         const prefsHere =
           brace === root
             ? level === "prefs" || level === null
-            : brace !== -1 && is(brace - 1, ":") && tokens[brace - 2]?.value === "webPreferences";
-        const inner = tokens[k + 1];
+            : brace !== -1 &&
+              ((is(brace - 1, ":") && tokens[brace - 2]?.value === "webPreferences") ||
+                assignArgumentOfPrefs(brace));
+        const inner = tokens[bracket + 1];
         const read =
-          is(k + 2, "]") &&
-          (inner?.type === "string" || (inner?.type === "ident" && stringAt(k + 1) !== null));
+          is(bracket + 2, "]") &&
+          (inner?.type === "string" || (inner?.type === "ident" && stringAt(bracket + 1) !== null));
         if (prefsHere && !read) hide(window, at ?? t.start);
       }
       // `__proto__: x` replaces no own key, but Electron reads the options by property access,
@@ -3496,6 +3540,27 @@ export function readFileTokens(
   const scan = scanJavaScript(source, {
     onTokens: (tokens, truncated, context) => {
       keep?.(tokens, context.constants);
+      let keyResolver: ExpressionResolver | null = null;
+      /**
+       * The string a computed key `[NAME]` names: only where NAME at k is bound (by scope, the
+       * resolver's `binding`) to one declaration `NAME = "…"` with a string literal that is never
+       * assigned again. A parameter, a loop variable, a pattern or a `catch` binding of the same
+       * name is another binding, whatever the file's constants say: its key is not read.
+       */
+      const constantKey = (k: number): string | null => {
+        const t = tokens[k];
+        if (t?.type !== "ident") return null;
+        const value = context.constants.stringOf(t.value, k);
+        if (value === null) return null;
+        keyResolver ??= new ExpressionResolver(tokens, context.constants);
+        const r = keyResolver;
+        // declared once where k sees it, with a value, and never assigned again
+        const bound = r.binding(k, t.value);
+        if (bound?.kind !== "value") return null;
+        const [from, to] = bound.range;
+        const init = tokens[from];
+        return to === from + 1 && init?.type === "string" && init.value === value ? value : null;
+      };
       if (source.includes("enableSandbox")) {
         // Read from tokens, so a comment or a string is no call. Only a statement at the top
         // of the file that no condition guards is certain to run.
@@ -3549,8 +3614,7 @@ export function readFileTokens(
             const specifier = context.constants.requireOf(name.value, k);
             return specifier ? { specifier, property: member.value } : null;
           },
-          (k) =>
-            tokens[k]?.type === "ident" ? context.constants.stringOf(tokens[k]!.value, k) : null,
+          constantKey,
         );
         located = where;
         ranges = located.ranges;
@@ -3731,19 +3795,80 @@ export function readFileTokens(
         /nodeIntegration|contextIsolation|sandbox|preload|webSecurity|allowRunningInsecureContent|webviewTag|enableRemoteModule/.test(
           source,
         )
-      )
+      ) {
+        const isP = (i: number, value: string): boolean =>
+          tokens[i]?.type === "punct" && tokens[i]!.value === value;
+        /** The `{` right around each token (-1: none), for the forms read only in a settings object. */
+        const enclosing = new Int32Array(tokens.length).fill(-1);
+        const stack: number[] = [];
+        for (let k = 0; k < tokens.length; k++) {
+          enclosing[k] = stack.length ? stack.at(-1)! : -1;
+          const p = tokens[k]!;
+          if (p.type !== "punct") continue;
+          if (p.value === "{" || p.value === "(" || p.value === "[")
+            stack.push(p.value === "{" ? k : -1);
+          else if ((p.value === "}" || p.value === ")" || p.value === "]") && stack.length)
+            stack.pop();
+        }
+        /**
+         * Whether the object around token k may be a webPreferences object: not the value of
+         * another key (`inner: {…}`; a factory's `return {…}` may be one). A quoted or computed
+         * key, an accessor or a method is read as a setting only there; plain `name: value` keys
+         * are read as before.
+         */
+        const settingsObject = (k: number): boolean => {
+          const b = enclosing[k]!;
+          if (b < 0) return false;
+          if (isP(b - 1, ":")) return tokens[b - 2]?.value === "webPreferences";
+          return true;
+        };
         for (let k = 0; k + 2 < tokens.length; k++) {
           const t = tokens[k]!;
           const colon = tokens[k + 1]!;
-          const isP = (i: number, value: string): boolean =>
-            tokens[i]?.type === "punct" && tokens[i]!.value === value;
           /** The key of a member that starts at k, and the token its value starts at. */
           let name: string | null = null;
           let valueAt = k + 2;
           /** `get sandbox() {…}`, `nodeIntegration() {…}`: the value is not read here. */
           let accessor = false;
-          const member = isP(k - 1, "{") || isP(k - 1, ",");
-          if (t.type === "ident" && colon.type === "punct" && colon.value === ":") name = t.value;
+          const member = (isP(k - 1, "{") || isP(k - 1, ",")) && settingsObject(k);
+          /** `get [NI]() {…}`, `async ["sandbox"]() {}`, `*[NI]() {}`: the bracket, else -1. */
+          let accessorBracket = -1;
+          if (member) {
+            let m = k;
+            if (
+              t.type === "ident" &&
+              (t.value === "get" || t.value === "set" || t.value === "async")
+            )
+              m++;
+            if (isP(m, "*")) m++;
+            if (m > k && isP(m, "[") && isP(m + 2, "]") && isP(m + 3, "(")) accessorBracket = m;
+            else if (
+              m > k &&
+              (tokens[m]?.type === "ident" || tokens[m]?.type === "string") &&
+              isP(m + 1, "(")
+            ) {
+              // `*sandbox() {}`, `async *nodeIntegration() {}` (`get x()` is read below)
+              if (isP(k, "*") || (isP(k + 1, "*") && t.value === "async")) {
+                name = tokens[m]!.value;
+                accessor = true;
+                valueAt = m + 1;
+              }
+            }
+          }
+          if (accessorBracket !== -1) {
+            const inner = tokens[accessorBracket + 1]!;
+            name =
+              inner.type === "string"
+                ? inner.value
+                : inner.type === "ident"
+                  ? constantKey(accessorBracket + 1)
+                  : null;
+            accessor = true;
+            valueAt = accessorBracket + 3;
+          } else if (accessor) {
+            // read above
+          } else if (t.type === "ident" && colon.type === "punct" && colon.value === ":")
+            name = t.value;
           else if (member && t.type === "string" && isP(k + 1, ":")) {
             // `"nodeIntegration": true`, which a minifier writes unquoted
             name = t.value;
@@ -3755,7 +3880,7 @@ export function readFileTokens(
               inner.type === "string"
                 ? inner.value
                 : inner.type === "ident"
-                  ? context.constants.stringOf(inner.value, k + 1)
+                  ? constantKey(k + 1)
                   : null;
             valueAt = k + 4;
           } else if (
@@ -3767,6 +3892,7 @@ export function readFileTokens(
           ) {
             name = tokens[k + 1]!.value;
             accessor = true;
+            valueAt = k + 2;
           } else if (member && (t.type === "ident" || t.type === "string") && isP(k + 1, "(")) {
             name = t.value;
             accessor = true;
@@ -3783,7 +3909,12 @@ export function readFileTokens(
           }
           if (name === null || !tokens[valueAt]) continue;
           if (name === "preload") {
+            // `preload: …` and `"preload": …` (read where the text says so, see below)
             if (t.type === "ident" && valueAt === k + 2 && !accessor) preloadsAt.add(t.start);
+            else if (t.type === "string" && valueAt === k + 2 && !accessor)
+              preloadsAt.add(t.start + 1);
+            else if (isP(k, "[") && tokens[k + 1]?.type === "string" && valueAt === k + 4)
+              preloadsAt.add(tokens[k + 1]!.start + 1);
           } else if (BOOLEAN_KEYS.has(name) && accessor) {
             // A getter or method decides the value when the window reads it: not a literal.
             settingsAt.push({
@@ -3833,6 +3964,7 @@ export function readFileTokens(
             }
           }
         }
+      }
       // Endpoints, storage and URL literals: only where the text can contain one at all.
       if (CAN_HOLD_CANDIDATES.test(source)) {
         candidates = findCandidates(tokens, source, undefined, context.aliases, context.constants);
@@ -4334,7 +4466,9 @@ export function analyzeJavaScriptTree(
       at !== -1;
       at = source.indexOf("preload", at + 7)
     ) {
-      const m = /^preload\s*:\s*/.exec(source.slice(at, at + 24));
+      // `preload: …`, `"preload": …` and `["preload"]: …` (preloadsAt holds the place after
+      // the quote)
+      const m = /^preload(?:["']\]?)?\s*:\s*/.exec(source.slice(at, at + 24));
       const windows = m && preloadsAt.has(at) ? windowsOf(at) : [];
       if (!m || /[\w$.]/.test(source[at - 1] ?? "") || !windows.length) continue;
       let expression = preloadExpression(source, at + m[0].length);

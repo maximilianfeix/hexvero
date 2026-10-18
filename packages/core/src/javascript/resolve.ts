@@ -2385,7 +2385,9 @@ export class ExpressionResolver {
           a = p.fallback
             ? this.evalRange(p.fallback[0], p.fallback[1], new Map(env), 1)
             : { kind: "undef" };
-        if (a) env.set(p.name, a);
+        // a value not known is still this parameter's: a read of it must not fall through to a
+        // binding of the same name outside (`const SB = "sandbox"; function f(SB) { [SB]: … }`)
+        env.set(p.name, a ?? UNKNOWN);
       } else if (p.kind === "object") {
         for (const [prop, local] of p.props) {
           let v = a ? this.member(a, prop) : null;
@@ -2393,7 +2395,7 @@ export class ExpressionResolver {
           const fallback = p.defaults?.get(local);
           if (fallback && (!passed || v?.kind === "undef"))
             v = this.evalRange(fallback[0], fallback[1], new Map(env), 1);
-          if (v) env.set(local, v);
+          env.set(local, v ?? UNKNOWN);
         }
         // `...more`: the argument's other properties; nothing passed gives an empty object
         if (p.rest) {
@@ -2405,11 +2407,10 @@ export class ExpressionResolver {
               ...(a.open ? { open: true } : {}),
             });
         }
-      } else if (a?.kind === "arr") {
-        const elems = a.elems;
+      } else {
+        const elems = a?.kind === "arr" ? a.elems : [];
         p.names.forEach((n, j) => {
-          const v = elems[j];
-          if (n && v) env.set(n, v);
+          if (n) env.set(n, elems[j] ?? UNKNOWN);
         });
       }
     });
