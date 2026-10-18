@@ -180,6 +180,17 @@ describe("MCP write policy", () => {
     expect(existsSync(join(root, "not-there"))).toBe(false);
   });
 
+  it("compares paths in their stored case on a case-insensitive volume", (ctx) => {
+    const name = root.split(sep).pop()!;
+    const shouted = join(root, "..", name.toUpperCase());
+    if (name === name.toUpperCase() || !existsSync(shouted)) return ctx.skip(); // case-sensitive
+    expect(checkWritePath(join(shouted, "a.json"), "export")).toBe(join(shouted, "a.json"));
+    mkdirSync(join(root, "Sub"));
+    expect(checkWritePath(join(shouted, "SUB", "a.json"), "export")).toBe(
+      join(shouted, "SUB", "a.json"),
+    );
+  });
+
   describe("between the check and the write", () => {
     /** A session whose next analysis also swaps a directory, as another process could meanwhile. */
     class SwapSession extends Session {

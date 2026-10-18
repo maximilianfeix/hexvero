@@ -11,6 +11,13 @@ import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { AnalysisError } from "@hexvero/core";
 
+/**
+ * The canonical path of an existing location: the native realpath also resolves volume mount
+ * points and junctions on Windows and gives each name its case as stored, so `…\ROOT\a.json`
+ * compares equal to a root `…\root` on a case-insensitive volume.
+ */
+const realpath = (p: string): string => realpathSync.native(p);
+
 function roots(): string[] {
   const configured = (process.env["HEXVERO_WRITE_ROOTS"] ?? "")
     .split(delimiter)
@@ -21,7 +28,7 @@ function roots(): string[] {
   const defaults = cwd === homedir() || dirname(cwd) === cwd ? [tmpdir()] : [cwd, tmpdir()];
   return (configured.length ? configured : defaults).flatMap((p) => {
     try {
-      return [realpathSync(p)];
+      return [realpath(p)];
     } catch {
       return [];
     }
@@ -48,10 +55,12 @@ const MAX_LINKS = 40;
  * are taken one at a time: an existing one is examined with lstat; a symbolic link is replaced by
  * the components of its target, which are walked in turn (so a link whose target does not exist
  * yet still counts by where it points); `..` goes to the parent of the real location reached so
- * far, never to a textual parent. Nothing is normalized as text, so `..` after a linked directory
- * leads where the file system leads. Components that do not exist are taken as written; `..` or a
- * link below one cannot be resolved and is refused. The existing part is passed through realpath
- * so it compares with the roots (it also expands Windows short names).
+ * far, never to a textual parent, so `..` in a link target after a linked directory leads where
+ * the file system leads. The input path itself is normalized as text first (`resolve()` removes
+ * its `..`); that is the same absolute path the caller then writes to, so check and write agree.
+ * Components that do not exist are taken as written; `..` or a link below one cannot be resolved
+ * and is refused. The existing part is passed through the native realpath so it compares with the
+ * roots (it also expands Windows short names and gives names their stored case).
  */
 function realLocation(path: string): string {
   const refuse = (why: string): never => {
@@ -95,7 +104,7 @@ function realLocation(path: string): string {
   }
   let real = current;
   try {
-    real = realpathSync(current);
+    real = realpath(current);
   } catch {
     refuse("the location could not be resolved");
   }
@@ -198,7 +207,7 @@ export function checkReadPath(
   const real = realLocation(absolute);
   const extra = extraDirs.flatMap((p) => {
     try {
-      return [realpathSync(p)];
+      return [realpath(p)];
     } catch {
       return [];
     }
