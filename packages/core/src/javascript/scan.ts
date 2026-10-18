@@ -103,6 +103,13 @@ export interface ScanResult {
   /** The search for calls of the file's wrappers ran out of its budget. */
   wrappersCapped?: true;
   /**
+   * Methods of the file's own IPC wrappers the file replaces, as `Class.method:line` (at most
+   * 20): their calls in the file give no row.
+   */
+  wrappersReplaced?: string[];
+  /** Writes in the file that may replace such a method were not all read within the budget. */
+  wrappersUnchecked?: true;
+  /**
    * Functions and methods whose parameter is used as the IPC object (`register(ipc) {
    * ipc.handle(…) }`), with this file's call sites; the application stage decides (wrappers.ts).
    */
@@ -868,6 +875,8 @@ export function scanJavaScript(
     calls: Map<number, { api: string; arg: number }>;
     capped?: true;
     paramIpc?: ParamIpc[];
+    replaced?: string[];
+    unchecked?: true;
   } | null = null;
   const readWrappers = (): NonNullable<typeof wrapperScan> => {
     if (wrapperScan) return wrapperScan;
@@ -972,17 +981,89 @@ export function scanJavaScript(
       (k) => {
         // as the scan reads a call: another name for one, or the name itself
         const name = aliases.get(k) ?? tokens[k]!.value;
-        return name === "ipcMain" || name === "ipcRenderer" ? name : null;
+        if (name !== "ipcMain" && name !== "ipcRenderer") return null;
+        // The name itself, declared where it is used with a value that is not Electron's
+        // (`{ const ipcMain = new EventEmitter(); register(ipcMain); }`), is another object.
+        // (the aliases name every use of the name so, whatever it is bound to where it is used)
+        if (tokens[k]?.type === "ident" && tokens[k]!.value === name) {
+          const site = resolver!.boundAround(k, name);
+          const decl = site?.kind === "local" ? site.site?.name : undefined;
+          // Only a value that is provably another object: `new X(…)`, a literal, an object or
+          // array literal, a function or class. Anything else (`getIpc()`, `a ? b : c`) may be
+          // Electron's ipcMain, and is read as before.
+          if (decl !== undefined && is(decl + 1, "punct", "=")) {
+            const v = tokens[decl + 2];
+            const other =
+              v !== undefined &&
+              (v.type === "string" ||
+                v.type === "number" ||
+                v.type === "template" ||
+                (v.type === "punct" && (v.value === "{" || v.value === "[")) ||
+                (v.type === "ident" &&
+                  /^(new|function|class|async|true|false|null|undefined|void)$/.test(v.value)) ||
+                (v.type === "punct" &&
+                  v.value === "(" &&
+                  is(resolver!.closeOf(decl + 2) + 1, "punct", "=>")));
+            // a value that ends there: `new Emitter()` alone, not `new X().ipcMain`
+            if (other) {
+              let end = decl + 2;
+              for (let d = 0; end < tokens.length && end < decl + 2000; end++) {
+                const x = tokens[end]!;
+                if (x.type !== "punct") continue;
+                if (/^[([{]$/.test(x.value)) d++;
+                else if (/^[)\]}]$/.test(x.value)) {
+                  if (d === 0) break;
+                  d--;
+                } else if (d === 0 && (x.value === ";" || x.value === ",")) break;
+              }
+              let member = false;
+              for (let d = 0, p = decl + 2; p < end; p++) {
+                const x = tokens[p]!;
+                if (x.type === "punct" && /^[([{]$/.test(x.value)) d++;
+                else if (x.type === "punct" && /^[)\]}]$/.test(x.value)) d--;
+                else if (
+                  d === 0 &&
+                  x.type === "punct" &&
+                  (x.value === "." ||
+                    x.value === "?." ||
+                    x.value === "?" ||
+                    x.value === "||" ||
+                    x.value === "&&" ||
+                    x.value === "??")
+                )
+                  member = true;
+              }
+              if (!member || v!.value === "function" || v!.value === "class") return null;
+            }
+          }
+        }
+        return name;
       },
     );
     if (calls.length) reader.findClasses(calls);
     if (objects.length) reader.findObjectParams(objects);
     // a search cut short may have missed a call site that passes something else: no decision
     const objectsCut = objects.length >= MAX_OBJECT_CALLS;
-    const read = objects.length ? reader.paramIpc() : [];
-    const paramIpc = reader.objectsCapped || objectsCut ? [] : read;
+    const paramsOf = (): ParamIpc[] => {
+      const read = objects.length ? reader.paramIpc() : [];
+      return reader.objectsCapped || objectsCut ? [] : read;
+    };
+    let paramIpc = paramsOf();
     if (!reader.classes.length && !paramIpc.length) return wrapperScan;
-    const rows = reader.rows();
+    let rows = reader.rows();
+    // A method of the file's own wrappers that the file replaces (`Svc.prototype.register = f`,
+    // `w.handle = () => {}` on an instance): its calls give no row here, as across modules.
+    // Read only where a call of such a method in the file gives a row; then the rows are read
+    // again without the replaced methods.
+    let own: ReturnType<typeof reader.readOwnReplacements> = { found: [], unchecked: false };
+    if (rows.length || paramIpc.some((p) => p.sites.length)) {
+      own = reader.readOwnReplacements();
+      if (own.found.length) {
+        paramIpc = paramsOf();
+        rows = reader.rows();
+      }
+    }
+    const replacedAt = [...new Set(own.found.map((x) => `${x.via}:${reader.lineOf(x.at)}`))];
     const facts = reader.facts();
     wrapperScan = {
       rows,
@@ -992,6 +1073,8 @@ export function scanJavaScript(
       // what the search for IPC object parameters could not read only leaves its own rows out
       ...(reader.capped ? { capped: true as const } : {}),
       ...(paramIpc.length ? { paramIpc } : {}),
+      ...(replacedAt.length ? { replaced: replacedAt.slice(0, 20) } : {}),
+      ...(own.unchecked ? { unchecked: true as const } : {}),
     };
     return wrapperScan;
   };
@@ -1180,6 +1263,26 @@ export function scanJavaScript(
     routeResolver ??= new ExpressionResolver(tokens, constants, "", null, routeRef, false, true);
     return routeResolver.perElement(k, ranges);
   };
+  /**
+   * The string the name at k stands for, only where it is bound (by scope) to one declaration
+   * `NAME = "…"` never assigned again: a parameter or loop variable of the same name is not it.
+   */
+  const constantAt = (k: number): string | null => {
+    const t = at(k);
+    if (t?.type !== "ident") return null;
+    const value = constants.stringOf(t.value, k);
+    if (value === null) return null;
+    resolver ??= new ExpressionResolver(tokens, constants);
+    const bound = resolver.binding(k, t.value);
+    if (bound?.kind !== "value") return null;
+    // and no nearer binding the resolver's `binding` does not see (`for (const M of …)`)
+    const near = resolver.boundAround(k, t.value);
+    if (near && (near.kind !== "local" || near.site?.name !== bound.range[0] - 2)) return null;
+    const init = at(bound.range[0]);
+    return bound.range[1] === bound.range[0] + 1 && init?.type === "string" && init.value === value
+      ? value
+      : null;
+  };
   /** `ipcMain[expr](channel, …)` at k, with `]` at close. */
   const computedCalls = (k: number, owner: string, close: number): IpcUsage[] => {
     const line = at(k)!.line;
@@ -1188,6 +1291,33 @@ export function scanJavaScript(
     resolver ??= new ExpressionResolver(tokens, constants);
     const argEnd = resolver.endOf(arg);
     if (argEnd <= arg) return [unread];
+    // `ipcMain["handle"](…)`, or `ipcMain[M](…)` with `M = "handle"` a constant: the method it
+    // names, read as `ipcMain.handle(…)` (esbuild's minifier writes the literal form so).
+    const key = at(k + 2);
+    const keyName =
+      close === k + 3
+        ? key?.type === "string"
+          ? key.value
+          : key?.type === "ident"
+            ? constantAt(k + 2)
+            : null
+        : null;
+    if (keyName !== null && IPC_APIS.has(`${owner}.${keyName}`) && !keyName.startsWith("expose")) {
+      const api = `${owner}.${keyName}`;
+      const named = channelAt(arg);
+      const usage: IpcUsage = {
+        api,
+        channel: named && "value" in named ? named.value : null,
+        line,
+      };
+      if (named && "ref" in named) usage.channelRef = named.ref;
+      if (named && "value" in named && named.via !== "literal") Object.assign(usage, viaOf(named));
+      else if (owner !== at(k)!.value) usage.via = "alias";
+      if (SENDING_APIS.has(api)) usage.args = payload.shapeAt(close + 1);
+      if (named === null) open.push({ usage, at: arg });
+      if (api === "ipcMain.on" || api === "ipcMain.once") replies(close + 1);
+      return [usage];
+    }
     if (routeReads >= MAX_ROUTE_READS) {
       unread.reason = `more calls with a computed method than are read per file (${MAX_ROUTE_READS})`;
       return [unread];
@@ -1488,6 +1618,8 @@ export function scanJavaScript(
     ...(wrapped.facts ? { wrappers: wrapped.facts } : {}),
     ...(wrapped.capped ? { wrappersCapped: true as const } : {}),
     ...(wrapped.paramIpc ? { paramIpc: wrapped.paramIpc } : {}),
+    ...(wrapped.replaced ? { wrappersReplaced: wrapped.replaced } : {}),
+    ...(wrapped.unchecked ? { wrappersUnchecked: true as const } : {}),
   };
 }
 

@@ -181,6 +181,13 @@ const MAX_SITES = 64;
 const OBJECT_WORK = 400_000;
 /** Work for reading the receivers of member writes in one file (`replacements`). */
 const REPLACEMENT_WORK = 200_000;
+/**
+ * The same for the writes in a wrapper's own file (`readOwnReplacements`), read only where a call
+ * of a wrapper method there gives a row; only the writes of wrapper method names, computed member
+ * writes and the `Object`/`Reflect` calls are read there. On Discord, Claude.app and Electron
+ * Fiddle the largest bundle needs 86,000 steps.
+ */
+const OWN_REPLACEMENT_WORK = 200_000;
 /** Work of the replacement scan of one application: tokens of the files opened plus receivers. */
 const REPLACEMENT_APP_WORK = 3_000_000;
 /** Tokens of an argument of a key-forwarding wrapper call the resolver reads, at most. */
@@ -286,6 +293,61 @@ export class WrapperReader {
    */
   replaced: ReadonlySet<string> = new Set();
 
+  /**
+   * Reads the writes of this file that replace a method of its own wrapper classes
+   * (`replacements`) and counts those methods as replaced, as the cross-file stage does for
+   * writes in other modules: `Svc.prototype.register = function …`, `t.register = () => {}`,
+   * `w.handle = () => {}` on an instance. A call of one then gives no row in this file either.
+   * A write past the budget is not counted (see below). Returns the methods, with the write.
+   */
+  readOwnReplacements(): { found: Array<{ via: string; at: number }>; unchecked: boolean } {
+    if (!this.classes.length) return { found: [], unchecked: false };
+    const all = this.replacements(OWN_REPLACEMENT_WORK, true);
+    // A write whose receiver was not read within the budget proves nothing here: the calls are
+    // read as before the check existed, and the caller says the file was not checked whole.
+    const found = all.filter((x) => !x.budget);
+    if (found.length) {
+      const replaced = new Set(this.replaced);
+      for (const { cls, method } of found) replaced.add(methodKey(cls, method));
+      this.replaced = replaced;
+    }
+    return {
+      found: found.map(({ cls, method, at }) => ({ via: `${cls.name}.${method}`, at })),
+      unchecked: found.length < all.length,
+    };
+  }
+
+  /**
+   * The strings the name at k stands for: one declaration `NAME = "…"` it is bound to by scope
+   * and never assigned again, or the head of a `for (const NAME of ["a", "b"])` around k. Null
+   * for anything else (a parameter, a computed value).
+   */
+  private keyStrings(k: number): string[] | null {
+    const t = this.tokens[k];
+    if (t?.type !== "ident") return null;
+    const { r } = this;
+    const near = r.boundAround(k, t.value);
+    if (near?.kind === "param") return null;
+    const site = near?.kind === "local" ? near.site : undefined;
+    if (site && this.is(site.name + 1, "ident", "of") && this.punct(site.name + 2, "[")) {
+      // `for (const m of ["handle", "on"]) …`: every element a string literal
+      const open = site.name + 2;
+      const close = r.closeOf(open);
+      if (close === -1 || !this.punct(close + 1, ")")) return null;
+      const out: string[] = [];
+      for (let j = open + 1; j < close; j += 2) {
+        if (!this.is(j, "string") || !(this.punct(j + 1, ",") || j + 1 === close)) return null;
+        out.push(this.tokens[j]!.value);
+      }
+      return out.length ? out : null;
+    }
+    const bound = r.binding(k, t.value);
+    if (bound?.kind !== "value") return null;
+    if (near && (near.kind !== "local" || near.site?.name !== bound.range[0] - 2)) return null;
+    const init = this.tokens[bound.range[0]];
+    return bound.range[1] === bound.range[0] + 1 && init?.type === "string" ? [init.value] : null;
+  }
+
   /** The line of token k. */
   lineOf(k: number): number {
     return this.tokens[k]?.line ?? 0;
@@ -306,12 +368,17 @@ export class WrapperReader {
    */
   replacements(
     limit = REPLACEMENT_WORK,
+    /**
+     * In the wrapper's own file: the export a module object holds (`m.store = …`) is not asked
+     * for, as there the wrapper is reached by its own name.
+     */
+    ownFile = false,
   ): Array<{ cls: WrapperClass; method: string; at: number; budget?: true }> {
     // a budget of its own, so that the calls read later have theirs
     const saved = this.work;
     this.work = limit;
     try {
-      return this.replacementsIn();
+      return this.replacementsIn(ownFile);
     } finally {
       this.replacementWork = limit - Math.max(0, this.work);
       this.work = saved;
@@ -321,7 +388,7 @@ export class WrapperReader {
   /** The work the last `replacements` used. */
   replacementWork = 0;
 
-  private replacementsIn(): Array<{
+  private replacementsIn(ownFile: boolean): Array<{
     cls: WrapperClass;
     method: string;
     at: number;
@@ -393,6 +460,14 @@ export class WrapperReader {
       return false;
     };
     const touch = (start: number, k: number, method: string, at: number): void => {
+      // A name no wrapper has as a method replaces none: only the export itself is asked for
+      // (the receivers of the many other member writes of a bundle are not read).
+      if (!methods.has(method)) {
+        if (ownFile || this.work <= 0) return;
+        const v = exportAt(start, k);
+        if (v?.kind === "inst" || v?.kind === "cls") add([v.cls], null, at);
+        return;
+      }
       const classes = owners(start, k - 1);
       if (classes === "budget")
         return add(anyOf(methods.has(method) ? method : null), method, at, true);
@@ -415,6 +490,7 @@ export class WrapperReader {
           if (start0 !== null && written(j, start0)) touch(start0, j, t.value, j);
           continue;
         }
+        if (ownFile && !methods.has(t.value)) continue;
         const start = r.receiverAt(j - 1);
         if (start !== null && written(j, start)) touch(start, j, t.value, j);
         continue;
@@ -444,7 +520,16 @@ export class WrapperReader {
         if (start === null) continue;
         const classes = owners(start, j);
         if (classes === "budget") add(anyOf(null), null, j, true);
-        else add(classes, null, j);
+        else if (ownFile) {
+          // In the wrapper's own file: a key that is one string constant (`const k = "handle";
+          // a[k] = f`) or a loop over a list of strings (`for (const m of ["handle", "on"])
+          // P[m] = f`) replaces those methods. Any other key is mostly the class setting its own
+          // fields (`this[key] = value` in a setter): it may replace a method, which is not
+          // proven, so the file counts as not checked whole instead of every method as replaced.
+          const keys = close === j + 2 ? this.keyStrings(j + 1) : null;
+          if (keys) for (const key of keys) add(classes, key, j);
+          else add(classes, null, j, true);
+        } else add(classes, null, j);
         continue;
       }
       // `Object.assign(R, {…})`, `Object.defineProperty(R, "NAME", …)`, `Reflect.set(R, "NAME", …)`,

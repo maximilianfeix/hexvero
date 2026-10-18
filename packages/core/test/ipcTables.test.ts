@@ -110,6 +110,75 @@ contextBridge.exposeInMainWorld(
 );
 `;
 
+// Issue #199: contextBridge copies the object when it is exposed. Members written after the
+// call, members of an object the name no longer holds, and a second exposure of one object.
+const PRELOAD_AFTER = `"use strict";
+const { contextBridge, ipcRenderer } = require("electron");
+const CH = { open: "doc:open", save: "doc:save" };
+const api = { ping: () => ipcRenderer.send("app:ping") };
+contextBridge.exposeInMainWorld("api", api);
+for (const [k, ch] of Object.entries(CH)) api[k] = (...a) => ipcRenderer.invoke(ch, ...a);
+api["late"] = () => ipcRenderer.invoke("late:x");
+api.later = () => ipcRenderer.invoke("later:x");
+let b = {};
+for (const [k, ch] of Object.entries(CH)) b[k] = (...a) => ipcRenderer.invoke(ch, ...a);
+b = { only: () => ipcRenderer.invoke("only:one") };
+contextBridge.exposeInMainWorld("b", b);
+let c = {};
+if (globalThis.flag) c = { maybe: () => ipcRenderer.invoke("maybe:x") };
+contextBridge.exposeInMainWorld("c", c);
+const d = {};
+ipcRenderer.on("ready", () => {
+  d.onReady = () => ipcRenderer.invoke("ready:x");
+});
+contextBridge.exposeInMainWorld("d", d);
+const e = {};
+e.one = () => ipcRenderer.invoke("e:one");
+contextBridge.exposeInMainWorld("first", e);
+e.two = () => ipcRenderer.invoke("e:two");
+contextBridge.exposeInMainWorld("second", e);
+`;
+
+describe("members written after the exposure (#199)", () => {
+  for (const how of BUILDS)
+    it(`are not exposed; an object that may be another one is unreadable (${how})`, () => {
+      const info = analyze(
+        build({ "main.js": "", "preload.js": PRELOAD_AFTER }, ["main.js", "preload.js"], how),
+      );
+      const got = members(info);
+      // never a member that is not exposed
+      for (const wrong of [
+        "api.open",
+        "api.save",
+        "api.late",
+        "api.later",
+        "b.open",
+        "b.save",
+        "c.maybe",
+        "d.onReady",
+        "first.two",
+      ])
+        expect(
+          got.some((m) => m.startsWith(`${wrong} `)),
+          wrong,
+        ).toBe(false);
+      expect(got).toEqual(
+        expect.arrayContaining([
+          "api.ping app:ping",
+          // the conditional object and the write in a callback: one unreadable entry each
+          "c.null null",
+          "d.null null",
+          "first.one e:one",
+          "second.one e:one",
+          "second.two e:two",
+        ]),
+      );
+      // the object the last unconditional write gives `b`
+      expect(got.filter((m) => m.startsWith("b."))).toEqual(["b.only only:one"]);
+      expect(got.filter((m) => m.startsWith("api."))).toEqual(["api.ping app:ping"]);
+    });
+});
+
 describe("bridge members and senders built from a channel table", () => {
   for (const how of BUILDS)
     it(`reads a member per key and a sender per channel (${how})`, () => {
@@ -816,4 +885,245 @@ describe("review: the parameter stage across modules", () => {
     );
     expect(cut?.message).toContain("c/m200.js");
   });
+});
+
+// Issue #201: a method of the file's own wrapper that the file replaces gives no row in the file,
+// as a replacement in another module already did. One build of one bundle each.
+const MAIN_REPLACED = `"use strict";
+const { ipcMain } = require("electron");
+const { Svc } = require("./svc");
+Svc.prototype.register = function (ipc) { ipc.handle("svc:new", () => 2); };
+new Svc().register(ipcMain);
+class T { register(ipc) { ipc.handle("t:orig", () => 1); } }
+const t = new T();
+t.register = (ipc) => {};
+t.register(ipcMain);
+class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }
+const w = new Ipc();
+w.handle = () => {};
+w.handle("w:replaced", () => 1);
+// not replaced: another object's method of the same name is written
+class Kept { register(ipc) { ipc.handle("kept:a", () => 1); } }
+const other = { register() {} };
+other.register = () => {};
+new Kept().register(ipcMain);
+// a write on one instance counts for the class, as across modules: no row for v either
+const v = new Ipc();
+v.handle("v:also", () => 1);
+module.exports = { t, w, v };
+`;
+
+describe("a wrapper method the file itself replaces (#201)", () => {
+  for (const how of BUILDS)
+    it(`gives no row of the original method (${how})`, () => {
+      const info = analyze(
+        build(
+          {
+            "main.js": MAIN_REPLACED,
+            "svc.js":
+              'class Svc { register(ipc) { ipc.handle("svc:orig", () => 1); } }\nmodule.exports = { Svc };\n',
+          },
+          ["main.js"],
+          how,
+        ),
+      );
+      const got = rows(info).map((r) => r.split(" ").slice(0, 2).join(" "));
+      expect(got).toEqual(["kept:a ipcMain.handle"]);
+      expect(info.limitations.map((l) => l.code)).toContain("wrapper_method_replaced");
+    });
+});
+
+describe("a computed method that names one method, outside a loop", () => {
+  for (const how of BUILDS)
+    it(`reads ipcMain["handle"](…) and ipcMain[M](…) as that method (${how})`, () => {
+      const main =
+        'const { ipcMain } = require("electron");\nconst M = "handle";\nipcMain["handle"]("lit:computed", () => 1);\nipcMain[M]("const:computed", () => 1);\nfor (const M of ["on"]) ipcMain[M]("loop:m", () => 1);\nmodule.exports = {};\n';
+      const info = analyze(build({ "main.js": main }, ["main.js"], how));
+      expect(rows(info)).toEqual([
+        "const:computed ipcMain.handle main.js",
+        "lit:computed ipcMain.handle main.js",
+        // the loop's own M, not the constant
+        "loop:m ipcMain.on main.js",
+      ]);
+      expect(unresolved(info)).toBe(0);
+    });
+});
+
+describe("a block's own ipcMain passed to a function", () => {
+  for (const how of BUILDS)
+    it(`is not Electron's, so the function gives no row (${how})`, () => {
+      const main = [
+        'const { ipcMain } = require("electron");',
+        'const { EventEmitter } = require("events");',
+        "{",
+        "  const ipcMain = new EventEmitter();",
+        "  register(ipcMain);",
+        "}",
+        'function register(ipc) { ipc.handle("r2:x", () => 1); }',
+        'function kept(ipc) { ipc.handle("kept:x", () => 1); }',
+        "kept(ipcMain);",
+        // a value that may be Electron's is read as before (review RC of #207)
+        'function getIpc() { return require("electron").ipcMain; }',
+        'function viaCall(ipc) { ipc.handle("call:x", () => 1); }',
+        "{",
+        "  const ipcMain = getIpc();",
+        "  viaCall(ipcMain);",
+        "}",
+        "module.exports = {};",
+      ].join("\n");
+      const info = analyze(build({ "main.js": main }, ["main.js"], how));
+      // (a bundle renames the block's name, which is then not read as ipcMain at all)
+      expect(rows(info)).toEqual([
+        ...(how === "plain" ? ["call:x ipcMain.handle main.js"] : []),
+        "kept:x ipcMain.handle main.js",
+      ]);
+    });
+});
+
+// Review RC of #207: an exposure inside a function or listener that runs from the top of the
+// file, a setup function or IIFE that runs before it, a loop the call and a write share, and
+// statements a minifier joins with commas.
+const RC_PRELOADS: Record<string, { source: string; members: string[] }> = {
+  called: {
+    source:
+      'const api = { a: () => ipcRenderer.send("a") };\nfunction expose() { contextBridge.exposeInMainWorld("api", api); }\napi.x = () => ipcRenderer.send("x");\nexpose();\napi.y = () => ipcRenderer.send("y");\n',
+    // y is written after the call that exposes the object
+    members: ["api.a a", "api.x x"],
+  },
+  timer: {
+    source:
+      'const api = {};\nfunction later() { contextBridge.exposeInMainWorld("api", api); }\napi.z = () => ipcRenderer.send("z");\nsetTimeout(later, 0);\n',
+    members: ["api.z z"],
+  },
+  listener: {
+    source:
+      'const api = { a: () => ipcRenderer.send("a") };\napi.b = () => ipcRenderer.send("b");\nwindow.addEventListener("DOMContentLoaded", () => { contextBridge.exposeInMainWorld("api", api); });\napi.x = () => ipcRenderer.send("x");\n',
+    // x is written after the listener is registered: it may or may not run first
+    members: ["api.a a", "api.b b", "api.null null"],
+  },
+  hoisted: {
+    source:
+      'const api = {};\nsetup();\ncontextBridge.exposeInMainWorld("api", api);\nfunction setup() { api.h = () => ipcRenderer.send("hoisted"); }\n',
+    members: ["api.h hoisted"],
+  },
+  iife: {
+    source:
+      'const api = {};\n(function () { api.i = () => ipcRenderer.send("iife"); })();\ncontextBridge.exposeInMainWorld("api", api);\n',
+    members: ["api.i iife"],
+  },
+  loop: {
+    source:
+      'const api = { a: () => ipcRenderer.send("a") };\nfor (let i = 0; i < 2; i++) { if (i === 1) contextBridge.exposeInMainWorld("api", api); api.x = () => ipcRenderer.send("loopx"); }\n',
+    members: ["api.a a", "api.null null"],
+  },
+  loopWithoutBraces: {
+    source:
+      'const api = { a: () => ipcRenderer.send("a") };\nlet n = 0;\nwhile (n++ < 2) { if (n === 2) { contextBridge.exposeInMainWorld("api", api); break; } api.w = () => ipcRenderer.send("whilew"); }\n',
+    members: ["api.a a", "api.null null"],
+  },
+  calledTwice: {
+    source:
+      'const api = {};\nfunction expose() { contextBridge.exposeInMainWorld("api", api); }\nif (process.env.EARLY) expose();\napi.c = () => ipcRenderer.send("c-cond");\nif (!process.env.EARLY) expose();\n',
+    // written between two calls: exposed by the later one or not, as the conditions decide
+    members: ["api.null null"],
+  },
+  reassigned: {
+    source:
+      'let api = { old: () => ipcRenderer.send("old") };\napi = { neu: () => ipcRenderer.send("neu") };\napi.more = () => ipcRenderer.send("more");\ncontextBridge.exposeInMainWorld("api", api);\n',
+    members: ["api.more more", "api.neu neu"],
+  },
+};
+
+describe("where a bridge member is written, as the review of #207 found (RC)", () => {
+  for (const [name, { source, members: want }] of Object.entries(RC_PRELOADS))
+    for (const how of BUILDS)
+      it(`${name} (${how})`, () => {
+        const text = `const { contextBridge, ipcRenderer } = require("electron");\n${source}`;
+        const info = analyze(
+          build({ "main.js": "", "preload.js": text }, ["main.js", "preload.js"], how),
+        );
+        expect(members(info)).toEqual(want);
+      });
+});
+
+describe("the in-file replacement check of a large bundle (RC 7)", () => {
+  it("reads past the other member writes of the file and finds the replacement", () => {
+    // many member writes that replace no wrapper method, then one that does
+    const main = [
+      'const { ipcMain } = require("electron");',
+      "class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }",
+      "const w = new Ipc();",
+      Array.from({ length: 6000 }, (_, i) => `o${i % 50}.k${i} = v${i};`).join("\n"),
+      "w.handle = () => {};",
+      'w.handle("late:replaced", () => 1);',
+      "module.exports = { w };",
+    ].join("\n");
+    const info = analyze({ "main.js": main });
+    expect(rows(info)).toEqual([]);
+    expect(codes(info)).toContain("wrapper_method_replaced");
+    expect(codes(info)).not.toContain("wrapper_replacements_unchecked");
+  });
+
+  it("reads the rows past a computed write of the class's own fields, and says so", () => {
+    // `this[key] = value` in a setter, as Electron Fiddle's AppState has: not a proven replacement
+    const main =
+      'const { ipcMain } = require("electron");\nclass Ipc { set(k, v) { this[k] = v; } handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst w = new Ipc();\nw.set("title", "x");\nw.handle("kept:h", () => 1);\nmodule.exports = { w };\n';
+    const info = analyze({ "main.js": main });
+    expect(rows(info)).toEqual(["kept:h ipcMain.handle main.js"]);
+    expect(codes(info)).toContain("wrapper_replacements_unchecked");
+  });
+
+  it("does not read a file whose wrappers give no row there", () => {
+    const main =
+      'const { ipcMain } = require("electron");\nclass Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst w = new Ipc();\nw.handle = () => {};\nmodule.exports = { w };\n';
+    expect(codes(analyze({ "main.js": main }))).not.toContain("wrapper_method_replaced");
+  });
+});
+
+// RC re-review of #207: a replacement through a computed key that is a string constant, or a
+// loop over a list of strings, blocks that method in the wrapper's own file as across modules.
+const KEYED: Record<string, string> = {
+  constant:
+    'class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst a = new Ipc();\nconst k = "handle";\na[k] = () => {};\na.handle("keyed:const", () => 1);\n',
+  prototype:
+    'class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst k = "handle";\nIpc.prototype[k] = function () {};\nconst a = new Ipc();\na.handle("keyed:proto", () => 1);\n',
+  loop: 'class Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } on(ch, fn) { ipcMain.on(ch, fn); } }\nfor (const m of ["handle", "on"]) Ipc.prototype[m] = function () {};\nconst a = new Ipc();\na.handle("keyed:loop", () => 1);\n',
+};
+
+describe("a wrapper method replaced through a computed key that is read (RC)", () => {
+  for (const [name, body] of Object.entries(KEYED))
+    for (const how of BUILDS)
+      it(`${name} (${how})`, () => {
+        const main = `const { ipcMain } = require("electron");\n${body}module.exports = {};\n`;
+        const info = analyze(build({ "main.js": main }, ["main.js"], how));
+        expect(rows(info).filter((r) => r.startsWith("keyed:"))).toEqual([]);
+        expect(codes(info)).toContain("wrapper_method_replaced");
+      });
+  for (const how of BUILDS)
+    it(`from another module, as one bundle (${how})`, () => {
+      const info = analyze(
+        build(
+          {
+            "ipc.js":
+              'const { ipcMain } = require("electron");\nclass Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nmodule.exports = { Ipc };\n',
+            "main.js":
+              'const { Ipc } = require("./ipc");\nconst k = "handle";\nIpc.prototype[k] = function () {};\nnew Ipc().handle("keyed:xmod", () => 1);\n',
+          },
+          ["main.js"],
+          how,
+        ),
+      );
+      expect(rows(info).filter((r) => r.startsWith("keyed:"))).toEqual([]);
+      expect(codes(info)).toContain("wrapper_method_replaced");
+    });
+  for (const how of BUILDS)
+    it(`a key that cannot be read leaves the file unchecked (${how})`, () => {
+      const main =
+        'const { ipcMain } = require("electron");\nclass Ipc { handle(ch, fn) { ipcMain.handle(ch, fn); } }\nconst a = new Ipc();\na[process.env.M] = () => {};\na.handle("keyed:unknown", () => 1);\nmodule.exports = {};\n';
+      const info = analyze(build({ "main.js": main }, ["main.js"], how));
+      expect(rows(info).filter((r) => r.startsWith("keyed:"))).toEqual([
+        "keyed:unknown ipcMain.handle main.js",
+      ]);
+      expect(codes(info)).toContain("wrapper_replacements_unchecked");
+    });
 });

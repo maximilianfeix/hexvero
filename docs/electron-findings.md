@@ -45,7 +45,23 @@ A setting also reads as `computed` where the code next to the window does not de
   a window's options it makes `webPreferences` unknown unless the options write their own, and in
   a `webPreferences` object every key it does not write reads as computed (the ones it writes
   stand). An accessor or async member that cannot be named (`get [k]()`, `async *gen()`,
-  `get 1()`) may be any key. The limitation
+  `get 1()`) may be any key. Inside a `webPreferences` object a key is read however it is
+  written: `"nodeIntegration": true` (which esbuild's minifier writes unquoted, so the plain and
+  the minified build read the same), `["sandbox"]: false`, and `[NI]: true` with
+  `const NI = "nodeIntegration"`, also `"preload": …` and `["preload"]: …`. `[NI]` is read only
+  where NI is bound, by scope, to that one declaration with a string literal that is never
+  assigned again: a parameter of the same name (`function make(SB) { … [SB]: true … }` beside
+  `const SB = "sandbox"`), a loop variable, a pattern or a `catch` binding is another name, and
+  its key is not read, also where the window's options are evaluated from the calls of the
+  function (a parameter whose argument is not known is not the outer constant). An accessor,
+  method or generator of a setting (`get contextIsolation() {…}`, `get [NI]() {…}`,
+  `sandbox() {…}`) makes that key computed; one whose key is not read (`get [k]() {…}`,
+  `async [k]() {}`, `*[k]() {}`) may be any key. A quoted or computed key or an accessor in an
+  object that is the value of another key (`inner: { get nodeIntegration() {…} }`) is not a
+  setting. A computed key whose name is not read (`[process.env.K]: false`), also in a later
+  argument of `webPreferences: Object.assign({…}, { [k]: true })`, may be any setting, and
+  replaces what was written before it: every key before it is computed, and a key written after
+  it stands. The limitation
   `window_options_unresolved` names the windows whose settings are not all known;
 - the options object that was followed may be changed after its declaration. A write to one key
   (`prefs.sandbox = false`, `prefs.sandbox ||= x`, `delete prefs.sandbox`) makes that key
@@ -392,7 +408,26 @@ the calls are read as before the check existed, and the limitation `wrapper_repl
 names the modules not checked. Modules are read in an order that a file growing between two
 builds does not change: the modules that define wrappers, then the rest, each by path; the 200
 calling files whose calls are read are the first 200 by path. Calls of a wrapper whose methods all
-count as replaced are not read. A write to another object of the same method name (`srv.handle = f`, lodash's
+count as replaced are not read. The same writes in the wrapper's own file count as well, which
+is where they are in one bundle (esbuild, webpack): for storage wrappers (every form above, so
+`({ a: local.get } = …)`, `local.get ??= f`, `Object.assign(local, o)` and `Reflect.set(local, k,
+f)` in a bundle give no `via` row through `local.get`, as they give none across modules; since
+#202), for IPC wrappers (`w.handle = () => {}` on an
+instance of a class whose `handle` forwards to `ipcMain.handle`) and for methods with an IPC object
+parameter (`Svc.prototype.register = function (ipc) {…}`, `t.register = (ipc) => {}`), a call of
+the replaced method in that file gives no row, and `wrapper_method_replaced` names the method
+and the line of the write (since #201; before, only a write in another module was seen). A write
+on one instance counts for the class, so the calls on its other instances give no row either. In
+the file itself the writes are read only where a call of a wrapper method in that file gives a
+row, and a write whose receiver is not read within the file's replacement budget (200,000 steps;
+the largest bundle of Discord, Claude.app and Electron Fiddle needs 86,000) proves nothing: the
+calls are read as before that check, and the limitation `wrapper_replacements_unchecked` names
+the file. So does a computed member write in the wrapper's own file whose key is not read
+(`this[key] = value` in a setter of the class, as Electron Fiddle's `AppState` and got's
+`Request` have): it may replace a method, which is not proven, and the calls are read. A key
+that is one string constant bound by scope (`const k = "handle"; Ipc.prototype[k] = f`) or a
+loop over a list of strings (`for (const m of ["handle", "on"]) Ipc.prototype[m] = f`) replaces
+those methods there, as it does across modules. A write to another object of the same method name (`srv.handle = f`, lodash's
 `_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
 so a call there may still be read although the method was replaced: a replacement through a
 global (`window.__s.save = f` with `window.__s` set elsewhere), through `require.cache`, through
@@ -721,6 +756,34 @@ name, as minifiers reuse `e`, is another object. Electron Fiddle 0.38.0 and 0.39
 false members of `window.__SENTRY_IPC__` that way (the writes of Sentry's enum IIFEs,
 `function (e) { e.EVENT = "…" }`).
 
+contextBridge copies the object when `exposeInMainWorld` is called, so only a write before the
+call is a member: one in the same function body as the call, in source order, or in the callback
+of an array method there (`forEach`, `map`, `filter`, `reduce`, …), which runs where it is
+written. A write after the call is not exposed (also when the same object is exposed again
+later: the second exposure takes the members written up to it, the first does not). When the
+call is in a function that runs from the top of the file, the writes at the top are placed
+against where it runs from: a function declared there whose every other mention is at the top
+(`function expose() {…}` and `expose();`, `setTimeout(later, 0)`), or a function written in
+place there (a listener `window.addEventListener("DOMContentLoaded", () => {…})`,
+`process.once("loaded", …)`, an IIFE). A write at the top before that place is a member (before the
+first call, when it is called more than once); one between two calls (`if (a) expose(); api.c =
+…; if (!a) expose();`) may be exposed by the later call or not, and gives one entry with
+`member: null`; one after the last call `expose()` is not exposed; one after a listener or a function handed on may run
+before it or not, and gives one entry with `member: null`. A write in a function that runs from
+the top before the exposure (`setup()` called there, also a function declared below and
+hoisted, an IIFE) is a member as well. A write in a loop that the call is in too (`for (…) { if
+(i === 1) expose(…); api.x = …; }`, also a loop without braces) may run before the call in a
+later round, and gives one entry with `member: null`, as does a write inside any other function
+(an event listener, a promise callback, a helper called from somewhere else). When the name is
+assigned a whole new object (`let api = {}; …; api = { only }`), the members are those of the
+object it holds at the call, read only when that is proven: every assignment of the name is in
+the call's function before the call, and the last one is a statement `api = {…}` (or a part of a
+comma sequence that is one, as minifiers join statements; also in a declaration list
+`var { a } = x, api = {…}`) in the call's own block, not the body of a condition or loop;
+anything else is one entry with `member: null`. Writes to the object before that assignment went
+to the object it held then, and are no member. Not seen: a reassignment by destructuring
+(`[api] = …`, `({ api } = …)`), which leaves the first object's members listed.
+
 The senders are read with the same evaluation: `ipcRenderer.invoke(ch, ...a)` inside such a
 callback gives one row per channel (`via: "resolved"`, method `element`). The list a `forEach` /
 `map` callback or a `for … of` loop runs over may read a parameter of the function it is in
@@ -737,6 +800,10 @@ naming an IPC method of the object (`on`, `once`, `handle`, `handleOnce` for ipc
 `ipcMain.[unknown]`: the channel is listed, and the call is neither a sender nor a receiver in
 `ipcChannels`, `interfaces` and the release report. `ROUTES.forEach((r) => ipcMain.handle(r.channel,
 r.fn))` and `for (const r of ROUTES) ipcMain.handle(r.channel, r.fn)` give one row per element too.
+A computed method that is one string or a string constant (`ipcMain["handle"](…)`, `ipcMain[M](…)`
+with `const M = "handle"`) is read as that method, in or outside a loop, as esbuild's minifier
+writes the first form (`ipcMain.handle(…)`); before, both gave `ipcMain.[unknown]` in the source
+and the bundle, and the minified build listed `ipcMain[M]` twice.
 A list that may have changed (above, including `[...BASE, {…}]` spreads and writes to an element
 or through the loop variable), an element that is not read (not an object, a channel from
 `process.env`), and a call in a round after anything that may skip it give one row without a
@@ -768,7 +835,12 @@ call site too: `f.call(thisArg, X)` passes X, and `f.apply(…)`, `f.bind(…)`,
 callback (`forEach(f)`, `setTimeout(f, …)`) or to another name pass something that is not read.
 The calls on the parameter become rows only when there is at least one call site and every one
 passes the same object: `ipcMain` (or `ipcRenderer`) itself, another name for it,
-`electron.ipcMain`, or a parameter whose own call sites all pass it. One call site that passes
+`electron.ipcMain`, or a parameter whose own call sites all pass it. A name `ipcMain` that is
+declared where it is passed with a value that is not Electron's (`{ const ipcMain = new
+EventEmitter(); register(ipcMain); }`) is that other object, when the value is provably not
+Electron's: `new X(…)`, a literal, an object or array literal, a function or class, with nothing
+after it. Any other value (`getIpc()`, a condition) may be Electron's ipcMain, and is read as
+before. One call site that passes
 anything else, or that is not read, gives no rows at all. The rows are in the file of the function,
 at the call inside it, with `via: "parameter"` and `wrapper` naming it (`PrefsService.register`, a
 minifier's name in a minified build); a call the object has no such method for
