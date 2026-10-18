@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { compareReleases, renderReleaseReport, Session } from "../src/index.js";
-import { changeRowId, rowIds } from "../src/report.js";
+import { changeRowId, rowIds, shellWord } from "../src/report.js";
 import { buildAsar } from "./fixtures/asar.js";
 
 const dir = mkdtempSync(join(tmpdir(), "hexvero-report-"));
@@ -261,6 +261,45 @@ describe("release comparison", () => {
     expect(md).toContain("| file | a\\|x $(id)'.asar | b.asar |");
     // the reproduce line passes each name as one shell word
     expect(md).toContain(`compare 'a|x $(id)'\\''.asar' b.asar --report`);
+  });
+});
+
+describe("shell words", () => {
+  it("quotes for POSIX shells and for Windows, and never drops characters silently", () => {
+    expect(shellWord("app/a-1.asar", "posix")).toBe("app/a-1.asar");
+    expect(shellWord("a $(id) `x` it's.asar", "posix")).toBe("'a $(id) `x` it'\\''s.asar'");
+    expect(shellWord("-rf.asar", "posix")).toBe("./-rf.asar");
+    expect(shellWord("-a b.asar", "posix")).toBe("'./-a b.asar'");
+    expect(shellWord("-rf.asar", "win32")).toBe("./-rf.asar");
+    expect(shellWord("C:\\Users\\me\\My App\\a.asar", "win32")).toBe(
+      '"C:\\Users\\me\\My App\\a.asar"',
+    );
+    expect(shellWord("C:\\Users\\x\\app.asar", "win32")).toBe('"C:\\Users\\x\\app.asar"');
+    expect(shellWord("D:\\b (1)\\[x]{y},=~#@+.asar", "win32")).toBe(
+      '"D:\\b (1)\\[x]{y},=~#@+.asar"',
+    );
+    for (const bad of [
+      'a".asar',
+      "%PATH%.asar",
+      "a!b!.asar",
+      "$env:x.asar",
+      "a`b.asar",
+      "x&calc.asar",
+      "a^b.asar",
+      "a;b.asar",
+      "it's.asar",
+      "a|b.asar",
+      "a\u2018b.asar",
+      "a\u201cb\u201d.asar",
+      "caf\u00e9.asar",
+      "\u30a2\u30d7\u30ea.asar",
+    ])
+      expect(shellWord(bad, "win32")).toBe("<path>");
+    for (const platform of ["posix", "win32"] as const) {
+      expect(shellWord("a\nb.asar", platform)).toBe("<path>");
+      expect(shellWord("a\u001b[2Jb.asar", platform)).toBe("<path>");
+      expect(shellWord("gnp.\u202eexe.asar", platform)).toBe("<path>");
+    }
   });
 });
 

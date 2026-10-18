@@ -564,14 +564,35 @@ const code = (text: string): string => {
 /** Prose from a target (a file name, a limitation naming a channel): no Markdown of its own. */
 const cell = (text: string): string =>
   visibleControls(text.replace(/[\r\n]+/g, " ")).replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
-/** A file name as one shell word: single-quoted unless it is plain. */
+/** Characters a pasted word must not carry: controls, and bidi and zero-width marks. */
+// oxlint-disable-next-line no-control-regex -- finding control characters is the point
+const UNSHOWABLE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/;
+
 /**
- * A word as it can be pasted into a POSIX shell: control characters dropped, anything beyond a
- * plain path in single quotes (a quote inside as '\''), so no `$`, backtick or quote can run.
+ * What may go inside double quotes for cmd.exe and PowerShell: an allowlist of ASCII that neither
+ * expands nor ends a quoted word in either (PowerShell also reads typographic quotes as quotes).
  */
-export const shellWord = (text: string): string => {
-  const flat = [...text].filter((c) => c.charCodeAt(0) > 31 && c !== "\u007f").join("");
-  return /^[\w./@:+-]+$/.test(flat) ? flat : `'${flat.replace(/'/g, "'\\''")}'`;
+const WIN32_QUOTABLE = /^[A-Za-z0-9 _.\\/:@+\-()[\]{},=~#]+$/;
+
+/**
+ * A word as it can be pasted into a shell, or `<path>` when it cannot be written safely. A word
+ * starting with `-` gets `./` so it is not read as an option. POSIX (the default except on
+ * Windows): anything beyond a plain path goes in single quotes, a quote inside as '\''. Windows
+ * (cmd.exe and PowerShell): double quotes, and `<path>` for a word with `"`, `%`, `!`, `$` or a
+ * backtick, which expand or end the quotes there. A word with control characters, or bidi or
+ * zero-width marks, is `<path>` on both: dropping them would name another file.
+ */
+export const shellWord = (
+  text: string,
+  platform: "posix" | "win32" = typeof process !== "undefined" && process.platform === "win32"
+    ? "win32"
+    : "posix",
+): string => {
+  if (UNSHOWABLE.test(text)) return "<path>";
+  const word = text.startsWith("-") ? `./${text}` : text;
+  if (/^[\w./@:+-]+$/.test(word)) return word;
+  if (platform === "win32") return WIN32_QUOTABLE.test(word) ? `"${word}"` : "<path>";
+  return `'${word.replace(/'/g, "'\\''")}'`;
 };
 const place = (p: Place): string =>
   `${p.role ? `${p.role} ` : ""}${code(`${p.file}${p.line === undefined ? "" : `:${p.line}`}`)}`;
@@ -706,7 +727,9 @@ export function reproduceTargets(r: ReleaseComparison): {
   sameName?: string;
 } {
   const [nameA, nameB] = [targetName(r.a.info), targetName(r.b.info)];
-  if (!sameText(nameA, nameB)) return { a: shellWord(nameA), b: shellWord(nameB) };
+  // POSIX on every platform: a report is the same bytes wherever it is written.
+  if (!sameText(nameA, nameB))
+    return { a: shellWord(nameA, "posix"), b: shellWord(nameB, "posix") };
   return { a: "<before>", b: "<after>", sameName: nameA };
 }
 

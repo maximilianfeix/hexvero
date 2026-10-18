@@ -83,7 +83,9 @@ describe("hexvero CLI", () => {
     expect(plain.stdout.join("\n")).toMatch(/^ {4}hexvero compare /m);
   });
 
-  it("quotes paths in suggested commands for a POSIX shell", async () => {
+  it("quotes paths in suggested commands for a POSIX shell", async (ctx) => {
+    // Windows quoting is covered by the shellWord tests in core
+    if (process.platform === "win32") return ctx.skip();
     const target = join(dir, "demo-q $(touch PWNED) `id` it's");
     const demo = capture();
     expect(await main(["demo", target], demo)).toBe(0);
