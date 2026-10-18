@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import {
+  createReadStream,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -182,6 +184,34 @@ describe("hexvero CLI", () => {
     expect(existsSync(missing.replace(/md$/, "json"))).toBe(false);
     expect(readFileSync(kept, "utf8")).toBe("keep me");
     rmSync(elsewhere, { recursive: true, force: true });
+  });
+
+  it("writes to a terminal, pipe or /dev/null, also through a link", async (ctx) => {
+    if (process.platform === "win32") return ctx.skip();
+    const a = join(dir, "demo-dev", "notesdesk-1.4.0.asar");
+    const b = join(dir, "demo-dev", "notesdesk-1.5.0.asar");
+    expect(await main(["demo", join(dir, "demo-dev")], capture())).toBe(0);
+    const devnull = join(dir, "devnull.md");
+    symlinkSync("/dev/null", devnull);
+    expect(await main(["compare", a, b, "--report", devnull], capture())).toBe(0);
+    expect(await main(["export", a, devnull], capture())).toBe(0);
+    expect(await main(["compare", a, b, "--report", "/dev/null"], capture())).toBe(0);
+    // a FIFO, as process substitution gives, read by another side
+    const fifo = join(dir, "pipe.md");
+    execFileSync("mkfifo", [fifo]);
+    const link = join(dir, "pipe-link.md");
+    symlinkSync(fifo, link);
+    const read = new Promise<string>((done, fail) => {
+      const chunks: Buffer[] = [];
+      createReadStream(fifo)
+        .on("data", (c) => chunks.push(c as Buffer))
+        .on("end", () => done(Buffer.concat(chunks).toString("utf8")))
+        .on("error", fail);
+    });
+    const code = await main(["compare", a, b, "--report", link], capture());
+    if (code !== 0) writeFileSync(fifo, ""); // let the reader finish so the test fails, not hangs
+    expect(code).toBe(0);
+    expect(await read).toContain("# What changed");
   });
 
   it("writes an HTML report for .html/.htm, with the same --force and paging rules", async () => {

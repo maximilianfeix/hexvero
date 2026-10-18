@@ -682,8 +682,8 @@ export class Session {
     const inspect = (head: string): string | null =>
       /^\{\s*"hexvero":\s*1\b/.test(head) ? null : notAnExport;
     // Checked before the analysis so a refusal is quick; the write below checks again on the
-    // opened file, which is what counts.
-    if (isSymlink(path))
+    // opened file, which is what counts. (The CLI may write to /dev/stdout, itself a link.)
+    if (options.onlyReplaceExports && isSymlink(path))
       throw new AnalysisError(
         "invalid_input",
         `${path} is a symbolic link; hexvero does not write through one`,
