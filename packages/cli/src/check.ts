@@ -20,6 +20,7 @@ import {
 } from "@hexvero/core";
 import { flagString, UsageError, type ParsedArgs } from "./args.js";
 import { paint, toJson, type Io } from "./format.js";
+import { DEFAULT_POLICY_PATH } from "./init.js";
 
 const FORMATS = ["text", "json", "markdown", "sarif"] as const;
 type Format = (typeof FORMATS)[number];
@@ -187,8 +188,13 @@ async function readText(path: string, what: string): Promise<string> {
   try {
     return await readFile(path, "utf8");
   } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
     const e = new Error(
-      `cannot read the ${what} ${path}: ${(error as NodeJS.ErrnoException).code ?? (error as Error).message}`,
+      `cannot read the ${what} ${path}: ${code ?? (error as Error).message}${
+        code === "ENOENT" && what === "policy"
+          ? `; create one with: hexvero init${path === DEFAULT_POLICY_PATH ? "" : ` --out ${path}`}`
+          : ""
+      }`,
     );
     (e as Error & { what?: string }).what = what;
     throw e;

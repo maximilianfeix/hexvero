@@ -116,7 +116,7 @@ $ echo $?
 
 The policy is JSON, data only ([`examples/policy.json`](examples/policy.json), [schema](docs/policy.schema.json)) with four rules: `new-interface-member`, `new-external-host` (with an `allow` list), `window-more-permissive` and `new-bridge-exposure` (a privileged object such as `ipcRenderer` or `fs` handed to pages as it is). Exit `0` pass, `1` technical error, `2` usage or invalid policy, `3` violated, `4` not decidable: an unknown (a host built at run time, an unreadable bridge, an app read in part) is never a pass under `"unknown": "fail"`. `--baseline file --update-baseline` accepts what is there once (the same run then exits `0`); suppressions take a reason and an expiry date. Output as text, JSON, Markdown or SARIF 2.1.0. The GitHub Actions workflow, with a least-privilege SARIF upload: [docs/ci.md](docs/ci.md). Over MCP: `hexvero_check`.
 
-On your own app: `npx hexvero compare old/app.asar new/app.asar --report report.html`, then `npx hexvero check old/app.asar new/app.asar --policy .hexvero/policy.json`.
+On your own app: `npx hexvero compare old/app.asar new/app.asar --report report.html`, then `npx hexvero init old/app.asar` (writes `.hexvero/policy.json` with the hosts the old build already talks to) and `npx hexvero check old/app.asar new/app.asar --policy .hexvero/policy.json`. A `.app`, an install directory or a release `.zip` works in place of `app.asar`.
 
 If hexvero told you something true about a release, a star helps other people find it; a bug report naming a wrong or missing fact helps more.
 

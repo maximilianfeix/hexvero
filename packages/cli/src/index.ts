@@ -66,6 +66,9 @@ Commands
                                                 objects handed to pages); exit 0
         [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
         [--out file] [--force]                  the result (never over a file without --force)
+  init [build] [--out file] [--force]           Write a starting policy to .hexvero/policy.json
+                                                (every rule at fail); with a build, its external
+                                                hosts are allowed
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -645,6 +648,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "check": {
       const { runCheck } = await import("./check.js");
       return runCheck(args, io, session);
+    }
+    case "init": {
+      const { runInit } = await import("./init.js");
+      return runInit(args, io, session);
     }
     case "export": {
       const target = await session.open(need(0, "path"));
