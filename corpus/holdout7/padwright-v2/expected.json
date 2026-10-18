@@ -1,0 +1,1301 @@
+{
+  "case": "padwright-v2",
+  "kind": "compare",
+  "license": "MIT, written for this corpus",
+  "inputs": ["holdout7/padwright-v2.plain.asar"],
+  "base": "holdout7/padwright.plain.asar",
+  "method": "Every expectation was written from the sources by reading them. No analysis tool was run on them, and no tool's detectors, source code or output were looked at. Line numbers were looked up by a scratch script that finds the line of a given piece of text and fails unless it occurs exactly once. A second scratch script ran main.js and both preloads in Node against a stand-in for the electron module (and for node:https and node:fs) and printed every ipcMain registration, webContents.send, new BrowserWindow with its merged webPreferences, request (fetch, https.get, net.request), file access, and the channel each exposed member invokes, sends on or listens to, with file:line; its output agreed with the expectations. The renderers were checked by reading only. LANGUAGE: main.js, both preloads and the modules in main/, common/ and preload/ are CommonJS in the shape tsc emits (\"use strict\", exports.X = ..., enums compiled to an IIFE over Channel, imported functions called as (0, mod_1.fn)(...)); renderer.js, renderer-flasher.js and renderer-diagnostics.js are ES modules, and renderer.js imports renderer/*.js. FILE ATTRIBUTION (as in holdout5): facts are attributed to the source file a reader sees them in. Receivers of table channels name main/ipc-table.js (the table and the loop that calls ipcMain.handle / ipcMain.on are both there). Senders and receivers that go through the IpcClient class name preload.js, where the channel is handed to the client; the ipcRenderer calls themselves are in preload/ipc-client.js (the places lists give both). flash:progress is sent from main/flash-session.js. Every window is created in main/windows.js. In the bundled and minified inputs the modules are bundled into their entry file; bundledFiles maps each module to that file, and line numbers then do not apply. Channel names come from the compiled TypeScript enum Channel (common/ipc-contract.js), from constants exported by other modules (main/flash-session.js FLASH_START, main/telemetry.js TELEMETRY_CHANNEL) and from literals; all are resolvable by evaluating the source, and no channel name is computed at run time. webPreferences lists the keys preload, contextIsolation, nodeIntegration, sandbox, one entry per window and key the code writes (also through SECURE_DEFAULTS and the helper prefsFor); window names the module variable that holds the window; count in an absent entry is one more than the number of windows that have that value, as in holdout4/holdout5. IPC payloads are not a scored class; the object literals sent over IPC are listed under ipcPayloadsUnscored for a reader, and nothing reads them. For this case the sources are padwright/src with changes.json applied the way derive() in corpus/build.mjs applies it (its edits, then prependCommentLines: 3 comment lines in front of every .js file, so every fact moves down at least 3 lines). The harness was run on that derived tree as well. changes lists what differs from padwright (plain), in the spelling of holdout5; unchangedMoves lists facts that only moved to another line and must not be reported as changes. The new payload field (dryRun in keymap:write) is listed under changes.ipcPayloadsUnscored and is not scored.",
+  "bundledFiles": {
+    "main/ipc-table.js": "main.js",
+    "main/windows.js": "main.js",
+    "main/device-bus.js": "main.js",
+    "main/firmware.js": "main.js",
+    "main/telemetry.js": "main.js",
+    "main/flash-session.js": "main.js",
+    "main/settings-file.js": "main.js",
+    "main/menu.js": "main.js",
+    "common/ipc-contract.js": "main.js, preload.js",
+    "preload/ipc-client.js": "preload.js",
+    "renderer/settings-store.js": "renderer.js",
+    "renderer/keymap-view.js": "renderer.js",
+    "renderer/gallery.js": "renderer.js"
+  },
+  "expect": {
+    "ipcChannels": {
+      "exhaustive": true,
+      "present": [
+        {
+          "channel": "device:list",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload.js"],
+          "why": "Channel.ListDevices = \"device:list\" in common/ipc-contract.js (a compiled TypeScript enum). Receiver: an entry { channel: ipc_contract_1.Channel.ListDevices, kind: \"handle\", run } in the table returned by buildTable (main/ipc-table.js), which registerAll walks, calling ipcMain.handle(entry.channel, ...); buildTable and registerAll are called from main.js. Sender: preload.js member listDevices, client.invoke(ipc_contract_1.Channel.ListDevices, ...) on the IpcClient of preload/ipc-client.js, whose invoke calls ipcRenderer?.invoke(channel, payload). Returns bus.list().",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 12
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 53,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 20
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 15,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 13
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "keymap:read",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload.js"],
+          "why": "Channel.ReadKeymap = \"keymap:read\" in common/ipc-contract.js (a compiled TypeScript enum). Receiver: an entry { channel: ipc_contract_1.Channel.ReadKeymap, kind: \"handle\", run } in the table returned by buildTable (main/ipc-table.js), which registerAll walks, calling ipcMain.handle(entry.channel, ...); buildTable and registerAll are called from main.js. Sender: preload.js member readKeymap, client.invoke(ipc_contract_1.Channel.ReadKeymap, ...) on the IpcClient of preload/ipc-client.js, whose invoke calls ipcRenderer?.invoke(channel, payload). Payload { deviceId }.",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 13
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 53,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 21
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 15,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 14
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "keymap:write",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload.js"],
+          "why": "Channel.WriteKeymap = \"keymap:write\" in common/ipc-contract.js (a compiled TypeScript enum). Receiver: an entry { channel: ipc_contract_1.Channel.WriteKeymap, kind: \"handle\", run } in the table returned by buildTable (main/ipc-table.js), which registerAll walks, calling ipcMain.handle(entry.channel, ...); buildTable and registerAll are called from main.js. Sender: preload.js member writeKeymap, client.invoke(ipc_contract_1.Channel.WriteKeymap, ...) on the IpcClient of preload/ipc-client.js, whose invoke calls ipcRenderer?.invoke(channel, payload). Payload { deviceId, layers, checksum, dryRun } (dryRun is new in v2).",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 14
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 53,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 23
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 15,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 15
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "keymap:reset",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload.js"],
+          "why": "Channel.ResetKeymap = \"keymap:reset\" in common/ipc-contract.js (a compiled TypeScript enum). Receiver: an entry { channel: ipc_contract_1.Channel.ResetKeymap, kind: \"handle\", run } in the table returned by buildTable (main/ipc-table.js), which registerAll walks, calling ipcMain.handle(entry.channel, ...); buildTable and registerAll are called from main.js. Sender: preload.js member resetKeymap, client.invoke(ipc_contract_1.Channel.ResetKeymap, ...) on the IpcClient of preload/ipc-client.js, whose invoke calls ipcRenderer?.invoke(channel, payload). New in v2: enum member, table entry and bridge member. Payload { deviceId }.",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 15
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 53,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 28
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 15,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 21
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "settings:get",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload.js"],
+          "why": "Channel.GetSettings = \"settings:get\" in common/ipc-contract.js (a compiled TypeScript enum). Receiver: an entry { channel: ipc_contract_1.Channel.GetSettings, kind: \"handle\", run } in the table returned by buildTable (main/ipc-table.js), which registerAll walks, calling ipcMain.handle(entry.channel, ...); buildTable and registerAll are called from main.js. Sender: preload.js member getSettings, client.invoke(ipc_contract_1.Channel.GetSettings, ...) on the IpcClient of preload/ipc-client.js, whose invoke calls ipcRenderer?.invoke(channel, payload). Returns the settings file.",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 16
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 53,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 18
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 15,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 22
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "settings:set",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload.js"],
+          "why": "Channel.SetSettings = \"settings:set\" in common/ipc-contract.js (a compiled TypeScript enum). Receiver: an entry { channel: ipc_contract_1.Channel.SetSettings, kind: \"handle\", run } in the table returned by buildTable (main/ipc-table.js), which registerAll walks, calling ipcMain.handle(entry.channel, ...); buildTable and registerAll are called from main.js. Sender: preload.js member setSettings, client.invoke(ipc_contract_1.Channel.SetSettings, ...) on the IpcClient of preload/ipc-client.js, whose invoke calls ipcRenderer?.invoke(channel, payload). The patch is the payload.",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 17
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 53,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 19
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 15,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 23
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "firmware:check",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload.js"],
+          "why": "Channel.CheckFirmware = \"firmware:check\" in common/ipc-contract.js (a compiled TypeScript enum). Receiver: an entry { channel: ipc_contract_1.Channel.CheckFirmware, kind: \"handle\", run } in the table returned by buildTable (main/ipc-table.js), which registerAll walks, calling ipcMain.handle(entry.channel, ...); buildTable and registerAll are called from main.js. Sender: preload.js member checkFirmware, client.invoke(ipc_contract_1.Channel.CheckFirmware, ...) on the IpcClient of preload/ipc-client.js, whose invoke calls ipcRenderer?.invoke(channel, payload). Payload { model, channel: track }: the field named channel is the firmware track (\"stable\" or \"beta\"), not an IPC channel.",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 18
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 53,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 33
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 15,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 24
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "flasher:open",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload.js"],
+          "why": "Channel.OpenFlasher = \"flasher:open\" in common/ipc-contract.js (a compiled TypeScript enum). Receiver: an entry { channel: ipc_contract_1.Channel.OpenFlasher, kind: \"on\", run } in the table returned by buildTable (main/ipc-table.js), which registerAll walks, calling ipcMain.on(entry.channel, ...); buildTable and registerAll are called from main.js. Sender: preload.js member openFlasher, client.send(ipc_contract_1.Channel.OpenFlasher, ...) on the IpcClient of preload/ipc-client.js, whose send calls ipcRenderer?.send(channel, payload). Fire and forget: kind \"on\" in the table, client.send in the preload. Opens the flasher window.",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 19
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 55,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 37
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 22,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 25
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "flash:start",
+          "receivers": ["main/ipc-table.js"],
+          "senders": ["preload-flasher.js"],
+          "why": "exports.FLASH_START = \"flash:start\" in main/flash-session.js, used as channel: flash_session_1.FLASH_START in the table of main/ipc-table.js (kind handle); a channel constant from another module than the enum. Sender: preload-flasher.js member start, ipcRenderer.invoke(\"flash:start\", { deviceId, model, version }) with the name written out (sandboxed preload)",
+          "places": {
+            "constant": {
+              "file": "main/flash-session.js",
+              "line": 12
+            },
+            "receivers": [
+              {
+                "file": "main/ipc-table.js",
+                "line": 53,
+                "entry": {
+                  "file": "main/ipc-table.js",
+                  "line": 39
+                }
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload-flasher.js",
+                "line": 10
+              }
+            ]
+          }
+        },
+        {
+          "channel": "device:attached",
+          "receivers": ["preload.js"],
+          "senders": ["main.js"],
+          "why": "main.js: on the DeviceBus \"attach\" event, windows_1.windows.main?.webContents.send(ipc_contract_1.Channel.DeviceAttached, { id, model, firmware }). Receiver: preload.js onDeviceAttached, client.subscribe(Channel.DeviceAttached, listener), whose body calls ipcRenderer.on(channel, wrapped) in preload/ipc-client.js",
+          "places": {
+            "constant": {
+              "file": "common/ipc-contract.js",
+              "line": 20
+            },
+            "senders": [
+              {
+                "file": "main.js",
+                "line": 28
+              }
+            ],
+            "receivers": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 27,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 26
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "flash:progress",
+          "receivers": ["preload-flasher.js"],
+          "senders": ["main/flash-session.js"],
+          "why": "main/flash-session.js FlashSession.report: this.target.webContents.send(\"flash:progress\", { stage, percent }), target being the flasher window found by BrowserWindow.fromWebContents in the flash:start handler. Receiver: preload-flasher.js onProgress, ipcRenderer.on(\"flash:progress\", ...)",
+          "places": {
+            "senders": [
+              {
+                "file": "main/flash-session.js",
+                "line": 21
+              }
+            ],
+            "receivers": [
+              {
+                "file": "preload-flasher.js",
+                "line": 12
+              }
+            ]
+          }
+        },
+        {
+          "channel": "telemetry:event",
+          "receivers": ["main.js"],
+          "senders": ["preload.js"],
+          "why": "exports.TELEMETRY_CHANNEL = \"telemetry:event\" in main/telemetry.js; main.js ipc.on(telemetry_1.TELEMETRY_CHANNEL, ...), ipc being electron_1.ipcMain. Sender: preload.js track, client.send(\"telemetry:event\", { name, props }) with the literal",
+          "places": {
+            "constant": {
+              "file": "main/telemetry.js",
+              "line": 14
+            },
+            "receivers": [
+              {
+                "file": "main.js",
+                "line": 24
+              }
+            ],
+            "senders": [
+              {
+                "file": "preload/ipc-client.js",
+                "line": 22,
+                "entry": {
+                  "file": "preload.js",
+                  "line": 27
+                }
+              }
+            ]
+          }
+        },
+        {
+          "channel": "diag:collect",
+          "receivers": ["main.js"],
+          "senders": ["renderer-diagnostics.js"],
+          "why": "v2 name of diag:snapshot (renamed on both ends). main.js ipc.handle(\"diag:collect\", ...). Sender: renderer-diagnostics.js ipcRenderer.invoke(\"diag:collect\"), ipcRenderer taken from window.require(\"electron\") in the diagnostics window (nodeIntegration on, no context isolation, no preload)",
+          "places": {
+            "receivers": [
+              {
+                "file": "main.js",
+                "line": 18
+              }
+            ],
+            "senders": [
+              {
+                "file": "renderer-diagnostics.js",
+                "line": 12
+              }
+            ]
+          }
+        }
+      ],
+      "absent": [
+        {
+          "channel": "macro:record",
+          "why": "common/ipc-contract.js RESERVED_CHANNELS: an exported array nothing reads (so is macro:play)"
+        },
+        {
+          "channel": "macro:play",
+          "why": "see macro:record"
+        },
+        {
+          "channel": "layer:set",
+          "why": "main/device-bus.js: a command name given to transport.send of the LoopbackTransport (the device protocol), not IPC"
+        },
+        {
+          "channel": "eeprom:commit",
+          "why": "main/device-bus.js: a device command like layer:set"
+        },
+        {
+          "channel": "attach",
+          "why": "an event of the DeviceBus EventEmitter (bus.on(\"attach\") in main.js, this.emit in device-bus.js); so is detach"
+        },
+        {
+          "channel": "detach",
+          "why": "see attach"
+        },
+        {
+          "channel": "keymap:sync",
+          "why": "renderer/keymap-view.js: the name of a BroadcastChannel between pages, not IPC"
+        },
+        {
+          "channel": "device:rescan",
+          "why": "main/menu.js: the id of a menu item (so is device:diagnostics)"
+        },
+        {
+          "channel": "device:diagnostics",
+          "why": "main/menu.js: a menu item id"
+        },
+        {
+          "channel": "stable",
+          "why": "the value of the payload field named channel in firmware:check (the firmware track); a default in main/settings-file.js"
+        },
+        {
+          "channel": "padwright",
+          "why": "the label given to new IpcClient(\"padwright\"), used in an error message; also the bridge API name"
+        },
+        {
+          "channel": "ready-to-show",
+          "why": "a BrowserWindow event (so is closed)"
+        },
+        {
+          "channel": "Erase",
+          "why": "a member of the numeric enum FlashStage, sent as the stage field of flash:progress"
+        },
+        {
+          "channel": "keymap.saved",
+          "why": "renderer/keymap-view.js: the name of a telemetry event (so is app.opened); the IPC channel is telemetry:event"
+        },
+        {
+          "channel": "response",
+          "why": "main/firmware.js: an event of the net.request object"
+        },
+        {
+          "channel": "flash:cancel",
+          "why": "removed in v2: listener in main.js, member cancel and the button are gone"
+        },
+        {
+          "channel": "diag:snapshot",
+          "why": "renamed to diag:collect in v2"
+        },
+        {
+          "channel": "render-process-gone",
+          "why": "v2 main.js: an app event"
+        }
+      ]
+    },
+    "webPreferences": {
+      "exhaustive": true,
+      "present": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main/windows.js",
+          "window": "mainWindow",
+          "line": 33,
+          "why": "createMainWindow: options = { ..., webPreferences: prefsFor(\"preload.js\", { sandbox: false }) } in a variable, passed to new BrowserWindow(options); prefsFor returns { ...SECURE_DEFAULTS, preload: appFile(preloadName), ...overrides }, appFile joining app.getAppPath()"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "mainWindow",
+          "line": 11,
+          "why": "from the frozen SECURE_DEFAULTS, spread first by prefsFor and not overridden"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "mainWindow",
+          "line": 12,
+          "why": "from SECURE_DEFAULTS"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "mainWindow",
+          "line": 33,
+          "why": "the override { sandbox: false } is spread last by prefsFor, after SECURE_DEFAULTS' sandbox: true"
+        },
+        {
+          "key": "preload",
+          "value": "preload-flasher.js",
+          "file": "main/windows.js",
+          "window": "flasherWindow",
+          "line": 47,
+          "why": "openFlasher: flasherPrefs = prefsFor(\"preload-flasher.js\", { sandbox: false }) in a variable, then new BrowserWindow({ parent, modal, ..., webPreferences: flasherPrefs })"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "flasherWindow",
+          "line": 11,
+          "why": "from SECURE_DEFAULTS"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "flasherWindow",
+          "line": 12,
+          "why": "from SECURE_DEFAULTS"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "flasherWindow",
+          "line": 47,
+          "why": "v2: the override { sandbox: false } (more permissive than v1)"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main/windows.js",
+          "window": "diagnosticsWindow",
+          "line": 62,
+          "why": "openDiagnostics: legacyPrefs = { nodeIntegration: true, contextIsolation: false } in a variable, passed as webPreferences: legacyPrefs. The deliberately permissive window: its page uses window.require(\"electron\")"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main/windows.js",
+          "window": "diagnosticsWindow",
+          "line": 62,
+          "why": "legacyPrefs, see above"
+        }
+      ],
+      "absent": [
+        {
+          "key": "preload",
+          "value": "preload.js",
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window loads preload.js (mainWindow)"
+        },
+        {
+          "key": "preload",
+          "value": "preload-flasher.js",
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window loads it (flasherWindow)"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 3,
+          "why": "exactly two windows have it; SECURE_DEFAULTS itself is no window"
+        },
+        {
+          "key": "contextIsolation",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window has it, diagnosticsWindow"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 3,
+          "why": "exactly two windows have it"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 2,
+          "why": "exactly one window has it, diagnosticsWindow"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "main/windows.js",
+          "count": 1,
+          "why": "no window has it in v2: both prefsFor windows override it, and diagnosticsWindow writes no sandbox key"
+        },
+        {
+          "key": "sandbox",
+          "value": false,
+          "file": "main/windows.js",
+          "count": 3,
+          "why": "exactly two windows have it, mainWindow and flasherWindow"
+        },
+        {
+          "key": "preload",
+          "value": null,
+          "file": "main/windows.js",
+          "window": "diagnosticsWindow",
+          "why": "diagnosticsWindow has no preload; an entry for it is wrong"
+        },
+        {
+          "key": "sandbox",
+          "value": true,
+          "file": "renderer-diagnostics.js",
+          "why": "RECOMMENDED = { contextIsolation: true, nodeIntegration: false, sandbox: true }: an object with the same keys that the console only displays; it configures no window"
+        },
+        {
+          "key": "contextIsolation",
+          "value": true,
+          "file": "renderer-diagnostics.js",
+          "why": "RECOMMENDED, see above"
+        },
+        {
+          "key": "nodeIntegration",
+          "value": false,
+          "file": "renderer-diagnostics.js",
+          "why": "RECOMMENDED, see above"
+        }
+      ]
+    },
+    "contextBridge": {
+      "exhaustive": true,
+      "present": [
+        {
+          "api": "padwright",
+          "member": "listDevices",
+          "channel": "device:list",
+          "why": "client.invoke(Channel.ListDevices)",
+          "line": 13
+        },
+        {
+          "api": "padwright",
+          "member": "readKeymap",
+          "channel": "keymap:read",
+          "why": "client.invoke(Channel.ReadKeymap, { deviceId })",
+          "line": 14
+        },
+        {
+          "api": "padwright",
+          "member": "writeKeymap",
+          "channel": "keymap:write",
+          "why": "client.invoke(Channel.WriteKeymap, { deviceId, layers, checksum, dryRun })",
+          "line": 15
+        },
+        {
+          "api": "padwright",
+          "member": "resetKeymap",
+          "channel": "keymap:reset",
+          "why": "new in v2: client.invoke(Channel.ResetKeymap, { deviceId })",
+          "line": 21
+        },
+        {
+          "api": "padwright",
+          "member": "getSettings",
+          "channel": "settings:get",
+          "why": "client.invoke(Channel.GetSettings)",
+          "line": 22
+        },
+        {
+          "api": "padwright",
+          "member": "setSettings",
+          "channel": "settings:set",
+          "why": "client.invoke(Channel.SetSettings, patch)",
+          "line": 23
+        },
+        {
+          "api": "padwright",
+          "member": "checkFirmware",
+          "channel": "firmware:check",
+          "why": "client.invoke(Channel.CheckFirmware, { model, channel: track })",
+          "line": 24
+        },
+        {
+          "api": "padwright",
+          "member": "openFlasher",
+          "channel": "flasher:open",
+          "why": "client.send(Channel.OpenFlasher, { deviceId })",
+          "line": 25
+        },
+        {
+          "api": "padwright",
+          "member": "onDeviceAttached",
+          "channel": "device:attached",
+          "why": "client.subscribe(Channel.DeviceAttached, listener): listens",
+          "line": 26
+        },
+        {
+          "api": "padwright",
+          "member": "track",
+          "channel": "telemetry:event",
+          "why": "client.send(\"telemetry:event\", { name, props })",
+          "line": 27
+        },
+        {
+          "api": "padwright",
+          "member": "isMac",
+          "channel": null,
+          "why": "a value; moved to the last member in v2",
+          "line": 28
+        },
+        {
+          "api": "flasher",
+          "member": "start",
+          "channel": "flash:start",
+          "why": "preload-flasher.js: an inline object literal given to exposeInMainWorld(\"flasher\", {...}); ipcRenderer.invoke(\"flash:start\", { deviceId, model, version })",
+          "line": 10
+        },
+        {
+          "api": "flasher",
+          "member": "onProgress",
+          "channel": "flash:progress",
+          "why": "ipcRenderer.on(\"flash:progress\", ...): listens",
+          "line": 11
+        }
+      ],
+      "absent": [
+        {
+          "api": "padwright",
+          "member": "invoke",
+          "why": "a method of IpcClient (so are send and subscribe); the client is not exposed, only the object createApi returns"
+        },
+        {
+          "api": "padwright",
+          "member": "subscribe",
+          "why": "see invoke"
+        },
+        {
+          "api": "padwright",
+          "member": "createApi",
+          "why": "the preload function that builds the object; not exposed"
+        },
+        {
+          "api": "padwright",
+          "member": "label",
+          "why": "a field of the IpcClient instance"
+        },
+        {
+          "api": "flasher",
+          "member": "cancel",
+          "why": "removed in v2"
+        }
+      ]
+    },
+    "endpoints": {
+      "exhaustive": true,
+      "present": [
+        {
+          "prefix": "https://firmware.padwright.example/feed/",
+          "method": "GET",
+          "api": "node:https get",
+          "file": "main/firmware.js",
+          "line": 19,
+          "why": "main/firmware.js checkFirmware: https.get(feedUrl, { headers }, ...) from node:https, feedUrl = `${FEED_BASE}/${track}.json` with FEED_BASE = \"https://firmware.padwright.example/feed\"; the track comes from the firmware:check payload (the settings' firmwareTrack, \"stable\" by default). Called by the firmware:check handler"
+        },
+        {
+          "prefix": "https://dl.padwright.example/firmware/",
+          "method": "GET",
+          "api": "electron net.request",
+          "file": "main/firmware.js",
+          "line": 39,
+          "why": "main/firmware.js downloadImage: electron_1.net.request({ method: \"GET\", url: `${DOWNLOAD_BASE}/${encodeURIComponent(model)}/${version}.bin` }), DOWNLOAD_BASE = \"https://dl.padwright.example/firmware\"; model and version come from the flash:start payload. Called by FlashSession.run"
+        },
+        {
+          "value": "https://telemetry.padwright.example/v2/events",
+          "method": "POST",
+          "api": "fetch",
+          "file": "main/telemetry.js",
+          "line": 20,
+          "why": "main/telemetry.js track: fetch(EVENTS_URL, { method: \"POST\" }), EVENTS_URL = `${TELEMETRY_ORIGIN}/v2/events` with TELEMETRY_ORIGIN = \"https://telemetry.padwright.example\"; only when the setting telemetry is on. Called by the telemetry:event listener"
+        },
+        {
+          "value": "https://crash.padwright.example/v1/reports",
+          "method": "POST",
+          "api": "node:https request",
+          "file": "main/telemetry.js",
+          "line": 28,
+          "why": "v2 main/telemetry.js reportCrash: https.request(\"https://crash.padwright.example/v1/reports\", { method: \"POST\" }) from node:https, then req.end(body); called from main.js on app \"render-process-gone\". A new external host"
+        },
+        {
+          "prefix": "https://share.padwright.example/api/layouts?model=",
+          "method": "GET",
+          "api": "fetch",
+          "file": "renderer/gallery.js",
+          "line": 12,
+          "why": "renderer/gallery.js browse: fetch(`${GALLERY_API}/layouts?model=${encodeURIComponent(model)}&sort=top`), GALLERY_API = \"https://share.padwright.example/api\"; the model comes from the attached device. Called from renderer.js showGallery"
+        },
+        {
+          "value": "https://share.padwright.example/api/layouts",
+          "method": "POST",
+          "api": "fetch",
+          "file": "renderer/gallery.js",
+          "line": 20,
+          "why": "renderer/gallery.js share: fetch(`${GALLERY_API}/layouts`, { method: \"POST\", body }); called from the Share button in renderer.js"
+        }
+      ],
+      "unreadable": 1,
+      "unreadableWhy": "main/telemetry.js notifyTeam: fetch(webhookUrl, { method: \"POST\" }) where webhookUrl is the team's own webhook from padwright-settings.json, set by the user; the address is user data. Called by FlashSession.run after a flash",
+      "absent": [
+        {
+          "value": "https://beta.firmware.padwright.example/feed/beta.json",
+          "why": "main/firmware.js BETA_FEED: a constant nothing uses"
+        },
+        {
+          "value": "https://docs.padwright.example/guides/flashing",
+          "why": "main/menu.js FLASHING_GUIDE, only given to shell.openExternal from the Help menu; renderer-flasher.js shows the same address inside a text"
+        },
+        {
+          "value": "https://share.padwright.example/api",
+          "why": "GALLERY_API, the base of the gallery requests; renderer.js shows it as text in the footer. No request goes to the base itself"
+        },
+        {
+          "value": "https://share.padwright.example",
+          "why": "index.html: an origin in the Content-Security-Policy meta tag"
+        },
+        {
+          "value": "https://firmware.padwright.example/feed",
+          "why": "FEED_BASE, only the start of the feed address"
+        },
+        {
+          "value": "https://dl.padwright.example/firmware",
+          "why": "DOWNLOAD_BASE, only the start of the image address"
+        },
+        {
+          "value": "https://telemetry.padwright.example",
+          "why": "TELEMETRY_ORIGIN, only the start of EVENTS_URL"
+        },
+        {
+          "value": "index.html",
+          "why": "loadFile, a packaged page (so are flasher.html and diagnostics.html)"
+        }
+      ]
+    },
+    "storage": {
+      "exhaustive": true,
+      "present": [
+        {
+          "kind": "file",
+          "value": "padwright-settings.json",
+          "ops": ["read", "write"],
+          "why": "main/settings-file.js settingsFile.read / write: fs.readFileSync / fs.writeFileSync of the whole JSON at path.join(app.getPath(\"userData\"), SETTINGS_NAME); used by the settings handlers, main/telemetry.js track and notifyTeam. Kind file as in holdout4/holdout5"
+        },
+        {
+          "kind": "localStorage",
+          "value": "padwright.theme",
+          "ops": ["read", "write"],
+          "why": "renderer.js prefs.get(Keys.THEME, \"system\") in start and prefs.set(Keys.THEME, theme) in applyTheme; prefs from renderer/settings-store.js wraps localStorage.getItem / setItem, Keys.THEME = \"padwright.theme\""
+        },
+        {
+          "kind": "localStorage",
+          "value": "padwright.lastDevice",
+          "ops": ["read", "write"],
+          "why": "renderer/keymap-view.js prefs.set(Keys.LAST_DEVICE, deviceId) in selectDevice and prefs.get(Keys.LAST_DEVICE) in lastDevice (called from renderer.js start): the settings wrapper called from another module"
+        },
+        {
+          "kind": "localStorage",
+          "value": "padwright.recentLayouts",
+          "ops": ["read", "write", "delete"],
+          "why": "renderer/gallery.js remember (prefs.get then prefs.set) and recent (prefs.get); renderer.js prefs.clear(Keys.RECENT_LAYOUTS) on the Forget button, which is localStorage.removeItem"
+        },
+        {
+          "kind": "localStorage",
+          "value": "padwright.lastLayer",
+          "ops": ["read", "write"],
+          "why": "v2: Keys.LAST_LAYER = \"padwright.lastLayer\"; renderer/keymap-view.js prefs.get(Keys.LAST_LAYER, 0) in selectDevice and prefs.set(Keys.LAST_LAYER, index) in selectLayer"
+        },
+        {
+          "kind": "localStorage",
+          "value": "padwright.legacyKeymapCache",
+          "ops": ["delete"],
+          "why": "renderer.js: window.localStorage.removeItem(\"padwright.legacyKeymapCache\") once at load, a migration from 2.x; never read or written"
+        },
+        {
+          "kind": "sessionStorage",
+          "value": "flasher.inProgress",
+          "ops": ["read", "write", "delete"],
+          "why": "renderer-flasher.js: sessionStorage.setItem in begin, getItem at DOMContentLoaded, removeItem when the stage is Done; direct calls with a literal"
+        }
+      ],
+      "absent": [
+        {
+          "value": "THEME",
+          "why": "the name of a property of Keys (so are LAST_DEVICE, RECENT_LAYOUTS, LAST_LAYER); the stored key is its value"
+        },
+        {
+          "value": "userData",
+          "why": "main/settings-file.js: the argument of app.getPath"
+        },
+        {
+          "value": "webhookUrl",
+          "why": "a field of the object in padwright-settings.json (so are firmwareTrack, telemetry, repeatDelayMs); the file is the storage entry"
+        },
+        {
+          "value": "application/x-padwright-key",
+          "why": "renderer/keymap-view.js: the format of dataTransfer.setData / getData during drag and drop"
+        },
+        {
+          "value": "x-padwright-client",
+          "why": "main/firmware.js: a request header"
+        },
+        {
+          "value": "device",
+          "why": "renderer-flasher.js: a query parameter read with URLSearchParams.get"
+        },
+        {
+          "value": "model",
+          "why": "renderer/gallery.js: cache is an in-memory Map keyed by model"
+        }
+      ]
+    },
+    "ipcPayloadsUnscored": {
+      "note": "Not a scored class (the scorer has none for payloads). The object literals sent over each channel, by field name, for a reader. setSettings sends the caller's patch object and flash:cancel (v1 only) sends a bare deviceId; neither is an object literal.",
+      "present": [
+        {
+          "channel": "keymap:read",
+          "fields": ["deviceId"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "keymap:write",
+          "fields": ["deviceId", "layers", "checksum", "dryRun"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "keymap:reset",
+          "fields": ["deviceId"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "firmware:check",
+          "fields": ["model", "channel"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "flasher:open",
+          "fields": ["deviceId"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "telemetry:event",
+          "fields": ["name", "props"],
+          "file": "preload.js"
+        },
+        {
+          "channel": "flash:start",
+          "fields": ["deviceId", "model", "version"],
+          "file": "preload-flasher.js"
+        },
+        {
+          "channel": "device:attached",
+          "fields": ["id", "model", "firmware"],
+          "file": "main.js"
+        },
+        {
+          "channel": "flash:progress",
+          "fields": ["stage", "percent"],
+          "file": "main/flash-session.js"
+        }
+      ]
+    },
+    "changes": {
+      "ipcChannels": {
+        "added": [
+          {
+            "channel": "keymap:reset",
+            "why": "new enum member Channel.ResetKeymap, a new table entry, the new member resetKeymap"
+          },
+          {
+            "channel": "diag:collect",
+            "why": "diag:snapshot renamed on both ends (main.js handler, renderer-diagnostics.js invoke)"
+          }
+        ],
+        "removed": [
+          {
+            "channel": "flash:cancel",
+            "why": "the main.js listener, the member flasher.cancel and its button were removed"
+          },
+          {
+            "channel": "diag:snapshot",
+            "why": "renamed to diag:collect"
+          }
+        ],
+        "absent": [
+          {
+            "channel": "device:attached",
+            "why": "its enum member moved to the end of the enum; same value, same ends"
+          },
+          {
+            "channel": "settings:get",
+            "why": "its table entry moved to the top of the table (so did settings:set)"
+          },
+          {
+            "channel": "telemetry:event",
+            "why": "its listener moved below the diagnostics handler in main.js"
+          },
+          {
+            "channel": "keymap:write",
+            "why": "the payload gained a field (dryRun) and the handler reads it; the channel, its sender and its receiver are the same"
+          },
+          {
+            "channel": "flash:start",
+            "why": "unchanged; only shifted"
+          },
+          {
+            "channel": "flash:progress",
+            "why": "unchanged; the window it is sent to is now unsandboxed, which is a window-settings change"
+          }
+        ]
+      },
+      "contextBridge": {
+        "added": [
+          {
+            "api": "padwright",
+            "member": "resetKeymap",
+            "channel": "keymap:reset"
+          }
+        ],
+        "removed": [
+          {
+            "api": "flasher",
+            "member": "cancel",
+            "channel": "flash:cancel"
+          }
+        ],
+        "absent": [
+          {
+            "api": "padwright",
+            "member": "isMac",
+            "why": "moved from the first to the last member; same value"
+          },
+          {
+            "api": "padwright",
+            "member": "writeKeymap",
+            "why": "same channel; only its payload gained dryRun"
+          },
+          {
+            "api": "flasher",
+            "member": "onProgress",
+            "why": "unchanged; shifted up by the removed member"
+          }
+        ]
+      },
+      "webPreferences": {
+        "changed": [
+          {
+            "window": "flasherWindow",
+            "key": "sandbox",
+            "from": true,
+            "to": false,
+            "direction": "more permissive",
+            "file": "main/windows.js",
+            "line": 47,
+            "why": "openFlasher now calls prefsFor(\"preload-flasher.js\", { sandbox: false }); the override is spread after SECURE_DEFAULTS"
+          }
+        ],
+        "absent": [
+          {
+            "window": "mainWindow",
+            "key": "sandbox",
+            "why": "still false; its line only shifted"
+          },
+          {
+            "window": "diagnosticsWindow",
+            "key": "nodeIntegration",
+            "why": "still true, unchanged"
+          },
+          {
+            "window": "flasherWindow",
+            "key": "preload",
+            "why": "still preload-flasher.js"
+          }
+        ]
+      },
+      "endpoints": {
+        "added": [
+          {
+            "value": "https://crash.padwright.example/v1/reports",
+            "method": "POST",
+            "why": "main/telemetry.js reportCrash through node:https request; a new external host"
+          }
+        ],
+        "removed": [],
+        "absent": [
+          {
+            "prefix": "https://share.padwright.example/api/layouts?model=",
+            "why": "unchanged"
+          },
+          {
+            "value": "https://telemetry.padwright.example/v2/events",
+            "why": "unchanged; the new crash function was inserted above notifyTeam, below track"
+          }
+        ]
+      },
+      "storage": {
+        "added": [
+          {
+            "kind": "localStorage",
+            "value": "padwright.lastLayer",
+            "ops": ["read", "write"],
+            "why": "new key constant Keys.LAST_LAYER, used from renderer/keymap-view.js"
+          }
+        ],
+        "removed": [],
+        "absent": [
+          {
+            "kind": "localStorage",
+            "value": "padwright.theme",
+            "why": "applyTheme moved in renderer.js; same key, same operations"
+          },
+          {
+            "kind": "localStorage",
+            "value": "padwright.lastDevice",
+            "why": "unchanged; selectDevice gained a line below its write"
+          }
+        ]
+      }
+    },
+    "ipcPayloadChangesUnscored": {
+      "note": "Not scored and deliberately outside changes (the scorer scores every list under changes). The payload difference between padwright and padwright-v2.",
+      "changed": [
+        {
+          "channel": "keymap:write",
+          "added": ["dryRun"],
+          "file": "preload.js",
+          "line": 19,
+          "why": "writeKeymap(deviceId, layers, dryRun = false) now sends { deviceId, layers, checksum, dryRun }"
+        }
+      ],
+      "added": [
+        {
+          "channel": "keymap:reset",
+          "fields": ["deviceId"]
+        }
+      ],
+      "removed": []
+    },
+    "unchangedMoves": [
+      {
+        "file": "common/ipc-contract.js",
+        "what": "Channel.DeviceAttached enum member (moved to the end of the enum)",
+        "fromLine": 10,
+        "toLine": 20
+      },
+      {
+        "file": "common/ipc-contract.js",
+        "what": "Channel.ReadKeymap enum member (shifted by the comment lines and the removed line above)",
+        "fromLine": 11,
+        "toLine": 13
+      },
+      {
+        "file": "main/ipc-table.js",
+        "what": "settings:get table entry (moved to the top of the table)",
+        "fromLine": 22,
+        "toLine": 18
+      },
+      {
+        "file": "main/ipc-table.js",
+        "what": "settings:set table entry (moved with settings:get)",
+        "fromLine": 23,
+        "toLine": 19
+      },
+      {
+        "file": "main/ipc-table.js",
+        "what": "ipcMain.handle in registerAll",
+        "fromLine": 45,
+        "toLine": 53
+      },
+      {
+        "file": "main/ipc-table.js",
+        "what": "flash:start table entry",
+        "fromLine": 31,
+        "toLine": 39
+      },
+      {
+        "file": "main.js",
+        "what": "telemetry:event listener (moved below the diagnostics handler)",
+        "fromLine": 15,
+        "toLine": 24
+      },
+      {
+        "file": "main.js",
+        "what": "device:attached webContents.send",
+        "fromLine": 28,
+        "toLine": 28
+      },
+      {
+        "file": "main/flash-session.js",
+        "what": "flash:progress webContents.send",
+        "fromLine": 18,
+        "toLine": 21
+      },
+      {
+        "file": "preload.js",
+        "what": "member isMac (moved from the first to the last member)",
+        "fromLine": 10,
+        "toLine": 28
+      },
+      {
+        "file": "preload.js",
+        "what": "member track",
+        "fromLine": 23,
+        "toLine": 27
+      },
+      {
+        "file": "preload-flasher.js",
+        "what": "member onProgress (shifted; the member cancel above it was removed)",
+        "fromLine": 9,
+        "toLine": 11
+      },
+      {
+        "file": "main/windows.js",
+        "what": "mainWindow new BrowserWindow(options)",
+        "fromLine": 32,
+        "toLine": 35
+      },
+      {
+        "file": "main/windows.js",
+        "what": "diagnosticsWindow legacyPrefs",
+        "fromLine": 58,
+        "toLine": 62
+      },
+      {
+        "file": "main/firmware.js",
+        "what": "https.get of the feed",
+        "fromLine": 16,
+        "toLine": 19
+      },
+      {
+        "file": "main/firmware.js",
+        "what": "net.request of the image",
+        "fromLine": 36,
+        "toLine": 39
+      },
+      {
+        "file": "main/telemetry.js",
+        "what": "fetch(EVENTS_URL)",
+        "fromLine": 15,
+        "toLine": 20
+      },
+      {
+        "file": "main/telemetry.js",
+        "what": "fetch(webhookUrl) (unreadable address)",
+        "fromLine": 26,
+        "toLine": 40
+      },
+      {
+        "file": "renderer/gallery.js",
+        "what": "gallery GET",
+        "fromLine": 9,
+        "toLine": 12
+      },
+      {
+        "file": "renderer.js",
+        "what": "prefs.set(Keys.THEME) in applyTheme (the function moved below checkForUpdate)",
+        "fromLine": 13,
+        "toLine": 40
+      },
+      {
+        "file": "renderer.js",
+        "what": "localStorage.removeItem of padwright.legacyKeymapCache",
+        "fromLine": 9,
+        "toLine": 12
+      },
+      {
+        "file": "renderer-flasher.js",
+        "what": "sessionStorage.setItem of flasher.inProgress",
+        "fromLine": 16,
+        "toLine": 19
+      }
+    ]
+  }
+}

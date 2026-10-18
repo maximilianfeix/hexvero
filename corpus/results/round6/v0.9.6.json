@@ -1,0 +1,708 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.9.6",
+  "commit": "unknown",
+  "node": "v22.17.1",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  }
+ },
+ "totals": [
+  {
+   "set": "holdout7",
+   "class": "IPC channels",
+   "hit": 23,
+   "missed": 29,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "IPC senders and receivers",
+   "hit": 34,
+   "missed": 12,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "window settings",
+   "hit": 32,
+   "missed": 8,
+   "false": 2,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "bridge members",
+   "hit": 11,
+   "missed": 41,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "bridge member channel",
+   "hit": 11,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "endpoints",
+   "hit": 17,
+   "missed": 4,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "endpoint method",
+   "hit": 13,
+   "missed": 4,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "requests with an unknown URL shown",
+   "hit": 4,
+   "missed": 0,
+   "false": 4,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "storage keys",
+   "hit": 14,
+   "missed": 11,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "storage read/write/delete",
+   "hit": 14,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout7",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout7",
+   "class": "changes in contextBridge",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout7",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout7",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout7",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  }
+ ],
+ "rows": [
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed device:list",
+    "missed keymap:read",
+    "missed keymap:write",
+    "missed settings:get",
+    "missed settings:set",
+    "missed firmware:check",
+    "missed flasher:open"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 9,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "flash:start: receiver ipc-table.js missed",
+    "device:attached: receiver preload.js missed",
+    "telemetry:event: sender preload.js missed"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed windows.js preload=preload.js",
+    "missed windows.js preload=preload-flasher.js"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "bridge members",
+   "hit": 3,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed padwright.isMac",
+    "missed padwright.listDevices",
+    "missed padwright.readKeymap",
+    "missed padwright.writeKeymap",
+    "missed padwright.getSettings",
+    "missed padwright.setSettings",
+    "missed padwright.checkFirmware",
+    "missed padwright.openFlasher",
+    "missed padwright.onDeviceAttached",
+    "missed padwright.track",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "bridge member channel",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "endpoints",
+   "hit": 4,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://dl.padwright.example/firmware/…"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://share.padwright.example/api/layouts?model=…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "storage keys",
+   "hit": 2,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed file padwright-settings.json",
+    "missed localStorage padwright.theme",
+    "missed localStorage padwright.lastDevice",
+    "missed localStorage padwright.recentLayouts"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed device:list",
+    "missed keymap:read",
+    "missed keymap:write",
+    "missed settings:get",
+    "missed settings:set",
+    "missed firmware:check",
+    "missed flasher:open"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 9,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "flash:start: receiver main.js missed",
+    "device:attached: receiver preload.js missed",
+    "telemetry:event: sender preload.js missed"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js preload=preload-flasher.js"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "bridge members",
+   "hit": 3,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed padwright.isMac",
+    "missed padwright.listDevices",
+    "missed padwright.readKeymap",
+    "missed padwright.writeKeymap",
+    "missed padwright.getSettings",
+    "missed padwright.setSettings",
+    "missed padwright.checkFirmware",
+    "missed padwright.openFlasher",
+    "missed padwright.onDeviceAttached",
+    "missed padwright.track",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "endpoints",
+   "hit": 4,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://dl.padwright.example/firmware/…"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://share.padwright.example/api/layouts?model=…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "storage keys",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed file padwright-settings.json"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "IPC channels",
+   "hit": 6,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed device:list",
+    "missed keymap:read",
+    "missed keymap:write",
+    "missed settings:get",
+    "missed settings:set",
+    "missed firmware:check",
+    "missed flasher:open"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 9,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "flash:start: receiver main.js missed",
+    "device:attached: receiver preload.js missed",
+    "telemetry:event: sender preload.js missed"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed main.js preload=preload.js",
+    "missed main.js preload=preload-flasher.js"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "bridge members",
+   "hit": 3,
+   "missed": 10,
+   "false": 0,
+   "notes": [
+    "missed padwright.isMac",
+    "missed padwright.listDevices",
+    "missed padwright.readKeymap",
+    "missed padwright.writeKeymap",
+    "missed padwright.getSettings",
+    "missed padwright.setSettings",
+    "missed padwright.checkFirmware",
+    "missed padwright.openFlasher",
+    "missed padwright.onDeviceAttached",
+    "missed padwright.track",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "bridge member channel",
+   "hit": 3,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "endpoints",
+   "hit": 4,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://dl.padwright.example/firmware/…"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://share.padwright.example/api/layouts?model=…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "storage keys",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed file padwright-settings.json"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 5,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "IPC channels",
+   "hit": 5,
+   "missed": 8,
+   "false": 0,
+   "notes": [
+    "missed device:list",
+    "missed keymap:read",
+    "missed keymap:write",
+    "missed keymap:reset",
+    "missed settings:get",
+    "missed settings:set",
+    "missed firmware:check",
+    "missed flasher:open"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 7,
+   "missed": 3,
+   "false": 0,
+   "notes": [
+    "flash:start: receiver ipc-table.js missed",
+    "device:attached: receiver preload.js missed",
+    "telemetry:event: sender preload.js missed"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 2,
+   "false": 2,
+   "notes": [
+    "missed windows.js preload=preload.js",
+    "missed windows.js preload=preload-flasher.js",
+    "false windows.js sandbox=true",
+    "false windows.js sandbox=false"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "bridge members",
+   "hit": 2,
+   "missed": 11,
+   "false": 0,
+   "notes": [
+    "missed padwright.listDevices",
+    "missed padwright.readKeymap",
+    "missed padwright.writeKeymap",
+    "missed padwright.resetKeymap",
+    "missed padwright.getSettings",
+    "missed padwright.setSettings",
+    "missed padwright.checkFirmware",
+    "missed padwright.openFlasher",
+    "missed padwright.onDeviceAttached",
+    "missed padwright.track",
+    "missed padwright.isMac",
+    "1 entry reported as unreadable"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "bridge member channel",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "endpoints",
+   "hit": 5,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed https://dl.padwright.example/firmware/…"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "endpoint method",
+   "hit": 4,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "https://share.padwright.example/api/layouts?model=…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "storage keys",
+   "hit": 2,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed file padwright-settings.json",
+    "missed localStorage padwright.theme",
+    "missed localStorage padwright.lastDevice",
+    "missed localStorage padwright.recentLayouts",
+    "missed localStorage padwright.lastLayer"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright-v2.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 2,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar → holdout7/padwright-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 3,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed +keymap:reset"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar → holdout7/padwright-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed +padwright.resetKeymap"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar → holdout7/padwright-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": [
+    "false +main/windows.js::mainWindow::sandbox"
+   ]
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar → holdout7/padwright-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout7",
+   "input": "holdout7/padwright.plain.asar → holdout7/padwright-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 0,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed +localStorage padwright.lastLayer"
+   ]
+  }
+ ]
+}

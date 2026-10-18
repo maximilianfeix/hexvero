@@ -1,0 +1,136 @@
+{
+  "from": "../padwright/src",
+  "prependCommentLines": 3,
+  "edits": [
+    {
+      "file": "common/ipc-contract.js",
+      "find": "    Channel[\"WriteKeymap\"] = \"keymap:write\";\n",
+      "replace": "    Channel[\"WriteKeymap\"] = \"keymap:write\";\n    Channel[\"ResetKeymap\"] = \"keymap:reset\";\n"
+    },
+    {
+      "file": "common/ipc-contract.js",
+      "find": "    Channel[\"DeviceAttached\"] = \"device:attached\";\n",
+      "replace": ""
+    },
+    {
+      "file": "common/ipc-contract.js",
+      "find": "    Channel[\"OpenFlasher\"] = \"flasher:open\";\n",
+      "replace": "    Channel[\"OpenFlasher\"] = \"flasher:open\";\n    Channel[\"DeviceAttached\"] = \"device:attached\";\n"
+    },
+    {
+      "file": "main/ipc-table.js",
+      "find": "            run: ({ deviceId, layers }) => bus.writeKeymap(deviceId, layers),\n        },\n",
+      "replace": "            run: ({ deviceId, layers }) => bus.writeKeymap(deviceId, layers),\n        },\n        {\n            channel: ipc_contract_1.Channel.ResetKeymap,\n            kind: \"handle\",\n            run: ({ deviceId }) => bus.writeKeymap(deviceId, [[], [], []]),\n        },\n"
+    },
+    {
+      "file": "main/ipc-table.js",
+      "find": "        { channel: ipc_contract_1.Channel.GetSettings, kind: \"handle\", run: () => settings_file_1.settingsFile.read() },\n        { channel: ipc_contract_1.Channel.SetSettings, kind: \"handle\", run: (patch) => settings_file_1.settingsFile.write(patch) },\n",
+      "replace": ""
+    },
+    {
+      "file": "main/ipc-table.js",
+      "find": "    return [\n",
+      "replace": "    return [\n        { channel: ipc_contract_1.Channel.GetSettings, kind: \"handle\", run: () => settings_file_1.settingsFile.read() },\n        { channel: ipc_contract_1.Channel.SetSettings, kind: \"handle\", run: (patch) => settings_file_1.settingsFile.write(patch) },\n"
+    },
+    {
+      "file": "main/ipc-table.js",
+      "find": "// diagnostics ones (main.js) and flash:cancel (main.js) is registered from this table.",
+      "replace": "// diagnostics ones (main.js) is registered from this table."
+    },
+    {
+      "file": "preload.js",
+      "find": "        writeKeymap: (deviceId, layers) => client.invoke(ipc_contract_1.Channel.WriteKeymap, {\n            deviceId,\n            layers,\n            checksum: layers.flat().length,\n        }),\n",
+      "replace": "        writeKeymap: (deviceId, layers, dryRun = false) => client.invoke(ipc_contract_1.Channel.WriteKeymap, {\n            deviceId,\n            layers,\n            checksum: layers.flat().length,\n            dryRun,\n        }),\n        resetKeymap: (deviceId) => client.invoke(ipc_contract_1.Channel.ResetKeymap, { deviceId }),\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "        isMac: process.platform === \"darwin\",\n",
+      "replace": ""
+    },
+    {
+      "file": "preload.js",
+      "find": "        track: (name, props = {}) => client.send(\"telemetry:event\", { name, props }),\n",
+      "replace": "        track: (name, props = {}) => client.send(\"telemetry:event\", { name, props }),\n        isMac: process.platform === \"darwin\",\n"
+    },
+    {
+      "file": "main/ipc-table.js",
+      "find": "            run: ({ deviceId, layers }) => bus.writeKeymap(deviceId, layers),\n",
+      "replace": "            run: ({ deviceId, layers, dryRun }) => (dryRun ? { written: 0 } : bus.writeKeymap(deviceId, layers)),\n"
+    },
+    {
+      "file": "main.js",
+      "find": "\nipc.on(\"flash:cancel\", (_event, deviceId) => {\n    sessions.get(deviceId)?.cancel();\n});",
+      "replace": ""
+    },
+    {
+      "file": "preload-flasher.js",
+      "find": "    cancel: (deviceId) => electron_1.ipcRenderer.send(\"flash:cancel\", deviceId),\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer-flasher.js",
+      "find": "  document.querySelector(\"#cancel\").addEventListener(\"click\", () => flasher.cancel(deviceId));\n",
+      "replace": ""
+    },
+    {
+      "file": "flasher.html",
+      "find": "    <button id=\"cancel\">Cancel</button>\n",
+      "replace": ""
+    },
+    {
+      "file": "main.js",
+      "find": "ipc.on(telemetry_1.TELEMETRY_CHANNEL, (_event, { name, props }) => {\n    void (0, telemetry_1.track)(name, props);\n});\nipc.handle(\"diag:snapshot\", () => ({\n    versions: process.versions,\n    devices: bus.list(),\n    flashing: [...sessions.keys()],\n    memory: process.memoryUsage(),\n}));\n",
+      "replace": "ipc.handle(\"diag:collect\", () => ({\n    versions: process.versions,\n    devices: bus.list(),\n    flashing: [...sessions.keys()],\n    memory: process.memoryUsage(),\n}));\nipc.on(telemetry_1.TELEMETRY_CHANNEL, (_event, { name, props }) => {\n    void (0, telemetry_1.track)(name, props);\n});\n"
+    },
+    {
+      "file": "renderer-diagnostics.js",
+      "find": "ipcRenderer.invoke(\"diag:snapshot\")",
+      "replace": "ipcRenderer.invoke(\"diag:collect\")"
+    },
+    {
+      "file": "main/windows.js",
+      "find": "    const flasherPrefs = prefsFor(\"preload-flasher.js\");\n",
+      "replace": "    // 3.3: the recovery path reads the image with node:fs in the preload, so no sandbox.\n    const flasherPrefs = prefsFor(\"preload-flasher.js\", { sandbox: false });\n"
+    },
+    {
+      "file": "preload-flasher.js",
+      "find": "// Compiled from src/preload-flasher.ts. Sandboxed: only \"electron\" can be required here, so the\n// channel names are written out.\n",
+      "replace": "// Compiled from src/preload-flasher.ts. Unsandboxed since 3.3 (see main/windows.js); the\n// channel names are still written out.\n"
+    },
+    {
+      "file": "main/telemetry.js",
+      "find": "exports.notifyTeam = notifyTeam;\n",
+      "replace": "exports.notifyTeam = notifyTeam;\nexports.reportCrash = reportCrash;\nconst https = require(\"node:https\");\n"
+    },
+    {
+      "file": "main/telemetry.js",
+      "find": "/** Posts a flash result to the team's own webhook",
+      "replace": "/** Sends a renderer crash report; minidumps stay on the machine. */\nfunction reportCrash(details) {\n    const req = https.request(\"https://crash.padwright.example/v1/reports\", {\n        method: \"POST\",\n        headers: { \"content-type\": \"application/json\" },\n    });\n    req.on(\"error\", () => { });\n    req.end(JSON.stringify({ reason: details.reason, exitCode: details.exitCode }));\n}\n/** Posts a flash result to the team's own webhook"
+    },
+    {
+      "file": "main.js",
+      "find": "electron_1.app.on(\"window-all-closed\", () => {\n",
+      "replace": "electron_1.app.on(\"render-process-gone\", (_event, _contents, details) => {\n    (0, telemetry_1.reportCrash)(details);\n});\nelectron_1.app.on(\"window-all-closed\", () => {\n"
+    },
+    {
+      "file": "renderer/settings-store.js",
+      "find": "  RECENT_LAYOUTS: \"padwright.recentLayouts\",\n",
+      "replace": "  RECENT_LAYOUTS: \"padwright.recentLayouts\",\n  LAST_LAYER: \"padwright.lastLayer\",\n"
+    },
+    {
+      "file": "renderer/keymap-view.js",
+      "find": "  state.layers = keymap.layers;\n  render();\n}\n",
+      "replace": "  state.layers = keymap.layers;\n  state.layer = prefs.get(Keys.LAST_LAYER, 0);\n  render();\n}\n\nexport function selectLayer(index) {\n  state.layer = index;\n  prefs.set(Keys.LAST_LAYER, index);\n  render();\n}\n"
+    },
+    {
+      "file": "renderer.js",
+      "find": "function applyTheme(theme) {\n  document.documentElement.dataset.theme = theme;\n  prefs.set(Keys.THEME, theme);\n}\n\n",
+      "replace": ""
+    },
+    {
+      "file": "renderer.js",
+      "find": "async function showGallery(model) {\n",
+      "replace": "function applyTheme(theme) {\n  document.documentElement.dataset.theme = theme;\n  prefs.set(Keys.THEME, theme);\n}\n\nasync function showGallery(model) {\n"
+    }
+  ]
+}
