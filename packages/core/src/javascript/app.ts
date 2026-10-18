@@ -3458,6 +3458,8 @@ export interface FileTokenFacts {
   navigation: NavigationHandler[] | null;
   /** Methods of the file's storage wrappers the file replaces (`Class.method:line`, at most 20). */
   keyReplaced?: string[];
+  /** Writes that may replace one of them were not all read within the budget. */
+  keyUnchecked?: true;
 }
 
 export function readFileTokens(
@@ -3487,6 +3489,8 @@ export function readFileTokens(
   let keyWrappers: WrapperFacts | null = null;
   /** Methods of the file's storage wrappers the file replaces, as `Class.method:line`. */
   let ownKeyReplaced: string[] | null = null;
+  /** Writes that may replace such a method were not all read within the budget. */
+  let ownKeyUnchecked = false;
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
   let navigation: NavigationHandler[] | null = null;
   const scan = scanJavaScript(source, {
@@ -3844,13 +3848,14 @@ export function readFileTokens(
             // A method of such a wrapper the file replaces, in any form the stage across modules
             // reads (`({ a: local.get } = …)`, `local.get ??= f`, `Object.assign(local, o)`,
             // `Reflect.set(local, k, f)`): its calls give no row in the file either.
-            const replaced = reader.readOwnReplacements();
-            if (replaced.length) {
+            const own = reader.readOwnReplacements();
+            if (own.unchecked) ownKeyUnchecked = true;
+            if (own.found.length) {
               ownKeyReplaced = [
-                ...new Set(replaced.map((x) => `${x.via}:${reader.lineOf(x.at)}`)),
+                ...new Set(own.found.map((x) => `${x.via}:${reader.lineOf(x.at)}`)),
               ].slice(0, 20);
               // the rows the resolver's own reading gave through such a method go as well
-              const gone = new Set(replaced.map((x) => x.via));
+              const gone = new Set(own.found.map((x) => x.via));
               candidates.storage = candidates.storage.filter((r) => !r.via || !gone.has(r.via));
             }
             const calls = reader.keyCalls(false, true);
@@ -3899,6 +3904,7 @@ export function readFileTokens(
     candidates,
     keyWrappers,
     ...(ownKeyReplaced ? { keyReplaced: ownKeyReplaced } : {}),
+    ...(ownKeyUnchecked ? { keyUnchecked: true as const } : {}),
     bridge,
     navigation,
   };
@@ -4158,6 +4164,11 @@ export function analyzeJavaScriptTree(
       facts.limitations.push({
         code: "wrapper_method_replaced",
         message: `${file.path}: ${tokenFacts.keyReplaced.length} method(s) of storage wrappers of the file are replaced in the file by a member write on the class, its prototype or an instance (or one whose receiver was not read within the budget), so their calls there give no storage rows through them: ${tokenFacts.keyReplaced.join(", ")}.`,
+      });
+    if ((scan.wrappersUnchecked || tokenFacts.keyUnchecked) && facts.limitations.length < 200)
+      facts.limitations.push({
+        code: "wrapper_replacements_unchecked",
+        message: `${file.path}: the writes in the file that may replace a method of its own ${scan.wrappersUnchecked && tokenFacts.keyUnchecked ? "IPC and storage" : scan.wrappersUnchecked ? "IPC" : "storage"} wrappers were not all read within the replacement budget of the file (200,000 steps); calls of those methods in the file are read without that check, so a method replaced there would not be seen.`,
       });
     if (scan.wrappersReplaced && facts.limitations.length < 200)
       facts.limitations.push({

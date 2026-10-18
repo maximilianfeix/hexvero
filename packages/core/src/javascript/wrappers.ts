@@ -291,16 +291,23 @@ export class WrapperReader {
    * (`replacements`) and counts those methods as replaced, as the cross-file stage does for
    * writes in other modules: `Svc.prototype.register = function …`, `t.register = () => {}`,
    * `w.handle = () => {}` on an instance. A call of one then gives no row in this file either.
-   * One past the budget counts as replaced as well. Returns the methods, with the write.
+   * A write past the budget is not counted (see below). Returns the methods, with the write.
    */
-  readOwnReplacements(): Array<{ via: string; at: number }> {
-    if (!this.classes.length) return [];
-    const found = this.replacements();
-    if (!found.length) return [];
-    const replaced = new Set(this.replaced);
-    for (const { cls, method } of found) replaced.add(methodKey(cls, method));
-    this.replaced = replaced;
-    return found.map(({ cls, method, at }) => ({ via: `${cls.name}.${method}`, at }));
+  readOwnReplacements(): { found: Array<{ via: string; at: number }>; unchecked: boolean } {
+    if (!this.classes.length) return { found: [], unchecked: false };
+    const all = this.replacements();
+    // A write whose receiver was not read within the budget proves nothing here: the calls are
+    // read as before the check existed, and the caller says the file was not checked whole.
+    const found = all.filter((x) => !x.budget);
+    if (found.length) {
+      const replaced = new Set(this.replaced);
+      for (const { cls, method } of found) replaced.add(methodKey(cls, method));
+      this.replaced = replaced;
+    }
+    return {
+      found: found.map(({ cls, method, at }) => ({ via: `${cls.name}.${method}`, at })),
+      unchecked: found.length < all.length,
+    };
   }
 
   /** The line of token k. */

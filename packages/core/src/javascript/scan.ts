@@ -107,6 +107,8 @@ export interface ScanResult {
    * 20): their calls in the file give no row.
    */
   wrappersReplaced?: string[];
+  /** Writes in the file that may replace such a method were not all read within the budget. */
+  wrappersUnchecked?: true;
   /**
    * Functions and methods whose parameter is used as the IPC object (`register(ipc) {
    * ipc.handle(…) }`), with this file's call sites; the application stage decides (wrappers.ts).
@@ -874,6 +876,7 @@ export function scanJavaScript(
     capped?: true;
     paramIpc?: ParamIpc[];
     replaced?: string[];
+    unchecked?: true;
   } | null = null;
   const readWrappers = (): NonNullable<typeof wrapperScan> => {
     if (wrapperScan) return wrapperScan;
@@ -1012,14 +1015,14 @@ export function scanJavaScript(
     if (objects.length) reader.findObjectParams(objects);
     // A method of the file's own wrappers that the file replaces (`Svc.prototype.register = f`,
     // `w.handle = () => {}` on an instance): its calls give no row here, as across modules.
-    const replaced = reader.readOwnReplacements();
+    const own = reader.readOwnReplacements();
     // a search cut short may have missed a call site that passes something else: no decision
     const objectsCut = objects.length >= MAX_OBJECT_CALLS;
     const read = objects.length ? reader.paramIpc() : [];
     const paramIpc = reader.objectsCapped || objectsCut ? [] : read;
     if (!reader.classes.length && !paramIpc.length) return wrapperScan;
     const rows = reader.rows();
-    const replacedAt = [...new Set(replaced.map((x) => `${x.via}:${reader.lineOf(x.at)}`))];
+    const replacedAt = [...new Set(own.found.map((x) => `${x.via}:${reader.lineOf(x.at)}`))];
     const facts = reader.facts();
     wrapperScan = {
       rows,
@@ -1030,6 +1033,7 @@ export function scanJavaScript(
       ...(reader.capped ? { capped: true as const } : {}),
       ...(paramIpc.length ? { paramIpc } : {}),
       ...(replacedAt.length ? { replaced: replacedAt.slice(0, 20) } : {}),
+      ...(own.unchecked ? { unchecked: true as const } : {}),
     };
     return wrapperScan;
   };
@@ -1554,6 +1558,7 @@ export function scanJavaScript(
     ...(wrapped.capped ? { wrappersCapped: true as const } : {}),
     ...(wrapped.paramIpc ? { paramIpc: wrapped.paramIpc } : {}),
     ...(wrapped.replaced ? { wrappersReplaced: wrapped.replaced } : {}),
+    ...(wrapped.unchecked ? { wrappersUnchecked: true as const } : {}),
   };
 }
 

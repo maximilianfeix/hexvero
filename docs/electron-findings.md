@@ -407,8 +407,11 @@ instance of a class whose `handle` forwards to `ipcMain.handle`) and for methods
 parameter (`Svc.prototype.register = function (ipc) {…}`, `t.register = (ipc) => {}`), a call of
 the replaced method in that file gives no row, and `wrapper_method_replaced` names the method
 and the line of the write (since #201; before, only a write in another module was seen). A write
-on one instance counts for the class, so the calls on its other instances give no row either. A
-write to another object of the same method name (`srv.handle = f`, lodash's
+on one instance counts for the class, so the calls on its other instances give no row either. In
+the file itself a write whose receiver is not read within the file's replacement budget (200,000
+steps) proves nothing: the calls are read as before that check, and the limitation
+`wrapper_replacements_unchecked` names the file (large bundles: Discord's `bundle.js`, Electron
+Fiddle's main and renderer bundles, four files of Claude.app). A write to another object of the same method name (`srv.handle = f`, lodash's
 `_.get = baseGet`), or in a module that imports none of these modules, changes nothing. Not seen,
 so a call there may still be read although the method was replaced: a replacement through a
 global (`window.__s.save = f` with `window.__s` set elsewhere), through `require.cache`, through
