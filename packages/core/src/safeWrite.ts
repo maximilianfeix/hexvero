@@ -29,7 +29,7 @@ export interface WriteFileOptions {
 /**
  * Output names that stand for a stream of this process: `-` (standard output), `/dev/stdout`,
  * `/dev/stderr`, `/dev/null` and `/dev/fd/N` (also what process substitution passes). Only these
- * are opened through a link, and only a terminal, pipe or device behind them is written to.
+ * are opened through a link: the kernel makes them, and the user named one.
  */
 const STREAM_NAME = /^\/dev\/(?:stdout|stderr|null|fd\/\d+)$/;
 
@@ -58,8 +58,8 @@ function writeStdout(data: string | Uint8Array): Promise<void> {
  * Writes `data` to `path` without following a symbolic link in the last component.
  *
  * A stream named as such (`-`, `/dev/stdout`, `/dev/stderr`, `/dev/null`, `/dev/fd/N`; not with
- * `inspect`) is opened once and written to only when fstat of that descriptor says it is a
- * character device or FIFO; a regular file behind such a name is refused. Every other path: a
+ * `inspect`) is opened once (appending) and written to when fstat of that descriptor says it is a
+ * character device, FIFO or regular file: what the shell connected there (`> out.json`). Every other path: a
  * new file is created exclusively (O_CREAT|O_EXCL, which never follows a link); an existing one
  * is replaced only with `overwrite`, opened with O_NOFOLLOW where the platform has it. Refusals
  * are AnalysisErrors with code invalid_input and `details.code` EEXIST, ELOOP, ENOTREG, ENXIO,
@@ -83,20 +83,20 @@ export async function writeFileNoFollow(
   if (!options.inspect && STREAM_NAME.test(path)) {
     let stream: FileHandle;
     try {
-      // Never blocks: a FIFO with no reader fails with ENXIO instead.
-      stream = await opening(constants.O_WRONLY | NONBLOCK | NOCTTY);
+      // Never blocks: a FIFO with no reader fails with ENXIO instead. O_APPEND: a file the shell
+      // opened for `>>` is appended to, and one opened for `>` is empty anyway.
+      stream = await opening(constants.O_WRONLY | constants.O_APPEND | NONBLOCK | NOCTTY);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENXIO")
         throw refuse("ENXIO", "is a pipe that nothing reads");
       throw error;
     }
     try {
+      // The kernel makes these names, and the user named one: whatever the shell connected
+      // there is the output (`--out /dev/stdout > out.json` is a regular file).
       const st = await stream.stat();
-      if (!st.isCharacterDevice() && !st.isFIFO())
-        throw refuse(
-          "ENOTREG",
-          "is not a terminal, pipe or device; name the file itself, or - for standard output",
-        );
+      if (!st.isCharacterDevice() && !st.isFIFO() && !st.isFile())
+        throw refuse("ENOTREG", "is not a file, terminal, pipe or device");
       await writeAll(stream, typeof data === "string" ? Buffer.from(data) : data);
     } finally {
       await stream.close();

@@ -226,6 +226,22 @@ describe("hexvero CLI", () => {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return ctx.skip(); // no bash
       throw error;
     }
+    // `--report /dev/stdout > file`: the common script pattern
+    const redirected = join(dir, "redirected.md");
+    execFileSync(
+      "bash",
+      [
+        "-c",
+        '"$0" "$1" compare "$2" "$3" --report /dev/stdout > "$4"',
+        process.execPath,
+        bin,
+        a,
+        b,
+        redirected,
+      ],
+      { stdio: "ignore" },
+    );
+    expect(readFileSync(redirected, "utf8")).toContain("# What changed");
     for (let i = 0; i < 100 && !readFileSync(out, "utf8").includes("# What changed"); i++)
       await new Promise((r) => setTimeout(r, 50));
     expect(readFileSync(out, "utf8")).toContain("# What changed");

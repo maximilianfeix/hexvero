@@ -61,19 +61,24 @@ describe("writeFileNoFollow", () => {
     expect(existsSync(path)).toBe(false);
   });
 
-  it("writes to a stream name only when a terminal, pipe or device is behind it", async (ctx) => {
+  it("writes to what the shell connected to a stream name, a file included", async (ctx) => {
     if (process.platform === "win32") return ctx.skip();
     await writeFileNoFollow("/dev/null", "x");
+    // `--out /dev/fd/3 3> file` and `3>> file`: the file the shell opened is the output
     const file = join(dir, "behind-fd.txt");
-    const fd = openSync(file, "w");
-    try {
-      await expect(writeFileNoFollow(`/dev/fd/${fd}`, "planted")).rejects.toMatchObject({
-        details: { code: "ENOTREG" },
-      });
-    } finally {
-      closeSync(fd);
+    for (const [flags, before, after] of [
+      ["w", "", "out"],
+      ["a", "head\n", "head\nout"],
+    ] as const) {
+      writeFileSync(file, before);
+      const fd = openSync(file, flags);
+      try {
+        await writeFileNoFollow(`/dev/fd/${fd}`, "out");
+      } finally {
+        closeSync(fd);
+      }
+      expect(readFileSync(file, "utf8")).toBe(after);
     }
-    expect(readFileSync(file, "utf8")).toBe("");
     // a stream name is not a pass for MCP-style writes
     await expect(
       writeFileNoFollow("/dev/null", "x", { overwrite: true, inspect: () => null }),
