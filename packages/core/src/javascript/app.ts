@@ -3998,126 +3998,6 @@ function linkBridgeValues(input: {
   return { unread, exposures, forwarders, capped };
 }
 
-/**
- * The scripts each HTML file of the tree loads: `<script src="…">`, resolved against the HTML
- * file's directory to the JavaScript files of the app. Remote and missing sources are left out.
- */
-function htmlScripts(
-  tree: FileTree,
-  known: Set<string>,
-  maxFileBytes: number,
-): { pages: Map<string, string[]>; skipped: string[] } {
-  const pages = new Map<string, string[]>();
-  const skipped: string[] = [];
-  for (const f of tree.files) {
-    if (!/\.html?$/i.test(f.path) || pages.size >= MAX_HTML_FILES) continue;
-    let text: string;
-    try {
-      text = new TextDecoder().decode(tree.read(f.path, Math.min(maxFileBytes, MAX_HTML_BYTES)));
-    } catch {
-      skipped.push(`${f.path} (not read: larger than ${MAX_HTML_BYTES} bytes, or unreadable)`);
-      continue;
-    }
-    const lower = text.toLowerCase();
-    const dir = posix.dirname(f.path);
-    const scripts: string[] = [];
-    let cut = false;
-    let hidden = false;
-    const add = (tag: string): void => {
-      const src = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(tag);
-      const value = src?.[1] ?? src?.[2] ?? src?.[3];
-      if (!value) return;
-      const clean = value.split(/[?#]/)[0]!;
-      if (!clean || /^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith("//")) return;
-      const path = posix.normalize(clean.startsWith("/") ? clean.slice(1) : posix.join(dir, clean));
-      if (known.has(path)) scripts.push(path);
-    };
-    /**
-     * The `>` that ends the tag opened at `at`, past quoted attribute values: a quote opens a
-     * value only right after `=` (spaces between allowed), as in HTML's attribute value states;
-     * a stray quote is part of a name. -1 if the tag does not end.
-     */
-    const tagEnd = (at: number): number => {
-      let afterEquals = false;
-      for (let q = at + 1; q < lower.length; q++) {
-        const c = lower.charCodeAt(q);
-        if (c === 62) return q; // >
-        if ((c === 34 || c === 39) && afterEquals) {
-          const close = lower.indexOf(c === 34 ? '"' : "'", q + 1);
-          if (close === -1) return -1;
-          q = close;
-          afterEquals = false;
-          continue;
-        }
-        if (c === 61) afterEquals = true; // =
-        else if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) afterEquals = false;
-      }
-      return -1;
-    };
-    let stopped = false;
-    // The HTML data state, step by step: markup, comments, and the raw text of `script`,
-    // `style`, `textarea` and `title`, where neither `<!--` nor `<script` means anything. Each
-    // step jumps forward by indexOf, so the page is read once.
-    for (let at = lower.indexOf("<"); at !== -1 && at < lower.length;) {
-      if (lower.startsWith("<!--", at)) {
-        const close = lower.indexOf("-->", at + 4);
-        if (close === -1) {
-          // an unclosed comment hides the rest; a script tag in it is said
-          if (lower.indexOf("<script", at) !== -1) hidden = true;
-          break;
-        }
-        if (lower.slice(at, close).includes("<script")) hidden = true;
-        at = lower.indexOf("<", close + 3);
-        continue;
-      }
-      const name = /^<([a-z][a-z0-9-]*)/.exec(lower.slice(at, at + 16))?.[1];
-      if (!name) {
-        at = lower.indexOf("<", at + 1);
-        continue;
-      }
-      const end = tagEnd(at);
-      if (end === -1) {
-        stopped = true;
-        break;
-      }
-      if (name === "script") {
-        if (end - at > MAX_SCRIPT_TAG) cut = true;
-        else add(text.slice(at, end));
-      }
-      at = end + 1;
-      if (name === "script" || name === "style" || name === "textarea" || name === "title") {
-        const close = lower.indexOf(`</${name}`, at);
-        if (close === -1) {
-          stopped = true;
-          break;
-        }
-        at = close;
-        // the end tag itself
-        const after = lower.indexOf(">", close);
-        if (after === -1) {
-          stopped = true;
-          break;
-        }
-        at = after + 1;
-      }
-      at = lower.indexOf("<", at);
-    }
-    if (cut) skipped.push(`${f.path} (a <script> tag longer than ${MAX_SCRIPT_TAG} bytes)`);
-    if (hidden) skipped.push(`${f.path} (a <script> tag inside a comment, which loads nothing)`);
-    if (stopped)
-      skipped.push(
-        `${f.path} (a tag or a script, style, textarea or title element that does not end: the rest is not read)`,
-      );
-    pages.set(f.path, scripts);
-  }
-  return { pages, skipped };
-}
-/** HTML files read for the scripts they load, and the bytes read of each. */
-const MAX_HTML_FILES = 500;
-const MAX_HTML_BYTES = 1 << 20;
-/** A `<script …>` tag longer than this is not read for its `src`. */
-const MAX_SCRIPT_TAG = 4096;
-
 /** Page scripts read for calls of generic bridge forwarders, per analysis. */
 const MAX_BRIDGE_CALL_FILES = 200;
 /** Tokens of those page scripts, in all. */
@@ -4147,8 +4027,6 @@ function bridgeCallRows(input: {
   text(path: string): string | null;
   open(path: string): ReadModule | null;
   resolve(from: string, specifier: string): string | null;
-  /** The scripts each HTML file of the app loads (`<script src>`), by the HTML file's path. */
-  htmlPages: ReadonlyMap<string, string[]>;
 }): {
   rows: Map<string, IpcUsage[]>;
   ambiguous: string[];
@@ -4196,39 +4074,20 @@ function bridgeCallRows(input: {
   for (const f of input.forwarders) exposing.add(f.file);
   let work = BRIDGE_CALL_WORK;
   let files = 0;
-  // The page scripts, and what they do to the api first. A write that gives the global another
-  // value (`window.api = …`, `window["api"] = …`, `Object.assign(window, { api })`,
-  // `Object.defineProperty(window, "api", …)`, a classic script's top-level `var api` or `api =
-  // …`) replaces the bridge for the scripts of the pages that load that file (read from the HTML
-  // files), and for the file itself; where no page read loads it, the rows stay and the write is
-  // named. Worker scripts (`new Worker("w.js")`, located from the calling file), files that take
-  // ipcMain from electron and files with a `with` statement are not read, and named.
+  // The page scripts, and the writes in them that may give an exposed api another value as a
+  // global (`window.api = …`, `window["api"] = …`, `Object.assign(window, { api })`,
+  // `Object.defineProperty(window, "api", …)`, a classic script's top-level `var api = …` or an
+  // unbound `api = …`): which pages load a script is not read, so every page row stays and each
+  // such write is named. Worker scripts (`new Worker("w.js")`, located from the calling file),
+  // files that take ipcMain from electron and files with a `with` statement are not read, and
+  // named.
   const unread: string[] = [];
   const workers = new Set<string>();
   const pages: Array<{ m: JsModule; named: string[]; read: ReadModule }> = [];
-  /** The api names a write replaces, per script that write reaches. */
-  const replacedIn = new Map<string, Map<string, string>>();
   const writes: string[] = [];
-  const replace = (file: string, api: string, what: string, conditional = false): void => {
-    // a write that only fills in a missing api (`if (!window.api) window.api = …`,
-    // `window.api ??= …`) leaves the bridge in place where there is one: the rows stay
-    if (conditional) {
-      writes.push(`${what} in ${file}, only where the api is missing (rows kept)`);
-      return;
-    }
-    const reach = new Set<string>([file]);
-    let loaded = false;
-    for (const scripts of input.htmlPages.values())
-      if (scripts.includes(file)) {
-        loaded = true;
-        for (const x of scripts) reach.add(x);
-      }
-    for (const x of reach) {
-      const set = replacedIn.get(x) ?? new Map<string, string>();
-      if (!set.has(api)) set.set(api, `${what} in ${file}`);
-      replacedIn.set(x, set);
-    }
-    if (!loaded) writes.push(`${what} in ${file}`);
+  const replace = (file: string, what: string): void => {
+    const note = `${what} in ${file}`;
+    if (!writes.includes(note)) writes.push(note);
   };
   for (const m of input.modules) {
     const text = m.role === "main" || exposing.has(m.id) ? null : input.text(m.id);
@@ -4278,51 +4137,6 @@ function bridgeCallRows(input: {
               is(k + 1, "{") ||
               is(k + 1, "*")))),
     );
-    /**
-     * The write of the target [from, to) only fills in a missing api: `??=`, `||=`, `= <target>
-     * || …` / `?? …`, or directly in the consequent of an `if` whose condition is a test that the
-     * api is missing (`!window.api`, `typeof api === "undefined"`, `window.api == null`,
-     * `!("api" in window)`). Any other condition makes it a replacement.
-     */
-    const fillsIn = (from: number, to: number, api: string): boolean => {
-      const op = tokens[to]?.value;
-      if (op === "??=" || op === "||=") return true;
-      if (op === "=") {
-        let q = to + 1;
-        let same = true;
-        for (let k = from; k < to; k++, q++)
-          if (tokens[q]?.value !== tokens[k]!.value) same = false;
-        if (same && (is(q, "||") || is(q, "??"))) return true;
-      }
-      // `if (!window.api) window.api = …`, `if (typeof api === "undefined") { api = … }`
-      // `if (<missing api>) <the write>` or `if (<missing api>) { …; <the write>; … }`, the write
-      // directly in the if's own consequent
-      const missing = (open: number, close: number): boolean => {
-        const condition = tokens
-          .slice(open + 1, close)
-          .map((t) => (t.type === "string" ? JSON.stringify(t.value) : t.value))
-          .join("");
-        const host = "(?:(?:window|globalThis|self)\\.)?";
-        const name = `${host}${api.replace(/\$/g, "\\$")}`;
-        return new RegExp(
-          `^(?:!${name}|typeof${name}(?:===|==)"undefined"|"undefined"(?:===|==)typeof${name}|${name}(?:==|===)(?:null|undefined|void0)|!\\("${api}"in(?:window|globalThis|self)\\))$`,
-        ).test(condition);
-      };
-      const consequentOf = (head: number): boolean => {
-        if (!is(head, ")")) return false;
-        const open = r.openOf(head);
-        return open > 0 && tokens[open - 1]?.value === "if" && missing(open, head);
-      };
-      // the statement starts right after the if's `)`
-      if (consequentOf(from - 1)) return true;
-      const block = r.bracketAround(from);
-      return (
-        block >= 0 &&
-        is(block, "{") &&
-        (is(from - 1, "{") || is(from - 1, ";") || is(from - 1, "}")) &&
-        consequentOf(block - 1)
-      );
-    };
     for (const api of named)
       for (const j of r.namePositions(api)) {
         work--;
@@ -4331,7 +4145,7 @@ function bridgeCallRows(input: {
           r.binding(j - 2, tokens[j - 2]!.value, true) === null;
         // `window.api = …`, `window.api.m = …`
         if (host && (is(j - 1, ".") || is(j - 1, "?.")) && writesMember(tokens, j - 2) === api) {
-          replace(m.id, api, `window.${api} written`, fillsIn(j - 2, j + 1, api));
+          replace(m.id, `window.${api} written`);
           continue;
         }
         if (is(j - 1, ".") || is(j - 1, "?.") || moduleScoped) continue;
@@ -4351,14 +4165,14 @@ function bridgeCallRows(input: {
           is(j + 3, ".") &&
           tokens[j + 4]?.value === api;
         if (declares && valued && r.functionAt(j) === null && r.bracketAround(j) === -1 && !alias)
-          replace(m.id, api, `${api} declared at the top of a script`);
+          replace(m.id, `${api} declared at the top of a script`);
         else if (
           !declares &&
           writesName(tokens, j) &&
           r.binding(j, api, true) === null &&
           !r.paramAround(j, api)
         )
-          replace(m.id, api, `${api} assigned as a global`, fillsIn(j, j + 1, api));
+          replace(m.id, `${api} assigned as a global`);
       }
     // `window["api"] = …`, `Object.assign(window, { api })`, `Object.defineProperty(window, "api", …)`
     for (let j = 0; j + 3 < tokens.length; j++) {
@@ -4372,7 +4186,7 @@ function bridgeCallRows(input: {
         writesMember(tokens, j) !== null &&
         named.includes(tokens[j + 2]!.value)
       )
-        replace(m.id, tokens[j + 2]!.value, `${t.value}["${tokens[j + 2]!.value}"] written`);
+        replace(m.id, `${t.value}["${tokens[j + 2]!.value}"] written`);
       if (is(j - 1, "(") && writtenByCallAt(tokens, j)) {
         // the keys the call can give the global: a literal, or (unknown) every api
         const close = r.closeOf(j - 1);
@@ -4384,17 +4198,12 @@ function bridgeCallRows(input: {
           else if (is(q, "...") || is(q, "[")) open = true;
         for (const api of named)
           if (open || keys.has(api))
-            replace(m.id, api, `${t.value} changed by ${tokens[j - 2]?.value ?? "a call"}`);
+            replace(m.id, `${t.value} changed by ${tokens[j - 2]?.value ?? "a call"}`);
       }
     }
   }
   for (const { m, named: all, read } of pages) {
-    const gone = replacedIn.get(m.id);
-    for (const a of all) {
-      const why = gone?.get(a);
-      if (why) writes.push(`${why}: the calls of ${a} in ${m.id} are not listed`);
-    }
-    const named = all.filter((a) => !gone?.has(a));
+    const named = all;
     if (!named.length) continue;
     if (workers.has(m.id)) {
       unread.push(`${m.id} (a worker script: no bridge there)`);
@@ -7370,10 +7179,6 @@ export function analyzeJavaScriptTree(
     ...bridgeLinks.exposures.slice(0, Math.max(0, MAX_BRIDGE - linkedExposures.length)),
   );
   // The page scripts' calls of generic forwarders (R1): rows in the calling files.
-  const html =
-    (facts.bridgeForwarders ?? []).length > 0
-      ? htmlScripts(tree, known, maxFileBytes)
-      : { pages: new Map<string, string[]>(), skipped: [] };
   const bridgeCalls = bridgeCallRows({
     forwarders: facts.bridgeForwarders ?? [],
     contextBridge,
@@ -7387,13 +7192,7 @@ export function analyzeJavaScriptTree(
     },
     open: openModule,
     resolve: (from, specifier) => resolveSpecifier(from, specifier, known),
-    htmlPages: html.pages,
   });
-  if (html.skipped.length)
-    limitations.push({
-      code: "html_scripts_unread",
-      message: `${html.skipped.length} HTML file(s) were not read whole for the scripts they load, so which page a script belongs to may be missing: ${list(html.skipped, 5)}.`,
-    });
   for (const [file, made] of bridgeCalls.rows) {
     const m = moduleById.get(file);
     if (!m) continue;
@@ -7426,7 +7225,7 @@ export function analyzeJavaScriptTree(
   if (bridgeCalls.writes.length)
     limitations.push({
       code: "bridge_global_written",
-      message: `${bridgeCalls.writes.length} write(s) may give an exposed api another value, in scripts no HTML file read loads, so which pages they reach is not known; the calls of the api in other files are listed as the bridge's: ${list(bridgeCalls.writes, 5)}.`,
+      message: `${bridgeCalls.writes.length} write(s) of an exposed api as a global may replace the bridge on the pages that load them; the page rows are listed as read: ${list(bridgeCalls.writes, 5)}.`,
     });
   if (bridgeCalls.capped.length)
     limitations.push({

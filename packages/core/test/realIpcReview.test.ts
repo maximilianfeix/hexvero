@@ -153,128 +153,60 @@ describe("R1: a check of the channel is read only where it decides the call", ()
 
 describe("R1: page scripts and preloads that may give the api something else", () => {
   const base = forwarder(`call: (ch, ...a) => ipcRenderer.invoke(ch, ...a)`);
-  const classic = (html: string): JsAppInfo =>
-    analyze({
-      ...base,
-      "index.html": html,
-      "other.html": `<script src="other.js"></script>`,
-      "client.js": `var api = { call: function (c) { return fetch("/" + c); } };\n`,
-      "renderer.js": `api.call("w:global");\n`,
-      "other.js": `window.api.call("w:other");\n`,
-    });
-  const together = classic(`<script src="client.js"></script><script src="renderer.js"></script>`);
-  it("reads no call where a page script replaces the api, in every build", () => {
+  it("keeps the page rows where a script writes the api as a global, and names each write", () => {
     for (const [name, page] of Object.entries({
+      dot: `window.api = { call: (c) => fetch(c) };\nwindow.api.call("w:x");\n`,
       bracket: `window["api"] = { call: (c) => fetch(c) };\nwindow.api.call("w:x");\n`,
       assign: `Object.assign(window, { api: { call: (c) => fetch(c) } });\nwindow.api.call("w:x");\n`,
       define: `Object.defineProperty(window, "api", { value: { call: (c) => fetch(c) } });\nwindow.api.call("w:x");\n`,
     }))
-      for (const [b, files] of builds({ ...base, "renderer.js": page }))
-        expect(pageRows(analyze(files)), `${name} ${b}`).toEqual([]);
-    // a classic script of the page that declares the global: the scripts of that page only
-    expect(pageRows(together)).toEqual([]);
-    expect(pageRows(together, "other.js")).toEqual(["w:other -"]);
-    // no page read loads the script: the rows stay, and the write is named
-    const unknown = classic(`<script src="renderer.js"></script>`);
-    expect(pageRows(unknown)).toEqual(["w:global -"]);
-    expect(unknown.limitations.map((l) => l.code)).toContain("bridge_global_written");
-    // a write of the name inside a function, or of a local, is no global
+      for (const [b, files] of builds({ ...base, "renderer.js": page })) {
+        const info = analyze(files);
+        expect(pageRows(info), `${name} ${b}`).toEqual(["w:x -"]);
+        expect(
+          info.limitations.find((l) => l.code === "bridge_global_written")?.message,
+          `${name} ${b}`,
+        ).toContain("may replace the bridge on the pages that load them");
+      }
+    // a classic script's own global, in another file
+    const classic = analyze({
+      ...base,
+      "client.js": `var api = { call: function (c) { return fetch("/" + c); } };\n`,
+      "renderer.js": `api.call("w:global");\n`,
+    });
+    expect(pageRows(classic)).toEqual(["w:global -"]);
+    expect(classic.limitations.find((l) => l.code === "bridge_global_written")?.message).toContain(
+      "client.js",
+    );
+    // a write of a local or a parameter of that name, and a bare `var api;`, are none
     for (const [b, files] of builds({
       ...base,
       "renderer.js": `function f() { let api = 1; api = 2; return api; }\nconst g = (api) => { api = 3; return api; };\nf(); g();\nwindow.api.call("w:kept");\n`,
-    }))
-      expect(pageRows(analyze(files)), b).toEqual(["w:kept -"]);
-  });
-  it("keeps the rows where a write only fills in a missing api, a script only names it, or a tag is a comment", () => {
-    for (const [name, files] of Object.entries({
-      fillIf: {
-        "index.html": `<script src="shim.js"></script><script src="renderer.js"></script>`,
-        "shim.js": `if (!window.api) window.api = { call: (c) => fetch(c) };\n`,
-      },
-      fillOr: {
-        "index.html": `<script src="shim.js"></script><script src="renderer.js"></script>`,
-        "shim.js": `window.api = window.api || { call: (c) => fetch(c) };\n`,
-      },
-      fillNullish: {
-        "index.html": `<script src="shim.js"></script><script src="renderer.js"></script>`,
-        "shim.js": `window.api ??= { call: (c) => fetch(c) };\n`,
-      },
-      bareVar: {
-        "index.html": `<script src="vendor.js"></script><script src="renderer.js"></script>`,
-        "vendor.js": `var api;\n(function () {})();\n`,
-      },
-      comment: {
-        "index.html": `<!-- <script src="shim.js"></script> -->\n<script src="renderer.js"></script>`,
-        "shim.js": `window.api = { call: (c) => fetch(c) };\n`,
-      },
-    }))
-      expect(pageRows(analyze({ ...base, ...files })), name).toEqual(["a:one -", "z:bad -"]);
-  });
-  it("reads comments only in markup, and only missing-api tests as a fill-in", () => {
-    const shim = `window.api = { call: (c) => fetch(c) };\n`;
-    // `<!--` in a script's text or an attribute value starts no comment: the shim is loaded
-    for (const html of [
-      `<script>var s = "<!--";</script><script src="shim.js"></script><script src="renderer.js"></script>`,
-      `<div title="<!--"></div><script src="shim.js"></script><script src="renderer.js"></script>`,
-    ])
-      expect(pageRows(analyze({ ...base, "index.html": html, "shim.js": shim })), html).toEqual([]);
-    // a stray quote in a tag is no attribute value: the next tags are read
-    expect(
-      pageRows(
-        analyze({
-          ...base,
-          "index.html": `<script src=x.js a"b></script><script src="shim.js"></script><script src="renderer.js"></script><p title="x">"</p>`,
-          "shim.js": shim,
-        }),
-      ),
-    ).toEqual([]);
-    // a page whose reading stops early is said
-    const stops = analyze({
-      ...base,
-      "index.html": `<script src="renderer.js"></script><style>p{}`,
-      "shim.js": shim,
-    });
-    expect(stops.limitations.map((l) => l.code)).toContain("html_scripts_unread");
-    // an unclosed comment is said
-    const open = analyze({
-      ...base,
-      "index.html": `<script src="renderer.js"></script><!-- <script src="shim.js"></script>`,
-      "shim.js": shim,
-    });
-    expect(pageRows(open)).toEqual(["a:one -", "z:bad -"]);
-    expect(open.limitations.map((l) => l.code)).toContain("html_scripts_unread");
-    // a condition that is no test of a missing api, or an else branch, replaces it
-    for (const write of [
-      `if (window.api.ready) window.api = { call: (c) => fetch(c) };`,
-      `if (!window.api) {} else window.api = { call: (c) => fetch(c) };`,
-      `if (!window.api) { if (x) { window.api = { call: (c) => fetch(c) }; } }`,
-    ]) {
-      const info = analyze({
-        ...base,
-        "index.html": `<script src="shim.js"></script><script src="renderer.js"></script>`,
-        "shim.js": `${write}\n`,
-      });
-      expect(pageRows(info), write).toEqual([]);
+    })) {
+      const info = analyze(files);
+      expect(pageRows(info), b).toEqual(["w:kept -"]);
       expect(
         info.limitations.map((l) => l.code),
-        write,
+        b,
+      ).not.toContain("bridge_global_written");
+    }
+    const bare = analyze({ ...base, "vendor.js": `var api;\n(function () {})();\n` });
+    expect(bare.limitations.map((l) => l.code)).not.toContain("bridge_global_written");
+  });
+  it("keeps the rows where a write only fills in a missing api, and names it", () => {
+    for (const [name, shim] of Object.entries({
+      fillIf: `if (!window.api) window.api = { call: (c) => fetch(c) };\n`,
+      fillOr: `window.api = window.api || { call: (c) => fetch(c) };\n`,
+      fillNullish: `window.api ??= { call: (c) => fetch(c) };\n`,
+    })) {
+      const info = analyze({ ...base, "shim.js": shim });
+      expect(pageRows(info), name).toEqual(["a:one -", "z:bad -"]);
+      expect(
+        info.limitations.map((l) => l.code),
+        name,
       ).toContain("bridge_global_written");
     }
   });
-
-  it("names the calls it does not list because another page's script replaces the api", () => {
-    const info = analyze({
-      ...base,
-      "index.html": `<script src="renderer.js"></script>`,
-      "storybook/iframe.html": `<script src="../mock-api.js"></script><script src="../renderer.js"></script>`,
-      "mock-api.js": `window.api = { call() {} };\n`,
-    });
-    expect(pageRows(info)).toEqual([]);
-    expect(info.limitations.find((l) => l.code === "bridge_global_written")?.message).toContain(
-      "the calls of api in renderer.js are not listed",
-    );
-  });
-
   it("names the files it does not read, by what is written, not by text", () => {
     const info = analyze({
       ...base,
@@ -318,21 +250,6 @@ describe("R1: page scripts and preloads that may give the api something else", (
       expect(info.limitations.map((l) => l.code)).toContain("bridge_forwarder_ambiguous");
     }
   });
-  it("reads hostile HTML in linear time", () => {
-    for (const html of ["<script ".repeat(131_072), `<script ${'src="x" '.repeat(120_000)}`]) {
-      const started = performance.now();
-      const info = analyze({ ...base, "index.html": html });
-      expect(performance.now() - started, html.slice(0, 20)).toBeLessThan(1_000);
-      expect(pageRows(info)).toEqual(["a:one -", "z:bad -"]);
-    }
-    // a tag past the bound is named
-    const long = analyze({
-      ...base,
-      "index.html": `<script ${"a".repeat(5000)} src="renderer.js">`,
-    });
-    expect(long.limitations.map((l) => l.code)).toContain("html_scripts_unread");
-  });
-
   it("stays bounded on a page with many aliases of the bridge", () => {
     // one name declared 24,000 times: every use was read against every declaration (29 s)
     const page = Array.from(
