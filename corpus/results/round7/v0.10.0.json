@@ -1,0 +1,715 @@
+{
+ "tool": {
+  "name": "hexvero",
+  "version": "0.10.0",
+  "commit": "41c0edc",
+  "node": "v22.17.1",
+  "platform": "darwin arm64",
+  "engines": {
+   "radare2": "radare2 6.2.4 +0 abi:152 @ darwin-arm_64",
+   "rizin": "rizin 0.9.1 @ darwin-arm-64, package: 0.9.1_2 (Homebrew)"
+  }
+ },
+ "totals": [
+  {
+   "set": "holdout8",
+   "class": "IPC channels",
+   "hit": 136,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "IPC senders and receivers",
+   "hit": 239,
+   "missed": 34,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "window settings",
+   "hit": 31,
+   "missed": 21,
+   "false": 20,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "bridge members",
+   "hit": 133,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "bridge member channel",
+   "hit": 133,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "endpoints",
+   "hit": 11,
+   "missed": 17,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "endpoint method",
+   "hit": 3,
+   "missed": 8,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "requests with an unknown URL shown",
+   "hit": 4,
+   "missed": 0,
+   "false": 2,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "storage keys",
+   "hit": 27,
+   "missed": 21,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "storage read/write/delete",
+   "hit": 22,
+   "missed": 5,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 4
+  },
+  {
+   "set": "holdout8",
+   "class": "changes in ipcChannels",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout8",
+   "class": "changes in contextBridge",
+   "hit": 3,
+   "missed": 0,
+   "false": 3,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout8",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout8",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  },
+  {
+   "set": "holdout8",
+   "class": "changes in storage",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "hedged": 0,
+   "inputs": 1
+  }
+ ],
+ "rows": [
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "IPC channels",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 67,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "app-window:mounted: receiver app-window.js missed"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "window settings",
+   "hit": 5,
+   "missed": 8,
+   "false": 9,
+   "notes": [
+    "missed windows.js contextIsolation=true",
+    "missed windows.js nodeIntegration=false",
+    "missed windows.js sandbox=false",
+    "missed app-window.js preload=preload.js",
+    "missed app-window.js preload=preload-shopping.js",
+    "missed app-window.js sandbox=true",
+    "missed app-window.js contextIsolation=true",
+    "missed app-window.js nodeIntegration=false",
+    "false config.js preload=preload.js",
+    "false config.js preload=preload-onboarding.js",
+    "false config.js contextIsolation=true",
+    "false config.js nodeIntegration=false",
+    "false config.js sandbox=false",
+    "false config.js contextIsolation=true",
+    "false config.js nodeIntegration=false",
+    "false windows.js preload=preload-shopping.js",
+    "false windows.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "bridge members",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "bridge member channel",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "endpoints",
+   "hit": 3,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed https://api.gristmill.example/v2/auth/token",
+    "missed https://api.gristmill.example/v2/recipes?since=…",
+    "missed https://api.gristmill.example/v2/recipes/…",
+    "missed https://api.gristmill.example/v2/recipes/…"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "https://updates.gristmill.example/desktop/…: expected GET",
+    "https://nutrition.gristmill.example/api/foods/search?q=…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "storage keys",
+   "hit": 5,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed file recipes.json",
+    "missed electron-store window.bounds",
+    "missed electron-store ui.theme",
+    "missed electron-store ui.lastView",
+    "missed electron-store sync.token",
+    "missed electron-store sync.lastPulledAt",
+    "missed electron-store shopping.items"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "electron-store units.system: expected read+write, got write"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "IPC channels",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "IPC senders and receivers",
+   "hit": 52,
+   "missed": 16,
+   "false": 0,
+   "notes": [
+    "recipes:list: sender preload.js missed",
+    "recipes:get: sender preload.js missed",
+    "recipes:save: sender preload.js missed",
+    "recipes:delete: sender preload.js missed",
+    "recipes:import-url: sender preload.js missed",
+    "recipes:export-pdf: sender preload.js missed",
+    "shopping:add-recipe: sender preload.js missed",
+    "shopping:open: sender preload.js missed",
+    "settings:open: sender preload.js missed",
+    "sync:sign-in: sender preload.js missed",
+    "sync:sign-out: sender preload.js missed",
+    "sync:now: sender preload.js missed",
+    "timer:start: sender preload.js missed",
+    "timer:cancel: sender preload.js missed",
+    "store:set: sender preload.js missed",
+    "app-window:mounted: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "window settings",
+   "hit": 13,
+   "missed": 0,
+   "false": 1,
+   "notes": [
+    "false main.js preload=preload-onboarding.js"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "bridge members",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "bridge member channel",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "endpoints",
+   "hit": 3,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed https://api.gristmill.example/v2/auth/token",
+    "missed https://api.gristmill.example/v2/recipes?since=…",
+    "missed https://api.gristmill.example/v2/recipes/…",
+    "missed https://api.gristmill.example/v2/recipes/…"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "https://updates.gristmill.example/desktop/…: expected GET",
+    "https://nutrition.gristmill.example/api/foods/search?q=…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "storage keys",
+   "hit": 10,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "missed file recipes.json",
+    "missed electron-store ui.lastView"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.bundled.asar",
+   "class": "storage read/write/delete",
+   "hit": 8,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "electron-store ui.theme: expected read+write, got read",
+    "electron-store units.system: expected read+write, got write"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "IPC channels",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "IPC senders and receivers",
+   "hit": 52,
+   "missed": 16,
+   "false": 0,
+   "notes": [
+    "recipes:list: sender preload.js missed",
+    "recipes:get: sender preload.js missed",
+    "recipes:save: sender preload.js missed",
+    "recipes:delete: sender preload.js missed",
+    "recipes:import-url: sender preload.js missed",
+    "recipes:export-pdf: sender preload.js missed",
+    "shopping:add-recipe: sender preload.js missed",
+    "shopping:open: sender preload.js missed",
+    "settings:open: sender preload.js missed",
+    "sync:sign-in: sender preload.js missed",
+    "sync:sign-out: sender preload.js missed",
+    "sync:now: sender preload.js missed",
+    "timer:start: sender preload.js missed",
+    "timer:cancel: sender preload.js missed",
+    "store:set: sender preload.js missed",
+    "app-window:mounted: receiver main.js missed"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "window settings",
+   "hit": 8,
+   "missed": 5,
+   "false": 1,
+   "notes": [
+    "missed main.js contextIsolation=true",
+    "missed main.js contextIsolation=true",
+    "missed main.js nodeIntegration=false",
+    "missed main.js nodeIntegration=false",
+    "missed main.js sandbox=false",
+    "false main.js preload=preload-onboarding.js"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "bridge members",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "bridge member channel",
+   "hit": 33,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "endpoints",
+   "hit": 3,
+   "missed": 4,
+   "false": 0,
+   "notes": [
+    "missed https://api.gristmill.example/v2/auth/token",
+    "missed https://api.gristmill.example/v2/recipes?since=…",
+    "missed https://api.gristmill.example/v2/recipes/…",
+    "missed https://api.gristmill.example/v2/recipes/…"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "endpoint method",
+   "hit": 1,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "https://updates.gristmill.example/desktop/…: expected GET",
+    "https://nutrition.gristmill.example/api/foods/search?q=…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "storage keys",
+   "hit": 7,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed file recipes.json",
+    "missed electron-store ui.lastView",
+    "missed electron-store units.system",
+    "missed electron-store measurement",
+    "missed electron-store shopping.items"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.minified.asar",
+   "class": "storage read/write/delete",
+   "hit": 6,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "electron-store ui.theme: expected read+write, got read"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "IPC channels",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "IPC senders and receivers",
+   "hit": 68,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "app-window:mounted: receiver app-window.js missed"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "window settings",
+   "hit": 5,
+   "missed": 8,
+   "false": 9,
+   "notes": [
+    "missed windows.js contextIsolation=true",
+    "missed windows.js nodeIntegration=false",
+    "missed windows.js sandbox=false",
+    "missed app-window.js preload=preload.js",
+    "missed app-window.js preload=preload-shopping.js",
+    "missed app-window.js sandbox=true",
+    "missed app-window.js contextIsolation=true",
+    "missed app-window.js nodeIntegration=false",
+    "false config.js preload=preload.js",
+    "false config.js preload=preload-onboarding.js",
+    "false config.js contextIsolation=true",
+    "false config.js nodeIntegration=false",
+    "false config.js sandbox=false",
+    "false config.js contextIsolation=true",
+    "false config.js nodeIntegration=false",
+    "false windows.js preload=preload-shopping.js",
+    "false windows.js sandbox=true"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "bridge members",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "bridge member channel",
+   "hit": 34,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "endpoints",
+   "hit": 2,
+   "missed": 5,
+   "false": 0,
+   "notes": [
+    "missed https://api.gristmill.example/v2/auth/token",
+    "missed https://api.gristmill.example/v2/recipes?since=…",
+    "missed https://api.gristmill.example/v2/recipes/…",
+    "missed https://api.gristmill.example/v2/recipes/…",
+    "missed https://media.gristmill.example/v1/upload"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "endpoint method",
+   "hit": 0,
+   "missed": 2,
+   "false": 0,
+   "notes": [
+    "https://updates.gristmill.example/desktop/…: expected GET",
+    "https://nutrition.gristmill.example/api/foods/search?q=…: expected GET"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "requests with an unknown URL shown",
+   "hit": 1,
+   "missed": 0,
+   "false": 1,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "storage keys",
+   "hit": 5,
+   "missed": 7,
+   "false": 0,
+   "notes": [
+    "missed file recipes.json",
+    "missed electron-store window.bounds",
+    "missed electron-store ui.theme",
+    "missed electron-store ui.lastView",
+    "missed electron-store sync.token",
+    "missed electron-store sync.lastPulledAt",
+    "missed electron-store shopping.items"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill-v2.plain.asar",
+   "class": "storage read/write/delete",
+   "hit": 4,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "electron-store units.system: expected read+write, got write"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar → holdout8/gristmill-v2.plain.asar",
+   "class": "changes in ipcChannels",
+   "hit": 4,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar → holdout8/gristmill-v2.plain.asar",
+   "class": "changes in contextBridge",
+   "hit": 3,
+   "missed": 0,
+   "false": 3,
+   "notes": [
+    "false ~shopping.send",
+    "false ~shopping.request",
+    "false ~shopping.receive"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar → holdout8/gristmill-v2.plain.asar",
+   "class": "changes in webPreferences",
+   "hit": 1,
+   "missed": 0,
+   "false": 0,
+   "notes": []
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar → holdout8/gristmill-v2.plain.asar",
+   "class": "changes in endpoints",
+   "hit": 1,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed +https://media.gristmill.example/v1/upload"
+   ]
+  },
+  {
+   "set": "holdout8",
+   "input": "holdout8/gristmill.plain.asar → holdout8/gristmill-v2.plain.asar",
+   "class": "changes in storage",
+   "hit": 2,
+   "missed": 1,
+   "false": 0,
+   "notes": [
+    "missed ~electron-store sync.lastPulledAt"
+   ]
+  }
+ ]
+}

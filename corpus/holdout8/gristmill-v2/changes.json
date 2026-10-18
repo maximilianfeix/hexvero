@@ -1,0 +1,171 @@
+{
+  "from": "../gristmill/src",
+  "prependCommentLines": 2,
+  "edits": [
+    {
+      "file": "common/channels.js",
+      "find": "    RECIPES_DELETE: \"recipes:delete\",\n",
+      "replace": "    RECIPES_DELETE: \"recipes:delete\",\n    RECIPES_DUPLICATE: \"recipes:duplicate\",\n"
+    },
+    {
+      "file": "common/messages.js",
+      "find": "    MessageToWebApp[\"UpdateAvailable\"] = \"update-available\";\n",
+      "replace": ""
+    },
+    {
+      "file": "common/messages.js",
+      "find": "    MessageToWebApp[\"TimerTick\"] = \"timer-tick\";\n",
+      "replace": "    MessageToWebApp[\"UpdateAvailable\"] = \"update-available\";\n    MessageToWebApp[\"TimerTick\"] = \"timer-tick\";\n"
+    },
+    {
+      "file": "main/ipc/recipes.js",
+      "find": "    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_DELETE, (_event, id) => library_1.library.remove(id));\n",
+      "replace": "    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_DELETE, (_event, id) => library_1.library.remove(id));\n    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_DUPLICATE, (_event, id) => {\n        const recipe = library_1.library.get(id);\n        if (!recipe)\n            return null;\n        return library_1.library.save({ ...recipe, id: undefined, title: `${recipe.title} (copy)` });\n    });\n"
+    },
+    {
+      "file": "main/ipc/recipes.js",
+      "find": "    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_EXPORT_PDF, async (event, { id }) => {\n        const recipe = library_1.library.get(id);\n        if (!recipe)\n            return { saved: false };\n        return (0, pdf_export_1.exportRecipePdf)(recipe, electron_1.BrowserWindow.fromWebContents(event.sender));\n    });\n",
+      "replace": ""
+    },
+    {
+      "file": "main/ipc/recipes.js",
+      "find": "    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_IMPORT, async (_event, { url }) => {\n        const draft = await (0, importer_1.importRecipe)(url);\n        return library_1.library.save(draft);\n    });\n",
+      "replace": "    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_EXPORT_PDF, async (event, { id }) => {\n        const recipe = library_1.library.get(id);\n        if (!recipe)\n            return { saved: false };\n        return (0, pdf_export_1.exportRecipePdf)(recipe, electron_1.BrowserWindow.fromWebContents(event.sender));\n    });\n    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.RECIPES_IMPORT, async (_event, { url, tags }) => {\n        const draft = await (0, importer_1.importRecipe)(url);\n        return library_1.library.save({ ...draft, tags: [...draft.tags, ...(tags ?? [])] });\n    });\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "    remove: (id) => invoke(channels_1.IPC_CHANNELS.RECIPES_DELETE, id),\n    importFromUrl: (url) => invoke(channels_1.IPC_CHANNELS.RECIPES_IMPORT, { url }),\n",
+      "replace": "    trash: (id) => invoke(channels_1.IPC_CHANNELS.RECIPES_DELETE, id),\n    duplicate: (id) => invoke(channels_1.IPC_CHANNELS.RECIPES_DUPLICATE, id),\n    importFromUrl: (url, tags = []) => invoke(channels_1.IPC_CHANNELS.RECIPES_IMPORT, { url, tags }),\n"
+    },
+    {
+      "file": "preload.js",
+      "find": "    isMac: process.platform === \"darwin\",\n",
+      "replace": ""
+    },
+    {
+      "file": "preload.js",
+      "find": "    openSettings: () => send(channels_1.IPC_CHANNELS.SETTINGS_OPEN),\n",
+      "replace": "    openSettings: () => send(channels_1.IPC_CHANNELS.SETTINGS_OPEN),\n    isMac: process.platform === \"darwin\",\n"
+    },
+    {
+      "file": "renderer/library-view.js",
+      "find": "const SEARCH_KEY = \"gristmill.search\";\n",
+      "replace": "const RECENT_KEY = \"gristmill.recentSearches\";\n"
+    },
+    {
+      "file": "renderer/library-view.js",
+      "find": "let recipes = [];\n",
+      "replace": "let recipes = [];\nlet query = \"\";\n"
+    },
+    {
+      "file": "renderer/library-view.js",
+      "find": "function renderList(listEl) {\n  const query = (sessionStorage.getItem(SEARCH_KEY) ?? \"\").trim().toLowerCase();\n  listEl.replaceChildren(\n",
+      "replace": "function renderList(listEl) {\n  listEl.replaceChildren(\n"
+    },
+    {
+      "file": "renderer/library-view.js",
+      "find": "export function bindSearch(inputEl, listEl) {\n  inputEl.value = sessionStorage.getItem(SEARCH_KEY) ?? \"\";\n  inputEl.addEventListener(\"input\", () => {\n    sessionStorage.setItem(SEARCH_KEY, inputEl.value);\n    renderList(listEl);\n  });\n}\n",
+      "replace": "export function bindSearch(inputEl, listEl) {\n  const recent = JSON.parse(localStorage.getItem(RECENT_KEY) ?? \"[]\");\n  document.getElementById(\"recent-searches\").replaceChildren(\n    ...recent.map((q) => Object.assign(document.createElement(\"option\"), { value: q })),\n  );\n  inputEl.addEventListener(\"input\", () => {\n    query = inputEl.value.trim().toLowerCase();\n    renderList(listEl);\n  });\n  inputEl.addEventListener(\"change\", () => {\n    const q = inputEl.value.trim();\n    if (!q) return;\n    localStorage.setItem(RECENT_KEY, JSON.stringify([q, ...recent.filter((r) => r !== q)].slice(0, 5)));\n  });\n}\n"
+    },
+    {
+      "file": "renderer/library-view.js",
+      "find": "    await window.recipes.remove(recipe.id);\n    pageEl.hidden = true;\n  };\n",
+      "replace": "    await window.recipes.trash(recipe.id);\n    pageEl.hidden = true;\n  };\n  pageEl.querySelector(\".duplicate\").onclick = async () => {\n    const copy = await window.recipes.duplicate(recipe.id);\n    if (copy) showRecipe(pageEl, copy.id);\n  };\n"
+    },
+    {
+      "file": "index.html",
+      "find": "        <input type=\"search\" placeholder=\"Search recipes\" />\n",
+      "replace": "        <input type=\"search\" placeholder=\"Search recipes\" list=\"recent-searches\" />\n        <datalist id=\"recent-searches\"></datalist>\n"
+    },
+    {
+      "file": "index.html",
+      "find": "        <button class=\"delete\">Delete</button>\n",
+      "replace": "        <button class=\"duplicate\">Duplicate</button>\n        <button class=\"delete\">Move to trash</button>\n"
+    },
+    {
+      "file": "preload-shopping.js",
+      "find": "  'shopping:clear',\n",
+      "replace": "  'shopping:clear-checked',\n"
+    },
+    {
+      "file": "renderer-shopping.js",
+      "find": "  window.shopping.send(\"shopping:clear\");\n",
+      "replace": "  window.shopping.send(\"shopping:clear-checked\");\n"
+    },
+    {
+      "file": "shopping.html",
+      "find": "    <button id=\"clear\">Clear list</button>\n",
+      "replace": "    <button id=\"clear\">Clear checked items</button>\n"
+    },
+    {
+      "file": "main/ipc/shopping.js",
+      "find": "  ipc.on('shopping:clear', function () {\n    store.delete('shopping.items')\n    notify([])\n  })\n",
+      "replace": "  ipc.on('shopping:clear-checked', function () {\n    const left = readItems().filter(function (item) {\n      return !item.checked\n    })\n    if (left.length) {\n      writeItems(left)\n    } else {\n      store.delete('shopping.items')\n      notify([])\n    }\n  })\n"
+    },
+    {
+      "file": "main/menu.js",
+      "find": "const windows_1 = require(\"./windows\");\n",
+      "replace": "const sync_engine_1 = require(\"./sync/sync-engine\");\nconst windows_1 = require(\"./windows\");\n"
+    },
+    {
+      "file": "main/menu.js",
+      "find": "                    // The sync handlers live in ipc/sync.ts; reuse the listener there.\n                    click: () => electron_1.ipcMain.emit(\"menu:sync-now\"),\n",
+      "replace": "                    click: () => void sync_engine_1.syncEngine.run(),\n"
+    },
+    {
+      "file": "main/ipc/sync.js",
+      "find": "    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.SYNC_NOW, () => sync_engine_1.syncEngine.run());\n    // Raised by the application menu (menu.ts) through ipcMain.emit.\n    electron_1.ipcMain.on(\"menu:sync-now\", () => {\n        void sync_engine_1.syncEngine.run();\n    });\n",
+      "replace": "    electron_1.ipcMain.handle(channels_1.IPC_CHANNELS.SYNC_NOW, () => sync_engine_1.syncEngine.run());\n"
+    },
+    {
+      "file": "main/pdf-export.js",
+      "find": "            sandbox: false,\n",
+      "replace": "            sandbox: true,\n"
+    },
+    {
+      "file": "main/sync/api-client.js",
+      "find": "exports.api = exports.API_BASE = exports.ApiClient = exports.AuthError = void 0;\n",
+      "replace": "exports.media = exports.MEDIA_BASE = exports.api = exports.API_BASE = exports.ApiClient = exports.AuthError = void 0;\n"
+    },
+    {
+      "file": "main/sync/api-client.js",
+      "find": "exports.api = new ApiClient(exports.API_BASE, () => store_1.store.get(\"sync.token\") ?? null);\n",
+      "replace": "exports.api = new ApiClient(exports.API_BASE, () => store_1.store.get(\"sync.token\") ?? null);\n// Recipe photos go to the media service, with the same token.\nexports.MEDIA_BASE = \"https://media.gristmill.example/v1\";\nexports.media = new ApiClient(exports.MEDIA_BASE, () => store_1.store.get(\"sync.token\") ?? null);\n"
+    },
+    {
+      "file": "main/sync/sync-engine.js",
+      "find": "        for (const recipe of recipes) {\n            await api_client_1.api.put(`/recipes/${encodeURIComponent(recipe.id)}`, recipe);\n",
+      "replace": "        for (const recipe of recipes) {\n            if (recipe.photo && !recipe.photo.uploaded) {\n                const { url } = await api_client_1.media.post(\"/upload\", { name: recipe.photo.name, data: recipe.photo.data });\n                recipe.photo = { uploaded: true, url };\n            }\n            await api_client_1.api.put(`/recipes/${encodeURIComponent(recipe.id)}`, recipe);\n"
+    },
+    {
+      "file": "main/sync/sync-engine.js",
+      "find": "        store_1.store.delete(\"sync.token\");\n",
+      "replace": "        store_1.store.delete(\"sync.token\");\n        store_1.store.delete(\"sync.lastPulledAt\");\n"
+    },
+    {
+      "file": "renderer-settings.js",
+      "find": "const FEEDBACK_URL = \"https://api.gristmill.example/v2/feedback\";\n",
+      "replace": "const FEEDBACK_MAIL = \"mailto:feedback@gristmill.example?subject=Gristmill%20feedback\";\n"
+    },
+    {
+      "file": "renderer-settings.js",
+      "find": "  form.addEventListener(\"submit\", async (e) => {\n    e.preventDefault();\n    const body = JSON.stringify({ message: form.elements.message.value, platform: navigator.platform });\n    const res = await fetch(FEEDBACK_URL, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body,\n    });\n    form.querySelector(\".result\").textContent = res.ok ? \"Thank you!\" : \"Could not send, try again later.\";\n  });\n",
+      "replace": "  form.addEventListener(\"submit\", (e) => {\n    e.preventDefault();\n    const body = encodeURIComponent(form.elements.message.value);\n    window.desktop.openExternal(`${FEEDBACK_MAIL}&body=${body}`);\n    form.querySelector(\".result\").textContent = \"Your mail program has the message.\";\n  });\n"
+    },
+    {
+      "file": "settings.html",
+      "find": "      content=\"default-src 'self'; connect-src https://api.gristmill.example; style-src 'self' 'unsafe-inline'\"\n",
+      "replace": "      content=\"default-src 'self'; style-src 'self' 'unsafe-inline'\"\n"
+    },
+    {
+      "file": "main/ipc/window.js",
+      "find": "    electron_1.ipcMain.on(channels_1.IPC_CHANNELS.SETTINGS_OPEN, () => (0, windows_1.openSettings)());\n};\n",
+      "replace": "};\n"
+    },
+    {
+      "file": "main/ipc/window.js",
+      "find": "const registerWindowHandlers = () => {\n",
+      "replace": "const registerWindowHandlers = () => {\n    electron_1.ipcMain.on(channels_1.IPC_CHANNELS.SETTINGS_OPEN, () => (0, windows_1.openSettings)());\n"
+    }
+  ]
+}

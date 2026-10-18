@@ -41,6 +41,7 @@ const sets = arg("set")
       "holdout5",
       "holdout6",
       "holdout7",
+      "holdout8",
       "damaged",
     ];
 
