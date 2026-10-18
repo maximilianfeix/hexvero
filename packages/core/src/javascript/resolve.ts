@@ -64,6 +64,8 @@ export interface ResolvedValues {
   lines: number[];
   /** Some bindings (call sites) could not be read: the values are not all there are. */
   partial: boolean;
+  /** Partial because a function has more call sites than are read (MAX_SITES). */
+  cut?: true;
 }
 
 /** The call sites of a wrapper function and what each passes (see `wrapperCalls`). */
@@ -403,18 +405,20 @@ export class ExpressionResolver {
   private method: ResolveMethod = "concatenation";
   private lines = new Set<number>();
   private partial = false;
+  /** Set with `partial` when the cause is the call-site cap (see `sitesCapped`). */
+  private cut = false;
   private readonly siteCache = new Map<FnDef, number[]>();
   /** Functions with more call sites than MAX_SITES: the sites listed are not all there are. */
   private readonly sitesCapped = new Set<FnDef>();
   private readonly literalOwners = new Map<FnDef, string | null>();
   private readonly bindingCaches = [
-    new Map<FnDef, { envs: Env[] | null; partial: boolean; lines: number[] }>(),
-    new Map<FnDef, { envs: Env[] | null; partial: boolean; lines: number[] }>(),
+    new Map<FnDef, { envs: Env[] | null; partial: boolean; cut?: boolean; lines: number[] }>(),
+    new Map<FnDef, { envs: Env[] | null; partial: boolean; cut?: boolean; lines: number[] }>(),
   ];
   /** The bindings read so far, apart for the strict reading (see `strict`). */
   private get bindingCache(): Map<
     FnDef,
-    { envs: Env[] | null; partial: boolean; lines: number[] }
+    { envs: Env[] | null; partial: boolean; cut?: boolean; lines: number[] }
   > {
     return this.bindingCaches[this.strict ? 1 : 0]!;
   }
@@ -636,6 +640,7 @@ export class ExpressionResolver {
     this.method = "concatenation";
     this.lines = new Set();
     this.partial = false;
+    this.cut = false;
     this.begin(20_000);
     const end = this.exprEnd(k);
     const direct = this.evalRange(k, end, new Map(), 0);
@@ -779,6 +784,7 @@ export class ExpressionResolver {
       method: this.method,
       lines: [...this.lines].toSorted((a, b) => a - b),
       partial: this.partial,
+      ...(this.cut ? { cut: true as const } : {}),
     };
   }
 
@@ -1615,6 +1621,7 @@ export class ExpressionResolver {
     if (this.work <= 0) return { values: [], partial: true };
     this.begin(40_000);
     this.partial = false;
+    this.cut = false;
     const end = this.exprEnd(k);
     const def = this.enclosing(k);
     const usesParameter =
@@ -4410,6 +4417,7 @@ export class ExpressionResolver {
       if (cb && !(cb.calledBy && cb.name === null)) cb = null;
       const end = Math.max(...ranges.map(([, b]) => b), k + 1);
       this.partial = false;
+      this.cut = false;
       const loop = this.loopEnvs(k, end, 0);
       let envs: Env[] | null;
       let line: number;
@@ -4470,6 +4478,7 @@ export class ExpressionResolver {
     if (close === -1 || !this.punct(close + 1, "=") || this.punct(close + 2, "=")) return null;
     const valueEnd = this.exprEnd(close + 2);
     this.partial = false;
+    this.cut = false;
     let envs: Env[] | null = null;
     const def = this.enclosing(k);
     if (def?.calledBy && def.name === null) {
@@ -4588,21 +4597,26 @@ export class ExpressionResolver {
     const cached = this.bindingCache.get(def);
     if (cached) {
       if (cached.partial) this.partial = true;
+      if (cached.cut) this.cut = true;
       for (const line of cached.lines) this.lines.add(line);
       if (cached.envs) this.note(def.calledBy && def.name === null ? "element" : "parameter");
       return cached.envs;
     }
     if (this.work <= 0) return null;
     const partialBefore = this.partial;
+    const cutBefore = this.cut;
     const linesBefore = new Set(this.lines);
     this.partial = false;
+    this.cut = false;
     const envs = this.bindingsUncached(def, depth);
     this.bindingCache.set(def, {
       envs,
       partial: this.partial,
+      cut: this.cut,
       lines: [...this.lines].filter((l) => !linesBefore.has(l)),
     });
     this.partial = this.partial || partialBefore;
+    this.cut = this.cut || cutBefore;
     return envs;
   }
 
@@ -4653,7 +4667,7 @@ export class ExpressionResolver {
     const sites = iife !== -1 ? [iife] : this.callSites(def);
     if (!sites.length) return null;
     // the calls past MAX_SITES bind it too: what the listed ones give is not every value
-    if (this.sitesCapped.has(def)) this.partial = true;
+    if (this.sitesCapped.has(def)) this.partial = this.cut = true;
     const envs: Env[] = [];
     for (const open of sites) {
       const close = this.match[open]!;

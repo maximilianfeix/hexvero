@@ -426,10 +426,11 @@ export class Session {
     for (const row of app.storage)
       if (computedValue(row.value)) unresolved.add("storage", storageSlot(row.file, row.kind));
     unresolved.fromLimitations(analysis.limitations);
-    // Files passed over or cut past the ones named: any read file may be one of them.
-    const unlisted = app.coverage.filesUnlisted === true;
+    // Files cut past the ones named: any read file may be one of them. (Files passed over are
+    // never in `read`, and with any of them the side is not complete.)
+    const unlisted = (app.coverage.partial ?? 0) > (app.coverage.partialFiles?.length ?? 0);
     return {
-      complete: app.coverage.complete && !unlisted,
+      complete: app.coverage.complete,
       read: new Set(app.modules.map((m) => m.id)),
       unreadable: new Set([
         ...(app.coverage.skippedFiles ?? []),

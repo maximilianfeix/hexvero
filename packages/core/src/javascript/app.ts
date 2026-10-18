@@ -3228,7 +3228,7 @@ const MAX_NAMED_FILES = 200;
  * first of its code: a code is never missing because others filled the list (BLIND_SPOTS and
  * UNRESOLVED_LIMITATIONS read the codes), and the count says how many are not listed.
  */
-function fileLimitation(facts: JsScanFacts, limitation: Limitation): void {
+function fileLimitation(facts: JsScanFacts, file: string, limitation: Limitation): void {
   if (
     facts.limitations.length < MAX_FILE_LIMITATIONS ||
     !facts.limitations.some((l) => l.code === limitation.code)
@@ -3236,9 +3236,21 @@ function fileLimitation(facts: JsScanFacts, limitation: Limitation): void {
     facts.limitations.push(limitation);
     return;
   }
+  // a file counts once per code (`wrapper_method_replaced` may come for IPC and for storage)
+  let counted = unlistedFiles.get(facts);
+  if (!counted) unlistedFiles.set(facts, (counted = new Set()));
+  const key = `${limitation.code}\u0000${file}`;
+  if (
+    counted.has(key) ||
+    facts.limitations.some((l) => l.code === limitation.code && l.message.startsWith(`${file}: `))
+  )
+    return;
+  counted.add(key);
   const unlisted = (facts.limitationsUnlisted ??= {});
   unlisted[limitation.code] = (unlisted[limitation.code] ?? 0) + 1;
 }
+/** The files counted in `limitationsUnlisted`, per scan state (a file is read once per scan). */
+const unlistedFiles = new WeakMap<JsScanFacts, Set<string>>();
 /** Every detector of candidates.ts needs one of these in the source to report anything. */
 const CAN_HOLD_CANDIDATES =
   /https?:|wss?:|fetch|Storage|indexedDB|cookie|caches|axios|\.(get|post|put|patch|delete|head|options|request|open)\(|sendBeacon|EventSource|WebSocket|path\s*:|electron-store|["'`]\/(api|graphql|v\d|rest|rpc)/;
@@ -4420,12 +4432,12 @@ export function analyzeJavaScriptTree(
     if (cand) {
       if (cand.truncated) facts.candidatesCapped = true;
       if (cand.clientsSkipped)
-        fileLimitation(facts, {
+        fileLimitation(facts, file.path, {
           code: "client_calls_skipped",
           message: `${file.path}: more than 2,000 calls of HTTP client modules (node:https, node:http, Electron's net) were checked; the further ones give no endpoint rows.`,
         });
       if (cand.clientWritesSkipped)
-        fileLimitation(facts, {
+        fileLimitation(facts, file.path, {
           code: "client_writes_skipped",
           message: `${file.path}: more writes of HTTP client names (or bindings made from clients) than are checked (2,000 writes, 32,000 questions), or more functions than the resolver reads (60,000); requests on a name written past that point are unknown rows, also where the address is a literal.`,
         });
@@ -4435,7 +4447,7 @@ export function analyzeJavaScriptTree(
           facts.keyCallsCappedFiles.push(file.path);
       }
       if (cand.wrappersSkipped)
-        fileLimitation(facts, {
+        fileLimitation(facts, file.path, {
           code: "storage_wrappers_skipped",
           message: `${file.path}: the file has more functions than storage wrappers are followed for (50,000); keys passed through a wrapper there are not read at each call (no rows with via).`,
         });
@@ -4474,31 +4486,31 @@ export function analyzeJavaScriptTree(
         facts.navigationCapped = true;
     }
     if (tokenFacts.keyReplaced)
-      fileLimitation(facts, {
+      fileLimitation(facts, file.path, {
         code: "wrapper_method_replaced",
         message: `${file.path}: ${tokenFacts.keyReplaced.length} method(s) of storage wrappers of the file are replaced in the file by a member write on the class, its prototype or an instance (or one whose receiver was not read within the budget), so their calls there give no storage rows through them: ${tokenFacts.keyReplaced.join(", ")}.`,
       });
     if (scan.wrappersUnchecked || tokenFacts.keyUnchecked)
-      fileLimitation(facts, {
+      fileLimitation(facts, file.path, {
         code: "wrapper_replacements_unchecked",
         message: `${file.path}: the writes in the file that may replace a method of its own ${scan.wrappersUnchecked && tokenFacts.keyUnchecked ? "IPC and storage" : scan.wrappersUnchecked ? "IPC" : "storage"} wrappers were not all read: a computed member write on the class, its prototype or an instance (\`this[key] = value\`), which may replace a method, or a write past the replacement budget of the file (200,000 steps); calls of those methods in the file are read without that check, so a method replaced there would not be seen.`,
       });
     if (scan.wrappersReplaced)
-      fileLimitation(facts, {
+      fileLimitation(facts, file.path, {
         code: "wrapper_method_replaced",
         message: `${file.path}: ${scan.wrappersReplaced.length} method(s) of IPC wrappers of the file are replaced in the file by a member write on the class, its prototype or an instance (or one whose receiver was not read within the budget), so their calls there are not read (no IPC rows through them): ${scan.wrappersReplaced.join(", ")}.`,
       });
     if (scan.wrappersCapped)
-      fileLimitation(facts, {
+      fileLimitation(facts, file.path, {
         code: "ipc_wrappers_capped",
-        message: `${file.path}: the search for calls of IPC wrapper methods ran out of its budget; calls of them after that are missing.`,
+        message: `${file.path}: the search for calls of IPC wrapper methods ran out of its budget, or a function that takes ipcMain or ipcRenderer as a parameter is called at more places than are read (64); calls of them past that are missing.`,
       });
     if (scan.truncated) {
       facts.truncated = (facts.truncated ?? facts.truncatedFiles.length) + 1;
       if (facts.truncatedFiles.length < MAX_NAMED_FILES) facts.truncatedFiles.push(file.path);
     }
     if (scan.truncated)
-      fileLimitation(facts, {
+      fileLimitation(facts, file.path, {
         code: "scan_truncated",
         message: `${file.path}: token budget exhausted; references after the cut are missing.`,
       });
@@ -4819,7 +4831,7 @@ export function analyzeJavaScriptTree(
       !(mutated.size && (located as WindowRanges | null)?.viaName.size);
     if (unattached.size && windowsKnown) {
       for (let i = found.length - 1; i >= 0; i--) if (found[i]!.window === null) found.splice(i, 1);
-      fileLimitation(facts, {
+      fileLimitation(facts, file.path, {
         code: "webpreferences_unattached",
         message: `${file.path}: ${unattached.size === 1 ? "a webPreferences object" : `${unattached.size} webPreferences objects`} at line ${[...unattached].slice(0, 10).join(", ")}${unattached.size > 10 ? " …" : ""} that no window in the file takes (its settings are not listed as a window's).`,
       });

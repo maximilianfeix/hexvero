@@ -110,7 +110,7 @@ export interface SideCoverage {
   read: ReadonlySet<string>;
   /** Files that exist but were passed over (too large, not decodable) or read only in part. */
   unreadable: ReadonlySet<string>;
-  /** More such files exist than `unreadable` names: any file in `read` may be one of them. */
+  /** More files were read only in part than `unreadable` names: any file in `read` may be one. */
   unreadableUnlisted?: boolean;
   /** Files (module ids) where a value of this collection family could not be resolved,
    *  e.g. an IPC call whose channel is not a literal. "*" = somewhere, file unknown. */
@@ -128,6 +128,7 @@ export interface UnknownItem {
     | "file could not be read on the other side"
     | "the other side was read only in part"
     | "the other side was compared only in part"
+    | "more files were cut on the other side than are named"
     | "the other side has values there that could not be resolved";
 }
 
@@ -680,14 +681,14 @@ export function compareItems(
           return;
         }
       }
-      // A file of the other side may have been cut or passed over without being named, so an
-      // item missing there may be in the part that was not read.
+      // A file of the other side may have been cut without being named, so an item missing
+      // there may be in the part that was not read.
       if (other.unreadableUnlisted) {
         unknown.push({
           key: shown,
           side,
           file: files[0] ?? "",
-          reason: "the other side was read only in part",
+          reason: "more files were cut on the other side than are named",
         });
         return;
       }

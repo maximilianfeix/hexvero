@@ -839,3 +839,29 @@ describe("a URL argument derived from a string (#196)", () => {
     ]);
   });
 });
+
+/** The endpoints of `get(p)` making the request \`call\`, called n times with its own literal. */
+const helper = (n: number, call: string) =>
+  find(
+    [
+      `function get(p) { return ${call}; }`,
+      ...Array.from({ length: n }, (_, i) => `get("v${i}");`),
+    ].join("\n"),
+  ).endpoints;
+
+describe("a request helper called more often than its call sites are read", () => {
+  for (const [name, call] of [
+    ["fetch", 'fetch("https://api.example.com/" + p)'],
+    ["WebSocket", 'new WebSocket("wss://live.example.com/" + p)'],
+  ] as const)
+    it(`${name}: past 64 sites the values read come with an unknown row`, () => {
+      const at64 = helper(64, call);
+      expect(at64.length).toBe(64);
+      expect(at64.filter((r) => r.value === null)).toEqual([]);
+      const at70 = helper(70, call);
+      expect(at70.filter((r) => r.value !== null).length).toBe(64);
+      expect(at70.filter((r) => r.value === null)).toMatchObject([
+        { evidence: "unknown", line: 1 },
+      ]);
+    });
+});

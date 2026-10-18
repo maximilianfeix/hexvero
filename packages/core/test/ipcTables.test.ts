@@ -1206,3 +1206,39 @@ describe("a wrapper method replaced through a computed key that is read (RC)", (
       expect(codes(info)).toContain("wrapper_replacements_unchecked");
     });
 });
+
+/** `reg(ipc)` called n times: with ipcMain, the last time with `last`. */
+const objectSites = (n: number, last: string, exported = false) =>
+  [
+    'const { ipcMain, ipcRenderer } = require("electron");',
+    'function reg(ipc) { ipc.on("evt", () => 1); }',
+    ...(exported ? ["module.exports = { register: reg };"] : []),
+    ...Array.from({ length: n - 1 }, () =>
+      exported ? "module.exports.register(ipcMain);" : "reg(ipcMain);",
+    ),
+    exported ? `module.exports.register(${last});` : `reg(${last});`,
+  ].join("\n");
+describe("a function with an IPC object parameter called past the sites read", () => {
+  for (const exported of [false, true])
+    it(`gives no definite row and says the search was cut${exported ? " (through an export key)" : ""}`, () => {
+      // 64 sites are read whole: the mixed callers give no row, and no cap is met
+      const at64 = analyze({ "main.js": objectSites(64, "ipcRenderer", exported) });
+      expect(rows(at64)).toEqual([]);
+      expect(codes(at64)).not.toContain("ipc_wrappers_capped");
+      // the 65th site passes ipcRenderer: ipcMain.on evt is not established from the first 64
+      const at65 = analyze({ "main.js": objectSites(65, "ipcRenderer", exported) });
+      expect(rows(at65)).toEqual([]);
+      expect(codes(at65)).toContain("ipc_wrappers_capped");
+    });
+  it("keeps the rows of the file's other such functions", () => {
+    const main = `${objectSites(65, "ipcRenderer")}\nfunction other(ipc) { ipc.handle("kept", () => 1); }\nother(ipcMain);`;
+    const info = analyze({ "main.js": main });
+    expect(rows(info)).toEqual(["kept ipcMain.handle main.js"]);
+    expect(codes(info)).toContain("ipc_wrappers_capped");
+  });
+  it("keeps the row of a function called at 64 sites", () => {
+    expect(rows(analyze({ "main.js": objectSites(64, "ipcMain") }))).toEqual([
+      "evt ipcMain.on main.js",
+    ]);
+  });
+});

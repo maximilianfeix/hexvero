@@ -583,7 +583,6 @@ describe("items on one side only", () => {
     // every file was read, but more were cut at the token budget than are named
     const cut: SideCoverage = {
       ...wholeSide("main.js"),
-      complete: false,
       unreadableUnlisted: true,
     };
     const diff = compareItems(
@@ -596,9 +595,13 @@ describe("items on one side only", () => {
     );
     expect(diff.removed).toEqual([]);
     expect(diff.unknown).toMatchObject([
-      { side: "a", file: "main.js", reason: "the other side was read only in part" },
+      {
+        side: "a",
+        file: "main.js",
+        reason: "more files were cut on the other side than are named",
+      },
     ]);
-    expect(diff.completeness.gaps).toContain("files_unreadable");
+    expect(diff.completeness.gaps).toEqual(["files_unreadable"]);
   });
 
   it("places a summary row by every file it names, and one that names none by the side's coverage", () => {
