@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { readRegularFile } from "../binary/file.js";
@@ -137,6 +138,11 @@ export interface FileTree {
   skippedLinks?: string[];
   /** Set when the listing itself is incomplete, with the reason: later files are unknown. */
   truncated?: string;
+  /**
+   * For an archive whose unpacked files were handed over in memory (taken from a ZIP): what
+   * identifies the unpacked file at `path` (a hash of its bytes, or `absent`), for the scan key.
+   */
+  unpackedStamp?: (path: string) => string;
 }
 
 export interface JsModule {
@@ -3087,18 +3093,31 @@ export function directoryTree(root: string, options: { maxFiles?: number } = {})
   };
 }
 
-export function asarTree(bytes: Uint8Array, name: string): FileTree {
-  return archiveTree(openAsar(bytes), name);
+/**
+ * `unpacked`: the files the archive keeps in `<archive>.unpacked/`, by path, when they come from
+ * somewhere other than a directory beside the archive (a ZIP the archive was read from).
+ */
+export function asarTree(
+  bytes: Uint8Array,
+  name: string,
+  unpacked?: Readonly<Record<string, Uint8Array>>,
+): FileTree {
+  return archiveTree(openAsar(bytes), name, unpacked);
 }
 
 export function asarTreeFromFile(path: string): FileTree {
   return archiveTree(openAsarFile(path), path);
 }
 
-function archiveTree(archive: AsarArchive, name: string): FileTree {
+function archiveTree(
+  archive: AsarArchive,
+  name: string,
+  unpacked?: Readonly<Record<string, Uint8Array>>,
+): FileTree {
   // Electron keeps files marked unpacked in `<archive>.unpacked/` beside the archive; an archive
-  // known only by a name (an upload) has no such directory, and those files stay unread.
-  const onDisk = isAbsolute(name);
+  // known only by a name (an upload) has no such directory, and those files stay unread unless
+  // they were handed over with it.
+  const onDisk = isAbsolute(name) && !unpacked;
   return {
     kind: "asar",
     root: name,
@@ -3107,10 +3126,33 @@ function archiveTree(archive: AsarArchive, name: string): FileTree {
       size: f.size,
       ...(f.unpacked ? { unpacked: true } : {}),
     })),
+    ...(unpacked
+      ? {
+          unpackedStamp: (path: string) => {
+            const bytes = Object.hasOwn(unpacked, path) ? unpacked[path] : undefined;
+            return bytes ? createHash("sha256").update(bytes).digest("hex") : "absent";
+          },
+        }
+      : {}),
     read: (path, maxBytes = 64 << 20) => {
       const file = archive.find(path);
       if (!file) throw new AnalysisError("not_found", `${path} not in archive`);
       if (file.unpacked) {
+        if (unpacked) {
+          const bytes = Object.hasOwn(unpacked, path) ? unpacked[path] : undefined;
+          if (!bytes)
+            throw new AnalysisError(
+              "not_found",
+              `${path} is stored outside the archive (unpacked) and was not taken from the ZIP`,
+              { unpacked: true },
+            );
+          if (bytes.length > maxBytes)
+            throw new AnalysisError(
+              "too_large",
+              `${path} is ${bytes.length} bytes (limit ${maxBytes})`,
+            );
+          return bytes;
+        }
         if (!onDisk)
           throw new AnalysisError("not_found", `${path} is stored outside the archive (unpacked)`, {
             unpacked: true,
@@ -4497,7 +4539,9 @@ export function analyzeJavaScriptTree(
       );
     if (outside.length)
       parts.push(
-        `${outside.length} are stored outside the archive in its .unpacked directory, which was not found next to it (e.g. ${outside.slice(0, 3).join(", ")})`,
+        tree.unpackedStamp
+          ? `${outside.length} are stored outside the archive in its .unpacked directory and were not taken from the ZIP it came from (missing there, a link, or past the size limits; e.g. ${outside.slice(0, 3).join(", ")})`
+          : `${outside.length} are stored outside the archive in its .unpacked directory, which was not found next to it (e.g. ${outside.slice(0, 3).join(", ")})`,
       );
     limitations.push({
       code: "js_files_skipped",

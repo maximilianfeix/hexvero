@@ -10,15 +10,26 @@ export function crc32(bytes: Uint8Array): number {
   return ~crc >>> 0;
 }
 
-/** Builds a ZIP with the given files; names ending in ".store" stay uncompressed. */
+/**
+ * Builds a ZIP with the given files; names ending in ".store" stay uncompressed. `entries` adds
+ * entries after `files` in order, also under a name already used. Names in `links` are written
+ * as Unix symbolic links (made by Unix, mode S_IFLNK in the external attributes).
+ */
 export function buildZip(
   files: Record<string, Uint8Array | string>,
-  options: { prefix?: Uint8Array; comment?: string; zip64?: boolean } = {},
+  options: {
+    prefix?: Uint8Array;
+    comment?: string;
+    zip64?: boolean;
+    entries?: Array<[string, Uint8Array | string]>;
+    links?: string[];
+  } = {},
 ): Uint8Array {
   const b = new Builder();
   if (options.prefix) b.bytes(options.prefix);
   const central: Uint8Array[] = [];
-  for (const [name, raw] of Object.entries(files)) {
+  for (const [name, raw] of [...Object.entries(files), ...(options.entries ?? [])]) {
+    const link = options.links?.includes(name) ?? false;
     const data = typeof raw === "string" ? new TextEncoder().encode(raw) : raw;
     const stored = name.endsWith(".store");
     const packed = stored ? data : new Uint8Array(deflateRawSync(data));
@@ -38,7 +49,7 @@ export function buildZip(
       .bytes(packed);
     const c = new Builder();
     c.u32(0x02014b50)
-      .u16(20)
+      .u16(link ? 0x0314 : 20)
       .u16(20)
       .u16(0x800)
       .u16(stored ? 0 : 8)
@@ -51,7 +62,7 @@ export function buildZip(
       .u16(0)
       .u16(0)
       .u16(0)
-      .u32(0)
+      .u32(link ? 0o120777 * 0x10000 : 0)
       .u32(offset)
       .bytes(nameBytes);
     central.push(c.done());

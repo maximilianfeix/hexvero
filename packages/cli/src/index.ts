@@ -21,6 +21,7 @@ import {
   type ProviderOperation,
 } from "@hexvero/core";
 import { flagNumber, flagString, parseArgs, UsageError, type ParsedArgs } from "./args.js";
+import { buildNames } from "./names.js";
 import {
   suggest,
   formatFindings,
@@ -66,6 +67,9 @@ Commands
                                                 objects handed to pages); exit 0
         [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
         [--out file] [--force]                  the result (never over a file without --force)
+  init [build] [--out file] [--force]           Write a starting policy to .hexvero/policy.json
+                                                (every rule at fail); with a build, its external
+                                                hosts are allowed
   export <path> <out.json>                      Write the complete analysis to a file
   recover <path> <outdir>                       Split a JS bundle into module files or write a
                                                 source map's original sources (no engine needed)
@@ -224,7 +228,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         : await session.analyze(target.id);
       const collections = await session.collections(target.id);
       const coverage = analysis.data.kind === "javascript-app" ? analysis.data.app.coverage : null;
-      const shown = displayPath(target.info.path);
+      // A packaged build is named as given; the app read inside it gets a line of its own.
+      const container = target.info.container;
+      const shown = displayPath(container?.path ?? target.info.path);
       const quoted = /^[\w./@:+-]+$/.test(shown) ? shown : JSON.stringify(shown);
       const next = suggestNextSteps(analysis, collections).map((step) => ({
         ...step,
@@ -249,14 +255,16 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         );
         return 0;
       }
+      const facts =
+        target.info.format === "directory"
+          ? `directory · ${analysis.durationMs} ms`
+          : `${target.info.format} · ${formatBytes(target.info.size)} · sha256 ${target.info.sha256.slice(0, 16)}… · ${analysis.durationMs} ms`;
       io.out(
-        `${heading(io, printable(displayPath(target.info.path)))}\n  ${paint(
-          io,
-          "dim",
-          target.info.format === "directory"
-            ? `directory · ${analysis.durationMs} ms`
-            : `${target.info.format} · ${formatBytes(target.info.size)} · sha256 ${target.info.sha256.slice(0, 16)}… · ${analysis.durationMs} ms`,
-        )}`,
+        container
+          ? `${heading(io, printable(shown))}\n  Electron app: ${printable(container.entry)}\n  ${paint(io, "dim", facts)}${
+              container.note ? `\n  ${paint(io, "dim", printable(container.note))}` : ""
+            }`
+          : `${heading(io, printable(shown))}\n  ${paint(io, "dim", facts)}`,
       );
       io.out(`\n${heading(io, "Summary")}\n  ${printable(analysis.summary)}`);
       if (coverage && !coverage.complete && coverage.remaining === 0)
@@ -435,6 +443,7 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         const own = new Set(["findings", "limitations"]);
         const differing = all.collections.filter((c) => differs(c) && !own.has(c.collection));
         const ownDiffering = all.collections.filter((c) => differs(c) && own.has(c.collection));
+        const names = await buildNames(session, a.id, b.id);
         io.out(
           heading(
             io,
@@ -445,6 +454,9 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
             }`,
           ),
         );
+        // both builds have the same file name (two app.asar): say which is which
+        if (names.sameName)
+          io.out(paint(io, "dim", `  a ${printable(names.a)} · b ${printable(names.b)}`));
         for (const row of table(
           all.collections.map((c) => ({
             collection: c.collection,
@@ -641,6 +653,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "check": {
       const { runCheck } = await import("./check.js");
       return runCheck(args, io, session);
+    }
+    case "init": {
+      const { runInit } = await import("./init.js");
+      return runInit(args, io, session);
     }
     case "export": {
       const target = await session.open(need(0, "path"));

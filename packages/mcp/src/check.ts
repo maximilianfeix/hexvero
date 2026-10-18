@@ -84,9 +84,13 @@ async function readJsonFile(
   what: "policy" | "baseline",
   session: Session,
 ): Promise<string> {
-  const opened = session
-    .list()
-    .map((t) => (t.info.format === "directory" ? t.info.path : dirname(t.info.path)));
+  const opened = session.list().map((t) => {
+    // A packaged build counts as what was opened: the bundle or install directory itself, or
+    // the directory of the archive (the app read out of a ZIP has no path on disk).
+    const c = t.info.container;
+    if (c) return c.format === "directory" ? c.path : dirname(c.path);
+    return t.info.format === "directory" ? t.info.path : dirname(t.info.path);
+  });
   const real = checkReadPath(path, what, opened);
   let text: string;
   let handle;

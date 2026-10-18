@@ -322,4 +322,62 @@ describe("hexvero check", () => {
     expect(r.code).toBe(0);
     expect(JSON.parse(readFileSync(baseline, "utf8"))).toMatchObject({ hexvero: "baseline" });
   });
+
+  it("never suggests a baseline for a rule that could not be decided (#196)", async () => {
+    const unread = (name: string): string => {
+      const path = join(dir, `${name}.asar`);
+      writeFileSync(
+        path,
+        buildAsar({
+          "package.json": JSON.stringify({ name, main: "main.js" }),
+          "main.js": "fetch(url);\n",
+        }),
+      );
+      return path;
+    };
+    const [x, y] = [unread("gap-a"), unread("gap-b")];
+    const r = await check(x, y, "--policy", examplePolicy);
+    expect(r.code).toBe(4);
+    const text = r.io.text();
+    expect(text).toContain("new-external-host on endpoints: values_unresolved");
+    expect(text).not.toContain("--update-baseline");
+    expect(text).toContain("a baseline cannot accept it");
+    expect(text).toContain('set "unknown": "warn"');
+    expect(text).toContain("a request target whose host is not known");
+    // writing a baseline accepts nothing, and the next step stays the same
+    const baseline = join(dir, "gap-baseline.json");
+    const again = await check(
+      x,
+      y,
+      "--policy",
+      examplePolicy,
+      "--baseline",
+      baseline,
+      "--update-baseline",
+    );
+    expect(again.code).toBe(4);
+    expect(again.io.text()).toContain("0 finding(s) accepted");
+    expect(again.io.text()).not.toContain("--update-baseline, or a suppression");
+    // with unknown: warn the same check passes
+    const warn = policyWith({ unknown: "warn" }, "gap-warn.json");
+    expect((await check(x, y, "--policy", warn)).code).toBe(0);
+  });
+
+  it("names a scan read in part as what would decide the rules", async () => {
+    const { nextSteps } = await import("../src/check.js");
+    const steps = nextSteps({
+      hexvero: "check",
+      version: 1,
+      status: "incomplete",
+      findings: [],
+      incomplete: [
+        { rule: "new-interface-member", collection: "interfaces", gaps: ["scan_partial"] },
+      ],
+      policy: { file: "/x/policy.json", sha256: "0" },
+      a: { path: "a", size: 0, sha256: "", format: "asar" },
+      b: { path: "b", size: 0, sha256: "", format: "asar" },
+    });
+    expect(steps.join("\n")).toContain('run "hexvero analyze <build> --all" on both');
+    expect(steps.join("\n")).not.toContain("--update-baseline");
+  });
 });

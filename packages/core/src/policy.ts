@@ -21,7 +21,7 @@
 import { createHash } from "node:crypto";
 import { AnalysisError } from "./model.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
-import type { Session, TargetRecord } from "./session.js";
+import { UNRESOLVED_LIMITATIONS, type Session, type TargetRecord } from "./session.js";
 
 export const POLICY_RULES = [
   "new-interface-member",
@@ -570,6 +570,57 @@ export function hostOf(value: string): HostReading {
   return { kind: "host", host: host.replace(/\.$/, "") };
 }
 
+/**
+ * True when the host a request target can reach is known although part of the value is computed:
+ * the value is plain, or its computed parts all come after a literal scheme that reaches no
+ * host (`file://${path}`), or after a literal network host that a `/`, `?` or `#` closes
+ * (`https://api.example.com/users/${id}`). A value that could not be read at all (`null`), one
+ * without a literal scheme (`/${p}` may become `//elsewhere.example`), and one whose computed part
+ * comes before the end of its host (`https://${region}.example.com`, `https://a.example${x}`) can
+ * reach any host.
+ */
+export function hostKnown(value: string | null | undefined, evidence?: unknown): boolean {
+  if (typeof value !== "string") return false;
+  if (!value.includes("${")) return true;
+  // a computed value is trusted only as the reader wrote it: text and gaps of the argument
+  if (evidence !== undefined && evidence !== "template") return false;
+  if (hostOf(value).kind === "unknown") return false;
+  const v = urlInput(value);
+  const literal = v.slice(0, v.indexOf("${"));
+  const sm = /^([a-z][a-z0-9+.-]*):/i.exec(literal);
+  if (!sm) return false;
+  if (!NETWORK_SCHEMES.has(`${sm[1]!.toLowerCase()}:`)) return true;
+  // the authority must end inside the literal part
+  return /[/\\?#]/.test(literal.slice(sm[0].length).replace(/^[/\\]*/, ""));
+}
+
+/**
+ * True when every request target a build names has a known host (`hostKnown`) and no limitation
+ * says targets exist that are not listed. Then the values hexvero could not resolve in its
+ * `endpoints` and `urls` cannot hide a host, and they do not leave `new-external-host` open.
+ */
+function targetHostsKnown(
+  r: ReleaseComparison,
+  sides: CheckSides | undefined,
+  side: "a" | "b",
+): boolean {
+  if (!sides) return false;
+  if (r.limitations[side].some((l) => UNRESOLVED_LIMITATIONS[l.code] === "endpoint")) return false;
+  for (const collection of ["endpoints", "urls"]) {
+    const items = sides.items[side][collection];
+    if (!items) continue;
+    for (const item of items) {
+      if (!isRecord(item)) return false;
+      const v = item["value"] ?? item["url"];
+      if (!hostKnown(typeof v === "string" ? v : null, item["evidence"] ?? "missing")) return false;
+    }
+  }
+  return true;
+}
+
+/** The reason a comparison gives an item found next to values it could not resolve. */
+const NEXT_TO_UNRESOLVED = "the other side has values there that could not be resolved";
+
 /** Exact entries match the host itself; `*.d` matches every subdomain of d, not d. */
 export function hostAllowed(host: string, allow: readonly string[]): boolean {
   return allow.some((entry) =>
@@ -777,6 +828,9 @@ function hostDrafts(
   const out: Draft[] = [];
   // A host the before build already named, in any file or with any path, is not a new host.
   const before = beforeTargets(r, sides);
+  // When every target of the before build has a known host, an item that sits next to values it
+  // could not resolve is new exactly when its host is not one of them.
+  const beforeKnown = targetHostsKnown(r, sides, "a");
   for (const row of r.changes) {
     if (row.collection !== "endpoints" && row.collection !== "urls") continue;
     if (row.change !== "added" && row.change !== "unknown") continue;
@@ -798,7 +852,7 @@ function hostDrafts(
       continue;
     }
     if (hostAllowed(reading.host, allow) || before.hosts.has(reading.host)) continue;
-    const unknown = row.change === "unknown";
+    const unknown = row.change === "unknown" && !(beforeKnown && row.reason === NEXT_TO_UNRESOLVED);
     out.push({
       rule: "new-external-host",
       identity: `host\0${reading.host}`,
@@ -1035,12 +1089,17 @@ export function evaluatePolicy(
   /** A list a rule needs that one of the analyses cannot produce: nothing can be decided. */
   const missing = (collection: string): boolean =>
     kindA !== kindB || !(KIND_LISTS[kindA]?.has(collection) ?? false);
+  // Unresolved values that cannot hide a host do not leave the host rule open (`hostKnown`).
+  const hostsKnown = targetHostsKnown(r, sides, "a") && targetHostsKnown(r, sides, "b");
   for (const rule of POLICY_RULES) {
     const cfg = policy.rules[rule];
     if (cfg.level === "off") continue;
     const collections = RULE_COLLECTIONS[rule](r);
     for (const collection of new Set([...collections, ...RULE_COVERAGE[rule](r)])) {
-      const ignore = IRRELEVANT_GAPS[rule]?.[collection] ?? [];
+      const ignore = [
+        ...(IRRELEVANT_GAPS[rule]?.[collection] ?? []),
+        ...(rule === "new-external-host" && hostsKnown ? ["values_unresolved"] : []),
+      ];
       const gaps = completenessOf(r, collection).gaps.filter((g) => !ignore.includes(g));
       if (missing(collection)) gaps.unshift("collection_missing");
       if (gaps.length) incomplete.push({ rule, collection, gaps });

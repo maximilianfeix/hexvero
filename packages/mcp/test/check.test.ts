@@ -12,6 +12,7 @@ import { Session, checkRelease, createBaseline, parsePolicy } from "@hexvero/cor
 import { createHexveroServer } from "../src/index.js";
 import { CHECK_RESULT_BYTES } from "../src/check.js";
 import { buildAsar } from "../../core/test/fixtures/asar.js";
+import { buildZip } from "../../core/test/fixtures/zip.js";
 
 const examples = resolve(import.meta.dirname, "..", "..", "..", "examples");
 const policyPath = join(examples, "policy.json");
@@ -253,6 +254,35 @@ describe("hexvero_check", () => {
         buildAsar({ "package.json": JSON.stringify({ name: "beside", main: "main.js" }) }),
       );
       await session.open(join(elsewhere, "app.asar"));
+      const beside = await call("hexvero_check", { targetA: a, targetB: b, policyPath: outside });
+      expect(beside.body["status"]).toBe("fail");
+    } finally {
+      if (previous === undefined) delete process.env["HEXVERO_WRITE_ROOTS"];
+      else process.env["HEXVERO_WRITE_ROOTS"] = previous;
+      rmSync(roots, { recursive: true, force: true });
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a policy next to a ZIP whose Electron app was opened", async () => {
+    const roots = mkdtempSync(join(tmpdir(), "hexvero-roots-"));
+    const elsewhere = mkdtempSync(join(tmpdir(), "hexvero-zip-"));
+    const previous = process.env["HEXVERO_WRITE_ROOTS"];
+    process.env["HEXVERO_WRITE_ROOTS"] = roots;
+    try {
+      const outside = join(elsewhere, "policy.json");
+      writeFileSync(outside, readFileSync(policyPath, "utf8"));
+      const zip = join(elsewhere, "release.zip");
+      writeFileSync(
+        zip,
+        buildZip({
+          "X.app/Contents/Resources/app.asar": buildAsar({
+            "package.json": JSON.stringify({ name: "zipped", main: "main.js" }),
+          }),
+        }),
+      );
+      const opened = await session.open(zip);
+      expect(opened.info.container?.format).toBe("zip");
       const beside = await call("hexvero_check", { targetA: a, targetB: b, policyPath: outside });
       expect(beside.body["status"]).toBe("fail");
     } finally {

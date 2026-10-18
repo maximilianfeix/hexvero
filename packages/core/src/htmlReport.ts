@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import {
-  baseName,
+  targetName,
   CHANGE_SIGN,
   DEFAULT_RELEASE_ROWS,
   notEstablished,
@@ -295,7 +295,7 @@ export function renderReleaseReportHtml(
   r: ReleaseComparison,
   sources: ReadonlyMap<string, SourceWindow> = new Map(),
 ): string {
-  const names = { a: baseName(r.a.info.path), b: baseName(r.b.info.path) };
+  const names = r.labels ?? { a: targetName(r.a.info), b: targetName(r.b.info) };
   const budget: Budget = { excerpts: 0, chars: 0, missing: 0, capped: false };
   const out: string[] = [];
 

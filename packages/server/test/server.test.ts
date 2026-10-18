@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildAsar } from "../../core/test/fixtures/asar.js";
 import { buildElf } from "../../core/test/fixtures/elf.js";
+import { buildZip } from "../../core/test/fixtures/zip.js";
 import { startServer, type RunningServer } from "../src/index.js";
 
 const appFiles = (v: string): Record<string, string> => ({
@@ -107,6 +108,22 @@ describe("hexvero HTTP API", () => {
     expect(uploaded.status).toBe(201);
     expect((uploaded.body["info"] as { format: string }).format).toBe("elf");
     expect(((await api("/targets")).body["targets"] as unknown[]).length).toBe(2);
+  });
+
+  it("opens an uploaded ZIP of a packaged Electron build as the app inside it", async () => {
+    const uploaded = await api("/uploads?name=release.zip", {
+      method: "POST",
+      body: buildZip({ "X.app/Contents/Resources/app.asar": buildAsar(appFiles("1")) }),
+    });
+    expect(uploaded.status).toBe(201);
+    const info = uploaded.body["info"] as { format: string; path: string; container?: unknown };
+    expect(info.format).toBe("asar");
+    expect(info.path).toBe("release.zip!/X.app/Contents/Resources/app.asar");
+    expect(info.container).toMatchObject({ path: "release.zip", format: "zip" });
+    const id = uploaded.body["id"] as string;
+    const channels = await api(`/targets/${id}/collections/ipcChannels`);
+    expect(channels.body["items"]).toEqual([expect.objectContaining({ channel: "old:ping" })]);
+    await api(`/targets/${id}`, { method: "DELETE" });
   });
 
   it("serves analysis, collections, strings, bytes and export", async () => {

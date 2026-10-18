@@ -235,6 +235,32 @@ describe("hexvero CLI", () => {
     expect(existsSync(join(dir, "a.json"))).toBe(true);
   });
 
+  it("names the Electron app it read inside a packaged build", async () => {
+    const app = join(dir, "Pkg.app");
+    mkdirSync(join(app, "Contents", "Resources"), { recursive: true });
+    writeFileSync(
+      join(app, "Contents", "Resources", "app.asar"),
+      buildAsar({
+        "package.json": JSON.stringify({ name: "pkg", version: "2.0.0", main: "main.js" }),
+        "main.js": 'require("electron").ipcMain.handle("pkg:ping", () => 1);\n',
+      }),
+    );
+    writeFileSync(join(app, "Contents", "Resources", "default_app.asar"), buildAsar({}));
+    const io = capture();
+    expect(await main(["analyze", app], io)).toBe(0);
+    const text = io.stdout.join("\n");
+    expect(text).toContain("Electron app: Contents/Resources/app.asar");
+    expect(text).toContain("Also there, not run by Electron: default_app.asar");
+    expect(text).toContain(
+      "macOS app · Electron app Contents/Resources/app.asar: 1 JavaScript modules",
+    );
+    expect(text).toContain("ipcChannels (1)");
+    const json = capture();
+    expect(await main(["analyze", app, "--json"], json)).toBe(0);
+    const body = JSON.parse(json.stdout.join("")) as { target: { info: { container: unknown } } };
+    expect(body.target.info.container).toMatchObject({ entry: "Contents/Resources/app.asar" });
+  });
+
   it("reads a large JavaScript app in batches and never shows a partial scan as complete", async () => {
     const cache = mkdtempSync(join(tmpdir(), "hexvero-cli-cache-"));
     const previous = process.env["HEXVERO_CACHE_DIR"];

@@ -210,8 +210,12 @@ export class Session {
   }
 
   register(loaded: LoadedTarget): TargetRecord {
-    const id =
-      loaded.info.format === "directory"
+    // An app found inside a packaged build is a target of its own: the build adds facts (a
+    // bundle's Info.plist and executable) that the same archive opened alone does not have.
+    const { container } = loaded.info;
+    const id = container
+      ? `c_${hashText(`${container.path}\0${container.entry}\0${loaded.info.sha256}`)}`
+      : loaded.info.format === "directory"
         ? `d_${hashText(loaded.info.path)}`
         : `t_${loaded.info.sha256.slice(0, 12)}`;
     const existing = this.entries.get(id);
@@ -919,29 +923,7 @@ export function collectionsOf(
       if (d.apk.flutter) out["dartSnapshots"] = d.apk.flutter.snapshots;
       break;
     case "bundle":
-      out["frameworks"] = d.bundle.frameworks.map((name) => ({ name }));
-      out["permissions"] = d.bundle.permissions;
-      out["helpers"] = d.bundle.helpers.map((name) => ({ name }));
-      out["entitlements"] = Object.entries(d.bundle.entitlements ?? {}).map(([key, value]) => ({
-        key,
-        value,
-      }));
-      {
-        const bin = d.bundle.main?.binary;
-        const macho =
-          bin?.kind === "macho"
-            ? bin.macho
-            : bin?.kind === "macho-fat"
-              ? bin.slices[0]?.macho
-              : undefined;
-        if (macho) {
-          out["libraries"] = macho.dylibs.map((x) => ({
-            name: x.path,
-            kind: x.kind,
-          }));
-          out["symbols"] = macho.symbols;
-        }
-      }
+      bundleLists(d.bundle, out);
       break;
     case "zip":
       out["files"] = d.zip.entries;
@@ -971,6 +953,8 @@ export function collectionsOf(
       out["dexStrings"] = d.dex.strings.map((value) => ({ value }));
       break;
     case "javascript-app":
+      // the bundle an app was found in: its lists first, as when the bundle is analyzed alone
+      if (d.native) bundleLists(d.native, out);
       out["modules"] = d.app.modules.map(({ references: _r, ipc: _i, ...m }) => ({
         ...m,
         references: _r.length,
@@ -1016,11 +1000,39 @@ export function collectionsOf(
   return out;
 }
 
+/** The lists of a macOS or iOS bundle: frameworks, permissions, helpers, entitlements, code. */
+function bundleLists(
+  bundle: Extract<AnalysisData, { kind: "bundle" }>["bundle"],
+  out: Record<string, unknown[]>,
+): void {
+  out["frameworks"] = bundle.frameworks.map((name) => ({ name }));
+  out["permissions"] = bundle.permissions;
+  out["helpers"] = bundle.helpers.map((name) => ({ name }));
+  out["entitlements"] = Object.entries(bundle.entitlements ?? {}).map(([key, value]) => ({
+    key,
+    value,
+  }));
+  const bin = bundle.main?.binary;
+  const macho =
+    bin?.kind === "macho"
+      ? bin.macho
+      : bin?.kind === "macho-fat"
+        ? bin.slices[0]?.macho
+        : undefined;
+  if (macho) {
+    out["libraries"] = macho.dylibs.map((x) => ({
+      name: x.path,
+      kind: x.kind,
+    }));
+    out["symbols"] = macho.symbols;
+  }
+}
+
 /** A value read only in part: unknown, or built at run time (`${…}`). */
 const computedValue = (value: string | null): boolean => value === null || value.includes("${");
 
 /** Limitations that say values of a family exist somewhere that are not in its list. */
-const UNRESOLVED_LIMITATIONS: Record<string, UnresolvedFamily> = {
+export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> = {
   ipc_receiver_unresolved: "ipc",
   ipc_open_calls_capped: "ipc",
   context_bridge_truncated: "bridge",

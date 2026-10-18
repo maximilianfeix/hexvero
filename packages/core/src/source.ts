@@ -102,6 +102,13 @@ function readTargetFile(loaded: LoadedTarget, file: string): Uint8Array {
     if (entry.size > MAX_SOURCE_BYTES)
       throw new AnalysisError("too_large", `${file} is ${entry.size} bytes; not shown`);
     // An unpacked entry lives in `<archive>.unpacked/`, read with the same confinement as a scan.
+    if (entry.unpacked && loaded.unpacked) {
+      const bytes = Object.hasOwn(loaded.unpacked, file) ? loaded.unpacked[file] : undefined;
+      if (!bytes) throw new AnalysisError("not_found", `${file} was not taken from the archive`);
+      if (bytes.length > MAX_SOURCE_BYTES)
+        throw new AnalysisError("too_large", `${file} is ${bytes.length} bytes; not shown`);
+      return bytes;
+    }
     if (entry.unpacked && isAbsolute(info.path))
       return readUnpacked(info.path, entry, MAX_SOURCE_BYTES);
     return archive.read(entry, MAX_SOURCE_BYTES);

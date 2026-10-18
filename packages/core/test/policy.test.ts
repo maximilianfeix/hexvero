@@ -14,6 +14,7 @@ import {
   evaluatePolicy,
   fingerprintOf,
   hostAllowed,
+  hostKnown,
   hostOf,
   parseBaseline,
   parsePolicy,
@@ -1469,5 +1470,120 @@ describe("new-bridge-exposure through checkRelease (the lists of both builds are
       ),
     );
     expect(r.findings.filter((x) => x.rule === "new-bridge-exposure")).toEqual([]);
+  });
+});
+
+const run = async (a: string, b: string) => {
+  const session = new Session();
+  const ta = await session.open(a);
+  const tb = await session.open(b);
+  return checkRelease(session, ta.id, tb.id, policy());
+};
+const hostGaps = (r: Awaited<ReturnType<typeof run>>) =>
+  r.incomplete.filter((i) => i.rule === "new-external-host");
+
+describe("new-external-host with values hexvero could not resolve (#196)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hexvero-policy-hosts-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const write = (name: string, main: string) => {
+    const path = join(dir, `${name}.asar`);
+    writeFileSync(
+      path,
+      buildAsar({
+        "package.json": JSON.stringify({ name, main: "main.js" }),
+        "main.js": main,
+      }),
+    );
+    return path;
+  };
+  it("reads a host as known when only the path after it is computed", () => {
+    expect(hostKnown("https://api.example.com/users/${id}")).toBe(true);
+    expect(hostKnown("https://api.example.com?q=${q}")).toBe(true);
+    expect(hostKnown("file://${path}")).toBe(true);
+    expect(hostKnown("https://plain.example.com/x")).toBe(true);
+    // the computed part may still change the host
+    expect(hostKnown(null)).toBe(false);
+    expect(hostKnown("https://${region}.example.com/x")).toBe(false);
+    expect(hostKnown("https://api.example.com${path}")).toBe(false);
+    expect(hostKnown("https://user:${pw}@evil.example/")).toBe(false);
+    expect(hostKnown("https:///${x}")).toBe(false);
+    expect(hostKnown("/${path}")).toBe(false); // "/" + "/evil.example" is protocol-relative
+    expect(hostKnown("ht${x}tps://evil.example/")).toBe(false);
+    expect(hostKnown("${base}/v1")).toBe(false);
+  });
+
+  it("decides the rule when every computed value has a literal host", async () => {
+    const before = write("known-a", "fetch(`https://api.example.com/users/${id}`);\n");
+    const same = write(
+      "known-b",
+      'fetch(`https://api.example.com/users/${id}`);\nfetch("https://api.example.com/v2");\n',
+    );
+    const r = await run(before, same);
+    expect(hostGaps(r)).toEqual([]);
+    expect(r.findings.filter((f) => f.rule === "new-external-host")).toEqual([]);
+    expect(r.status).toBe("pass");
+    // a new host next to such values is definitely new, not "may be new"
+    const added = write(
+      "known-c",
+      'fetch(`https://api.example.com/users/${id}`);\nfetch("https://new.evil.example/x");\n',
+    );
+    const s = await run(before, added);
+    expect(hostGaps(s)).toEqual([]);
+    expect(
+      s.findings.filter((f) => f.rule === "new-external-host").map((f) => [f.key, f.unknown]),
+    ).toEqual([["new.evil.example", false]]);
+    expect(s.status).toBe("fail");
+  });
+
+  it("keeps the rule open for a value that could hide any host", async () => {
+    for (const [name, call] of [
+      ["unread", "fetch(url);"],
+      ["computed-host", "fetch(`https://${region}.example.com/x`);"],
+      ["relative", "fetch(`/${path}`);"],
+    ] as const) {
+      const r = await run(write(`${name}-a`, `${call}\n`), write(`${name}-b`, `${call}\n`));
+      expect(
+        hostGaps(r).flatMap((g) => g.gaps),
+        name,
+      ).toContain("values_unresolved");
+      expect(r.status, name).toBe("incomplete");
+    }
+  });
+});
+
+describe("new-external-host and URLs derived from a string (#196 review)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hexvero-policy-derived-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const write = (name: string, main: string) => {
+    const path = join(dir, `${name}.asar`);
+    writeFileSync(
+      path,
+      buildAsar({ "package.json": JSON.stringify({ name, main: "main.js" }), "main.js": main }),
+    );
+    return path;
+  };
+  const base =
+    'fetch("https://api.x.com/v1/status");\nfunction g(id){ return fetch(`https://api.x.com/v1/${id}`); }\n';
+
+  it("trusts a computed value only with the reader's template evidence", () => {
+    expect(hostKnown("https://api.x.com/${…}", "template")).toBe(true);
+    expect(hostKnown("https://api.x.com/${…}", "inferred")).toBe(false);
+    expect(hostKnown("https://api.x.com/${…}", "missing")).toBe(false);
+  });
+
+  it("does not pass a build whose URL is a method of a string", async () => {
+    const before = write("d-before", base);
+    for (const [name, call] of [
+      ["rep", "function a(p){ return fetch(`https://api.x.com/${p}`.replace(/api/, p)); }"],
+      ["replit", 'function a(p){ return fetch("https://api.x.com/".replace("api.x.com", p)); }'],
+      ["slice", "function a(p){ return fetch(`https://api.x.com/${p}`.slice(8)); }"],
+      [
+        "axios",
+        'const axios = require("axios"); const c = axios.create({ baseURL: "https://api.x.com/" }); function a(p){ return c.get("/" + p); }',
+      ],
+    ] as const) {
+      const r = await run(before, write(`d-${name}`, `${base}${call}\n`));
+      expect(r.status, name).toBe("incomplete");
+    }
   });
 });

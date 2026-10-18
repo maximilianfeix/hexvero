@@ -22,10 +22,34 @@ export interface Limitation {
 }
 
 export interface TargetInfo {
+  /** The file or directory that was read: for a packaged build, the Electron app inside it. */
   path: string;
   size: number;
   sha256: string;
   format: FormatId;
+  /**
+   * Set when the path given was a packaged build (a macOS `.app`, a Windows/Linux install
+   * directory, a ZIP of either) and `path` is the Electron application found inside it.
+   */
+  container?: TargetContainer;
+  /**
+   * Set when the build holds an Electron app that was not read (a link out of the bundle, an
+   * entry a ZIP holds twice, an archive that is not one): the target is the build as it is.
+   */
+  appNotRead?: { entry: string; reason: string };
+}
+
+export interface TargetContainer {
+  /** The path as given: the bundle, install directory or archive. */
+  path: string;
+  format: "directory" | "zip";
+  /** The application inside it, relative, with `/` separators (`Contents/Resources/app.asar`). */
+  entry: string;
+  layout: "macos" | "windows-linux";
+  /** What else was there and why `entry` was read (Electron's search order). */
+  note?: string;
+  /** Why the pick may not be what Electron runs (a fuse hexvero does not read). */
+  warning?: string;
 }
 
 export interface Analysis<T> {

@@ -33,12 +33,14 @@ export function scanKey(info: TargetInfo, tree: FileTree): string | null {
       .filter((f) => f.unpacked)
       .toSorted((a, b) => (a.path < b.path ? -1 : 1))) {
       let seen = "absent";
-      try {
-        const st = statSync(join(`${tree.root}.unpacked`, ...file.path.split("/")));
-        seen = `${st.size}\u0000${Math.round(st.mtimeMs)}`;
-      } catch {
-        // missing or unreadable: recorded as absent, so adding the file later changes the key
-      }
+      if (tree.unpackedStamp) seen = tree.unpackedStamp(file.path);
+      else
+        try {
+          const st = statSync(join(`${tree.root}.unpacked`, ...file.path.split("/")));
+          seen = `${st.size}\u0000${Math.round(st.mtimeMs)}`;
+        } catch {
+          // missing or unreadable: recorded as absent, so adding the file later changes the key
+        }
       digest.update(`unpacked\u0000${file.path}\u0000${seen}\u0000`);
     }
   } else {

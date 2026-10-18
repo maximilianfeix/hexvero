@@ -804,3 +804,38 @@ describe("IPC through esbuild's ES-module interop", () => {
     ]);
   });
 });
+
+const each = (lines: string[]): string[] => lines.flatMap((l) => show(find(l).endpoints));
+
+describe("a URL argument derived from a string (#196)", () => {
+  // one file per call: rows of the same value fold into one
+  it("never takes the receiver's text for a method or member of it", () => {
+    expect(
+      each([
+        "fetch(`https://api.x.com/${p}`.replace(/api/, p));",
+        'fetch("https://api.x.com/".replace("api.x.com", p));',
+        'fetch(`https://api.x.com/${p}`.replaceAll("api.x.com", p));',
+        "fetch(`https://api.x.com/${p}`.slice(8));",
+        'fetch("https://api.x.com/".concat(p));',
+        'fetch("https://api.x.com/"[0]);',
+        'fetch("https://api.x.com/" + "v1/".replace("v1", p));',
+      ]),
+    ).toEqual([
+      "fetch ?<expression> [unknown]",
+      "fetch ?<expression> [unknown]",
+      "fetch ?<expression> [unknown]",
+      "fetch ?<expression> [unknown]",
+      "fetch ?<expression> [unknown]",
+      "fetch ?<expression> [unknown]",
+      // a later part derived: its own place is computed, the text before it stays
+      "fetch https://api.x.com/${…} [template]",
+    ]);
+  });
+
+  it("still reads the same strings when nothing is called on them", () => {
+    expect(each(['fetch("https://api.x.com/" + p);', "fetch(`https://api.x.com/${p}`);"])).toEqual([
+      "fetch https://api.x.com/${…} [template]",
+      "fetch https://api.x.com/${…} [template]",
+    ]);
+  });
+});

@@ -42,7 +42,12 @@ export type AnalysisData =
   | { kind: "jar"; jar: Strip<JarInfo> }
   | { kind: "java-class"; javaClass: Strip<JavaClassInfo> }
   | { kind: "dex"; dex: Strip<DexInfo> }
-  | { kind: "javascript-app"; app: Strip<JsAppInfo> }
+  | {
+      kind: "javascript-app";
+      app: Strip<JsAppInfo>;
+      /** The macOS bundle the app was found in (`target.container`): its own native facts. */
+      native?: Strip<BundleInfo>;
+    }
   | { kind: "javascript"; script: ScanResult; bundle: Omit<JsBundleInfo, "limitations"> }
   | { kind: "source-map"; map: SourceMapSummary }
   | { kind: "json"; json: { topLevelKeys: string[]; bytes: number } }
@@ -163,6 +168,36 @@ async function scanApplication(
   return app;
 }
 
+/**
+ * The native facts of the macOS bundle an Electron app was found in. Read in the same run, from
+ * the same directory, so a comparison of two `.app` bundles keeps their frameworks, permissions,
+ * entitlements and libraries next to the app's own lists.
+ */
+function nativeOf(info: LoadedTarget["info"]): BundleInfo | undefined {
+  const c = info.container;
+  if (!c || c.format !== "directory" || c.layout !== "macos" || !isAppBundle(c.path))
+    return undefined;
+  return analyzeAppBundle(c.path);
+}
+
+/** The summary of an app found inside a packaged build, saying which file was read. */
+function withContainer(
+  summary: string,
+  info: LoadedTarget["info"],
+  native: Strip<BundleInfo> | undefined,
+): string {
+  const c = info.container;
+  if (!c) return summary;
+  const build = native
+    ? `${native.platform === "macos" ? "macOS" : "iOS"} app ${native.name || native.bundleId} ${native.version} (${native.bundleId})${native.main ? ` · ${native.main.summary}` : ""}`
+    : c.format === "zip"
+      ? "ZIP archive"
+      : c.layout === "windows-linux"
+        ? "Windows/Linux install directory"
+        : "macOS app";
+  return `${build} · Electron app ${c.entry}: ${summary.replace(/^Electron ASAR(?::|,) /, "")}`;
+}
+
 /** Routes a loaded target to the matching analyzer; parser bounds errors become `malformed` results. */
 export async function analyzeTarget(
   target: LoadedTarget,
@@ -205,6 +240,14 @@ async function analyzeTargetUnsafe(
     durationMs: Math.round(performance.now() - started),
   });
 
+  // a packaged build whose Electron app was not read, and a pick that may not be Electron's
+  if (info.appNotRead)
+    limitations.push({
+      code: "electron_app_not_read",
+      message: `The build holds an Electron app at ${info.appNotRead.entry}, but it was not read: ${info.appNotRead.reason}. What follows is the build itself.`,
+    });
+  if (info.container?.warning)
+    limitations.push({ code: "electron_app_pick_unverified", message: info.container.warning });
   switch (info.format) {
     case "elf":
     case "pe":
@@ -290,21 +333,25 @@ async function analyzeTargetUnsafe(
       });
     }
     case "asar": {
+      const host = nativeOf(info);
+      const native = host ? strip(host) : undefined;
       const app = strip(
         await scanApplication(
           info,
-          target.lazy ? asarTreeFromFile(info.path) : asarTree(bytes, info.path),
+          target.lazy ? asarTreeFromFile(info.path) : asarTree(bytes, info.path, target.unpacked),
           options.js,
         ),
       );
-      return done(
-        app.coverage.complete
-          ? `Electron ASAR: ${app.modules.length} JavaScript modules, ${app.ipcChannels.length} IPC channels`
-          : app.coverage.remaining > 0
-            ? `Electron ASAR, partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned, ${app.ipcChannels.length} IPC channels so far`
-            : `Electron ASAR, incomplete: ${app.coverage.skipped} of ${app.coverage.total} JavaScript files could not be read, ${app.ipcChannels.length} IPC channels in the rest`,
-        { kind: "javascript-app", app },
-      );
+      const summary = app.coverage.complete
+        ? `Electron ASAR: ${app.modules.length} JavaScript modules, ${app.ipcChannels.length} IPC channels`
+        : app.coverage.remaining > 0
+          ? `Electron ASAR, partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned, ${app.ipcChannels.length} IPC channels so far`
+          : `Electron ASAR, incomplete: ${app.coverage.skipped} of ${app.coverage.total} JavaScript files could not be read, ${app.ipcChannels.length} IPC channels in the rest`;
+      return done(withContainer(summary, info, native), {
+        kind: "javascript-app",
+        app,
+        ...(native ? { native } : {}),
+      });
     }
     case "directory": {
       if (isAppBundle(info.path)) {
@@ -318,16 +365,22 @@ async function analyzeTargetUnsafe(
           { kind: "bundle", bundle },
         );
       }
+      const host = nativeOf(info);
+      const native = host ? strip(host) : undefined;
       const app = strip(await scanApplication(info, directoryTree(info.path), options.js));
       return done(
-        `Directory: ${app.totals.files} files, ${
-          app.coverage.complete
-            ? `${app.modules.length} JavaScript modules`
-            : app.coverage.remaining > 0
-              ? `partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned`
-              : `incomplete: ${app.modules.length} JavaScript modules read, some files unread or unlisted`
-        }${app.electron ? " (Electron)" : ""}`,
-        { kind: "javascript-app", app },
+        withContainer(
+          `Directory: ${app.totals.files} files, ${
+            app.coverage.complete
+              ? `${app.modules.length} JavaScript modules`
+              : app.coverage.remaining > 0
+                ? `partial: ${app.coverage.scanned} of ${app.coverage.total} JavaScript files scanned`
+                : `incomplete: ${app.modules.length} JavaScript modules read, some files unread or unlisted`
+          }${app.electron ? " (Electron)" : ""}`,
+          info,
+          native,
+        ),
+        { kind: "javascript-app", app, ...(native ? { native } : {}) },
       );
     }
     case "javascript": {

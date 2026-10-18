@@ -7,7 +7,7 @@ import {
   type FieldChange,
   type UnknownItem,
 } from "./compare.js";
-import { AnalysisError, type Limitation } from "./model.js";
+import { AnalysisError, type Limitation, type TargetInfo } from "./model.js";
 import type { CompareAllResult, Session, TargetRecord } from "./session.js";
 import { CORE_VERSION } from "./version.js";
 
@@ -70,6 +70,11 @@ export interface ReleaseComparison {
     next: number | null;
   };
   limitations: { a: Limitation[]; b: Limitation[] };
+  /**
+   * Set when both builds have the same name (two `app.asar`, two `.app`): names that tell them
+   * apart (`buildLabels`), for titles and headers.
+   */
+  labels?: { a: string; b: string };
 }
 
 export interface ReleaseComparisonOptions {
@@ -396,6 +401,7 @@ export async function compareReleases(
     if ((shown.get(collection) ?? 0) < count)
       cut.push({ collection, shown: shown.get(collection) ?? 0, total: count });
   const [analysisA, analysisB] = await Promise.all([session.analyze(idA), session.analyze(idB)]);
+  const names = await buildLabels(session, idA, idB);
   return {
     hexvero: CORE_VERSION,
     a: session.get(idA),
@@ -406,6 +412,7 @@ export async function compareReleases(
     completeness,
     page: { offset, limit: window.limit, total, next: end < total ? end : null },
     limitations: { a: analysisA.limitations, b: analysisB.limitations },
+    ...(names.sameName ? { labels: { a: names.a, b: names.b } } : {}),
   };
 }
 
@@ -478,6 +485,51 @@ export const CHANGE_SIGN: Record<ChangeRow["change"], string> = {
 };
 
 export const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
+
+/** The name a build was given as: the packaged build for an app found inside one. */
+export const targetName = (info: TargetInfo): string => baseName(info.container?.path ?? info.path);
+
+/** True when two names read the same, also in two Unicode spellings (NFC and NFD). */
+const sameText = (x: string, y: string): boolean => x.normalize("NFC") === y.normalize("NFC");
+
+const segments = (path: string): string[] => path.split(/[\\/]/).filter(Boolean);
+
+/**
+ * Names that tell two builds apart. Their file names when those differ; when both are called the
+ * same (two `app.asar`, also in two Unicode spellings), the file name with the app's
+ * package.json name and version when those differ, else with as many parent directories as it
+ * takes, and as a last resort the start of their sha256.
+ */
+export async function buildLabels(
+  session: Session,
+  idA: string,
+  idB: string,
+): Promise<{ a: string; b: string; sameName?: true }> {
+  const [infoA, infoB] = [session.get(idA).info, session.get(idB).info];
+  const [nameA, nameB] = [targetName(infoA), targetName(infoB)];
+  if (!sameText(nameA, nameB)) return { a: nameA, b: nameB };
+  const pkg = async (id: string): Promise<string | null> => {
+    const { data } = await session.analyze(id);
+    const p = data.kind === "javascript-app" ? data.app.package : null;
+    return p && (p.name || p.version) ? [p.name, p.version].filter(Boolean).join(" ") : null;
+  };
+  const [pkgA, pkgB] = await Promise.all([pkg(idA), pkg(idB)]);
+  if (pkgA && pkgB && !sameText(pkgA, pkgB))
+    return { a: `${nameA} (${pkgA})`, b: `${nameB} (${pkgB})`, sameName: true };
+  const [pathA, pathB] = [
+    segments(infoA.container?.path ?? infoA.path),
+    segments(infoB.container?.path ?? infoB.path),
+  ];
+  for (let n = 2; n <= Math.max(pathA.length, pathB.length); n++) {
+    const [tailA, tailB] = [pathA.slice(-n).join("/"), pathB.slice(-n).join("/")];
+    if (!sameText(tailA, tailB)) return { a: tailA, b: tailB, sameName: true };
+  }
+  return {
+    a: `${nameA} (sha256 ${infoA.sha256.slice(0, 12) || "directory"})`,
+    b: `${nameB} (sha256 ${infoB.sha256.slice(0, 12) || "directory"})`,
+    sameName: true,
+  };
+}
 /**
  * Control characters from a target shown as `\u{…}`: an escape sequence must not reach a terminal
  * that prints the report, and the name stays distinguishable from one without it. Bidi marks,
@@ -529,7 +581,9 @@ const SIGN = (change: ChangeRow["change"]): string => `${CHANGE_SIGN[change]} ${
  * the file names of the targets, not their paths.
  */
 export function renderReleaseReport(r: ReleaseComparison): string {
-  const [nameA, nameB] = [baseName(r.a.info.path), baseName(r.b.info.path)];
+  const [nameA, nameB] = r.labels
+    ? [r.labels.a, r.labels.b]
+    : [targetName(r.a.info), targetName(r.b.info)];
   const out: string[] = [];
   out.push(`# What changed: ${cell(nameA)} → ${cell(nameB)}`, "");
   out.push(
@@ -647,8 +701,8 @@ export function reproduceTargets(r: ReleaseComparison): {
   /** Set when both builds have the same file name: the raw name, for the renderer to escape. */
   sameName?: string;
 } {
-  const [nameA, nameB] = [baseName(r.a.info.path), baseName(r.b.info.path)];
-  if (nameA !== nameB) return { a: shellWord(nameA), b: shellWord(nameB) };
+  const [nameA, nameB] = [targetName(r.a.info), targetName(r.b.info)];
+  if (!sameText(nameA, nameB)) return { a: shellWord(nameA), b: shellWord(nameB) };
   return { a: "<before>", b: "<after>", sameName: nameA };
 }
 
