@@ -181,6 +181,11 @@ const MAX_SITES = 64;
 const OBJECT_WORK = 400_000;
 /** Work for reading the receivers of member writes in one file (`replacements`). */
 const REPLACEMENT_WORK = 200_000;
+/**
+ * The same for the writes in a wrapper's own file (`readOwnReplacements`), which every file with
+ * wrappers pays, also a large bundle: smaller, as a write past it only leaves the file unchecked.
+ */
+const OWN_REPLACEMENT_WORK = 10_000;
 /** Work of the replacement scan of one application: tokens of the files opened plus receivers. */
 const REPLACEMENT_APP_WORK = 3_000_000;
 /** Tokens of an argument of a key-forwarding wrapper call the resolver reads, at most. */
@@ -295,7 +300,7 @@ export class WrapperReader {
    */
   readOwnReplacements(): { found: Array<{ via: string; at: number }>; unchecked: boolean } {
     if (!this.classes.length) return { found: [], unchecked: false };
-    const all = this.replacements();
+    const all = this.replacements(OWN_REPLACEMENT_WORK);
     // A write whose receiver was not read within the budget proves nothing here: the calls are
     // read as before the check existed, and the caller says the file was not checked whole.
     const found = all.filter((x) => !x.budget);

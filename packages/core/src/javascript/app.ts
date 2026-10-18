@@ -4168,7 +4168,7 @@ export function analyzeJavaScriptTree(
     if ((scan.wrappersUnchecked || tokenFacts.keyUnchecked) && facts.limitations.length < 200)
       facts.limitations.push({
         code: "wrapper_replacements_unchecked",
-        message: `${file.path}: the writes in the file that may replace a method of its own ${scan.wrappersUnchecked && tokenFacts.keyUnchecked ? "IPC and storage" : scan.wrappersUnchecked ? "IPC" : "storage"} wrappers were not all read within the replacement budget of the file (200,000 steps); calls of those methods in the file are read without that check, so a method replaced there would not be seen.`,
+        message: `${file.path}: the writes in the file that may replace a method of its own ${scan.wrappersUnchecked && tokenFacts.keyUnchecked ? "IPC and storage" : scan.wrappersUnchecked ? "IPC" : "storage"} wrappers were not all read within the replacement budget of the file (10,000 steps); calls of those methods in the file are read without that check, so a method replaced there would not be seen.`,
       });
     if (scan.wrappersReplaced && facts.limitations.length < 200)
       facts.limitations.push({
