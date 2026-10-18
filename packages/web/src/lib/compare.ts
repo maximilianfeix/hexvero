@@ -274,6 +274,8 @@ export const MEANING: Record<string, string> = {
     "Privileged objects (ipcRenderer, shell, Node modules) a preload hands to pages as they are, not wrapped",
   navigationHandlers:
     "setWindowOpenHandler and will-navigate handlers as written; whether they check URLs is not read",
+  remoteEnabled:
+    "@electron/remote enable and initialize calls, and files that load it; whose webContents is named where read",
   webPreferences: "webPreferences keys as written in the code",
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",

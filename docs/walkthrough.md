@@ -102,11 +102,11 @@ $ echo $?
 ```
 
 The policy is JSON, data only ([`examples/policy.json`](../examples/policy.json),
-[schema](policy.schema.json)) with five rules: `new-interface-member`, `new-external-host` (with
+[schema](policy.schema.json)) with six rules: `new-interface-member`, `new-external-host` (with
 an `allow` list), `window-more-permissive`, `new-bridge-exposure` (a privileged object such as
-`ipcRenderer` or `fs` handed to pages as it is) and `fuse-weakened` (a packaged build's fuse moved
+`ipcRenderer` or `fs` handed to pages as it is), `fuse-weakened` (a packaged build's fuse moved
 to its less safe state, ASAR integrity coverage lost, or the Electron line past its end of
-support). Exit `0` pass, `1` technical error, `2` usage or
+support) and `remote-enabled` (`@electron/remote` newly turned on for a webContents). Exit `0` pass, `1` technical error, `2` usage or
 invalid policy, `3` violated, `4` not decidable: an unknown (a host built at run time, an
 unreadable bridge, an app read in part) is never a pass under `"unknown": "fail"`.
 `--baseline file --update-baseline` accepts what is there once (the same run then exits `0`);

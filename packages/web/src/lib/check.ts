@@ -26,6 +26,7 @@ export const RULE: Record<string, string> = {
     "a privileged object (ipcRenderer, shell, a Node module) handed to pages as it is",
   "fuse-weakened":
     "a packaged build's runtime less locked down: a fuse, the ASAR integrity record, end of support",
+  "remote-enabled": "@electron/remote newly enabled for a webContents",
 };
 
 const STATE: Record<PolicyFinding["state"], string> = {

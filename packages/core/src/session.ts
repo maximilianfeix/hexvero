@@ -1028,6 +1028,9 @@ export function collectionsOf(
       // Listed whenever windows or handlers were read, so a handler that is gone is `removed`.
       if (d.app.windows?.length || d.app.navigationHandlers?.length)
         out["navigationHandlers"] = d.app.navigationHandlers ?? [];
+      // Listed whenever windows or rows were read, so an enable that is gone is `removed`.
+      if (d.app.windows?.length || d.app.remoteEnabled?.length)
+        out["remoteEnabled"] = d.app.remoteEnabled ?? [];
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
       if (d.app.storage.length) out["storage"] = d.app.storage;
@@ -1096,6 +1099,13 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
   ipc_wrappers_capped: "ipc",
   context_bridge_truncated: "bridge",
   context_bridge_members_unreadable: "bridge",
+  // values of other modules and page calls of generic forwarders that were not read; app-wide
+  // until their messages name files (#219). bridge_global_written is left out: nothing is
+  // missing when it fires, and mapping it hid real IPC changes across the app.
+  context_bridge_module_unread: "bridge",
+  bridge_forwarder_ambiguous: "ipc",
+  bridge_calls_capped: "ipc",
+  bridge_calls_unread: "ipc",
   web_preferences_truncated: "window",
   candidates_truncated: "endpoint",
 };

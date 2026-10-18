@@ -426,6 +426,40 @@ describe("a router instance passed to another module's function", () => {
   });
 });
 
+describe("an instance made in place for a parameter (holdout7: createApi(new IpcClient(…)))", () => {
+  /** `preload/ipc-client.js` as tsc emits it: `ipcRenderer?.invoke(channel, payload)`. */
+  const CLIENT = `"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.IpcClient = void 0;
+const electron_1 = require("electron");
+class IpcClient {
+    invoke(channel, payload) { return electron_1.ipcRenderer?.invoke(channel, payload); }
+    send(channel, payload) { electron_1.ipcRenderer?.send(channel, payload); }
+}
+exports.IpcClient = IpcClient;
+`;
+  const PRELOAD = `"use strict";
+const ipc_client_1 = require("./preload/ipc-client");
+function createApi(client) {
+    return { list: () => client.invoke("device:list"), open: (id) => client.send("flasher:open", id) };
+}
+const api = createApi(new ipc_client_1.IpcClient("padwright"));
+`;
+  it("reads `new m.C(…)` as one construction, not a call of a method C on `new m`", () => {
+    const info = analyze({ "main.js": "", "preload/ipc-client.js": CLIENT, "preload.js": PRELOAD });
+    expect(
+      info.modules
+        .flatMap((m) =>
+          m.ipc.filter((u) => u.via === "wrapper").map((u) => `${m.id} ${u.channel} ${u.wrapper}`),
+        )
+        .toSorted(),
+    ).toEqual([
+      "preload.js device:list IpcClient.invoke",
+      "preload.js flasher:open IpcClient.send",
+    ]);
+  });
+});
+
 // ---------------------------------------------------------------------------------------------
 // Forms in one file, and look-alikes that must give no channel.
 

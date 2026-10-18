@@ -151,6 +151,7 @@ const ORDER = [
   "windows",
   "bridgeExposures",
   "navigationHandlers",
+  "remoteEnabled",
   "webPreferences",
   "endpoints",
   "storage",

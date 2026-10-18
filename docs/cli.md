@@ -340,6 +340,11 @@ Rules:
   undecidable (`collection_missing`); with neither (two `.asar` files, two directories, two
   bundles), it has nothing to read and reports nothing. Added after 0.9.9: a policy that does not
   list it runs it at `warn`.
+- **`remote-enabled`**: A webContents the after build newly turns `@electron/remote` on for: an
+  `enable` row of `remoteEnabled` (see [Electron findings](electron-findings.md)) whose target, a
+  window, every webContents (`web-contents-created`), one a helper is handed, or another receiver,
+  the before build did not enable (in any file). A row the comparison could not decide is an
+  unknown finding. Added after 0.9.9: a policy that does not list it runs it at `warn`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
 app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a

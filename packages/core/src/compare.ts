@@ -193,6 +193,7 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   contextBridge: ["line"],
   bridgeExposures: ["line"],
   navigationHandlers: ["line"],
+  remoteEnabled: ["line"],
   interfaces: ["line"],
   ipc: ["line"],
   webPreferences: ["line", "window"],
@@ -226,6 +227,8 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   bridgeExposures: ["evidence"],
   // `target` restates `window`, or is the receiver as written (renamed by minifiers)
   navigationHandlers: ["evidence", "target"],
+  // the same: `target` restates `window` or is the argument as written
+  remoteEnabled: ["evidence", "target"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -308,6 +311,11 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   navigationHandlers: [
     ["file", "kind", "targetKind", "window"],
     // every row is of a receiver that is neither (no `window` anywhere)
+    ["file", "kind", "targetKind"],
+  ],
+  // an enable per window (or app, or a parameter); loads and initialize calls per file
+  remoteEnabled: [
+    ["file", "kind", "targetKind", "window"],
     ["file", "kind", "targetKind"],
   ],
   interfaces: [["file", "api", "member"]],

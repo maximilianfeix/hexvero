@@ -204,6 +204,7 @@ describe("list meanings", () => {
       "windows",
       "bridgeExposures",
       "navigationHandlers",
+      "remoteEnabled",
       "webPreferences",
       "endpoints",
       "storage",
