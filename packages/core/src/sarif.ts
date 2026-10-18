@@ -61,6 +61,11 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       short: "The packaged build's Electron runtime is less locked down than before.",
       full: "Read from the Electron binary and the bundle's metadata of two packaged builds (a macOS .app, a Windows or Linux install directory, a release ZIP): a fuse moved to its less safe state (runAsNode, nodeOptions or nodeCliInspect on; embeddedAsarIntegrityValidation, onlyLoadAppFromAsar or cookieEncryption off; grantFileProtocolExtraPrivileges on), the ASAR integrity record no longer covers the archive Electron loads, or the Electron line went past its end of support by the release data snapshot hexvero ships (never a claim about vulnerabilities). A state hexvero could not read on one side is reported as unknown.",
       help: "Flip the fuse back with @electron/fuses when packaging, keep an integrity record for the archive the app loads, or move to a supported Electron line. If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    "remote-enabled": {
+      name: "RemoteEnabled",
+      short: "The build newly turns on @electron/remote for a webContents.",
+      full: "The main process calls enable() of @electron/remote/main for a window (or every webContents, or one a helper is handed) that the previous build did not enable it for. Pages there reach main-process modules and objects through the remote module. A row the comparison could not decide is reported as unknown.",
+      help: "Replace the remote calls with IPC handlers that do the one thing the page needs. If enabling it is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
     },
   };
 

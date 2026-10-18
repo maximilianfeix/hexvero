@@ -256,6 +256,51 @@ will-frame-navigate listener found in the files read", with the number of files 
 registered through code hexvero does not follow (a computed event name, a helper that is handed the
 webContents) is not seen, and a partial scan adds "in the scanned part".
 
+## Remote module turned on (`remoteEnabled`)
+
+`@electron/remote` gives a page's scripts main-process modules and objects; since version 2 it
+works only for a webContents the main process passes to `enable()` of `@electron/remote/main`
+(after `initialize()`). One row per call or load, read from tokens (a comment or a string is never
+one):
+
+| Written                                                                                          | `kind`       | `target` / `targetKind`                                     |
+| ------------------------------------------------------------------------------------------------ | ------------ | ----------------------------------------------------------- |
+| `R.enable(win.webContents)` with R bound to the main module (below)                              | `enable`     | `win` / `window`, as `navigationHandlers` names a window    |
+| `R.enable(contents)` inside `app.on("web-contents-created", (e, contents) => …)`                 | `enable`     | `app` / `app`                                               |
+| `R.enable(param)`, `param` a parameter of the function the call is in (a helper)                 | `enable`     | the parameter's name / `unknown` (its callers are not read) |
+| `R.enable(view.webContents)`, `R.enable(getContents())`, any other argument                      | `enable`     | the argument as written / `webContents`                     |
+| `R.initialize()`                                                                                 | `initialize` | null                                                        |
+| `require("@electron/remote")` or `import … from "@electron/remote"` (also `/renderer`), any file | `use`        | null                                                        |
+
+R is the main module (`@electron/remote/main`, also `@electron/remote/main/index.js`) when it is
+bound to it in the file: `const R = require(…)`, also wrapped in a bundler's interop helper
+(`__toESM`, `__importStar`, `__importDefault`, `_interopRequireWildcard`,
+`_interopRequireDefault`; a default one is then called as `R.default.enable(…)`) and in a minified declaration list (`var o=require(…),e=…`); `import R
+from`, `import * as R from`; `const { enable, initialize: init } = require(…)` and `import {
+enable as en } from`, called as `en(…)`; and `require(…).enable(…)` itself (Joplin:
+`require('@electron/remote/main').enable(this.win_.webContents)`). The tsc and esbuild call form
+`(0, R.enable)(…)` counts as `R.enable(…)`. A use counts only where the name is that binding by
+scope: a parameter or another local of the same name (`function f(remoteMain) {
+remoteMain.enable(…) }`) is not it, and a name written after its declaration (any write form,
+`writes.ts`) gives no rows. The window is named as for navigation handlers: `win.webContents` is
+the window `win` only where `win` is that window by scope; `this.win_.webContents` is matched by
+the name `win_`.
+
+The finding `electron.remote-enabled` names the enabled targets; with only `use` rows it says
+"@electron/remote is loaded; enable not found in the files read". It is `inferred`. Per file at
+most 200 rows, 2,000 in all; past that `remote_enabled_truncated` says so. The scope reading
+shares the bounded work budget of the navigation reader (2,000,000 steps per file); past it no
+further call is taken. The existing `electron.remote` finding (a text match of `@electron/remote`,
+`require("electron").remote` or `enableRemoteModule: true`) is unchanged.
+
+Not read: `enable` called through another name than these (`const e = R.enable; e(w)`, a module
+object handed to a function), the module bundled into the app (its code is then the app's and its
+`enable` is a function of the bundle), the Electron 13 and older `enableRemoteModule` option
+(it is a `webPreferences` key, listed there), and which callers hand a helper its webContents.
+
+The policy rule `remote-enabled` ([cli.md](cli.md)) reports an `enable` row whose target (kind and
+window) no `enable` row of the before build has.
+
 ## Storage keys through wrappers and enums (`storage`)
 
 A storage call whose key is (or is built from) a parameter of the function or method it is in

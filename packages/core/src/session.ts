@@ -1028,6 +1028,9 @@ export function collectionsOf(
       // Listed whenever windows or handlers were read, so a handler that is gone is `removed`.
       if (d.app.windows?.length || d.app.navigationHandlers?.length)
         out["navigationHandlers"] = d.app.navigationHandlers ?? [];
+      // Listed whenever windows or rows were read, so an enable that is gone is `removed`.
+      if (d.app.windows?.length || d.app.remoteEnabled?.length)
+        out["remoteEnabled"] = d.app.remoteEnabled ?? [];
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
       if (d.app.storage.length) out["storage"] = d.app.storage;

@@ -32,11 +32,16 @@ export const POLICY_RULES = [
   "window-more-permissive",
   "new-bridge-exposure",
   "fuse-weakened",
+  "remote-enabled",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
 
 /** Rules added after 0.9.6: they run at warn when a policy does not list them. */
-const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set(["new-bridge-exposure", "fuse-weakened"]);
+const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set([
+  "new-bridge-exposure",
+  "fuse-weakened",
+  "remote-enabled",
+]);
 
 export type RuleLevel = "fail" | "warn" | "off";
 export type UnknownHandling = "fail" | "warn" | "allow";
@@ -419,6 +424,7 @@ const KIND_LISTS: Record<string, ReadonlySet<string>> = {
     "interfaces",
     "contextBridge",
     "bridgeExposures",
+    "remoteEnabled",
     "windows",
     "endpoints",
     "urls",
@@ -445,6 +451,7 @@ export function checkableKind(kind: string): boolean {
 /** The identity a list is matched by when the overview does not name one (a list one side has). */
 const DEFAULT_KEYS: Record<string, string> = {
   bridgeExposures: "file+api+member+exposed",
+  remoteEnabled: "file+kind+targetKind+window",
   interfaces: "file+api+member",
   contextBridge: "api+member",
   windows: "file+windowName",
@@ -711,6 +718,7 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   "window-more-permissive": () => ["windows"],
   "new-bridge-exposure": () => ["bridgeExposures"],
   "fuse-weakened": () => ["runtime"],
+  "remote-enabled": () => ["remoteEnabled"],
 };
 
 /**
@@ -724,6 +732,7 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   // what a preload hands to pages is read from the bridge: an unreadable member is a gap here too
   "new-bridge-exposure": () => ["contextBridge"],
   "fuse-weakened": () => [],
+  "remote-enabled": () => [],
 };
 
 /**
@@ -939,6 +948,65 @@ function exposureDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Dr
       message: unknown
         ? `Pages may get ${exposed} as ${plain(label)}: ${plain(undecided ? `not decided (${undecided})` : (row.reason ?? "the comparison could not tell"))}.`
         : `Pages get ${exposed} as ${plain(label)}, handed over as it is, not wrapped.`,
+      where: row.where,
+      unknown,
+    });
+  }
+  return out;
+}
+
+/**
+ * `@electron/remote` newly turned on for a webContents (`remoteEnabled`, kind `enable`): for a
+ * window, for every webContents (`app`), for a webContents a helper is handed (`unknown`) or for
+ * another receiver. The same target enabled in the before build (in any file) is not new.
+ */
+const remoteIdentity = (f: Record<string, unknown>): string =>
+  `remote\0${String(f["targetKind"])}\0${String(f["window"])}`;
+
+function remoteDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const before = new Set(
+    beforeItems(r, "remoteEnabled", sides)
+      .filter((f) => f["kind"] === "enable")
+      .map(remoteIdentity),
+  );
+  for (const row of r.changes) {
+    if (row.collection !== "remoteEnabled" || (row.change !== "added" && row.change !== "unknown"))
+      continue;
+    const f = fieldsOf(r, row);
+    if (!f || f["kind"] === undefined) {
+      out.push({
+        rule: "remote-enabled",
+        identity: `label\0remoteEnabled\0${row.key}`,
+        row,
+        key: row.key,
+        message: `@electron/remote may be turned on (${plain(row.key)}): the row could not be read back from the comparison.`,
+        where: row.where,
+        unknown: true,
+      });
+      continue;
+    }
+    if (f["kind"] !== "enable") continue;
+    const identity = remoteIdentity(f);
+    if (before.has(identity)) continue;
+    const kind = String(f["targetKind"]);
+    const whose =
+      kind === "window"
+        ? `window ${plain(String(f["window"]))}`
+        : kind === "app"
+          ? "every webContents (web-contents-created)"
+          : kind === "unknown"
+            ? "a webContents a helper is handed"
+            : "a webContents";
+    const unknown = row.change === "unknown";
+    out.push({
+      rule: "remote-enabled",
+      identity,
+      row,
+      key: `enable ${whose}`,
+      message: unknown
+        ? `@electron/remote may be newly enabled for ${whose}: ${plain(row.reason ?? "the comparison could not tell")}.`
+        : `@electron/remote is newly enabled for ${whose}: its pages reach main-process modules through the remote module.`,
       where: row.where,
       unknown,
     });
@@ -1304,6 +1372,7 @@ export function evaluatePolicy(
     if (rule === "window-more-permissive") drafts.push(...windowDrafts(r, sides));
     if (rule === "new-bridge-exposure") drafts.push(...exposureDrafts(r, sides));
     if (rule === "fuse-weakened") drafts.push(...fuseDrafts(r, sides));
+    if (rule === "remote-enabled") drafts.push(...remoteDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -1465,6 +1534,7 @@ const RULE_LISTS = [
   "interfaces",
   "contextBridge",
   "bridgeExposures",
+  "remoteEnabled",
   "windows",
   "endpoints",
   "urls",

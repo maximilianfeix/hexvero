@@ -2745,17 +2745,15 @@ const NAVIGATION_WALK_BUDGET = 2_000_000;
 const MAX_CONTENTS_CREATED = 50;
 
 /**
- * Reads navigation and new-window handlers from one file's tokens, so a name in a comment or a
- * string is no call. `windowNames` are the names of the windows located in the same file.
+ * What a navigation handler or a remote `enable` call is registered on, read the same way for
+ * both: the windows of the file by name, `app` inside a `web-contents-created` callback, else the
+ * receiver as written. One work budget for every bracket walk of the file.
  */
-export function navigationHandlers(
+function contentsTargets(
   tokens: Token[],
-  file: string,
   windowNames: ReadonlySet<string>,
-  /** Scope of names: a parameter or local of the window's name is another binding. */
   resolver?: ExpressionResolver,
-): NavigationHandler[] {
-  const out: NavigationHandler[] = [];
+) {
   const is = (i: number, value: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === value;
   const ident = (i: number): string | null =>
@@ -2877,6 +2875,28 @@ export function navigationHandlers(
     }
     return { target: owner, targetKind: "window", window: owner };
   };
+  /** One step of the budget; false once it is used up. */
+  const spend = (): boolean => --work >= 0;
+  return { is, ident, closeOf, fnAt, receiverStart, targetOf, spend };
+}
+
+/**
+ * Reads navigation and new-window handlers from one file's tokens, so a name in a comment or a
+ * string is no call. `windowNames` are the names of the windows located in the same file.
+ */
+export function navigationHandlers(
+  tokens: Token[],
+  file: string,
+  windowNames: ReadonlySet<string>,
+  /** Scope of names: a parameter or local of the window's name is another binding. */
+  resolver?: ExpressionResolver,
+): NavigationHandler[] {
+  const out: NavigationHandler[] = [];
+  const { is, ident, closeOf, fnAt, receiverStart, targetOf, spend } = contentsTargets(
+    tokens,
+    windowNames,
+    resolver,
+  );
   /** `deny`/`allow` when every return of the handler at `k` is `{ action: "<that>" … }`. */
   const returnsOf = (k: number): NonNullable<NavigationHandler["returns"]> => {
     const fn = fnAt(k);
@@ -2887,7 +2907,7 @@ export function navigationHandlers(
       if (close < 0) return null;
       let found: string | null = null;
       for (let j = open + 1, d = 0; j < close; j++) {
-        if (--work < 0) return null;
+        if (!spend()) return null;
         const key = d === 0 && (is(j - 1, "{") || is(j - 1, ","));
         // A spread or a computed key after the action may replace it (`{ action: "deny",
         // ...extra }`, `[k]: "allow"`); one before it is replaced by it.
@@ -2927,7 +2947,7 @@ export function navigationHandlers(
     const valueAction = (start: number, stop: number): string | null => {
       let last = start;
       for (let j = start, d = 0; j <= stop; j++) {
-        if (--work < 0) return null;
+        if (!spend()) return null;
         if (is(j, "{") || is(j, "(") || is(j, "[")) d++;
         else if (is(j, "}") || is(j, ")") || is(j, "]")) d--;
         else if (d === 0 && is(j, ",")) last = j + 1;
@@ -2942,14 +2962,14 @@ export function navigationHandlers(
       else return "unknown";
     } else {
       for (let j = fn.body + 1; j < fn.end; j++) {
-        if (--work < 0) return "unknown";
+        if (!spend()) return "unknown";
         // a function inside may return something of its own: not decided here
         if (ident(j) === "function" || is(j, "=>")) return "unknown";
         if (ident(j) !== "return") continue;
         // the returned value runs to the `;` or the `}` that ends the statement
         let stop = j + 1;
         for (let d = 0; stop < fn.end; stop++) {
-          if (--work < 0) return "unknown";
+          if (!spend()) return "unknown";
           if (is(stop, "{") || is(stop, "(") || is(stop, "[")) d++;
           else if (is(stop, "}") || is(stop, ")") || is(stop, "]")) {
             if (d === 0) break;
@@ -3019,6 +3039,271 @@ export function navigationHandlers(
   return out;
 }
 
+/**
+ * `@electron/remote` turned on for a webContents (`remoteEnabled`): `require("@electron/remote/main")`
+ * (also `import`, and what bundlers write for either) bound to a name R, then `R.enable(contents)`
+ * or `R.initialize()`; a file that loads `@electron/remote` itself (a renderer or preload that
+ * uses it). See docs/electron-findings.md ("Remote module turned on").
+ */
+export interface RemoteEnable {
+  /** `enable`: R.enable(X); `initialize`: R.initialize(); `use`: a file loads @electron/remote. */
+  kind: "enable" | "initialize" | "use";
+  /**
+   * For `enable`: whose webContents, as `navigationHandlers` names it (`win` for
+   * `win.webContents`, `app` inside `web-contents-created`, else the argument as written). Null
+   * for the other kinds.
+   */
+  target: string | null;
+  /**
+   * `window`, `app`, `webContents` (another receiver), or `unknown`: the argument is a parameter
+   * of the function the call is in, so which webContents it gets is decided by its callers.
+   */
+  targetKind: "window" | "app" | "webContents" | "unknown" | null;
+  /** The window's name or `app`; null otherwise. Part of the row's identity in a comparison. */
+  window: string | null;
+  /** The call or the load as written, shortened. */
+  evidence: string;
+  file: string;
+  line: number;
+}
+
+const REMOTE_MAIN = new Set(["@electron/remote/main", "@electron/remote/main/index.js"]);
+const REMOTE_RENDERER = new Set(["@electron/remote", "@electron/remote/renderer"]);
+/** Interop helpers bundlers and compilers wrap a `require` in: the module stays what it is. */
+const INTEROP = new Set([
+  "__toESM",
+  "__importStar",
+  "__importDefault",
+  "_interopRequireWildcard",
+  "_interopRequireDefault",
+  "__toCommonJS",
+]);
+const MAX_REMOTE_PER_FILE = 200;
+
+/**
+ * Reads `@electron/remote` from one file's tokens: the names its main module is bound to, the
+ * `enable` and `initialize` calls on them, and loads of the renderer module. A name counts only
+ * where it is that binding by scope (a parameter or another local of the same name is not it),
+ * and only when nothing writes it after its declaration. Nothing is run.
+ */
+export function remoteEnables(
+  tokens: Token[],
+  file: string,
+  windowNames: ReadonlySet<string>,
+  resolver: ExpressionResolver,
+): { rows: RemoteEnable[]; capped: boolean } {
+  const rows: RemoteEnable[] = [];
+  let capped = false;
+  const { is, ident, closeOf, targetOf, spend } = contentsTargets(tokens, windowNames, resolver);
+  const text = (from: number, to: number): string =>
+    short(
+      tokens
+        .slice(from, to)
+        .map((x) => (x.type === "string" ? JSON.stringify(x.value) : x.value))
+        .join(""),
+    );
+  const push = (row: RemoteEnable): void => {
+    if (rows.length >= MAX_REMOTE_PER_FILE) capped = true;
+    else rows.push(row);
+  };
+  /** Namespace names: name -> the token of its declaration (the name itself). */
+  const modules = new Map<string, number[]>();
+  /** Names bound to one function of the module (`const { enable } = require(…)`), with its method. */
+  const functions = new Map<string, Array<{ at: number; method: string }>>();
+  const addModule = (name: number): void => {
+    const v = tokens[name]!.value;
+    modules.set(v, [...(modules.get(v) ?? []), name]);
+  };
+  const addFunction = (name: number, method: string): void => {
+    if (method !== "enable" && method !== "initialize") return;
+    const v = tokens[name]!.value;
+    functions.set(v, [...(functions.get(v) ?? []), { at: name, method }]);
+  };
+  /** `{ enable, initialize: init }` from `open`: each binding with the key it takes. */
+  const pattern = (open: number, close: number, add: (name: number, key: string) => void): void => {
+    for (let j = open + 1; j < close; j++) {
+      if (!(is(j - 1, "{") || is(j - 1, ","))) continue;
+      const key = ident(j) ?? (tokens[j]?.type === "string" ? tokens[j]!.value : null);
+      if (key === null) continue;
+      if ((is(j + 1, ",") || j + 1 === close) && ident(j)) add(j, key);
+      else if (is(j + 1, ":") && ident(j + 2) && (is(j + 3, ",") || j + 3 === close))
+        add(j + 2, key);
+      // `import { enable as e }`
+      else if (ident(j + 1) === "as" && ident(j + 2) && (is(j + 3, ",") || j + 3 === close))
+        add(j + 2, key);
+    }
+  };
+  const calls: Array<{ method: string; at: number; open: number; from: number }> = [];
+  for (let j = 0; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (t.type !== "string") continue;
+    const main = REMOTE_MAIN.has(t.value);
+    const renderer = REMOTE_RENDERER.has(t.value);
+    if (!main && !renderer) continue;
+    const required = is(j - 1, "(") && ident(j - 2) === "require" && is(j + 1, ")");
+    const imported = ident(j - 1) === "from";
+    // `import "@electron/remote"` or `import("@electron/remote")`
+    const bare =
+      (ident(j - 1) === "import" && !is(j + 1, ".")) ||
+      (is(j - 1, "(") && ident(j - 2) === "import");
+    if (!required && !imported && !bare) continue;
+    if (renderer) {
+      push({
+        kind: "use",
+        target: null,
+        targetKind: null,
+        window: null,
+        evidence: required
+          ? `require(${JSON.stringify(t.value)})`
+          : `import … ${JSON.stringify(t.value)}`,
+        file,
+        line: t.line,
+      });
+      continue;
+    }
+    if (required) {
+      // `require("@electron/remote/main").enable(…)`
+      if ((is(j + 2, ".") || is(j + 2, "?.")) && ident(j + 3) && is(j + 4, "(")) {
+        calls.push({ method: ident(j + 3)!, at: j + 3, open: j + 4, from: j - 2 });
+        continue;
+      }
+      // the expression the require stands for: `require(…)` or `__toESM(require(…))`
+      let start = j - 2;
+      let end = j + 2;
+      if (is(start - 1, "(") && INTEROP.has(ident(start - 2) ?? "") && is(end, ")")) {
+        start -= 2;
+        end++;
+      }
+      if (is(start - 1, "=") && ident(start - 2)) {
+        addModule(start - 2);
+        continue;
+      }
+      // `const { enable } = require(…)`
+      if (is(start - 1, "=") && is(start - 2, "}")) {
+        let open = start - 2;
+        for (let d = 0; open >= 0 && open > start - 400; open--) {
+          if (is(open, "}")) d++;
+          else if (is(open, "{") && --d === 0) break;
+        }
+        if (open >= 0 && is(open, "{")) pattern(open, start - 2, (n, key) => addFunction(n, key));
+      }
+      continue;
+    }
+    if (!imported) continue;
+    // `import R from`, `import * as R from`, `import { enable } from`, `import R, { enable } from`
+    let k = j - 2;
+    if (ident(k) && ident(k - 1) === "as" && is(k - 2, "*")) {
+      addModule(k);
+      continue;
+    }
+    if (is(k, "}")) {
+      let open = k;
+      while (open > 0 && open > k - 400 && !is(open, "{")) open--;
+      if (is(open, "{")) {
+        pattern(open, k, (n, key) => addFunction(n, key));
+        k = open - 1;
+        if (is(k, ",")) k--;
+      }
+    }
+    if (ident(k) && ident(k - 1) === "import") addModule(k);
+  }
+  /** The name at k is the binding declared at one of `decls` by scope, and nothing writes it. */
+  const bindsTo = (k: number, name: string, decls: number[]): boolean => {
+    const around = resolver.boundAround(k, name);
+    const decl =
+      around === null
+        ? decls.length === 1
+          ? decls[0]!
+          : -1
+        : around.kind === "local" && around.site && decls.includes(around.site.name)
+          ? around.site.name
+          : -1;
+    if (decl === -1) return false;
+    for (const j of resolver.namePositions(name)) {
+      if (!spend()) return false;
+      if (j !== decl && resolver.writesTo(j, name, decl)) return false;
+    }
+    return true;
+  };
+  for (const [name, decls] of modules)
+    for (const k of resolver.namePositions(name)) {
+      if (!spend()) break;
+      if (decls.includes(k) || is(k - 1, ".") || is(k - 1, "?.")) continue;
+      if (!(is(k + 1, ".") || is(k + 1, "?.")) || !ident(k + 2)) continue;
+      // `R.default.enable(…)`: a default import as `__importDefault` hands it over
+      const at = ident(k + 2) === "default" && is(k + 3, ".") && ident(k + 4) ? k + 4 : k + 2;
+      // `R.enable(…)`, or `(0, R.enable)(…)` as tsc and esbuild write a call of an import
+      let open = at + 1;
+      let from = k;
+      if (is(k - 1, ",") && tokens[k - 2]?.value === "0" && is(k - 3, "(") && is(at + 1, ")")) {
+        open = at + 2;
+        from = k - 3;
+      }
+      if (!is(open, "(")) continue;
+      if (!bindsTo(k, name, decls)) continue;
+      calls.push({ method: ident(at)!, at, open, from });
+    }
+  for (const [name, decls] of functions)
+    for (const k of resolver.namePositions(name)) {
+      if (!spend()) break;
+      if (decls.some((d) => d.at === k) || is(k - 1, ".") || is(k - 1, "?.") || !is(k + 1, "("))
+        continue;
+      const around = resolver.boundAround(k, name);
+      const decl =
+        around?.kind === "local" && around.site
+          ? decls.find((d) => d.at === around.site!.name)
+          : around === null && decls.length === 1
+            ? decls[0]
+            : undefined;
+      if (!decl || !bindsTo(k, name, [decl.at])) continue;
+      calls.push({ method: decl.method, at: k, open: k + 1, from: k });
+    }
+  for (const call of calls.toSorted((a, b) => a.at - b.at)) {
+    if (call.method !== "enable" && call.method !== "initialize") continue;
+    const close = closeOf(call.open);
+    const evidence = `${text(call.from, call.open)}(${close > call.open + 1 ? "…" : ""})`;
+    const line = tokens[call.at]!.line;
+    if (call.method === "initialize") {
+      push({
+        kind: "initialize",
+        target: null,
+        targetKind: null,
+        window: null,
+        evidence,
+        file,
+        line,
+      });
+      continue;
+    }
+    // the argument: a chain of names (`win.webContents`, `this.win.webContents`, `contents`)
+    const from = call.open + 1;
+    let end = from;
+    while (ident(end) && (is(end + 1, ".") || is(end + 1, "?."))) end += 2;
+    const chain = ident(end) !== null && close === end + 1;
+    let target: Pick<RemoteEnable, "target" | "targetKind" | "window">;
+    if (!chain)
+      target = {
+        target: close > from ? text(from, close) : "",
+        targetKind: close > from ? "webContents" : "unknown",
+        window: null,
+      };
+    else if (
+      end === from &&
+      ident(from) !== "this" &&
+      resolver.boundAround(from, ident(from)!)?.kind === "param"
+    ) {
+      // a parameter: which webContents it is depends on the callers (not followed)
+      const named = targetOf(from, end + 1);
+      target =
+        named.targetKind === "app"
+          ? named
+          : { target: ident(from)!, targetKind: "unknown", window: null };
+    } else target = targetOf(from, end + 1);
+    push({ kind: "enable", ...target, evidence, file, line });
+  }
+  return { rows, capped };
+}
+
 export interface JsEdge {
   from: string;
   to: string;
@@ -3058,6 +3343,8 @@ export interface JsAppInfo {
   bridgeExposures: BridgeExposure[];
   /** setWindowOpenHandler and will-navigate / will-frame-navigate handlers, with file and line. */
   navigationHandlers: NavigationHandler[];
+  /** `@electron/remote` turned on (`enable`, `initialize`) or loaded (`use`), with file and line. */
+  remoteEnabled: RemoteEnable[];
   ipcChannels: Array<{
     channel: string;
     senders: string[];
@@ -3113,7 +3400,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 29;
+export const JS_SCAN_SCHEMA = 30;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -3156,6 +3443,7 @@ export interface JsScanFacts {
   contextBridge: BridgeMember[];
   bridgeExposures: BridgeExposure[];
   navigationHandlers: NavigationHandler[];
+  remoteEnabled?: RemoteEnable[];
   endpoints: AppCandidate[];
   storage: AppCandidate[];
   urls: AppCandidate[];
@@ -3174,6 +3462,8 @@ export interface JsScanFacts {
   ambientCapped: boolean;
   /** A file or the app had more navigation handlers than are kept. */
   navigationCapped?: boolean;
+  /** A file had more `@electron/remote` rows than are kept. */
+  remoteCapped?: boolean;
   /** Files with more calls of their own storage wrappers than are read, and the first five. */
   keyCallsCapped?: number;
   keyCallsCappedFiles?: string[];
@@ -3203,6 +3493,7 @@ export function emptyJsScanFacts(): JsScanFacts {
     contextBridge: [],
     bridgeExposures: [],
     navigationHandlers: [],
+    remoteEnabled: [],
     endpoints: [],
     storage: [],
     urls: [],
@@ -3655,6 +3946,7 @@ export interface FileTokenFacts {
   keyWrappers: WrapperFacts | null;
   bridge: ReturnType<typeof bridgeMembers> | null;
   navigation: NavigationHandler[] | null;
+  remote: { rows: RemoteEnable[]; capped: boolean } | null;
   /** Methods of the file's storage wrappers the file replaces (`Class.method:line`, at most 20). */
   keyReplaced?: string[];
   /** Writes that may replace one of them were not all read within the budget. */
@@ -3694,6 +3986,7 @@ export function readFileTokens(
   let ownKeyUnchecked = false;
   let bridge: ReturnType<typeof bridgeMembers> | null = null;
   let navigation: NavigationHandler[] | null = null;
+  let remote: { rows: RemoteEnable[]; capped: boolean } | null = null;
   const scan = scanJavaScript(source, {
     ...(maxTokens === undefined ? {} : { maxTokens }),
     onTokens: (tokens, truncated, context) => {
@@ -4195,6 +4488,13 @@ export function readFileTokens(
           new Set(ranges.flatMap((r) => (r.window !== null && r.name ? [r.name] : []))),
           new ExpressionResolver(tokens, context.constants),
         );
+      if (source.includes("@electron/remote"))
+        remote = remoteEnables(
+          tokens,
+          path,
+          new Set(ranges.flatMap((r) => (r.window !== null && r.name ? [r.name] : []))),
+          new ExpressionResolver(tokens, context.constants),
+        );
       if (!source.includes("exposeIn")) return;
       bridge = bridgeMembers({ tokens, truncated, context }, path);
     },
@@ -4216,6 +4516,7 @@ export function readFileTokens(
     ...(ownKeyUnchecked ? { keyUnchecked: true as const } : {}),
     bridge,
     navigation,
+    remote,
   };
 }
 
@@ -4484,6 +4785,13 @@ export function analyzeJavaScriptTree(
         tokenFacts.navigation.length >= MAX_NAVIGATION_PER_FILE
       )
         facts.navigationCapped = true;
+    }
+    if (tokenFacts.remote) {
+      const rows = (facts.remoteEnabled ??= []);
+      const left = MAX_PREFS - rows.length;
+      rows.push(...tokenFacts.remote.rows.slice(0, left));
+      if (tokenFacts.remote.capped || tokenFacts.remote.rows.length > left)
+        facts.remoteCapped = true;
     }
     if (tokenFacts.keyReplaced)
       fileLimitation(facts, file.path, {
@@ -5040,6 +5348,7 @@ export function analyzeJavaScriptTree(
     });
   const bridgeExposures = facts.bridgeExposures ?? [];
   const navigation = facts.navigationHandlers ?? [];
+  const remote = facts.remoteEnabled ?? [];
   // An unreadable entry whose value is itself a privileged object is established as such; any
   // other one may expose anything, which is said rather than reading "none exposed".
   const unestablished = contextBridge.filter(
@@ -5063,6 +5372,11 @@ export function analyzeJavaScriptTree(
         undecidedExposures.map((x) => `${x.exposed} at ${x.file}:${x.line} (${x.undecided})`),
         5,
       )}. Such a row may be another binding of the same name; it is kept so that no exposure is dropped.`,
+    });
+  if (facts.remoteCapped)
+    limitations.push({
+      code: "remote_enabled_truncated",
+      message: `More @electron/remote calls exist than the ${MAX_REMOTE_PER_FILE} per file / ${MAX_PREFS} in total that are recorded (collection remoteEnabled).`,
     });
   if (facts.navigationCapped)
     limitations.push({
@@ -5633,6 +5947,32 @@ export function analyzeJavaScriptTree(
         title: "Uses the remote module",
         confidence: "confirmed",
       });
+    const enables = remote.filter((r) => r.kind === "enable");
+    const uses = remote.filter((r) => r.kind === "use");
+    if (enables.length || uses.length) {
+      const whose = (r: RemoteEnable): string =>
+        r.targetKind === "window"
+          ? `window ${r.window}`
+          : r.targetKind === "app"
+            ? "every webContents (web-contents-created)"
+            : r.targetKind === "unknown"
+              ? `a webContents passed in as ${r.target} (callers not followed)`
+              : `${r.target || "an argument that is not read"}`;
+      const first = enables[0] ?? uses[0]!;
+      const read = `${coverage.scanned} of ${coverage.total} JavaScript files read`;
+      findings.push({
+        kind: "electron.remote-enabled",
+        title: enables.length
+          ? `@electron/remote enabled for ${list([...new Set(enables.map(whose))], 4)}`
+          : `@electron/remote is loaded; enable not found in the files read`,
+        detail: `${list(
+          [...enables, ...uses].map((r) => `${r.evidence} at ${r.file}:${r.line}`),
+          4,
+        )} (collection remoteEnabled). A page whose webContents is enabled reaches main-process modules and objects through the remote module, which Electron's security guide advises against.${enables.length ? "" : ` No enable call was found: ${read}, and one written through code hexvero does not follow is not seen.`}`,
+        confidence: "inferred",
+        location: `${first.file}:${first.line}`,
+      });
+    }
     if (ipcChannels.length) {
       // evidence: the first handler registration in the main process
       const first = modules
@@ -5799,7 +6139,7 @@ export function analyzeJavaScriptTree(
   if (!coverage.complete)
     for (const finding of findings)
       if (
-        /^(electron\.(ipc|context-bridge|bridge-exposure|navigation|preload)|js\.(endpoints|storage|minified))$/.test(
+        /^(electron\.(ipc|context-bridge|bridge-exposure|navigation|preload|remote-enabled)|js\.(endpoints|storage|minified))$/.test(
           finding.kind,
         )
       ) {
@@ -5825,6 +6165,7 @@ export function analyzeJavaScriptTree(
     contextBridge,
     bridgeExposures,
     navigationHandlers: navigation,
+    remoteEnabled: remote,
     endpoints,
     storage,
     urls: facts.urls,
