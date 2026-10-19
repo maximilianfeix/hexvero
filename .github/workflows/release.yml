@@ -118,7 +118,7 @@ jobs:
       - name: Use a pinned npm that supports trusted publishing
         # Pinned on purpose: this job holds publish credentials, so it must not run whatever npm is latest.
         run: npm install -g npm@11.6.2 && npm --version
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-${{ needs.verify.outputs.version }}
           path: release
@@ -166,7 +166,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-${{ needs.verify.outputs.version }}
           path: release
