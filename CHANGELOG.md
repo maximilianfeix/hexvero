@@ -6,6 +6,18 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- First run: `hexvero` without arguments prints a start screen of 11 lines (what hexvero does, then `demo`, `hexvero <YourApp.app | app.asar>`, `compare <old> <new>`, `apps`, `--help`) instead of the whole usage; still on stderr with exit 2. `hexvero help` prints the full usage like `--help`.
+- `hexvero <path>`: a quick look at one build (runtime, counts of windows, bridge members, IPC channels and external hosts, the first five findings, next commands). `--json` prints what `analyze --json` prints. Command names come first (`./demo` for a file of that name); a missing path or a typo'd command exits 2 with the closest names or commands.
+- `hexvero apps [--json]`: the Electron apps installed on this machine (macOS bundles with Electron Framework; Windows and Linux install folders with `resources/app.asar`), read-only and bounded (depth 2, 5,000 folders, 200 apps, 3 s), each with the command that reads it and the reminder from DISCLAIMER.md.
+- A progress line on stderr when an analysis takes more than a second on a terminal (`hexvero: scanning JavaScript 120/518 files · 4 s`), cleared before the output; not with `--json` or without a terminal. Core: `AnalyzeOptions.onProgress` and `Session({ onProgress })` (caller's thread only); results are unchanged.
+- Friendlier first-run errors: an installer (`.dmg`, `.pkg`, `.msi`, `Setup.exe`, AppImage, `.deb`/`.rpm`) gets what to do instead; an app's executable points at its whole build; a `.app` without Electron or a folder without an app says so; `compare` warns on stderr when the two builds name different apps; Node.js older than 22.12 gets one line naming the version needed.
+
+### Changed
+
+- `hexvero` and `hexvero --version` no longer load the analyzers: about 25 ms faster to start (`VERSION` moved to `packages/cli/src/usage.ts`; the release scripts follow it).
+
 ### Fixed
 
 - Comparing builds: a bridge member whose value comes from a package (`import { api } from "apilib"; exposeInMainWorld("bridge", { sub: api })`, a default or namespace import, `require`) was read as fully known, so page calls through it that the other build lacks were reported removed (#235). The value is now followed like one from a local module; a module not among the files read gives `context_bridge_module_unread`, and those page rows are unknown. `electron`, `electron/*` and Node built-ins are not flagged. JS_SCAN_SCHEMA 36.

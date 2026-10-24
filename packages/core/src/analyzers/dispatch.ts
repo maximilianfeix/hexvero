@@ -83,7 +83,20 @@ export interface JsScanRequest {
 
 export interface AnalyzeOptions {
   js?: JsScanRequest;
+  /**
+   * Called while a JavaScript application is read, for a progress line: the phase and, where
+   * known, how many files of the phase are done. It cannot cross into a worker thread, so it is
+   * used on the caller's thread only, and it changes nothing in the result.
+   */
+  onProgress?: AnalysisProgress;
 }
+
+/** `phase` is "reading" (tokenizing ahead in threads), "scanning" or "linking" (after the files). */
+export type AnalysisProgress = (
+  phase: "reading" | "scanning" | "linking",
+  done: number,
+  total: number,
+) => void;
 
 /**
  * JavaScript an application must hold before a scan finished in one run is stored too. Reading it
@@ -102,6 +115,7 @@ async function scanApplication(
   info: LoadedTarget["info"],
   tree: FileTree,
   request: JsScanRequest = {},
+  onProgress?: AnalysisProgress,
 ): Promise<JsAppInfo> {
   const key = scanKey(info, tree);
   if (key && request.fresh) dropScan(key);
@@ -148,11 +162,13 @@ async function scanApplication(
             },
           })),
           threads,
+          onProgress ? (done) => onProgress("reading", done, planned.length) : undefined,
         )
       : undefined;
   const app = analyzeJavaScriptTree(tree, {
     ...run,
     ...(prepared ? { prepared } : {}),
+    ...(onProgress ? { onProgress } : {}),
     onFacts: (facts) => {
       // In `all` mode every finished batch is stored at once, so a timeout or a kill costs one
       // batch at most and the next run continues from there.
@@ -372,6 +388,7 @@ async function analyzeTargetUnsafe(
           info,
           target.lazy ? asarTreeFromFile(info.path) : asarTree(bytes, info.path, target.unpacked),
           options.js,
+          options.onProgress,
         ),
       );
       const summary = app.coverage.complete
@@ -401,7 +418,9 @@ async function analyzeTargetUnsafe(
       }
       const host = nativeOf(info);
       const native = host ? strip(host) : undefined;
-      const app = strip(await scanApplication(info, directoryTree(info.path), options.js));
+      const app = strip(
+        await scanApplication(info, directoryTree(info.path), options.js, options.onProgress),
+      );
       return done(
         withContainer(
           `Directory: ${app.totals.files} files, ${

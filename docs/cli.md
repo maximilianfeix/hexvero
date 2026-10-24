@@ -5,6 +5,9 @@ All commands accept `--json` for machine-readable output and `--no-color`. Paths
 ## Overview
 
 ```text
+hexvero                                               start screen: three ways to begin (exit 2)
+hexvero <path>                                        quick look at one build (--json: as analyze --json)
+hexvero apps [--json]                                 Electron apps installed on this machine
 hexvero analyze <path> [--json] [--out file.json]     summary, findings, limitations, overview
 hexvero collection <path> <name> [--text s] [--limit n] [--offset n] [--max-bytes n]
 hexvero strings <path> [--min n] [--utf16] [--tag url|path|email|ip|format|secret-ish|base64-ish]
@@ -46,6 +49,48 @@ hexvero demo [dir]
 Copies the two example builds (`notesdesk-1.4.0.asar`, `notesdesk-1.5.0.asar`) into `dir` (default
 `./hexvero-demo`) and prints what changed between them, with the place of each change and what was
 not established. A file of the same name with other content is never replaced.
+
+### `hexvero <path>`: quick look
+
+```text
+hexvero <path> [--json]
+```
+
+A short first look at one build: its name and how long the read took, the summary, the Electron
+runtime of a packaged build, the counts of windows, bridge members, IPC channels and external
+hosts (hosts as `init` counts them, from `endpoints`), the first five findings and the commands to
+run next. It reads the build the way `analyze` does (and takes its flags); with `--json` it prints
+exactly what `analyze --json` prints. Every command name comes first: a file named `demo` is read
+with `hexvero ./demo`. A path that does not exist exits 2 with the closest names in its folder; a
+word that is no command and no path, with the closest commands. Two paths exit 2 and point at
+`compare`.
+
+It also says when the path is not what a first look expects: an installer (`.dmg`, `.pkg`, `.msi`,
+a `Setup.exe`, an AppImage, a Linux package), an app's executable inside a `.app` or next to
+`resources/app.asar` (it names the whole build to read instead), a `.app` without Electron
+Framework, or a folder that holds no app.
+
+Without arguments, `hexvero` prints a start screen of a dozen lines on stderr (exit 2, stdout
+empty); `--help` and `help` print every command. An analysis that runs longer than a second on a
+terminal shows one status line on stderr (`hexvero: scanning JavaScript 120/518 files · 4 s`)
+that is cleared before the output; never with `--json`, and never when stderr is no terminal.
+
+### `apps`
+
+```text
+hexvero apps [--json]
+```
+
+Lists the Electron apps installed on this machine, each with the command that reads it. macOS:
+`.app` bundles in `/Applications` and `~/Applications` that hold `Contents/Frameworks/Electron
+Framework.framework`; Windows: folders under `%LOCALAPPDATA%\Programs`, `%LOCALAPPDATA%` (Squirrel
+installs such as `Slack\app-4.1.0`), `Program Files` and `Program Files (x86)` that hold
+`resources\app.asar`; Linux: the same under `/opt`, `/usr/lib` and `~/.local/share`. Read-only:
+directory listings and file status, nothing is opened or started. Two folders deep at most, 5,000
+folders (100,000 entries), 200 apps and 3 seconds; a cut list says so (`truncated` in JSON). Symbolic links are
+followed to test a candidate, never to walk further; folders that cannot be listed are skipped and
+counted (`unreadable`). Only examine software you own, that is open source, or that you are
+explicitly authorized to examine ([DISCLAIMER.md](../DISCLAIMER.md)).
 
 ### `analyze`
 

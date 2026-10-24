@@ -54,6 +54,7 @@ export {
 export {
   analyzeTarget,
   type AnalyzeOptions,
+  type AnalysisProgress,
   type AnyAnalysis,
   type AnalysisData,
   type JsScanRequest,
