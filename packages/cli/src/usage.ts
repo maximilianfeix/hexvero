@@ -5,7 +5,7 @@
  */
 import { defaultIo, paint, suggest, type Io } from "./format.js";
 
-export const VERSION = "0.11.1";
+export const VERSION = "0.12.0";
 
 /** The screen for `hexvero` without arguments: what it does and three ways to start. */
 export function startScreen(io: Io): string {

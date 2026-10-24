@@ -25,7 +25,7 @@ is executed. The command, the policy file and the exit codes are described in
 3. Run the check once locally and accept what is already there:
 
    ```bash
-   npx hexvero@0.11.1 check previous/app.asar dist/app.asar \
+   npx hexvero@0.12.0 check previous/app.asar dist/app.asar \
      --policy .hexvero/policy.json --baseline .hexvero/baseline.json --update-baseline
    ```
 
@@ -68,12 +68,12 @@ jobs:
       - name: hexvero check
         run: |
           set +e
-          npx --yes hexvero@0.11.1 check previous/app.asar dist/app.asar \
+          npx --yes hexvero@0.12.0 check previous/app.asar dist/app.asar \
             --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
             --format sarif --out hexvero.sarif
           code=$?
           set -e
-          npx --yes hexvero@0.11.1 check previous/app.asar dist/app.asar \
+          npx --yes hexvero@0.12.0 check previous/app.asar dist/app.asar \
             --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
             --format markdown >> "$GITHUB_STEP_SUMMARY" || true
           exit "$code"

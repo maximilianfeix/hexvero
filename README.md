@@ -115,7 +115,7 @@ jobs:
         with:
           node-version: 24
       # Build your app and fetch the previous release here, e.g. into previous/ and dist/.
-      - run: npx --yes hexvero@0.11.1 check previous/app.asar dist/app.asar --policy .hexvero/policy.json
+      - run: npx --yes hexvero@0.12.0 check previous/app.asar dist/app.asar --policy .hexvero/policy.json
 ```
 
 Baseline, Markdown job summary and a least-privilege SARIF upload for code scanning: [docs/ci.md](docs/ci.md).
@@ -129,7 +129,7 @@ In Claude Code, server and skill come as one plugin:
 /plugin install hexvero@hexvero
 ```
 
-Elsewhere, `npx hexvero setup --apply` registers the MCP server with the coding agents it finds (dry run without `--apply`), or run `npx -y hexvero@0.11.1 mcp` over stdio. Text inside the target is treated as data, never as instructions. Clients, tools and what an agent receives: [docs/mcp.md](docs/mcp.md).
+Elsewhere, `npx hexvero setup --apply` registers the MCP server with the coding agents it finds (dry run without `--apply`), or run `npx -y hexvero@0.12.0 mcp` over stdio. Text inside the target is treated as data, never as instructions. Clients, tools and what an agent receives: [docs/mcp.md](docs/mcp.md).
 
 ## How it compares
 

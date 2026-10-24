@@ -6,6 +6,8 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-24
+
 ### Added
 
 - First run: `hexvero` without arguments prints a start screen of 11 lines (what hexvero does, then `demo`, `hexvero <YourApp.app | app.asar>`, `compare <old> <new>`, `apps`, `--help`) instead of the whole usage; still on stderr with exit 2. `hexvero help` prints the full usage like `--help`.
