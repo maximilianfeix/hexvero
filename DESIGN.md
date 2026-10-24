@@ -65,3 +65,31 @@ One authored moment: when a target finishes analysis the verdict settles in (opa
 
 Selection color, caret, scrollbars (thin, `--line` thumb) and focus rings (2px amber, 2px offset) are
 themed from the palette.
+
+## Brand (README, site, social preview, banners)
+
+Decided 2026-10-24 with the README rewrite.
+
+- **Tagline**: "Know what changed inside your Electron release." Used as the README hero, the site
+  `<h1>` and `og:title`, the social preview, both banners and the start of the CLI package
+  description. Runner-ups: "Electron release changes, traced to file and line." and "Diff two
+  Electron builds. Review changes with evidence."
+- **Subline**: "Diff two builds of an Electron app and see the IPC channels, preload bridge, window
+  settings and network hosts that changed, with file and line on both sides."
+- **Descriptor** for titles, package metadata and search: "Electron release diff for security
+  review". It stays in `<title>` and the package descriptions; the tagline does not replace it.
+- **Palette**: unchanged. Charcoal `#1B1D21` and amber `#F2B84B` carry continuity with the UI, and
+  amber stays reserved for evidence. No shield, lock or check-mark imagery: the brand must not
+  suggest a security verdict.
+- **Mark**: the rounded H with one hollow (inferred) and one filled (confirmed) dot, everywhere
+  from 24 px up, including the social preview (which used a dotless H before). Below 24 px the
+  dots blur, so the favicon is the dotless H on a charcoal tile: `site/favicon.svg`, copied to
+  `docs/logo-favicon.svg`.
+- **Banners and social preview show one real change**, not a hex dump or a dashboard crop: a new
+  preload member with both of its lines, a channel that is unknown rather than removed, a window
+  setting, a new host and `hexvero check` failing with exit 3, all from `npx hexvero demo`.
+  Sources: `docs/launch/assets/banners.mjs` (writes `docs/banner-{dark,light}.svg`, no animation)
+  and `docs/launch/assets/social-preview.html` (render at 1200×630 with a headless browser, copy
+  the PNG to `docs/` and `site/`).
+- **README order**: hero and demo GIF, a 10-second try, why, what it reads, own app, CI, agents,
+  comparison, accuracy and limits, docs, contributing. Depth lives in `docs/`.

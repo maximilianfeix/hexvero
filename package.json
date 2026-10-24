@@ -2,7 +2,7 @@
   "name": "hexvero-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "hexvero — evidence-first software intelligence: inspect artifacts, trace interfaces, compare builds, locally.",
+  "description": "hexvero: know what changed inside your Electron release. Electron release diff for security review as a CLI, MCP server and local web UI.",
   "license": "MIT",
   "workspaces": [
     "packages/*"

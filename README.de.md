@@ -18,7 +18,11 @@
 
 ---
 
-**Wissen, was sich in deiner App geändert hat.** Electron-Apps und Binärdateien untersuchen, Befunde bis zur Quelle zurückverfolgen und Releases vergleichen. Lokal, ohne das Ziel auszuführen. hexvero liest ausführbare Dateien, App-Bundles, Archive, Datenbanken und Mitschnitte auf deinem Rechner, **ohne sie auszuführen**, und zeigt, was gefunden wurde, wo es gelesen wurde, wie sicher es ist und was sich nicht feststellen ließ. Eine CLI, ein MCP-Server mit 16 Tools für Coding-Agenten und eine lokale Weboberfläche. Engines sind optional.
+**Wissen, was sich in deinem Electron-Release geändert hat.**
+
+> Diese Übersetzung ist älter als die [englische README](README.md). Aktuell vergleicht hexvero vor allem zwei Builds einer Electron-App: IPC-Kanäle, Preload-Bridge, Fenstereinstellungen und Hosts, mit Datei und Zeile auf beiden Seiten.
+
+Electron-Apps und Binärdateien untersuchen, Befunde bis zur Quelle zurückverfolgen und Releases vergleichen. Lokal, ohne das Ziel auszuführen. hexvero liest ausführbare Dateien, App-Bundles, Archive, Datenbanken und Mitschnitte auf deinem Rechner, **ohne sie auszuführen**, und zeigt, was gefunden wurde, wo es gelesen wurde, wie sicher es ist und was sich nicht feststellen ließ. Eine CLI, ein MCP-Server mit 16 Tools für Coding-Agenten und eine lokale Weboberfläche. Engines sind optional.
 
 ![hexvero vergleicht zwei Builds einer Electron-App: jede Änderung mit Datei und Zeile](docs/screenshots/ui-compare.png)
 
