@@ -278,6 +278,10 @@ export const MEANING: Record<string, string> = {
     "@electron/remote enable and initialize calls, and files that load it; whose webContents is named where read",
   switches:
     "Chromium command-line switches, accepted certificate errors, custom certificate verification and security warnings turned off",
+  permissionHandlers:
+    "Permission request and check handlers of sessions, and whether they grant every request",
+  openExternal: "URLs the app opens in the system's default application (shell.openExternal)",
+  csp: "Content Security Policies, in HTML <meta> tags and in response headers set in code",
   webPreferences: "webPreferences keys as written in the code",
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",

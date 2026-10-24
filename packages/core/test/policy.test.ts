@@ -712,6 +712,9 @@ describe("evaluating a policy", () => {
         "contextBridge",
         "remoteEnabled",
         "switches",
+        "openExternal",
+        "permissionHandlers",
+        "csp",
       ]);
     });
     it("uses the comparison's own completeness once it carries one (contract C1/C3)", () => {
@@ -1099,6 +1102,9 @@ describe("review H4: a target of another kind never passes", () => {
       ["contextBridge", ["collection_missing"]],
       ["remoteEnabled", ["collection_missing"]],
       ["switches", ["collection_missing"]],
+      ["openExternal", ["collection_missing"]],
+      ["permissionHandlers", ["collection_missing"]],
+      ["csp", ["collection_missing"]],
     ]);
   });
 
@@ -1114,6 +1120,9 @@ describe("review H4: a target of another kind never passes", () => {
       "contextBridge",
       "remoteEnabled",
       "switches",
+      "openExternal",
+      "permissionHandlers",
+      "csp",
     ]);
     expect(r.incomplete.every((i) => i.gaps.includes("collection_missing"))).toBe(true);
     expect(r.status).toBe("incomplete");

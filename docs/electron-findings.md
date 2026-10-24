@@ -557,6 +557,194 @@ build has; a row whose danger could not be told is an unknown finding.
 [chromium-switches]: https://peter.sh/experiments/chromium-command-line-switches/
 [content-switches]: https://chromium.googlesource.com/chromium/src/+/main/content/public/common/content_switches.cc
 
+## Links opened outside the app (`openExternal`)
+
+Electron's security guide, section 15: "Do not use `shell.openExternal` with untrusted content",
+because it "can be leveraged to compromise the user's host" ([Security, 15][sec]). One row per
+call `X.openExternal(url)` (also `X["openExternal"](…)`), read from tokens in files that contain
+`openExternal`:
+
+| Field          | Read                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `targetKind`   | `shell` where the receiver is Electron's `shell` by scope (below); `unknown` for any other receiver: a parameter (`function open(shell, u) { shell.openExternal(u) }`), a property of something not read (`viaApp.s`, `window.api`, `this`), a call's result                                                                                                                           |
+| `argumentKind` | `literal`: a string literal, a template without `${…}` or a constant the resolver reads whole; `inferred`: a template with substitutions, or a string literal followed by `+` operands, standing alone as the argument (`argument` is the literal start), or a short list of possible values (`values`); `unknown`: anything else, also a prefix followed by another operator (`&&`, ` |     | `, `??`, `?:`, a comparison), a member or call on it (`` `…`.replace(…) ``, `"…".concat(p)`) or inside parentheses |
+| `scheme`       | the URL scheme of the known part, as the WHATWG parser reads it (leading controls and spaces dropped, tabs and line breaks removed, lowercased); null when the known part names none                                                                                                                                                                                                   |
+
+`shell` is Electron's where it is bound to it by scope, as `app` is for switches: `const { shell }
+= require("electron")` (also renamed), `import { shell } from "electron"`, `X.shell` with X bound to
+`require("electron")` (also through `__toESM` and the other interop helpers, esbuild's
+`X.default.shell`, and a minified interop helper: a function of the file whose first 400 tokens
+read `.__esModule` and name `default`), `import * as X` / `import X from "electron"`, webpack's
+`n(12).shell` for a module id whose body is `e.exports = require("electron")`,
+`require("electron").shell`, `window.require("electron").shell`, `const s = electron.shell`, and
+`openExternal(u)` after `const { openExternal } = <one of these>`. A parameter of that name is
+never it. Only a receiver whose path through object literals of the file ends at the literal's own
+function (`const fake = { openExternal(u) {} }`) gives no row; a function of the app named
+`openExternal` called bare gives none either.
+
+Per file at most 200 rows, 2,000 in all, and a reading budget of 2,000,000 steps per file; past
+either `open_external_truncated` says so. The cap drops only rows whose URL is a literal. In a
+comparison a row is matched by file, `targetKind`, `argumentKind` and `argument` (the same call
+twice as a multiset); `evidence`, `target` and `scheme` are no change of their own.
+
+The finding `electron.open-external` (`inferred`) names calls on Electron's shell whose URL is
+not a literal. The audit rule `open-external` and the check rule `new-open-external` report a
+call whose URL is not a literal and whose known start does not fix the scheme to `http`, `https`
+or `mailto` (`https://github.com/${repo}` is not reported, `"file://" + p` and `url` are; calls are counted, so
+a second such call is new although the before build had one like it); on a
+receiver that is not read as Electron's shell such a call is an unknown finding.
+
+A name in the URL that is a parameter or a local of an enclosing function is never read as the
+constant of the same name at the top of the file (`function open(DOCS_URL) {
+shell.openExternal(DOCS_URL) }` is `unknown`); a ternary whose branches are both strings read
+whole is `inferred` with both as `values`.
+
+A reference to Electron's `shell.openExternal` that is not called where it stands (`const open =
+shell.openExternal`, `.bind(shell)`, `.call(shell, u)`, `(0, e.shell.openExternal)(u)`,
+`const { openExternal: o } = shell`) gives a row with `argumentKind: "unknown"`, since the URL it
+is called with is not read; `shell.openExternal?.(u)` is a call.
+
+Not read: whether the code checks the URL before the call (`if (url.startsWith("https:"))
+shell.openExternal(url)` is reported like an unchecked call), which values a parameter receives
+from its callers, `shell.openPath` and `shell.showItemInFolder`, and a shell handed to a helper.
+
+## Permission handlers (`permissionHandlers`)
+
+Electron's security guide, section 5: "Handle session permission requests from remote content";
+by default "Electron will automatically approve all permission requests unless the developer has
+manually configured a custom handler" ([Security, 5][sec]; [Session][session]). One row per call of
+`setPermissionRequestHandler(handler)` (`kind: request`) and `setPermissionCheckHandler(handler)`
+(`kind: check`), also `["setPermissionRequestHandler"](…)`:
+
+| Field        | Read                                                                                                                                                                                                                                                                                                                                                      |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `targetKind` | `session` for `S.defaultSession`, `S.fromPartition("p")`, `S.fromPath("/p")` with S Electron's `session` by scope (as `shell` above), or a name bound to one of these (`const ses = session.defaultSession`); `webContents` for `X.webContents.session` (X is not proven to be a window: no rule takes it as a session); `unknown` for any other receiver |
+| `session`    | `default`, `partition:<name>`, `path:<path>` (`?` when the name is not a literal), or null                                                                                                                                                                                                                                                                |
+| `grants`     | below                                                                                                                                                                                                                                                                                                                                                     |
+
+For a request handler the third parameter is the callback, read by position as for certificate
+handlers (a rest parameter at or before it, or a pattern at it, is `unknown`); for a check handler
+the return value. `grants` is:
+
+- `always`: `callback(true)` (also `!0`, a non-zero number, a non-empty string, an object or array
+  literal, a constant of one) or `return true` where it runs whenever the handler runs: in its own
+  body, a `try` or `finally` block, a bare block, a comma sequence, parentheses or the arguments of
+  a call, with no `return` or `throw` statement ending before it (`return callback(true)` is a
+  grant; a `,` ends what guards it, so the minified `p==="media"&&log(p),cb(!0)` grants always); a statement ends at `;`, `}` or a line break
+  where JavaScript inserts a semicolon (`if (p) log(p)` on one line, `cb(true)` on the next is
+  `always`; `if (p)` on one line and `cb(true)` on the next is behind the `if`); an expression
+  body or a return whose value (the last operand of a comma sequence: `(log(p), !0)`) is such a
+  value (`return` followed by a line break returns `undefined`); or a handler cleared with `null` or nothing
+  (Electron's default then grants);
+- `conditional`: such a grant behind `if`/`else`, a loop, `switch`/`case`, `catch`, `?:`, `&&`,
+  `||` or `??`, or after a return;
+- `computed`: the handler passes or returns a value that is not a literal or constant
+  (`cb(ALLOWED.includes(permission))`, `(wc, p) => p === "notifications"`), and no literal grant:
+  a check hexvero does not evaluate;
+- `never`: every answer is `false`, `!1`, `0`, `""`, `null`, `undefined` or `callback()`, or the
+  handler never answers (no callback parameter, no return);
+- `unknown`: the handler is not a function literal written there (`setPermissionRequestHandler(onPermission)`),
+  its callback is handed on, stored or tested, or a grant stands in a nested function
+  (`setTimeout(() => cb(true))`, `.then(() => cb(true))`), which runs when something else calls it.
+
+Per file at most 200 rows, 2,000 in all, 2,000,000 steps per file; past either
+`permission_handlers_truncated` says so; the cap drops only rows that never grant. In a comparison
+a row is matched by file, kind, `targetKind` and `session`; what it grants is a change of the row.
+
+The audit rule `permission-handler-missing` reports an app with no request handler in the files
+read (undecidable while the scan is partial, a file could not be read or the list is capped), and
+an unknown finding when no request handler is read on `session.defaultSession` (the session
+windows use unless they name a partition): the ones found are on a partition, a webContents'
+session or a receiver not read as a session. `permission-handler-grants-all` (audit and check)
+reports `always` on a session read by scope, and `unknown` grants or `always` on any other
+receiver as unknown findings. `conditional` and `computed` are not reported: the rule asks whether
+a handler grants everything, and hexvero does not evaluate the check a computed answer makes
+(`cb(isTrusted(url))` with an `isTrusted` that always returns true passes). The check rule also
+reports a before build's request handler on a session that the after build no longer sets (unknown
+when the after build has one on a receiver not read as a session), and request handlers gone with
+none left.
+
+Not read: which session a window uses (`webPreferences.partition`, `session`), so a handler on one
+partition is not judged against the windows of another; `setDevicePermissionHandler`,
+`setDisplayMediaRequestHandler` and `setBluetoothPairingHandler`; which permissions a computed
+answer grants.
+
+## Content Security Policy (`csp`)
+
+Electron's security guide, section 7: "Define a Content Security Policy", "via an HTTP header or
+a meta tag" ([Security, 7][sec]). One row per policy:
+
+| Written                                                                                                                                                                                               | `kind`   | `via`               |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------- |
+| `<meta http-equiv="Content-Security-Policy" content="…">` in an `.html`/`.htm` file outside node_modules                                                                                              | `meta`   |                     |
+| a `Content-Security-Policy` key (any case) in an object or `headers["content-security-policy"] = …` inside a function passed to `X.webRequest.onHeadersReceived(…)` (also in a function nested in it) | `header` | `onHeadersReceived` |
+| the same anywhere else in the code (a `protocol.handle` response, a server of the app, a request)                                                                                                     | `header` | `other`             |
+
+A header in a listener counts as applied only without a `doubt`, which says why it may not apply:
+the receiver of `webRequest` is not read as a session (as for permission handlers) or is a
+partition's session rather than `session.defaultSession`, the key is
+behind a condition or in a nested function of the listener (read as for permission grants), or a
+listener is passed after a URL filter (`onHeadersReceived({ urls: […] }, listener)`: which
+responses it gets is not read), or a `...spread` after it in the same object literal may replace it (`{ "Content-Security-Policy": […],
+...details.responseHeaders }` keeps the server's header). A header object built in the listener and
+not passed to the callback is not told apart.
+
+HTML is read with a small tokenizer: comments and the content of `<script>`, `<style>`,
+`<textarea>`, `<title>` and the other raw-text elements are skipped, attribute names are matched in
+any case, `</head>` and the `</body>`, `</html>` and `</br>` that HTML's parser treats like it end the
+head, `http-equiv` must be the keyword exactly (in any case, no spaces around it), everything
+after `<plaintext>` is text, values quoted or unquoted, character references in them decoded, and the first of two
+attributes of one name counts. `Content-Security-Policy-Report-Only` in a `<meta>` is ignored, as
+browsers ignore it (CSP Level 3); as a header it gives a row with `reportOnly: true` that no rule
+counts. A `<meta>` applies only in `<head>`: the head ends at `</head>`, `<body>`, any start tag that
+cannot stand in a head, or text other than whitespace, as HTML's parser ends it, and a `<meta>`
+after that gives a row with `outsideHead: true`, which no rule counts as an applied policy
+(`csp-missing` is then unknown, a weakness there an unknown finding). A `<meta>` inside
+`<template>` or `<noscript>` gives no row. A header value is an array of string literals or constants, or one; several values
+are joined with `, ` and each value is split at `,` into the policies it lists (CSP Level 3: a
+comma separates policies in a header), each judged on its own; anything else is `policy: null`.
+
+`weaknesses` lists, for the policy as CSP Level 3 parses it (directives split at `;`, names
+lowercased, the first of a repeated directive counts; the script directive is `script-src`, else
+`default-src`, and `script-src-elem` and `script-src-attr` are judged as well, since they take
+precedence for script elements and event handler attributes):
+
+- no `script-src` and no `default-src`: scripts are not restricted;
+- `'unsafe-inline'` in a script directive without a nonce or hash with a value (with one, CSP
+  Level 2 browsers ignore it; `'nonce-'` alone is none), and in `script-src-attr` always (a nonce
+  does not allow an event handler attribute);
+- `'unsafe-eval'` in it;
+- `*`, a bare scheme (`http:`, `https:`, `data:`, `blob:`, `filesystem:`, `ws:`, `wss:`) or any
+  host of a scheme (`https://*`) in it;
+- no `object-src` and no `default-src`, or `object-src` with one of those sources: plugins are not
+  restricted.
+
+These follow the checks of Google's CSP Evaluator that Electronegativity runs; host allow-lists,
+`'strict-dynamic'`, `base-uri` and the reporting directives are not judged. Per JavaScript file at
+most 200 header rows, per HTML file 50 `<meta>` rows, 2,000 in all; at most 2,000 HTML files and 64
+MiB of HTML are read, files over 16 MiB are not. Past any of these `csp_truncated` or
+`html_unread` says so, and either leaves the CSP rules undecidable. In a comparison a row is
+matched by file, kind and `via`; its policy is a change of the row.
+
+The audit rule `csp-missing` reports an app with no `<meta>` policy in a head and no
+`onHeadersReceived` header without a `doubt` (an unknown finding when a policy is set only where
+it may not apply); a page loaded from a server may
+still get one from it. `csp-weak` reports an applied policy with weaknesses, and as unknown a policy
+whose value is not read or a weak one that may not apply (after the head, with a `doubt`, or a
+header outside a listener, which may be a request's or a server's header). The check rule `csp-weakened` reports a weakness that the before build's applied policy at
+the same place (file, kind, `via`) does not have (a policy that may not apply is no baseline, and
+a weakness there is unknown), a policy not read that the before build did not have, and a before build's applied
+policies gone with none left in the after build that applies (removed, made report-only, moved
+out of the head, or given a `doubt`). Each policy is judged on its own: a weak `<meta>`
+next to a strict header on the same page is still reported, and a weakness of one page is not
+excused by the same weakness on another.
+
+Not read: which page a policy applies to, a policy written into HTML built in JavaScript
+(`loadURL("data:text/html,…")`, `document.write`), headers set by a server the app loads from, and
+an `onHeadersReceived` listener passed by name (its header keys give `via: other`).
+
+[session]: https://www.electronjs.org/docs/latest/api/session
+
 ## Storage keys through wrappers and enums (`storage`)
 
 A storage call whose key is (or is built from) a parameter of the function or method it is in
@@ -1469,8 +1657,8 @@ changes the pick, the pick stays open (`electron_app_pick_unverified`).
 
 ## Not read
 
-Content Security Policy, what a navigation or window-open handler checks,
-`will-redirect` and the removed `new-window` event, permission request handlers, `<webview>` attributes, whether an IPC handler validates its sender
+What a navigation or window-open handler checks, `will-redirect` and the removed `new-window`
+event, `<webview>` attributes, whether an IPC handler validates its sender
 ([Security, 17][sec]), and `webPreferences` keys other than `preload`, `nodeIntegration`,
 `contextIsolation`, `sandbox`, `webSecurity`, `allowRunningInsecureContent`, `webviewTag`,
 `nodeIntegrationInSubFrames`, `nodeIntegrationInWorker` and `enableRemoteModule`.

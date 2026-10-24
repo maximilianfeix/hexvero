@@ -27,6 +27,12 @@ export const RULE: Record<string, string> = {
   "fuse-weakened":
     "a packaged build's runtime less locked down: a fuse, the ASAR integrity record, end of support",
   "remote-enabled": "@electron/remote newly enabled for a webContents",
+  "new-open-external":
+    "a shell.openExternal call with a URL whose scheme the app does not fix, that the before build did not have",
+  "permission-handler-grants-all":
+    "a permission handler that grants every request, or one the before build had and the after build dropped",
+  "csp-weakened":
+    "a Content Security Policy weakness the before build did not have, or a policy that is gone",
   "new-unsafe-switch":
     "a dangerous command-line switch, or certificate errors accepted, that the before build did not have",
 };

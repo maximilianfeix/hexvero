@@ -181,6 +181,17 @@ fuses of a packaged build. Exit `0` pass, `1` technical error, `2` usage error o
 invalid policy, `3` policy violated, `4` not decidable under `unknown: fail`. See [Release
 policies](#release-policies-hexvero-check).
 
+### `audit`
+
+```text
+hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--out file] [--force]
+```
+
+Applies the rules that make sense on one build to its own lists, with no before build:
+Electronegativity's checks that hexvero reads. Exit `0` pass, `1` technical error, `2` usage
+error, `3` a rule violated, `4` not decidable under `--unknown fail` (the default). See [Single-build
+audit](#single-build-audit-hexvero-audit).
+
 ### `init`
 
 ```text
@@ -400,6 +411,25 @@ Rules:
   whose `switches` list is capped (`switches_truncated`) leaves the rule undecidable
   (`values_unresolved`). Added
   after 0.10.1: a policy that does not list it runs it at `warn`.
+- **`new-open-external`**: A `shell.openExternal` call (see [Electron
+  findings](electron-findings.md#links-opened-outside-the-app-openexternal)) whose URL is not a
+  literal and whose known start does not fix the scheme to `http`, `https` or `mailto`, more often
+  than the before build has such calls (counted by receiver kind and as much of the URL as is
+  read, in any file).
+  On a receiver not read as Electron's `shell` it is an unknown finding.
+- **`permission-handler-grants-all`**: A permission request or check handler (see [Electron
+  findings](electron-findings.md#permission-handlers-permissionhandlers)) that grants every
+  request (`callback(true)` or `return true` unconditionally, or cleared with `null`) for a
+  session whose handler in the before build did not, and a before build's request handlers gone
+  with none left in the after build. A handler whose answer is not read, or one on a receiver not
+  read as a session, is an unknown finding.
+- **`csp-weakened`**: A Content Security Policy weakness (see [Electron
+  findings](electron-findings.md#content-security-policy-csp)) that the before build's applied
+  policy at the same place (file, `<meta>` or header) does not have, a policy whose value is not read (unknown), and a before build's `<meta>` or
+  `onHeadersReceived` policies gone with none left in the after build. An HTML file not read
+  (`html_unread`) or a capped list (`csp_truncated`) leaves it undecidable.
+
+  The last three were added after 0.11.1: a policy that does not list them runs them at `warn`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
 app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a
@@ -423,8 +453,8 @@ bridge lists, so those rules are undecidable for them (gap `collection_missing`)
 
 `level` is `fail`, `warn` or `off`. A rule the policy does not list runs at `fail`, except
 `new-bridge-exposure` (added in 0.9.7) and `fuse-weakened` (added after 0.9.9), which run at
-`warn` until the policy lists them; `hexvero init` and `examples/policy.json` list all five at
-`fail`. A misspelt rule or key is an error, not a rule that never runs. `level` says what the policy makes of a
+`warn` until the policy lists them, as do the later rules that say so above; `hexvero init` and
+`examples/policy.json` list all ten at `fail`. A misspelt rule or key is an error, not a rule that never runs. `level` says what the policy makes of a
 finding; how the fact was read (`literal`, `inferred`, `link direct`) is reported separately as
 `basis`.
 
@@ -499,6 +529,54 @@ The unresolved IPC channel at `main.js:33` does not make `new-interface-member` 
 which members a preload exposes is read from the bridge itself. An unreadable or truncated bridge,
 a host built at run time, a window setting whose direction is unclear, or a partly read app does
 (exit `4` under `"unknown": "fail"`).
+
+## Single-build audit: `hexvero audit`
+
+```bash
+hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--out <file>] [--force]
+```
+
+`audit` reads one build (an Electron `.asar`, an app directory, a packaged `.app`, install
+directory or release ZIP) and applies these rules to it. Where `check` asks what is new, `audit`
+asks what is there; the facts are the same lists, read the same way
+([electron-findings.md](electron-findings.md)), and [audit-plan.md](engineering/audit-plan.md)
+maps each of Electronegativity's checks to them.
+
+| Rule                            | Reports                                                                                                                                                                                | List                 |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `window-permissive`             | a window with `nodeIntegrationInEffect` on, `contextIsolationInEffect` or `sandboxInEffect` off, or `pageRequire` yes (also by default); a setting not read is unknown                 | `windows`            |
+| `remote-enabled`                | an `enable` of `@electron/remote`                                                                                                                                                      | `remoteEnabled`      |
+| `unsafe-switch`                 | a dangerous switch, accepted certificate errors, an accepting verify proc; a row whose danger is not read is unknown                                                                   | `switches`           |
+| `open-external`                 | `shell.openExternal` with a URL that is not a literal and whose known start does not fix `http`, `https` or `mailto`; on a receiver not read as `shell` unknown                        | `openExternal`       |
+| `permission-handler-missing`    | no `setPermissionRequestHandler` in the files read; unknown when none is read on `session.defaultSession` (only partitions, webContents' sessions, unproven receivers)                 | `permissionHandlers` |
+| `permission-handler-grants-all` | a handler that grants every request (or is cleared with `null`); one whose answer is not read is unknown                                                                               | `permissionHandlers` |
+| `csp-missing`                   | no `<meta>` policy in a head of the app's HTML (any HTML file outside node_modules counts) and no `onHeadersReceived` header; unknown when a policy is set only where it may not apply | `csp`                |
+| `csp-weak`                      | an applied policy with weaknesses; one not read, or weak where it may not apply, is unknown                                                                                            | `csp`                |
+
+**Status and exit codes** are `check`'s: `fail` (exit `3`) when any finding is not unknown;
+otherwise `incomplete` (exit `4`) when `--unknown fail` and an unknown finding or a gap remains;
+otherwise `pass` (exit `0`). A rule whose list may be missing rows is not decidable (gaps
+`scan_partial`, `files_unreadable`, `values_unresolved`, listed under "Not decidable"), and an
+absence (`permission-handler-missing`, `csp-missing`) is never reported while its rule is: a
+partial scan reads as "not decided", not as "missing". `--unknown warn` or `allow` lets unknowns
+pass; they stay listed. A build that is not an Electron application, or one with no JavaScript to
+read, is refused with exit `1`.
+
+**Output.** `--format json` is the `AuditResult` (`hexvero: "audit"`, `status`, `findings` with
+`rule`, `fingerprint`, `unknown`, `key`, `message`, `collection`, `where` as file and line,
+`incomplete`). `--format sarif` is SARIF 2.1.0 with one run: places are paths inside the build
+under `hexvero-build/build/<archive>/` (uriBaseId `HEXVERO_TARGET`), as `check` does for its two
+sides, and `partialFingerprints` carry the fingerprint, so a code-scanning alert stays one alert
+however the code moves. Fingerprints are `sha256(rule \0 identity)` (first 32 hex), the identity
+naming the item, never the line: file, window and setting for windows; file and the URL as far
+as it is read for `open-external` (two calls of one URL kind in one file are one finding with two
+places); file, kind and session for permission handlers; file, kind, `via` and the policy text
+for `csp-weak` (an edit of the policy, even of its spacing, is a new finding).
+
+**Why a command of its own.** `check` evaluates a comparison and every rule there means "new in
+the after build"; a single build has no comparison and its rules mean "present". Suppressions
+and baselines for `audit` are not part of this slice: run it with `--unknown warn` in CI, or use
+`check` against the previous release to see only what changed.
 
 ## Web UI: `hexvero ui`
 

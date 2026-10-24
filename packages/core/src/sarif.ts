@@ -17,6 +17,13 @@
  * Checked against the OASIS schema (test fixture) and GitHub's list of supported fields:
  * https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
  */
+import {
+  AUDIT_RULES,
+  type AuditFinding,
+  type AuditPlace,
+  type AuditResult,
+  type AuditRuleId,
+} from "./audit.js";
 import type { Place } from "./report.js";
 import {
   POLICY_RULES,
@@ -73,6 +80,24 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       short: "The build newly weakens a process-wide security check.",
       full: "The main process appends a Chromium command-line switch that weakens a security boundary (ignore-certificate-errors, disable-web-security, no-sandbox, remote-debugging-port and the others listed in hexvero's Electron findings), a certificate-error handler accepts certificate errors (callback(true)), or a certificate verify proc reports success (callback(0)), and the previous build did not. A switch whose name or value hexvero could not read is reported as unknown.",
       help: "Remove the switch or the accepting call, or limit it to development builds. If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
+    "new-open-external": {
+      name: "NewOpenExternal",
+      short: "The build newly opens a URL it does not fix with shell.openExternal.",
+      full: "The build calls shell.openExternal with a URL that is not a literal and whose known start does not fix the scheme to http, https or mailto, and the previous build had no such call (by receiver and as much of the URL as is read). A URL from a page or a message may then open any protocol handler or file (Electron's security guide, section 15). A call on a receiver not read as Electron's shell is reported as unknown.",
+      help: "Check the URL's scheme (and host) before opening it, or open only URLs the app writes itself. If the call is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
+    "permission-handler-grants-all": {
+      name: "PermissionHandlerGrantsAll",
+      short: "A permission handler newly grants every request.",
+      full: "A session's setPermissionRequestHandler or setPermissionCheckHandler handler calls callback(true) or returns true unconditionally (or is cleared with null), and the previous build's handler for that session did not; or the previous build set a permission request handler and this build sets none. Electron then grants every permission a page asks for. A handler whose answer hexvero could not read is reported as unknown.",
+      help: "Grant only the permissions the app needs, for the origins that need them. If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
+    "csp-weakened": {
+      name: "CspWeakened",
+      short: "The build's Content Security Policy is newly weaker.",
+      full: "A Content Security Policy of the build (a <meta> tag in an HTML file, a header set in code) has a weakness no policy of the previous build has ('unsafe-inline' without a nonce or hash, 'unsafe-eval', a wildcard or bare scheme for scripts, scripts or plugins not restricted), or the previous build set a policy and this build sets none. A policy hexvero could not read is reported as unknown.",
+      help: "Restore the stricter policy. If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
     },
   };
 
@@ -220,6 +245,155 @@ export function toSarif(result: PolicyResult, options: SarifOptions): Record<str
             policy: result.policy.sha256,
             incomplete: result.incomplete,
             notReported: { baselined: states("baselined"), suppressed: states("suppressed") },
+          },
+        },
+      },
+    ],
+  };
+}
+
+const AUDIT_TEXT: Record<AuditRuleId, { name: string; short: string; full: string }> = {
+  "window-permissive": {
+    name: "WindowPermissive",
+    short: "A window's settings let its pages do more.",
+    full: "A BrowserWindow has Node integration on, context isolation off, the sandbox off, or page access to require, as written or by the default of the Electron version package.json names (Electron's security guide, sections 2-4). A setting hexvero could not read is reported as unknown.",
+  },
+  "remote-enabled": {
+    name: "RemoteEnabled",
+    short: "@electron/remote is enabled for a webContents.",
+    full: "The main process calls enable() of @electron/remote/main: pages there reach main-process modules and objects through the remote module.",
+  },
+  "unsafe-switch": {
+    name: "UnsafeSwitch",
+    short: "A process-wide security check is weakened.",
+    full: "A Chromium command-line switch that weakens a security boundary is appended, a certificate-error handler accepts certificate errors, or a certificate verify proc reports success. A switch whose name or value hexvero could not read is reported as unknown.",
+  },
+  "open-external": {
+    name: "OpenExternal",
+    short: "shell.openExternal opens a URL whose scheme the app does not fix.",
+    full: "shell.openExternal is called with a URL that is not a literal and whose known start does not fix the scheme to http, https or mailto, so a URL from a page or a message may open any protocol handler or file (Electron's security guide, section 15). A call on a receiver not read as Electron's shell is reported as unknown.",
+  },
+  "permission-handler-missing": {
+    name: "PermissionHandlerMissing",
+    short: "No permission request handler is set.",
+    full: "No session.setPermissionRequestHandler was found in the files read; Electron then grants every permission a page asks for (Electron's security guide, section 5).",
+  },
+  "permission-handler-grants-all": {
+    name: "PermissionHandlerGrantsAll",
+    short: "A permission handler grants every request.",
+    full: "A setPermissionRequestHandler or setPermissionCheckHandler handler calls callback(true) or returns true unconditionally, or is cleared with null. A handler whose answer hexvero could not read is reported as unknown.",
+  },
+  "csp-missing": {
+    name: "CspMissing",
+    short: "No Content Security Policy is set.",
+    full: "No <meta http-equiv=\"Content-Security-Policy\"> in the app's HTML files and no Content-Security-Policy header set in a webRequest.onHeadersReceived listener (Electron's security guide, section 7).",
+  },
+  "csp-weak": {
+    name: "CspWeak",
+    short: "A Content Security Policy is weak.",
+    full: "A Content Security Policy lets scripts run inline or through eval, from any origin or scheme, or does not restrict scripts or plugins at all. A policy hexvero could not read is reported as unknown.",
+  },
+};
+
+/** The SARIF uriBaseId of an audited build. */
+export const SARIF_AUDIT_BASE = "HEXVERO_TARGET";
+
+/** A SARIF 2.1.0 log with one run for `hexvero audit`. */
+export function auditToSarif(
+  result: AuditResult,
+  options: { version: string },
+): Record<string, unknown> {
+  const archive = baseName(result.target.path).replace(/[\\/]/g, "_") || "build";
+  const at = (p: AuditPlace, id?: number): Record<string, unknown> => ({
+    ...(id === undefined ? {} : { id }),
+    physicalLocation: {
+      artifactLocation: {
+        uri: `${SARIF_PREFIX}/build/${uriOf(archive)}/${uriOf(p.file)}`,
+        uriBaseId: SARIF_AUDIT_BASE,
+      },
+      ...(p.line === undefined ? {} : { region: { startLine: p.line } }),
+    },
+  });
+  const levelOf = (f: AuditFinding): "error" | "warning" | "note" =>
+    !f.unknown
+      ? "error"
+      : result.unknown === "fail"
+        ? "error"
+        : result.unknown === "warn"
+          ? "warning"
+          : "note";
+  return {
+    $schema: SARIF_SCHEMA,
+    version: "2.1.0",
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: "hexvero",
+            semanticVersion: options.version,
+            informationUri: "https://github.com/maximilianfeix/hexvero",
+            rules: AUDIT_RULES.map((id) => ({
+              id,
+              name: AUDIT_TEXT[id].name,
+              shortDescription: { text: AUDIT_TEXT[id].short },
+              fullDescription: { text: AUDIT_TEXT[id].full },
+              help: {
+                text: "See docs/electron-findings.md of hexvero for what is read and what is not.",
+              },
+              defaultConfiguration: { level: "error" },
+              properties: { tags: ["security", "electron"], precision: "high" },
+            })),
+          },
+        },
+        automationDetails: { id: "hexvero-audit/" },
+        originalUriBaseIds: {
+          [SARIF_AUDIT_BASE]: {
+            uri: "file:///",
+            description: {
+              text: `Paths inside the analyzed build ${plain(baseName(result.target.path))} (sha256 ${result.target.sha256}), not files of this repository.`,
+            },
+          },
+        },
+        invocations: [
+          {
+            executionSuccessful: true,
+            toolExecutionNotifications: result.incomplete.map((i) => ({
+              level: "warning",
+              message: {
+                text: `${i.rule} could not be decided on ${i.collection}: ${i.gaps.join(", ")}.`,
+              },
+              descriptor: { id: i.rule },
+            })),
+          },
+        ],
+        results: result.findings.map((f) => {
+          const [first, ...rest] = f.where;
+          return {
+            ruleId: f.rule,
+            ruleIndex: AUDIT_RULES.indexOf(f.rule),
+            level: levelOf(f),
+            message: { text: plain(f.message) },
+            locations: first
+              ? [at(first)]
+              : [{ logicalLocations: [{ name: plain(f.key), kind: "member" }] }],
+            ...(rest.length
+              ? { relatedLocations: rest.slice(0, 9).map((p, i) => at(p, i + 1)) }
+              : {}),
+            partialFingerprints: {
+              "hexveroFingerprint/v1": f.fingerprint,
+              primaryLocationLineHash: `${f.fingerprint}:1`,
+            },
+            properties: { unknown: f.unknown, collection: f.collection, key: plain(f.key) },
+          };
+        }),
+        properties: {
+          hexvero: {
+            status: result.status,
+            locations:
+              "Locations are paths inside the analyzed build, written as hexvero-build/build/<archive>/<path> (uriBaseId HEXVERO_TARGET), not files of the repository this log is uploaded to.",
+            build: { file: plain(baseName(result.target.path)), sha256: result.target.sha256 },
+            unknown: result.unknown,
+            incomplete: result.incomplete,
           },
         },
       },

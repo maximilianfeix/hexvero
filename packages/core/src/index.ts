@@ -73,7 +73,14 @@ export {
   type CandidateEvidence,
   type Candidates,
 } from "./javascript/candidates.js";
-export type { AppCandidate, JsCoverage, JsScanFacts } from "./javascript/app.js";
+export type {
+  AppCandidate,
+  CspRow,
+  JsCoverage,
+  JsScanFacts,
+  OpenExternalRow,
+  PermissionHandlerRow,
+} from "./javascript/app.js";
 export {
   Session,
   collectionsOf,
@@ -251,4 +258,25 @@ export {
   type PolicyResult,
   type PolicyRuleId,
 } from "./policy.js";
-export { SARIF_BASE, SARIF_SCHEMA, toSarif, type SarifOptions } from "./sarif.js";
+export {
+  auditToSarif,
+  SARIF_AUDIT_BASE,
+  SARIF_BASE,
+  SARIF_SCHEMA,
+  toSarif,
+  type SarifOptions,
+} from "./sarif.js";
+export {
+  AUDIT_RULES,
+  AUDIT_STATUS_TEXT,
+  auditApp,
+  auditBuild,
+  cspRisk,
+  openExternalRisk,
+  permissionRisk,
+  type AuditFinding,
+  type AuditOptions,
+  type AuditPlace,
+  type AuditResult,
+  type AuditRuleId,
+} from "./audit.js";
