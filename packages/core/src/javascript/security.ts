@@ -921,7 +921,10 @@ export function openExternalRows(
     };
     const left = side(q + 1, colon);
     const right = left && side(colon + 1, b);
-    return left && right ? [...new Set([...left, ...right])].slice(0, 8) : null;
+    if (!left || !right) return null;
+    // more values than are kept is not read: never a list cut short, whose scheme could hide one
+    const all = [...new Set([...left, ...right])];
+    return all.length > 8 ? null : all;
   }
   /** [from, b) is empty or `+ operand + operand …` with no other operator at depth 0. */
   function plusChain(from: number, b: number): boolean {

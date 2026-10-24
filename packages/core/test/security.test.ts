@@ -958,6 +958,24 @@ shell.openExternal(a ? "https://a.example" : u);
     ]);
   });
 
+  it("reads a ternary of more than eight URLs as unknown, never as a cut list", () => {
+    // a balanced nested ternary without parentheses, as minifiers write it
+    let n = 0;
+    const tree = (leaves: string[]): string =>
+      leaves.length === 1
+        ? JSON.stringify(leaves[0])
+        : `c${n++} ? ${tree(leaves.slice(0, leaves.length / 2))} : ${tree(leaves.slice(leaves.length / 2))}`;
+    const eight = Array.from({ length: 8 }, (_, i) => `https://h${i}.example`);
+    const nine = `c ? ${tree(eight)} : "file:///etc/passwd"`;
+    const info = analyze(`const { shell } = require("electron");
+shell.openExternal(${tree(eight)});
+shell.openExternal(${nine});
+`);
+    expect(
+      info.openExternal.map((r) => `${r.argumentKind} ${r.values?.length ?? 0} ${r.scheme}`),
+    ).toEqual(["inferred 8 https", "unknown 0 null"]);
+  });
+
   it("reads optional calls of a handler setter and a callback chosen in a ternary", () => {
     const info = analyze(`const { session } = require("electron");
 session.defaultSession.setPermissionRequestHandler?.((w, p, cb) => cb(true));
