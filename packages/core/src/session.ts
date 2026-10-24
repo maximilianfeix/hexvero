@@ -1046,6 +1046,12 @@ export function collectionsOf(
         out["remoteEnabled"] = d.app.remoteEnabled ?? [];
       // Listed whenever windows or rows were read, so a switch that is gone is `removed`.
       if (d.app.windows?.length || d.app.switches?.length) out["switches"] = d.app.switches ?? [];
+      // the same for the security settings the audit reads
+      if (d.app.windows?.length || d.app.openExternal?.length)
+        out["openExternal"] = d.app.openExternal ?? [];
+      if (d.app.windows?.length || d.app.permissionHandlers?.length)
+        out["permissionHandlers"] = d.app.permissionHandlers ?? [];
+      if (d.app.windows?.length || d.app.csp?.length) out["csp"] = d.app.csp ?? [];
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
       if (d.app.storage.length) out["storage"] = d.app.storage;
@@ -1127,6 +1133,11 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
   candidates_truncated: "endpoint",
   // rows past the cap (only ones known to be harmless) are missing anywhere in the app
   switches_truncated: "switches",
+  open_external_truncated: "openExternal",
+  permission_handlers_truncated: "permissions",
+  csp_truncated: "csp",
+  // an HTML file not read may hold a <meta> policy
+  html_unread: "csp",
 };
 
 /**

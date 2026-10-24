@@ -58,7 +58,16 @@ export interface CompareOptions {
 }
 
 /** A collection family whose values can be unresolved in a file (see `SideCoverage.unresolved`). */
-export type UnresolvedFamily = "ipc" | "bridge" | "window" | "endpoint" | "storage" | "switches";
+export type UnresolvedFamily =
+  | "ipc"
+  | "bridge"
+  | "window"
+  | "endpoint"
+  | "storage"
+  | "switches"
+  | "openExternal"
+  | "permissions"
+  | "csp";
 
 /**
  * How the storage family records an unread value: by file and storage kind, since a key of one
@@ -81,6 +90,10 @@ export const COLLECTION_FAMILY: Readonly<Record<string, UnresolvedFamily>> = {
   storage: "storage",
   // a capped list may have dropped a row of either side (only harmless ones; still a gap)
   switches: "switches",
+  // the same: a capped list (or an HTML file not read, for csp) may hide a row
+  openExternal: "openExternal",
+  permissionHandlers: "permissions",
+  csp: "csp",
 };
 
 /** Machine codes of `CompareCompleteness.gaps`, in the order they are listed. */
@@ -209,6 +222,9 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   navigationHandlers: ["line"],
   remoteEnabled: ["line"],
   switches: ["line"],
+  openExternal: ["line"],
+  permissionHandlers: ["line"],
+  csp: ["line"],
   interfaces: ["line"],
   ipc: ["line"],
   webPreferences: ["line", "window"],
@@ -246,6 +262,10 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   remoteEnabled: ["evidence", "target"],
   // the call as written and its receiver (renamed by minifiers); `reason` restates the row
   switches: ["evidence", "target", "reason"],
+  // the call as written, its receiver (renamed by minifiers), and the scheme the URL restates
+  openExternal: ["evidence", "target", "scheme"],
+  permissionHandlers: ["evidence", "target"],
+  csp: ["evidence"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -349,6 +369,21 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   switches: [
     ["file", "kind", "targetKind", "name"],
     ["kind", "targetKind", "name"],
+  ],
+  // a call by the URL as far as it is read; the same call twice is matched as a multiset
+  openExternal: [
+    ["file", "targetKind", "argumentKind", "argument"],
+    ["targetKind", "argumentKind", "argument"],
+  ],
+  // a handler by its kind and session; what it grants is a change of the row
+  permissionHandlers: [
+    ["file", "kind", "targetKind", "session"],
+    ["kind", "targetKind", "session"],
+  ],
+  // a policy by its file and where it is set; its text is a change of the row
+  csp: [
+    ["file", "kind", "via"],
+    ["kind", "via"],
   ],
   interfaces: [["file", "api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.

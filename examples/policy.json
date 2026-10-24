@@ -11,7 +11,10 @@
     "window-more-permissive": { "level": "fail" },
     "new-bridge-exposure": { "level": "fail" },
     "fuse-weakened": { "level": "fail" },
-    "new-unsafe-switch": { "level": "fail" }
+    "new-unsafe-switch": { "level": "fail" },
+    "new-open-external": { "level": "fail" },
+    "permission-handler-grants-all": { "level": "fail" },
+    "csp-weakened": { "level": "fail" }
   },
   "unknown": "fail",
   "suppressions": []

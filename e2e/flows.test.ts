@@ -67,6 +67,8 @@ describe("flow 1: Electron app", () => {
     expect([...byKind.keys()]).toEqual([
       "electron.node-integration",
       "electron.sandbox",
+      // main.js opens the URL a page sends over IPC: shell.openExternal(url)
+      "electron.open-external",
       "electron.ipc",
       "electron.context-bridge",
       "electron.navigation",
@@ -582,7 +584,7 @@ describe("flow 4: a coding agent over MCP stdio", () => {
         analysis: { findings: unknown[] };
       };
       expect(file.unknowns).toHaveLength(1);
-      expect(file.analysis.findings).toHaveLength(8);
+      expect(file.analysis.findings).toHaveLength(9);
       expect((await call("hexvero_export", { targetId: id, path: out })).ok).toBe(false);
 
       // errors are structured, never a crash

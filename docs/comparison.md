@@ -41,9 +41,10 @@ to ElectroNG, Doyensec's commercial successor (checked 2026-10-18 on the reposit
 branch; the repository is not archived). The last npm release is
 `@doyensec/electronegativity` 1.10.3, published 2023-03-09.
 
-**A different question.** Electronegativity looks at one build and lists known risky patterns in
-it. hexvero compares two builds of the same app and lists what changed. They can be used
-together: Electronegativity for a checklist of one build, hexvero for the review of a release.
+**A different question, and now the same one.** Electronegativity looks at one build and lists
+known risky patterns in it. hexvero compares two builds of the same app and lists what changed;
+since `hexvero audit` it also applies Electronegativity's single-build checks that it reads, with
+exit codes for CI (Electronegativity issue #108) and packaged builds read as they ship (#113).
 
 What hexvero adds:
 
@@ -56,32 +57,47 @@ What hexvero adds:
   build; the web UI and the HTML report show the source lines of the build before and the build
   after side by side.
 - **A release policy** (`hexvero check`): new interface member, new external host, more
-  permissive window, privileged object newly handed to pages; a baseline, suppressions with a
-  reason and an expiry date, exit `3` when violated and `4` when it cannot decide, SARIF 2.1.0
-  for code scanning.
+  permissive window, privileged object newly handed to pages, and the security settings below
+  newly weakened; a baseline, suppressions with a reason and an expiry date, exit `3` when
+  violated and `4` when it cannot decide, SARIF 2.1.0 for code scanning.
+- **Unknown, not guessed**: a receiver that is not proven to be Electron's (`shell`, `session`,
+  `app`) by scope, a URL or policy computed at run time, a list capped or a file not read gives an
+  unknown finding or an undecidable rule (exit `4`), never a pass. Electronegativity matches
+  `openExternal` and `setPermissionRequestHandler` by method name on any object.
 - **Packaged builds as they ship**: a macOS `.app`, a Windows or Linux install directory and a
   release ZIP are opened as the Electron app inside them.
 - **An MCP server** for coding agents and a local web UI.
 
-What Electronegativity checks that hexvero does not (yet), from its list of checks:
+What Electronegativity checks on one build that hexvero now reads too (`hexvero audit <build>`
+applies them to one build; `check` reports what changed; the mapping of every check is in
+[audit-plan.md](engineering/audit-plan.md)):
 
-- Content Security Policy, in HTML `<meta>` tags and in response headers set from JavaScript.
-- `shell.openExternal` calls. hexvero only reports `shell` or one of its methods handed to pages
-  through `contextBridge` (`new-bridge-exposure`), not the calls and their arguments.
-- Permission request handlers (`setPermissionRequestHandler`) and their absence.
+- Content Security Policy, in HTML `<meta>` tags and in response headers set in
+  `webRequest.onHeadersReceived` (`csp`; rules `csp-missing`, `csp-weak`, `csp-weakened`).
+- `shell.openExternal` calls with the receiver proven to be Electron's `shell` and the URL read as
+  literal, inferred or unknown (`openExternal`; `open-external`, `new-open-external`).
+- Permission request and check handlers, their absence, and handlers that grant every request
+  (`permissionHandlers`; `permission-handler-missing`, `permission-handler-grants-all`).
+- Certificate handling: `certificate-error` listeners and `setCertificateVerifyProc`, and
+  command-line switches such as `ignore-certificate-errors` or `disable-web-security` appended in
+  code (`switches`; `unsafe-switch`, `new-unsafe-switch`).
+- Disabled security warnings (`ELECTRON_DISABLE_SECURITY_WARNINGS`, `switches`).
+- Node integration, context isolation and the sandbox per window, by the defaults of the
+  Electron version package.json names (`windows`; `window-permissive`), and `@electron/remote`.
+
+What Electronegativity checks that hexvero does not (yet):
+
 - Custom protocol handlers (`setAsDefaultProtocolClient`, `registerFileProtocol` and related).
-- Certificate handling: `certificate-error` listeners and `setCertificateVerifyProc`.
-- Custom command-line switches such as `ignore-certificate-errors` or `disable-web-security`,
-  appended in code or written into `package.json` scripts.
+- Command-line switches written into `package.json` scripts.
 - What navigation handlers do. hexvero lists `setWindowOpenHandler`, `will-navigate` and
   `will-frame-navigate` handlers (`navigationHandlers`) but not what they check.
 - `webPreferences` keys outside the ten hexvero reads (`enableBlinkFeatures`,
   `experimentalFeatures`, `affinity` …), `<webview>` attributes in HTML (`allowpopups`,
   `nodeintegration`, `disablewebsecurity` …), and `will-attach-webview` handlers.
-- Disabled security warnings (`ELECTRON_DISABLE_SECURITY_WARNINGS`), `executeJavaScript`,
-  `insertCSS` and `eval`-like calls, resources loaded over plain HTTP, and the Electron version
-  against known security fixes.
-- A severity for each finding. hexvero rates nothing by severity; its policy decides what fails.
+- `executeJavaScript`, `insertCSS` and `eval`-like calls, resources loaded over plain HTTP, and the
+  Electron version against known security fixes (hexvero reads only whether a packaged build's
+  Electron line is past its end of support).
+- A severity for each finding. hexvero rates nothing by severity; a rule fails or it does not.
 
 The list of what hexvero reads is in [electron-findings.md](electron-findings.md) (section "Not
 read" for the rest). No accuracy comparison between the two tools has been measured.

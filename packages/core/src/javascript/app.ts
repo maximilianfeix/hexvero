@@ -39,6 +39,26 @@ import {
 import { summarizeSourceMap } from "./sourcemap.js";
 import { keepSwitchRows, MAX_SWITCHES_PER_FILE, switchRows, type SwitchRow } from "./switches.js";
 export type { SwitchRow } from "./switches.js";
+import {
+  cspHeaderRows,
+  cspMetaRows,
+  harmlessCsp,
+  harmlessOpenExternal,
+  harmlessPermission,
+  keepRows,
+  MAX_META_PER_FILE,
+  MAX_SECURITY_ROWS_PER_FILE,
+  openExternalRows,
+  permissionHandlerRows,
+  type CspRow,
+  type OpenExternalRow,
+  type PermissionHandlerRow,
+} from "./security.js";
+export type { CspRow, OpenExternalRow, PermissionHandlerRow } from "./security.js";
+
+/** HTML files read for `<meta http-equiv="Content-Security-Policy">`, and their bytes. */
+const MAX_HTML_FILES = 2000;
+const MAX_HTML_BYTES = 64 << 20;
 
 /** A dangerous `switches` row in the words of the finding's title. */
 const unsafeSwitchLabel = (r: SwitchRow): string =>
@@ -5254,6 +5274,12 @@ export interface JsAppInfo {
   remoteEnabled: RemoteEnable[];
   /** Command-line switches, accepted certificate errors, verify procs, security warnings off. */
   switches: SwitchRow[];
+  /** `shell.openExternal` calls, with how much of the URL is read. */
+  openExternal: OpenExternalRow[];
+  /** setPermissionRequestHandler / setPermissionCheckHandler, with whether they grant all. */
+  permissionHandlers: PermissionHandlerRow[];
+  /** Content Security Policies: `<meta http-equiv>` in HTML files and headers written in code. */
+  csp: CspRow[];
   ipcChannels: Array<{
     channel: string;
     senders: string[];
@@ -5309,7 +5335,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 36;
+export const JS_SCAN_SCHEMA = 37;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -5356,6 +5382,10 @@ export interface JsScanFacts {
   navigationHandlers: NavigationHandler[];
   remoteEnabled?: RemoteEnable[];
   switches?: SwitchRow[];
+  openExternal?: OpenExternalRow[];
+  permissionHandlers?: PermissionHandlerRow[];
+  /** CSP header rows read from JavaScript (meta rows are read from HTML at the end of a run). */
+  cspHeaders?: CspRow[];
   endpoints: AppCandidate[];
   storage: AppCandidate[];
   urls: AppCandidate[];
@@ -5378,6 +5408,9 @@ export interface JsScanFacts {
   remoteCapped?: boolean;
   /** A file or the app had more `switches` rows than are kept. */
   switchesCapped?: boolean;
+  openExternalCapped?: boolean;
+  permissionHandlersCapped?: boolean;
+  cspCapped?: boolean;
   /** Files with more calls of their own storage wrappers than are read, and the first five. */
   keyCallsCapped?: number;
   keyCallsCappedFiles?: string[];
@@ -5409,6 +5442,9 @@ export function emptyJsScanFacts(): JsScanFacts {
     navigationHandlers: [],
     remoteEnabled: [],
     switches: [],
+    openExternal: [],
+    permissionHandlers: [],
+    cspHeaders: [],
     endpoints: [],
     storage: [],
     urls: [],
@@ -5875,6 +5911,9 @@ export interface FileTokenFacts {
   navigation: NavigationHandler[] | null;
   remote: { rows: RemoteEnable[]; capped: boolean } | null;
   switches?: { rows: SwitchRow[]; capped: boolean } | null;
+  openExternal?: { rows: OpenExternalRow[]; capped: boolean } | null;
+  permissionHandlers?: { rows: PermissionHandlerRow[]; capped: boolean } | null;
+  cspHeaders?: { rows: CspRow[]; capped: boolean } | null;
   /** Methods of the file's storage wrappers the file replaces (`Class.method:line`, at most 20). */
   keyReplaced?: string[];
   /** Writes that may replace one of them were not all read within the budget. */
@@ -5916,6 +5955,9 @@ export function readFileTokens(
   let navigation: NavigationHandler[] | null = null;
   let remote: { rows: RemoteEnable[]; capped: boolean } | null = null;
   let switches: { rows: SwitchRow[]; capped: boolean } | null = null;
+  let openExternal: { rows: OpenExternalRow[]; capped: boolean } | null = null;
+  let permissionHandlers: { rows: PermissionHandlerRow[]; capped: boolean } | null = null;
+  let cspHeaders: { rows: CspRow[]; capped: boolean } | null = null;
   const scan = scanJavaScript(source, {
     ...(maxTokens === undefined ? {} : { maxTokens }),
     onTokens: (tokens, truncated, context) => {
@@ -6431,6 +6473,27 @@ export function readFileTokens(
           new ExpressionResolver(tokens, context.constants),
           context.constants,
         );
+      if (source.includes("openExternal"))
+        openExternal = openExternalRows(
+          tokens,
+          path,
+          new ExpressionResolver(tokens, context.constants),
+          context.constants,
+        );
+      if (/setPermission(Request|Check)Handler/.test(source))
+        permissionHandlers = permissionHandlerRows(
+          tokens,
+          path,
+          new ExpressionResolver(tokens, context.constants),
+          context.constants,
+        );
+      if (/content-security-policy/i.test(source))
+        cspHeaders = cspHeaderRows(
+          tokens,
+          path,
+          new ExpressionResolver(tokens, context.constants),
+          context.constants,
+        );
       if (!source.includes("exposeIn")) return;
       bridge = bridgeMembers({ tokens, truncated, context }, path);
     },
@@ -6453,6 +6516,9 @@ export function readFileTokens(
     bridge,
     navigation,
     switches,
+    openExternal,
+    permissionHandlers,
+    cspHeaders,
     remote,
   };
 }
@@ -6744,6 +6810,31 @@ export function analyzeJavaScriptTree(
       const rows = (facts.switches ??= []);
       if (keepSwitchRows(rows, tokenFacts.switches.rows, MAX_PREFS) || tokenFacts.switches.capped)
         facts.switchesCapped = true;
+    }
+    // past the caps only rows known to be harmless are dropped (keepRows)
+    if (tokenFacts.openExternal) {
+      const rows = (facts.openExternal ??= []);
+      if (
+        keepRows(rows, tokenFacts.openExternal.rows, MAX_PREFS, harmlessOpenExternal) ||
+        tokenFacts.openExternal.capped
+      )
+        facts.openExternalCapped = true;
+    }
+    if (tokenFacts.permissionHandlers) {
+      const rows = (facts.permissionHandlers ??= []);
+      if (
+        keepRows(rows, tokenFacts.permissionHandlers.rows, MAX_PREFS, harmlessPermission) ||
+        tokenFacts.permissionHandlers.capped
+      )
+        facts.permissionHandlersCapped = true;
+    }
+    if (tokenFacts.cspHeaders) {
+      const rows = (facts.cspHeaders ??= []);
+      if (
+        keepRows(rows, tokenFacts.cspHeaders.rows, MAX_PREFS, harmlessCsp) ||
+        tokenFacts.cspHeaders.capped
+      )
+        facts.cspCapped = true;
     }
     if (tokenFacts.keyReplaced)
       fileLimitation(facts, file.path, {
@@ -7418,6 +7509,60 @@ export function analyzeJavaScriptTree(
   const navigation = facts.navigationHandlers ?? [];
   const remote = facts.remoteEnabled ?? [];
   const switchList = facts.switches ?? [];
+  const openExternalList = facts.openExternal ?? [];
+  const permissionList = facts.permissionHandlers ?? [];
+  // CSP <meta> tags of the app's HTML files (outside node_modules), read whole on every run: they
+  // are few and small, and a continued scan would otherwise need them stored
+  const cspList: CspRow[] = [...(facts.cspHeaders ?? [])];
+  let cspCapped = facts.cspCapped ?? false;
+  const htmlUnread: string[] = [];
+  {
+    let htmlBytes = 0;
+    let htmlFiles = 0;
+    for (const f of tree.files) {
+      if (!/\.html?$/i.test(f.path) || f.path.includes("node_modules/")) continue;
+      if (
+        htmlFiles >= MAX_HTML_FILES ||
+        f.size > maxFileBytes ||
+        htmlBytes + f.size > MAX_HTML_BYTES
+      ) {
+        htmlUnread.push(f.path);
+        continue;
+      }
+      htmlFiles++;
+      htmlBytes += f.size;
+      let text: string;
+      try {
+        text = decode(tree.read(f.path, maxFileBytes));
+      } catch {
+        htmlUnread.push(f.path);
+        continue;
+      }
+      if (!/content-security-policy/i.test(text)) continue;
+      const meta = cspMetaRows(text, f.path);
+      if (keepRows(cspList, meta.rows, MAX_PREFS, harmlessCsp) || meta.capped) cspCapped = true;
+    }
+  }
+  if (facts.openExternalCapped)
+    limitations.push({
+      code: "open_external_truncated",
+      message: `More shell.openExternal calls exist than the ${MAX_SECURITY_ROWS_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection openExternal); only calls with a literal URL were dropped.`,
+    });
+  if (facts.permissionHandlersCapped)
+    limitations.push({
+      code: "permission_handlers_truncated",
+      message: `More permission handlers exist than the ${MAX_SECURITY_ROWS_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection permissionHandlers); only handlers that never grant were dropped.`,
+    });
+  if (cspCapped)
+    limitations.push({
+      code: "csp_truncated",
+      message: `More Content-Security-Policy rows exist than the ${MAX_SECURITY_ROWS_PER_FILE} per JavaScript file, ${MAX_META_PER_FILE} per HTML file or ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection csp).`,
+    });
+  if (htmlUnread.length)
+    limitations.push({
+      code: "html_unread",
+      message: `${htmlUnread.length} HTML file(s) were not read for Content-Security-Policy <meta> tags (more than ${MAX_HTML_FILES} files or ${MAX_HTML_BYTES >> 20} MiB of HTML, a file over ${maxFileBytes >> 20} MiB, or unreadable): ${list(htmlUnread, 5)} (collection csp).`,
+    });
   // An unreadable entry whose value is itself a privileged object is established as such; any
   // other one may expose anything, which is said rather than reading "none exposed".
   const unestablished = contextBridge.filter(
@@ -8105,6 +8250,21 @@ export function analyzeJavaScriptTree(
         location: `${unsafe[0]!.file}:${unsafe[0]!.line}`,
       });
     }
+    const unfixed = openExternalList.filter(
+      (r) => r.targetKind === "shell" && r.argumentKind !== "literal",
+    );
+    if (unfixed.length) {
+      findings.push({
+        kind: "electron.open-external",
+        title: `shell.openExternal with a URL that is not a literal: ${unfixed.length} call(s)`,
+        detail: `${list(
+          unfixed.map((r) => `${r.evidence} at ${r.file}:${r.line}`),
+          4,
+        )} (collection openExternal). Electron's security guide, section 15: do not use shell.openExternal with untrusted content; whether the code checks the URL before the call is not read.`,
+        confidence: "inferred",
+        location: `${unfixed[0]!.file}:${unfixed[0]!.line}`,
+      });
+    }
     if (ipcChannels.length) {
       // evidence: the first handler registration in the main process
       const first = modules
@@ -8299,6 +8459,9 @@ export function analyzeJavaScriptTree(
     navigationHandlers: navigation,
     remoteEnabled: remote,
     switches: switchList,
+    openExternal: openExternalList,
+    permissionHandlers: permissionList,
+    csp: cspList,
     endpoints,
     storage,
     urls: facts.urls,

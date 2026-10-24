@@ -80,6 +80,10 @@ Commands
                                                 objects handed to pages, weakened fuses); exit 0
         [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
         [--out file] [--force]                  the result (never over a file without --force)
+  audit <build> [--format text|json|sarif]      Electronegativity's checks on one build: permissive
+        [--unknown fail|warn|allow]             windows, remote, unsafe switches, openExternal,
+        [--out file] [--force]                  permission handlers, Content Security Policy;
+                                                exit 0 pass, 3 violated, 4 not decidable
   init [build] [--out file] [--force]           Write a starting policy to .hexvero/policy.json
                                                 (every rule at fail); with a build, its external
                                                 hosts are allowed
@@ -110,7 +114,8 @@ Options
   -v, --version
 
 Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces
-            check also: 2 invalid policy · 3 policy violated · 4 incomplete (unknown: fail)`;
+            check also: 2 invalid policy · 3 policy violated · 4 incomplete (unknown: fail)
+            audit also: 3 a rule violated · 4 incomplete (--unknown fail)`;
 
 export async function main(argv: string[], io: Io = defaultIo()): Promise<number> {
   let args: ParsedArgs;
@@ -747,6 +752,10 @@ async function run(
     case "check": {
       const { runCheck } = await import("./check.js");
       return runCheck(args, io, session);
+    }
+    case "audit": {
+      const { runAudit } = await import("./audit.js");
+      return runAudit(args, io, session);
     }
     case "init": {
       const { runInit } = await import("./init.js");

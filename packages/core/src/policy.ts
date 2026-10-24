@@ -25,6 +25,8 @@ import { AnalysisError } from "./model.js";
 import { directoryDigest } from "./digest.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
 import { judgeSwitch, splitSwitch } from "./javascript/switches.js";
+import { cspRisk, openExternalRisk, permissionRisk } from "./audit.js";
+import type { CspRow, OpenExternalRow, PermissionHandlerRow } from "./javascript/app.js";
 import { UNRESOLVED_LIMITATIONS, type Session, type TargetRecord } from "./session.js";
 
 export const POLICY_RULES = [
@@ -35,6 +37,9 @@ export const POLICY_RULES = [
   "fuse-weakened",
   "remote-enabled",
   "new-unsafe-switch",
+  "new-open-external",
+  "permission-handler-grants-all",
+  "csp-weakened",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
 
@@ -44,6 +49,9 @@ const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set([
   "fuse-weakened",
   "remote-enabled",
   "new-unsafe-switch",
+  "new-open-external",
+  "permission-handler-grants-all",
+  "csp-weakened",
 ]);
 
 export type RuleLevel = "fail" | "warn" | "off";
@@ -429,6 +437,9 @@ const KIND_LISTS: Record<string, ReadonlySet<string>> = {
     "bridgeExposures",
     "remoteEnabled",
     "switches",
+    "openExternal",
+    "permissionHandlers",
+    "csp",
     "windows",
     "endpoints",
     "urls",
@@ -457,6 +468,9 @@ const DEFAULT_KEYS: Record<string, string> = {
   bridgeExposures: "file+api+member+exposed",
   remoteEnabled: "file+kind+targetKind+window",
   switches: "file+kind+targetKind+name",
+  openExternal: "file+targetKind+argumentKind+argument",
+  permissionHandlers: "file+kind+targetKind+session",
+  csp: "file+kind+via",
   interfaces: "file+api+member",
   contextBridge: "api+member",
   windows: "file+windowName",
@@ -725,6 +739,9 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   "fuse-weakened": () => ["runtime"],
   "remote-enabled": () => ["remoteEnabled"],
   "new-unsafe-switch": () => ["switches"],
+  "new-open-external": () => ["openExternal"],
+  "permission-handler-grants-all": () => ["permissionHandlers"],
+  "csp-weakened": () => ["csp"],
 };
 
 /**
@@ -740,6 +757,9 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   "fuse-weakened": () => [],
   "remote-enabled": () => [],
   "new-unsafe-switch": () => [],
+  "new-open-external": () => [],
+  "permission-handler-grants-all": () => [],
+  "csp-weakened": () => [],
 };
 
 /**
@@ -1133,6 +1153,318 @@ function switchDraft(
   }
 }
 
+/**
+ * The after side's items behind a row (its label holds the key fields only), or null when the
+ * label cannot be read back or no item matches it.
+ */
+function afterItems(
+  r: ReleaseComparison,
+  row: ChangeRow,
+  sides: CheckSides | undefined,
+): Array<Record<string, unknown>> | null {
+  const keyed = fieldsOf(r, row);
+  if (!keyed) return null;
+  const matches = (sides?.items.b[row.collection] ?? []).filter(
+    (i): i is Record<string, unknown> =>
+      // a field the item does not have is written `null` in the label
+      isRecord(i) && Object.keys(keyed).every((n) => String(i[n] ?? null) === String(keyed[n])),
+  );
+  return matches.length ? matches : null;
+}
+
+/** A row of a security list whose item could not be read back: an unknown finding. */
+function unreadDraft(rule: PolicyRuleId, row: ChangeRow, what: string): Draft {
+  return {
+    rule,
+    identity: `label\0${row.collection}\0${row.key}`,
+    row,
+    key: row.key,
+    message: `${what} (${plain(row.key)}): the row could not be read back from the comparison.`,
+    where: row.where,
+    unknown: true,
+  };
+}
+
+/** How often each identity occurs. */
+function counts(ids: readonly string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const id of ids) out.set(id, (out.get(id) ?? 0) + 1);
+  return out;
+}
+
+const changedRows = (r: ReleaseComparison, collection: string): ChangeRow[] =>
+  r.changes.filter(
+    (row) =>
+      row.collection === collection &&
+      (row.change === "added" || row.change === "changed" || row.change === "unknown"),
+  );
+
+/**
+ * A shell.openExternal call whose URL the app does not fix (`openExternalRisk`) that the before
+ * build does not have: by receiver kind and as much of the URL as is read, in any file. A call on
+ * a receiver not read as Electron's shell is unknown.
+ */
+const openIdentity = (f: Record<string, unknown>): string =>
+  `open\0${String(f["targetKind"])}\0${String(f["argumentKind"])}\0${String(f["argument"])}`;
+
+function openExternalDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  // a multiset: a second call of the same kind is new even when the before build had one
+  const before = counts(beforeItems(r, "openExternal", sides).map(openIdentity));
+  const after = counts((sides?.items.b["openExternal"] ?? []).filter(isRecord).map(openIdentity));
+  for (const row of changedRows(r, "openExternal")) {
+    const items = afterItems(r, row, sides);
+    if (!items) {
+      out.push(unreadDraft("new-open-external", row, "A shell.openExternal call may be new"));
+      continue;
+    }
+    for (const f of items) {
+      const risk = openExternalRisk(f as unknown as OpenExternalRow);
+      const identity = openIdentity(f);
+      if (!risk || (after.get(identity) ?? 1) <= (before.get(identity) ?? 0)) continue;
+      // one finding per identity, with the place of each new row (collect merges the places)
+      const unknown = risk === "unknown" || row.change === "unknown";
+      const url =
+        f["argumentKind"] === "inferred" && typeof f["argument"] === "string"
+          ? `a URL starting ${plain(JSON.stringify(f["argument"]))}`
+          : f["argumentKind"] === "inferred"
+            ? "one of a few URLs"
+            : "a URL that is not read";
+      out.push({
+        rule: "new-open-external",
+        identity,
+        row,
+        key: `${String(f["targetKind"])} openExternal ${String(f["argumentKind"])}${typeof f["argument"] === "string" ? ` ${String(f["argument"])}` : ""}`,
+        message: unknown
+          ? `The after build may newly open ${url} with shell.openExternal: ${f["targetKind"] === "unknown" ? "the receiver is not read as Electron's shell" : plain(row.reason ?? "the comparison could not tell")}.`
+          : `The after build newly opens ${url} with shell.openExternal; its scheme is not fixed to http, https or mailto.`,
+        where: row.where,
+        unknown,
+      });
+    }
+  }
+  return out;
+}
+
+/** The request handlers of a list of permissionHandlers items. */
+const requests = (list: Array<Record<string, unknown>>): Array<Record<string, unknown>> =>
+  list.filter((f) => f["kind"] === "request");
+
+/**
+ * A permission handler that grants every request (`permissionRisk`) that the before build does
+ * not have (by kind, session and receiver kind), and a before build's request handlers gone
+ * without one left in the after build (Electron then grants every request).
+ */
+const permissionIdentity = (f: Record<string, unknown>): string =>
+  `permission\0${String(f["kind"])}\0${String(f["targetKind"])}\0${String(f["session"])}\0${String(f["grants"])}`;
+
+function permissionDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const beforeList = beforeItems(r, "permissionHandlers", sides);
+  const before = counts(beforeList.map(permissionIdentity));
+  const afterCounts = counts(
+    (sides?.items.b["permissionHandlers"] ?? []).filter(isRecord).map(permissionIdentity),
+  );
+  for (const row of changedRows(r, "permissionHandlers")) {
+    const items = afterItems(r, row, sides);
+    if (!items) {
+      out.push(
+        unreadDraft("permission-handler-grants-all", row, "A permission handler may grant all"),
+      );
+      continue;
+    }
+    for (const f of items) {
+      const risk = permissionRisk(f as unknown as PermissionHandlerRow);
+      const identity = permissionIdentity(f);
+      if (!risk || (afterCounts.get(identity) ?? 1) <= (before.get(identity) ?? 0)) continue;
+      const unknown = risk === "unknown" || row.change === "unknown";
+      const on = f["session"] ? String(f["session"]) : String(f["target"] ?? "a session");
+      out.push({
+        rule: "permission-handler-grants-all",
+        identity,
+        row,
+        key: `${String(f["kind"])} handler on ${on} grants ${String(f["grants"])}`,
+        message: unknown
+          ? `The after build's permission ${String(f["kind"])} handler on ${plain(on)} may grant every request: ${f["grants"] === "unknown" ? "what it answers is not read" : "the receiver is not read as a session"}.`
+          : `The after build's permission ${String(f["kind"])} handler on ${plain(on)} grants every request, and the before build's did not.`,
+        where: row.where,
+        unknown,
+      });
+    }
+  }
+  // request handlers gone: for a session that had one, or anywhere when none is left, Electron
+  // grants every request again. Attached to a removed (else any changed) row of the list.
+  const after = (sides?.items.b["permissionHandlers"] ?? []).filter(isRecord);
+  const anchor =
+    r.changes.find((row) => row.collection === "permissionHandlers" && row.change === "removed") ??
+    r.changes.find((row) => row.collection === "permissionHandlers");
+  const removedWhere = r.changes
+    .filter((row) => row.collection === "permissionHandlers" && row.change === "removed")
+    .flatMap((row) => row.where);
+  if (sides?.items.a["permissionHandlers"] && sides.items.b["permissionHandlers"] && anchor) {
+    const sessionsOf = (list: Array<Record<string, unknown>>): Set<string> =>
+      new Set(
+        requests(list)
+          .filter((f) => f["targetKind"] === "session")
+          .map((f) => String(f["session"])),
+      );
+    const afterSessions = sessionsOf(after);
+    if (requests(beforeList).length && !requests(after).length)
+      out.push({
+        rule: "permission-handler-grants-all",
+        identity: "permission\0removed",
+        row: anchor,
+        key: "setPermissionRequestHandler removed",
+        message:
+          "The before build sets a permission request handler and the after build sets none: Electron grants every permission a page asks for.",
+        where: removedWhere.length ? removedWhere : anchor.where,
+        unknown: false,
+      });
+    else
+      for (const session of sessionsOf(beforeList)) {
+        if (afterSessions.has(session)) continue;
+        // a handler on a receiver not read as a session may still be this one
+        const maybe = requests(after).some((f) => f["targetKind"] !== "session");
+        out.push({
+          rule: "permission-handler-grants-all",
+          identity: `permission\0removed\0${session}`,
+          row: anchor,
+          key: `setPermissionRequestHandler removed for ${session}`,
+          message: `The before build sets a permission request handler on session ${plain(session)} and the after build sets none there${maybe ? " that is read as that session" : ""}: Electron grants every permission its pages ask for.`,
+          where: removedWhere.length ? removedWhere : anchor.where,
+          unknown: maybe,
+        });
+      }
+  }
+  return out;
+}
+
+/** A CSP row that applies to the app's pages: enforced, in a <meta> tag or onHeadersReceived. */
+const appliedCsp = (f: unknown): boolean =>
+  isRecord(f) &&
+  f["reportOnly"] !== true &&
+  f["doubt"] === undefined &&
+  ((f["kind"] === "meta" && f["outsideHead"] !== true) || f["via"] === "onHeadersReceived");
+
+/** Where a policy is set: weaknesses are compared per policy, not across the build. */
+const cspPlace = (f: Record<string, unknown>): string =>
+  `${String(f["file"])}\0${String(f["kind"])}\0${String(f["via"])}`;
+
+/**
+ * A Content Security Policy weakness (`cspWeaknesses`) that no enforced policy of the before
+ * build has, a policy whose value is not read, and a before build's applied policies gone
+ * without one left in the after build.
+ */
+function cspDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const beforeList = beforeItems(r, "csp", sides).filter((f) => f["reportOnly"] !== true);
+  // the weaknesses of each applied policy of the before build, by where it is set; a policy
+  // that may not apply (a header elsewhere, a <meta> after the head) is no baseline
+  const known = new Map<string, Set<string>>();
+  const unreadBefore = new Set<string>();
+  for (const f of beforeList.filter(appliedCsp)) {
+    const place = cspPlace(f);
+    if (f["weaknesses"] === null) unreadBefore.add(place);
+    const set = known.get(place) ?? new Set<string>();
+    if (Array.isArray(f["weaknesses"])) for (const w of f["weaknesses"]) set.add(String(w));
+    known.set(place, set);
+  }
+  for (const row of changedRows(r, "csp")) {
+    const items = afterItems(r, row, sides);
+    if (!items) {
+      out.push(unreadDraft("csp-weakened", row, "A Content Security Policy may be weaker"));
+      continue;
+    }
+    for (const f of items) {
+      const risk = cspRisk(f as unknown as CspRow);
+      if (!risk) continue;
+      const where = `${String(f["kind"]) === "meta" ? "<meta> tag" : "header"} in ${plain(String(f["file"]))}`;
+      const place = cspPlace(f);
+      if (risk === "unknown") {
+        if (unreadBefore.has(place) && appliedCsp(f)) continue;
+        out.push({
+          rule: "csp-weakened",
+          identity: `csp\0unread\0${place}`,
+          row,
+          key:
+            f["weaknesses"] === null
+              ? `${String(f["kind"])} policy not read`
+              : `${String(f["kind"])} policy that may not apply`,
+          message:
+            f["weaknesses"] === null
+              ? `The after build's Content-Security-Policy ${where} is not read (computed at run time), so whether it is weaker is not known.`
+              : `The after build's Content-Security-Policy ${where} is weak (${plain((f["weaknesses"] as unknown[]).map(String).join("; "))}), and whether it applies is not known: ${plain(f["outsideHead"] === true ? "it stands after the document's head" : typeof f["doubt"] === "string" ? f["doubt"] : "it is not set in a webRequest.onHeadersReceived listener")}.`,
+          where: row.where,
+          unknown: true,
+        });
+        continue;
+      }
+      const had = known.get(place);
+      for (const w of (f["weaknesses"] as unknown[]).map(String)) {
+        if (had?.has(w)) continue;
+        out.push({
+          rule: "csp-weakened",
+          identity: `csp\0${place}\0${w}`,
+          row,
+          key: w,
+          message: `The after build's Content-Security-Policy ${where} is weaker: ${plain(w)}, which the before build's policy there does not allow.`,
+          where: row.where,
+          // a policy that may not apply (a header outside onHeadersReceived) is unknown
+          unknown: row.change === "unknown" || !appliedCsp(f),
+        });
+      }
+    }
+  }
+  const after = sides?.items.b["csp"];
+  // a place (a page's <meta>, a listener's header) whose applied policy is gone while others
+  // remain: each page is judged on its own, so another page's policy does not excuse it
+  if (after && sides?.items.a["csp"] && after.some(appliedCsp)) {
+    const afterPlaces = new Set(
+      after.filter(appliedCsp).map((f) => cspPlace(f as Record<string, unknown>)),
+    );
+    for (const f of beforeList.filter(appliedCsp)) {
+      const place = cspPlace(f);
+      if (afterPlaces.has(place)) continue;
+      const anchor =
+        r.changes.find(
+          (row) => row.collection === "csp" && row.where.some((w) => w.file === String(f["file"])),
+        ) ?? r.changes.find((row) => row.collection === "csp");
+      if (!anchor) continue;
+      out.push({
+        rule: "csp-weakened",
+        identity: `csp\0removed\0${place}`,
+        row: anchor,
+        key: `Content-Security-Policy removed from ${String(f["file"])}`,
+        message: `The before build's Content-Security-Policy ${String(f["kind"]) === "meta" ? "<meta> tag" : "header"} in ${plain(String(f["file"]))} applies, and the after build sets none there that is read as applying (removed, report-only, outside the head, or set where it may not apply). A page whose file was removed or renamed is reported too.`,
+        where: anchor.where,
+        unknown: false,
+      });
+    }
+  }
+  // no applied policy left (removed, made report-only, moved out of the head, put behind a
+  // condition): attached to a removed row of the list, else any changed one
+  const removed = r.changes.filter((row) => row.collection === "csp" && row.change === "removed");
+  const anchor = removed[0] ?? r.changes.find((row) => row.collection === "csp");
+  if (
+    after &&
+    sides?.items.a["csp"] &&
+    beforeList.some(appliedCsp) &&
+    !after.some(appliedCsp) &&
+    anchor
+  )
+    out.push({
+      rule: "csp-weakened",
+      identity: "csp\0removed",
+      row: anchor,
+      key: "Content-Security-Policy removed",
+      message:
+        "The before build sets a Content Security Policy that applies (a <meta> tag in the head or an onHeadersReceived header) and the after build sets none that is read as applying (removed, report-only, outside the head, or set where it may not apply).",
+      where: removed.length ? removed.flatMap((row) => row.where) : anchor.where,
+      unknown: false,
+    });
+  return out;
+}
+
 function windowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
   const out: Draft[] = [];
   for (const w of r.overview.windowChanges) {
@@ -1493,6 +1825,9 @@ export function evaluatePolicy(
     if (rule === "fuse-weakened") drafts.push(...fuseDrafts(r, sides));
     if (rule === "remote-enabled") drafts.push(...remoteDrafts(r, sides));
     if (rule === "new-unsafe-switch") drafts.push(...switchDrafts(r, sides));
+    if (rule === "new-open-external") drafts.push(...openExternalDrafts(r, sides));
+    if (rule === "permission-handler-grants-all") drafts.push(...permissionDrafts(r, sides));
+    if (rule === "csp-weakened") drafts.push(...cspDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -1656,6 +1991,9 @@ const RULE_LISTS = [
   "bridgeExposures",
   "remoteEnabled",
   "switches",
+  "openExternal",
+  "permissionHandlers",
+  "csp",
   "windows",
   "endpoints",
   "urls",
