@@ -4,6 +4,7 @@ import { resolve as resolvePath } from "node:path";
 import {
   analyzeTarget,
   type AnalyzeOptions,
+  type AnalysisProgress,
   type AnyAnalysis,
   type AnalysisData,
   type JsScanRequest,
@@ -209,6 +210,11 @@ export class Session {
       analysisTimeoutMs?: number;
       /** V8 old-space cap for the analysis worker in MiB (default 2048). */
       maxWorkerHeapMb?: number;
+      /**
+       * Told how far an analysis on the caller's thread has got (CLI progress line). Not used
+       * with `worker`, whose analysis runs where a callback cannot reach.
+       */
+      onProgress?: AnalysisProgress;
     } = {},
   ) {}
 
@@ -284,7 +290,10 @@ export class Session {
             signal: controller.signal,
             ...(e.next ? { analyze: e.next } : {}),
           })
-        : analyzeTarget(e.loaded, e.next ?? {});
+        : analyzeTarget(e.loaded, {
+            ...e.next,
+            ...(this.options.onProgress ? { onProgress: this.options.onProgress } : {}),
+          });
       delete e.next;
       const pending: Pending = { controller, waiters: 0, promise: run };
       pending.promise = run.then(

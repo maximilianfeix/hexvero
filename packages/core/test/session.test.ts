@@ -52,6 +52,32 @@ describe("Session", () => {
     return (await session.open(join(dir, name))).id;
   };
 
+  it("reports scan progress to onProgress without changing the analysis", async () => {
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({ name: "p", main: "main.js" }),
+      "main.js": 'require("./a.js"); require("electron").ipcMain.on("m", () => {});\n',
+    };
+    for (const n of ["a", "b", "c"])
+      files[`${n}.js`] = `require("electron").ipcRenderer.send("${n}");\n`;
+    const path = join(dir, "progress.asar");
+    writeFileSync(path, buildAsar(files));
+    const calls: Array<[string, number, number]> = [];
+    const watched = new Session({
+      onProgress: (phase, done, total) => void calls.push([phase, done, total]),
+    });
+    const withProgress = await watched.analyze((await watched.open(path)).id);
+    const plain = new Session();
+    const without = await plain.analyze((await plain.open(path)).id);
+    expect(calls).toEqual([
+      ["scanning", 1, 4],
+      ["scanning", 2, 4],
+      ["scanning", 3, 4],
+      ["scanning", 4, 4],
+      ["linking", 4, 4],
+    ]);
+    expect({ ...withProgress, durationMs: 0 }).toEqual({ ...without, durationMs: 0 });
+  });
+
   it("opens files with content-derived ids and analyzes once", async () => {
     const path = join(dir, "lib.so");
     writeFileSync(path, buildElf());

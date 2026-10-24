@@ -6475,6 +6475,8 @@ export function analyzeJavaScriptTree(
     onFacts?: (facts: JsScanFacts) => void;
     /** Token facts already read for some files (in worker threads); the rest is read here. */
     prepared?: ReadonlyMap<string, FileTokenFacts>;
+    /** Files scanned so far in this run (and "linking" once they are), for a progress line. */
+    onProgress?: (phase: "scanning" | "linking", done: number, total: number) => void;
     /** Budgets of the analysis, for tests that reach one with a small input. */
     budgets?: {
       /** Work of the wrapper replacement scan of the application (default 3,000,000). */
@@ -6627,6 +6629,7 @@ export function analyzeJavaScriptTree(
     if (options.all && taken > 0 && taken % batch === 0) options.onFacts?.(sync());
     facts.scanned.push(file.path);
     taken++;
+    options.onProgress?.("scanning", taken, Math.min(todo.length, runFiles));
     if (file.size > maxFileBytes) {
       skipped++;
       if (facts.skippedFiles.length < MAX_NAMED_FILES) facts.skippedFiles.push(file.path);
@@ -7255,6 +7258,7 @@ export function analyzeJavaScriptTree(
       }
     }
   }
+  options.onProgress?.("linking", taken, taken);
   options.onFacts?.(sync());
   for (const limitation of facts.limitations) limitations.push(limitation);
   for (const [code, count] of Object.entries(facts.limitationsUnlisted ?? {}))

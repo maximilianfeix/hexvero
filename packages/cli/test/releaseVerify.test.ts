@@ -15,7 +15,7 @@ const versioned = [
   "packages/server/package.json",
   "packages/cli/package.json",
   "packages/web/package.json",
-  "packages/cli/src/index.ts",
+  "packages/cli/src/usage.ts",
   "packages/mcp/src/index.ts",
   "packages/core/src/version.ts",
   "server.json",

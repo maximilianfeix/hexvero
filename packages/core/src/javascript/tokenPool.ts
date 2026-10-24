@@ -36,6 +36,8 @@ function workerEntry(): string | null {
 export async function readTokensInParallel(
   input: ReadonlyArray<{ path: string; size: number; read: () => string | null }>,
   threads: number,
+  /** Called with the number of files handed back so far, for a progress line. */
+  onDone?: (done: number) => void,
 ): Promise<Map<string, FileTokenFacts>> {
   const out = new Map<string, FileTokenFacts>();
   // Largest first: the wall time is bounded by the largest file, so it must not start last.
@@ -44,6 +46,7 @@ export async function readTokensInParallel(
   if (!entry || threads < 1 || files.length < 2) return out;
   const workers: Worker[] = [];
   let next = 0;
+  let finished = 0;
   try {
     await Promise.all(
       Array.from({ length: Math.min(threads, files.length) }, async () => {
@@ -75,6 +78,7 @@ export async function readTokensInParallel(
             worker.once("exit", onError);
             worker.postMessage({ id, path: file.path, source });
           });
+          onDone?.(++finished);
           // A worker that failed is not used again; its remaining files are read by the scan.
           if (!reply) return;
           if (reply.facts) out.set(file.path, reply.facts);

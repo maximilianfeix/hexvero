@@ -361,7 +361,7 @@ describe("hexvero CLI", () => {
   it("prints help and version", async () => {
     const io = capture();
     expect(await main([], io)).toBe(2);
-    expect(io.stderr[0]).toContain("Usage: hexvero");
+    expect(io.stderr[0]).toContain("Start here:"); // the short start screen; firstrun.test.ts
     const help = capture();
     expect(await main(["--help"], help)).toBe(0);
     expect(help.stdout[0]).toContain("Usage: hexvero");

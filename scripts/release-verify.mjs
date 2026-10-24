@@ -33,7 +33,7 @@ const constant = (file, pattern, label) => {
   if (found !== version)
     problems.push(`${label} in ${file} is ${found ?? "missing"}, expected ${version}`);
 };
-constant("packages/cli/src/index.ts", /export const VERSION = "([^"]+)"/, "VERSION");
+constant("packages/cli/src/usage.ts", /export const VERSION = "([^"]+)"/, "VERSION");
 constant("packages/mcp/src/index.ts", /export const SERVER_VERSION = "([^"]+)"/, "SERVER_VERSION");
 constant("packages/core/src/version.ts", /export const CORE_VERSION = "([^"]+)"/, "CORE_VERSION");
 for (const file of ["docs/ci.md", "site/index.html", "README.md", "docs/mcp.md"])

@@ -7,6 +7,36 @@ export interface Io {
   color: boolean;
   /** How the user started hexvero, for the commands it suggests (`npx hexvero` under npx). */
   invocation?: string;
+  /**
+   * One status line that replaces itself (progress of a long analysis); null clears it. Only set
+   * when stderr is a terminal, so pipes, CI logs and tests never see it.
+   */
+  status?: (line: string | null) => void;
+}
+
+/** The terminal's streams: color only on a TTY without NO_COLOR, a status line only on a TTY. */
+export function defaultIo(): Io {
+  const io: Io = {
+    out: (text) => process.stdout.write(`${terminalSafe(text)}\n`),
+    err: (text) => process.stderr.write(`${terminalSafe(text)}\n`),
+    color: Boolean(process.stdout.isTTY) && !process.env["NO_COLOR"],
+    invocation: invocationFrom(process.env),
+  };
+  if (process.stderr.isTTY) {
+    let shown = false;
+    io.status = (line) => {
+      // \r and "erase line" are hexvero's own; the line itself is built from numbers and words
+      if (line === null) {
+        if (shown) process.stderr.write("\r\u001b[2K");
+        shown = false;
+        return;
+      }
+      const width = Math.max(20, (process.stderr.columns || 80) - 1);
+      process.stderr.write(`\r\u001b[2K${terminalSafe(line).slice(0, width)}`);
+      shown = true;
+    };
+  }
+  return io;
 }
 
 /** A command to suggest, written the way this process was started. */

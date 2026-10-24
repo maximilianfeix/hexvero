@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import {
   AnalysisError,
@@ -19,6 +20,7 @@ import {
   shellWord,
   tracePath,
   writeFileNoFollow,
+  type AnalysisProgress,
   type ProviderName,
   type ProviderOperation,
 } from "@hexvero/core";
@@ -30,25 +32,33 @@ import {
   formatLimitations,
   heading,
   hexdump,
-  invocationFrom,
   paint,
   printable,
   table,
-  terminalSafe,
   toJson,
+  defaultIo,
   type Io,
 } from "./format.js";
+import { startProgress } from "./progress.js";
+import { installerHint } from "./quick.js";
+import { startScreen, VERSION } from "./usage.js";
 
-export const VERSION = "0.11.1";
+export { VERSION } from "./usage.js";
+export { defaultIo } from "./format.js";
 
 const HELP = `hexvero ${VERSION} — Electron release diff for security review: IPC, bridge, windows, hosts.
 Also inspects binaries and other app formats. Reads files only; nothing is executed.
 
 Usage: hexvero <command> [options]
+       hexvero <path>                           Quick look at one build: runtime, counts, top
+                                                findings (--json: the same as analyze --json);
+                                                write ./name for a file named like a command
 
 Commands
   demo [dir]                                    Copy two builds of an example Electron app into dir
                                                 (default ./hexvero-demo) and show what changed
+  apps [--json]                                 List the Electron apps installed on this machine
+                                                (read-only) with the command that reads each
   analyze <path> [--json] [--out file.json]     Summary, findings, limitations and overview
           [--continue | --all | --include p,q]  Large JavaScript apps are read in batches: read the
           [--batch n] [--fresh]                 next one, all that remain, or only files under the
@@ -116,8 +126,30 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
       return 0;
     }
     if (!args.command) {
-      io.err(HELP);
+      io.err(startScreen(io));
       return 2;
+    }
+    if (args.command === "help") {
+      io.out(HELP);
+      return 0;
+    }
+    // A status line while a large build is read: only on a terminal (io.status), never with
+    // --json, and gone before the first line of output.
+    if (!args.flags["json"] && !QUIET_COMMANDS.has(args.command)) {
+      const progress = startProgress(io);
+      if (progress.onProgress) {
+        const base = io;
+        io = {
+          ...base,
+          out: (t) => (progress.stop(), base.out(t)),
+          err: (t) => (progress.stop(), base.err(t)),
+        };
+        try {
+          return await run(args, io, progress.onProgress);
+        } finally {
+          progress.stop();
+        }
+      }
     }
     return await run(args, io);
   } catch (error) {
@@ -154,12 +186,16 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
         );
       else {
         const candidates = (error.details as { candidates?: unknown } | undefined)?.candidates;
+        // an installer given where a build was expected (a .dmg, Setup.exe, an AppImage)
+        const given =
+          args!.command && /^[a-z]+$/.test(args!.command) ? args!.positionals[0] : args!.command;
+        const installer = given && existsSync(given) ? installerHint(given) : null;
         io.err(
           `${paint(io, "red", `error (${error.code}):`)} ${printable(error.message)}${
             Array.isArray(candidates) && candidates.length
               ? `\n  did you mean: ${printable(candidates.slice(0, 5).join(", "))}`
               : ""
-          }`,
+          }${installer ? `\n  ${paint(io, "yellow", "!")} ${printable(installer)}` : ""}`,
         );
       }
       return 1;
@@ -180,8 +216,21 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
   }
 }
 
-async function run(args: ParsedArgs, io: Io): Promise<number> {
-  const session = new Session();
+/** Commands that read no build, so they get no progress line. */
+const QUIET_COMMANDS = new Set(["mcp", "ui", "doctor", "cache", "setup", "apps"]);
+
+/** The command names --help lists, for "did you mean" after a typo. */
+const COMMAND_NAMES = [
+  ...new Set([...HELP.matchAll(/^ {2}([a-z]+)\b/gm)].map((m) => m[1]!).concat("help", "list")),
+];
+
+async function run(
+  args: ParsedArgs,
+  io: Io,
+  onProgress?: AnalysisProgress,
+  quick = false,
+): Promise<number> {
+  const session = new Session(onProgress ? { onProgress } : {});
   const json = Boolean(args.flags["json"]);
   const need = (index: number, name: string): string => {
     const v = args.positionals[index];
@@ -260,6 +309,10 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
           }),
         );
         return 0;
+      }
+      if (quick) {
+        const { printQuickLook } = await import("./quick.js");
+        return printQuickLook(io, session, target, analysis, collections, next, shown);
       }
       const facts =
         target.info.format === "directory"
@@ -422,6 +475,12 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
     case "compare": {
       const a = await session.open(need(0, "a"));
       const b = await session.open(need(1, "b"));
+      if (!json) {
+        // a warning, not a refusal: an app may be renamed between releases
+        const { differentApps } = await import("./quick.js");
+        const warning = await differentApps(session, a.id, b.id);
+        if (warning) io.err(`${paint(io, "yellow", "!")} ${printable(warning)}`);
+      }
       const report = flagString(args.flags, "report");
       if (report !== undefined) {
         if (args.positionals[2] !== undefined)
@@ -911,8 +970,22 @@ async function run(args: ParsedArgs, io: Io): Promise<number> {
         json,
       });
     }
-    default:
-      throw new UsageError(`unknown command "${args.command}"`);
+    case "apps": {
+      const { runApps } = await import("./apps.js");
+      return runApps(io, json);
+    }
+    default: {
+      // `hexvero <path>`: every command above comes first, so a file named like one needs ./name
+      const word = args.command!;
+      if (args.positionals.length === 0 && existsSync(word))
+        return run({ ...args, command: "analyze", positionals: [word] }, io, onProgress, true);
+      if (args.positionals.length > 0 && existsSync(word))
+        throw new UsageError(
+          `"${word}" is a path, and a path stands alone; to compare two builds: hexvero compare <a> <b>`,
+        );
+      const { notFound } = await import("./quick.js");
+      return notFound(io, word, COMMAND_NAMES);
+    }
   }
 }
 
@@ -957,13 +1030,4 @@ function formatBytes(n: number): string {
   }
   const shown = v.toFixed(v >= 100 ? 0 : 1);
   return `${shown === "1024.0" || shown === "1024" ? `${(v / 1024).toFixed(1)} ${units[Math.min(i + 1, units.length - 1)]}` : `${shown} ${units[i]}`} (${n} bytes)`;
-}
-
-export function defaultIo(): Io {
-  return {
-    out: (text) => process.stdout.write(`${terminalSafe(text)}\n`),
-    err: (text) => process.stderr.write(`${terminalSafe(text)}\n`),
-    color: Boolean(process.stdout.isTTY) && !process.env["NO_COLOR"],
-    invocation: invocationFrom(process.env),
-  };
 }
