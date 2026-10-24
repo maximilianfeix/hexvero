@@ -100,8 +100,9 @@ describe("first run", () => {
     expect(text).toContain("1 window · 6 bridge members · 6 IPC channels · 3 external hosts");
     expect(text).toContain("Top findings");
     expect(text).toContain("6 members exposed to pages as window.notesdesk");
-    expect(text).toMatch(/Next\n {2}hexvero analyze \S*notesdesk-1\.5\.0\.asar\n/);
-    expect(text).toMatch(/hexvero compare \S*notesdesk-1\.5\.0\.asar <newer build>/);
+    // the path is quoted where the shell needs it (backslashes on Windows)
+    expect(text).toMatch(/Next\n {2}hexvero analyze "?\S*notesdesk-1\.5\.0\.asar"?\n/);
+    expect(text).toMatch(/hexvero compare "?\S*notesdesk-1\.5\.0\.asar"? <newer build>/);
     expect(io.stderr).toEqual([]);
     // shorter than analyze, and no explanation lines
     const full = capture();
