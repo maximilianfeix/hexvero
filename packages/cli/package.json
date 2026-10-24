@@ -1,7 +1,7 @@
 {
   "name": "hexvero",
   "version": "0.11.1",
-  "description": "Electron release diff for security review and audit: compare two builds (app.asar, .app, install directory, release ZIP) and see what changed in IPC, contextBridge, window settings, network hosts and storage, with file and line. CI check with SARIF, MCP server, local web UI. Reads files only, never runs the app.",
+  "description": "Know what changed inside your Electron release. Electron release diff for security review: compare two builds (app.asar, .app, install directory, release ZIP) and see what changed in IPC, contextBridge, window settings, network hosts and storage, with file and line on both sides. CI policy gate with SARIF, MCP server, local web UI. Reads files only, never runs the app.",
   "keywords": [
     "apk",
     "asar",

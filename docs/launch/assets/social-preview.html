@@ -1,4 +1,8 @@
 <!doctype html>
+<!-- Source of docs/social-preview.png and site/social-preview.png (1200×630). Render with a
+     headless browser at 1200×630, e.g.
+     chrome --headless=new --hide-scrollbars --window-size=1200,630 --screenshot=out.png file://…/social-preview.html
+     The rows on the right are real `npx hexvero@0.11.1 demo` and `check` output, shortened. -->
 <html>
   <head>
     <meta charset="utf-8" />
@@ -20,83 +24,143 @@
       .l {
         position: absolute;
         left: 64px;
-        top: 70px;
-        width: 520px;
+        top: 64px;
+        width: 500px;
       }
       .mark {
         display: flex;
         align-items: center;
-        gap: 14px;
+        gap: 12px;
         font-weight: 600;
-        font-size: 30px;
+        font-size: 32px;
         letter-spacing: -0.01em;
       }
       h1 {
-        font-size: 54px;
-        line-height: 1.06;
+        font-size: 60px;
+        line-height: 1.04;
         letter-spacing: -0.03em;
-        margin: 40px 0 22px;
+        margin: 44px 0 24px;
       }
       p {
-        font-size: 22px;
-        line-height: 1.45;
+        font-size: 24px;
+        line-height: 1.4;
         color: #9a9ea7;
         margin: 0;
       }
+      .mono {
+        font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+      }
       .cmd {
-        margin-top: 34px;
+        margin-top: 40px;
         display: inline-block;
-        font:
-          500 22px "IBM Plex Mono",
-          ui-monospace,
-          Menlo,
-          monospace;
+        font-size: 24px;
+        font-weight: 500;
         background: #23262c;
         border: 1px solid #31353d;
         border-radius: 10px;
-        padding: 12px 18px;
+        padding: 12px 20px;
       }
       .cmd b {
         color: #6c707a;
         font-weight: 400;
       }
-      .shot {
+      .card {
         position: absolute;
-        left: 640px;
-        top: 60px;
-        width: 760px;
-        height: 620px;
+        left: 610px;
+        top: 64px;
+        width: 528px;
+        height: 502px;
+        background: #23262c;
         border: 1px solid #31353d;
-        border-radius: 14px;
-        overflow: hidden;
+        border-radius: 16px;
         box-shadow: 0 30px 80px -30px #000;
+        box-sizing: border-box;
+        font-size: 19px;
       }
-      .shot img {
-        width: 1250px;
-        margin: -205px 0 0 -222px;
+      .head,
+      .foot {
+        display: flex;
+        justify-content: space-between;
+        padding: 22px 26px;
+        font-size: 16px;
+        color: #9a9ea7;
+      }
+      .head {
+        border-bottom: 1px solid #31353d;
+      }
+      .foot {
+        border-top: 1px solid #31353d;
+        color: #e5736f;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+      }
+      .row {
+        padding: 13px 26px 13px 26px;
+        line-height: 1.3;
+      }
+      .row.hl {
+        background: #3a2f17;
+      }
+      .s {
+        display: inline-block;
+        width: 26px;
+      }
+      .add {
+        color: #8fc98a;
+      }
+      .unk {
+        color: #f2b84b;
+      }
+      .chg {
+        color: #9a9ea7;
+      }
+      .at {
+        display: block;
+        margin-left: 26px;
+        font-size: 15px;
+        color: #9a9ea7;
       }
     </style>
   </head>
   <body>
     <div class="l">
       <div class="mark">
-        <svg width="40" height="40" viewBox="0 0 32 32">
-          <rect width="32" height="32" rx="7" fill="#2a2e35" />
-          <path
-            d="M9 8v16M23 8v16M9 16h14"
-            stroke="#f2b84b"
-            stroke-width="3.2"
-            stroke-linecap="round"
-          /></svg
+        <svg width="52" height="52" viewBox="0 0 64 64">
+          <g fill="none" stroke="#f2b84b" stroke-linecap="round">
+            <path d="M20 16V48 M44 16V48 M20 30H44" stroke-width="6.5" />
+            <circle cx="28" cy="42" r="2.5" stroke-width="1.5" />
+            <circle cx="36" cy="42" r="3.25" fill="#f2b84b" stroke="none" />
+          </g></svg
         >hexvero
       </div>
       <h1>Know what changed inside your Electron release.</h1>
-      <p>
-        New interfaces, window settings and hosts, with file and line on both sides, what could not
-        be established, and a CI policy gate. Locally, without executing the target.
-      </p>
-      <div class="cmd"><b>$ </b>npx hexvero demo</div>
+      <p>IPC, preload bridge, window settings and hosts, with file and line on both sides.</p>
+      <div class="cmd mono"><b>$ </b>npx hexvero demo</div>
     </div>
-    <div class="shot"><img src="../../screenshots/ui-compare.png" /></div>
+    <div class="card mono">
+      <div class="head"><span>notesdesk 1.4.0 → 1.5.0</span><span>nothing executed</span></div>
+      <div class="row">
+        <span class="s add">+</span>notesdesk.checkUpdate<span class="at"
+          >preload.js:9 · handler main.js:30 · link direct</span
+        >
+      </div>
+      <div class="row">
+        <span class="s add">+</span>update:check<span class="at">main.js:30</span>
+      </div>
+      <div class="row hl">
+        <span class="s unk">?</span>shell:open<span class="at">unknown, not removed</span>
+      </div>
+      <div class="row">
+        <span class="s chg">~</span>win sandbox: false → true<span class="at">main.js:15</span>
+      </div>
+      <div class="row">
+        <span class="s add">+</span>updates.notesdesk.example<span class="at"
+          >main.js:30 · literal</span
+        >
+      </div>
+      <div class="foot"><span>✗ hexvero check · policy violated</span><span>exit 3</span></div>
+    </div>
   </body>
 </html>

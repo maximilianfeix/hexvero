@@ -18,7 +18,11 @@
 
 ---
 
-**Sachez ce qu'un fichier contient avant de lui faire confiance, de l'exécuter ou de le réimplémenter.** hexvero lit les exécutables, bundles d'applications, bases de données et captures sur votre machine **sans les exécuter**, puis montre ce qu'il a trouvé, avec quel niveau de confiance et ce qu'il n'a pas pu établir. Il réunit une CLI, un serveur MCP compact pour les agents de code et une interface web locale. Les analyseurs n'ont besoin que de Node.js.
+**Sachez ce qui a changé dans votre version Electron.**
+
+> Cette traduction est antérieure au [README en anglais](README.md). Aujourd'hui, hexvero compare surtout deux builds d'une application Electron : canaux IPC, pont preload, réglages de fenêtre et hôtes, avec fichier et ligne des deux côtés.
+
+hexvero lit les exécutables, bundles d'applications, bases de données et captures sur votre machine **sans les exécuter**, puis montre ce qu'il a trouvé, avec quel niveau de confiance et ce qu'il n'a pas pu établir. Il réunit une CLI, un serveur MCP compact pour les agents de code et une interface web locale. Les analyseurs n'ont besoin que de Node.js.
 
 ## Installation
 

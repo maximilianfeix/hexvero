@@ -9,9 +9,9 @@
       name="description"
       content="Diff two builds of an Electron app (app.asar, .app, install directory, release ZIP) for security review: what changed in IPC, contextBridge, window settings and network hosts, with the file and line on both sides, and a CI policy gate. Reads files only; nothing is executed."
     />
-    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://maximilianfeix.github.io/hexvero/" />
-    <meta property="og:title" content="hexvero: Electron release diff for security review" />
+    <meta property="og:title" content="hexvero: know what changed inside your Electron release" />
     <meta
       property="og:description"
       content="What changed in IPC, contextBridge, window settings and hosts between two Electron builds, with file and line on both sides, and a CI policy gate. Reads files only; nothing is executed."
@@ -60,13 +60,12 @@
       </header>
 
       <section style="border-top: 0; padding-top: 36px">
-        <h1>Electron release diff for security review.</h1>
+        <h1>Know what changed inside your Electron release.</h1>
         <p class="lede">
-          What changed between two builds of your Electron app: the IPC channels and
-          <code>contextBridge</code> members pages can call, window settings and network hosts, with
-          the file and line on both sides, what could not be established, and a policy gate for CI.
-          It takes an <code>app.asar</code>, a <code>.app</code>, an install directory or a release
-          ZIP.
+          Diff two builds of an Electron app and see the IPC channels, preload bridge, window
+          settings and network hosts that changed, with file and line on both sides, what could not
+          be established, and a policy gate for CI. It takes an <code>app.asar</code>, a
+          <code>.app</code>, an install directory or a release ZIP.
         </p>
         <div class="cta">
           <a class="btn primary" href="demo/">See an example comparison</a>
