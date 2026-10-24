@@ -87,7 +87,7 @@ Framework.framework`; Windows: folders under `%LOCALAPPDATA%\Programs`, `%LOCALA
 installs such as `Slack\app-4.1.0`), `Program Files` and `Program Files (x86)` that hold
 `resources\app.asar`; Linux: the same under `/opt`, `/usr/lib` and `~/.local/share`. Read-only:
 directory listings and file status, nothing is opened or started. Two folders deep at most, 5,000
-folders, 200 apps and 3 seconds; a cut list says so (`truncated` in JSON). Symbolic links are
+folders (100,000 entries), 200 apps and 3 seconds; a cut list says so (`truncated` in JSON). Symbolic links are
 followed to test a candidate, never to walk further; folders that cannot be listed are skipped and
 counted (`unreadable`). Only examine software you own, that is open source, or that you are
 explicitly authorized to examine ([DISCLAIMER.md](../DISCLAIMER.md)).

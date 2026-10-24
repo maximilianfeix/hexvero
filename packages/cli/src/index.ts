@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import {
   AnalysisError,
@@ -154,7 +154,11 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
     return await run(args, io);
   } catch (error) {
     if (error instanceof UsageError) {
-      const command = args!.command;
+      // a quick look (`hexvero <path> --batch 0`) gets analyze's lines
+      const command =
+        args!.command && !COMMAND_NAMES.includes(args!.command) && entryExists(args!.command)
+          ? "analyze"
+          : args!.command;
       const lines: string[] = [];
       if (command) {
         const all = HELP.split("\n");
@@ -971,21 +975,35 @@ async function run(
       });
     }
     case "apps": {
+      if (args.positionals.length) throw new UsageError("apps takes no arguments");
       const { runApps } = await import("./apps.js");
       return runApps(io, json);
     }
     default: {
       // `hexvero <path>`: every command above comes first, so a file named like one needs ./name
       const word = args.command!;
-      if (args.positionals.length === 0 && existsSync(word))
+      // any entry, a dangling link or one past an unreadable folder too: analyze says what is wrong
+      if (args.positionals.length === 0 && entryExists(word))
         return run({ ...args, command: "analyze", positionals: [word] }, io, onProgress, true);
-      if (args.positionals.length > 0 && existsSync(word))
+      if (args.positionals.length > 0 && entryExists(word))
         throw new UsageError(
           `"${word}" is a path, and a path stands alone; to compare two builds: hexvero compare <a> <b>`,
         );
       const { notFound } = await import("./quick.js");
       return notFound(io, word, COMMAND_NAMES);
     }
+  }
+}
+
+/** True when `path` names something, a dangling symbolic link and an unreadable entry included. */
+function entryExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    // EACCES/EPERM: there may be something there that this user cannot see
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === "EACCES" || code === "EPERM";
   }
 }
 

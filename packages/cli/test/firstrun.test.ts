@@ -135,6 +135,20 @@ describe("first run", () => {
     expect(said).toContain("no file or folder named");
     // the closest name first
     expect(said).toMatch(/did you mean: \S*notesdesk-1\.5\.0\.asar, \S*notesdesk-1\.4\.0\.asar/);
+    // a dangling link is an entry: analyze says what is wrong with it (exit 1), no "did you mean"
+    if (process.platform !== "win32") {
+      const dangling = join(dir, "dangling.asar");
+      symlinkSync(join(dir, "nowhere"), dangling);
+      const io = capture();
+      expect(await main([dangling], io)).toBe(1);
+      expect(io.stderr.join("\n")).toContain("error (not_found)");
+      expect(io.stderr.join("\n")).not.toContain("did you mean");
+    }
+    // a usage error in a quick look shows analyze's lines
+    const batch = capture();
+    expect(await main([v15, "--batch", "0"], batch)).toBe(2);
+    expect(batch.stderr.join("\n")).toContain("analyze <path>");
+    expect(await main(["apps", "extra"], capture())).toBe(2);
     const two = capture();
     expect(await main([v14, v15], two)).toBe(2);
     expect(two.stderr.join("\n")).toContain("hexvero compare <a> <b>");
@@ -234,6 +248,19 @@ describe("first run", () => {
     expect(
       findApps([{ path: mac, layout: "macos" }], { timeMs: 5, now: () => (t += 10) }).truncated,
     ).toBe(true);
+    // one wide folder is bounded by time and entries too, not only between folders
+    const wide = join(dir, "apps-wide");
+    mkdirSync(wide);
+    for (let i = 0; i < 300; i++) writeFileSync(join(wide, `f${i}`), "");
+    let clock = 0;
+    const slow = findApps([{ path: wide, layout: "asar" }], {
+      timeMs: 100,
+      now: () => (clock += 1),
+    });
+    expect(slow.truncated).toBe(true);
+    // one folder listed (under maxEntries), 300 entries looked at (over 20 × 10)
+    expect(findApps([{ path: wide, layout: "asar" }], { maxEntries: 10 }).truncated).toBe(true);
+    expect(findApps([{ path: wide, layout: "asar" }], { maxEntries: 20 }).truncated).toBe(false);
     // a missing root is skipped
     expect(findApps([{ path: join(dir, "nope"), layout: "macos" }]).apps).toEqual([]);
 

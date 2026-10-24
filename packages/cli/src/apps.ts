@@ -76,7 +76,8 @@ const isFile = (path: string): boolean => {
 
 /**
  * Lists installed Electron apps under `roots`: read-only (directory listings and stat calls, no
- * file is opened or run), at most `maxDepth` folders deep, at most `maxEntries` folders listed,
+ * file is opened or run), at most `maxDepth` folders deep, at most `maxEntries` folders listed
+ * (and 20 times as many entries looked at),
  * `maxApps` apps and `timeMs` milliseconds. Symbolic links are followed to test a candidate (an
  * `X.app` linked into /Applications is an app), never to walk further, so a link loop cannot hold
  * the search.
@@ -99,6 +100,7 @@ export function findApps(
   const started = now();
   const found = new Map<string, FoundApp>();
   let listed = 0;
+  let examined = 0;
   let unreadable = 0;
   let truncated = false;
 
@@ -122,6 +124,11 @@ export function findApps(
     }
     for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
       if (truncated) return;
+      // per entry too: one folder with 60,000 entries (a Temp folder) is bounded as well
+      if (++examined > maxEntries * 20 || now() - started > timeMs) {
+        truncated = true;
+        return;
+      }
       const path = join(dir, entry.name);
       const linked = entry.isSymbolicLink();
       if (!entry.isDirectory() && !linked) continue;

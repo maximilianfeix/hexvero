@@ -57,7 +57,10 @@ export async function readTokensInParallel(
           const id = next++;
           const file = files[id]!;
           const source = file.read();
-          if (source === null) continue;
+          if (source === null) {
+            onDone?.(++finished);
+            continue;
+          }
           const reply = await new Promise<{ facts?: FileTokenFacts } | null>((resolve) => {
             const onMessage = (m: { id: number; facts?: FileTokenFacts }): void => {
               if (m.id !== id) return;
