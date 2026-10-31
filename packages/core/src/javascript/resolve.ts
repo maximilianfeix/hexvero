@@ -190,6 +190,8 @@ const GROUPING_WORDS = new Set([
  * class comes after the first 20,000); the tables grow with this number, so it stays bounded.
  */
 const MAX_FUNCTIONS = 60_000;
+/** Tokens walked back from a name to the `const`, `let` or `var` of its declarator list. */
+const MAX_LIST_WALK = 4000;
 const MAX_DEPTH = 10;
 /** Call sites read per function; past them its bindings are partial (see `sitesCapped`). */
 const MAX_SITES = 64;
@@ -4070,7 +4072,8 @@ export class ExpressionResolver {
         const before = this.tokens[j - 1];
         if (
           (before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) ||
-          (this.punct(j + 1, "=") && !this.punct(j + 2, "="))
+          (this.punct(j + 1, "=") && !this.punct(j + 2, "=")) ||
+          this.bareListDeclarator(j)
         )
           return true;
       }
@@ -4170,6 +4173,9 @@ export class ExpressionResolver {
         )
           // `var a = 1, NAME = …`, as minifiers write declarations
           entries.push({ j, weight: 1, init: true, scope: null });
+        // `var a = 1, NAME;`: declared here, with no value to read
+        else if (this.bareListDeclarator(j))
+          entries.push({ j, weight: 1, init: false, scope: null });
         else if ((this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j))
           entries.push({ j, weight: 2, init: false, scope: null });
         // a member or element written (`T.A = …`, `T.A += …`, `T.push(…)`), as at the top
@@ -4224,21 +4230,68 @@ export class ExpressionResolver {
     return null;
   }
 
+  /**
+   * See `inDeclarationList`: for a `,`, how the walk from it ends and after how many steps, or
+   * (null) that it does not end within that many.
+   */
+  private readonly listMemo = new Map<number, [boolean | null, number]>();
+
+  /**
+   * The name at j is a declarator without an initializer after the first of a `let` or `var`
+   * list: `let g, NAME;`, `var a = 1, NAME, b = 2`. Minifiers declare a function's locals so,
+   * then assign them; such a local shadows a function of the same name around it (#298).
+   */
+  private bareListDeclarator(j: number): boolean {
+    if (!this.punct(j - 1, ",")) return false;
+    const next = this.tokens[j + 1];
+    const ends =
+      !next ||
+      (next.type === "punct"
+        ? next.value === "," || next.value === ";" || next.value === "}"
+        : // a list ended by a line break (no `;`)
+          next.type === "ident" && next.line > this.tokens[j]!.line);
+    return ends && this.inDeclarationList(j);
+  }
+
   /** Whether the name at j (after a `,`) is a declarator of a `const`, `let` or `var` list. */
   private inDeclarationList(j: number): boolean {
     // `: function` read as an expression that still needs the `?` of its conditional (#281)
     let elses = 0;
-    for (let i = j - 1, steps = 0; i >= 0 && steps < 4000; i--, steps++) {
+    // The commas passed with no `: function` pending: the walk from each of them goes on as this
+    // one does, so a long list or literal (`var a, b, …`, `[a, b, …]`) is walked once, not once
+    // per name. What is kept gives the answer the full walk would, its 4000 steps included.
+    const passed: Array<[number, number]> = [];
+    const decide = (result: boolean, steps: number): boolean => {
+      for (const [at, from] of passed) this.listMemo.set(at, [result, steps - from]);
+      return result;
+    };
+    const capped = (): false => {
+      for (const [at, from] of passed)
+        if (!this.listMemo.has(at)) this.listMemo.set(at, [null, MAX_LIST_WALK - from]);
+      return false;
+    };
+    let i = j - 1;
+    let steps = 0;
+    for (; i >= 0 && steps < MAX_LIST_WALK; i--, steps++) {
       const t = this.tokens[i]!;
       if (t.type === "punct") {
         if (t.value === ")" || t.value === "]" || t.value === "}") {
           const o = this.opener[i]!;
-          if (o === -1) return false;
+          if (o === -1) return decide(false, steps);
           i = o;
         } else if (t.value === "(" || t.value === "[" || t.value === "{" || t.value === ";")
-          return false;
+          return decide(false, steps);
         else if (t.value === "?" && elses > 0) elses--;
-      } else if (t.type === "ident" && /^(const|let|var)$/.test(t.value)) return elses === 0;
+        else if (t.value === "," && elses === 0) {
+          const known = this.listMemo.get(i);
+          // decided within the steps left, or known not to be
+          if (known && known[0] !== null && steps + known[1] < MAX_LIST_WALK)
+            return decide(known[0], steps + known[1]);
+          if (known && steps + known[1] >= MAX_LIST_WALK) return capped();
+          passed.push([i, steps]);
+        }
+      } else if (t.type === "ident" && /^(const|let|var)$/.test(t.value))
+        return decide(elses === 0, steps);
       else if (t.type === "ident" && STATEMENT_WORDS.has(t.value)) {
         // `var s = class {…}, i = new s`, `b = x ? function (r) {…}(y) : z, f = …`: a class or
         // function expression is no statement. One follows an operator; a declaration follows
@@ -4251,11 +4304,11 @@ export class ExpressionResolver {
           before?.type !== "punct" ||
           /^(;|\{|\}|\))$/.test(before.value)
         )
-          return false;
+          return decide(false, steps);
         if (before.value === ":") elses++;
       }
     }
-    return false;
+    return i < 0 ? decide(false, steps) : capped();
   }
 
   /** Names read in [start, end) that are parameters of the function around k. */
@@ -6340,6 +6393,8 @@ export class ExpressionResolver {
         this.inDeclarationList(j)
       )
         add({ kind: "value", range: [j + 2, this.exprEnd(j + 2)] }, j, false);
+      // `let g, NAME;`: declared with no value, as `let NAME;` is
+      else if (this.bareListDeclarator(j)) add("ambiguous", j, false);
       else if (this.patternAt(j, d)) {
         const part = this.patternAt(j, d)!;
         add(part.binding, part.open, part.blockScoped);
@@ -6407,7 +6462,8 @@ export class ExpressionResolver {
         if (
           this.enclosing(j) === x &&
           ((before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) ||
-            (this.punct(j - 1, ",") && this.punct(j + 1, "=") && this.inDeclarationList(j)))
+            (this.punct(j - 1, ",") && this.punct(j + 1, "=") && this.inDeclarationList(j)) ||
+            this.bareListDeclarator(j))
         ) {
           own = true;
           break;
