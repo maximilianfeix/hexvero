@@ -140,4 +140,13 @@ describe("#281: a forwarder whose short name other functions declare too", () =>
     });
     expect(rows(info)).not.toContain("crash-quit ipcRenderer.send");
   });
+
+  it("reads an async function expression in a declarator list as an expression", () => {
+    // `const n = async function () {…}, f = …`: `function` after `async` after `=` is no statement
+    const info = analyze({
+      "crash.js":
+        '(()=>{(()=>{const r=require("electron");function f(e,...t){return r.ipcRenderer.send(e,...t)}function l(e){const n=async function(){return e.top},f="tooltip";return n}class u{quit(){f("crash-quit")}}window.crash={u,l}})()})();\n',
+    });
+    expect(rows(info)).toContain("crash-quit ipcRenderer.send");
+  });
 });

@@ -4243,7 +4243,9 @@ export class ExpressionResolver {
         // `var s = class {…}, i = new s`, `b = x ? function (r) {…}(y) : z, f = …`: a class or
         // function expression is no statement. One follows an operator; a declaration follows
         // the end of a statement or block, a `)` of `if (…)`, or a label's or case's `:`.
-        const before = this.tokens[i - 1];
+        // `async function`: what decides is the token before `async`
+        const before =
+          this.tokens[t.value === "function" && this.is(i - 1, "ident", "async") ? i - 2 : i - 1];
         if (
           (t.value !== "class" && t.value !== "function") ||
           before?.type !== "punct" ||
