@@ -184,7 +184,7 @@ policies](#release-policies-hexvero-check).
 ### `audit`
 
 ```text
-hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--policy file]
+hexvero audit <build> [--format text|json|markdown|sarif] [--unknown fail|warn|allow] [--policy file]
               [--baseline file] [--update-baseline] [--out file] [--force] [--all]
 ```
 
@@ -556,7 +556,7 @@ a host built at run time, a window setting whose direction is unclear, or a part
 ## Single-build audit: `hexvero audit`
 
 ```bash
-hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--policy <file>]
+hexvero audit <build> [--format text|json|markdown|sarif] [--unknown fail|warn|allow] [--policy <file>]
               [--baseline <file>] [--update-baseline] [--out <file>] [--force] [--all]
 ```
 

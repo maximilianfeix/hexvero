@@ -12,6 +12,7 @@ import {
   parseAuditBaseline,
   parsePolicy,
   PolicyError,
+  renderAuditMarkdown,
   shellWord,
   writeFileNoFollow,
   type AuditFinding,
@@ -24,7 +25,7 @@ import { flagString, UsageError, type ParsedArgs } from "./args.js";
 import { readText } from "./check.js";
 import { paint, toJson, type Io } from "./format.js";
 
-const FORMATS = ["text", "json", "sarif"] as const;
+const FORMATS = ["text", "json", "markdown", "sarif"] as const;
 type Format = (typeof FORMATS)[number];
 const UNKNOWN = ["fail", "warn", "allow"] as const;
 
@@ -231,7 +232,9 @@ export async function runAudit(args: ParsedArgs, io: Io, session: Session): Prom
       ? toJson(result)
       : format === "sarif"
         ? toJson(auditToSarif(result, { version: CORE_VERSION }))
-        : formatAudit(out ? { ...io, color: false } : io, result);
+        : format === "markdown"
+          ? renderAuditMarkdown(result)
+          : formatAudit(out ? { ...io, color: false } : io, result);
   if (out) {
     try {
       await writeFileNoFollow(out, `${text}\n`, { overwrite: force });

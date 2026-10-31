@@ -117,6 +117,20 @@ describe("hexvero audit", () => {
     );
   });
 
+  it("writes Markdown for a job summary, with the exit code of the result", async () => {
+    const r = await audit(join(root, "examples", "notesdesk-1.5.0.asar"), "--format", "markdown");
+    expect(r.code).toBe(3);
+    const md = r.io.stdout.join("\n");
+    expect(md.startsWith("# hexvero audit: fail\n")).toBe(true);
+    expect(md).toContain(
+      "| ✗ | open-external | `shell.openExternal(unknown)` | new | fail | `main.js:20` |",
+    );
+    expect(md).toContain(
+      "| ✗ | csp-missing | `no Content-Security-Policy` | new | fail | no place: an absence in the files read |",
+    );
+    expect(md).toContain("<details><summary>Messages and fingerprints</summary>");
+  });
+
   it("writes --out once and never over a file without --force", async () => {
     const out = join(dir, "audit.json");
     const path = join(root, "examples", "notesdesk-1.5.0.asar");
@@ -149,7 +163,7 @@ describe("hexvero audit", () => {
   it("refuses usage errors (exit 2) and a target that is no Electron app (exit 1)", async () => {
     expect((await audit()).code).toBe(2);
     expect((await audit("a", "b")).code).toBe(2);
-    expect((await audit("x.asar", "--format", "markdown")).code).toBe(2);
+    expect((await audit("x.asar", "--format", "html")).code).toBe(2);
     expect((await audit("x.asar", "--unknown", "maybe")).code).toBe(2);
     const plain = join(dir, "plain.js");
     writeFileSync(plain, "console.log(1);\n");

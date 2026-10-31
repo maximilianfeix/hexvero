@@ -23,6 +23,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- `hexvero audit --format markdown`: the result as Markdown for a job summary (findings with
+  places, messages and fingerprints, what could not be decided), as `check --format markdown`.
+- Audit rule `dangerous-call` and check rule `new-dangerous-call` (Electronegativity's
+  `DANGEROUS_FUNCTIONS_JS_CHECK`): `executeJavaScript`, `executeJavaScriptInIsolatedWorld` and
+  `insertCSS` whose code is not a literal, from the new `dangerousCalls` collection; unknown on a
+  receiver not read as a webContents, frame or `webFrame`. In a policy's `audit` section that
+  does not list it, it runs at warn (#294).
 - `check --format markdown` (and so the GitHub Action's job summary) ends with "New ways pages
   reach the main process": each new interface member that counts as window → member → channel →
   handler, with a new host on the handler's line. Findings of `new-interface-member` carry
