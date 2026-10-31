@@ -415,22 +415,9 @@ function patternTarget(tokens: readonly Token[], from: number, to: number): bool
   let start = from;
   let end = to;
   for (let guard = 0; guard < 64; guard++) {
-    const open = parent[start]!;
+    const open = elementIn(tokens, start, end);
     if (open < 0) return false;
     const close = match[open]!;
-    if (close < 0) return false;
-    const before = tokens[start - 1];
-    const after = tokens[end];
-    if (!before || !after || before.type !== "punct" || after.type !== "punct") return false;
-    if (punct(tokens, open, "[")) {
-      // `T[k]`, `f()[0]`: an element read, no array pattern
-      if (memberBracket(tokens, open)) return false;
-      if (!/^(\[|,|\.\.\.)$/.test(before.value) || !/^(,|\]|=)$/.test(after.value)) return false;
-    } else if (punct(tokens, open, "{")) {
-      // `{ T }`, `{ k: T }`, `{ ...T }`, with a default or not; `k` itself is a key
-      if (!/^(\{|,|:|\.\.\.)$/.test(before.value) || !/^(,|\}|=)$/.test(after.value)) return false;
-      if (before.value !== ":" && before.value !== "..." && end - start > 1) return false;
-    } else return false;
     // the container: the outermost pattern, or an element of the one around it
     if ((flags[open]! & DECLARED_PATTERN) !== 0) return false;
     const outer = parent[open]!;
@@ -460,6 +447,68 @@ function patternTarget(tokens: readonly Token[], from: number, to: number): bool
   }
   // nested deeper than any real pattern: taken for a write, which loses a value, never invents one
   return true;
+}
+
+/**
+ * The `[` or `{` around the target [from, to) when the target stands where an element of a
+ * pattern would there (`[T]`, `{ T }`, `{ k: T }`, `{ ...T }`, with a default or not; `k`
+ * itself is a key); -1 otherwise.
+ */
+function elementIn(tokens: readonly Token[], from: number, to: number): number {
+  const { match, parent } = shapeOf(tokens);
+  const open = parent[from]!;
+  if (open < 0 || match[open]! < 0) return -1;
+  const before = tokens[from - 1];
+  const after = tokens[to];
+  if (!before || !after || before.type !== "punct" || after.type !== "punct") return -1;
+  if (punct(tokens, open, "[")) {
+    // `T[k]`, `f()[0]`: an element read, no array pattern
+    if (memberBracket(tokens, open)) return -1;
+    if (!/^(\[|,|\.\.\.)$/.test(before.value) || !/^(,|\]|=)$/.test(after.value)) return -1;
+  } else if (punct(tokens, open, "{")) {
+    if (!/^(\{|,|:|\.\.\.)$/.test(before.value) || !/^(,|\}|=)$/.test(after.value)) return -1;
+    if (before.value !== ":" && before.value !== "..." && to - from > 1) return -1;
+  } else return -1;
+  return open;
+}
+
+/**
+ * The name at j is one a declaration's pattern binds, at any depth: `const { k: T = 1 } = …`,
+ * `let [a, T = 2] = …`, `var { a: { T } } = …`, also after a `,` of a declarator list. A `=`
+ * after it gives a default; it writes no other binding of the name.
+ */
+export function declaredPatternName(tokens: readonly Token[], j: number): boolean {
+  const t = tokens[j];
+  if (!t || t.type !== "ident" || punct(tokens, j - 1, ".") || punct(tokens, j - 1, "?."))
+    return false;
+  const { match, parent, flags } = shapeOf(tokens);
+  let start = j;
+  let end = j + 1;
+  for (let guard = 0; guard < 64; guard++) {
+    const open = elementIn(tokens, start, end);
+    if (open < 0) return false;
+    if ((flags[open]! & DECLARED_PATTERN) !== 0) return true;
+    if (!elementOf(tokens, open, parent[open]!)) return false;
+    start = open;
+    end = match[open]! + 1;
+  }
+  return false;
+}
+
+/**
+ * The name at j is a field of the class body around it, `class A { T = 1 }`, `static T = 1`
+ * (not a name assigned in a field's value, `class A { a = T = 1 }`): no variable is written.
+ */
+export function classFieldAt(tokens: readonly Token[], j: number): boolean {
+  if (!punct(tokens, j + 1, "=") || punct(tokens, j + 2, "=")) return false;
+  const { parent } = shapeOf(tokens);
+  const open = parent[j]!;
+  if (open < 0 || !punct(tokens, open, "{") || !classBodyAt(tokens, open)) return false;
+  const before = tokens[j - 1];
+  if (!before) return false;
+  if (before.type === "punct") return /^(\{|;|\})$/.test(before.value);
+  // `static T = 1`, or a field after one that ended without `;`
+  return (before.type === "ident" && before.value === "static") || before.line < tokens[j]!.line;
 }
 
 /** The bracket at `open` stands where an element of a pattern `outer` would: `[[a]]`, `{ k: [a] }`. */

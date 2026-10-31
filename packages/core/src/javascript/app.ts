@@ -5526,7 +5526,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 46;
+export const JS_SCAN_SCHEMA = 47;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
