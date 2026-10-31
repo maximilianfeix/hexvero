@@ -161,6 +161,11 @@ form#filters input[type=checkbox]{accent-color:var(--amber)}
 #f-count{color:var(--ink-3)}
 ul.rows{list-style:none;margin:0;padding:0}
 li.row{display:grid;grid-template-columns:1.5rem minmax(0,1fr);gap:4px 8px;padding:12px 0;border-bottom:1px solid var(--line)}
+.trace{list-style:none;padding:0;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:10px 28px}
+.tnode{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0;max-width:100%}
+.tnode+.tnode::before{content:"→";position:absolute;left:-21px;top:8px;color:var(--amber)}
+.tnode.new{border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.trole{font-size:12px;color:var(--ink-2)}.tat{font-family:var(--mono);font-size:12px;color:var(--amber)}
 .sign{font-family:var(--mono);font-weight:600;text-align:center}
 .added .sign{color:var(--ok)}.removed .sign{color:var(--alert)}.changed .sign{color:var(--amber)}.unknown .sign{color:var(--ink-2)}
 .word{font-weight:500;margin-right:6px}.key{color:var(--ink)}
@@ -245,6 +250,61 @@ function sideBlock(
     ? places(list, sources, budget)
     : `<p class="note">No position recorded for this item.</p>`;
   return `<div class="side"><h4>${title}</h4>${body}</div>`;
+}
+
+/** `file:line`, or the file alone when no line was recorded. */
+const at = (p: Place): string => `${p.file}${p.line === undefined ? "" : `:${p.line}`}`;
+
+/** One step of a trace: its role, its value and, where read, its place. */
+const traceNode = (role: string, value: string, place?: string, extra = ""): string =>
+  `<li class="tnode${extra}"><span class="trole">${escapeHtml(role)}</span>${code(value)}${
+    place ? `<span class="tat">${escapeHtml(place)}</span>` : ""
+  }</li>`;
+
+/**
+ * New and changed preload members drawn as window → member → channel → handler, and a host
+ * added on a handler's own line. That last link is an inference (same file and line), and says so.
+ */
+function tracesHtml(r: ReleaseComparison): string {
+  const rows = r.changes.filter(
+    (c) => c.collection === "interfaces" && (c.change === "added" || c.change === "changed"),
+  );
+  if (rows.length === 0) return "";
+  const hosts = r.changes.filter((c) => c.collection === "endpoints" && c.change === "added");
+  const out = [
+    `<section id="paths"><h2>New ways pages reach the main process</h2><p class="note">Each new or changed preload member, from the windows that load it to the main-process handler on its channel, as read in the after build.</p>`,
+  ];
+  for (const row of rows) {
+    const member = row.where.find((p) => p.role === undefined);
+    const handlers = row.where.filter((p) => p.role === "handler");
+    const name = row.key.split("::").slice(-2).join(".");
+    const nodes: string[] = [];
+    if (row.trace?.windows.length) nodes.push(traceNode("window", row.trace.windows.join(", ")));
+    nodes.push(
+      traceNode("preload member", name, member && at(member), row.change === "added" ? " new" : ""),
+    );
+    if (row.trace?.channel) nodes.push(traceNode("IPC channel", row.trace.channel, row.basis));
+    for (const h of handlers) nodes.push(traceNode("handler", at(h)));
+    for (const host of hosts) {
+      const hp = host.where[0];
+      if (!hp || !handlers.some((h) => h.file === hp.file && h.line === hp.line)) continue;
+      nodes.push(
+        traceNode(
+          "host on the handler's line",
+          host.key.split("::").slice(2).join("::"),
+          at(hp),
+          " new",
+        ),
+      );
+    }
+    out.push(
+      `<ol class="trace" aria-label="${escapeHtml(`${row.change} ${name}`.slice(0, 200))}">${nodes.join("")}</ol>`,
+    );
+  }
+  out.push(
+    `<p class="note">A host is shown when an added endpoint sits on the same file and line as the handler: an inference from place, not a traced call.</p></section>`,
+  );
+  return out.join("");
 }
 
 function rowHtml(
@@ -346,6 +406,9 @@ export function renderReleaseReportHtml(
       `</tbody></table></div><p class="note">Whether a change matters depends on what the window loads; this is a fact to review, not a verdict.</p></section>`,
     );
   }
+
+  const paths = tracesHtml(r);
+  if (paths) out.push(paths);
 
   out.push(`<section id="changes"><h2>Changes</h2>`);
   if (r.page.total === 0) out.push(`<p>No row-level changes in the reviewed collections.</p>`);

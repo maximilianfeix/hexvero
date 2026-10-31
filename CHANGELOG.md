@@ -21,6 +21,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- The HTML report (`compare --report report.html`) opens with "New ways pages reach the main
+  process": each new or changed preload member drawn as window → member → channel → handler,
+  with file and line at each step, and an added endpoint on the handler's own line (marked as an
+  inference from place). Interface rows in JSON carry `trace: { windows, channel }`.
 - MCP: `hexvero_check` with `targetA` alone audits that build, as `hexvero audit` does
   (`unknown`, an inline policy or `policyPath` with an `audit` section, a read-only audit
   `baselinePath`, SARIF); the answer says `hexvero: "audit"`. Still 16 tools; the catalog grows

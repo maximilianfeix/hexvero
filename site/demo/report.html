@@ -35,6 +35,11 @@ form#filters input[type=checkbox]{accent-color:var(--amber)}
 #f-count{color:var(--ink-3)}
 ul.rows{list-style:none;margin:0;padding:0}
 li.row{display:grid;grid-template-columns:1.5rem minmax(0,1fr);gap:4px 8px;padding:12px 0;border-bottom:1px solid var(--line)}
+.trace{list-style:none;padding:0;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:10px 28px}
+.tnode{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0;max-width:100%}
+.tnode+.tnode::before{content:"→";position:absolute;left:-21px;top:8px;color:var(--amber)}
+.tnode.new{border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.trole{font-size:12px;color:var(--ink-2)}.tat{font-family:var(--mono);font-size:12px;color:var(--amber)}
 .sign{font-family:var(--mono);font-weight:600;text-align:center}
 .added .sign{color:var(--ok)}.removed .sign{color:var(--alert)}.changed .sign{color:var(--amber)}.unknown .sign{color:var(--ink-2)}
 .word{font-weight:500;margin-right:6px}.key{color:var(--ink)}
@@ -86,6 +91,7 @@ footer{margin-top:48px;color:var(--ink-3);font-size:13px}
 <tr><td><code>main.js::win</code></td><td><code>nodeIntegrationInEffect</code></td><td><code>on</code></td><td><code>off</code></td><td class="dir-less">less permissive</td></tr>
 <tr><td><code>main.js::win</code></td><td><code>sandboxInEffect</code></td><td><code>off</code></td><td><code>on</code></td><td class="dir-less">less permissive</td></tr>
 </tbody></table></div><p class="note">Whether a change matters depends on what the window loads; this is a fact to review, not a verdict.</p></section>
+<section id="paths"><h2>New ways pages reach the main process</h2><p class="note">Each new or changed preload member, from the windows that load it to the main-process handler on its channel, as read in the after build.</p><ol class="trace" aria-label="added notesdesk.checkUpdate"><li class="tnode"><span class="trole">window</span><code>main.js:win</code></li><li class="tnode new"><span class="trole">preload member</span><code>notesdesk.checkUpdate</code><span class="tat">preload.js:9</span></li><li class="tnode"><span class="trole">IPC channel</span><code>update:check</code><span class="tat">link direct</span></li><li class="tnode"><span class="trole">handler</span><code>main.js:30</code></li><li class="tnode new"><span class="trole">host on the handler&#39;s line</span><code>https://updates.notesdesk.example/latest.json</code><span class="tat">main.js:30</span></li></ol><p class="note">A host is shown when an added endpoint sits on the same file and line as the handler: an inference from place, not a traced call.</p></section>
 <section id="changes"><h2>Changes</h2>
 <p id="page"><strong>12 of 12 rows shown</strong> (rows 1–12).</p>
 <form id="filters" hidden aria-label="Filter rows"><label><input type="checkbox" name="kind" value="added" checked> + added</label><label><input type="checkbox" name="kind" value="removed" checked> − removed</label><label><input type="checkbox" name="kind" value="changed" checked> ~ changed</label><label><input type="checkbox" name="kind" value="unknown" checked> ? unknown</label><label>list <select id="f-list"><option value="">all on this page</option><option value="interfaces">interfaces</option><option value="contextBridge">contextBridge</option><option value="ipcChannels">ipcChannels</option><option value="windows">windows</option><option value="webPreferences">webPreferences</option><option value="endpoints">endpoints</option><option value="storage">storage</option><option value="urls">urls</option></select></label><label>text <input type="search" id="f-text" placeholder="key, file, value"></label><span id="f-count" aria-live="polite"></span></form>

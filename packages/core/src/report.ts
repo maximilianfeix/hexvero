@@ -46,6 +46,11 @@ export interface ChangeRow {
   fields?: FieldChange[];
   /** For `unknown`: why neither added nor removed could be said. */
   reason?: string;
+  /**
+   * For `interfaces` rows: the windows that load the member and the channel it uses, as the
+   * item in that build names them, so a report can draw window → member → channel → handler.
+   */
+  trace?: { windows: string[]; channel: string | null };
 }
 
 export interface ReleaseComparison {
@@ -245,6 +250,16 @@ function placesOf(item: unknown, side: "a" | "b", ipc: ReadonlyMap<string, Item[
   return out;
 }
 
+/** An interface item's windows and channel, when it names them (strings only, as read). */
+function traceOf(item: unknown): ChangeRow["trace"] {
+  if (!isItem(item)) return undefined;
+  const windows = Array.isArray(item["windows"])
+    ? item["windows"].filter((w): w is string => typeof w === "string")
+    : [];
+  const channel = typeof item["channel"] === "string" ? item["channel"] : null;
+  return windows.length || channel !== null ? { windows, channel } : undefined;
+}
+
 function basisOf(item: unknown): string | undefined {
   if (!isItem(item)) return undefined;
   if (typeof item["evidence"] === "string") return item["evidence"];
@@ -318,6 +333,7 @@ export async function compareReleases(
     extra: Partial<ChangeRow> = {},
   ): void => {
     const basis = basisOf(item);
+    const trace = collection === "interfaces" ? traceOf(item) : undefined;
     orders.push(contentOrder(item, positionalFields(collection, formats)));
     rows.push({
       id: "",
@@ -326,6 +342,7 @@ export async function compareReleases(
       key,
       where: placesOf(item, side, side === "a" ? ipcA : ipcB),
       ...(basis ? { basis } : {}),
+      ...(trace ? { trace } : {}),
       ...extra,
     });
   };
