@@ -54,7 +54,7 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
     "window-more-permissive": {
       name: "WindowMorePermissive",
       short: "A window's settings let its pages do more than before.",
-      full: "A BrowserWindow present in both builds changed nodeIntegration, contextIsolation, sandbox or page access to require in a direction that lets its pages do more. When the direction cannot be told, the finding is unknown.",
+      full: "A BrowserWindow present in both builds changed nodeIntegration, contextIsolation, sandbox, page access to require, webSecurity or allowRunningInsecureContent in a direction that lets its pages do more (Electron's security guide, sections 2-4, 6 and 8). When the direction cannot be told, the finding is unknown.",
       help: "Whether this matters depends on what the window loads. Review the window's settings and the content it shows.",
     },
     "new-bridge-exposure": {
@@ -98,6 +98,12 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       short: "The build's Content Security Policy is newly weaker.",
       full: "A Content Security Policy of the build (a <meta> tag in an HTML file, a header set in code) has a weakness no policy of the previous build has ('unsafe-inline' without a nonce or hash, 'unsafe-eval', a wildcard or bare scheme for scripts, scripts or plugins not restricted), or the previous build set a policy and this build sets none. A policy hexvero could not read is reported as unknown.",
       help: "Restore the stricter policy. If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
+    "navigation-limit-removed": {
+      name: "NavigationLimitRemoved",
+      short: "The build no longer limits navigation or window creation as the previous build did.",
+      full: "The previous build listens for will-navigate or will-frame-navigate, or sets a setWindowOpenHandler, and this build does neither (by kind, anywhere in the files read); or a setWindowOpenHandler of this build returns { action: \"allow\" } on every path where the previous build's for that window did not. Pages may then navigate to or open a URL the app does not expect (Electron's security guide, sections 13 and 14).",
+      help: 'Restore the listener or the handler (call event.preventDefault() for URLs the app does not expect; return { action: "deny" } for windows it does not expect). If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.',
     },
   };
 
@@ -252,11 +258,15 @@ export function toSarif(result: PolicyResult, options: SarifOptions): Record<str
   };
 }
 
-const AUDIT_TEXT: Record<AuditRuleId, { name: string; short: string; full: string }> = {
+const AUDIT_TEXT: Record<
+  AuditRuleId,
+  { name: string; short: string; full: string; help?: string }
+> = {
   "window-permissive": {
     name: "WindowPermissive",
     short: "A window's settings let its pages do more.",
-    full: "A BrowserWindow has Node integration on, context isolation off, the sandbox off, or page access to require, as written or by the default of the Electron version package.json names (Electron's security guide, sections 2-4). A setting hexvero could not read is reported as unknown.",
+    full: "A BrowserWindow has Node integration on, context isolation off, the sandbox off, or page access to require, as written or by the default of the Electron version package.json names (Electron's security guide, sections 2-4); or it writes webSecurity: false (section 6) or allowRunningInsecureContent: true (section 8, also on when webSecurity is false and it is not written). A setting hexvero could not read is reported as unknown.",
+    help: "Electron's security guide: section 2 (Node integration), 3 (context isolation), 4 (sandbox), section 6 (do not disable webSecurity), section 8 (do not enable allowRunningInsecureContent). Remove the setting, or keep it to a window that loads only the app's own files. See docs/electron-findings.md of hexvero for what is read and what is not.",
   },
   "remote-enabled": {
     name: "RemoteEnabled",
@@ -292,6 +302,12 @@ const AUDIT_TEXT: Record<AuditRuleId, { name: string; short: string; full: strin
     name: "CspWeak",
     short: "A Content Security Policy is weak.",
     full: "A Content Security Policy lets scripts run inline or through eval, from any origin or scheme, or does not restrict scripts or plugins at all. A policy hexvero could not read is reported as unknown.",
+  },
+  "navigation-unlimited": {
+    name: "NavigationUnlimited",
+    short: "Navigation or window creation is not limited.",
+    full: 'No will-navigate or will-frame-navigate listener, or no setWindowOpenHandler, was found in the files read (for the app, or for a window when other windows have one), or a setWindowOpenHandler returns { action: "allow" } on every path. A listener on a webContents not read as a window leaves windows without their own unknown. Whether a handler checks the URL is not read.',
+    help: "Electron's security guide, section 13 (limit navigation: call event.preventDefault() in a will-navigate handler for URLs the app does not expect) and section 14 (limit the creation of new windows: register a setWindowOpenHandler that denies unexpected windows). See docs/electron-findings.md of hexvero for what is read and what is not.",
   },
 };
 
@@ -338,7 +354,9 @@ export function auditToSarif(
               shortDescription: { text: AUDIT_TEXT[id].short },
               fullDescription: { text: AUDIT_TEXT[id].full },
               help: {
-                text: "See docs/electron-findings.md of hexvero for what is read and what is not.",
+                text:
+                  AUDIT_TEXT[id].help ??
+                  "See docs/electron-findings.md of hexvero for what is read and what is not.",
               },
               defaultConfiguration: { level: "error" },
               properties: { tags: ["security", "electron"], precision: "high" },

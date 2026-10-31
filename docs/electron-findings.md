@@ -122,7 +122,28 @@ derived value is `unknown`.
 | `sandboxInEffect`          | `on` if `app.enableSandbox()` is an unconditional statement at the top of a file ("any `sandbox: false` calls are overridden"); else `off` if `nodeIntegration` is `true` ("The sandbox will automatically be disabled when `nodeIntegration` is set to `true`"); else the literal; else the default for the named version. `unknown` if `enableSandbox()` sits in a function or behind a condition and the result would not be `on` anyway, and `unknown` when `nodeIntegration: true` stands next to `sandbox: true` or `app.enableSandbox()`: the documentation does not say which of the two decides | [Process sandboxing][sb], [WebPreferences][wp] |
 | `pageRequire`              | `yes` only with Node integration on **and** context isolation off: "`require()` cannot be used in the renderer process unless `nodeIntegration` is `true` and `contextIsolation` is `false`". As certain as its least certain part; `unknown` for the undocumented pair above unless context isolation is written as on                                                                                                                                                                                                                                                                                  | [Breaking changes, 12.0][bc]                   |
 
-`basis` states, per window, which of these rules produced each value.
+Two more columns, with the settings as written next to them (`webSecurity`,
+`allowRunningInsecureContent`: `true`, `false`, `computed`, `conflicting` or `not written`):
+
+- `webSecurityInEffect`: the literal; else `default on`. WebPreferences: `false` "will disable the
+  same-origin policy"; the default is `true`, the same in every version, so it needs no version
+  from package.json.
+- `allowRunningInsecureContentInEffect`: the literal; else `on` where `webSecurity: false` is
+  written (WebPreferences: `webSecurity: false` also sets it to `true` when the app does not
+  set it); else `default off` (its default is `false`). `unknown` when either
+  setting is computed and the value follows from it ([WebPreferences][wp]).
+
+`basis` states, per window, which of these rules produced each value (for the two web security
+columns only where the value is not a default).
+
+The audit rule `window-permissive` reports `webSecurityInEffect` off ([Security, 6][sec]) and
+`allowRunningInsecureContentInEffect` on ([Security, 8][sec]), and a computed value as an unknown
+finding. A computed `webSecurity` with `allowRunningInsecureContent` not written as a value of its own (not written,
+or in window options that could not be followed) gives one unknown finding, for `webSecurity`, whose message says that insecure content depends on it; an
+`allowRunningInsecureContent` written as a computed value keeps its own. The check rule `window-more-permissive` reports a move to either (from `default on` or
+`on`, from `default off` or `off`), never the reverse, and a move from or to `unknown` as an
+unknown finding; there too a move of `allowRunningInsecureContentInEffect` to `unknown` that only
+follows `webSecurity` is folded into the `webSecurity` finding.
 
 Two things the columns do not say, because the documentation makes them independent of these
 settings: a preload script that is not sandboxed "will always have access to node APIs no matter
@@ -379,6 +400,24 @@ Absence is said only as "no setWindowOpenHandler found in the files read" or "no
 will-frame-navigate listener found in the files read", with the number of files read; a handler
 registered through code hexvero does not follow (a computed event name, a helper that is handed the
 webContents) is not seen, and a partial scan adds "in the scanned part".
+
+The audit rule `navigation-unlimited` ([Security, 13 and 14][sec]), for an app with a window or a
+handler read, reports:
+
+- no `will-navigate` / `will-frame-navigate` listener, or no `setWindowOpenHandler`, in the files
+  read (key `no will-navigate listener`, `no setWindowOpenHandler`; no place). These are absences:
+  while the rule is not decidable (a partial scan, a file that could not be read,
+  `navigation_handlers_truncated`) they are not reported;
+- where neither kind is registered for every webContents (`app`): a window of `windows` without one
+  of its own while other windows have one (`<window>: no will-navigate listener`, at the window), or,
+  when some are on a receiver not read as a window (`targetKind: webContents`), one unknown
+  finding for the windows without their own (they may be those);
+- a `setWindowOpenHandler` whose `returns` is `allow`: every return is `{ action: "allow" }`.
+
+What a listener checks is not read: a listener that lets every URL through passes. The check rule
+`navigation-limit-removed` reports a kind (listeners, window open handlers) the before build has
+and the after build has none of, and a window open handler that returns `allow` where the before
+build had none such for that receiver kind and window.
 
 ## Remote module turned on (`remoteEnabled`)
 

@@ -715,6 +715,7 @@ describe("evaluating a policy", () => {
         "openExternal",
         "permissionHandlers",
         "csp",
+        "navigationHandlers",
       ]);
     });
     it("uses the comparison's own completeness once it carries one (contract C1/C3)", () => {
@@ -965,12 +966,16 @@ const SAFE = {
   contextIsolationInEffect: "on",
   sandboxInEffect: "on",
   pageRequire: "no",
+  webSecurityInEffect: "default on",
+  allowRunningInsecureContentInEffect: "default off",
 };
 const OPEN = {
   nodeIntegrationInEffect: "on",
   contextIsolationInEffect: "off",
   sandboxInEffect: "off",
   pageRequire: "yes",
+  webSecurityInEffect: "default on",
+  allowRunningInsecureContentInEffect: "default off",
 };
 const win = (name: string, settings: Record<string, string>, line = 2) => ({
   file: "main.js",
@@ -1105,6 +1110,7 @@ describe("review H4: a target of another kind never passes", () => {
       ["openExternal", ["collection_missing"]],
       ["permissionHandlers", ["collection_missing"]],
       ["csp", ["collection_missing"]],
+      ["navigationHandlers", ["collection_missing"]],
     ]);
   });
 
@@ -1123,6 +1129,7 @@ describe("review H4: a target of another kind never passes", () => {
       "openExternal",
       "permissionHandlers",
       "csp",
+      "navigationHandlers",
     ]);
     expect(r.incomplete.every((i) => i.gaps.includes("collection_missing"))).toBe(true);
     expect(r.status).toBe("incomplete");

@@ -8,12 +8,18 @@
  * The rules are Electronegativity's checks that hexvero reads (docs/engineering/audit-plan.md
  * maps them): windows whose pages may do more, @electron/remote enabled, dangerous command-line
  * switches and accepted certificate errors, shell.openExternal with a URL the app does not fix,
- * permission handlers missing or granting everything, and a Content Security Policy missing or
- * weak.
+ * permission handlers missing or granting everything, a Content Security Policy missing or
+ * weak, and navigation or window creation that the app does not limit.
  */
 import { createHash } from "node:crypto";
 import type { SideCoverage, UnresolvedFamily } from "./compare.js";
-import type { CspRow, JsAppInfo, OpenExternalRow, PermissionHandlerRow } from "./javascript/app.js";
+import type {
+  CspRow,
+  JsAppInfo,
+  NavigationHandler,
+  OpenExternalRow,
+  PermissionHandlerRow,
+} from "./javascript/app.js";
 import { AnalysisError, type Limitation } from "./model.js";
 import type { Session, TargetRecord } from "./session.js";
 
@@ -26,6 +32,7 @@ export const AUDIT_RULES = [
   "permission-handler-grants-all",
   "csp-missing",
   "csp-weak",
+  "navigation-unlimited",
 ] as const;
 export type AuditRuleId = (typeof AUDIT_RULES)[number];
 
@@ -77,7 +84,34 @@ const PERMISSIVE: Readonly<Record<string, readonly string[]>> = {
   contextIsolationInEffect: ["off", "default off"],
   sandboxInEffect: ["off", "default off"],
   pageRequire: ["yes", "yes by default"],
+  webSecurityInEffect: ["off", "default off"],
+  allowRunningInsecureContentInEffect: ["on", "default on"],
 };
+
+/**
+ * What a permissive value of a web security setting lets a page do, with the section of
+ * Electron's security guide that advises against it. The core settings say "its pages may do
+ * more" with the basis of the derived value.
+ */
+const CONSEQUENCE: Readonly<Record<string, { key: string; effect: string }>> = {
+  webSecurityInEffect: {
+    key: "webSecurity",
+    effect: "the same-origin policy is off for its pages (Electron's security guide, section 6)",
+  },
+  allowRunningInsecureContentInEffect: {
+    key: "allowRunningInsecureContent",
+    effect:
+      "its https pages may run scripts, styles and plugins loaded over http (Electron's security guide, section 8)",
+  },
+};
+
+/** How a web security value came about, from the window's written state. */
+function webSecurityWhy(w: Record<string, unknown>, setting: string): string {
+  const key = CONSEQUENCE[setting]!.key;
+  const state = w[key];
+  if (typeof state === "boolean") return `${key} is ${String(state)} as written`;
+  return `${key} is not written and webSecurity: false turns it on`;
+}
 
 /** URL schemes `open-external` takes as fixed by the app: they open a browser or a mail client. */
 const WEB_SCHEMES = new Set(["http", "https", "mailto"]);
@@ -121,6 +155,7 @@ const fingerprint = (rule: AuditRuleId, identity: string): string =>
 /** Limitation codes that say rows of a rule's list may be missing. */
 const RULE_LIMITATIONS: Partial<Record<AuditRuleId, readonly string[]>> = {
   "remote-enabled": ["remote_enabled_truncated"],
+  "navigation-unlimited": ["navigation_handlers_truncated"],
 };
 
 const RULE_FAMILY: Record<AuditRuleId, UnresolvedFamily | null> = {
@@ -132,6 +167,7 @@ const RULE_FAMILY: Record<AuditRuleId, UnresolvedFamily | null> = {
   "permission-handler-grants-all": "permissions",
   "csp-missing": "csp",
   "csp-weak": "csp",
+  "navigation-unlimited": null,
 };
 
 const RULE_COLLECTION: Record<AuditRuleId, string> = {
@@ -143,6 +179,7 @@ const RULE_COLLECTION: Record<AuditRuleId, string> = {
   "permission-handler-grants-all": "permissionHandlers",
   "csp-missing": "csp",
   "csp-weak": "csp",
+  "navigation-unlimited": "navigationHandlers",
 };
 
 /** The gaps of one rule on one build, in check's codes and order. */
@@ -164,30 +201,167 @@ function gapsOf(
 
 const place = (r: { file: string; line: number }): AuditPlace => ({ file: r.file, line: r.line });
 
+/**
+ * A finding of one rule before its fingerprint. `absence`: it reports that something was not
+ * found in the files read, so it is no finding while the rule's list may be missing rows.
+ */
+export type AuditDraft = Omit<AuditFinding, "fingerprint"> & { identity: string; absence?: true };
+
+/** The navigation and window-creation limits `navigation-unlimited` asks for. */
+const NAVIGATION_LIMITS = [
+  {
+    group: "navigate",
+    kinds: ["will-navigate", "will-frame-navigate"],
+    what: "will-navigate listener",
+    missing:
+      "No will-navigate or will-frame-navigate listener was found in the files read: without one, a page of the app may navigate its window to a URL the app does not expect (Electron's security guide, section 13).",
+    effect:
+      "a page may navigate the window to a URL the app does not expect (Electron's security guide, section 13)",
+  },
+  {
+    group: "open",
+    kinds: ["setWindowOpenHandler"],
+    what: "setWindowOpenHandler",
+    missing:
+      "No setWindowOpenHandler was found in the files read: without one, a page of the app may open new windows for a URL the app does not expect (Electron's security guide, section 14).",
+    effect:
+      "a page may open new windows for a URL the app does not expect (Electron's security guide, section 14)",
+  },
+] as const;
+
+/**
+ * `navigation-unlimited`, for an app with a window or a handler read: no will-navigate /
+ * will-frame-navigate listener, or no setWindowOpenHandler, in the files read (for the app, or
+ * for a window when others have one), and a window open handler that returns
+ * `{ action: "allow" }` on every path. A listener on a webContents not read as a window may be any
+ * window's: windows without one of their own are then unknown. Whether a handler checks the URL
+ * is not read.
+ */
+function navigationDrafts(
+  handlers: readonly NavigationHandler[],
+  windows: JsAppInfo["windows"],
+): AuditDraft[] {
+  const out: AuditDraft[] = [];
+  // no window and no handler read: nothing says the app has pages to navigate (and the session
+  // does not list navigationHandlers then)
+  if (windows.length === 0 && handlers.length === 0) return out;
+  for (const limit of NAVIGATION_LIMITS) {
+    const rows = handlers.filter((h) => (limit.kinds as readonly string[]).includes(h.kind));
+    if (rows.length === 0) {
+      out.push({
+        rule: "navigation-unlimited",
+        identity: `none\0${limit.group}`,
+        unknown: false,
+        key: `no ${limit.what}`,
+        message: limit.missing,
+        collection: "navigationHandlers",
+        where: [],
+        absence: true,
+      });
+      continue;
+    }
+    if (rows.some((h) => h.targetKind === "app")) continue;
+    const uncovered = windows.filter(
+      (w) =>
+        !rows.some(
+          (h) => h.targetKind === "window" && h.file === w.file && h.window === w.windowName,
+        ),
+    );
+    if (uncovered.length === 0) continue;
+    if (rows.some((h) => h.targetKind === "webContents")) {
+      const names = [...new Set(uncovered.map((w) => w.windowName))];
+      out.push({
+        rule: "navigation-unlimited",
+        identity: `unmatched\0${limit.group}`,
+        unknown: true,
+        key: `${limit.what} not read for ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` … and ${names.length - 5} more` : ""}`,
+        message: `No ${limit.what} is read for window${names.length === 1 ? "" : "s"} ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` … and ${names.length - 5} more` : ""}: the ones found are on a webContents not read as a window of the app (a parameter, another module's window), so whether ${names.length === 1 ? "it has" : "they have"} one is not known.`,
+        collection: "navigationHandlers",
+        where: uncovered.slice(0, 10).map(place),
+      });
+      continue;
+    }
+    for (const w of uncovered)
+      out.push({
+        rule: "navigation-unlimited",
+        identity: `window\0${limit.group}\0${w.file}\0${w.windowName}`,
+        unknown: false,
+        key: `${w.windowName}: no ${limit.what}`,
+        message: `Window ${w.windowName} has no ${limit.what} in the files read, while other windows have one: ${limit.effect}.`,
+        collection: "navigationHandlers",
+        where: [place(w)],
+        absence: true,
+      });
+  }
+  for (const h of handlers) {
+    if (h.kind !== "setWindowOpenHandler" || h.returns !== "allow") continue;
+    const on = h.window ?? h.target;
+    out.push({
+      rule: "navigation-unlimited",
+      identity: `allow\0${h.file}\0${h.targetKind}\0${String(h.window)}`,
+      unknown: false,
+      key: `setWindowOpenHandler on ${on} returns allow`,
+      message: `The setWindowOpenHandler of ${on} returns { action: "allow" } on every path, so a page may open a window for a URL the app does not expect (Electron's security guide, section 14).`,
+      collection: "navigationHandlers",
+      where: [place(h)],
+    });
+  }
+  return out;
+}
+
 /** The findings of every rule on one app's lists; pure. */
 export function auditApp(
   app: Pick<
     JsAppInfo,
-    "windows" | "remoteEnabled" | "switches" | "openExternal" | "permissionHandlers" | "csp"
+    | "windows"
+    | "remoteEnabled"
+    | "switches"
+    | "openExternal"
+    | "permissionHandlers"
+    | "csp"
+    | "navigationHandlers"
+    | "webPreferences"
   >,
-): Array<Omit<AuditFinding, "fingerprint"> & { identity: string }> {
-  type Draft = Omit<AuditFinding, "fingerprint"> & { identity: string };
+): AuditDraft[] {
+  type Draft = AuditDraft;
   const out: Draft[] = [];
 
   for (const w of app.windows ?? []) {
+    const fields = w as unknown as Record<string, unknown>;
+    // allowRunningInsecureContent that is not written as a value of its own (not written, or not
+    // read because the window's options could not be followed) follows webSecurity: when that is
+    // unknown, one finding (webSecurity's) says both, not two per window. One written as a
+    // computed value keeps its own.
+    const insecure = fields["allowRunningInsecureContent"];
+    const follows =
+      fields["webSecurityInEffect"] === "unknown" &&
+      (insecure === "not written" ||
+        (insecure === "computed" &&
+          !(app.webPreferences ?? []).some(
+            (p) =>
+              p.key === "allowRunningInsecureContent" && p.file === w.file && p.window === w.window,
+          )));
     for (const [setting, open] of Object.entries(PERMISSIVE)) {
-      const value = String((w as unknown as Record<string, unknown>)[setting]);
+      // a window row of an older shape has no web security columns: nothing is read there
+      if (!(setting in fields)) continue;
+      const value = String(fields[setting]);
       const unknown = value === "unknown";
       if (!unknown && !open.includes(value)) continue;
+      if (follows && setting === "allowRunningInsecureContentInEffect") continue;
       const assumed = value.includes("default");
+      const web = CONSEQUENCE[setting];
       out.push({
         rule: "window-permissive",
         identity: `${w.file}\0${w.windowName}\0${setting}`,
         unknown,
         key: `${w.windowName} ${setting} ${value}`,
-        message: unknown
-          ? `Window ${w.windowName}: ${setting} cannot be told (a value computed at run time, or no Electron version named in package.json for its default).`
-          : `Window ${w.windowName}: ${setting} is ${value}${assumed ? " (the default of the Electron version package.json names; an assumption about the shipped runtime)" : ""}, so its pages may do more (${w.basis}).`,
+        message: web
+          ? unknown
+            ? `Window ${w.windowName}: ${web.key} cannot be told (a value computed at run time)${follows && setting === "webSecurityInEffect" ? "; allowRunningInsecureContent is not read as a value of its own and depends on it (webSecurity: false turns it on), so it cannot be told either" : ""}.`
+            : `Window ${w.windowName}: ${webSecurityWhy(fields, setting)}, so ${web.effect}.`
+          : unknown
+            ? `Window ${w.windowName}: ${setting} cannot be told (a value computed at run time, or no Electron version named in package.json for its default).`
+            : `Window ${w.windowName}: ${setting} is ${value}${assumed ? " (the default of the Electron version package.json names; an assumption about the shipped runtime)" : ""}, so its pages may do more (${w.basis}).`,
         collection: "windows",
         where: [place(w)],
       });
@@ -258,6 +432,7 @@ export function auditApp(
       rule: "permission-handler-missing",
       identity: "none",
       unknown: false,
+      absence: true,
       key: "no setPermissionRequestHandler",
       message:
         "No setPermissionRequestHandler was found in the files read: without one, Electron grants every permission a page asks for (camera, microphone, notifications, geolocation …); Electron's security guide, section 5.",
@@ -316,6 +491,7 @@ export function auditApp(
             rule: "csp-missing",
             identity: "none",
             unknown: false,
+            absence: true,
             key: "no Content-Security-Policy",
             message:
               "No Content-Security-Policy was found: no <meta http-equiv> in the app's HTML files and no header set in a webRequest.onHeadersReceived listener. A page loaded from a server may still get one from it (Electron's security guide, section 7).",
@@ -341,6 +517,8 @@ export function auditApp(
       where: [place(r)],
     });
   }
+
+  out.push(...navigationDrafts(app.navigationHandlers ?? [], app.windows ?? []));
   return out;
 }
 
@@ -378,12 +556,7 @@ export async function auditBuild(
   const findings: AuditFinding[] = [];
   for (const d of auditApp(app)) {
     // an absence is not a finding while the list may be missing rows: the rule is undecided
-    if (
-      (d.rule === "permission-handler-missing" || d.rule === "csp-missing") &&
-      !d.unknown &&
-      undecided.has(d.rule)
-    )
-      continue;
+    if (d.absence && undecided.has(d.rule)) continue;
     const fp = fingerprint(d.rule, d.unknown ? `maybe\0${d.identity}` : d.identity);
     const prior = findings.find((f) => f.fingerprint === fp);
     if (prior) {
