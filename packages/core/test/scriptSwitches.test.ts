@@ -78,6 +78,12 @@ describe("switches in package.json scripts", () => {
     expect(capped).toBe(true);
     expect(rows.length).toBe(200);
     expect(rows[0]).toMatchObject({ target: "scripts.s0", line: 3 });
+    // one script longer than is read: the switch after the cut is not read, and capped says so
+    const long = scriptSwitchRows(
+      JSON.stringify({ scripts: { a: `electron . ${"x ".repeat(15_000)}--no-sandbox` } }),
+    );
+    expect(long.rows).toEqual([]);
+    expect(long.capped).toBe(true);
     // larger than any real package.json: not read
     expect(scriptSwitchRows(" ".repeat((4 << 20) + 1))).toEqual({ rows: [], capped: true });
   });

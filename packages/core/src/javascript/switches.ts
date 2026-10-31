@@ -972,6 +972,8 @@ export function scriptSwitchRows(text: string): { rows: SwitchRow[]; capped: boo
     const line = at < 0 ? 1 : lineAt(at);
     const target = `scripts.${name.length > 80 ? `${name.slice(0, 80)}…` : name}`;
     const evidence = `${target.slice(8)}: ${command.length > 120 ? `${command.slice(0, 120)}…` : command}`;
+    // a script longer than is read: what follows the cut is not read, and the list says so
+    if (command.length > MAX_SCRIPT_CHARS) capped = true;
     // commands split at `&&`, `||`, `;` and `|`; words at whitespace, quotes dropped
     for (const part of command.slice(0, MAX_SCRIPT_CHARS).split(/&&|\|\||;|\|/)) {
       const words =
