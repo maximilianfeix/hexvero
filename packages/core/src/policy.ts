@@ -38,6 +38,8 @@ import {
   AUDIT_STATUS_TEXT,
   cspRisk,
   dangerousCallRisk,
+  hiddenFeatures,
+  hiddenFeaturesNote,
   openExternalRisk,
   permissionRisk,
   type AuditResult,
@@ -2101,10 +2103,47 @@ function insecureFollows(
     );
 }
 
+/** The feature settings one side's window item hides behind an unknown webSecurity. */
+function hiddenOn(
+  item: Record<string, unknown> | null,
+  sides: CheckSides | undefined,
+  side: "a" | "b",
+): string[] {
+  const prefs = sides?.items[side]["webPreferences"];
+  return item ? hiddenFeatures(item, prefs ? prefs.filter(isRecord) : undefined) : [];
+}
+
+/** The sentence a webSecurity finding adds for the feature settings it stands for. */
+const featuresSentence = (columns: readonly string[]): string =>
+  columns.length ? ` ${hiddenFeaturesNote(columns).slice(2)}.` : "";
+
 function windowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
   const out: Draft[] = [];
+  /** Per window: the feature changes to unknown that its webSecurity finding says. */
+  const folded = new Map<string, string[]>();
   for (const w of r.overview.windowChanges) {
+    if (w.setting !== "webSecurityInEffect" || w.after !== "unknown") continue;
+    const row = r.changes.find((c) => c.collection === "windows" && c.key === w.window);
+    if (!row) continue;
+    const hidden = hiddenOn(windowItem(r, row, "b", sides), sides, "b").filter((setting) =>
+      r.overview.windowChanges.some(
+        (x) => x.window === w.window && x.setting === setting && x.after === "unknown",
+      ),
+    );
+    if (hidden.length) folded.set(w.window, hidden);
+  }
+  for (const w of r.overview.windowChanges) {
+    if (folded.get(w.window)?.includes(w.setting)) continue;
     if (w.direction === "less permissive") continue;
+    // Both values known and neither move lets pages do more (`default off` → `off`, writing the
+    // default; `default on` → `on`): nothing to report, and nothing unknown either.
+    if (
+      w.direction === "unclear" &&
+      w.before !== "unknown" &&
+      w.after !== "unknown" &&
+      !(PERMISSIVE[w.setting]?.includes(w.after) && !PERMISSIVE[w.setting]?.includes(w.before))
+    )
+      continue;
     const row: ChangeRow = r.changes.find(
       (c) => c.collection === "windows" && c.key === w.window,
     ) ?? {
@@ -2126,14 +2165,18 @@ function windowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draf
       insecureFollows(windowItem(r, row, "b", sides), sides, "b");
     if (follows && w.setting === "allowRunningInsecureContentInEffect") continue;
     const unknown = w.direction === "unclear";
+    const note =
+      w.setting === "blinkFeaturesInEffect" && !unknown
+        ? blinkNote(windowItem(r, row, "b", sides))
+        : "";
     out.push({
       rule: "window-more-permissive",
       identity: `window\0${w.window}\0${w.setting}\0${w.after}`,
       row,
       key: `${w.window} ${w.setting}`,
       message: unknown
-        ? `Window ${plain(w.window)}: ${w.setting} changed from ${plain(w.before)} to ${plain(w.after)}; whether pages may now do more is not known.${follows ? INSECURE_FOLLOWS : ""}`
-        : `Window ${plain(w.window)} lets its pages do more: ${w.setting} ${plain(w.before)} → ${plain(w.after)}.`,
+        ? `Window ${plain(w.window)}: ${w.setting} changed from ${plain(w.before)} to ${plain(w.after)}; whether pages may now do more is not known.${follows ? INSECURE_FOLLOWS : ""}${w.setting === "webSecurityInEffect" ? featuresSentence(folded.get(w.window) ?? []) : ""}`
+        : `Window ${plain(w.window)} lets its pages do more: ${w.setting} ${plain(w.before)} → ${plain(w.after)}${note}.`,
       where: row.where,
       unknown,
     });
@@ -2150,7 +2193,17 @@ const PERMISSIVE: Record<string, readonly string[]> = {
   pageRequire: ["yes", "yes by default"],
   webSecurityInEffect: ["off", "default off"],
   allowRunningInsecureContentInEffect: ["on", "default on"],
+  experimentalFeaturesInEffect: ["on"],
+  blinkFeaturesInEffect: ["on"],
 };
+
+/** ` (enableBlinkFeatures A, B)` for a window item that names Blink features; else empty. */
+function blinkNote(item: Record<string, unknown> | null): string {
+  const features = item?.["enableBlinkFeatures"];
+  return Array.isArray(features) && features.length
+    ? ` (enableBlinkFeatures ${features.map((x) => plain(String(x))).join(", ")})`
+    : "";
+}
 
 /** The window item behind a row of `windows`, from its label or the side's items. */
 function windowItem(
@@ -2215,12 +2268,17 @@ function unmatchedWindowDrafts(r: ReleaseComparison, sides: CheckSides | undefin
       continue;
     }
     const follows = insecureFollows(item, sides, side);
+    const hidden = hiddenOn(item, sides, side);
     for (const setting of Object.keys(PERMISSIVE)) {
       const value = String(item[setting] ?? "unknown");
       const open = PERMISSIVE[setting]!.includes(value);
       if (!open && value !== "unknown") continue;
       if (follows && setting === "allowRunningInsecureContentInEffect") continue;
-      const also = follows && setting === "webSecurityInEffect" ? INSECURE_FOLLOWS : "";
+      if (hidden.includes(setting)) continue;
+      const also =
+        setting === "webSecurityInEffect"
+          ? `${follows ? INSECURE_FOLLOWS : ""}${featuresSentence(hidden)}`
+          : "";
       const twin = open && row.change === "added" ? removedOpen(setting) : undefined;
       const unknown = row.change === "unknown" || value === "unknown" || twin !== undefined;
       out.push({
@@ -2235,7 +2293,7 @@ function unmatchedWindowDrafts(r: ReleaseComparison, sides: CheckSides | undefin
               ? `New window ${label}: whether ${setting} lets its pages do more is not known.${also}`
               : twin !== undefined
                 ? `New window ${label} has ${setting} ${plain(value)}; it may be ${plain(twin)} renamed, which had it too.`
-                : `New window ${label} lets its pages do more: ${setting} is ${plain(value)}.`,
+                : `New window ${label} lets its pages do more: ${setting} is ${plain(value)}${setting === "blinkFeaturesInEffect" ? blinkNote(item) : ""}.`,
         where: row.where,
         unknown,
       });

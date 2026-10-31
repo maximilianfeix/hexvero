@@ -57,7 +57,7 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
     "window-more-permissive": {
       name: "WindowMorePermissive",
       short: "A window's settings let its pages do more than before.",
-      full: "A BrowserWindow present in both builds changed nodeIntegration, contextIsolation, sandbox, page access to require, webSecurity or allowRunningInsecureContent in a direction that lets its pages do more (Electron's security guide, sections 2-4, 6 and 8). When the direction cannot be told, the finding is unknown.",
+      full: "A BrowserWindow present in both builds changed nodeIntegration, contextIsolation, sandbox, page access to require, webSecurity, allowRunningInsecureContent, experimentalFeatures or enableBlinkFeatures (turned on, or a Blink feature added) in a direction that lets its pages do more (Electron's security guide, sections 2-4, 6 and 8-10). When the direction cannot be told, the finding is unknown.",
       help: "Whether this matters depends on what the window loads. Review the window's settings and the content it shows.",
     },
     "new-bridge-exposure": {
@@ -287,8 +287,8 @@ const AUDIT_TEXT: Record<
   "window-permissive": {
     name: "WindowPermissive",
     short: "A window's settings let its pages do more.",
-    full: "A BrowserWindow has Node integration on, context isolation off, the sandbox off, or page access to require, as written or by the default of the Electron version package.json names (Electron's security guide, sections 2-4); or it writes webSecurity: false (section 6) or allowRunningInsecureContent: true (section 8, also on when webSecurity is false and it is not written). A setting hexvero could not read is reported as unknown.",
-    help: "Electron's security guide: section 2 (Node integration), 3 (context isolation), 4 (sandbox), section 6 (do not disable webSecurity), section 8 (do not enable allowRunningInsecureContent). Remove the setting, or keep it to a window that loads only the app's own files. See docs/electron-findings.md of hexvero for what is read and what is not.",
+    full: "A BrowserWindow has Node integration on, context isolation off, the sandbox off, or page access to require, as written or by the default of the Electron version package.json names (Electron's security guide, sections 2-4); or it writes webSecurity: false (section 6), allowRunningInsecureContent: true (section 8, also on when webSecurity is false and it is not written), experimentalFeatures: true (section 9) or enableBlinkFeatures with a feature named (section 10). A setting hexvero could not read is reported as unknown.",
+    help: "Electron's security guide: section 2 (Node integration), 3 (context isolation), 4 (sandbox), section 6 (do not disable webSecurity), section 8 (do not enable allowRunningInsecureContent), section 9 (do not enable experimental features), section 10 (do not use enableBlinkFeatures). Remove the setting, or keep it to a window that loads only the app's own files. See docs/electron-findings.md of hexvero for what is read and what is not.",
   },
   "remote-enabled": {
     name: "RemoteEnabled",

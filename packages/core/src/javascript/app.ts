@@ -328,10 +328,20 @@ const OTHER_KEYS = [
   "nodeIntegrationInSubFrames",
   "nodeIntegrationInWorker",
   "enableRemoteModule",
+  "experimentalFeatures",
 ] as const;
+/** Settings whose value is a string, read as the literal written (`enableBlinkFeatures: "A,B"`). */
+const STRING_KEYS = ["enableBlinkFeatures"] as const;
 const BOOLEAN_KEYS: ReadonlySet<string> = new Set([...CORE_KEYS, ...OTHER_KEYS]);
+const STRING_KEY_SET: ReadonlySet<string> = new Set(STRING_KEYS);
+/** Every setting read besides `preload`: the boolean ones and the string ones. */
+const SETTING_KEYS: ReadonlySet<string> = new Set([...BOOLEAN_KEYS, ...STRING_KEYS]);
 const isCoreKey = (key: string): key is CoreKey => (CORE_KEYS as readonly string[]).includes(key);
-export type PreferenceKey = "preload" | CoreKey | (typeof OTHER_KEYS)[number];
+export type PreferenceKey =
+  | "preload"
+  | CoreKey
+  | (typeof OTHER_KEYS)[number]
+  | (typeof STRING_KEYS)[number];
 
 /** One BrowserWindow setting as written in the source: the evidence behind the Electron flags. */
 export interface WebPreference {
@@ -413,9 +423,60 @@ export interface WindowSummary {
    * and on where `webSecurity: false` is written and this setting is not (WebPreferences).
    */
   allowRunningInsecureContentInEffect: Effect;
+  /** `experimentalFeatures` as written (Electron's security guide, section 9). */
+  experimentalFeatures: SettingState;
+  /** Whether Chromium's experimental features are on: off by default in every version. */
+  experimentalFeaturesInEffect: Effect;
+  /**
+   * The Blink features `enableBlinkFeatures` turns on, as written (the string split at `,`,
+   * sorted, without empty names), or `computed`, `conflicting` (two different literals in
+   * separate objects) or `not written` (Electron's security guide, section 10).
+   */
+  enableBlinkFeatures: string[] | "computed" | "conflicting" | "not written";
+  /** `on` when a feature is named; `off` for an empty list; none by default in every version. */
+  blinkFeaturesInEffect: Effect;
   /** The rule each derived value rests on. */
   basis: string;
 }
+
+/**
+ * The columns of `experimentalFeatures` and `enableBlinkFeatures`, from their rows of one window.
+ * Both are off unless written (WebPreferences: experimentalFeatures defaults to false;
+ * enableBlinkFeatures names no feature), the same in every Electron version.
+ */
+export function featureEffects(
+  experimental: SettingState,
+  blink: WindowSummary["enableBlinkFeatures"],
+): Pick<WindowSummary, "experimentalFeaturesInEffect" | "blinkFeaturesInEffect"> {
+  return {
+    experimentalFeaturesInEffect:
+      typeof experimental === "boolean"
+        ? experimental
+          ? "on"
+          : "off"
+        : noValue(experimental)
+          ? "unknown"
+          : "default off",
+    blinkFeaturesInEffect: Array.isArray(blink)
+      ? blink.length
+        ? "on"
+        : "off"
+      : blink === "not written"
+        ? "default off"
+        : "unknown",
+  };
+}
+
+/** The feature names of an `enableBlinkFeatures` string: split at `,`, trimmed, sorted, unique. */
+export const blinkFeatureNames = (value: string): string[] =>
+  [
+    ...new Set(
+      value
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ),
+  ].toSorted();
 
 /** A state from which no value can be taken. */
 const noValue = (state: SettingState): state is "computed" | "conflicting" =>
@@ -5465,7 +5526,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 45;
+export const JS_SCAN_SCHEMA = 46;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -5997,7 +6058,7 @@ function optionSettings(options: Val | null): {
     value: string | boolean;
     src: { file: string; line: number };
   }> = [];
-  const keys = ["preload", ...BOOLEAN_KEYS];
+  const keys = ["preload", ...SETTING_KEYS];
   const prefs = options.props.has("webPreferences")
     ? options.props.get("webPreferences")
     : options.open
@@ -6012,9 +6073,18 @@ function optionSettings(options: Val | null): {
       continue;
     }
     const v = prefs.props.get(key) ?? null;
-    if (v?.kind === "bool" && key !== "preload") settings.push({ key, value: v.value, src: v.src });
+    if (v?.kind === "bool" && BOOLEAN_KEYS.has(key))
+      settings.push({ key, value: v.value, src: v.src });
     else if (v?.kind === "str" && key === "preload" && v.values.length === 1 && v.src)
       settings.push({ key, value: v.values[0]!.replace(/^[\\/]+/, ""), src: v.src });
+    else if (
+      v?.kind === "str" &&
+      STRING_KEY_SET.has(key) &&
+      v.values.length === 1 &&
+      v.src &&
+      !v.ref
+    )
+      settings.push({ key, value: v.values[0]!, src: v.src });
     else if (v?.kind !== "undef") unknown.add(key);
   }
   return { settings, unknown };
@@ -6023,7 +6093,7 @@ function optionSettings(options: Val | null): {
 /** A setting written as `key: value` in an options object, at a source offset. */
 type SettingAt = {
   key: Exclude<PreferenceKey, "preload">;
-  value: boolean | null;
+  value: string | boolean | null;
   computed?: string;
   start: number;
 };
@@ -6196,7 +6266,7 @@ export function readFileTokens(
         const is = (i: number, value: string): boolean =>
           tokens[i]?.type === "punct" && tokens[i]!.value === value;
         const everyKey = (): void => {
-          for (const key of BOOLEAN_KEYS) mutated.add(key);
+          for (const key of SETTING_KEYS) mutated.add(key);
           mutated.add("preload");
         };
         /** Whether the bracket right around token k opens the body of a class. */
@@ -6390,7 +6460,7 @@ export function readFileTokens(
         braces = pairs;
       }
       if (
-        /nodeIntegration|contextIsolation|sandbox|preload|webSecurity|allowRunningInsecureContent|webviewTag|enableRemoteModule/.test(
+        /nodeIntegration|contextIsolation|sandbox|preload|webSecurity|allowRunningInsecureContent|webviewTag|enableRemoteModule|experimentalFeatures|enableBlinkFeatures/.test(
           source,
         )
       ) {
@@ -6513,7 +6583,7 @@ export function readFileTokens(
               preloadsAt.add(t.start + 1);
             else if (isP(k, "[") && tokens[k + 1]?.type === "string" && valueAt === k + 4)
               preloadsAt.add(tokens[k + 1]!.start + 1);
-          } else if (BOOLEAN_KEYS.has(name) && accessor) {
+          } else if (SETTING_KEYS.has(name) && accessor) {
             // A getter or method decides the value when the window reads it: not a literal.
             settingsAt.push({
               key: name as Exclude<PreferenceKey, "preload">,
@@ -6521,19 +6591,23 @@ export function readFileTokens(
               computed: `${t.value === name ? "" : `${t.value} `}${name}() {…}`,
               start: t.start,
             });
-          } else if (BOOLEAN_KEYS.has(name)) {
+          } else if (SETTING_KEYS.has(name)) {
             const key = name as Exclude<PreferenceKey, "preload">;
             const v = tokens[valueAt]!;
             const n = tokens[valueAt + 1];
-            // true, false, and what minifiers and obfuscators write for them: !0, !1, !0x0
-            const value =
-              v.type === "ident" && (v.value === "true" || v.value === "false")
+            // A string setting: a string literal, or a template literal without substitutions.
+            // Booleans: true, false, and what minifiers and obfuscators write for them: !0, !1, !0x0
+            const value: string | boolean | null = STRING_KEY_SET.has(name)
+              ? v.type === "string" || (v.type === "template" && !v.value.endsWith("${…}"))
+                ? v.value
+                : null
+              : v.type === "ident" && (v.value === "true" || v.value === "false")
                 ? v.value === "true"
                 : v.type === "punct" && v.value === "!" && n?.type === "number"
                   ? negatedNumber(n.value)
                   : null;
             // `sandbox: true && flag` is not the setting `true`: the value must end there.
-            const after = tokens[v.type === "ident" ? valueAt + 1 : valueAt + 2];
+            const after = tokens[v.type === "punct" ? valueAt + 2 : valueAt + 1];
             const ends =
               !after || (after.type === "punct" && (after.value === "," || after.value === "}"));
             if (value !== null && ends) settingsAt.push({ key, value, start: t.start });
@@ -7289,7 +7363,7 @@ export function analyzeJavaScriptTree(
         const whole = (located as WindowRanges).wholePrefs.get(window);
         const replaced = whole !== undefined && whole > opaque.get(window)!;
         if (partial && !replaced)
-          for (const key of ["preload", ...BOOLEAN_KEYS]) read.unknown.add(key);
+          for (const key of ["preload", ...SETTING_KEYS]) read.unknown.add(key);
         const windowLine = lineAt(r.start);
         // Where the evaluation cannot read a key, the rows as written stay, and the key is not
         // known for the window, unless the code writes it after the last place that could not
@@ -7418,7 +7492,7 @@ export function analyzeJavaScriptTree(
       if (hiddenUpTo !== undefined && !replaced)
         // What could not be followed may write any key; a key the code writes for the window
         // after that place stands, every other one is not known.
-        for (const key of ["preload", ...BOOLEAN_KEYS])
+        for (const key of ["preload", ...SETTING_KEYS])
           if (!found.some((o) => o.window === r.window && o.key === key && o.order > hiddenUpTo))
             computedKeys.add(key);
       facts.windows.push({
@@ -8300,7 +8374,7 @@ export function analyzeJavaScriptTree(
     // One row per key is left where the order of writes could be read. Several rows with
     // different values are writes in separate objects: neither is taken.
     const stateOf = (
-      key: CoreKey | "webSecurity" | "allowRunningInsecureContent",
+      key: CoreKey | "webSecurity" | "allowRunningInsecureContent" | "experimentalFeatures",
     ): SettingState => {
       if (w.computed?.includes(key)) return "computed";
       const rows = webPreferences.filter(
@@ -8324,6 +8398,17 @@ export function analyzeJavaScriptTree(
       allowRunningInsecureContent: stateOf("allowRunningInsecureContent"),
     };
     const { basis: webBasis, ...webEffects } = webSecurityEffects(web);
+    const experimentalFeatures = stateOf("experimentalFeatures");
+    const enableBlinkFeatures = ((): WindowSummary["enableBlinkFeatures"] => {
+      if (w.computed?.includes("enableBlinkFeatures")) return "computed";
+      const rows = webPreferences.filter(
+        (x) => x.file === w.file && x.window === w.window && x.key === "enableBlinkFeatures",
+      );
+      if (!rows.length) return "not written";
+      if (rows.some((p) => typeof p.value !== "string")) return "computed";
+      const lists = new Set(rows.map((p) => blinkFeatureNames(p.value as string).join(",")));
+      return lists.size === 1 ? blinkFeatureNames(rows[0]!.value as string) : "conflicting";
+    })();
     const effects = windowEffects(
       states,
       major,
@@ -8336,6 +8421,9 @@ export function analyzeJavaScriptTree(
       ...effects,
       ...web,
       ...webEffects,
+      experimentalFeatures,
+      enableBlinkFeatures,
+      ...featureEffects(experimentalFeatures, enableBlinkFeatures),
       basis: [effects.basis, ...webBasis].join("; "),
     };
   });

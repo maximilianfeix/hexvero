@@ -99,7 +99,11 @@ export interface WindowChange {
     | "sandboxInEffect"
     | "pageRequire"
     | "webSecurityInEffect"
-    | "allowRunningInsecureContentInEffect";
+    | "allowRunningInsecureContentInEffect"
+    | "experimentalFeaturesInEffect"
+    | "blinkFeaturesInEffect"
+    /** Blink features named on both sides: more permissive when one is added (names, `, `). */
+    | "enableBlinkFeatures";
   before: string;
   after: string;
   /** `unclear` when either side is unknown. */
@@ -107,13 +111,18 @@ export interface WindowChange {
 }
 
 /** For each derived window setting, the values under which a page can do more. */
-const PERMISSIVE: Record<WindowChange["setting"], readonly string[]> = {
+const PERMISSIVE: Record<
+  Exclude<WindowChange["setting"], "enableBlinkFeatures">,
+  readonly string[]
+> = {
   nodeIntegrationInEffect: ["on", "default on"],
   contextIsolationInEffect: ["off", "default off"],
   sandboxInEffect: ["off", "default off"],
   pageRequire: ["yes", "yes by default"],
   webSecurityInEffect: ["off", "default off"],
   allowRunningInsecureContentInEffect: ["on", "default on"],
+  experimentalFeaturesInEffect: ["on"],
+  blinkFeaturesInEffect: ["on"],
 };
 
 /** One collection of two targets compared, as `Session.compareCollection` returns it. */
@@ -557,8 +566,30 @@ export class Session {
       const { diff } = await this.compareCollection(idA, idB, "windows");
       for (const item of diff.changed)
         for (const f of item.fields) {
+          // Features named on both sides: blinkFeaturesInEffect stays on, so the list says it.
+          // A window that turns them on or off at all is blinkFeaturesInEffect's change.
+          if (
+            f.field === "enableBlinkFeatures" &&
+            Array.isArray(f.before) &&
+            Array.isArray(f.after) &&
+            f.before.length &&
+            f.after.length
+          ) {
+            const before = (f.before as unknown[]).map(String);
+            const after = (f.after as unknown[]).map(String);
+            windowChanges.push({
+              window: item.key,
+              setting: "enableBlinkFeatures",
+              before: before.join(", "),
+              after: after.join(", "),
+              direction: after.some((x) => !before.includes(x))
+                ? "more permissive"
+                : "less permissive",
+            });
+            continue;
+          }
           if (!(f.field in PERMISSIVE)) continue;
-          const setting = f.field as WindowChange["setting"];
+          const setting = f.field as keyof typeof PERMISSIVE;
           const [before, after] = [String(f.before), String(f.after)];
           const open = (v: string): boolean => PERMISSIVE[setting].includes(v);
           windowChanges.push({

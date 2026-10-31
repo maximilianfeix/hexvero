@@ -151,11 +151,14 @@ const PERMISSIVE: Readonly<Record<string, readonly string[]>> = {
   pageRequire: ["yes", "yes by default"],
   webSecurityInEffect: ["off", "default off"],
   allowRunningInsecureContentInEffect: ["on", "default on"],
+  // off by default in every version: only a value written turns them on
+  experimentalFeaturesInEffect: ["on"],
+  blinkFeaturesInEffect: ["on"],
 };
 
 /**
- * What a permissive value of a web security setting lets a page do, with the section of
- * Electron's security guide that advises against it. The core settings say "its pages may do
+ * What a permissive value of a web security or feature setting lets a page do, with the section
+ * of Electron's security guide that advises against it. The core settings say "its pages may do
  * more" with the basis of the derived value.
  */
 const CONSEQUENCE: Readonly<Record<string, { key: string; effect: string }>> = {
@@ -168,12 +171,64 @@ const CONSEQUENCE: Readonly<Record<string, { key: string; effect: string }>> = {
     effect:
       "its https pages may run scripts, styles and plugins loaded over http (Electron's security guide, section 8)",
   },
+  experimentalFeaturesInEffect: {
+    key: "experimentalFeatures",
+    effect:
+      "Chromium's experimental features are on for its pages (Electron's security guide, section 9)",
+  },
+  blinkFeaturesInEffect: {
+    key: "enableBlinkFeatures",
+    effect:
+      "its pages get features Chromium keeps off by default (Electron's security guide, section 10)",
+  },
 };
+
+/** The feature settings of a window, as written and derived. */
+const FEATURE_SETTINGS = [
+  ["experimentalFeatures", "experimentalFeaturesInEffect"],
+  ["enableBlinkFeatures", "blinkFeaturesInEffect"],
+] as const;
+
+/**
+ * The feature settings of a window that are unknown only because its options could not be
+ * followed: computed, with no webPreferences row of the window for the key. With webSecurity
+ * unknown for the same window, its finding says them too, not one more finding each (as for
+ * allowRunningInsecureContent). Without the build's webPreferences none is taken as hidden.
+ */
+export function hiddenFeatures(
+  w: Record<string, unknown>,
+  prefs: ReadonlyArray<Record<string, unknown>> | undefined,
+): string[] {
+  if (w["webSecurityInEffect"] !== "unknown" || !prefs) return [];
+  return FEATURE_SETTINGS.filter(
+    ([key, column]) =>
+      w[column] === "unknown" &&
+      w[key] === "computed" &&
+      !prefs.some(
+        (p) => p["key"] === key && p["file"] === w["file"] && p["window"] === w["window"],
+      ),
+  ).map(([, column]) => column);
+}
+
+/** What the webSecurity finding adds for the feature settings it stands for. */
+export function hiddenFeaturesNote(columns: readonly string[]): string {
+  const keys = FEATURE_SETTINGS.filter(([, c]) => columns.includes(c)).map(([k]) => k);
+  if (!keys.length) return "";
+  return keys.length === 1
+    ? `; ${keys[0]} is not read as a value of its own (the window's options could not be followed), so it cannot be told either`
+    : `; ${keys.join(" and ")} are not read as values of their own (the window's options could not be followed), so they cannot be told either`;
+}
+
+/** The Blink features a window row turns on, as `enableBlinkFeatures` lists them; [] for none. */
+const blinkOf = (w: Record<string, unknown>): string[] =>
+  Array.isArray(w["enableBlinkFeatures"]) ? (w["enableBlinkFeatures"] as string[]) : [];
 
 /** How a web security value came about, from the window's written state. */
 function webSecurityWhy(w: Record<string, unknown>, setting: string): string {
   const key = CONSEQUENCE[setting]!.key;
   const state = w[key];
+  if (setting === "blinkFeaturesInEffect")
+    return `${key} turns on the Blink features ${blinkOf(w).join(", ")} as written`;
   if (typeof state === "boolean") return `${key} is ${String(state)} as written`;
   return `${key} is not written and webSecurity: false turns it on`;
 }
@@ -586,6 +641,10 @@ export function auditApp(
             (p) =>
               p.key === "allowRunningInsecureContent" && p.file === w.file && p.window === w.window,
           )));
+    const hidden = hiddenFeatures(
+      fields,
+      app.webPreferences as unknown as ReadonlyArray<Record<string, unknown>> | undefined,
+    );
     for (const [setting, open] of Object.entries(PERMISSIVE)) {
       // a window row of an older shape has no web security columns: nothing is read there
       if (!(setting in fields)) continue;
@@ -593,16 +652,19 @@ export function auditApp(
       const unknown = value === "unknown";
       if (!unknown && !open.includes(value)) continue;
       if (follows && setting === "allowRunningInsecureContentInEffect") continue;
+      if (hidden.includes(setting)) continue;
       const assumed = value.includes("default");
       const web = CONSEQUENCE[setting];
+      // the features turned on are part of what is accepted: a baseline of one does not hide more
+      const features = setting === "blinkFeaturesInEffect" && !unknown ? blinkOf(fields) : [];
       out.push({
         rule: "window-permissive",
-        identity: `${w.file}\0${w.windowName}\0${setting}`,
+        identity: `${w.file}\0${w.windowName}\0${setting}${features.length ? `\0${features.join(",")}` : ""}`,
         unknown,
-        key: `${w.windowName} ${setting} ${value}`,
+        key: `${w.windowName} ${setting} ${value}${features.length ? ` (${features.join(", ")})` : ""}`,
         message: web
           ? unknown
-            ? `Window ${w.windowName}: ${web.key} cannot be told (a value computed at run time)${follows && setting === "webSecurityInEffect" ? "; allowRunningInsecureContent is not read as a value of its own and depends on it (webSecurity: false turns it on), so it cannot be told either" : ""}.`
+            ? `Window ${w.windowName}: ${web.key} cannot be told (a value computed at run time)${follows && setting === "webSecurityInEffect" ? "; allowRunningInsecureContent is not read as a value of its own and depends on it (webSecurity: false turns it on), so it cannot be told either" : ""}${setting === "webSecurityInEffect" ? hiddenFeaturesNote(hidden) : ""}.`
             : `Window ${w.windowName}: ${webSecurityWhy(fields, setting)}, so ${web.effect}.`
           : unknown
             ? `Window ${w.windowName}: ${setting} cannot be told (a value computed at run time, or no Electron version named in package.json for its default).`
