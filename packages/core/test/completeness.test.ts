@@ -338,6 +338,30 @@ describe("hostile input stays fast", () => {
   );
 
   it(
+    "bounds the reading of lazy getters (`X().app`, `new (X().BrowserWindow)(…)`)",
+    { timeout: 30_000 },
+    () => {
+      const statements = "a=a+1;".repeat(2000);
+      const huge = `(${"x,".repeat(1500)}x)`;
+      for (const hostile of [
+        // a large function called as a getter at thousands of places: its body is not walked
+        // past the few statements a getter has
+        `function big(){${statements}return require("electron")}${'big().app.on("certificate-error",h);big().shell.openExternal(u);new (big().BrowserWindow)(o);'.repeat(5000)}`,
+        // a getter whose statements are one long comma sequence each
+        `function seq(){var d=${huge};seq=function(){return d};return d}${"seq().app.commandLine.appendSwitch(s);".repeat(5000)}`,
+        // getters that return each other, and themselves
+        `function f(){return g()}function g(){return f()}function s(){return s()}${'f().app.on("certificate-error",h);s().shell.openExternal(u);'.repeat(5000)}`,
+      ]) {
+        const started = performance.now();
+        const info = analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
+        expect(performance.now() - started).toBeLessThan(5_000);
+        // none of these getters is read as electron's
+        expect(info.switches.filter((r) => r.targetKind === "app")).toEqual([]);
+      }
+    },
+  );
+
+  it(
     "tells a write from a local's quickly in deeply nested functions (#198)",
     { timeout: 60_000 },
     () => {

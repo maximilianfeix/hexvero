@@ -84,7 +84,19 @@
           "file": "main.js",
           "why": "print window, via `prefs`"
         },
-        { "key": "sandbox", "value": false, "file": "main.js", "why": "print window, via `prefs`" }
+        { "key": "sandbox", "value": false, "file": "main.js", "why": "print window, via `prefs`" },
+        {
+          "key": "webviewTag",
+          "value": true,
+          "file": "main.js",
+          "why": "about window, via `aboutPrefs`; its class is reached as `new (lazyElectron().BrowserWindow)(…)`, with lazyElectron Babel's lazy import of electron"
+        },
+        {
+          "key": "webSecurity",
+          "value": true,
+          "file": "main.js",
+          "why": "about window, via `aboutPrefs`"
+        }
       ],
       "absent": [
         {

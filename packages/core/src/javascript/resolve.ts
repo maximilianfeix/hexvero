@@ -5309,9 +5309,10 @@ export class ExpressionResolver {
 
   /**
    * k stands in the parameter list of a function (a default value, `function f(https, a =
-   * https.get(…))`) that has a parameter of the name: that parameter is meant there.
+   * https.get(…))`) that has a parameter of the name: that parameter is meant there. Also when k
+   * is that parameter itself (`(t, n) => …`), which `binding` reads in the scope around the list.
    */
-  private parameterListBinds(k: number, name: string): boolean {
+  parameterListBinds(k: number, name: string): boolean {
     this.innermostBlock(0, null);
     const parents = this.s.parents!;
     let p = parents[k] ?? -1;
@@ -5700,6 +5701,176 @@ export class ExpressionResolver {
   /** The bracket that opens the one that closes at k, or -1. */
   openOf(k: number): number {
     return this.opener[k] ?? -1;
+  }
+
+  /**
+   * `NAME()` at k (the name at k, then `(` `)`, not a member `x.NAME()`), with NAME a lazy getter
+   * of a module: the tokens [a, b) of the expression the call gives, read from NAME's declaration
+   * by its shape alone; null for anything else. What that expression is (`require("electron")`,
+   * a webpack module id) is the caller's to read. The shapes:
+   *
+   * - a module factory handed to a wrapper that runs it on the first call, as webpack 5's
+   *   `__webpack_require__.cw` and esbuild's minified `__commonJS` do:
+   *   `X = n.cw(function (e, t) { e.exports = require("electron") })`, `X = y((e, t) => { t.exports = … })`.
+   *   The call has that one argument and the factory's body is the one `P.exports = …` of a
+   *   parameter P;
+   * - webpack's default-import getter `X = n.n(r)`: the module `r` itself (for a module without
+   *   `__esModule`, as Electron's is; one that has it gives its `default`, which a caller reading
+   *   for Electron's members does not take for the module);
+   * - a function that returns it: `X = () => n(2385)`, `X = () => require("electron")`,
+   *   `function X() { return require("electron") }`;
+   * - Babel's lazy CommonJS import (`lazy: true`): `function X() { const d = require("electron");
+   *   X = function () { return d }; return d }`.
+   *
+   * A parameter or a name declared more than once is no getter (`binding`).
+   */
+  lazyValueAt(k: number): [number, number] | null {
+    const name = this.tokens[k]?.type === "ident" ? this.tokens[k]!.value : null;
+    if (name === null || !this.punct(k + 1, "(") || !this.punct(k + 2, ")")) return null;
+    if (this.punct(k - 1, ".") || this.punct(k - 1, "?.")) return null;
+    const bound = this.binding(k, name, true);
+    if (bound?.kind === "function") return this.lazyReturn(bound.def, name);
+    if (bound?.kind !== "value") return null;
+    let [a, b] = bound.range;
+    while (b > a && (this.punct(b - 1, ";") || this.punct(b - 1, ","))) b--;
+    // `function () { … }` / `() => …` as the value
+    const fn = this.functionValueAt(a);
+    if (fn) {
+      const end = fn.body[1];
+      return end === b && fn.params.length === 0 ? this.lazyReturn(fn, name) : null;
+    }
+    // CALLEE(…) with CALLEE a name or a member chain: `n.cw(factory)`, `n.n(r)`, `y(factory)`
+    let c = a;
+    if (!this.is(c, "ident")) return null;
+    while (this.punct(c + 1, ".") && this.is(c + 2, "ident")) c += 2;
+    const open = c + 1;
+    if (!this.punct(open, "(") || this.closeOf(open) !== b - 1 || b - 1 === open + 1) return null;
+    const close = b - 1;
+    const factory = this.functionValueAt(open + 1);
+    if (factory) {
+      const end = factory.body[1];
+      if (end !== close || factory.params.length === 0) return null;
+      return this.factoryExports(factory);
+    }
+    // `n.n(r)`: webpack's `__webpack_require__.n`, one plain argument
+    if (c === a + 2 && this.tokens[c]!.value === "n") {
+      const argEnd = this.exprEnd(open + 1);
+      return argEnd === close && argEnd > open + 1 ? [open + 1, argEnd] : null;
+    }
+    return null;
+  }
+
+  /** The function written at k: `function [name] (…) {…}`, `async` excluded, or an arrow. */
+  private functionValueAt(k: number): FnDef | null {
+    let j = k;
+    if (this.is(j, "ident", "function")) {
+      j++;
+      if (this.is(j, "ident")) j++;
+      const def = this.functionWithParamsAt(j);
+      return def && def.block ? def : null;
+    }
+    const def = this.functionWithParamsAt(j);
+    return def?.arrow ? def : null;
+  }
+
+  /** [a, b) without the parentheses that only group it: `(require("electron"))`. */
+  private ungrouped(a: number, b: number): [number, number] {
+    let x = a;
+    let y = b;
+    while (y - x > 2 && this.punct(x, "(") && this.closeOf(x) === y - 1) {
+      x++;
+      y--;
+    }
+    return [x, y];
+  }
+
+  /**
+   * The statements of a block body `{ … }` of def, each as the [start, end) ranges of its parts
+   * split at `,` of depth 0 (`return a = f, b` has two), split at `;` of depth 0; a leading
+   * `"use strict"` directive dropped. Null when a statement is not ended by `;` or the body's end,
+   * and for a body of more than 3 statements, which no getter has: reading stops there, so a
+   * large function called as `X()` costs no more than a small one.
+   */
+  private statementsOf(def: FnDef): Array<Array<[number, number]>> | null {
+    const out: Array<Array<[number, number]>> = [];
+    const last = def.body[1] - 1;
+    for (let j = def.body[0] + 1; j < last;) {
+      if (out.length >= 3) return null;
+      const parts: Array<[number, number]> = [];
+      for (let p = j; ;) {
+        const end = this.exprEnd(p);
+        if (end <= p || parts.length >= 8) return null;
+        parts.push([p, end]);
+        if (end < last && this.punct(end, ",")) {
+          p = end + 1;
+          continue;
+        }
+        if (end < last && !this.punct(end, ";")) return null;
+        j = end < last ? end + 1 : last;
+        break;
+      }
+      const directive = parts.length === 1 && parts[0]![1] === parts[0]![0] + 1;
+      if (!(directive && this.is(parts[0]![0], "string") && out.length === 0)) out.push(parts);
+    }
+    return out;
+  }
+
+  /**
+   * What a getter without parameters gives: the expression of an arrow body, the one `return …`
+   * of a block, or Babel's lazy import, `const d = X; NAME = function () { return d }; return d`
+   * (minified: `const d = X; return NAME = function () { return d }, d`).
+   */
+  private lazyReturn(def: FnDef, name: string): [number, number] | null {
+    if (def.params.length !== 0) return null;
+    if (!def.block) return this.ungrouped(def.body[0], def.body[1]);
+    const body = this.statementsOf(def);
+    if (!body) return null;
+    /** `return X` at [a, b): X. */
+    const returned = ([a, b]: [number, number]): [number, number] | null =>
+      this.is(a, "ident", "return") && b > a + 1 ? this.ungrouped(a + 1, b) : null;
+    if (body.length === 1 && body[0]!.length === 1) return returned(body[0]![0]!);
+    const parts = body.flat();
+    if (parts.length !== 3 || body[0]!.length !== 1 || body.length < 2) return null;
+    let [decl, reassign, ret] = parts as [[number, number], [number, number], [number, number]];
+    if (body.length === 3) {
+      const r = returned(ret);
+      if (!r) return null;
+      ret = r;
+    } else {
+      // `return NAME = function () { return d }, d`
+      if (!this.is(reassign[0], "ident", "return")) return null;
+      reassign = [reassign[0] + 1, reassign[1]];
+    }
+    // `const d = X`
+    if (!["const", "let", "var"].some((w) => this.is(decl[0], "ident", w))) return null;
+    if (!this.is(decl[0] + 1, "ident") || !this.punct(decl[0] + 2, "=")) return null;
+    const local = this.tokens[decl[0] + 1]!.value;
+    const value: [number, number] = [decl[0] + 3, decl[1]];
+    if (value[1] <= value[0]) return null;
+    // `d` is what is returned
+    if (ret[1] !== ret[0] + 1 || !this.is(ret[0], "ident", local)) return null;
+    // `NAME = function () { return d }` or `NAME = () => d`
+    if (!this.is(reassign[0], "ident", name) || !this.punct(reassign[0] + 1, "=")) return null;
+    const again = this.functionValueAt(reassign[0] + 2);
+    if (!again || again.body[1] !== reassign[1]) return null;
+    const gives = again.params.length === 0 ? this.lazyReturn(again, name) : null;
+    return gives && gives[1] === gives[0] + 1 && this.is(gives[0], "ident", local) ? value : null;
+  }
+
+  /** A module factory whose body is the one `P.exports = X` with P a parameter: X. */
+  private factoryExports(def: FnDef): [number, number] | null {
+    const names = def.params.flatMap((p) => (p.kind === "name" ? [p.name] : []));
+    let s: [number, number];
+    if (def.block) {
+      const body = this.statementsOf(def);
+      if (!body || body.length !== 1 || body[0]!.length !== 1) return null;
+      s = body[0]![0]!;
+    } else s = this.ungrouped(def.body[0], def.body[1]);
+    const [a, b] = s;
+    if (!this.is(a, "ident") || !names.includes(this.tokens[a]!.value)) return null;
+    if (!this.punct(a + 1, ".") || !this.is(a + 2, "ident", "exports") || !this.punct(a + 3, "="))
+      return null;
+    return b > a + 4 ? [a + 4, b] : null;
   }
 
   /** The parenthesis at `open` is the head of a `for (…)` or `for await (…)`. */

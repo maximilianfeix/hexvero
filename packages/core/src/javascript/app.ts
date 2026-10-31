@@ -578,6 +578,45 @@ interface WindowRange {
 const WINDOW_CLASSES = new Set(["BrowserWindow", "BrowserView", "WebContentsView"]);
 
 /**
+ * The class a `new` at k constructs and the `(` of its arguments: `new C(`, `new X.C(`, and with
+ * the callee in parentheses, as bundlers write a member of a lazily loaded module:
+ * `new (X.C)(`, `new (X().C)(` (webpack 5's `new (le().BrowserWindow)(t)`). Null for any other
+ * callee. Whether C is a window class is the caller's to read.
+ */
+function windowCallee(tokens: readonly Token[], k: number): { ctor: number; open: number } | null {
+  const is = (i: number, v: string): boolean =>
+    tokens[i]?.type === "punct" && tokens[i]!.value === v;
+  const ident = (i: number): boolean => tokens[i]?.type === "ident";
+  if (tokens[k]?.type !== "ident" || tokens[k]!.value !== "new") return null;
+  let c = k + 1;
+  if (ident(c)) {
+    if (is(c + 1, ".") && ident(c + 2)) c += 2;
+    return is(c + 1, "(") ? { ctor: c, open: c + 1 } : null;
+  }
+  if (!is(c, "(") || !ident(c + 1)) return null;
+  // `(X)`, `(X.C)`, `(X().C)`
+  let j = c + 1;
+  if (is(j + 1, "(") && is(j + 2, ")")) j += 2;
+  if (is(j + 1, ".") && ident(j + 2)) j += 2;
+  if (!is(j + 1, ")")) return null;
+  const close = j + 1;
+  // `(X()).C(`: esbuild's minified print of `new (X().C)(…)`, the same construction
+  if (is(close + 1, ".") && ident(close + 2))
+    return j > c + 1 && is(close + 3, "(") ? { ctor: close + 2, open: close + 3 } : null;
+  return ident(j) && is(close + 1, "(") ? { ctor: j, open: close + 1 } : null;
+}
+
+/** The class constructed by the `new` whose arguments open at `open` (see `windowCallee`), or -1. */
+function windowCalleeBefore(tokens: readonly Token[], open: number): number {
+  // `new C(`, `new X.C(`, `new (X.C)(`, `new (X().C)(`: the `new` is 2 to 8 tokens before
+  for (let k = open - 2; k >= 0 && k >= open - 8; k--) {
+    const callee = windowCallee(tokens, k);
+    if (callee) return callee.open === open ? callee.ctor : -1;
+  }
+  return -1;
+}
+
+/**
  * Where window options are written in a file: the argument of every `new BrowserWindow(…)`, a
  * `webPreferences` object passed to it by name or spread into it, and any other object under a
  * `webPreferences` key. A setting outside these is not a window setting, however near it is.
@@ -729,6 +768,9 @@ function windowRanges(
   const declOf = (k: number): Declared => {
     const t = tokens[k];
     if (t?.type !== "ident") return null;
+    // a parameter (or a default value) in the parameter list of a function that has one of the
+    // name: `(t, n) => …` right after `new BrowserWindow(t)` declares another `t`
+    if (resolver().parameterListBinds(k, t.value)) return "other";
     const bound = resolver().binding(k, t.value, true);
     if (!bound) return resolver().paramAround(k, t.value) ? "other" : null;
     if (bound.kind === "value") return bound.range[0];
@@ -1299,11 +1341,12 @@ function windowRanges(
     if (t.type !== "ident") continue;
     if (t.value === "new") {
       // `new BrowserWindow(`, `new electron.BrowserWindow(`, or a renamed binding of it
-      let c = k + 1;
-      if (tokens[c]?.type === "ident" && is(c + 1, ".") && tokens[c + 2]?.type === "ident") c += 2;
-      const ctor = tokens[c];
-      if (ctor?.type !== "ident" || !is(c + 1, "(")) continue;
-      if (!WINDOW_CLASSES.has(aliases.get(c) ?? ctor.value)) continue;
+      const callee = windowCallee(tokens, k);
+      if (!callee) continue;
+      const ctor = tokens[callee.ctor]!;
+      if (!WINDOW_CLASSES.has(aliases.get(callee.ctor) ?? ctor.value)) continue;
+      // `c + 1` is the `(` of the arguments below
+      const c = callee.open - 1;
       const window = ++count;
       // `name = new BrowserWindow(…)`, also after `const` or `this.`
       const target = is(k - 1, "=") ? tokens[k - 2] : undefined;
@@ -3135,6 +3178,7 @@ export function bridgeMembers(
     call: number,
     from: number,
     end: number,
+    depth = 0,
   ): { what: string; undecided?: Undecided } | null => {
     if (from >= end || end - from > 40) return null;
     let stop = end;
@@ -3166,6 +3210,16 @@ export function bridgeMembers(
       if (declared.has("require")) return null;
       base = privilegedModule(tokens[k + 2]!.value);
       k += 4;
+    } else if (is(k + 1, "(") && is(k + 2, ")")) {
+      // `electron().ipcRenderer` with `electron` a lazy getter of the module
+      // (`ExpressionResolver.lazyValueAt`): what the getter gives, read as written there
+      resolver ??= new ExpressionResolver(tokens, context.constants);
+      const given = depth < 3 ? resolver.lazyValueAt(k) : null;
+      const inner = given ? privileged(call, given[0], given[1], depth + 1) : null;
+      if (!inner || inner.what.includes(".")) return null;
+      base = inner.what;
+      open = inner.undecided;
+      k += 3;
     } else {
       const name = first.value;
       const global =
@@ -5387,7 +5441,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 37;
+export const JS_SCAN_SCHEMA = 38;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -6161,6 +6215,24 @@ export function readFileTokens(
           if (bound === "other") continue;
           if (typeof bound === "number" && !decls.has(bound)) continue;
           if (bound === "pattern" && !decls.has(-1)) continue;
+          // Not known (`var t; … t = {…}`, a variable declared without a value), but outside the
+          // scope of every declaration that was followed (`NAME = {…}`): another variable of the
+          // same name, as webpack's runtime reuses `t` (`n.cw = e => { var t; … t = {exports: {}} }`).
+          if (
+            bound === null &&
+            [...decls].every(
+              (d) =>
+                d >= 2 &&
+                is(d - 1, "=") &&
+                tokens[d - 2]?.value === t.value &&
+                !(resolver ??= new ExpressionResolver(tokens, context.constants)).refersTo(
+                  k,
+                  t.value,
+                  d - 2,
+                ),
+            )
+          )
+            continue;
           // The declaration that was followed, or the pattern or import that binds the name.
           if (is(k + 1, "=") && !is(k + 2, "=") && decls.has(k + 2)) continue;
           if (decls.has(-1) && inPattern(k)) continue;
@@ -6195,14 +6267,14 @@ export function readFileTokens(
           const inWindow = ranges.some(
             (r) => r.window !== null && t.start >= r.start && t.start < r.end,
           );
+          const isWindowClass = (ctor: number): boolean =>
+            ctor >= 0 && WINDOW_CLASSES.has(context.aliases.get(ctor) ?? tokens[ctor]!.value);
           const asOptions =
             (is(k - 1, "(") &&
               is(k + 1, ")") &&
               // `new BrowserWindow(name)`, `new electron.BrowserWindow(name)`, also under the
-              // short name a minifier gives the class (`new n(t)`)
-              (tokens[k - 3]?.value === "new" ||
-                (is(k - 3, ".") && tokens[k - 5]?.value === "new")) &&
-              WINDOW_CLASSES.has(context.aliases.get(k - 2) ?? tokens[k - 2]?.value ?? "")) ||
+              // short name a minifier gives the class (`new n(t)`), `new (X().BrowserWindow)(name)`
+              isWindowClass(windowCalleeBefore(tokens, k - 1))) ||
             (inWindow &&
               ((is(k - 1, ":") && tokens[k - 2]?.value === "webPreferences") ||
                 is(k - 1, "...") ||
