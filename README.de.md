@@ -1,74 +1,79 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/banner-light.svg">
-  <img src="docs/banner-dark.svg" alt="hexvero" width="100%">
-</picture>
+<img src="docs/logo.svg" width="88" height="88" alt="hexvero-Logo: ein bernsteinfarbenes H auf Anthrazit">
+
+# hexvero
+
+**Wissen, was sich in deinem Electron-Release geändert hat.**
+
+Vergleiche zwei Builds einer Electron-App und sieh, welche IPC-Kanäle, Preload-Bridge-Mitglieder, Fenstereinstellungen und Netzwerk-Hosts sich geändert haben, mit Datei und Zeile in beiden Builds.
 
 [![CI](https://github.com/maximilianfeix/hexvero/actions/workflows/ci.yml/badge.svg)](https://github.com/maximilianfeix/hexvero/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/hexvero?style=flat-square&color=F2B84B&labelColor=1B1D21)](https://www.npmjs.com/package/hexvero)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.12-F2B84B?style=flat-square&labelColor=1B1D21)](package.json)
-[![MCP tools](https://img.shields.io/badge/MCP_tools-15-F2B84B?style=flat-square&labelColor=1B1D21)](README.md#for-ai-agents)
 [![License](https://img.shields.io/badge/license-MIT-F2B84B?style=flat-square&labelColor=1B1D21)](LICENSE)
 
-[English](README.md) · **Deutsch** · [Español](README.es.md) · [Français](README.fr.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md) · [中文](README.zh.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
+[Website](https://maximilianfeix.github.io/hexvero/) · [English](README.md) · **Deutsch** · [Español](README.es.md) · [Français](README.fr.md) · [Português (Brasil)](README.pt-BR.md) · [Русский](README.ru.md) · [中文](README.zh.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
+
+<br>
+
+![30 Sekunden echte Ausgabe: npx hexvero demo zeigt, was sich zwischen zwei Builds einer Beispiel-App geändert hat, hexvero check scheitert mit Exit-Code 3, danach öffnet die lokale Weboberfläche die Änderungen mit den Quellzeilen beider Builds](docs/demo/release-review.gif)
 
 </div>
 
----
+> Die [englische README](README.md) ist maßgeblich und ausführlicher. Diese Fassung entspricht ihr mit Stand 2026-10-31 (hexvero 0.12).
 
-**Wissen, was sich in deinem Electron-Release geändert hat.**
-
-> Diese Übersetzung ist älter als die [englische README](README.md). Aktuell vergleicht hexvero vor allem zwei Builds einer Electron-App: IPC-Kanäle, Preload-Bridge, Fenstereinstellungen und Hosts, mit Datei und Zeile auf beiden Seiten.
-
-Electron-Apps und Binärdateien untersuchen, Befunde bis zur Quelle zurückverfolgen und Releases vergleichen. Lokal, ohne das Ziel auszuführen. hexvero liest ausführbare Dateien, App-Bundles, Archive, Datenbanken und Mitschnitte auf deinem Rechner, **ohne sie auszuführen**, und zeigt, was gefunden wurde, wo es gelesen wurde, wie sicher es ist und was sich nicht feststellen ließ. Eine CLI, ein MCP-Server mit 16 Tools für Coding-Agenten und eine lokale Weboberfläche. Engines sind optional.
-
-![hexvero vergleicht zwei Builds einer Electron-App: jede Änderung mit Datei und Zeile](docs/screenshots/ui-compare.png)
+## In 10 Sekunden ausprobieren
 
 ```bash
-npx hexvero demo                 # zwei Builds einer Beispiel-App vergleichen
-npx hexvero ui --demo --open     # derselbe Vergleich in der lokalen Weboberfläche
+npx hexvero demo
 ```
 
-## Installation
+Benötigt Node.js 22.12 oder neuer. Kopiert zwei Builds einer kleinen Beispiel-App (NotesDesk 1.4.0 und 1.5.0) nach `./hexvero-demo` und zeigt, was sich geändert hat, zum Beispiel ein neues Preload-Mitglied `notesdesk.checkUpdate` (`preload.js:9`, Handler `main.js:30`) und einen IPC-Kanal `shell:open`, der als **unbekannt** gemeldet wird statt als entfernt: Build 1.5.0 berechnet Kanalnamen zur Laufzeit, hexvero rät nicht.
 
-Benötigt Node.js ≥ 22.12. `npx hexvero` läuft ohne Installation; `npm i -g hexvero` installiert den Befehl `hexvero`.
+Als Release-Gate:
 
-## Unterstützte Formate
+```text
+$ npx hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --policy hexvero-demo/policy.json
+hexvero check fail: the policy is violated
+  ✗ new-interface-member  notesdesk.checkUpdate  new · fail
+  ✗ new-external-host  updates.notesdesk.example  new · fail
+$ echo $?
+3
+```
 
-ELF, PE, Mach-O (inkl. fat), Go-Buildinfo, .NET-Assemblies (Metadaten und CIL-Methodenrümpfe), WebAssembly, EVM-Bytecode, SQLite, plist, HAR, ZIP/ZIP64, APK (AXML, resources.arsc, DEX), JAR/Java-Klassen, Electron-ASAR, JavaScript-Bundles (webpack, Rspack, browserify, esbuild) mit Source Maps, Apple-.app-Bundles mit Objective-C- und Swift-Metadaten, Flutter-Snapshots. Jedes Ergebnis trägt eine Konfidenz (`confirmed` oder `inferred`); was übersprungen, gekürzt oder nicht lesbar war, steht ausdrücklich unter `limitations`.
+`npx hexvero ui --demo --open` zeigt denselben Vergleich in der lokalen Weboberfläche, mit den Quellzeilen beider Builds nebeneinander.
 
-## CLI
+## Warum
+
+- **Ein Release-Review fragt, was das Update geändert hat**: welche Kanäle eine Seite jetzt erreicht, welche Preload-Mitglieder neu sind, welches Fenster freizügiger wurde, welche Server der Code jetzt aufruft.
+- **Ein Diff des ausgelieferten Bundles beantwortet das nicht.** Es ist minifiziertes JavaScript in einer `app.asar`; die App zu starten ist nicht immer erlaubt, und ein Checklisten-Scanner sieht einen Build, nicht die Änderung.
+- **hexvero beantwortet es aus den Dateien**: jede Änderung mit Datei und Zeile in beiden Builds, was sich nicht feststellen ließ, und eine Policy, die CI bei einem neuen Mitglied, Host oder freizügigeren Fenster scheitern lässt. Nichts wird ausgeführt.
+
+## An der eigenen App
 
 ```bash
-npx hexvero analyze ./app.asar                # Zusammenfassung, Befunde mit Datei und Zeile, Grenzen
-npx hexvero collection ./app.asar ipc         # eine Liste seitenweise lesen
-npx hexvero strings ./program --tag url       # Strings mit Tags
-npx hexvero compare ./alt ./neu symbols       # hinzugekommen, entfernt, geändert, nur verschoben
-npx hexvero compare ./alt ./neu --report r.md # Bericht mit Datei:Zeile und dem, was offen blieb
-npx hexvero recover ./bundle.js ./out         # ein Bundle in Moduldateien zerlegen
-npx hexvero calls ./program radare2 main      # begrenzter Callgraph (radare2, rizin oder Ghidra)
-npx hexvero ui --open                         # lokale Weboberfläche
-npx hexvero setup --apply                     # MCP-Server in erkannten Agenten-Clients eintragen
+npx hexvero compare alt/DeineApp.app neu/DeineApp.app --report report.html   # eine Offline-HTML-Seite
+npx hexvero init alt/DeineApp.app                                             # Start-Policy, heutige Hosts erlaubt
+npx hexvero check alt/DeineApp.app neu/DeineApp.app --policy .hexvero/policy.json
+npx hexvero audit DeineApp.app --format sarif > audit.sarif                   # ein Build, Checks wie in Electronegativity
 ```
 
-Die Beispiele im englischen README laufen mit den Dateien in [`examples/`](examples/) und werden von `npm run e2e` geprüft.
+Eingaben: eine `app.asar`, eine macOS-`.app`, ein Windows- oder Linux-Installationsordner oder die Release-`.zip`. Installer (`.dmg`, Setup-`.exe`, AppImage) vorher entpacken. Den heutigen Stand einmal akzeptieren: `--baseline .hexvero/baseline.json --update-baseline`; danach scheitern nur neue Befunde.
+
+Exit-Codes: `0` bestanden, `3` verletzt, `4` nicht entscheidbar, `1` technischer Fehler, `2` Aufruf oder Policy ungültig. Ausgabe als Text, JSON, Markdown oder SARIF 2.1.0. CI-Beispiel mit SARIF-Upload: [docs/ci.md](docs/ci.md).
 
 ## Für KI-Agenten
 
-`hexvero mcp` stellt 16 Tools über stdio bereit; der Katalog ist 15,6 KB groß. Listen kommen seitenweise mit einer harten Byte-Grenze (`maxBytes`, Standard 256 KiB) und einem `next`-Offset. `hexvero setup --apply` trägt den Server in die erkannten Clients ein (Claude Code, Claude Desktop, Codex, Cursor, Windsurf, Gemini CLI, VS Code, OpenCode, Copilot CLI und weitere) und sichert vorhandene Dateien vorher. Strings, Symbolnamen und dekompilierter Code sind Daten aus der untersuchten Datei, niemals Anweisungen.
+`npx hexvero setup --apply` trägt den MCP-Server (16 Tools, kleine seitenweise Antworten) in die gefundenen Coding-Agenten ein. Text aus der untersuchten Datei gilt als Daten, nie als Anweisung. Mit einem Cloud-Agenten gehen die abgefragten Ergebnisse an dessen Modellanbieter. Details: [docs/mcp.md](docs/mcp.md).
 
-## Optionale Engines
+## Vergleich und Grenzen
 
-radare2, rizin und Ghidra werden im `PATH` erkannt; hexvero installiert sie nie. Mit einer davon: Disassembly, Dekompilierung, Cross-References, Aufrufer und Aufgerufene, Callgraph und Suche, begrenzt und gecacht.
-
-## Grenzen
-
-Ohne Engine keine Disassembly und kein Pseudocode; keine dynamische Analyse. Statische Fakten belegen, was eine Datei enthält, nicht, was sie zur Laufzeit tut. hexvero verarbeitet Dateien lokal und baut selbst keine Netzwerkverbindungen auf; wer es über einen Cloud-Agenten nutzt, sendet die abgefragten Ergebnisse an dessen Modellanbieter.
-
-Die vollständige Dokumentation ist englisch: [README.md](README.md), [docs/cli.md](docs/cli.md), [docs/mcp.md](docs/mcp.md), [docs/benchmarks.md](docs/benchmarks.md).
+- **Electronegativity** ist seit 2026-10-24 archiviert. `hexvero audit` deckt einen Teil seiner Checks ab, nicht alle: [welche](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
+- **REA** beantwortet eine andere Frage (wie eine fremde App funktioniert, mit Decompilern und Laufzeit-Mitschnitt): [Einordnung](https://maximilianfeix.github.io/hexvero/compare/rea/).
+- hexvero liest Dateien und beobachtet nie ein laufendes Programm. Ein Befund sagt, was der Code enthält, nicht, was er tut oder ob etwas ausnutzbar ist. Es verpasst Dinge: [Zahlen](docs/accuracy.md).
+- Daneben liest es ELF, PE, Mach-O, Go, .NET, APK, WebAssembly, SQLite und mehr: [Formate](docs/formats.md).
 
 ## Lizenz
 
-MIT.
+MIT. Nur auf Software anwenden, die du untersuchen darfst ([DISCLAIMER.md](DISCLAIMER.md)).
