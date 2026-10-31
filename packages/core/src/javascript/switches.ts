@@ -917,3 +917,73 @@ export function switchRows(
     return -1;
   }
 }
+
+/**
+ * Electron's command-line switches in `package.json` scripts (Electronegativity's
+ * CUSTOM_ARGUMENTS_JSON_CHECK and SECURITY_WARNINGS_DISABLED_JSON_CHECK): a `--switch` after an
+ * `electron` command word in a script, and an `ELECTRON_DISABLE_SECURITY_WARNINGS=…` assignment.
+ * Rows are `switch` / `security-warnings` rows of `package.json` (target `scripts.<name>`), judged
+ * as the code's switches are. A script is text a developer runs, not code of the shipped app: the
+ * rows say what the app is started with when that script runs. Nothing is run.
+ */
+export function scriptSwitchRows(text: string): SwitchRow[] {
+  let scripts: unknown;
+  try {
+    scripts = (JSON.parse(text) as { scripts?: unknown }).scripts;
+  } catch {
+    return [];
+  }
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return [];
+  const rows: SwitchRow[] = [];
+  for (const [name, command] of Object.entries(scripts as Record<string, unknown>)) {
+    if (typeof command !== "string" || rows.length >= MAX_SWITCHES_PER_FILE) continue;
+    // the line of the script's key, for the place; 1 when it cannot be found
+    const at = text.indexOf(JSON.stringify(name));
+    const line = at < 0 ? 1 : text.slice(0, at).split("\n").length;
+    const target = `scripts.${name}`;
+    const evidence = `${name}: ${command.length > 120 ? `${command.slice(0, 120)}…` : command}`;
+    // commands split at `&&`, `||`, `;` and `|`; words at whitespace, quotes dropped
+    for (const part of command.split(/&&|\|\||;|\|/)) {
+      const words =
+        part.match(/"[^"]*"|'[^']*'|\S+/g)?.map((w) => w.replace(/^["']|["']$/g, "")) ?? [];
+      for (const word of words) {
+        const env = /^ELECTRON_DISABLE_SECURITY_WARNINGS=(.*)$/.exec(word);
+        if (env)
+          rows.push({
+            kind: "security-warnings",
+            name: "ELECTRON_DISABLE_SECURITY_WARNINGS",
+            value: env[1]!,
+            valueRead: "literal",
+            dangerous: false,
+            reason: "turns off Electron's security warnings in the developer console",
+            targetKind: "process",
+            target,
+            evidence,
+            file: "package.json",
+            line,
+          });
+      }
+      const start = words.findIndex((w) => /(^|[\\/])electron(\.exe|\.cmd)?$/i.test(w));
+      if (start < 0) continue;
+      for (const word of words.slice(start + 1)) {
+        if (!word.startsWith("-") || word === "--") continue;
+        const { name: switchName, key, inline } = splitSwitch(word);
+        if (!switchName) continue;
+        const valueRead = inline === null ? "none" : "literal";
+        rows.push({
+          kind: "switch",
+          name: switchName,
+          value: inline,
+          valueRead,
+          ...judgeSwitch(key, valueRead, inline),
+          targetKind: "process",
+          target,
+          evidence,
+          file: "package.json",
+          line,
+        });
+      }
+    }
+  }
+  return rows;
+}

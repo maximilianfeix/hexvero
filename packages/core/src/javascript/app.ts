@@ -38,7 +38,13 @@ import {
   type Token,
 } from "./scan.js";
 import { summarizeSourceMap } from "./sourcemap.js";
-import { keepSwitchRows, MAX_SWITCHES_PER_FILE, switchRows, type SwitchRow } from "./switches.js";
+import {
+  keepSwitchRows,
+  MAX_SWITCHES_PER_FILE,
+  scriptSwitchRows,
+  switchRows,
+  type SwitchRow,
+} from "./switches.js";
 export type { SwitchRow } from "./switches.js";
 import {
   cspHeaderRows,
@@ -7711,7 +7717,12 @@ export function analyzeJavaScriptTree(
   const bridgeExposures = facts.bridgeExposures ?? [];
   const navigation = facts.navigationHandlers ?? [];
   const remote = facts.remoteEnabled ?? [];
-  const switchList = facts.switches ?? [];
+  // switches in package.json scripts are read here, not in the stored scan: package.json is no
+  // JavaScript file, and it is read whole on every analysis anyway
+  const switchList = [
+    ...(facts.switches ?? []),
+    ...(pkgEntry ? scriptSwitchRows(decode(tree.read("package.json"))) : []),
+  ];
   const openExternalList = facts.openExternal ?? [];
   const permissionList = facts.permissionHandlers ?? [];
   const dangerousList = facts.dangerousCalls ?? [];

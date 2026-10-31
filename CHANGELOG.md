@@ -32,6 +32,11 @@ All notable changes to hexvero are listed here. The format follows
 - Audit rule `custom-protocol` and check rule `new-custom-protocol` (`PROTOCOL_HANDLER_JS_CHECK`,
   sections 7 and 18), from the new `protocols` collection: protocol handlers, privileged schemes
   with their literal privileges, `setAsDefaultProtocolClient`. Only `bypassCSP: true` fails (#293).
+- Electron's command-line switches in `package.json` scripts (Electronegativity's
+  `CUSTOM_ARGUMENTS_JSON_CHECK`, `SECURITY_WARNINGS_DISABLED_JSON_CHECK`): a `--switch` after an
+  `electron` command word (`electron . --disable-web-security`) is a `switches` row of
+  `package.json`, judged as code switches are, so `audit`'s `unsafe-switch` and `check`'s
+  `new-unsafe-switch` report the dangerous ones; `ELECTRON_DISABLE_SECURITY_WARNINGS=…` is read.
 - The reusable action audits one build when `before` is left out (`hexvero audit` with a
   Markdown job summary and SARIF; `policy` and `baseline` optional; needs `version` 0.13.0 or
   later). The release script now also moves the action's default version, which stayed at 0.12.0.
