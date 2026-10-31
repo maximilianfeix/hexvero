@@ -1837,16 +1837,15 @@ export class ExpressionResolver {
       if (start >= end) return null;
       if (this.budget-- <= 0) return this.stop("work limit");
     }
-    // `!0`, `!1`: what minifiers write for true and false
-    if (
-      end === start + 2 &&
-      this.punct(start, "!") &&
-      this.tokens[start + 1]?.type === "number" &&
-      /^[01]$/.test(this.tokens[start + 1]!.value)
-    )
+    // `!0`, `!1`, `!0x0`: what minifiers and obfuscators write for true and false
+    const negated =
+      end === start + 2 && this.punct(start, "!") && this.tokens[start + 1]?.type === "number"
+        ? negatedNumber(this.tokens[start + 1]!.value)
+        : null;
+    if (negated !== null)
       return {
         kind: "bool",
-        value: this.tokens[start + 1]!.value === "0",
+        value: negated,
         src: { file: this.file, line: this.tokens[start]!.line },
       };
     // an arrow function: `(a) => …`, `a => …`
@@ -2597,7 +2596,7 @@ export class ExpressionResolver {
       return null;
     }
     if (to === from + 2 && this.punct(from, "!") && this.tokens[from + 1]?.type === "number")
-      return Number(this.tokens[from + 1]!.value) === 0;
+      return negatedNumber(this.tokens[from + 1]!.value);
     return null;
   }
 
@@ -6335,3 +6334,13 @@ export type Binding =
   | { kind: "function"; def: FnDef }
   | { kind: "class"; name: string; start: number; end: number }
   | { kind: "pattern"; key: string; from: [number, number] };
+
+/**
+ * `!<number literal>` as JavaScript reads it: true for a zero, false otherwise. Minifiers write
+ * `!0` and `!1`, obfuscators `!0x0` and `!0x1`. Null for a literal Number() cannot read (a BigInt
+ * like `0n`, numeric separators), which then stays computed.
+ */
+export function negatedNumber(literal: string): boolean | null {
+  const value = Number(literal);
+  return Number.isNaN(value) ? null : value === 0;
+}
