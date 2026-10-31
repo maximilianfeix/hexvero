@@ -2,10 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/maximilianfeix/hexvero/main/docs/policy.schema.json",
   "title": "hexvero release policy",
-  "description": "Policy for `hexvero check <before> <after> --policy <file>`. Data only: no code, no regular expressions. Kept in sync with parsePolicy in packages/core/src/policy.ts (tested).",
+  "description": "Policy for hexvero check <before> <after> --policy <file> (rules, unknown, suppressions) and hexvero audit <build> --policy <file> (the audit section). Data only: no code, no regular expressions. Kept in sync with parsePolicy in packages/core/src/policy.ts (tested).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["hexvero", "version", "rules"],
+  "required": ["hexvero", "version"],
+  "anyOf": [
+    {
+      "properties": {
+        "rules": true
+      },
+      "required": ["rules"]
+    },
+    {
+      "properties": {
+        "audit": true
+      },
+      "required": ["audit"]
+    }
+  ],
   "properties": {
     "$schema": {
       "type": "string"
@@ -113,6 +127,90 @@
             "format": "date",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "description": "Last day (UTC) the suppression applies. After it the finding is reported with state suppression-expired and counts as new."
+          }
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "For hexvero audit <build> --policy <file>: levels and suppressions of the audit rules. A section of its own: remote-enabled and permission-handler-grants-all are also check rules, with another meaning (new in the after build). A policy with this section may leave rules out.",
+      "properties": {
+        "rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "One entry per audit rule. A rule that is not listed runs at level fail.",
+          "properties": {
+            "window-permissive": {
+              "$ref": "#/$defs/rule"
+            },
+            "remote-enabled": {
+              "$ref": "#/$defs/rule"
+            },
+            "unsafe-switch": {
+              "$ref": "#/$defs/rule"
+            },
+            "open-external": {
+              "$ref": "#/$defs/rule"
+            },
+            "permission-handler-missing": {
+              "$ref": "#/$defs/rule"
+            },
+            "permission-handler-grants-all": {
+              "$ref": "#/$defs/rule"
+            },
+            "csp-missing": {
+              "$ref": "#/$defs/rule"
+            },
+            "csp-weak": {
+              "$ref": "#/$defs/rule"
+            },
+            "navigation-unlimited": {
+              "$ref": "#/$defs/rule"
+            }
+          }
+        },
+        "unknown": {
+          "enum": ["fail", "warn", "allow"],
+          "description": "As the top-level unknown, for audit; default: the top-level unknown. hexvero audit --unknown overrides it."
+        },
+        "suppressions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rule", "fingerprint", "reason"],
+            "properties": {
+              "rule": {
+                "enum": [
+                  "window-permissive",
+                  "remote-enabled",
+                  "unsafe-switch",
+                  "open-external",
+                  "permission-handler-missing",
+                  "permission-handler-grants-all",
+                  "csp-missing",
+                  "csp-weak",
+                  "navigation-unlimited"
+                ]
+              },
+              "fingerprint": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "pattern": "\\S"
+              },
+              "expires": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "description": "Last day (UTC) the suppression applies. After it the finding is reported with state suppression-expired and counts again."
+              }
+            }
           }
         }
       }

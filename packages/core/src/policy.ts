@@ -25,7 +25,14 @@ import { AnalysisError } from "./model.js";
 import { directoryDigest } from "./digest.js";
 import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
 import { judgeSwitch, splitSwitch } from "./javascript/switches.js";
-import { cspRisk, openExternalRisk, permissionRisk } from "./audit.js";
+import {
+  AUDIT_RULES,
+  cspRisk,
+  openExternalRisk,
+  permissionRisk,
+  type AuditResult,
+  type AuditRuleId,
+} from "./audit.js";
 import type { CspRow, OpenExternalRow, PermissionHandlerRow } from "./javascript/app.js";
 import { UNRESOLVED_LIMITATIONS, type Session, type TargetRecord } from "./session.js";
 
@@ -73,12 +80,43 @@ export interface Suppression {
   expires?: string;
 }
 
+export interface AuditSuppression {
+  rule: AuditRuleId;
+  fingerprint: string;
+  reason: string;
+  /** `YYYY-MM-DD`, inclusive (UTC). After that day the suppression no longer applies. */
+  expires?: string;
+}
+
+/**
+ * The policy's `audit` section, for `hexvero audit --policy`: levels and suppressions of the
+ * audit rules. A section of its own because two audit rules share a name with a check rule
+ * (`remote-enabled`, `permission-handler-grants-all`) but mean "is there", not "is new".
+ */
+export interface AuditPolicy {
+  /** Every audit rule; one the section does not list runs at fail. */
+  rules: Record<AuditRuleId, { level: RuleLevel }>;
+  /** The section's `unknown`, else the policy's. */
+  unknown: UnknownHandling;
+  suppressions: AuditSuppression[];
+}
+
 export interface Policy {
   hexvero: "policy";
   version: 1;
   rules: Record<PolicyRuleId, RuleConfig>;
   unknown: UnknownHandling;
   suppressions: Suppression[];
+  /** Set when the file has an `audit` section; `auditPolicyOf` gives the defaults otherwise. */
+  audit?: AuditPolicy;
+}
+
+/** The audit section of a policy, or the defaults (every rule at fail) without one. */
+export function auditPolicyOf(policy?: Policy): AuditPolicy {
+  if (policy?.audit) return policy.audit;
+  const rules = {} as AuditPolicy["rules"];
+  for (const id of AUDIT_RULES) rules[id] = { level: "fail" };
+  return { rules, unknown: policy?.unknown ?? "fail", suppressions: [] };
 }
 
 /** A policy as read from a file, with what identifies that file's bytes. */
@@ -142,6 +180,28 @@ export interface LoadedBaseline {
   file: string;
 }
 
+/**
+ * A baseline written by `hexvero audit --update-baseline`: check's format with `command: "audit"`
+ * and the one build it was written from in place of `a` and `b`. Check's files have no `command`;
+ * each command refuses the other's file rather than matching fingerprints of other rules.
+ */
+export interface AuditBaselineFile {
+  hexvero: "baseline";
+  version: 1;
+  command: "audit";
+  created: string;
+  /** sha256 of the policy file, or null when the audit ran without one. */
+  policy: string | null;
+  /** sha256 of the build (a content digest for a directory). Provenance only. */
+  build: string;
+  fingerprints: Array<{ rule: AuditRuleId; fingerprint: string; key: string }>;
+}
+
+export interface LoadedAuditBaseline {
+  baseline: AuditBaselineFile;
+  file: string;
+}
+
 /** A policy or baseline file that does not say what it must; `issues` name each problem. */
 export class PolicyError extends Error {
   constructor(
@@ -196,6 +256,104 @@ function validDate(text: string): boolean {
 
 const FINGERPRINT = /^[0-9a-f]{32}$/;
 
+/** Suppressions of a policy or its audit section; problems go to `issues` with their path. */
+function parseSuppressions<R extends string>(
+  rawSup: unknown,
+  at: string,
+  ids: readonly R[],
+  issues: string[],
+): Array<{ rule: R; fingerprint: string; reason: string; expires?: string }> {
+  const out: Array<{ rule: R; fingerprint: string; reason: string; expires?: string }> = [];
+  if (rawSup === undefined) return out;
+  if (!Array.isArray(rawSup)) {
+    issues.push(`${at}: must be a list`);
+    return out;
+  }
+  rawSup.forEach((s: unknown, i: number) => {
+    const path = `${at}[${i}]`;
+    if (!isRecord(s)) {
+      issues.push(`${path}: must be an object with rule, fingerprint and reason`);
+      return;
+    }
+    for (const k of Object.keys(s))
+      if (!["rule", "fingerprint", "reason", "expires"].includes(k))
+        issues.push(`${path}.${k}: unknown key (allowed: rule, fingerprint, reason, expires)`);
+    const before = issues.length;
+    if (!(ids as readonly unknown[]).includes(s["rule"]))
+      issues.push(`${path}.rule: must be one of ${ids.join(", ")}, got ${quote(s["rule"])}`);
+    if (typeof s["fingerprint"] !== "string" || !FINGERPRINT.test(s["fingerprint"]))
+      issues.push(
+        `${path}.fingerprint: must be 32 lower-case hex characters, got ${quote(s["fingerprint"])}`,
+      );
+    if (typeof s["reason"] !== "string" || s["reason"].trim() === "" || s["reason"].length > 500)
+      issues.push(`${path}.reason: must say why, in 1 to 500 characters`);
+    if (
+      s["expires"] !== undefined &&
+      (typeof s["expires"] !== "string" || !validDate(s["expires"]))
+    )
+      issues.push(`${path}.expires: must be a date YYYY-MM-DD, got ${quote(s["expires"])}`);
+    if (issues.length === before)
+      out.push({
+        rule: s["rule"] as R,
+        fingerprint: s["fingerprint"] as string,
+        reason: s["reason"] as string,
+        ...(typeof s["expires"] === "string" ? { expires: s["expires"] } : {}),
+      });
+  });
+  return out;
+}
+
+/** The `audit` section: `rules` (levels of audit rules), `unknown`, `suppressions`. */
+function parseAuditSection(
+  raw: unknown,
+  inherited: UnknownHandling,
+  issues: string[],
+): AuditPolicy | undefined {
+  if (!isRecord(raw)) {
+    issues.push(`audit: must be an object with rules, unknown and suppressions`);
+    return undefined;
+  }
+  for (const k of Object.keys(raw))
+    if (!["rules", "unknown", "suppressions"].includes(k))
+      issues.push(`audit.${k}: unknown key (allowed: rules, unknown, suppressions)`);
+  const section = auditPolicyOf(undefined);
+  section.unknown = inherited;
+  const rawRules = raw["rules"];
+  if (rawRules !== undefined && !isRecord(rawRules)) issues.push(`audit.rules: must be an object`);
+  else
+    for (const [id, cfg] of Object.entries(rawRules ?? {})) {
+      const path = `audit.rules.${id}`;
+      if (!(AUDIT_RULES as readonly string[]).includes(id)) {
+        issues.push(`${path}: unknown audit rule (known: ${AUDIT_RULES.join(", ")})`);
+        continue;
+      }
+      if (!isRecord(cfg)) {
+        issues.push(`${path}: must be an object like { "level": "fail" }`);
+        continue;
+      }
+      for (const k of Object.keys(cfg))
+        if (k !== "level") issues.push(`${path}.${k}: unknown key (allowed: level)`);
+      const level = cfg["level"];
+      if (level !== "fail" && level !== "warn" && level !== "off") {
+        issues.push(`${path}.level: must be "fail", "warn" or "off", got ${quote(level)}`);
+        continue;
+      }
+      section.rules[id as AuditRuleId] = { level };
+    }
+  if (raw["unknown"] !== undefined) {
+    const u = raw["unknown"];
+    if (u === "fail" || u === "warn" || u === "allow") section.unknown = u;
+    else issues.push(`audit.unknown: must be "fail", "warn" or "allow", got ${quote(u)}`);
+  }
+  section.suppressions = parseSuppressions(
+    raw["suppressions"],
+    "audit.suppressions",
+    AUDIT_RULES,
+    issues,
+  );
+  return section;
+}
+
 /**
  * Reads and validates a policy. Every problem is reported at once with its JSON path; nothing
  * unknown is ignored, so a misspelt rule or key is an error rather than a rule that never runs.
@@ -216,8 +374,10 @@ export function parsePolicy(text: string, file: string): LoadedPolicy {
   if (!isRecord(raw))
     throw new PolicyError(`invalid policy ${file}`, ["the file must be an object"]);
   for (const k of Object.keys(raw))
-    if (!["$schema", "hexvero", "version", "rules", "unknown", "suppressions"].includes(k))
-      issues.push(`${k}: unknown key (allowed: hexvero, version, rules, unknown, suppressions)`);
+    if (!["$schema", "hexvero", "version", "rules", "unknown", "suppressions", "audit"].includes(k))
+      issues.push(
+        `${k}: unknown key (allowed: hexvero, version, rules, unknown, suppressions, audit)`,
+      );
   if (raw["hexvero"] !== "policy")
     issues.push(`hexvero: must be "policy", got ${quote(raw["hexvero"])}`);
   if (raw["version"] !== 1)
@@ -230,8 +390,11 @@ export function parsePolicy(text: string, file: string): LoadedPolicy {
   // written for them: they start at warn, so an upgrade never turns a passing check red.
   for (const id of POLICY_RULES) rules[id] = { level: LATER_RULES.has(id) ? "warn" : "fail" };
   const rawRules = raw["rules"];
-  if (rawRules === undefined) issues.push(`rules: missing (an object with one entry per rule)`);
-  else if (!isRecord(rawRules)) issues.push(`rules: must be an object`);
+  // a policy only for `hexvero audit` may leave the check rules out: they then run as with `{}`
+  if (rawRules === undefined) {
+    if (raw["audit"] === undefined)
+      issues.push(`rules: missing (an object with one entry per rule)`);
+  } else if (!isRecord(rawRules)) issues.push(`rules: must be an object`);
   else
     for (const [id, cfg] of Object.entries(rawRules)) {
       if (!(POLICY_RULES as readonly string[]).includes(id)) {
@@ -277,47 +440,20 @@ export function parsePolicy(text: string, file: string): LoadedPolicy {
     else issues.push(`unknown: must be "fail", "warn" or "allow", got ${quote(u)}`);
   }
 
-  const suppressions: Suppression[] = [];
-  const rawSup = raw["suppressions"];
-  if (rawSup !== undefined && !Array.isArray(rawSup)) issues.push(`suppressions: must be a list`);
-  else
-    (rawSup ?? []).forEach((s: unknown, i: number) => {
-      const path = `suppressions[${i}]`;
-      if (!isRecord(s)) {
-        issues.push(`${path}: must be an object with rule, fingerprint and reason`);
-        return;
-      }
-      for (const k of Object.keys(s))
-        if (!["rule", "fingerprint", "reason", "expires"].includes(k))
-          issues.push(`${path}.${k}: unknown key (allowed: rule, fingerprint, reason, expires)`);
-      const before = issues.length;
-      if (!(POLICY_RULES as readonly unknown[]).includes(s["rule"]))
-        issues.push(
-          `${path}.rule: must be one of ${POLICY_RULES.join(", ")}, got ${quote(s["rule"])}`,
-        );
-      if (typeof s["fingerprint"] !== "string" || !FINGERPRINT.test(s["fingerprint"]))
-        issues.push(
-          `${path}.fingerprint: must be 32 lower-case hex characters, got ${quote(s["fingerprint"])}`,
-        );
-      if (typeof s["reason"] !== "string" || s["reason"].trim() === "" || s["reason"].length > 500)
-        issues.push(`${path}.reason: must say why, in 1 to 500 characters`);
-      if (
-        s["expires"] !== undefined &&
-        (typeof s["expires"] !== "string" || !validDate(s["expires"]))
-      )
-        issues.push(`${path}.expires: must be a date YYYY-MM-DD, got ${quote(s["expires"])}`);
-      if (issues.length === before)
-        suppressions.push({
-          rule: s["rule"] as PolicyRuleId,
-          fingerprint: s["fingerprint"] as string,
-          reason: s["reason"] as string,
-          ...(typeof s["expires"] === "string" ? { expires: s["expires"] } : {}),
-        });
-    });
+  const suppressions = parseSuppressions(raw["suppressions"], "suppressions", POLICY_RULES, issues);
+  const audit =
+    raw["audit"] === undefined ? undefined : parseAuditSection(raw["audit"], unknown, issues);
 
   if (issues.length) throw new PolicyError(`invalid policy ${file}`, issues);
   return {
-    policy: { hexvero: "policy", version: 1, rules, unknown, suppressions },
+    policy: {
+      hexvero: "policy",
+      version: 1,
+      rules,
+      unknown,
+      suppressions,
+      ...(audit ? { audit } : {}),
+    },
     file,
     sha256: sha256(text),
   };
@@ -334,6 +470,12 @@ export function parseBaseline(text: string, file: string): LoadedBaseline {
   const issues: string[] = [];
   if (!isRecord(raw))
     throw new PolicyError(`invalid baseline ${file}`, ["the file must be an object"]);
+  if (raw["command"] === "audit")
+    throw new PolicyError(`invalid baseline ${file}`, [
+      'command: "audit": this baseline was written by hexvero audit; hexvero check needs one written by check --update-baseline',
+    ]);
+  if (raw["command"] !== undefined && raw["command"] !== "check")
+    issues.push(`command: must be "check" or left out, got ${quote(raw["command"])}`);
   if (raw["hexvero"] !== "baseline")
     issues.push(`hexvero: must be "baseline", got ${quote(raw["hexvero"])}`);
   if (raw["version"] !== 1)
@@ -392,6 +534,100 @@ export function createBaseline(result: PolicyResult, now: Date = new Date()): Ba
     policy: result.policy.sha256,
     a: result.a.sha256,
     b: result.b.sha256,
+    fingerprints,
+  };
+}
+
+/**
+ * Reads a baseline written by `hexvero audit --update-baseline`; a check baseline and anything
+ * else is refused with what is wrong.
+ */
+export function parseAuditBaseline(text: string, file: string): LoadedAuditBaseline {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    throw new PolicyError(`${file} is not valid JSON`, [(error as Error).message]);
+  }
+  if (!isRecord(raw))
+    throw new PolicyError(`invalid baseline ${file}`, ["the file must be an object"]);
+  if (raw["hexvero"] === "baseline" && raw["command"] === undefined && "a" in raw)
+    throw new PolicyError(`invalid baseline ${file}`, [
+      "this baseline was written by hexvero check (it has no command and names two builds); hexvero audit needs one written by audit --update-baseline",
+    ]);
+  const issues: string[] = [];
+  if (raw["hexvero"] !== "baseline")
+    issues.push(`hexvero: must be "baseline", got ${quote(raw["hexvero"])}`);
+  if (raw["version"] !== 1)
+    issues.push(`version: this hexvero reads baseline version 1, got ${quote(raw["version"])}`);
+  if (raw["command"] !== "audit")
+    issues.push(`command: must be "audit", got ${quote(raw["command"])}`);
+  for (const k of ["created", "build"])
+    if (typeof raw[k] !== "string") issues.push(`${k}: must be a string`);
+  if (raw["policy"] !== null && typeof raw["policy"] !== "string")
+    issues.push(`policy: must be a sha256 string or null`);
+  const fingerprints: AuditBaselineFile["fingerprints"] = [];
+  if (!Array.isArray(raw["fingerprints"])) issues.push(`fingerprints: must be a list`);
+  else
+    raw["fingerprints"].forEach((f: unknown, i: number) => {
+      if (
+        !isRecord(f) ||
+        !(AUDIT_RULES as readonly unknown[]).includes(f["rule"]) ||
+        typeof f["fingerprint"] !== "string" ||
+        !FINGERPRINT.test(f["fingerprint"]) ||
+        typeof f["key"] !== "string"
+      )
+        issues.push(
+          `fingerprints[${i}]: must be { "rule" (an audit rule), "fingerprint" (32 hex), "key" }`,
+        );
+      else
+        fingerprints.push({
+          rule: f["rule"] as AuditRuleId,
+          fingerprint: f["fingerprint"],
+          key: f["key"],
+        });
+    });
+  if (issues.length) throw new PolicyError(`invalid baseline ${file}`, issues);
+  return {
+    baseline: {
+      hexvero: "baseline",
+      version: 1,
+      command: "audit",
+      created: raw["created"] as string,
+      policy: raw["policy"] as string | null,
+      build: raw["build"] as string,
+      fingerprints,
+    },
+    file,
+  };
+}
+
+/**
+ * The audit baseline that accepts every finding of `result` that the policy does not suppress
+ * (an expired suppression's finding is accepted, but stays counted while the suppression names
+ * it). Sorted, so the same findings give the same file apart from `created`.
+ */
+export function createAuditBaseline(
+  result: Pick<AuditResult, "findings" | "target" | "policy">,
+  now: Date = new Date(),
+): AuditBaselineFile {
+  const seen = new Set<string>();
+  const fingerprints: AuditBaselineFile["fingerprints"] = [];
+  for (const f of result.findings) {
+    if (f.state === "suppressed" || seen.has(f.fingerprint)) continue;
+    seen.add(f.fingerprint);
+    fingerprints.push({ rule: f.rule, fingerprint: f.fingerprint, key: f.key });
+  }
+  fingerprints.sort((x, y) =>
+    x.rule === y.rule ? (x.fingerprint < y.fingerprint ? -1 : 1) : x.rule < y.rule ? -1 : 1,
+  );
+  return {
+    hexvero: "baseline",
+    version: 1,
+    command: "audit",
+    created: now.toISOString(),
+    policy: result.policy?.sha256 ?? null,
+    build: result.target.sha256,
     fingerprints,
   };
 }

@@ -184,12 +184,15 @@ policies](#release-policies-hexvero-check).
 ### `audit`
 
 ```text
-hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--out file] [--force]
+hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--policy file]
+              [--baseline file] [--update-baseline] [--out file] [--force]
 ```
 
 Applies the rules that make sense on one build to its own lists, with no before build:
-Electronegativity's checks that hexvero reads. Exit `0` pass, `1` technical error, `2` usage
-error, `3` a rule violated, `4` not decidable under `--unknown fail` (the default). See [Single-build
+Electronegativity's checks that hexvero reads. `--policy` reads levels and suppressions from the
+policy's `audit` section; `--baseline` accepts the findings a file lists. Exit `0` pass, `1`
+technical error, `2` usage error or invalid policy or baseline, `3` a rule violated, `4` not
+decidable under `unknown: fail` (the default). See [Single-build
 audit](#single-build-audit-hexvero-audit).
 
 ### `init`
@@ -545,7 +548,8 @@ a host built at run time, a window setting whose direction is unclear, or a part
 ## Single-build audit: `hexvero audit`
 
 ```bash
-hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--out <file>] [--force]
+hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--policy <file>]
+              [--baseline <file>] [--update-baseline] [--out <file>] [--force]
 ```
 
 `audit` reads one build (an Electron `.asar`, an app directory, a packaged `.app`, install
@@ -566,21 +570,104 @@ maps each of Electronegativity's checks to them.
 | `csp-weak`                      | an applied policy with weaknesses; one not read, or weak where it may not apply, is unknown                                                                                                                                                                                                                                                          | `csp`                |
 | `navigation-unlimited`          | for an app with a window or handler read: no `will-navigate` / `will-frame-navigate` listener, or no `setWindowOpenHandler`, in the files read (for the app, or a window when others have one); a `setWindowOpenHandler` that returns `{ action: "allow" }` on every path; unknown when the only listeners are on a webContents not read as a window | `navigationHandlers` |
 
-**Status and exit codes** are `check`'s: `fail` (exit `3`) when any finding is not unknown;
-otherwise `incomplete` (exit `4`) when `--unknown fail` and an unknown finding or a gap remains;
-otherwise `pass` (exit `0`). A rule whose list may be missing rows is not decidable (gaps
+**Status and exit codes** are `check`'s: `fail` (exit `3`) when a counted finding (state `new` or
+`suppression-expired`) of a rule at level `fail` is not unknown; otherwise `incomplete` (exit `4`)
+when `unknown` is `fail` and such a finding is unknown or a rule at level `fail` has a gap;
+otherwise `pass` (exit `0`). Without a policy every rule is at `fail` and every finding is `new`. A rule whose list may be missing rows is not decidable (gaps
 `scan_partial`, `files_unreadable`, `values_unresolved`, listed under "Not decidable"), and an
 absence (`permission-handler-missing`, `csp-missing`, `navigation-unlimited`'s missing listener or handler) is never reported while its rule is: a
 partial scan reads as "not decided", not as "missing". `--unknown warn` or `allow` lets unknowns
 pass; they stay listed. A build that is not an Electron application, or one with no JavaScript to
 read, is refused with exit `1`.
 
+**Policy: the `audit` section.** `--policy <file>` reads the same policy file as `check`
+([policy.schema.json](policy.schema.json)) and uses its `audit` section; the check rules,
+`suppressions` and allow lists at the top are not read by `audit`. A section of its own because
+`remote-enabled` and `permission-handler-grants-all` are rule ids of both commands with different
+meanings ("is there" here, "is new" in `check`), and the fingerprints differ.
+
+```json
+{
+  "hexvero": "policy",
+  "version": 1,
+  "rules": {},
+  "audit": {
+    "rules": { "csp-missing": { "level": "warn" }, "remote-enabled": { "level": "off" } },
+    "unknown": "fail",
+    "suppressions": [
+      {
+        "rule": "open-external",
+        "fingerprint": "2e142096e36e23be5b69af558f195c89",
+        "reason": "the URL is checked against an allow list before the call (#123)",
+        "expires": "2027-03-31"
+      }
+    ]
+  }
+}
+```
+
+- `audit.rules`: one entry per audit rule, `level` `fail` (counts), `warn` (listed, never changes
+  the status; a SARIF `warning`) or `off` (not run: no finding and no gap). A rule not listed runs
+  at `fail`. A check rule id here is an error.
+- `audit.unknown`: as the top-level `unknown`, for `audit`; default the top-level `unknown`, which
+  defaults to `fail`. `--unknown` on the command line overrides both.
+- `audit.suppressions`: `rule` (an audit rule), `fingerprint` (from the text, JSON or SARIF
+  output), `reason` (1 to 500 characters), optional `expires` (`YYYY-MM-DD`, the last day, UTC).
+  A suppressed finding stays listed with state `suppressed` and its reason. After `expires` it is
+  `suppression-expired`, counts again, and the text output says "suppression expired on
+  <date>, so the finding counts again".
+- A file with an `audit` section may leave `rules` out; one without needs it, as before.
+
+**Baseline.** `--baseline <file>` accepts the findings the file lists (state `baselined`, they do
+not count); findings it does not list are `new`. `--update-baseline` writes every finding there
+now (except suppressed ones) to the file, creating its directory, then reports against it: exit
+`0`, unless a rule is not decidable (exit `4` under `unknown: fail`: a gap is no finding, so a
+baseline cannot accept it). Without `--update-baseline` the file is only read, and a missing file
+is a usage error that names the command creating it. Paths are handled as in `check`: relative to
+the working directory, never written through a symbolic link, and an app directory gets a content
+digest when a baseline is used. The text output ends with "baseline <file>: N finding(s) matched,
+B baselined, M new".
+
+The file is check's baseline format with `"command": "audit"` and the one build in place of `a`
+and `b`:
+
+```json
+{
+  "hexvero": "baseline",
+  "version": 1,
+  "command": "audit",
+  "created": "2026-10-31T17:55:17.827Z",
+  "policy": null,
+  "build": "efc67095…",
+  "fingerprints": [
+    {
+      "rule": "csp-missing",
+      "fingerprint": "14b52d968296f4e1afd9d58f4aa76c68",
+      "key": "no Content-Security-Policy"
+    }
+  ]
+}
+```
+
+`policy` is the sha256 of the policy file used (`null` without one), `build` the sha256 of the
+build it was written from. Both are provenance: the next release is a different build, so a
+different `build` is expected and not reported; a different policy is reported as a baseline
+warning. `check` refuses an audit baseline and `audit` a check baseline (exit `2`), so one
+command never matches the other's fingerprints. Keep them in separate files, e.g.
+`.hexvero/baseline.json` and `.hexvero/audit-baseline.json`.
+
 **Output.** `--format json` is the `AuditResult` (`hexvero: "audit"`, `status`, `findings` with
-`rule`, `fingerprint`, `unknown`, `key`, `message`, `collection`, `where` as file and line,
-`incomplete`). `--format sarif` is SARIF 2.1.0 with one run: places are paths inside the build
-under `hexvero-build/build/<archive>/` (uriBaseId `HEXVERO_TARGET`), as `check` does for its two
-sides, and `partialFingerprints` carry the fingerprint, so a code-scanning alert stays one alert
-however the code moves. Fingerprints are `sha256(rule \0 identity)` (first 32 hex), the identity
+`rule`, `fingerprint`, `unknown`, `key`, `message`, `collection`, `where` as file and line, `level`,
+`state`, `suppression` for a suppressed or expired one, and with a baseline `baselineState`;
+`incomplete`; `policy` and `baseline` when given). `--format sarif` is SARIF 2.1.0 with one run:
+places are paths inside the build under `hexvero-build/build/<archive>/` (uriBaseId
+`HEXVERO_TARGET`), as `check` does for its two sides, and `partialFingerprints` carry the
+fingerprint, so a code-scanning alert stays one alert however the code moves. As in `check`'s
+SARIF, only findings that count (`new`, `suppression-expired`) are results, each with its `state`
+and `level` in `properties` (an expired one also with `properties.suppressionExpired`); baselined
+and suppressed findings are counted in `properties.hexvero.notReported`, because code scanning
+ignores SARIF suppressions and would reopen them as alerts ([ci.md](ci.md)). The text and JSON
+output list them. Fingerprints are `sha256(rule \0 identity)` (first 32 hex), the identity
 naming the item, never the line: file, window and setting for windows; file and the URL as far
 as it is read for `open-external` (two calls of one URL kind in one file are one finding with two
 places); file, kind and session for permission handlers; file, kind, `via` and the policy text
@@ -589,9 +676,10 @@ for `csp-weak` (an edit of the policy, even of its spacing, is a new finding); f
 receiver kind and window.
 
 **Why a command of its own.** `check` evaluates a comparison and every rule there means "new in
-the after build"; a single build has no comparison and its rules mean "present". Suppressions
-and baselines for `audit` are not part of this slice: run it with `--unknown warn` in CI, or use
-`check` against the previous release to see only what changed.
+the after build"; a single build has no comparison and its rules mean "present". To adopt it in
+CI, accept what a build has today with `--baseline <file> --update-baseline` and commit the
+file; from then on only new findings fail. `check` against the previous release shows what
+changed.
 
 ## Web UI: `hexvero ui`
 

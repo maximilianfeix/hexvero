@@ -14,6 +14,9 @@
  * ignores SARIF `suppressions`, so a baselined or suppressed finding there would reopen an alert.
  * Their numbers are in the run's properties.
  *
+ * `auditToSarif` does the same: baselined and suppressed audit findings are counted in
+ * `properties.hexvero.notReported`, never results.
+ *
  * Checked against the OASIS schema (test fixture) and GitHub's list of supported fields:
  * https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
  */
@@ -314,6 +317,10 @@ const AUDIT_TEXT: Record<
 /** The SARIF uriBaseId of an audited build. */
 export const SARIF_AUDIT_BASE = "HEXVERO_TARGET";
 
+/** An audit finding that counts: new, or its suppression expired. */
+const counted = (f: AuditFinding): boolean =>
+  f.state === "new" || f.state === "suppression-expired";
+
 /** A SARIF 2.1.0 log with one run for `hexvero audit`. */
 export function auditToSarif(
   result: AuditResult,
@@ -330,14 +337,15 @@ export function auditToSarif(
       ...(p.line === undefined ? {} : { region: { startLine: p.line } }),
     },
   });
-  const levelOf = (f: AuditFinding): "error" | "warning" | "note" =>
-    !f.unknown
-      ? "error"
-      : result.unknown === "fail"
-        ? "error"
-        : result.unknown === "warn"
-          ? "warning"
-          : "note";
+  // as check's: a warn-level rule is a warning; an unknown follows `unknown`
+  const levelOf = (f: AuditFinding): "error" | "warning" | "note" => {
+    const rule = f.level;
+    if (!f.unknown) return rule === "fail" ? "error" : "warning";
+    if (result.unknown === "allow") return "note";
+    return rule === "fail" && result.unknown === "fail" ? "error" : "warning";
+  };
+  const states = (s: AuditFinding["state"]): number =>
+    result.findings.filter((f) => f.state === s).length;
   return {
     $schema: SARIF_SCHEMA,
     version: "2.1.0",
@@ -384,7 +392,8 @@ export function auditToSarif(
             })),
           },
         ],
-        results: result.findings.map((f) => {
+        // as check's: only counted findings, so an accepted one never reopens an alert
+        results: result.findings.filter(counted).map((f) => {
           const [first, ...rest] = f.where;
           return {
             ruleId: f.rule,
@@ -401,7 +410,21 @@ export function auditToSarif(
               "hexveroFingerprint/v1": f.fingerprint,
               primaryLocationLineHash: `${f.fingerprint}:1`,
             },
-            properties: { unknown: f.unknown, collection: f.collection, key: plain(f.key) },
+            properties: {
+              unknown: f.unknown,
+              collection: f.collection,
+              key: plain(f.key),
+              state: f.state,
+              level: f.level,
+              ...(f.state === "suppression-expired" && f.suppression
+                ? {
+                    suppressionExpired: {
+                      reason: plain(f.suppression.reason),
+                      ...(f.suppression.expires ? { expires: f.suppression.expires } : {}),
+                    },
+                  }
+                : {}),
+            },
           };
         }),
         properties: {
@@ -412,6 +435,17 @@ export function auditToSarif(
             build: { file: plain(baseName(result.target.path)), sha256: result.target.sha256 },
             unknown: result.unknown,
             incomplete: result.incomplete,
+            ...(result.policy ? { policy: result.policy.sha256 } : {}),
+            ...(result.baseline
+              ? {
+                  baseline: {
+                    file: plain(baseName(result.baseline.file)),
+                    created: result.baseline.created,
+                    matched: result.baseline.matched,
+                  },
+                }
+              : {}),
+            notReported: { baselined: states("baselined"), suppressed: states("suppressed") },
           },
         },
       },

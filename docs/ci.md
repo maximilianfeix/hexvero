@@ -167,6 +167,47 @@ SARIF output against the SARIF 2.1.0 schema.
   suppressions and would reopen them as alerts.
 - Coverage gaps appear as `toolExecutionNotifications` and in `properties.hexvero.incomplete`.
 
+## hexvero audit in CI
+
+`hexvero audit <build>` applies Electronegativity's checks to one build, with no before build
+([cli.md](cli.md#single-build-audit-hexvero-audit)). Exit codes are the table above (`3` a rule
+violated, `4` not decidable). A build has findings on day one, so accept them first:
+
+```bash
+npx hexvero@<version> audit dist/app.asar \
+  --policy .hexvero/policy.json \
+  --baseline .hexvero/audit-baseline.json --update-baseline
+```
+
+Commit `.hexvero/audit-baseline.json` (a separate file from check's `.hexvero/baseline.json`:
+each command refuses the other's). From then on a finding the baseline does not list fails the
+job; a finding you accept for a while goes into the policy's `audit.suppressions` with its
+fingerprint, a reason and an `expires` date, after which it fails again. `--policy` is optional:
+without it every audit rule runs at `fail`. The policy's `audit.rules` sets a rule to `warn` or
+`off` (see [cli.md](cli.md#single-build-audit-hexvero-audit)).
+
+```yaml
+- name: hexvero audit
+  run: |
+    set +e
+    npx --yes hexvero@<version> audit dist/app.asar \
+      --policy .hexvero/policy.json --baseline .hexvero/audit-baseline.json \
+      --format sarif --out hexvero-audit.sarif
+    code=$?
+    set -e
+    npx --yes hexvero@<version> audit dist/app.asar \
+      --policy .hexvero/policy.json --baseline .hexvero/audit-baseline.json \
+      --no-color >> "$GITHUB_STEP_SUMMARY" || true
+    exit "$code"
+```
+
+Upload `hexvero-audit.sarif` as in the workflow above, with `category: hexvero-audit`.
+As with `check`, only findings that count (`new`, `suppression-expired`) are results;
+baselined and suppressed findings are counted in `properties.hexvero.notReported`, because code
+scanning reads neither SARIF `suppressions` nor `baselineState` and would reopen them as
+alerts. The text and JSON output still list them, with their state and the suppression's
+reason.
+
 ## Reading the result
 
 - **Fail on a host you expect**: add it to `allow`, or, for a one-off, a suppression with the

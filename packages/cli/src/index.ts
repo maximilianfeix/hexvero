@@ -82,7 +82,9 @@ Commands
         [--out file] [--force]                  the result (never over a file without --force)
   audit <build> [--format text|json|sarif]      Electronegativity's checks on one build: permissive
         [--unknown fail|warn|allow]             windows, remote, unsafe switches, openExternal,
-        [--out file] [--force]                  permission handlers, Content Security Policy;
+        [--policy file]                         permission handlers, Content Security Policy,
+        [--baseline file] [--update-baseline]   navigation; the policy's audit section sets levels
+        [--out file] [--force]                  and suppressions, a baseline accepts findings;
                                                 exit 0 pass, 3 violated, 4 not decidable
   init [build] [--out file] [--force]           Write a starting policy to .hexvero/policy.json
                                                 (every rule at fail); with a build, its external
@@ -115,7 +117,7 @@ Options
 
 Exit codes: 0 ok · 1 analysis failed · 2 usage error · HEXVERO_DEBUG=1 prints stack traces
             check also: 2 invalid policy · 3 policy violated · 4 incomplete (unknown: fail)
-            audit also: 3 a rule violated · 4 incomplete (--unknown fail)`;
+            audit also: 2 invalid policy or baseline · 3 a rule violated · 4 incomplete (unknown: fail)`;
 
 export async function main(argv: string[], io: Io = defaultIo()): Promise<number> {
   let args: ParsedArgs;
