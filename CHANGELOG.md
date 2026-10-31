@@ -21,6 +21,14 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- `hexvero audit --policy <file> --baseline <file> [--update-baseline]`: a policy's new `audit`
+  section sets levels (`fail`, `warn`, `off`) per audit rule, `unknown`, and suppressions
+  (fingerprint, reason, optional expiry; an expired one counts again); a baseline accepts the
+  findings a build already has, so CI fails only on new ones. Results carry `level`, `state` and,
+  with a baseline, `baselineState`; SARIF leaves accepted findings out, as `check` does. Audit and
+  check baselines are separate files and each command refuses the other's (#270).
+- `--all` for `audit` and `check`: reads every JavaScript file of a large app (more than 5,000)
+  before judging, instead of stopping at "not decidable: scan_partial" (#272).
 - A reusable GitHub Action at the repository root (`uses: maximilianfeix/hexvero@<sha>`, composite, `action.yml`): runs `hexvero check` from npm (`version`, default `0.12.0`) on `before`, `after`, `policy` and an optional `baseline`, writes the Markdown result to the job summary and a SARIF file (`sarif`, default `hexvero.sarif`), sets the outputs `exit-code`, `sarif` and `summary`, and exits with the check's code (0, 1, 2, 3 or 4); a failure while writing the summary or the SARIF file never changes it. Inputs reach the script only as environment variables and hexvero runs without a shell. `.github/workflows/check-example.yml` now runs this action; docs/ci.md, section Reusable action.
 
 - `hexvero audit` judges `webSecurity` and `allowRunningInsecureContent` (Electronegativity's
@@ -47,6 +55,26 @@ All notable changes to hexvero are listed here. The format follows
   not list it runs it at `warn`; `examples/policy.json`, `hexvero init` and the schema list it.
 - SARIF for `hexvero audit` gives `window-permissive` and `navigation-unlimited` a help text that
   names the sections of Electron's security guide.
+
+### Accuracy
+
+- `!0x0` and `!0x1`, what javascript-obfuscator writes for `true` and `false`, are read as booleans
+  in window settings and resolved values; before, an obfuscated app's `sandbox`,
+  `contextIsolation` and `nodeIntegration` were all "computed" (#271).
+
+### Fixed
+
+- A partial scan whose only missing files exceed the per-file size limit no longer suggests
+  `analyze --all`, which does not read them; it names the limit and the limitations list (#273).
+- Wall-clock limits in the test suite scale with the machine's load and with CI macOS runners,
+  and the linear-growth test retries a ratio once a load spike hit it, so slow runners no longer
+  fail releases without a regression (#267, #274).
+
+### Docs
+
+- The npm page lists `audit`, the gate's exit codes and the website (#266); the README
+  translations (de, es, fr, pt-BR, ru, zh, ja, ko) follow the current English README (#265,
+  #269); the landing page's diff line numbers reach 4.5:1 contrast (#268).
 
 ## [0.12.0] - 2026-10-24
 
