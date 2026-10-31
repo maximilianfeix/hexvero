@@ -1,0 +1,57 @@
+name: hexvero release check
+description: >-
+  Fail a pull request when an Electron release does more than your policy allows: new IPC or
+  bridge members, new external hosts, more permissive windows. Writes a job summary and SARIF.
+author: maximilianfeix
+branding:
+  icon: git-pull-request
+  color: yellow
+
+inputs:
+  before:
+    description: The build you shipped last (an .asar, an .app, an application directory, ...).
+    required: true
+  after:
+    description: The build you are about to ship.
+    required: true
+  policy:
+    description: The policy file, for example .hexvero/policy.json (create one with `hexvero init`).
+    required: true
+  baseline:
+    description: A committed baseline file of accepted findings. Optional; never written by the action.
+    required: false
+    default: ""
+  version:
+    description: The hexvero version from npm to run (pin it so a release cannot change results).
+    required: false
+    default: "0.12.0"
+  sarif:
+    description: Where to write the SARIF file. Empty to write none.
+    required: false
+    default: hexvero.sarif
+
+outputs:
+  exit-code:
+    description: "The exit code of hexvero check: 0 pass, 1 technical error, 2 usage error or invalid policy, 3 violated, 4 not decidable."
+    value: ${{ steps.check.outputs.exit-code }}
+  sarif:
+    description: The path of the SARIF file, empty when none was written.
+    value: ${{ steps.check.outputs.sarif }}
+  summary:
+    description: The path of the Markdown result (also appended to the job summary).
+    value: ${{ steps.check.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      # Inputs reach the script only as environment variables, never as shell text.
+      env:
+        INPUT_BEFORE: ${{ inputs.before }}
+        INPUT_AFTER: ${{ inputs.after }}
+        INPUT_POLICY: ${{ inputs.policy }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_SARIF: ${{ inputs.sarif }}
+      run: node "$GITHUB_ACTION_PATH/.github/actions/check/run.mjs"

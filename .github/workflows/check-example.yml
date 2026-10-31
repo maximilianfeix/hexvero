@@ -1,5 +1,5 @@
-# An example of `hexvero check` in CI, run on the two synthetic example builds of this repository
-# (examples/notesdesk-1.4.0.asar → 1.5.0.asar). 1.5.0 adds an update host and a preload member,
+# An example of `hexvero check` in CI through this repository's reusable action (action.yml), run
+# on the two synthetic example builds of this repository (examples/notesdesk-1.4.0.asar → 1.5.0.asar). 1.5.0 adds an update host and a preload member,
 # so the check is expected to fail with exit 3; the job fails if it ever says anything else.
 # For your own repository see docs/ci.md.
 name: Release policy example
@@ -30,18 +30,33 @@ jobs:
         run: npm run build -w @hexvero/core -w @hexvero/mcp -w @hexvero/server -w hexvero
       - name: Build the example builds and confirm they are the committed ones
         run: node scripts/build-examples.mjs && git diff --exit-code -- examples
+      - name: Test the reusable action's script
+        run: node --test .github/actions/check/run.test.mjs
+      # The reusable action of this repository (action.yml), run with this commit's build instead of
+      # the published version from npm. In your own workflow leave HEXVERO_ACTION_CLI out and pin
+      # the action by commit SHA; see docs/ci.md.
       - name: Check the release against the example policy
         id: check
+        uses: ./
+        # The example is built to violate the policy; the next step checks it did.
+        continue-on-error: true
+        env:
+          HEXVERO_ACTION_CLI: packages/cli/bin/hexvero.js
+        with:
+          before: examples/notesdesk-1.4.0.asar
+          after: examples/notesdesk-1.5.0.asar
+          policy: examples/policy.json
+          sarif: hexvero.sarif
+      # In your own workflow the action's step fails the job on a violated policy (3) or an
+      # undecidable one (4). The example is built to violate it, so anything but 3 is a bug.
+      - name: The check exited 3 and wrote its SARIF file
+        env:
+          EXIT_CODE: ${{ steps.check.outputs.exit-code }}
+          SARIF: ${{ steps.check.outputs.sarif }}
         run: |
-          set +e
-          node packages/cli/bin/hexvero.js check examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar --policy examples/policy.json --format sarif --out hexvero.sarif
-          code=$?
-          set -e
-          node packages/cli/bin/hexvero.js check examples/notesdesk-1.4.0.asar examples/notesdesk-1.5.0.asar --policy examples/policy.json --format markdown >> "$GITHUB_STEP_SUMMARY" || true
-          echo "exit=$code" >> "$GITHUB_OUTPUT"
-          # In your own workflow, `exit "$code"` here fails the job on a violated policy (3) or an
-          # undecidable one (4). The example is built to violate it, so anything but 3 is a bug.
-          test "$code" = 3
+          echo "exit-code=$EXIT_CODE sarif=$SARIF"
+          test "$EXIT_CODE" = 3
+          test -s "$SARIF"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hexvero-sarif
