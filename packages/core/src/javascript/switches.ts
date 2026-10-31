@@ -917,3 +917,117 @@ export function switchRows(
     return -1;
   }
 }
+
+/**
+ * Electron's command-line switches in `package.json` scripts (Electronegativity's
+ * CUSTOM_ARGUMENTS_JSON_CHECK and SECURITY_WARNINGS_DISABLED_JSON_CHECK): a `--switch` after an
+ * `electron` command word in a script, and an `ELECTRON_DISABLE_SECURITY_WARNINGS=…` assignment.
+ * Rows are `switch` / `security-warnings` rows of `package.json` (target `scripts.<name>`), judged
+ * as the code's switches are. A script is text a developer runs, not code of the shipped app: the
+ * rows say what the app is started with when that script runs. Nothing is run.
+ */
+export function scriptSwitchRows(text: string): { rows: SwitchRow[]; capped: boolean } {
+  const none = { rows: [], capped: false };
+  // a package.json is small; one far larger than any real one is not read for scripts
+  if (text.length > MAX_PACKAGE_JSON_CHARS) return { rows: [], capped: true };
+  let scripts: unknown;
+  try {
+    scripts = (JSON.parse(text) as { scripts?: unknown }).scripts;
+  } catch {
+    return none;
+  }
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return none;
+  // line starts, once: a key's line is a binary search, not a scan from the start per script
+  const starts = [0];
+  for (let k = text.indexOf("\n"); k >= 0; k = text.indexOf("\n", k + 1)) starts.push(k + 1);
+  const lineAt = (offset: number): number => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid]! <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
+  // the keys of "scripts" in order: the search for each starts after the previous one
+  let from = Math.max(0, text.indexOf('"scripts"'));
+  const rows: SwitchRow[] = [];
+  let capped = false;
+  const push = (row: SwitchRow): boolean => {
+    if (rows.length >= MAX_SWITCHES_PER_FILE) {
+      capped = true;
+      return false;
+    }
+    rows.push(row);
+    return true;
+  };
+  const entries = Object.entries(scripts as Record<string, unknown>);
+  if (entries.length > MAX_SCRIPTS) capped = true;
+  scripts: for (const [name, command] of entries.slice(0, MAX_SCRIPTS)) {
+    const key = JSON.stringify(name);
+    const at = text.indexOf(key, from);
+    if (at >= 0) from = at + key.length;
+    if (typeof command !== "string") continue;
+    const line = at < 0 ? 1 : lineAt(at);
+    const target = `scripts.${name.length > 80 ? `${name.slice(0, 80)}…` : name}`;
+    const evidence = `${target.slice(8)}: ${command.length > 120 ? `${command.slice(0, 120)}…` : command}`;
+    // a script longer than is read: what follows the cut is not read, and the list says so
+    if (command.length > MAX_SCRIPT_CHARS) capped = true;
+    // commands split at `&&`, `||`, `;` and `|`; words at whitespace, quotes dropped
+    for (const part of command.slice(0, MAX_SCRIPT_CHARS).split(/&&|\|\||;|\|/)) {
+      const words =
+        part.match(/"[^"]*"|'[^']*'|\S+/g)?.map((w) => w.replace(/^["']|["']$/g, "")) ?? [];
+      for (const word of words) {
+        const env = /^ELECTRON_DISABLE_SECURITY_WARNINGS=(.*)$/.exec(word);
+        if (
+          env &&
+          !push({
+            kind: "security-warnings",
+            name: "ELECTRON_DISABLE_SECURITY_WARNINGS",
+            value: env[1]!,
+            valueRead: "literal",
+            dangerous: false,
+            reason: "turns off Electron's security warnings in the developer console",
+            targetKind: "process",
+            target,
+            evidence,
+            file: "package.json",
+            line,
+          })
+        )
+          break scripts;
+      }
+      const start = words.findIndex((w) => /(^|[\\/])electron(\.exe|\.cmd)?$/i.test(w));
+      if (start < 0) continue;
+      for (const word of words.slice(start + 1)) {
+        if (!word.startsWith("-") || word === "--") continue;
+        const { name: switchName, key: lower, inline } = splitSwitch(word);
+        if (!switchName) continue;
+        const valueRead = inline === null ? "none" : "literal";
+        if (
+          !push({
+            kind: "switch",
+            name: switchName,
+            value: inline,
+            valueRead,
+            ...judgeSwitch(lower, valueRead, inline),
+            targetKind: "process",
+            target,
+            evidence,
+            file: "package.json",
+            line,
+          })
+        )
+          break scripts;
+      }
+    }
+  }
+  return { rows, capped };
+}
+
+/** package.json files larger than this are not read for scripts (characters). */
+const MAX_PACKAGE_JSON_CHARS = 4 << 20;
+/** Scripts read per package.json, and characters read per script. */
+const MAX_SCRIPTS = 2000;
+const MAX_SCRIPT_CHARS = 20_000;
