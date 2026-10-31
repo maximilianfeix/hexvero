@@ -404,7 +404,12 @@ async function run(
       }
       if (partial)
         io.out(
-          `${paint(io, "yellow", "partial")}: this list covers ${partial.scanned - partial.skipped} of ${partial.total} JavaScript files; "${suggest(io, "analyze <path> --all")}" reads the rest`,
+          `${paint(io, "yellow", "partial")}: this list covers ${partial.scanned - partial.skipped} of ${partial.total} JavaScript files; ${
+            partial.remaining > 0
+              ? `"${suggest(io, "analyze <path> --all")}" reads the rest`
+              : // only files over the per-file size limit are missing: --all would not read them
+                `${partial.skipped === 1 ? "1 file exceeds" : `${partial.skipped} files exceed`} the per-file size limit or could not be decoded ("${suggest(io, "collection <path> limitations")}" names them)`
+          }`,
         );
       io.out(
         `${heading(io, `${page.collection} ${rangeLabel(page)}`)}${

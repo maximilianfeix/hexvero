@@ -153,7 +153,11 @@ export async function printQuickLook(
     const coverage = data.app.coverage;
     if (!coverage.complete)
       io.out(
-        `  ${paint(io, "yellow", "partial")}: ${coverage.scanned} of ${coverage.total} JavaScript files read; ${suggest(io, `analyze ${quoted} --all`)} reads the rest`,
+        `  ${paint(io, "yellow", "partial")}: ${coverage.scanned} of ${coverage.total} JavaScript files read; ${
+          coverage.remaining > 0
+            ? `${suggest(io, `analyze ${quoted} --all`)} reads the rest`
+            : `${coverage.skipped === 1 ? "1 file exceeds" : `${coverage.skipped} files exceed`} the per-file size limit or could not be decoded`
+        }`,
       );
   }
   for (const hint of firstLookHints(io, target, analysis))
