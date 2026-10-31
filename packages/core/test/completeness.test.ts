@@ -338,6 +338,25 @@ describe("hostile input stays fast", () => {
   );
 
   it(
+    "bounds the reading of send helpers whose object and channel are parameters (#280)",
+    { timeout: 30_000 },
+    () => {
+      for (const hostile of [
+        // thousands of helpers of the same shape, each called with a webContents
+        `${'function h(e,t){e.send(t)}h(w.webContents,"c");'.repeat(10_000)}`,
+        // one helper called at many more places than are read, through a chain of names
+        `function h(e,t,...n){e.send(t,...n)}${'const a=b.webContents,c=a;h(c,"x");'.repeat(20_000)}`,
+        // a getter called in place many times over, every link a parameter
+        `function h(e,t){e.send(t)}${'(function(g){const s=g();h(s,"y")})(()=>w?.webContents);'.repeat(10_000)}`,
+      ]) {
+        const started = performance.now();
+        analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
+        expect(performance.now() - started).toBeLessThan(timeLimit(5_000));
+      }
+    },
+  );
+
+  it(
     "bounds the reading of lazy getters (`X().app`, `new (X().BrowserWindow)(…)`)",
     { timeout: 30_000 },
     () => {
