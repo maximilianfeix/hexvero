@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api, type ChangeRow, type ReleaseComparison, type TargetRecord } from "../lib/api.js";
 import {
   basisValue,
@@ -32,6 +32,14 @@ const plural = (n: number, word: string): string =>
 const rowsLabel = (n: number): string => (n === 1 ? "row" : "rows");
 const same = (x: readonly string[] | undefined, y: readonly string[]): boolean =>
   (x ?? []).length === y.length && y.every((v) => (x ?? []).includes(v));
+/** Lists that share one completeness sentence, so the same reason is not repeated per list. */
+const sameWords = (
+  incomplete: readonly { collection: string; words: string }[],
+): Array<[string, string[]]> => {
+  const by = new Map<string, string[]>();
+  for (const c of incomplete) by.set(c.words, [...(by.get(c.words) ?? []), c.collection]);
+  return [...by];
+};
 /** Rows per request; the server sends at most 500. */
 const PAGE = 200;
 /** Marks the history entry that opened the evidence panel, so closing it can go Back. */
@@ -76,8 +84,8 @@ export function CompareView({
       <div className="target-header">
         <h1 className="verdict">Compare two builds</h1>
         <p className="lede">
-          Pick the build before and the build after. Each change links to the file and line it was
-          read from. Nothing is executed.
+          Each change links to the file and line it was read from in both builds. Nothing is
+          executed.
         </p>
         <div className="compare-pick">
           {picker("Before", a, (id) => navigateCompare(id, b, true, keep))}
@@ -243,7 +251,8 @@ function Comparison({
   );
 }
 
-function Ready({
+/** The loaded comparison: summary, the gaps that bound it, the change list and the evidence. */
+export function Ready({
   a,
   b,
   r,
@@ -415,8 +424,7 @@ function Ready({
                 : r.overview.partialScan.a
                   ? "before build was"
                   : "after build was"}{" "}
-              read only in part; items in unread files are listed as unknown, not as added or
-              removed. Open that build and read all remaining files first.
+              read in part: items in unread files show as unknown, never as added or removed.
             </p>
             <p>
               <button
@@ -432,13 +440,19 @@ function Ready({
         {incomplete.length > 0 && (
           <div className="partial" role="status">
             <p>
-              <strong>Not compared whole.</strong> These lists may hold more differences than are
-              shown:
+              <strong>Not compared whole.</strong> {plural(incomplete.length, "list")} may hold more
+              changes than shown:
             </p>
             <ul className="gaps">
-              {incomplete.map((c) => (
-                <li key={c.collection}>
-                  <span className="mono">{c.collection}</span>: {c.words}
+              {sameWords(incomplete).map(([words, lists]) => (
+                <li key={words}>
+                  {lists.map((name, i) => (
+                    <span key={name}>
+                      {i > 0 && ", "}
+                      <span className="mono">{name}</span>
+                    </span>
+                  ))}
+                  : {words}
                 </li>
               ))}
             </ul>
@@ -469,18 +483,20 @@ function Ready({
         <div className="section">
           <h3 id="changes-title">Changes</h3>
           <Filters rows={rows} filter={filter} setFilter={setFilter} />
-          <p className="status-line" role="status">
-            {isFiltered(filter)
-              ? `${shown.length} of ${rows.length} loaded ${rowsLabel(rows.length)} match`
-              : `${plural(rows.length, "row")} loaded`}
-            {" · "}
-            {rows.length.toLocaleString("en-US")} of {total.toLocaleString("en-US")} shown
-            {next !== null && isFiltered(filter) && "; filters apply to the loaded rows only"}
-          </p>
-          <p className="keys-hint">
-            <kbd>j</kbd>/<kbd>k</kbd> or arrows move · <kbd>Enter</kbd> evidence · <kbd>Esc</kbd>{" "}
-            close · <kbd>/</kbd> search
-          </p>
+          <div className="list-status">
+            <p className="status-line" role="status">
+              {isFiltered(filter)
+                ? `${shown.length} of ${rows.length} loaded ${rowsLabel(rows.length)} match`
+                : `${plural(rows.length, "row")} loaded`}
+              {" · "}
+              {rows.length.toLocaleString("en-US")} of {total.toLocaleString("en-US")} shown
+              {next !== null && isFiltered(filter) && "; filters apply to the loaded rows only"}
+            </p>
+            <p className="keys-hint">
+              <kbd>j</kbd>/<kbd>k</kbd> or arrows move · <kbd>Enter</kbd> evidence · <kbd>Esc</kbd>{" "}
+              close · <kbd>/</kbd> search
+            </p>
+          </div>
           {[...groups].map(([collection, list]) => {
             const words = completenessWords(
               r.completeness?.[collection],
@@ -705,18 +721,27 @@ function SummaryBar({
   );
 }
 
-function Filters({
+/**
+ * The change-type chips stay in view; list and basis sit behind "More filters", which says how
+ * many of them are on while it is closed.
+ */
+export function Filters({
   rows,
   filter,
   setFilter,
+  initiallyOpen = false,
 }: {
   rows: ChangeRow[];
   filter: CompareFilter;
   setFilter: (patch: Partial<CompareFilter>, replace?: boolean) => void;
+  initiallyOpen?: boolean;
 }): ReactElement {
   const kinds = new Map(tally(rows, (row) => row.change));
   const lists = tally(rows, (row) => row.collection);
   const bases = tally(rows, basisValue);
+  const [open, setOpen] = useState(initiallyOpen);
+  const moreId = useId();
+  const refinements = filter.lists.length + filter.bases.length;
   // Typing replaces the history entry: Back goes to the last chip pressed, not every keystroke.
   const [text, setText] = useState(filter.text);
   useEffect(() => setText(filter.text), [filter.text]);
@@ -739,34 +764,6 @@ function Filters({
           </button>
         ))}
       </fieldset>
-      <fieldset>
-        <legend>List</legend>
-        {lists.map(([name, n]) => (
-          <button
-            key={name}
-            type="button"
-            className="chip mono"
-            aria-pressed={filter.lists.includes(name)}
-            onClick={() => setFilter({ lists: toggle(filter.lists, name) })}
-          >
-            {name} <span className="n">{n}</span>
-          </button>
-        ))}
-      </fieldset>
-      <fieldset>
-        <legend>Basis</legend>
-        {bases.map(([name, n]) => (
-          <button
-            key={name}
-            type="button"
-            className={`chip basis ${name.split(" ").pop()}`}
-            aria-pressed={filter.bases.includes(name)}
-            onClick={() => setFilter({ bases: toggle(filter.bases, name) })}
-          >
-            {name === "none" ? "not recorded" : name} <span className="n">{n}</span>
-          </button>
-        ))}
-      </fieldset>
       <div className="toolbar">
         <input
           type="search"
@@ -779,6 +776,16 @@ function Filters({
             setFilter({ text: e.target.value }, true);
           }}
         />
+        <button
+          type="button"
+          className="btn quiet more-filters"
+          aria-expanded={open}
+          aria-controls={moreId}
+          onClick={() => setOpen((o) => !o)}
+        >
+          More filters
+          {!open && refinements > 0 && <span className="n"> · {refinements} active</span>}
+        </button>
         {isFiltered(filter) && (
           <button
             type="button"
@@ -788,6 +795,36 @@ function Filters({
             Clear filters
           </button>
         )}
+      </div>
+      <div id={moreId} className="filters-more" hidden={!open}>
+        <fieldset>
+          <legend>List</legend>
+          {lists.map(([name, n]) => (
+            <button
+              key={name}
+              type="button"
+              className="chip mono"
+              aria-pressed={filter.lists.includes(name)}
+              onClick={() => setFilter({ lists: toggle(filter.lists, name) })}
+            >
+              {name} <span className="n">{n}</span>
+            </button>
+          ))}
+        </fieldset>
+        <fieldset>
+          <legend>Basis</legend>
+          {bases.map(([name, n]) => (
+            <button
+              key={name}
+              type="button"
+              className={`chip basis ${name.split(" ").pop()}`}
+              aria-pressed={filter.bases.includes(name)}
+              onClick={() => setFilter({ bases: toggle(filter.bases, name) })}
+            >
+              {name === "none" ? "not recorded" : name} <span className="n">{n}</span>
+            </button>
+          ))}
+        </fieldset>
       </div>
     </div>
   );

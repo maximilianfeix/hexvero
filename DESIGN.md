@@ -59,7 +59,9 @@ the hex view drops to 8 bytes per row.
 ## Motion
 
 One authored moment: when a target finishes analysis the verdict settles in (opacity + 6px rise,
-220ms, ease-out). Everything else changes instantly. `prefers-reduced-motion` disables it.
+220ms, ease-out). The evidence panel opening may fade in with a 4px rise (160ms); moving between rows
+keeps it still. Everything else changes instantly: no staggered rows, no counting numbers.
+`prefers-reduced-motion` stops every animation and transition, the mobile sidebar slide included.
 
 ## Browser surfaces
 
