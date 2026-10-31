@@ -4231,16 +4231,16 @@ export class ExpressionResolver {
   }
 
   /**
-   * The name at j is a declarator without an initializer after the first of a `let` or `var`
-   * list: `let g, NAME;`, `var a = 1, NAME, b = 2`. Minifiers declare a function's locals so,
-   * then assign them; such a local shadows a function of the same name around it (#298).
-   */
-  /**
    * See `inDeclarationList`: for a `,`, how the walk from it ends and after how many steps, or
    * (null) that it does not end within that many.
    */
   private readonly listMemo = new Map<number, [boolean | null, number]>();
 
+  /**
+   * The name at j is a declarator without an initializer after the first of a `let` or `var`
+   * list: `let g, NAME;`, `var a = 1, NAME, b = 2`. Minifiers declare a function's locals so,
+   * then assign them; such a local shadows a function of the same name around it (#298).
+   */
   private bareListDeclarator(j: number): boolean {
     if (!this.punct(j - 1, ",")) return false;
     const next = this.tokens[j + 1];
