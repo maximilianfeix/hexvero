@@ -81,12 +81,12 @@ Commands
         [--format text|json|markdown|sarif]     pass, 3 violated, 4 not decidable; --out writes
         [--out file] [--force] [--all]          the result (never over a file without --force);
                                                 --all reads every file of large apps first
-  audit <build> [--format text|json|sarif]      Electronegativity's checks on one build: permissive
-        [--unknown fail|warn|allow]             windows, remote, unsafe switches, openExternal,
-        [--policy file]                         permission handlers, Content Security Policy,
-        [--baseline file] [--update-baseline]   navigation; the policy's audit section sets levels
-        [--out file] [--force] [--all]          and suppressions, a baseline accepts findings;
-                                                exit 0 pass, 3 violated, 4 not decidable
+  audit <build>                                 Electronegativity's checks on one build: permissive
+        [--format text|json|markdown|sarif]     windows, remote, unsafe switches, openExternal,
+        [--unknown fail|warn|allow]             permission handlers, Content Security Policy,
+        [--policy file]                         navigation; the policy's audit section sets levels
+        [--baseline file] [--update-baseline]   and suppressions, a baseline accepts findings;
+        [--out file] [--force] [--all]          exit 0 pass, 3 violated, 4 not decidable
   init [build] [--out file] [--force]           Write a starting policy to .hexvero/policy.json
                                                 (every rule at fail); with a build, its external
                                                 hosts are allowed

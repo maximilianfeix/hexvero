@@ -256,6 +256,7 @@ export {
   hostOf,
   parseBaseline,
   parsePolicy,
+  renderAuditMarkdown,
   renderPolicyMarkdown,
   STATUS_TEXT,
   type BaselineFile,

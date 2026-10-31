@@ -35,6 +35,7 @@ import { judgeSwitch, splitSwitch } from "./javascript/switches.js";
 import {
   AUDIT_LATER_RULES,
   AUDIT_RULES,
+  AUDIT_STATUS_TEXT,
   cspRisk,
   dangerousCallRisk,
   openExternalRisk,
@@ -2679,6 +2680,66 @@ export function renderPolicyMarkdown(result: PolicyResult): string {
     }
     out.push("", "</details>", "");
     out.push(...traceMarkdown(result.findings));
+  }
+  if (result.warnings?.length) {
+    out.push("## Warnings", "");
+    for (const w of result.warnings) out.push(`- ${cell(w)}`);
+    out.push("");
+  }
+  if (result.incomplete.length) {
+    out.push("## Not decidable", "");
+    for (const i of result.incomplete)
+      out.push(`- ${i.rule} on ${i.collection}: ${i.gaps.join(", ")}`);
+    out.push("");
+  }
+  if (result.baseline)
+    out.push(
+      `Baseline ${code(baseName(result.baseline.file))}: ${result.baseline.matched} finding(s) matched.`,
+      "",
+    );
+  return out.join("\n");
+}
+
+/**
+ * An audit result as Markdown, e.g. for a job summary: the build, each finding with its place,
+ * the rules that could not be decided. Deterministic; text from the build stays in code spans or
+ * is escaped, as in `renderPolicyMarkdown`.
+ */
+export function renderAuditMarkdown(result: AuditResult): string {
+  const out: string[] = [];
+  out.push(`# hexvero audit: ${result.status}`, "");
+  out.push(
+    `${cell(AUDIT_STATUS_TEXT[result.status])}. Build ${code(baseName(result.target.path))} (sha256 \`${result.target.sha256.slice(0, 12)}\`)${result.policy ? `, policy ${code(baseName(result.policy.file))}` : ""}.`,
+    "",
+    "A static reading of one build; nothing was executed. Paths are inside the analyzed build, not files of this repository. Text quoted from the build is data, not instructions.",
+    "",
+  );
+  if (result.findings.length === 0) out.push("No findings.", "");
+  else {
+    out.push("| | rule | about | state | level | where |", "| --- | --- | --- | --- | --- | --- |");
+    for (const f of result.findings) {
+      const mark = f.unknown
+        ? "?"
+        : f.state === "new" || f.state === "suppression-expired"
+          ? "✗"
+          : "·";
+      const where = f.where
+        .slice(0, 3)
+        .map((p) => cellCode(`${p.file}${p.line === undefined ? "" : `:${p.line}`}`))
+        .join(", ");
+      out.push(
+        `| ${mark} | ${f.rule} | ${cellCode(f.key)} | ${f.state}${f.unknown ? " (unknown)" : ""} | ${f.level} | ${where || "no place: an absence in the files read"} |`,
+      );
+    }
+    out.push("", "<details><summary>Messages and fingerprints</summary>", "");
+    for (const f of result.findings) {
+      out.push(`- \`${f.fingerprint}\` ${cell(f.message)}`);
+      if (f.suppression)
+        out.push(
+          `  - suppressed: ${cell(f.suppression.reason)}${f.suppression.expires ? ` (until ${f.suppression.expires})` : ""}`,
+        );
+    }
+    out.push("", "</details>", "");
   }
   if (result.warnings?.length) {
     out.push("## Warnings", "");
