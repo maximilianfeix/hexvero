@@ -23,7 +23,14 @@ import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { AnalysisError } from "./model.js";
 import { directoryDigest } from "./digest.js";
-import { compareReleases, type ChangeRow, type Place, type ReleaseComparison } from "./report.js";
+import {
+  compareReleases,
+  TRACE_HOST_NOTE,
+  traceMarkdownLine,
+  type ChangeRow,
+  type Place,
+  type ReleaseComparison,
+} from "./report.js";
 import { judgeSwitch, splitSwitch } from "./javascript/switches.js";
 import {
   AUDIT_RULES,
@@ -2534,8 +2541,6 @@ const code = (text: string): string => {
 const cellCode = (text: string): string => code(text).replace(/\|/g, "\\|");
 /** Prose from a target with every Markdown and HTML character escaped. */
 const cell = (text: string): string => plain(text).replace(/[\\`*_[\]<>|#!~&()]/g, (c) => `\\${c}`);
-/** `file:line`, or the file alone when no line was recorded. */
-const fileLine = (p: Place): string => `${p.file}${p.line === undefined ? "" : `:${p.line}`}`;
 const placeText = (p: Place): string =>
   `${p.role ? `${p.role} ` : ""}${p.file}${p.line === undefined ? "" : `:${p.line}`}`;
 
@@ -2557,28 +2562,19 @@ function traceMarkdown(findings: readonly PolicyFinding[]): string[] {
     (f) => f.rule === "new-interface-member" && live(f) && !f.unknown,
   );
   if (members.length === 0) return [];
-  const hosts = findings.filter((f) => f.rule === "new-external-host" && live(f));
-  const out = ["## New ways pages reach the main process", ""];
-  for (const f of members) {
-    const member = f.where.find((p) => p.role === undefined);
-    const handlers = f.where.filter((p) => p.role === "handler");
-    const steps: string[] = [];
-    if (f.trace?.windows.length) steps.push(f.trace.windows.map(code).join(", "));
-    steps.push(`${code(f.key)}${member ? ` (${code(fileLine(member))})` : ""}`);
-    if (f.trace?.channel) steps.push(code(f.trace.channel));
-    for (const h of handlers) steps.push(`handler ${code(fileLine(h))}`);
-    const onLine = hosts.filter((h) =>
-      h.where.some((p) => handlers.some((x) => x.file === p.file && x.line === p.line)),
-    );
-    for (const h of onLine) steps.push(`host ${code(h.key)} on the handler's line`);
-    out.push(`- ${steps.join(" → ")}`);
-  }
-  out.push(
+  const hosts = findings
+    .filter((f) => f.rule === "new-external-host" && live(f))
+    .map((f) => ({ label: f.key, where: f.where }));
+  return [
+    "## New ways pages reach the main process",
     "",
-    "A host is listed when a new one sits on the same file and line as the handler: an inference from place, not a traced call.",
+    ...members.map((f) =>
+      traceMarkdownLine({ label: f.key, where: f.where, trace: f.trace }, hosts),
+    ),
     "",
-  );
-  return out;
+    TRACE_HOST_NOTE,
+    "",
+  ];
 }
 
 /** The result as Markdown, e.g. for a pull-request comment or a job summary. Deterministic. */
