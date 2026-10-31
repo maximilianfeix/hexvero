@@ -3,6 +3,7 @@ import { analyzeJavaScriptTree, asarTree } from "../src/javascript/app.js";
 import { scriptSwitchRows } from "../src/javascript/switches.js";
 import { auditApp } from "../src/audit.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 const PKG = JSON.stringify(
   {
@@ -21,7 +22,8 @@ const PKG = JSON.stringify(
 
 describe("switches in package.json scripts", () => {
   it("reads switches after an electron command and the security-warnings variable", () => {
-    const rows = scriptSwitchRows(PKG);
+    const { rows, capped } = scriptSwitchRows(PKG);
+    expect(capped).toBe(false);
     expect(rows.map((r) => [r.kind, r.name, r.value, r.dangerous, r.target])).toEqual([
       ["security-warnings", "ELECTRON_DISABLE_SECURITY_WARNINGS", "true", false, "scripts.start"],
       ["switch", "disable-web-security", null, true, "scripts.start"],
@@ -37,9 +39,11 @@ describe("switches in package.json scripts", () => {
   });
 
   it("reads nothing from invalid JSON or scripts that are not strings", () => {
-    expect(scriptSwitchRows("{ not json")).toEqual([]);
-    expect(scriptSwitchRows(JSON.stringify({ scripts: ["electron . --no-sandbox"] }))).toEqual([]);
-    expect(scriptSwitchRows(JSON.stringify({ scripts: { a: 1 } }))).toEqual([]);
+    expect(scriptSwitchRows("{ not json").rows).toEqual([]);
+    expect(scriptSwitchRows(JSON.stringify({ scripts: ["electron . --no-sandbox"] })).rows).toEqual(
+      [],
+    );
+    expect(scriptSwitchRows(JSON.stringify({ scripts: { a: 1 } })).rows).toEqual([]);
   });
 
   it("makes a dangerous script switch an unsafe-switch audit finding of package.json", () => {
@@ -60,5 +64,21 @@ describe("switches in package.json scripts", () => {
       "switch remote-debugging-port",
     ]);
     expect(findings[0]!.where[0]).toMatchObject({ file: "package.json" });
+  });
+
+  it("stays bounded and says so on a hostile package.json", () => {
+    // many scripts, each with many switches: rows stop at the cap, lines come from one index
+    const scripts = Object.fromEntries(
+      Array.from({ length: 5000 }, (_, i) => [`s${i}`, `electron . ${"--no-sandbox ".repeat(50)}`]),
+    );
+    const text = JSON.stringify({ scripts }, null, 2);
+    const started = performance.now();
+    const { rows, capped } = scriptSwitchRows(text);
+    expect(performance.now() - started).toBeLessThan(timeLimit(2000));
+    expect(capped).toBe(true);
+    expect(rows.length).toBe(200);
+    expect(rows[0]).toMatchObject({ target: "scripts.s0", line: 3 });
+    // larger than any real package.json: not read
+    expect(scriptSwitchRows(" ".repeat((4 << 20) + 1))).toEqual({ rows: [], capped: true });
   });
 });

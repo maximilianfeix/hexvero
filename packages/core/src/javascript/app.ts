@@ -7719,10 +7719,10 @@ export function analyzeJavaScriptTree(
   const remote = facts.remoteEnabled ?? [];
   // switches in package.json scripts are read here, not in the stored scan: package.json is no
   // JavaScript file, and it is read whole on every analysis anyway
-  const switchList = [
-    ...(facts.switches ?? []),
-    ...(pkgEntry ? scriptSwitchRows(decode(tree.read("package.json"))) : []),
-  ];
+  const scriptSwitches = pkgEntry
+    ? scriptSwitchRows(decode(tree.read("package.json")))
+    : { rows: [], capped: false };
+  const switchList = [...(facts.switches ?? []), ...scriptSwitches.rows];
   const openExternalList = facts.openExternal ?? [];
   const permissionList = facts.permissionHandlers ?? [];
   const dangerousList = facts.dangerousCalls ?? [];
@@ -7833,7 +7833,7 @@ export function analyzeJavaScriptTree(
       code: "remote_enabled_truncated",
       message: `More @electron/remote calls exist than the ${MAX_REMOTE_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a webpack module of it is required under more than ${MAX_WEBPACK_NAMES} names in one file (collection remoteEnabled).`,
     });
-  if (facts.switchesCapped)
+  if (facts.switchesCapped || scriptSwitches.capped)
     limitations.push({
       code: "switches_truncated",
       message: `More command-line switch and certificate rows exist than the ${MAX_SWITCHES_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection switches).`,
