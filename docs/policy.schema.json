@@ -20,7 +20,7 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "description": "One entry per rule. A rule that is not listed runs at level fail, except new-bridge-exposure (added in 0.9.7), fuse-weakened and remote-enabled (added after 0.9.9) new-unsafe-switch (added after 0.10.1), and new-open-external, permission-handler-grants-all and csp-weakened (added after 0.11.1), which run at warn when not listed.",
+      "description": "One entry per rule. A rule that is not listed runs at level fail, except new-bridge-exposure (added in 0.9.7), fuse-weakened and remote-enabled (added after 0.9.9) new-unsafe-switch (added after 0.10.1), new-open-external, permission-handler-grants-all and csp-weakened (added after 0.11.1), and navigation-limit-removed (added after 0.12.0), which run at warn when not listed.",
       "properties": {
         "new-interface-member": {
           "$ref": "#/$defs/rule"
@@ -65,6 +65,9 @@
         },
         "csp-weakened": {
           "$ref": "#/$defs/rule"
+        },
+        "navigation-limit-removed": {
+          "$ref": "#/$defs/rule"
         }
       }
     },
@@ -91,7 +94,8 @@
               "new-unsafe-switch",
               "new-open-external",
               "permission-handler-grants-all",
-              "csp-weakened"
+              "csp-weakened",
+              "navigation-limit-removed"
             ]
           },
           "fingerprint": {

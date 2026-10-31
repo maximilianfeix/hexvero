@@ -353,6 +353,8 @@ describe("hexvero audit", () => {
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((wc, p, cb) => cb(p === "notifications"));
   const win = new BrowserWindow({ webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
+  win.webContents.on("will-navigate", (e) => e.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.loadFile("index.html");
   shell.openExternal("https://example.com");
 });

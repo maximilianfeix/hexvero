@@ -382,6 +382,18 @@ export interface WindowSummary {
    * version package.json names, see `Effect`.
    */
   pageRequire: "yes" | "no" | "yes by default" | "no by default" | "unknown";
+  webSecurity: SettingState;
+  allowRunningInsecureContent: SettingState;
+  /**
+   * Whether the same-origin policy holds for the window's pages. Its default, on, is the same in
+   * every Electron version, so `default on` needs no version from package.json.
+   */
+  webSecurityInEffect: Effect;
+  /**
+   * Whether an https page may run content loaded over http: off by default in every version,
+   * and on where `webSecurity: false` is written and this setting is not (WebPreferences).
+   */
+  allowRunningInsecureContentInEffect: Effect;
   /** The rule each derived value rests on. */
   basis: string;
 }
@@ -502,6 +514,45 @@ export function windowEffects(
     pageRequire,
     basis: basis.join("; "),
   };
+}
+
+/**
+ * The web security columns of a window, from Electron's WebPreferences structure: `webSecurity`
+ * defaults to true, `allowRunningInsecureContent` to false, and `webSecurity: false` sets
+ * `allowRunningInsecureContent` to true when the code does not write it. Neither default changed
+ * between versions. `basis` explains each value that is not a default.
+ */
+export function webSecurityEffects(
+  w: Pick<WindowSummary, "webSecurity" | "allowRunningInsecureContent">,
+): Pick<WindowSummary, "webSecurityInEffect" | "allowRunningInsecureContentInEffect"> & {
+  basis: string[];
+} {
+  const basis: string[] = [];
+  let web: Effect;
+  if (typeof w.webSecurity === "boolean") {
+    web = w.webSecurity ? "on" : "off";
+    basis.push(`webSecurity: ${String(w.webSecurity)} as written`);
+  } else if (noValue(w.webSecurity)) {
+    web = "unknown";
+    basis.push(`webSecurity is ${w.webSecurity}`);
+  } else web = "default on";
+  let insecure: Effect;
+  if (typeof w.allowRunningInsecureContent === "boolean") {
+    insecure = w.allowRunningInsecureContent ? "on" : "off";
+    basis.push(`allowRunningInsecureContent: ${String(w.allowRunningInsecureContent)} as written`);
+  } else if (noValue(w.allowRunningInsecureContent)) {
+    insecure = "unknown";
+    basis.push(`allowRunningInsecureContent is ${w.allowRunningInsecureContent}`);
+  } else if (web === "off") {
+    insecure = "on";
+    basis.push("allowRunningInsecureContent not written: webSecurity: false turns it on");
+  } else if (web === "unknown") {
+    insecure = "unknown";
+    basis.push(
+      "allowRunningInsecureContent not written: it follows webSecurity, which is not known",
+    );
+  } else insecure = "default off";
+  return { webSecurityInEffect: web, allowRunningInsecureContentInEffect: insecure, basis };
 }
 
 /** A stretch of source that holds a window's options, and which window it is. */
@@ -8058,7 +8109,9 @@ export function analyzeJavaScriptTree(
   const windows: WindowSummary[] = (facts.windows ?? []).map((w) => {
     // One row per key is left where the order of writes could be read. Several rows with
     // different values are writes in separate objects: neither is taken.
-    const stateOf = (key: CoreKey): SettingState => {
+    const stateOf = (
+      key: CoreKey | "webSecurity" | "allowRunningInsecureContent",
+    ): SettingState => {
       if (w.computed?.includes(key)) return "computed";
       const rows = webPreferences.filter(
         (x) => x.file === w.file && x.window === w.window && x.key === key,
@@ -8076,15 +8129,24 @@ export function analyzeJavaScriptTree(
     const preload = webPreferences.findLast(
       (x) => x.file === w.file && x.window === w.window && x.key === "preload",
     );
+    const web = {
+      webSecurity: stateOf("webSecurity"),
+      allowRunningInsecureContent: stateOf("allowRunningInsecureContent"),
+    };
+    const { basis: webBasis, ...webEffects } = webSecurityEffects(web);
+    const effects = windowEffects(
+      states,
+      major,
+      facts.enableSandbox === "always" ? true : facts.enableSandbox === "maybe" ? "maybe" : false,
+    );
     return {
       ...w,
       ...states,
       preload: typeof preload?.value === "string" ? preload.value : null,
-      ...windowEffects(
-        states,
-        major,
-        facts.enableSandbox === "always" ? true : facts.enableSandbox === "maybe" ? "maybe" : false,
-      ),
+      ...effects,
+      ...web,
+      ...webEffects,
+      basis: [effects.basis, ...webBasis].join("; "),
     };
   });
   const opaqueWindows = facts.windows.filter((w) => w.opaque);

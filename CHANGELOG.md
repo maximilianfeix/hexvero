@@ -6,6 +6,30 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `hexvero audit` judges `webSecurity` and `allowRunningInsecureContent` (Electronegativity's
+  `WEB_SECURITY_JS_CHECK`, `INSECURE_CONTENT_JS_CHECK`): `window-permissive` reports a window that
+  writes `webSecurity: false` (the same-origin policy is off; Electron's security guide, section 6) or `allowRunningInsecureContent: true` (section 8; also on where `webSecurity: false` is
+  written and it is not), and a computed value as unknown. `windows` rows carry the new columns
+  `webSecurity`, `allowRunningInsecureContent`, `webSecurityInEffect` and
+  `allowRunningInsecureContentInEffect` (`default on` / `default off` when not written: the
+  default is the same in every Electron version). `hexvero check`'s `window-more-permissive`
+  reports a window whose `webSecurity` turned off or whose insecure content turned on, never the
+  reverse.
+- Audit rule `navigation-unlimited` (`LIMIT_NAVIGATION_JS_CHECK`, `_GLOBAL_CHECK`): no
+  `will-navigate` / `will-frame-navigate` listener (section 13) or no `setWindowOpenHandler`
+  (section 14) in the files read, for the app or for a window when others have one, and a
+  `setWindowOpenHandler` that returns `{ action: "allow" }` on every path. An absence is never
+  reported on a partial scan (the rule is not decidable then); a listener only on a webContents
+  not read as a window leaves the windows without their own unknown. The example build
+  `notesdesk-1.5.0.asar` now also fails it (`no will-navigate listener`).
+- Check rule `navigation-limit-removed`: the before build's will-navigate listeners or window open
+  handlers all gone, or a window open handler that newly allows every window. A policy that does
+  not list it runs it at `warn`; `examples/policy.json`, `hexvero init` and the schema list it.
+- SARIF for `hexvero audit` gives `window-permissive` and `navigation-unlimited` a help text that
+  names the sections of Electron's security guide.
+
 ## [0.12.0] - 2026-10-24
 
 ### Added

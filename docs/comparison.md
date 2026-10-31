@@ -83,14 +83,18 @@ applies them to one build; `check` reports what changed; the mapping of every ch
   code (`switches`; `unsafe-switch`, `new-unsafe-switch`).
 - Disabled security warnings (`ELECTRON_DISABLE_SECURITY_WARNINGS`, `switches`).
 - Node integration, context isolation and the sandbox per window, by the defaults of the
-  Electron version package.json names (`windows`; `window-permissive`), and `@electron/remote`.
+  Electron version package.json names, and `webSecurity` and `allowRunningInsecureContent`
+  (`windows`; `window-permissive`, `window-more-permissive`), and `@electron/remote`.
+- Navigation and window creation not limited: no `will-navigate` / `will-frame-navigate`
+  listener, no `setWindowOpenHandler`, or one that returns `{ action: "allow" }` on every path
+  (`navigationHandlers`; `navigation-unlimited`, `navigation-limit-removed`).
 
 What Electronegativity checks that hexvero does not (yet):
 
 - Custom protocol handlers (`setAsDefaultProtocolClient`, `registerFileProtocol` and related).
 - Command-line switches written into `package.json` scripts.
-- What navigation handlers do. hexvero lists `setWindowOpenHandler`, `will-navigate` and
-  `will-frame-navigate` handlers (`navigationHandlers`) but not what they check.
+- What navigation handlers check. hexvero reports where they are missing and a window open
+  handler that returns a literal `allow`, but not which URLs a listener lets through.
 - `webPreferences` keys outside the ten hexvero reads (`enableBlinkFeatures`,
   `experimentalFeatures`, `affinity` …), `<webview>` attributes in HTML (`allowpopups`,
   `nodeintegration`, `disablewebsecurity` …), and `will-attach-webview` handlers.

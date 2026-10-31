@@ -40,6 +40,7 @@ export const POLICY_RULES = [
   "new-open-external",
   "permission-handler-grants-all",
   "csp-weakened",
+  "navigation-limit-removed",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
 
@@ -52,6 +53,7 @@ const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set([
   "new-open-external",
   "permission-handler-grants-all",
   "csp-weakened",
+  "navigation-limit-removed",
 ]);
 
 export type RuleLevel = "fail" | "warn" | "off";
@@ -440,6 +442,7 @@ const KIND_LISTS: Record<string, ReadonlySet<string>> = {
     "openExternal",
     "permissionHandlers",
     "csp",
+    "navigationHandlers",
     "windows",
     "endpoints",
     "urls",
@@ -742,6 +745,7 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   "new-open-external": () => ["openExternal"],
   "permission-handler-grants-all": () => ["permissionHandlers"],
   "csp-weakened": () => ["csp"],
+  "navigation-limit-removed": () => ["navigationHandlers"],
 };
 
 /**
@@ -760,6 +764,7 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   "new-open-external": () => [],
   "permission-handler-grants-all": () => [],
   "csp-weakened": () => [],
+  "navigation-limit-removed": () => [],
 };
 
 /**
@@ -1339,6 +1344,100 @@ function permissionDrafts(r: ReleaseComparison, sides: CheckSides | undefined): 
   return out;
 }
 
+/** The navigation limits `navigation-limit-removed` watches, by the kinds that set them. */
+const NAVIGATION_LIMITS = [
+  {
+    group: "navigate",
+    kinds: ["will-navigate", "will-frame-navigate"],
+    key: "will-navigate listener removed",
+    message:
+      "The before build listens for will-navigate or will-frame-navigate and the after build does not: a page may navigate its window to a URL the app does not expect (Electron's security guide, section 13).",
+  },
+  {
+    group: "open",
+    kinds: ["setWindowOpenHandler"],
+    key: "setWindowOpenHandler removed",
+    message:
+      "The before build sets a setWindowOpenHandler and the after build sets none: a page may open new windows for a URL the app does not expect (Electron's security guide, section 14).",
+  },
+] as const;
+
+/** A setWindowOpenHandler whose every return is `{ action: "allow" }`. */
+const opensAll = (f: Record<string, unknown>): boolean =>
+  f["kind"] === "setWindowOpenHandler" && f["returns"] === "allow";
+
+/** A window open handler by receiver kind and window, and what it returns. */
+const openHandlerIdentity = (f: Record<string, unknown>): string =>
+  `navigation\0allow\0${String(f["targetKind"])}\0${String(f["window"] ?? null)}`;
+
+/**
+ * Navigation limits the before build sets and the after build does not: every will-navigate /
+ * will-frame-navigate listener gone, or every setWindowOpenHandler (by kind, in any file), and a
+ * setWindowOpenHandler that returns `{ action: "allow" }` on every path where the before build had
+ * none such for that receiver kind and window.
+ */
+function navigationDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const beforeList = beforeItems(r, "navigationHandlers", sides);
+  const before = counts(beforeList.filter(opensAll).map(openHandlerIdentity));
+  const afterList = (sides?.items.b["navigationHandlers"] ?? []).filter(isRecord);
+  const after = counts(afterList.filter(opensAll).map(openHandlerIdentity));
+  for (const row of changedRows(r, "navigationHandlers")) {
+    const items = afterItems(r, row, sides);
+    if (!items) {
+      out.push(unreadDraft("navigation-limit-removed", row, "A navigation limit may be gone"));
+      continue;
+    }
+    for (const f of items) {
+      if (!opensAll(f)) continue;
+      const identity = openHandlerIdentity(f);
+      if ((after.get(identity) ?? 1) <= (before.get(identity) ?? 0)) continue;
+      const on = String(f["window"] ?? f["target"] ?? "a webContents");
+      const unknown = row.change === "unknown";
+      out.push({
+        rule: "navigation-limit-removed",
+        identity,
+        row,
+        key: `setWindowOpenHandler on ${on} returns allow`,
+        message: unknown
+          ? `The after build's setWindowOpenHandler of ${plain(on)} may newly allow every window: ${plain(row.reason ?? "the comparison could not tell")}.`
+          : `The after build's setWindowOpenHandler of ${plain(on)} returns { action: "allow" } on every path, and the before build's did not: a page may open a window for a URL the app does not expect (Electron's security guide, section 14).`,
+        where: row.where,
+        unknown,
+      });
+    }
+  }
+  // a limit gone: attached to a removed row of the list (else any changed one)
+  const anchor =
+    r.changes.find((row) => row.collection === "navigationHandlers" && row.change === "removed") ??
+    r.changes.find((row) => row.collection === "navigationHandlers");
+  if (!sides?.items.a["navigationHandlers"] || !sides.items.b["navigationHandlers"] || !anchor)
+    return out;
+  for (const limit of NAVIGATION_LIMITS) {
+    const of = (list: Array<Record<string, unknown>>) =>
+      list.filter((f) => (limit.kinds as readonly string[]).includes(String(f["kind"])));
+    if (!of(beforeList).length || of(afterList).length) continue;
+    const removedWhere = r.changes
+      .filter(
+        (row) =>
+          row.collection === "navigationHandlers" &&
+          row.change === "removed" &&
+          of([fieldsOf(r, row) ?? {}]).length > 0,
+      )
+      .flatMap((row) => row.where);
+    out.push({
+      rule: "navigation-limit-removed",
+      identity: `navigation\0removed\0${limit.group}`,
+      row: anchor,
+      key: limit.key,
+      message: limit.message,
+      where: removedWhere.length ? removedWhere : anchor.where,
+      unknown: false,
+    });
+  }
+  return out;
+}
+
 /** A CSP row that applies to the app's pages: enforced, in a <meta> tag or onHeadersReceived. */
 const appliedCsp = (f: unknown): boolean =>
   isRecord(f) &&
@@ -1502,6 +1601,8 @@ const PERMISSIVE: Record<string, readonly string[]> = {
   contextIsolationInEffect: ["off", "default off"],
   sandboxInEffect: ["off", "default off"],
   pageRequire: ["yes", "yes by default"],
+  webSecurityInEffect: ["off", "default off"],
+  allowRunningInsecureContentInEffect: ["on", "default on"],
 };
 
 /** The window item behind a row of `windows`, from its label or the side's items. */
@@ -1828,6 +1929,7 @@ export function evaluatePolicy(
     if (rule === "new-open-external") drafts.push(...openExternalDrafts(r, sides));
     if (rule === "permission-handler-grants-all") drafts.push(...permissionDrafts(r, sides));
     if (rule === "csp-weakened") drafts.push(...cspDrafts(r, sides));
+    if (rule === "navigation-limit-removed") drafts.push(...navigationDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -1994,6 +2096,7 @@ const RULE_LISTS = [
   "openExternal",
   "permissionHandlers",
   "csp",
+  "navigationHandlers",
   "windows",
   "endpoints",
   "urls",

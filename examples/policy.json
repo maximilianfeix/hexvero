@@ -14,7 +14,8 @@
     "new-unsafe-switch": { "level": "fail" },
     "new-open-external": { "level": "fail" },
     "permission-handler-grants-all": { "level": "fail" },
-    "csp-weakened": { "level": "fail" }
+    "csp-weakened": { "level": "fail" },
+    "navigation-limit-removed": { "level": "fail" }
   },
   "unknown": "fail",
   "suppressions": []
