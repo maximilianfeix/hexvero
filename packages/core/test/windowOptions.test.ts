@@ -284,6 +284,22 @@ describe("window options built from constants, fields and factories", () => {
     expect(states(minified)).toEqual(["not written true false null not written"]);
   });
 
+  it("reads the hexadecimal and binary booleans obfuscators write (!0x0, !0x1, !0b0)", () => {
+    // javascript-obfuscator turns true into !0x0 and false into !0x1
+    const inline = one(
+      "new BrowserWindow({webPreferences:{nodeIntegration:!0x1,contextIsolation:!0x0,sandbox:!0b0}});",
+    );
+    expect(states(inline)).toEqual(["false true true null not written"]);
+    // the same through a constant the resolver follows
+    const followed = one(
+      "const K={nodeIntegration:!0x1,contextIsolation:!0x0,sandbox:!0x0};new BrowserWindow({webPreferences:K});",
+    );
+    expect(states(followed)).toEqual(["false true true null not written"]);
+    // any other number is negated as JavaScript does: !0x2 is false
+    const other = one("new BrowserWindow({webPreferences:{sandbox:!0x2}});");
+    expect(states(other)).toEqual(["not written not written false null not written"]);
+  });
+
   it("reads a value as unknown when a base or the merged object may be changed", () => {
     // the base changed after the merge
     const base = one(

@@ -22,6 +22,7 @@ import {
   builtIdentifierIndex,
   ExpressionResolver,
   type ModuleHost,
+  negatedNumber,
   type Val,
 } from "./resolve.js";
 import {
@@ -6412,15 +6413,12 @@ export function readFileTokens(
             const key = name as Exclude<PreferenceKey, "preload">;
             const v = tokens[valueAt]!;
             const n = tokens[valueAt + 1];
-            // true, false, and what minifiers write for them: !0 and !1
+            // true, false, and what minifiers and obfuscators write for them: !0, !1, !0x0
             const value =
               v.type === "ident" && (v.value === "true" || v.value === "false")
                 ? v.value === "true"
-                : v.type === "punct" &&
-                    v.value === "!" &&
-                    n?.type === "number" &&
-                    /^[01]$/.test(n.value)
-                  ? n.value === "0"
+                : v.type === "punct" && v.value === "!" && n?.type === "number"
+                  ? negatedNumber(n.value)
                   : null;
             // `sandbox: true && flag` is not the setting `true`: the value must end there.
             const after = tokens[v.type === "ident" ? valueAt + 1 : valueAt + 2];
