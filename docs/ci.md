@@ -104,11 +104,46 @@ jobs:
           category: hexvero-check
 ```
 
-This repository runs the same two commands (from its own build, without a baseline) on its two
+## Reusable action
+
+The repository root is also a composite action that runs the same two commands for you: the
+Markdown result goes to the job summary, the SARIF result to a file, and the step exits with
+`hexvero check`'s code (a failure while writing the summary or the SARIF file is reported as a
+warning and never changes it). It runs `npx --yes hexvero@<version>` without a shell; every input
+is passed as one argument. It needs Node.js 22.12 or newer on the runner (`actions/setup-node`).
+
+Pin the action by commit SHA, not by a branch or tag: replace `<sha>` with the full commit of
+the hexvero release you reviewed.
+
+```yaml
+- uses: maximilianfeix/hexvero@<sha> # hexvero 0.12.0
+  id: hexvero
+  with:
+    before: previous/app.asar
+    after: dist/app.asar
+    policy: .hexvero/policy.json
+    baseline: .hexvero/baseline.json # optional, never written by the action
+    version: 0.12.0 # the npm version to run; the default is 0.12.0
+    sarif: hexvero.sarif # the default; empty for no SARIF file
+- if: always()
+  uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+  with:
+    name: hexvero-sarif
+    path: ${{ steps.hexvero.outputs.sarif }}
+    if-no-files-found: ignore
+```
+
+Outputs: `exit-code` (`0` to `4` as in the table above), `sarif` (the path of the SARIF file,
+empty when none was written, for example after exit `1` or `2`) and `summary` (the path of the
+Markdown result). The SARIF upload stays a separate job with `security-events: write`, as in the
+workflow above. To read the outputs after a violation instead of failing the job at once, set
+`continue-on-error: true` on the step and test `steps.hexvero.outputs.exit-code` later.
+
+This repository runs its own action (from its own build, without a baseline) on its two
 synthetic example builds in
 [`.github/workflows/check-example.yml`](../.github/workflows/check-example.yml) (expected exit:
-`3`), and `npm run e2e` runs that workflow's command and validates its SARIF output against the
-SARIF 2.1.0 schema.
+`3`), and `npm run e2e` runs the action's script with that workflow's inputs and validates its
+SARIF output against the SARIF 2.1.0 schema.
 
 ## What the SARIF file says, and what it does not
 
