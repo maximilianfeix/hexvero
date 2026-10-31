@@ -39,7 +39,9 @@ import {
   ASSIGNMENT_OPERATORS,
   bindingAt,
   chainEnd,
+  classFieldAt,
   declaredAt,
+  declaredPatternName,
   keyOrLabelAt,
   patternSourceAt,
   shadowedAt,
@@ -4156,6 +4158,17 @@ export class ExpressionResolver {
   }
 
   /**
+   * The name at j is assigned or changed there: `NAME = …` and every write `changes` reads. A
+   * class field (`class A { NAME = 1 }`) and a default in a declaration's pattern
+   * (`const { k: NAME = 1 } = …`) are no assignments of a variable (#306).
+   */
+  private writesVariable(j: number): boolean {
+    if (this.punct(j + 1, "=") && !this.punct(j + 2, "="))
+      return !classFieldAt(this.tokens, j) && !declaredPatternName(this.tokens, j);
+    return this.changes(j);
+  }
+
+  /**
    * How `name` is declared directly in the body of d: null when it is not, otherwise the
    * initializer of its single `const`, `let` or `var` that is never assigned again (null range
    * for anything else).
@@ -6378,7 +6391,7 @@ export class ExpressionResolver {
       if (this.punct(j - 1, ".")) continue;
       const inner = this.enclosing(j);
       const before = this.tokens[j - 1];
-      const assigns = (this.punct(j + 1, "=") && !this.punct(j + 2, "=")) || this.changes(j);
+      const assigns = this.writesVariable(j);
       if (inner !== d) {
         if (assigns && !this.bindsBetween(inner, d, name)) written = true;
         continue;
@@ -6410,7 +6423,10 @@ export class ExpressionResolver {
       else if (this.patternAt(j, d)) {
         const part = this.patternAt(j, d)!;
         add(part.binding, part.open, part.blockScoped);
-      } else if (assigns) written = true;
+      }
+      // `const { k: NAME = 1 } = …`, `let [a, NAME] = …`: declared, with no one value to read
+      else if (declaredPatternName(this.tokens, j)) add("ambiguous", j, false);
+      else if (assigns) written = true;
     }
     return { whole, byOpen, written };
   }
@@ -6475,7 +6491,9 @@ export class ExpressionResolver {
           this.enclosing(j) === x &&
           ((before?.type === "ident" && /^(const|let|var|function|class)$/.test(before.value)) ||
             (this.punct(j - 1, ",") && this.punct(j + 1, "=") && this.inDeclarationList(j)) ||
-            this.bareListDeclarator(j))
+            this.bareListDeclarator(j) ||
+            // `const { k: NAME = 1 } = …`, as Floating UI's middleware declares its options (#306)
+            declaredPatternName(this.tokens, j))
         ) {
           own = true;
           break;
