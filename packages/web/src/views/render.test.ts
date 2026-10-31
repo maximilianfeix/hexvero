@@ -72,6 +72,7 @@ describe("evidence panel rendering", () => {
       where: [
         { side: "b", file: "preload.js", line: 9 },
         { side: "b", file: "main.js", line: 30, role: "handler" },
+        { side: "b", file: `evil${RLO}sj.js`, line: 2, role: "handler" },
       ],
       basis: "link direct",
       trace: { windows: ["main.js:win"], channel: `update:check${HOSTILE}` },
@@ -106,10 +107,22 @@ describe("evidence panel rendering", () => {
       "preload member notesdesk.checkUpdate",
       "channel update:check&lt;img src=x onerror=alert(1)&gt;",
       "handler main.js:30",
+      "handler evil⟨U+202E⟩sj.js:2",
       "host on the handler&#x27;s line https://updates.notesdesk.example/latest.json",
     ]);
     expect(path).toContain('<span class="trace-at">preload.js:9</span>');
     expect(path).not.toContain("elsewhere");
+    expect(path).not.toContain(RLO);
+    // the member's own place is target text as well
+    const spoofed = renderToStaticMarkup(
+      createElement(EvidencePanel, {
+        row: { ...row, where: [{ side: "b", file: `pre${RLO}sj.load.js`, line: 9 }] },
+        r,
+        position: "1 of 3",
+        onClose: () => undefined,
+      }),
+    );
+    expect(spoofed).toContain('<span class="trace-at">pre⟨U+202E⟩sj.load.js:9</span>');
     // a row from an older server, without trace: no path
     const { trace: _drop, ...withoutTrace } = row;
     const plain = renderToStaticMarkup(

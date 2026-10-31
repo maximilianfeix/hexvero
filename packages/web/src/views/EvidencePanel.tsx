@@ -147,7 +147,7 @@ function TracePath({ row, r }: { row: ChangeRow; r: ReleaseComparison }): ReactE
         <li key={i} title={s.title}>
           <span className="trace-role">{s.role}</span>
           <code>{visible(s.value)}</code>
-          {s.at && <span className="trace-at">{s.at}</span>}
+          {s.at && <span className="trace-at">{visible(s.at)}</span>}
         </li>
       ))}
     </ol>
