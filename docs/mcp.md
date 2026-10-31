@@ -138,11 +138,13 @@ issue with its JSON path in `details.issues`; a missing policy or baseline file 
 without `targetB` is `hexvero audit <build>` without the exit code: the Electron security rules
 (`window-permissive`, `remote-enabled`, `unsafe-switch`, `open-external`,
 `permission-handler-missing`, `permission-handler-grants-all`, `csp-missing`, `csp-weak`,
-`navigation-unlimited`, `dangerous-call`, `webview-insecure`, `custom-protocol`) applied to one Electron archive, app directory or
+`navigation-unlimited`, `dangerous-call`, `webview-insecure`, `custom-protocol`,
+`electron-outdated`, `http-resource`) applied to one Electron archive, app directory or
 packaged build. Any other target is `invalid_input`. The policy is optional: without one every
 rule is at `fail`; with one its `audit` section sets levels (`fail`, `warn`, `off`), `unknown` and
 suppressions by fingerprint (a policy without that section keeps every rule at `fail`; a section
-that does not list `dangerous-call`, `webview-insecure` or `custom-protocol` runs them at
+that does not list `dangerous-call`, `webview-insecure`, `custom-protocol`, `electron-outdated`
+or `http-resource` runs them at
 `warn`). `unknown` (`fail`, `warn`, `allow`) is
 the CLI's `--unknown` and overrides the policy; for two builds it is refused, because there it is
 set in the policy. `baselinePath` reads a baseline written by

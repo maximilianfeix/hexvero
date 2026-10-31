@@ -809,6 +809,170 @@ export function schemeOf(text: string): string | null {
   return m ? m[1]!.toLowerCase() : null;
 }
 
+/**
+ * What is known of a URL argument at [a, b): one string read whole (`literal`), its start (a
+ * template or a `+` chain that begins with a literal) or a short list of possible values
+ * (`inferred`), else `unknown`; with its scheme when the known part names one. Shared by
+ * `openExternal` and `loads`.
+ */
+export function urlArgument(
+  r: FileReader,
+  a: number,
+  b: number,
+): Pick<OpenExternalRow, "argumentKind" | "argument" | "scheme" | "values"> {
+  const { tokens, resolver } = r;
+  const unknown = { argumentKind: "unknown" as const, argument: null, scheme: null };
+  if (b <= a) return unknown;
+  const whole = r.stringAt(a, b);
+  if (whole !== null) return { argumentKind: "literal", argument: whole, scheme: schemeOf(whole) };
+  const t = tokens[a]!;
+  // `https://example.com/${path}`: the part before the first substitution
+  let prefix: string | null = null;
+  let head = -1;
+  if (t.type === "template" && t.value.includes("${")) {
+    prefix = t.value.split("${")[0]!;
+    head = templateEnd(r, a, b);
+  }
+  // `"https://example.com/" + path`
+  else if (t.type === "string") {
+    prefix = t.value;
+    head = a + 1;
+  }
+  // only where the URL is that operand alone or the first of a chain of `+` operands: any
+  // other operator (`&&`, `||`, `??`, `?:`, a comparison), a member or call on it, or a
+  // comma may give a value that does not start with it
+  if (prefix && head > a && plusChain(r, head, b)) {
+    const scheme = schemeOf(prefix);
+    return {
+      argumentKind: "inferred",
+      argument: prefix,
+      // a scheme is known only when its colon is in the known part
+      scheme,
+    };
+  }
+  // `flag ? "https://a" : "https://b"`: both branches read
+  const branches = ternaryStrings(r, a, b);
+  if (branches) {
+    const schemes = new Set(branches.map(schemeOf));
+    return {
+      argumentKind: "inferred",
+      argument: null,
+      values: branches,
+      scheme: schemes.size === 1 ? [...schemes][0]! : null,
+    };
+  }
+  if (r.spend() && r.namesOwnValues(a, b)) {
+    const v = resolver.valueAt(a);
+    if (v?.kind === "str" && v.values.length > 1 && v.values.length <= 8 && r.exprEnd(a) === b) {
+      const schemes = new Set(v.values.map(schemeOf));
+      return {
+        argumentKind: "inferred",
+        argument: null,
+        values: [...v.values],
+        scheme: schemes.size === 1 ? [...schemes][0]! : null,
+      };
+    }
+  }
+  return unknown;
+}
+
+/**
+ * The token after the template that starts at a (its pieces and substitutions), within
+ * [a, b); -1 when its end is not found there.
+ */
+function templateEnd(r: FileReader, a: number, b: number): number {
+  const { tokens } = r;
+  let depth = 0;
+  for (let j = a + 1; j < b; j++) {
+    if (!r.spend()) return -1;
+    const x = tokens[j]!;
+    if (x.type === "punct" && (x.value === "(" || x.value === "[" || x.value === "{")) depth++;
+    else if (x.type === "punct" && (x.value === ")" || x.value === "]" || x.value === "}")) depth--;
+    else if (depth === 0 && x.type === "template" && !x.value.includes("${")) return j + 1;
+  }
+  return -1;
+}
+/** `c ? x : y` at [a, b) with x and y strings read whole (each also a ternary); else null. */
+function ternaryStrings(r: FileReader, a: number, b: number, depth = 0): string[] | null {
+  const { tokens } = r;
+  if (depth > 3) return null;
+  let q = -1;
+  let colon = -1;
+  let nested = 0;
+  for (let j = a, d = 0; j < b; j++) {
+    if (!r.spend()) return null;
+    const x = tokens[j]!;
+    if (x.type !== "punct") continue;
+    if (x.value === "(" || x.value === "[" || x.value === "{") d++;
+    else if (x.value === ")" || x.value === "]" || x.value === "}") d--;
+    else if (d === 0 && x.value === "?") {
+      if (q < 0) q = j;
+      else nested++;
+    } else if (d === 0 && x.value === ":" && q >= 0) {
+      if (nested > 0) nested--;
+      else if (colon < 0) colon = j;
+    }
+  }
+  if (q < 0 || colon < 0) return null;
+  const side = (x: number, y: number): string[] | null => {
+    const one = r.stringAt(x, y);
+    if (one !== null) return [one];
+    // a branch that is one name (`isDev ? DEV_URL : "…"`): its constant value, read whole
+    if (y === x + 1 && r.ident(x) && r.spend() && r.namesOwnValues(x, y)) {
+      const bound = r.resolver.binding(x, r.ident(x)!);
+      if (bound?.kind === "value") {
+        const [from, to] = r.trim(bound.range[0], bound.range[1]);
+        const value = r.stringAt(from, to);
+        if (value !== null) return [value];
+      }
+    }
+    return ternaryStrings(r, x, y, depth + 1);
+  };
+  const left = side(q + 1, colon);
+  const right = left && side(colon + 1, b);
+  if (!left || !right) return null;
+  // more values than are kept is not read: never a list cut short, whose scheme could hide one
+  const all = [...new Set([...left, ...right])];
+  return all.length > 8 ? null : all;
+}
+/** [from, b) is empty or `+ operand + operand …` with no other operator at depth 0. */
+function plusChain(r: FileReader, from: number, b: number): boolean {
+  const { tokens } = r;
+  if (from === b) return true;
+  if (!r.is(from, "+")) return false;
+  let depth = 0;
+  let operand = false;
+  for (let j = from; j < b; j++) {
+    if (!r.spend()) return false;
+    const x = tokens[j]!;
+    if (x.type === "punct") {
+      if (x.value === "(" || x.value === "[" || x.value === "{") {
+        depth++;
+        operand = true;
+        continue;
+      }
+      if (x.value === ")" || x.value === "]" || x.value === "}") {
+        depth--;
+        continue;
+      }
+      if (depth > 0) continue;
+      if (x.value === "+" && !r.is(j + 1, "+") && !r.is(j + 1, "=")) {
+        // a `+` with no operand before it is a unary plus: not a concatenation
+        if (j > from && !operand) return false;
+        operand = false;
+        continue;
+      }
+      if ((x.value === "." || x.value === "?.") && operand) continue;
+      return false;
+    }
+    if (depth > 0) continue;
+    if (x.type === "ident" && /^(in|instanceof|typeof|void|delete|await|yield|new)$/.test(x.value))
+      return false;
+    operand = true;
+  }
+  return operand;
+}
+
 /** `shell.openExternal(url)` calls of a file. */
 export function openExternalRows(
   tokens: Token[],
@@ -822,155 +986,6 @@ export function openExternalRows(
   const push = (row: OpenExternalRow): void => {
     if (keepRows(rows, [row], MAX_SECURITY_ROWS_PER_FILE, harmlessOpenExternal)) capped = true;
   };
-  /** What is known of the URL argument at [a, b). */
-  const argument = (
-    a: number,
-    b: number,
-  ): Pick<OpenExternalRow, "argumentKind" | "argument" | "scheme" | "values"> => {
-    const unknown = { argumentKind: "unknown" as const, argument: null, scheme: null };
-    if (b <= a) return unknown;
-    const whole = r.stringAt(a, b);
-    if (whole !== null)
-      return { argumentKind: "literal", argument: whole, scheme: schemeOf(whole) };
-    const t = tokens[a]!;
-    // `https://example.com/${path}`: the part before the first substitution
-    let prefix: string | null = null;
-    let head = -1;
-    if (t.type === "template" && t.value.includes("${")) {
-      prefix = t.value.split("${")[0]!;
-      head = templateEnd(a, b);
-    }
-    // `"https://example.com/" + path`
-    else if (t.type === "string") {
-      prefix = t.value;
-      head = a + 1;
-    }
-    // only where the URL is that operand alone or the first of a chain of `+` operands: any
-    // other operator (`&&`, `||`, `??`, `?:`, a comparison), a member or call on it, or a
-    // comma may give a value that does not start with it
-    if (prefix && head > a && plusChain(head, b)) {
-      const scheme = schemeOf(prefix);
-      return {
-        argumentKind: "inferred",
-        argument: prefix,
-        // a scheme is known only when its colon is in the known part
-        scheme,
-      };
-    }
-    // `flag ? "https://a" : "https://b"`: both branches read
-    const branches = ternaryStrings(a, b);
-    if (branches) {
-      const schemes = new Set(branches.map(schemeOf));
-      return {
-        argumentKind: "inferred",
-        argument: null,
-        values: branches,
-        scheme: schemes.size === 1 ? [...schemes][0]! : null,
-      };
-    }
-    if (r.spend() && r.namesOwnValues(a, b)) {
-      const v = resolver.valueAt(a);
-      if (v?.kind === "str" && v.values.length > 1 && v.values.length <= 8 && r.exprEnd(a) === b) {
-        const schemes = new Set(v.values.map(schemeOf));
-        return {
-          argumentKind: "inferred",
-          argument: null,
-          values: [...v.values],
-          scheme: schemes.size === 1 ? [...schemes][0]! : null,
-        };
-      }
-    }
-    return unknown;
-  };
-
-  /**
-   * The token after the template that starts at a (its pieces and substitutions), within
-   * [a, b); -1 when its end is not found there.
-   */
-  function templateEnd(a: number, b: number): number {
-    let depth = 0;
-    for (let j = a + 1; j < b; j++) {
-      if (!r.spend()) return -1;
-      const x = tokens[j]!;
-      if (x.type === "punct" && (x.value === "(" || x.value === "[" || x.value === "{")) depth++;
-      else if (x.type === "punct" && (x.value === ")" || x.value === "]" || x.value === "}"))
-        depth--;
-      else if (depth === 0 && x.type === "template" && !x.value.includes("${")) return j + 1;
-    }
-    return -1;
-  }
-  /** `c ? x : y` at [a, b) with x and y strings read whole (each also a ternary); else null. */
-  function ternaryStrings(a: number, b: number, depth = 0): string[] | null {
-    if (depth > 3) return null;
-    let q = -1;
-    let colon = -1;
-    let nested = 0;
-    for (let j = a, d = 0; j < b; j++) {
-      if (!r.spend()) return null;
-      const x = tokens[j]!;
-      if (x.type !== "punct") continue;
-      if (x.value === "(" || x.value === "[" || x.value === "{") d++;
-      else if (x.value === ")" || x.value === "]" || x.value === "}") d--;
-      else if (d === 0 && x.value === "?") {
-        if (q < 0) q = j;
-        else nested++;
-      } else if (d === 0 && x.value === ":" && q >= 0) {
-        if (nested > 0) nested--;
-        else if (colon < 0) colon = j;
-      }
-    }
-    if (q < 0 || colon < 0) return null;
-    const side = (x: number, y: number): string[] | null => {
-      const one = r.stringAt(x, y);
-      return one !== null ? [one] : ternaryStrings(x, y, depth + 1);
-    };
-    const left = side(q + 1, colon);
-    const right = left && side(colon + 1, b);
-    if (!left || !right) return null;
-    // more values than are kept is not read: never a list cut short, whose scheme could hide one
-    const all = [...new Set([...left, ...right])];
-    return all.length > 8 ? null : all;
-  }
-  /** [from, b) is empty or `+ operand + operand …` with no other operator at depth 0. */
-  function plusChain(from: number, b: number): boolean {
-    if (from === b) return true;
-    if (!r.is(from, "+")) return false;
-    let depth = 0;
-    let operand = false;
-    for (let j = from; j < b; j++) {
-      if (!r.spend()) return false;
-      const x = tokens[j]!;
-      if (x.type === "punct") {
-        if (x.value === "(" || x.value === "[" || x.value === "{") {
-          depth++;
-          operand = true;
-          continue;
-        }
-        if (x.value === ")" || x.value === "]" || x.value === "}") {
-          depth--;
-          continue;
-        }
-        if (depth > 0) continue;
-        if (x.value === "+" && !r.is(j + 1, "+") && !r.is(j + 1, "=")) {
-          // a `+` with no operand before it is a unary plus: not a concatenation
-          if (j > from && !operand) return false;
-          operand = false;
-          continue;
-        }
-        if ((x.value === "." || x.value === "?.") && operand) continue;
-        return false;
-      }
-      if (depth > 0) continue;
-      if (
-        x.type === "ident" &&
-        /^(in|instanceof|typeof|void|delete|await|yield|new)$/.test(x.value)
-      )
-        return false;
-      operand = true;
-    }
-    return operand;
-  }
-
   for (let k = 1; k + 1 < tokens.length; k++) {
     const t = tokens[k]!;
     const bracketed = t.type === "string" && r.is(k - 1, "[") && r.is(k + 1, "]");
@@ -1050,7 +1065,7 @@ export function openExternalRows(
       target: shell ? "shell" : r.text(from, k - 1),
       ...(end < 0
         ? { argumentKind: "unknown", argument: null, scheme: null }
-        : argument(open + 1, end)),
+        : urlArgument(r, open + 1, end)),
       evidence: `${r.text(from, open + 1)}${r.text(open + 1, close)})`,
       file,
       line: t.line,

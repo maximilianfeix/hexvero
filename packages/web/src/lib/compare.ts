@@ -288,6 +288,8 @@ export const MEANING: Record<string, string> = {
     "<webview> tags (HTML, markup in code, elements created in code) with their attributes, and will-attach-webview listeners",
   protocols:
     "Custom protocols: handlers, schemes registered as privileged with their privileges, and schemes the app is the default client of",
+  loads:
+    "Pages loaded with loadURL, and absolute script, stylesheet and iframe sources of the app's HTML files",
   webPreferences: "webPreferences keys as written in the code",
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",

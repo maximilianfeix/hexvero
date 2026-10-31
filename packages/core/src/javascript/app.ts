@@ -64,6 +64,8 @@ import {
 export type { CspRow, OpenExternalRow, PermissionHandlerRow } from "./security.js";
 import { dangerousCallRows, harmlessDangerousCall, type DangerousCallRow } from "./dangerous.js";
 export type { DangerousCallRow } from "./dangerous.js";
+import { harmlessLoad, htmlLoadRows, loadUrlRows, type LoadRow } from "./loads.js";
+export type { LoadRow } from "./loads.js";
 import {
   harmlessWebview,
   MAX_WEBVIEWS_PER_FILE,
@@ -5467,6 +5469,8 @@ export interface JsAppInfo {
   csp: CspRow[];
   /** executeJavaScript, executeJavaScriptInIsolatedWorld and insertCSS calls. */
   dangerousCalls: DangerousCallRow[];
+  /** loadURL calls, and absolute script, stylesheet and iframe sources of the app's HTML files. */
+  loads: LoadRow[];
   /** `<webview>` tags (HTML, markup in code, elements created in code), will-attach-webview listeners. */
   webviews: WebviewRow[];
   /** Custom protocol handlers, privileged schemes and default protocol clients. */
@@ -5578,6 +5582,8 @@ export interface JsScanFacts {
   /** CSP header rows read from JavaScript (meta rows are read from HTML at the end of a run). */
   cspHeaders?: CspRow[];
   dangerousCalls?: DangerousCallRow[];
+  /** loadURL rows read from JavaScript (HTML rows are read at the end of a run). */
+  loads?: LoadRow[];
   /** Webview rows read from JavaScript (tags of HTML files are read at the end of a run). */
   webviewCode?: WebviewRow[];
   protocols?: ProtocolRow[];
@@ -5607,6 +5613,7 @@ export interface JsScanFacts {
   permissionHandlersCapped?: boolean;
   cspCapped?: boolean;
   dangerousCallsCapped?: boolean;
+  loadsCapped?: boolean;
   webviewsCapped?: boolean;
   protocolsCapped?: boolean;
   /** Files with more calls of their own storage wrappers than are read, and the first five. */
@@ -5644,6 +5651,7 @@ export function emptyJsScanFacts(): JsScanFacts {
     permissionHandlers: [],
     cspHeaders: [],
     dangerousCalls: [],
+    loads: [],
     webviewCode: [],
     protocols: [],
     endpoints: [],
@@ -6125,6 +6133,7 @@ export interface FileTokenFacts {
   permissionHandlers?: { rows: PermissionHandlerRow[]; capped: boolean } | null;
   cspHeaders?: { rows: CspRow[]; capped: boolean } | null;
   dangerousCalls?: { rows: DangerousCallRow[]; capped: boolean } | null;
+  loads?: { rows: LoadRow[]; capped: boolean } | null;
   webviews?: { rows: WebviewRow[]; capped: boolean } | null;
   protocols?: { rows: ProtocolRow[]; capped: boolean } | null;
   /** Methods of the file's storage wrappers the file replaces (`Class.method:line`, at most 20). */
@@ -6172,6 +6181,7 @@ export function readFileTokens(
   let permissionHandlers: { rows: PermissionHandlerRow[]; capped: boolean } | null = null;
   let cspHeaders: { rows: CspRow[]; capped: boolean } | null = null;
   let dangerousCalls: { rows: DangerousCallRow[]; capped: boolean } | null = null;
+  let loads: { rows: LoadRow[]; capped: boolean } | null = null;
   let webviews: { rows: WebviewRow[]; capped: boolean } | null = null;
   let protocols: { rows: ProtocolRow[]; capped: boolean } | null = null;
   const scan = scanJavaScript(source, {
@@ -6736,6 +6746,14 @@ export function readFileTokens(
           new ExpressionResolver(tokens, context.constants),
           context.constants,
         );
+      if (source.includes("loadURL"))
+        loads = loadUrlRows(
+          tokens,
+          path,
+          new ExpressionResolver(tokens, context.constants),
+          context.constants,
+          new Set(ranges.flatMap((r) => (r.window !== null && r.name ? [r.name] : []))),
+        );
       if (/webview/i.test(source))
         webviews = webviewCodeRows(
           tokens,
@@ -6776,6 +6794,7 @@ export function readFileTokens(
     permissionHandlers,
     cspHeaders,
     dangerousCalls,
+    loads,
     webviews,
     protocols,
     remote,
@@ -7102,6 +7121,11 @@ export function analyzeJavaScriptTree(
         tokenFacts.dangerousCalls.capped
       )
         facts.dangerousCallsCapped = true;
+    }
+    if (tokenFacts.loads) {
+      const rows = (facts.loads ??= []);
+      if (keepRows(rows, tokenFacts.loads.rows, MAX_PREFS, harmlessLoad) || tokenFacts.loads.capped)
+        facts.loadsCapped = true;
     }
     if (tokenFacts.webviews) {
       const rows = (facts.webviewCode ??= []);
@@ -7807,6 +7831,9 @@ export function analyzeJavaScriptTree(
   let cspCapped = facts.cspCapped ?? false;
   const webviewList: WebviewRow[] = [];
   let webviewsCapped = facts.webviewsCapped ?? false;
+  // loadURL rows of the code, then the HTML files' script, stylesheet and iframe sources
+  const loadList: LoadRow[] = [...(facts.loads ?? [])];
+  let loadsCapped = facts.loadsCapped ?? false;
   const htmlUnread: string[] = [];
   {
     let htmlBytes = 0;
@@ -7834,6 +7861,11 @@ export function analyzeJavaScriptTree(
         const tags = webviewTagRows(text, f.path);
         if (keepRows(webviewList, tags.rows, MAX_PREFS, harmlessWebview) || tags.capped)
           webviewsCapped = true;
+      }
+      if (/\b(src|href)\s*=/i.test(text)) {
+        const sources = htmlLoadRows(text, f.path);
+        if (keepRows(loadList, sources.rows, MAX_PREFS, harmlessLoad) || sources.capped)
+          loadsCapped = true;
       }
       if (!/content-security-policy/i.test(text)) continue;
       const meta = cspMetaRows(text, f.path);
@@ -7863,6 +7895,11 @@ export function analyzeJavaScriptTree(
       code: "dangerous_calls_truncated",
       message: `More executeJavaScript / insertCSS calls exist than the ${MAX_SECURITY_ROWS_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection dangerousCalls); only calls with literal code were dropped.`,
     });
+  if (loadsCapped)
+    limitations.push({
+      code: "loads_truncated",
+      message: `More loadURL calls or HTML script, stylesheet and iframe sources exist than the ${MAX_SECURITY_ROWS_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection loads); only rows that load nothing over plain http from another host were dropped.`,
+    });
   if (webviewsCapped)
     limitations.push({
       code: "webviews_truncated",
@@ -7876,7 +7913,7 @@ export function analyzeJavaScriptTree(
   if (htmlUnread.length)
     limitations.push({
       code: "html_unread",
-      message: `${htmlUnread.length} HTML file(s) were not read for Content-Security-Policy <meta> tags and <webview> tags (more than ${MAX_HTML_FILES} files or ${MAX_HTML_BYTES >> 20} MiB of HTML, a file over ${maxFileBytes >> 20} MiB, or unreadable): ${list(htmlUnread, 5)} (collections csp, webviews).`,
+      message: `${htmlUnread.length} HTML file(s) were not read for Content-Security-Policy <meta> tags, <webview> tags and script, stylesheet and iframe sources (more than ${MAX_HTML_FILES} files or ${MAX_HTML_BYTES >> 20} MiB of HTML, a file over ${maxFileBytes >> 20} MiB, or unreadable): ${list(htmlUnread, 5)} (collections csp, webviews, loads).`,
     });
   // An unreadable entry whose value is itself a privileged object is established as such; any
   // other one may expose anything, which is said rather than reading "none exposed".
@@ -8803,6 +8840,7 @@ export function analyzeJavaScriptTree(
     permissionHandlers: permissionList,
     csp: cspList,
     dangerousCalls: dangerousList,
+    loads: loadList,
     webviews: webviewList,
     protocols: protocolList,
     endpoints,

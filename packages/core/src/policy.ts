@@ -39,6 +39,7 @@ import {
   cspRisk,
   dangerousCallRisk,
   hiddenFeatures,
+  httpResourceRisk,
   hiddenFeaturesNote,
   openExternalRisk,
   permissionRisk,
@@ -48,6 +49,7 @@ import {
 import type {
   CspRow,
   DangerousCallRow,
+  LoadRow,
   OpenExternalRow,
   PermissionHandlerRow,
 } from "./javascript/app.js";
@@ -68,6 +70,7 @@ export const POLICY_RULES = [
   "new-dangerous-call",
   "new-insecure-webview",
   "new-custom-protocol",
+  "new-http-resource",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
 
@@ -84,6 +87,7 @@ const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set([
   "new-dangerous-call",
   "new-insecure-webview",
   "new-custom-protocol",
+  "new-http-resource",
 ]);
 
 export type RuleLevel = "fail" | "warn" | "off";
@@ -709,6 +713,7 @@ const KIND_LISTS: Record<string, ReadonlySet<string>> = {
     "dangerousCalls",
     "webviews",
     "protocols",
+    "loads",
     "windows",
     "endpoints",
     "urls",
@@ -743,6 +748,7 @@ const DEFAULT_KEYS: Record<string, string> = {
   dangerousCalls: "file+method+targetKind+argumentKind+argument",
   webviews: "file+kind+src",
   protocols: "file+kind+scheme",
+  loads: "file+kind+targetKind+window+argumentKind+argument",
   interfaces: "file+api+member",
   contextBridge: "api+member",
   windows: "file+windowName",
@@ -1018,6 +1024,7 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   "new-dangerous-call": () => ["dangerousCalls"],
   "new-insecure-webview": () => ["webviews"],
   "new-custom-protocol": () => ["protocols"],
+  "new-http-resource": () => ["loads"],
 };
 
 /**
@@ -1040,6 +1047,7 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   "new-dangerous-call": () => [],
   "new-insecure-webview": () => [],
   "new-custom-protocol": () => [],
+  "new-http-resource": () => [],
 };
 
 /**
@@ -1750,6 +1758,57 @@ function dangerousCallDrafts(r: ReleaseComparison, sides: CheckSides | undefined
         message: unknown
           ? `The after build may newly run ${code} in a page with ${String(f["method"])}: ${f["targetKind"] === "unknown" ? "the receiver is not read as a webContents, a frame or webFrame" : plain(row.reason ?? "the comparison could not tell")}.`
           : `The after build newly runs ${code} in a page with ${String(f["method"])}: text that reaches it runs with the page's rights.`,
+        where: row.where,
+        unknown,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * A load over plain http from another host (`httpResourceRisk`) that the before build does not
+ * have: by kind, receiver kind and the URL as far as it is read, in any file and without lines
+ * or window names (a minifier renames those). A load on a receiver not read as a window or a
+ * webContents, or of a URL whose host is not read, is unknown.
+ */
+const loadIdentity = (f: Record<string, unknown>): string =>
+  `load ${String(f["kind"])} ${String(f["targetKind"])} ${String(f["argumentKind"])} ${String(f["argument"])} ${Array.isArray(f["values"]) ? f["values"].join(" ") : ""}`;
+
+function httpResourceDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const before = counts(beforeItems(r, "loads", sides).map(loadIdentity));
+  const after = counts((sides?.items.b["loads"] ?? []).filter(isRecord).map(loadIdentity));
+  for (const row of changedRows(r, "loads")) {
+    const items = afterItems(r, row, sides);
+    if (!items) {
+      out.push(unreadDraft("new-http-resource", row, "A load over plain http may be new"));
+      continue;
+    }
+    for (const f of items) {
+      const risk = httpResourceRisk(f as unknown as LoadRow);
+      const identity = loadIdentity(f);
+      if (!risk || (after.get(identity) ?? 1) <= (before.get(identity) ?? 0)) continue;
+      const unknown = risk === "unknown" || row.change === "unknown";
+      const values = Array.isArray(f["values"]) ? (f["values"] as unknown[]).map(String) : null;
+      const shown =
+        f["argumentKind"] === "literal"
+          ? String(f["argument"])
+          : values
+            ? `one of ${values.join(", ")}`
+            : `${String(f["argument"])} …`;
+      const what =
+        f["kind"] === "loadURL"
+          ? `loads ${plain(JSON.stringify(shown))} with loadURL`
+          : `loads the ${String(f["kind"])} ${plain(JSON.stringify(shown))} in an HTML file`;
+      out.push({
+        rule: "new-http-resource",
+        identity,
+        row,
+        key: `${String(f["kind"])} ${String(f["targetKind"])} ${shown}`,
+        message: unknown
+          ? `The after build may newly load over plain http: it ${what}, ${risk === "unknown" ? (f["targetKind"] === "unknown" ? "on a receiver not read as a window or a webContents" : "and the URL's host is not read (a dev server on this machine gives no finding)") : plain(row.reason ?? "and the comparison could not tell")}.`
+          : `The after build newly ${what} over plain http: anyone on the network path can read or replace what it loads (Electron's security guide, section 1).`,
         where: row.where,
         unknown,
       });
@@ -2541,6 +2600,7 @@ export function evaluatePolicy(
     if (rule === "new-dangerous-call") drafts.push(...dangerousCallDrafts(r, sides));
     if (rule === "new-insecure-webview") drafts.push(...webviewDrafts(r, sides));
     if (rule === "new-custom-protocol") drafts.push(...protocolDrafts(r, sides));
+    if (rule === "new-http-resource") drafts.push(...httpResourceDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -2712,6 +2772,7 @@ const RULE_LISTS = [
   "dangerousCalls",
   "webviews",
   "protocols",
+  "loads",
   "windows",
   "webPreferences",
   "endpoints",

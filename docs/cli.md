@@ -471,8 +471,15 @@ Rules:
   A scheme that is not read, or a receiver not read as Electron's `protocol` or `app`, is unknown.
   Protocol handlers (`protocol.handle`, `registerFileProtocol` …) are compared as rows, with no
   finding: what a handler serves is not read.
+- **`new-http-resource`**: A page loaded with `loadURL`, or a `<script>`, stylesheet or `<iframe>`
+  of an HTML file, from an `http:` URL whose host is not this machine (`localhost`, `*.localhost`,
+  `127.0.0.0/8`, `[::1]`, `0.0.0.0` give none), more often than the before build has it (counted
+  by kind, receiver kind and the URL as far as it is read, in any file; Electron's security guide,
+  section 1; see [Electron findings](electron-findings.md#pages-and-resources-loaded-over-http-loads)).
+  On a receiver not read as a window or a webContents, or for a URL whose host is not read, it is
+  unknown.
 
-  The last two were added after 0.12.0: a policy that does not list them runs them at `warn`.
+  The last three were added after 0.12.0: a policy that does not list them runs them at `warn`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
 app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a
@@ -600,6 +607,7 @@ maps each of Electronegativity's checks to them.
 | `webview-insecure`              | a `<webview>` (HTML, markup in code, created in code) whose attributes weaken a setting (`allowpopups`, `disablewebsecurity`, `blinkfeatures`, `webpreferences` keys); a weakness Electron takes from the hosting window (`nodeintegration`, `contextIsolation=no`, `sandbox=no`) only while a window read has the same setting, and then unknown; unknown while no window read enables `webviewTag` or a `will-attach-webview` listener may change the webview, or when attributes are not read; and, with `webviewTag: true` written, no `will-attach-webview` listener in the files read | `webviews`           |
 | `custom-protocol`               | a scheme registered as privileged with `bypassCSP: true`; privileges not read are unknown; protocol handlers and default protocol clients give no finding                                                                                                                                                                                                                                                                                                                                                                                                                                   | `protocols`          |
 | `dangerous-call`                | `executeJavaScript`, `executeJavaScriptInIsolatedWorld` or `insertCSS` with code that is not a literal; on a receiver not read as a webContents, a frame or `webFrame` unknown                                                                                                                                                                                                                                                                                                                                                                                                              | `dangerousCalls`     |
+| `http-resource`                 | a page loaded with `loadURL`, or a `<script>`, stylesheet or `<iframe>` of an HTML file, from `http:` on a host that is not this machine (`localhost`, `127.0.0.0/8`, `[::1]` … give none); unknown on a receiver not read or a host not read; the message says when the window has Node integration in effect                                                                                                                                                                                                                                                                              | `loads`              |
 
 **Status and exit codes** are `check`'s: `fail` (exit `3`) when a counted finding (state `new` or
 `suppression-expired`) of a rule at level `fail` is not unknown; otherwise `incomplete` (exit `4`)
@@ -639,8 +647,8 @@ meanings ("is there" here, "is new" in `check`), and the fingerprints differ.
 
 - `audit.rules`: one entry per audit rule, `level` `fail` (counts), `warn` (listed, never changes
   the status; a SARIF `warning`) or `off` (not run: no finding and no gap). A rule not listed runs
-  at `fail`, except `dangerous-call`, `webview-insecure` and `custom-protocol` (added after
-  0.12.0), which run at `warn` when a section does not list them, so an upgrade never turns a
+  at `fail`, except `dangerous-call`, `webview-insecure`, `custom-protocol`,
+  `electron-outdated` and `http-resource` (added after 0.12.0), which run at `warn` when a section does not list them, so an upgrade never turns a
   passing audit red. Without `--policy` every rule runs at `fail`. A check rule id here is an
   error.
 - `audit.unknown`: as the top-level `unknown`, for `audit`; default the top-level `unknown`, which
@@ -709,7 +717,9 @@ for `csp-weak` (an edit of the policy, even of its spacing, is a new finding); f
 `navigation-unlimited` the missing kind (and the window's file and name), or the handler's file,
 receiver kind and window; file, method, receiver kind and the code as far as it is read for
 `dangerous-call`; file, kind, `src` and the weaknesses for `webview-insecure` (one more
-weakness is a new finding); file and scheme for `custom-protocol`.
+weakness is a new finding); file and scheme for `custom-protocol`; file, kind, receiver kind,
+window, the URL as far as it is read and whether the window has Node integration in effect for
+`http-resource`.
 
 **Why a command of its own.** `check` evaluates a comparison and every rule there means "new in
 the after build"; a single build has no comparison and its rules mean "present". To adopt it in

@@ -212,6 +212,7 @@ describe("list meanings", () => {
       "dangerousCalls",
       "webviews",
       "protocols",
+      "loads",
       "webPreferences",
       "endpoints",
       "storage",

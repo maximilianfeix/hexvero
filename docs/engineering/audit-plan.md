@@ -63,8 +63,8 @@ adds.
 | `LIMIT_NAVIGATION_JS_CHECK`, `LIMIT_NAVIGATION_GLOBAL_CHECK`      | `navigationHandlers` (presence, `returns` deny/allow)                         | `navigation-unlimited` / `navigation-limit-removed`                 | covered (what a listener checks is not read)                                    |                     |
 | `PROTOCOL_HANDLER_JS_CHECK`                                       | `protocols`                                                                   | `custom-protocol` (`bypassCSP`) / `new-custom-protocol`             | covered (handlers listed, what they serve not read)                             |                     |
 | `DANGEROUS_FUNCTIONS_JS_CHECK` (`executeJavaScript`, `insertCSS`) | `dangerousCalls`                                                              | `dangerous-call` / `new-dangerous-call`                             | covered                                                                         |                     |
-| `HTTP_RESOURCES_JS_CHECK` / `_HTML_CHECK`                         | `urls` (URL literals; `http:` visible)                                        | —                                                                   | read in part                                                                    | `http-resource`     |
-| `HTTP_RESOURCES_WITH_NODE_INTEGRATION_GLOBAL_CHECK`               | `urls`, `windows`                                                             | —                                                                   | read in part                                                                    | `http-resource`     |
+| `HTTP_RESOURCES_JS_CHECK` / `_HTML_CHECK`                         | `loads` (`loadURL`, HTML script/stylesheet/iframe sources)                    | `http-resource` / `new-http-resource`                               | covered (an unread URL gives no finding)                                        |                     |
+| `HTTP_RESOURCES_WITH_NODE_INTEGRATION_GLOBAL_CHECK`               | `loads`, `windows`                                                            | `http-resource` (message, fingerprint)                              | covered (linked by window name)                                                 |                     |
 | `ELECTRON_VERSION_JSON_CHECK`                                     | `runtime` (packaged builds), package.json `electron` range                    | `electron-outdated` / `fuse-weakened` (end of support)              | covered (packaged runtime; an .asar alone has none, package.json is not judged) | `electron-outdated` |
 | `AVAILABLE_SECURITY_FIXES_GLOBAL_CHECK`                           | `runtime` (end of support from a dated release-data snapshot)                 | `electron-outdated` / `fuse-weakened`                               | read in part (no CVE list, by design)                                           | `electron-outdated` |
 | 27 upgrade checks (`ElectronAtomicUpgradeChecks`, Electron 5–8)   | —                                                                             | —                                                                   | not planned (API migration, not security)                                       | none                |
@@ -167,7 +167,13 @@ adds.
    literal, limitation `dangerous_calls_truncated`, JS_SCAN_SCHEMA 42), audit rule `dangerous-call`
    (runs at `warn` when a policy's `audit` section does not list it) and check rule
    `new-dangerous-call` (warn when unlisted).
-7. **`http-resource`**: `loadURL("http:…")` and `http:` script and style sources in HTML.
+7. **`http-resource`** (done): collection `loads` (`javascript/loads.ts`: `loadURL` with its
+   receiver read as a window of the file, a webContents or unknown and the URL as a literal, its
+   start or its values; absolute `<script src>`, stylesheet `<link>` and `<iframe src>` of HTML
+   files, limitation `loads_truncated`, JS_SCAN_SCHEMA 47), audit rule `http-resource` (`http:` to a
+   host that is not this machine; Node integration of the linked window in the message; warn when
+   a policy's `audit` section does not list it) and check rule `new-http-resource` (warn when
+   unlisted).
 8. **package.json scripts**: switches and `ELECTRON_DISABLE_SECURITY_WARNINGS` in scripts.
 9. **`electron-outdated`** from `runtime` for packaged builds.
 10. Permission handlers per session against the windows' `partition` / `session`, and the

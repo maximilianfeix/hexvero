@@ -127,6 +127,12 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       full: "The build registers a scheme as privileged (protocol.registerSchemesAsPrivileged) or makes the app the default client of a scheme (app.setAsDefaultProtocolClient) that the previous build did not, or newly gives a privileged scheme bypassCSP: true, which exempts its content from the Content Security Policy (Electron's security guide, sections 7 and 18). A scheme hexvero could not read, or a receiver not read as Electron's protocol or app, is reported as unknown.",
       help: "Check what the scheme serves and which privileges it needs; a default protocol client receives URLs from other programs, so check how the app handles them (open-url, second-instance). If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
     },
+    "new-http-resource": {
+      name: "NewHttpResource",
+      short: "The build newly loads a page or resource over plain http.",
+      full: "The build loads a page with loadURL, or an HTML file of the build loads a script, stylesheet or iframe, from an http: URL whose host is not this machine (localhost, *.localhost, 127.0.0.0/8, [::1] and 0.0.0.0 are dev servers and give no finding), and the previous build had no such load (by kind, receiver kind and the URL as far as it is read). Anyone on the network path can read or replace what is loaded (Electron's security guide, section 1). A load on a receiver not read as a window or a webContents, or of a URL whose host is not read, is reported as unknown.",
+      help: "Load the page or resource over https (or from the app's own files). If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
   };
 
 const uriOf = (file: string): string =>
@@ -354,6 +360,12 @@ const AUDIT_TEXT: Record<
     short: "The build runs an Electron line past its end of support.",
     full: "By Electron's release schedule in hexvero's dated snapshot, the Electron line the build runs is past its end of support, so it no longer receives security fixes from the Electron project. Read from the packaged runtime (a .app, an install directory or a release ZIP); an .asar or app directory alone has no runtime, and package.json's electron range is not judged. No claim is made about which vulnerabilities apply.",
     help: "Electron's security guide, section 16 (use a current version of Electron): move to a supported major line. See docs/electron-findings.md of hexvero for the snapshot date and how the line is read.",
+  },
+  "http-resource": {
+    name: "HttpResource",
+    short: "A page, script, stylesheet or iframe is loaded over plain http.",
+    full: "A window or webContents loads a page with loadURL, or an HTML file of the app loads a script, stylesheet or iframe, from an http: URL whose host is not this machine (localhost, *.localhost, 127.0.0.0/8, [::1] and 0.0.0.0 are dev servers and give no finding). Anyone on the network path can read or replace what is loaded. When the window has Node integration in effect the message says so: a replaced page then runs with Node.js. A load on a receiver not read as a window or a webContents, or of a URL whose known start is http:// without its host, is reported as unknown; a URL that is not read at all gives no finding.",
+    help: "Electron's security guide, section 1 (only load secure content: https, or the app's own files through a custom protocol) and section 2 (do not enable Node.js integration for remote content). See docs/electron-findings.md of hexvero for what is read and what is not.",
   },
 };
 

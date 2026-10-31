@@ -10,8 +10,8 @@
  * switches and accepted certificate errors, shell.openExternal with a URL the app does not fix,
  * permission handlers missing or granting everything, a Content Security Policy missing or
  * weak, navigation or window creation that the app does not limit, code that is not a literal
- * run in a page, `<webview>` attributes that weaken a page's settings, and privileged schemes
- * that bypass the CSP.
+ * run in a page, `<webview>` attributes that weaken a page's settings, privileged schemes
+ * that bypass the CSP, and pages, scripts, styles and frames loaded over plain http.
  */
 import { createHash } from "node:crypto";
 import type { SideCoverage, UnresolvedFamily } from "./compare.js";
@@ -20,12 +20,14 @@ import type {
   CspRow,
   DangerousCallRow,
   JsAppInfo,
+  LoadRow,
   NavigationHandler,
   OpenExternalRow,
   PermissionHandlerRow,
   ProtocolRow,
   WebviewRow,
 } from "./javascript/app.js";
+import { loadHttp } from "./javascript/loads.js";
 import { AnalysisError, type Limitation } from "./model.js";
 import type { AuditPolicy, LoadedAuditBaseline, LoadedPolicy } from "./policy.js";
 import type { Session, TargetRecord } from "./session.js";
@@ -44,6 +46,7 @@ export const AUDIT_RULES = [
   "webview-insecure",
   "custom-protocol",
   "electron-outdated",
+  "http-resource",
 ] as const;
 export type AuditRuleId = (typeof AUDIT_RULES)[number];
 
@@ -57,6 +60,7 @@ export const AUDIT_LATER_RULES: ReadonlySet<AuditRuleId> = new Set([
   "webview-insecure",
   "custom-protocol",
   "electron-outdated",
+  "http-resource",
 ]);
 
 export interface AuditPlace {
@@ -291,6 +295,92 @@ export function protocolRisk(row: ProtocolRow): "fail" | "unknown" | null {
   return row.targetKind === "protocol" ? "fail" : "unknown";
 }
 
+/**
+ * Whether a load goes over plain http to another host (Electron's security guide, section 1):
+ * `fail` for a URL read as `http:` whose host is not this machine (`localhost`, `*.localhost`,
+ * `127.0.0.0/8`, `[::1]`, `0.0.0.0`: dev servers), loaded into a window or webContents or by an
+ * HTML file; `unknown` for one on a receiver not read as either, or for a URL whose known start
+ * is `http://` without its host; null for any other scheme and for a URL not read at all.
+ */
+export function httpResourceRisk(
+  row: Pick<LoadRow, "argumentKind" | "argument" | "values" | "targetKind">,
+): "fail" | "unknown" | null {
+  const http = loadHttp(row);
+  if (http === "maybe") return "unknown";
+  if (http !== "remote") return null;
+  return row.targetKind === "unknown" ? "unknown" : "fail";
+}
+
+/** Node integration values under which a page loaded over http runs with Node.js. */
+const NODE_ON = new Set(["on", "default on"]);
+
+/**
+ * `http-resource` (Electronegativity's HTTP_RESOURCES_JS_CHECK, HTTP_RESOURCES_HTML_CHECK and
+ * HTTP_RESOURCES_WITH_NODE_INTEGRATION_GLOBAL_CHECK): a page loaded with loadURL, or a script,
+ * stylesheet or iframe of an HTML file, over plain http from another host. A loadURL on a window
+ * read by name links the window and says whether it has Node integration in effect (that is part
+ * of the finding's identity, so a baseline of the weaker case does not hide it); any other load
+ * names the windows read with Node integration in effect, since which window it is in is not
+ * read.
+ */
+function httpResourceDrafts(rows: readonly LoadRow[], windows: JsAppInfo["windows"]): AuditDraft[] {
+  const out: AuditDraft[] = [];
+  const nodeWindows = windows.filter((w) => NODE_ON.has(w.nodeIntegrationInEffect));
+  const names = (list: typeof windows): string =>
+    `${[...new Set(list.map((w) => w.windowName))].slice(0, 5).join(", ")}${list.length > 5 ? ` … and ${list.length - 5} more` : ""}`;
+  for (const r of rows) {
+    const risk = httpResourceRisk(r);
+    if (!risk) continue;
+    const http = loadHttp(r);
+    const url =
+      r.argumentKind === "literal"
+        ? JSON.stringify(r.argument)
+        : r.values
+          ? `one of ${r.values.map((v) => JSON.stringify(v)).join(", ")}`
+          : `a URL starting ${JSON.stringify(r.argument)}`;
+    const shown =
+      r.argumentKind === "literal"
+        ? String(r.argument)
+        : r.values
+          ? `one of ${r.values.join(", ")}`
+          : `${String(r.argument)} …`;
+    const linked =
+      r.targetKind === "window"
+        ? windows.filter((w) => w.file === r.file && w.windowName === r.window)
+        : [];
+    const node = linked.filter((w) => NODE_ON.has(w.nodeIntegrationInEffect));
+    const what =
+      r.kind === "loadURL"
+        ? `${r.targetKind === "window" ? `Window ${String(r.window)}` : r.targetKind === "webContents" ? `${r.target}` : `${r.target}.loadURL`} loads ${url}`
+        : `The ${r.kind === "stylesheet" ? "stylesheet" : r.kind === "script" ? "script" : "iframe"} ${url} is loaded by ${r.file}`;
+    const why =
+      http === "maybe"
+        ? ", whose host is not read: whether it is a dev server on this machine is not known"
+        : r.targetKind === "unknown"
+          ? " over plain http; the receiver is not read as a window or a webContents, so whether it is Electron's is not known"
+          : r.kind === "loadURL"
+            ? " over plain http: anyone on the network path can read or replace the page and what it runs (Electron's security guide, section 1)"
+            : " over plain http: anyone on the network path can read or replace it, and with it what the page runs (Electron's security guide, section 1)";
+    let nodeNote = "";
+    if (node.length)
+      nodeNote = ` The window has Node integration in effect (${node[0]!.nodeIntegrationInEffect}), so a page replaced on the way runs with Node.js: it can read files and start programs (section 2).`;
+    else if (linked.some((w) => w.nodeIntegrationInEffect === "unknown"))
+      nodeNote = " Whether the window has Node integration in effect cannot be told.";
+    else if (r.targetKind !== "window" && nodeWindows.length)
+      nodeNote = ` The app's window${nodeWindows.length === 1 ? "" : "s"} ${names(nodeWindows)} ${nodeWindows.length === 1 ? "has" : "have"} Node integration in effect; whether this ${r.kind === "loadURL" ? "page" : "file"} is loaded in ${nodeWindows.length === 1 ? "it" : "one of them"} is not read.`;
+    out.push({
+      rule: "http-resource",
+      identity: `${r.file} ${r.kind} ${r.targetKind} ${String(r.window)} ${r.argumentKind} ${String(r.argument)} ${(r.values ?? []).join(" ")}${node.length ? " node" : ""}`,
+      unknown: risk === "unknown",
+      key: `${r.kind}${r.kind === "loadURL" ? ` on ${r.targetKind === "window" ? String(r.window) : r.targetKind}:` : ""} ${shown}`,
+      message: `${what}${why}.${nodeNote}`,
+      collection: "loads",
+      where: [place(r), ...linked.slice(0, 5).map(place)],
+    });
+  }
+  return out;
+}
+
 /** Window settings a webview's host-dependent weakness needs in its hosting window. */
 const HOST_SETTINGS: ReadonlyArray<{ test: RegExp; setting: string; values: readonly string[] }> = [
   // nodeIntegrationInSubFrames has no derived column: its webPreferences rows are read
@@ -419,6 +509,7 @@ const RULE_FAMILY: Record<AuditRuleId, UnresolvedFamily | null> = {
   "webview-insecure": "webviews",
   "custom-protocol": "protocols",
   "electron-outdated": null,
+  "http-resource": "loads",
 };
 
 const RULE_COLLECTION: Record<AuditRuleId, string> = {
@@ -435,6 +526,7 @@ const RULE_COLLECTION: Record<AuditRuleId, string> = {
   "webview-insecure": "webviews",
   "custom-protocol": "protocols",
   "electron-outdated": "runtime",
+  "http-resource": "loads",
 };
 
 /** The gaps of one rule on one build, in check's codes and order. */
@@ -621,6 +713,7 @@ export function auditApp(
     | "dangerousCalls"
     | "webviews"
     | "protocols"
+    | "loads"
   >,
 ): AuditDraft[] {
   type Draft = AuditDraft;
@@ -848,6 +941,7 @@ export function auditApp(
     });
   }
   out.push(...webviewDrafts(app.webviews ?? [], app.windows ?? [], app.webPreferences ?? []));
+  out.push(...httpResourceDrafts(app.loads ?? [], app.windows ?? []));
 
   for (const r of app.protocols ?? []) {
     const risk = protocolRisk(r);
