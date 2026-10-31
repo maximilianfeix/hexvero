@@ -360,65 +360,82 @@ export function App(): ReactElement {
             </p>
           </section>
         ) : (
-          <section className="welcome">
-            <h1>Know what changed inside your app.</h1>
-            <p>
-              Inspect an Electron app or a binary, trace each finding to its file and line, and
-              compare two releases. Everything is read on this machine; the target is never run.
-            </p>
-            <div className="welcome-actions">
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() => void openDemo()}
-                disabled={demoBusy}
-              >
-                {demoBusy ? "Opening…" : "Try the example: two builds of an Electron app"}
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => fileInput.current?.click()}
-                disabled={busy !== null}
-              >
-                Open a file
-              </button>
-            </div>
-            <ol className="steps">
-              <li>
-                <span>
-                  <strong>Inspect.</strong> Open a build: findings, IPC channels, preload members,
-                  window settings, endpoints. A filled dot is read from the file, a hollow one
-                  inferred from a pattern.
-                </span>
-              </li>
-              <li>
-                <span>
-                  <strong>Compare.</strong> Open the next build and press Compare: what was added,
-                  removed or changed, list by list.
-                </span>
-              </li>
-              <li>
-                <span>
-                  <strong>Verify.</strong> Every change links to the line it was read from. What
-                  could not be established is listed, not hidden.
-                </span>
-              </li>
-            </ol>
-            <p className="formats-label">Also reads</p>
-            <ul className="formats">
-              {FORMATS.map((f) => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
-            <p style={{ marginTop: 24 }}>
-              Drop files anywhere, open a path above, or run <code>npx hexvero demo</code> in a
-              terminal.
-            </p>
-          </section>
+          <Welcome
+            onDemo={() => void openDemo()}
+            demoBusy={demoBusy}
+            onOpenFile={() => fileInput.current?.click()}
+            fileBusy={busy !== null}
+          />
         )}
       </main>
     </div>
+  );
+}
+
+/** The start screen: one job (review an Electron release), the example first, your build second. */
+export function Welcome({
+  onDemo,
+  demoBusy,
+  onOpenFile,
+  fileBusy,
+}: {
+  onDemo: () => void;
+  demoBusy: boolean;
+  onOpenFile: () => void;
+  fileBusy: boolean;
+}): ReactElement {
+  return (
+    <section className="welcome" aria-labelledby="welcome-title">
+      <h1 id="welcome-title">Review an Electron release.</h1>
+      <p>
+        See which IPC channels, preload members, window settings and network hosts changed between
+        two builds, each traced to the file and line it was read from. Everything is read on this
+        machine; nothing is run.
+      </p>
+      <div className="welcome-actions">
+        <button type="button" className="btn primary" onClick={onDemo} disabled={demoBusy}>
+          {demoBusy ? "Opening…" : "Compare example releases"}
+        </button>
+        <button type="button" className="btn" onClick={onOpenFile} disabled={fileBusy}>
+          Open your build
+        </button>
+      </div>
+      <p className="welcome-inputs">
+        Reads an <code>app.asar</code>, a <code>.app</code> bundle, an install directory or a
+        release ZIP. Drop it anywhere or open its path above.
+      </p>
+      <ol className="steps">
+        <li>
+          <span>
+            <strong>Inspect.</strong> Open a build: IPC channels, preload members, window settings,
+            endpoints. A filled dot is read from the file, a hollow one inferred from a pattern.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>Compare.</strong> Open the next build and press Compare: what was added, removed
+            or changed, list by list.
+          </span>
+        </li>
+        <li>
+          <span>
+            <strong>Verify.</strong> Every change links to the line it was read from. What could not
+            be established is listed, not hidden.
+          </span>
+        </li>
+      </ol>
+      <details className="formats-more">
+        <summary>Other formats</summary>
+        <ul className="formats">
+          {FORMATS.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+      </details>
+      <p className="welcome-cli">
+        In a terminal: <code>npx hexvero demo</code>
+      </p>
+    </section>
   );
 }
 

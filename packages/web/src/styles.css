@@ -442,9 +442,14 @@ code,
   }
 }
 
+/* Reduced motion: every animation and transition stops, the verdict settle included. */
 @media (prefers-reduced-motion: reduce) {
-  .verdict {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -670,7 +675,7 @@ code,
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 18px 0 0;
+  margin: 10px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -1280,9 +1285,35 @@ code,
   font-weight: 600;
 }
 
-.welcome .formats-label {
-  margin: 28px 0 0;
+.welcome .welcome-inputs {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+}
+
+.welcome .welcome-inputs code {
+  color: var(--ink);
+}
+
+.welcome .formats-more {
+  margin: 26px 0 0;
+  color: var(--ink-2);
   font-size: 13px;
+}
+
+.welcome .formats-more summary {
+  cursor: pointer;
+  width: fit-content;
+  border-radius: var(--radius-sm);
+}
+
+.welcome .formats-more summary:hover {
+  color: var(--ink);
+}
+
+.welcome .welcome-cli {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--ink-3);
 }
 
 /* ---------- compare ---------- */
@@ -1770,6 +1801,36 @@ kbd {
   margin: 4px 0 0;
 }
 
+.filters .toolbar input[type="search"] {
+  width: min(320px, 100%);
+}
+
+.more-filters::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 2px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.more-filters[aria-expanded="true"]::after {
+  margin: 3px 0 0 2px;
+  transform: rotate(-135deg);
+}
+
+.more-filters .n {
+  color: var(--amber-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.filters-more:not([hidden]) {
+  display: grid;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+
 .chip {
   display: inline-flex;
   align-items: baseline;
@@ -1827,6 +1888,19 @@ kbd {
 
 .chip code {
   overflow-wrap: anywhere;
+}
+
+.list-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 16px;
+  margin: 10px 0 6px;
+}
+
+.list-status .status-line,
+.list-status .keys-hint {
+  margin: 0;
 }
 
 .status-line {
@@ -1888,6 +1962,18 @@ kbd {
   border-radius: var(--radius);
   background: var(--panel);
   padding: 14px 16px 16px;
+}
+
+/* Opening the panel: a short fade and 4px rise. Moving between rows keeps it still. */
+.compare-layout.with-evidence .evidence {
+  animation: evidence-in 160ms ease-out both;
+}
+
+@keyframes evidence-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
 .evidence-head {
