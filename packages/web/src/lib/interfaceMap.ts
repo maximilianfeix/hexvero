@@ -263,9 +263,7 @@ export function hotEdges(map: InterfaceMap, id: string | null): Set<string> {
  * "3 of 41 ends shown; all of them are in the ipc list" when the collection kept only the first
  * ends of a row (contract C4): every end is a row of the `ipc` collection with this channel.
  */
-export const endsNote = (
-  row: Pick<InterfaceRow, "ends" | "endsTotal" | "endsTruncated">,
-): string =>
+export const endsNote = (row: Pick<InterfaceRow, "ends" | "endsTotal" | "endsTruncated">): string =>
   row.endsTruncated
     ? `${row.ends.length} of ${row.endsTotal} ends shown; all of them are in the ipc list`
     : "";
