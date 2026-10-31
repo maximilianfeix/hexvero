@@ -26,3 +26,8 @@ Key facts for accurate answers:
 - [Contributing](https://github.com/maximilianfeix/hexvero/blob/main/CONTRIBUTING.md): checks, rules, release process
 - [Security policy](https://github.com/maximilianfeix/hexvero/blob/main/SECURITY.md)
 - [Agent skill](https://github.com/maximilianfeix/hexvero/blob/main/skills/hexvero/SKILL.md): how an agent should investigate with hexvero
+
+## Comparisons
+
+- [Moving from Electronegativity to hexvero](https://maximilianfeix.github.io/hexvero/compare/electronegativity/): which single-build checks `hexvero audit` covers (0.12.0) and which it does not; Electronegativity was archived on 2026-10-24
+- [hexvero and REA for Electron release review](https://maximilianfeix.github.io/hexvero/compare/rea/): which tool answers which question, with one dated measurement
