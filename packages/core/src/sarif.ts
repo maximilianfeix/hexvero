@@ -14,6 +14,11 @@
  * ignores SARIF `suppressions`, so a baselined or suppressed finding there would reopen an alert.
  * Their numbers are in the run's properties.
  *
+ * `auditToSarif` differs: every finding of a rule that is not off is a result, a suppressed one
+ * with a SARIF `suppressions` entry (kind `external`, the policy's reason as justification) and,
+ * against a baseline, every one with `baselineState` (`unchanged` when the baseline has it,
+ * else `new`), so a SARIF reader that honours them sees what was accepted and why.
+ *
  * Checked against the OASIS schema (test fixture) and GitHub's list of supported fields:
  * https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
  */
@@ -330,14 +335,15 @@ export function auditToSarif(
       ...(p.line === undefined ? {} : { region: { startLine: p.line } }),
     },
   });
-  const levelOf = (f: AuditFinding): "error" | "warning" | "note" =>
-    !f.unknown
-      ? "error"
-      : result.unknown === "fail"
-        ? "error"
-        : result.unknown === "warn"
-          ? "warning"
-          : "note";
+  // as check's: a warn-level rule is a warning; an unknown follows `unknown`
+  const levelOf = (f: AuditFinding): "error" | "warning" | "note" => {
+    const rule = f.level;
+    if (!f.unknown) return rule === "fail" ? "error" : "warning";
+    if (result.unknown === "allow") return "note";
+    return rule === "fail" && result.unknown === "fail" ? "error" : "warning";
+  };
+  const states = (s: AuditFinding["state"]): number =>
+    result.findings.filter((f) => f.state === s).length;
   return {
     $schema: SARIF_SCHEMA,
     version: "2.1.0",
@@ -401,7 +407,38 @@ export function auditToSarif(
               "hexveroFingerprint/v1": f.fingerprint,
               primaryLocationLineHash: `${f.fingerprint}:1`,
             },
-            properties: { unknown: f.unknown, collection: f.collection, key: plain(f.key) },
+            // SARIF 2.1.0 §3.27.23: a suppression the policy states (an expired one states none)
+            ...(f.state === "suppressed" && f.suppression
+              ? {
+                  suppressions: [
+                    {
+                      kind: "external",
+                      status: "accepted",
+                      justification: plain(f.suppression.reason),
+                      ...(f.suppression.expires
+                        ? { properties: { expires: f.suppression.expires } }
+                        : {}),
+                    },
+                  ],
+                }
+              : {}),
+            // §3.27.24: only against a baseline
+            ...(f.baselineState ? { baselineState: f.baselineState } : {}),
+            properties: {
+              unknown: f.unknown,
+              collection: f.collection,
+              key: plain(f.key),
+              state: f.state,
+              level: f.level,
+              ...(f.state === "suppression-expired" && f.suppression
+                ? {
+                    suppressionExpired: {
+                      reason: plain(f.suppression.reason),
+                      ...(f.suppression.expires ? { expires: f.suppression.expires } : {}),
+                    },
+                  }
+                : {}),
+            },
           };
         }),
         properties: {
@@ -412,6 +449,22 @@ export function auditToSarif(
             build: { file: plain(baseName(result.target.path)), sha256: result.target.sha256 },
             unknown: result.unknown,
             incomplete: result.incomplete,
+            ...(result.policy ? { policy: result.policy.sha256 } : {}),
+            ...(result.baseline
+              ? {
+                  baseline: {
+                    file: plain(baseName(result.baseline.file)),
+                    created: result.baseline.created,
+                    matched: result.baseline.matched,
+                  },
+                }
+              : {}),
+            states: {
+              new: states("new"),
+              baselined: states("baselined"),
+              suppressed: states("suppressed"),
+              suppressionExpired: states("suppression-expired"),
+            },
           },
         },
       },

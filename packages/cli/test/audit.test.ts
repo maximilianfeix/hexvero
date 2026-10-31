@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -156,5 +156,200 @@ describe("hexvero audit", () => {
     const r = await audit(plain);
     expect(r.code).toBe(1);
     expect(r.io.text()).toContain("Electron application");
+  });
+});
+
+/** A policy file with the given `audit` section. */
+const policyFile = (name: string, section: unknown, extra: Record<string, unknown> = {}) => {
+  const path = join(dir, name);
+  writeFileSync(path, JSON.stringify({ hexvero: "policy", version: 1, audit: section, ...extra }));
+  return path;
+};
+
+describe("hexvero audit --policy / --baseline", () => {
+  const example = join(root, "examples", "notesdesk-1.5.0.asar");
+  const findingsOf = async (...argv: string[]) => {
+    const r = await audit(example, "--format", "json", ...argv);
+    return JSON.parse(r.io.stdout.join("\n")) as {
+      status: string;
+      findings: Array<{ rule: string; fingerprint: string; state: string; level: string }>;
+      baseline?: { matched: number; warnings?: string[] };
+    };
+  };
+
+  it("writes a baseline with --update-baseline (exit 0); the next run passes, a new finding fails", async () => {
+    const baseline = join(dir, "fresh", ".hexvero", "audit-baseline.json");
+    const missing = await audit(example, "--baseline", baseline);
+    expect(missing.code).toBe(2);
+    expect(missing.io.stderr.join("\n")).toContain("does not exist; create it with");
+    const update = await audit(example, "--baseline", baseline, "--update-baseline");
+    expect(update.code).toBe(0);
+    expect(update.io.stderr.join("\n")).toContain("4 finding(s) accepted");
+    const written = JSON.parse(readFileSync(baseline, "utf8"));
+    expect(written).toMatchObject({ hexvero: "baseline", version: 1, command: "audit" });
+    expect(written.fingerprints).toHaveLength(4);
+    const again = await audit(example, "--baseline", baseline);
+    expect(again.code).toBe(0);
+    expect(again.io.text()).toContain("4 finding(s) matched, 4 baselined, 0 new");
+    expect(again.io.text()).toContain("baselined · fail");
+    // the normal run leaves the file as it was
+    expect(JSON.parse(readFileSync(baseline, "utf8"))).toEqual(written);
+    // drop one accepted finding: it is new again (exit 3)
+    const less = join(dir, "less.json");
+    writeFileSync(
+      less,
+      JSON.stringify({
+        ...written,
+        fingerprints: written.fingerprints.filter(
+          (f: { rule: string }) => f.rule !== "csp-missing",
+        ),
+      }),
+    );
+    const r = await audit(example, "--baseline", less);
+    expect(r.code).toBe(3);
+    expect(r.io.text()).toContain("csp-missing  no Content-Security-Policy  new · fail");
+    expect(r.io.text()).toContain("3 baselined, 1 new");
+  });
+
+  it("is not decidable (exit 4) when only an unknown is new, as without a baseline", async () => {
+    const path = write(
+      "unknown-b",
+      `${SAFE}function helper(s, url) { s.openExternal(url); }\n`,
+      CSP,
+    );
+    const baseline = join(dir, "unknown-baseline.json");
+    expect((await audit(path, "--baseline", baseline, "--update-baseline")).code).toBe(0);
+    expect((await audit(path, "--baseline", baseline)).code).toBe(0);
+    const empty = join(dir, "empty-baseline.json");
+    const file = JSON.parse(readFileSync(baseline, "utf8"));
+    writeFileSync(empty, JSON.stringify({ ...file, fingerprints: [] }));
+    expect((await audit(path, "--baseline", empty)).code).toBe(4);
+  });
+
+  it("applies levels, suppressions and an expired suppression from the policy", async () => {
+    const plain = await findingsOf();
+    const suppress = (expires: string) =>
+      plain.findings.map((f) => ({
+        rule: f.rule,
+        fingerprint: f.fingerprint,
+        reason: "reviewed in #42",
+        expires,
+      }));
+    const live = policyFile("live.json", { suppressions: suppress("2999-12-31") });
+    const ok = await audit(example, "--policy", live);
+    expect(ok.code).toBe(0);
+    expect(ok.io.text()).toContain("suppressed: reviewed in #42 (until 2999-12-31)");
+    const lapsed = policyFile("lapsed.json", { suppressions: suppress("2020-01-01") });
+    const r = await audit(example, "--policy", lapsed);
+    expect(r.code).toBe(3);
+    expect(r.io.text()).toContain("suppression expired on 2020-01-01, so the finding counts again");
+    const levels = policyFile("levels.json", {
+      rules: {
+        "open-external": { level: "off" },
+        "permission-handler-missing": { level: "warn" },
+        "csp-missing": { level: "warn" },
+        "navigation-unlimited": { level: "warn" },
+      },
+    });
+    const warned = await findingsOf("--policy", levels);
+    expect(warned.status).toBe("pass");
+    expect(warned.findings.map((f) => f.rule)).not.toContain("open-external");
+    expect(warned.findings.every((f) => f.level === "warn")).toBe(true);
+    expect((await audit(example, "--policy", levels)).code).toBe(0);
+  });
+
+  it("refuses an invalid policy or baseline (exit 2) and an unreadable policy (exit 1)", async () => {
+    const bad = policyFile("bad-audit.json", {
+      rules: { "csp-weakened": { level: "fail" } },
+      unknown: "maybe",
+    });
+    const r = await audit(example, "--policy", bad);
+    expect(r.code).toBe(2);
+    expect(r.io.stderr.join("\n")).toContain("audit.rules.csp-weakened: unknown audit rule");
+    expect(r.io.stderr.join("\n")).toContain('audit.unknown: must be "fail", "warn" or "allow"');
+    const missing = await audit(example, "--policy", join(dir, "nope.json"));
+    expect(missing.code).toBe(1);
+    expect(missing.io.text()).toContain("cannot read the policy");
+    expect((await audit(example, "--update-baseline")).code).toBe(2);
+    // a baseline of hexvero check is not an audit baseline
+    const checkBaseline = join(dir, "check-baseline.json");
+    const checkIo = capture();
+    await main(
+      [
+        "check",
+        join(root, "examples", "notesdesk-1.4.0.asar"),
+        example,
+        "--policy",
+        join(root, "examples", "policy.json"),
+        "--baseline",
+        checkBaseline,
+        "--update-baseline",
+      ],
+      checkIo,
+    );
+    const wrong = await audit(example, "--baseline", checkBaseline);
+    expect(wrong.code).toBe(2);
+    expect(wrong.io.stderr.join("\n")).toContain("written by hexvero check");
+    // and the other way round
+    const auditBaseline = join(dir, "audit-only.json");
+    await audit(example, "--baseline", auditBaseline, "--update-baseline");
+    const back = capture();
+    const code = await main(
+      [
+        "check",
+        join(root, "examples", "notesdesk-1.4.0.asar"),
+        example,
+        "--policy",
+        join(root, "examples", "policy.json"),
+        "--baseline",
+        auditBaseline,
+      ],
+      back,
+    );
+    expect(code).toBe(2);
+    expect(back.text()).toContain("written by hexvero audit");
+  });
+
+  it("never writes a baseline through a symbolic link", async (ctx) => {
+    const elsewhere = mkdtempSync(join(tmpdir(), "hexvero-audit-elsewhere-"));
+    const missing = join(elsewhere, "planted.txt");
+    try {
+      symlinkSync(missing, join(dir, "dangling-audit-baseline.json"));
+    } catch (error) {
+      if (["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) ctx.skip();
+      throw error;
+    }
+    const r = await audit(
+      example,
+      "--baseline",
+      join(dir, "dangling-audit-baseline.json"),
+      "--update-baseline",
+    );
+    expect(r.code).not.toBe(0);
+    expect(existsSync(missing)).toBe(false);
+    rmSync(elsewhere, { recursive: true, force: true });
+  });
+
+  it("writes SARIF with suppressions and baselineState", async () => {
+    const plain = await findingsOf();
+    const csp = plain.findings.find((f) => f.rule === "csp-missing")!;
+    const policy = policyFile("sarif.json", {
+      suppressions: [
+        { rule: "csp-missing", fingerprint: csp.fingerprint, reason: "server sets it" },
+      ],
+    });
+    const baseline = join(dir, "sarif-baseline.json");
+    await audit(example, "--baseline", baseline, "--update-baseline");
+    const r = await audit(example, "--policy", policy, "--baseline", baseline, "--format", "sarif");
+    expect(r.code).toBe(0);
+    const log = JSON.parse(r.io.stdout.join("\n"));
+    const results = log.runs[0].results as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(4);
+    expect(results.every((x) => x["baselineState"] === "unchanged")).toBe(true);
+    expect(results.find((x) => x["ruleId"] === "csp-missing")?.["suppressions"]).toEqual([
+      { kind: "external", status: "accepted", justification: "server sets it" },
+    ]);
+    // the baseline was written without the policy: said on stderr, not in the data
+    expect(r.io.stderr.join("\n")).toContain("the baseline was written without a policy");
   });
 });

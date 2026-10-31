@@ -13,6 +13,7 @@
  */
 import { createHash } from "node:crypto";
 import type { SideCoverage, UnresolvedFamily } from "./compare.js";
+import { directoryDigest } from "./digest.js";
 import type {
   CspRow,
   JsAppInfo,
@@ -21,6 +22,7 @@ import type {
   PermissionHandlerRow,
 } from "./javascript/app.js";
 import { AnalysisError, type Limitation } from "./model.js";
+import type { AuditPolicy, LoadedAuditBaseline, LoadedPolicy } from "./policy.js";
 import type { Session, TargetRecord } from "./session.js";
 
 export const AUDIT_RULES = [
@@ -52,6 +54,17 @@ export interface AuditFinding {
   /** The list the finding is read from. */
   collection: string;
   where: AuditPlace[];
+  /** The rule's level in the policy (`fail` without one); rules at `off` give no finding. */
+  level: "fail" | "warn";
+  /**
+   * `new` counts; `baselined` (in the baseline) and `suppressed` (by the policy) do not;
+   * `suppression-expired` (a suppression whose day has passed) counts again. As `check`.
+   */
+  state: "new" | "baselined" | "suppressed" | "suppression-expired";
+  /** For a suppressed or expired finding: the reason given in the policy. */
+  suppression?: { reason: string; expires?: string };
+  /** With a baseline only: whether the baseline has the finding (SARIF `baselineState`). */
+  baselineState?: "new" | "unchanged";
 }
 
 export interface AuditResult {
@@ -64,19 +77,50 @@ export interface AuditResult {
   /** How unknown findings and gaps were counted. */
   unknown: "fail" | "warn" | "allow";
   warnings?: string[];
+  /** The policy file read with `--policy`. */
+  policy?: { file: string; sha256: string };
+  /** With `--baseline`; `warnings`: written for another policy, or a partial directory digest. */
+  baseline?: { file: string; created: string; matched: number; warnings?: string[] };
   target: TargetRecord["info"];
 }
 
 export const AUDIT_STATUS_TEXT: Record<AuditResult["status"], string> = {
-  pass: "pass: no finding",
+  pass: "pass: no new finding at level fail",
   fail: "fail: a rule is violated",
   incomplete: "incomplete: a rule could not be decided (unknown: fail)",
 };
 
 export interface AuditOptions {
-  /** `fail` (default): an unknown finding or a gap makes the status `incomplete`. */
+  /**
+   * `fail`: an unknown finding or a gap makes the status `incomplete`. Default: the policy's
+   * `audit.unknown` (else its `unknown`), else `fail`.
+   */
   unknown?: "fail" | "warn" | "allow" | undefined;
+  /** Levels and suppressions from the policy's `audit` section. */
+  policy?: LoadedPolicy | undefined;
+  /** Accepted findings: they are listed as `baselined` and do not count. */
+  baseline?: LoadedAuditBaseline | undefined;
+  /**
+   * Give a directory a content digest (it has no file digest) for a baseline to record. Always
+   * done when `baseline` is set.
+   */
+  digest?: boolean | undefined;
+  /** The day suppressions are judged against; default now. */
+  now?: Date | undefined;
 }
+
+/** The policy's audit section, or every rule at fail (as `auditPolicyOf`, without a value import). */
+function sectionOf(loaded: LoadedPolicy | undefined): AuditPolicy {
+  const audit = loaded?.policy.audit;
+  if (audit) return audit;
+  const rules = {} as AuditPolicy["rules"];
+  for (const id of AUDIT_RULES) rules[id] = { level: "fail" };
+  return { rules, unknown: loaded?.policy.unknown ?? "fail", suppressions: [] };
+}
+
+/** True when the day of `now` (UTC) is after `expires`. */
+const expired = (expires: string | undefined, now: Date): boolean =>
+  expires !== undefined && now.toISOString().slice(0, 10) > expires;
 
 /** For each derived window setting, the values under which a page can do more. */
 const PERMISSIVE: Readonly<Record<string, readonly string[]>> = {
@@ -205,7 +249,10 @@ const place = (r: { file: string; line: number }): AuditPlace => ({ file: r.file
  * A finding of one rule before its fingerprint. `absence`: it reports that something was not
  * found in the files read, so it is no finding while the rule's list may be missing rows.
  */
-export type AuditDraft = Omit<AuditFinding, "fingerprint"> & { identity: string; absence?: true };
+export type AuditDraft = Omit<
+  AuditFinding,
+  "fingerprint" | "level" | "state" | "suppression" | "baselineState"
+> & { identity: string; absence?: true };
 
 /** The navigation and window-creation limits `navigation-unlimited` asks for. */
 const NAVIGATION_LIMITS = [
@@ -532,9 +579,11 @@ export async function auditBuild(
   id: string,
   options: AuditOptions = {},
 ): Promise<AuditResult> {
-  const unknownMode = options.unknown ?? "fail";
+  const section = sectionOf(options.policy);
+  const unknownMode = options.unknown ?? section.unknown;
+  const now = options.now ?? new Date();
   const analysis = await session.analyze(id);
-  const info = session.get(id).info;
+  let info = session.get(id).info;
   if (analysis.data.kind !== "javascript-app")
     throw new AnalysisError(
       "invalid_input",
@@ -546,15 +595,30 @@ export async function auditBuild(
       "invalid_input",
       `nothing to audit: ${info.path} has no JavaScript module hexvero could read (an empty directory, no .js files, or only links that lead out of it)`,
     );
+  // A directory has no file digest; give it a content digest so a baseline records the build.
+  let partialDigest: string | null = null;
+  if (info.format === "directory" && !info.sha256 && (options.baseline || options.digest)) {
+    const digest = directoryDigest(info.path);
+    partialDigest = digest.partial ?? null;
+    info = { ...info, sha256: digest.sha256 };
+  }
+  const level = (rule: AuditRuleId) => section.rules[rule].level;
   const coverage = await session.coverage(id);
   const incomplete: AuditResult["incomplete"] = [];
   for (const rule of AUDIT_RULES) {
+    if (level(rule) === "off") continue;
     const gaps = gapsOf(rule, coverage, analysis.limitations);
     if (gaps.length) incomplete.push({ rule, collection: RULE_COLLECTION[rule], gaps });
   }
   const undecided = new Set(incomplete.map((i) => i.rule));
+  const accepted = new Set(
+    options.baseline?.baseline.fingerprints.map((f) => `${f.rule}\0${f.fingerprint}`),
+  );
+  let matched = 0;
   const findings: AuditFinding[] = [];
   for (const d of auditApp(app)) {
+    const ruleLevel = level(d.rule);
+    if (ruleLevel === "off") continue;
     // an absence is not a finding while the list may be missing rows: the rule is undecided
     if (d.absence && undecided.has(d.rule)) continue;
     const fp = fingerprint(d.rule, d.unknown ? `maybe\0${d.identity}` : d.identity);
@@ -564,6 +628,12 @@ export async function auditBuild(
         if (!prior.where.some((q) => q.file === p.file && q.line === p.line)) prior.where.push(p);
       continue;
     }
+    const sup = section.suppressions.find((s) => s.rule === d.rule && s.fingerprint === fp);
+    const inBaseline = accepted.has(`${d.rule}\0${fp}`);
+    if (inBaseline) matched++;
+    let state: AuditFinding["state"] = "new";
+    if (sup) state = expired(sup.expires, now) ? "suppression-expired" : "suppressed";
+    else if (inBaseline) state = "baselined";
     findings.push({
       rule: d.rule,
       fingerprint: fp,
@@ -572,6 +642,14 @@ export async function auditBuild(
       message: d.message,
       collection: d.collection,
       where: d.where,
+      level: ruleLevel,
+      state,
+      ...(sup
+        ? { suppression: { reason: sup.reason, ...(sup.expires ? { expires: sup.expires } : {}) } }
+        : {}),
+      ...(options.baseline
+        ? { baselineState: inBaseline ? ("unchanged" as const) : ("new" as const) }
+        : {}),
     });
   }
   findings.sort(
@@ -580,13 +658,38 @@ export async function auditBuild(
       (x.key < y.key ? -1 : x.key > y.key ? 1 : 0) ||
       (x.fingerprint < y.fingerprint ? -1 : 1),
   );
+  // As check: only counted findings (new, suppression expired) at level fail move the status.
+  const counted = findings.filter(
+    (f) => f.level === "fail" && (f.state === "new" || f.state === "suppression-expired"),
+  );
   let status: AuditResult["status"] = "pass";
-  if (findings.some((f) => !f.unknown)) status = "fail";
-  else if (unknownMode === "fail" && (findings.length > 0 || incomplete.length > 0))
+  if (counted.some((f) => !f.unknown)) status = "fail";
+  else if (
+    unknownMode === "fail" &&
+    (counted.length > 0 || incomplete.some((i) => level(i.rule) === "fail"))
+  )
     status = "incomplete";
   const warnings: string[] = [];
   if (app.package === null)
     warnings.push("no package.json at the top: entry and Electron version unknown");
+  let baseline: AuditResult["baseline"];
+  if (options.baseline) {
+    const notes: string[] = [];
+    const written = options.baseline.baseline.policy;
+    if (written !== (options.policy?.sha256 ?? null))
+      notes.push(
+        written === null
+          ? "the baseline was written without a policy"
+          : `the baseline was written for another policy (sha256 ${written.slice(0, 12)}…)`,
+      );
+    if (partialDigest) notes.push(`build: ${partialDigest}`);
+    baseline = {
+      file: options.baseline.file,
+      created: options.baseline.baseline.created,
+      matched,
+      ...(notes.length ? { warnings: notes } : {}),
+    };
+  }
   return {
     hexvero: "audit",
     version: 1,
@@ -595,6 +698,10 @@ export async function auditBuild(
     incomplete,
     unknown: unknownMode,
     ...(warnings.length ? { warnings } : {}),
+    ...(options.policy
+      ? { policy: { file: options.policy.file, sha256: options.policy.sha256 } }
+      : {}),
+    ...(baseline ? { baseline } : {}),
     target: info,
   };
 }

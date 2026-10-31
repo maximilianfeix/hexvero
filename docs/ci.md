@@ -167,6 +167,50 @@ SARIF output against the SARIF 2.1.0 schema.
   suppressions and would reopen them as alerts.
 - Coverage gaps appear as `toolExecutionNotifications` and in `properties.hexvero.incomplete`.
 
+## hexvero audit in CI
+
+`hexvero audit <build>` applies Electronegativity's checks to one build, with no before build
+([cli.md](cli.md#single-build-audit-hexvero-audit)). Exit codes are the table above (`3` a rule
+violated, `4` not decidable). A build has findings on day one, so accept them first:
+
+```bash
+npx hexvero@<version> audit dist/app.asar \
+  --policy .hexvero/policy.json \
+  --baseline .hexvero/audit-baseline.json --update-baseline
+```
+
+Commit `.hexvero/audit-baseline.json` (a separate file from check's `.hexvero/baseline.json`:
+each command refuses the other's). From then on a finding the baseline does not list fails the
+job; a finding you accept for a while goes into the policy's `audit.suppressions` with its
+fingerprint, a reason and an `expires` date, after which it fails again. `--policy` is optional:
+without it every audit rule runs at `fail`. The policy's `audit.rules` sets a rule to `warn` or
+`off` (see [cli.md](cli.md#single-build-audit-hexvero-audit)).
+
+```yaml
+- name: hexvero audit
+  run: |
+    set +e
+    npx --yes hexvero@<version> audit dist/app.asar \
+      --policy .hexvero/policy.json --baseline .hexvero/audit-baseline.json \
+      --format sarif --out hexvero-audit.sarif
+    code=$?
+    set -e
+    npx --yes hexvero@<version> audit dist/app.asar \
+      --policy .hexvero/policy.json --baseline .hexvero/audit-baseline.json \
+      --no-color >> "$GITHUB_STEP_SUMMARY" || true
+    exit "$code"
+```
+
+Upload `hexvero-audit.sarif` as in the workflow above, with `category: hexvero-audit`.
+Unlike `check`'s SARIF, the audit SARIF lists every finding of a rule that is not `off`: a
+suppressed one with a SARIF `suppressions` entry (kind `external`, the policy's reason as
+`justification`), and every one with `baselineState` (`unchanged` when the baseline has it,
+`new` otherwise). SARIF readers that honour these see what was accepted and why. GitHub code
+scanning does not list either property among those it reads, so there an accepted finding may
+show as an open alert; the job's exit code is the gate, and it counts only new and expired
+findings. Whether code scanning closes alerts for results with `suppressions` has not been
+verified.
+
 ## Reading the result
 
 - **Fail on a host you expect**: add it to `allow`, or, for a one-off, a suppression with the

@@ -201,7 +201,7 @@ function render(
   }
 }
 
-async function readText(path: string, what: string): Promise<string> {
+export async function readText(path: string, what: string): Promise<string> {
   try {
     return await readFile(path, "utf8");
   } catch (error) {

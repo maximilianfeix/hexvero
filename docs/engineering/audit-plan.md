@@ -24,7 +24,8 @@ single build has no comparison. Faking an empty before build would make every ru
   `csp-weakened`) ask "is it there and not in the before build".
 - `hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow]`: exit codes as
   `check` (0 pass, 3 violated, 4 not decidable), SARIF through `auditToSarif`.
-- Not in this slice: audit suppressions and baselines (see follow-ups), an MCP parameter and UI.
+- Not in this slice: audit suppressions and baselines (done later, see follow-up 1), an MCP
+  parameter and UI.
 
 ## Every Electronegativity check
 
@@ -75,7 +76,7 @@ adds.
 | [#113](https://github.com/doyensec/electronegativity/issues/113) | A packaged `.app` with a bundled, minified `main.js` reports "No CSP" and no permission handler, although both are set | hexvero opens a `.app`, an install directory or a release ZIP as the app inside, and reads bundled and minified code by scope (esbuild plain and minified, webpack's module of `electron`, interop helpers); for permission grants, tests compare the minified build's answers with the plain one's (comma sequences, `!0`, comma returns). Which page a `<meta>` policy belongs to is not read: any HTML file of the app counts. The issue's own code is a test: the handler reads `never`, the CSP header (`...details.responseHeaders` spread) is read in its `onHeadersReceived` listener. A partial scan never reads as "missing". |
 | [#106](https://github.com/doyensec/electronegativity/issues/106) | `Unknown Electron release "25.2.x"`: the release list is stale and the tool errors                                     | No error on an unknown version: the window defaults come from the major in package.json (marked "default", an assumption), and a packaged build's Electron line is judged against a dated snapshot of Electron's release data that says its date; an unknown line is unknown. No CVE list is claimed.                                                                                                                                                                                                                                                                                                                                   |
 | [#108](https://github.com/doyensec/electronegativity/issues/108) | An exit code when issues are found                                                                                     | `hexvero audit` and `check`: `0` pass, `3` violated, `4` not decidable (with `--unknown fail`), `1` error, `2` usage. SARIF 2.1.0 for code scanning.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| [#78](https://github.com/doyensec/electronegativity/issues/78)   | Annotations in source code to ignore a check                                                                           | Suppressions live in the policy (`check`), by a fingerprint that names the item, never the line, with a reason and an optional expiry date. Source annotations do not survive a minified build. For `audit` the fingerprints exist (JSON, SARIF); reading suppressions from a policy is a follow-up (below).                                                                                                                                                                                                                                                                                                                            |
+| [#78](https://github.com/doyensec/electronegativity/issues/78)   | Annotations in source code to ignore a check                                                                           | Suppressions live in the policy (`check`), by a fingerprint that names the item, never the line, with a reason and an optional expiry date. Source annotations do not survive a minified build. For `audit` the same: `hexvero audit --policy` reads suppressions from the policy's `audit` section (follow-up 1, done).                                                                                                                                                                                                                                                                                                                |
 | [#93](https://github.com/doyensec/electronegativity/issues/93)   | `eng-disable` comments must be on the same line, which Prettier breaks                                                 | No comments are read: fingerprints do not contain lines, so moving or reformatting code changes no finding and no suppression (except `csp-weak`, whose identity includes the policy text).                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | [#58](https://github.com/doyensec/electronegativity/issues/58)   | Checks assume old `webPreferences` defaults (nodeIntegration on)                                                       | `windows` derives each setting from the literal, else the default of the Electron version package.json names (Breaking changes 5.0, 12.0, 20.0), and says which (`on` vs `default on`); without a version it is `unknown`, not a guess.                                                                                                                                                                                                                                                                                                                                                                                                 |
 
@@ -122,10 +123,17 @@ adds.
 
 ## Follow-ups, in order of value
 
-1. **Audit suppressions and baselines**: `hexvero audit --policy <file>` reading an `audit`
-   section (levels, suppressions by fingerprint with reason and expiry) and `--baseline`, so CI
-   can accept known findings (#78). Then an MCP parameter (`hexvero_check` with one target, no new
-   tool) and the UI.
+1. **Audit suppressions and baselines** (done): `hexvero audit --policy <file>` reads the
+   policy's `audit` section (`rules` with levels `fail`/`warn`/`off` for audit rule ids,
+   `unknown`, `suppressions` by fingerprint with reason and expiry, validated in
+   `docs/policy.schema.json`), and `--baseline <file> [--update-baseline]` accepts known findings
+   with check's semantics (#78). The baseline is check's format with `"command": "audit"` and
+   `build` in place of `a`/`b`; each command refuses the other's file. SARIF marks suppressed
+   results with `suppressions` (kind `external`, the reason as justification) and, against a
+   baseline, every result with `baselineState`. Still open: an MCP parameter (hexvero has no audit
+   tool in MCP yet; `hexvero_check` with one target would add one without a new tool, catalog
+   stays at 16) and the UI; whether GitHub code scanning closes alerts for results with SARIF
+   `suppressions` is not verified (its documentation does not list the property).
 2. **`window-permissive` extended** with `experimentalFeatures` and `enableBlinkFeatures` (new
    keys). `webSecurity: false` and `allowRunningInsecureContent: true` are judged since the second
    slice (below).
