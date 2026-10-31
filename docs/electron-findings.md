@@ -1849,3 +1849,15 @@ replaces the earlier one, and which one runs last is not established.
 [sec]: https://www.electronjs.org/docs/latest/tutorial/security
 [wc]: https://www.electronjs.org/docs/latest/api/web-contents
 [fuses]: https://www.electronjs.org/docs/latest/tutorial/fuses
+
+## Electron past its end of support (`electron-outdated`)
+
+`hexvero audit` reports a packaged build (a `.app`, an install directory or a release ZIP) whose
+Electron runtime is past its end of support by Electron's release schedule in hexvero's dated
+snapshot (`packages/core/src/data/electronReleases.ts`): the line no longer gets security fixes
+from the Electron project. Electron's security guide, section 16: use a current version of
+Electron. It is unknown when the support of the version read cannot be told (a line the snapshot
+does not have). An `.asar` or app directory alone has no runtime; the `electron` range in
+`package.json` is a development dependency, not what ships, and is not judged. No claim is made
+about which vulnerabilities apply. `hexvero check` reports the same as `fuse-weakened` when a
+release moves past the end of support.

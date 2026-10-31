@@ -43,6 +43,7 @@ export const AUDIT_RULES = [
   "dangerous-call",
   "webview-insecure",
   "custom-protocol",
+  "electron-outdated",
 ] as const;
 export type AuditRuleId = (typeof AUDIT_RULES)[number];
 
@@ -55,6 +56,7 @@ export const AUDIT_LATER_RULES: ReadonlySet<AuditRuleId> = new Set([
   "dangerous-call",
   "webview-insecure",
   "custom-protocol",
+  "electron-outdated",
 ]);
 
 export interface AuditPlace {
@@ -361,6 +363,7 @@ const RULE_FAMILY: Record<AuditRuleId, UnresolvedFamily | null> = {
   "dangerous-call": "dangerousCalls",
   "webview-insecure": "webviews",
   "custom-protocol": "protocols",
+  "electron-outdated": null,
 };
 
 const RULE_COLLECTION: Record<AuditRuleId, string> = {
@@ -376,6 +379,7 @@ const RULE_COLLECTION: Record<AuditRuleId, string> = {
   "dangerous-call": "dangerousCalls",
   "webview-insecure": "webviews",
   "custom-protocol": "protocols",
+  "electron-outdated": "runtime",
 };
 
 /** The gaps of one rule on one build, in check's codes and order. */
@@ -384,6 +388,8 @@ function gapsOf(
   coverage: SideCoverage | null,
   limitations: readonly Limitation[],
 ): string[] {
+  // the runtime is read from the packaged binaries and package.json, whole: no scan gap applies
+  if (rule === "electron-outdated") return [];
   const gaps: string[] = [];
   if (coverage && !coverage.complete) gaps.push("scan_partial");
   if (coverage && (coverage.unreadable.size > 0 || coverage.unreadableUnlisted))
@@ -506,6 +512,43 @@ function navigationDrafts(
     });
   }
   return out;
+}
+
+/**
+ * `electron-outdated` (Electronegativity's ELECTRON_VERSION_JSON_CHECK, in part
+ * AVAILABLE_SECURITY_FIXES_GLOBAL_CHECK): the Electron line the build runs is past its end of
+ * support by Electron's schedule in hexvero's dated snapshot, read from the packaged runtime
+ * (`runtime` rows of a .app, an install directory or a release ZIP). Never a claim about
+ * vulnerabilities. Pure.
+ */
+export function electronOutdatedDrafts(
+  runtime: ReadonlyArray<Record<string, unknown>> | null,
+): AuditDraft[] {
+  const support = runtime?.find((r) => r["item"] === "support");
+  if (support) {
+    const value = String(support["value"]);
+    const version = String(runtime?.find((r) => r["item"] === "electron")?.["value"] ?? "?");
+    if (value !== "past end of support" && value !== "unknown") return [];
+    const evidence = typeof support["evidence"] === "string" ? support["evidence"] : "";
+    const file = evidence.split("@")[0] || "runtime";
+    return [
+      {
+        rule: "electron-outdated",
+        identity: `runtime\0${version.split(".")[0]}`,
+        unknown: value === "unknown",
+        key: `Electron ${version}`,
+        message:
+          value === "unknown"
+            ? `Whether Electron ${version} is still supported cannot be told: ${String(support["detail"])}.`
+            : `The build runs Electron ${version}: ${String(support["detail"])}. Electron's security guide, section 16: use a current version of Electron.`,
+        collection: "runtime",
+        where: [{ file }],
+      },
+    ];
+  }
+  // An .asar or app directory alone has no runtime: package.json's electron range is a
+  // development dependency, not what ships, so nothing is judged from it.
+  return [];
 }
 
 /** The findings of every rule on one app's lists; pure. */
@@ -814,7 +857,12 @@ export async function auditBuild(
   );
   let matched = 0;
   const findings: AuditFinding[] = [];
-  for (const d of auditApp(app)) {
+  const runtime =
+    "runtime" in (await session.collections(id))
+      ? ((await session.items(id, "runtime")) as Array<Record<string, unknown>>)
+      : null;
+  const drafts = [...auditApp(app), ...electronOutdatedDrafts(runtime)];
+  for (const d of drafts) {
     const ruleLevel = level(d.rule);
     if (ruleLevel === "off") continue;
     // an absence is not a finding while the list may be missing rows: the rule is undecided
