@@ -108,13 +108,15 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
   return out;
 }
 
+/** `file:line` of a place, printable. */
+const at = (p: { file: string; line?: number }): string =>
+  `${printable(p.file)}${p.line === undefined ? "" : `:${p.line}`}`;
+
 /**
  * Each added or changed preload member as window → member (place) → channel → handler, and an
  * added host on a handler's own line, as `check --format markdown` and the reports draw it.
  */
 function tracePaths(r: ReleaseComparison): string[] {
-  const at = (p: { file: string; line?: number }): string =>
-    `${printable(p.file)}${p.line === undefined ? "" : `:${p.line}`}`;
   const hosts = r.changes.filter((c) => c.collection === "endpoints" && c.change === "added");
   return r.changes
     .filter(
