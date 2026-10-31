@@ -35,6 +35,12 @@ hexvero's own limitations differ (1 added, 0 removed, 0 changed): its descriptio
 
 Whether a change matters depends on what the window loads; this is a fact to review, not a verdict.
 
+## New ways pages reach the main process
+
+- `main.js:win` → `notesdesk.checkUpdate` (`preload.js:9`) → `update:check` → handler `main.js:30` → host `https://updates.notesdesk.example/latest.json` on the handler's line
+
+A host is listed when a new one sits on the same file and line as the handler: an inference from place, not a traced call.
+
 ## Changes
 
 12 of 12 rows shown.

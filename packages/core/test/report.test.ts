@@ -98,6 +98,13 @@ describe("release comparison", () => {
     expect(md).toMatch(/b: `ipc_channel_unresolved` .*main\.js:7/);
     expect(md).toContain("- **+ added** `demo::check` — in b: `preload.js:4`");
     expect(md).toContain("- **− removed** `demo::open` — in a: `preload.js:4`");
+    // the new member is also drawn as a path; the removed one is not
+    const paths = md.slice(
+      md.indexOf("## New ways pages reach the main process"),
+      md.indexOf("## Changes"),
+    );
+    expect(paths).toMatch(/^- .*`demo\.check` \(`preload\.js:4`\)/m);
+    expect(paths).not.toContain("open");
     // deterministic: the same inputs render the same bytes, without dates or directories
     expect(renderReleaseReport(await compareReleases(session, a, b))).toBe(md);
     expect(md).not.toContain(dir);
