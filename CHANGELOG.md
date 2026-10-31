@@ -23,6 +23,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- `experimentalFeatures: true` and `enableBlinkFeatures` in a window's webPreferences
+  (Electronegativity's `EXPERIMENTAL_FEATURES_JS_CHECK`, `BLINK_FEATURES_JS_CHECK`; security guide
+  sections 9 and 10): `audit`'s `window-permissive` fails on them as written (the Blink features
+  are named and part of the fingerprint), `check`'s `window-more-permissive` reports one turned on
+  or a window gaining a Blink feature. `windows` rows carry `experimentalFeatures(InEffect)`,
+  `enableBlinkFeatures` and `blinkFeaturesInEffect`. `check` no longer reports a move between two
+  known values that lets pages do no more (`default off` → `off`) as unknown (#303).
 - Audit rule `electron-outdated` (Electronegativity's `ELECTRON_VERSION_JSON_CHECK`, security
   guide section 16): a packaged build whose Electron runtime is past its end of support by the
   dated release snapshot fails; unknown when its support cannot be told. An `.asar` alone has no
@@ -101,6 +108,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- A declarator without a value in a `let`/`var` list (`let g, y;`) is a declaration, so a
+  local of that name no longer counts as a write or a call of an outer forwarder (#301, fixes
+  #298); the methods of a class created in place (`S = new class extends B {…}`) are functions of
+  their own (#304, fixes #302). On GitHub Desktop 3.6.7 → 3.6.10 this removed 21 false
+  `ipcChannels` rows.
 - IPC calls through a send helper whose object and channel are both parameters
   (`function ut(e,t,...n){… e.send(t,...n)}`, called as `ut(win.webContents, "x", …)`) give a
   `webContents.send` row where the object passed is provably a webContents (#287, fixes #280).
