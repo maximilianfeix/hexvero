@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#1b1d21" />
+    <title>hexvero and REA for Electron release review</title>
+    <meta
+      name="description"
+      content="REA and hexvero both read Electron apps. Which one to use for which question, what each does that the other does not, and a dated measurement on the same blind set."
+    />
+    <link rel="icon" href="../../favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://maximilianfeix.github.io/hexvero/compare/rea/" />
+    <meta property="og:title" content="hexvero and REA for Electron release review" />
+    <meta
+      property="og:description"
+      content="REA and hexvero both read Electron apps. Which one to use for which question, what each does that the other does not, and a dated measurement on the same blind set."
+    />
+    <meta
+      property="og:image"
+      content="https://maximilianfeix.github.io/hexvero/social-preview.png"
+    />
+    <meta property="og:url" content="https://maximilianfeix.github.io/hexvero/compare/rea/" />
+    <meta property="og:type" content="article" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="../../home.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="bar scrolled">
+      <div class="bar-in">
+        <a class="wordmark" href="../../"
+          ><img src="../../logo-mark.svg" width="26" height="26" alt="" />hexvero</a
+        >
+        <nav aria-label="Site">
+          <a class="wide" href="../../#trace">How it works</a
+          ><a class="wide" href="../electronegativity/">From Electronegativity</a
+          ><a class="wide" href="../rea/">hexvero and REA</a
+          ><a class="gh" href="https://github.com/maximilianfeix/hexvero">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <main id="main">
+      <section class="doc">
+        <p class="kicker">Docs read 2026-10-17 · measurement 2026-10-14</p>
+        <h1>hexvero and REA for Electron release review</h1>
+        <p class="answer">
+          Use REA to understand how someone else's app works, down to decompiled functions and
+          run-time traffic. Use hexvero to review what your own release changed, with the line in
+          both builds, and to gate that release in CI. Many teams will want both.
+        </p>
+
+        <h2>Choose by the question</h2>
+        <ul>
+          <li>
+            <strong>"How does this feature work, and can my agent rebuild it?"</strong> REA: static
+            analysis, Hopper, Ghidra or IDA, runtime capture of browsers, processes and Android
+            devices, firmware, signed evidence records.
+          </li>
+          <li>
+            <strong
+              >"What did this update change in IPC, preload, windows and hosts, and may it
+              ship?"</strong
+            >
+            hexvero: a two-build diff per list, the preload → channel → handler map, a JSON policy
+            with baseline and suppressions, SARIF, a local review UI and an offline report.
+          </li>
+        </ul>
+
+        <h2>What they share</h2>
+        <p>
+          Both are MIT, both read Electron apps statically, both trace IPC and the preload bridge,
+          and both compare two versions: REA documents
+          <code>compare_application_versions</code> with unknowns on partial coverage. hexvero is an
+          independent implementation with no REA code.
+        </p>
+
+        <h2>What only one of them does</h2>
+        <ul>
+          <li>
+            <strong>REA, not hexvero:</strong> decompiler integrations, runtime capture, device and
+            firmware work, hash-addressed evidence, sender-validation observations in IPC handlers.
+          </li>
+          <li>
+            <strong>hexvero, not REA (not found in REA's docs):</strong> a release policy with exit
+            codes, baseline and suppressions; SARIF output; a single-build audit of Electron's
+            security checklist items.
+          </li>
+        </ul>
+
+        <h2>One dated measurement</h2>
+        <p>
+          On <code>corpus/holdout2</code>, two Electron apps in three builds each, written by an
+          agent without access to either tool, hexvero before its tuning round and REA 6.5.0, run
+          2026-10-14. Hit of expected, false in brackets:
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Blind set holdout2</th>
+                <th scope="col" class="us">hexvero (blind)</th>
+                <th scope="col">REA 6.5.0</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">IPC channels</th>
+                <td>90 of 126</td>
+                <td>87 of 126</td>
+              </tr>
+              <tr>
+                <th scope="row">Window settings</th>
+                <td>42 of 63 (6 false)</td>
+                <td>8 of 63</td>
+              </tr>
+              <tr>
+                <th scope="row">Bridge member → channel</th>
+                <td>65 of 78</td>
+                <td>6 of 66</td>
+              </tr>
+              <tr>
+                <th scope="row">Network endpoints</th>
+                <td>15 of 57 (10 false)</td>
+                <td>6 of 57 (39 false)</td>
+              </tr>
+              <tr>
+                <th scope="row">Changes between versions</th>
+                <td>6 of 10</td>
+                <td>2 of 10 (4 false)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine">
+          One set, one day, REA as published then; REA has released since. Every command and
+          checksum:
+          <a
+            href="https://github.com/maximilianfeix/hexvero/blob/main/docs/competitive/rea-scorecard.md"
+            >rea-scorecard.md</a
+          >. Read it as a description of two tools on one input, not a ranking.
+        </p>
+
+        <h2>Try hexvero on the example</h2>
+        <pre class="mini"><span class="pr">$</span> <span class="c">npx hexvero demo</span>
+<span class="pr">$</span> <span class="c">npx hexvero ui --demo --open</span></pre>
+      </section>
+    </main>
+    <footer>
+      <span>hexvero · MIT</span>
+      <a href="../../">Home</a>
+      <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/comparison.md"
+        >docs/comparison.md</a
+      >
+      <span class="sp"></span>
+      <a href="https://github.com/maximilianfeix/hexvero/blob/main/DISCLAIMER.md"
+        >Use only on software you may examine</a
+      >
+    </footer>
+  </body>
+</html>

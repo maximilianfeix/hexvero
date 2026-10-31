@@ -37,8 +37,8 @@ DOM parsing and on Doyensec's Electron Security Checklist. It reads a directory,
 and can run upgrade checks between two Electron versions (`-u 7..8`).
 
 **Status.** Its README opens with "We're no longer actively maintaining this project" and points
-to ElectroNG, Doyensec's commercial successor (checked 2026-10-18 on the repository's default
-branch; the repository is not archived). The last npm release is
+to ElectroNG, Doyensec's commercial successor. The repository was archived on 2026-10-24
+(checked 2026-10-31 with `gh api repos/doyensec/electronegativity`). The last npm release is
 `@doyensec/electronegativity` 1.10.3, published 2023-03-09.
 
 **A different question, and now the same one.** Electronegativity looks at one build and lists

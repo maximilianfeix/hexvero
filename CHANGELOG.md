@@ -6,6 +6,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Website and brand
+
+- New landing page: a terminal that replays real `compare`, `check` and `audit` output on the example builds, the trace from window to preload member, channel, handler and host with file and line at each step, both builds' source side by side, the exit codes, a dated comparison with REA and Electronegativity, and the limits. Dark, fonts served from the site, no third-party requests; motion follows `prefers-reduced-motion` and every section is complete without JavaScript. Rules in `DESIGN.md` → Website.
+- Two pages: "Moving from Electronegativity to hexvero" (which checks `hexvero audit` covers, which it does not) and "hexvero and REA for Electron release review".
+- New social preview built around the same trace; new 30-second demo (`docs/demo/release-review.mp4` and `.gif`) recorded from the CLI and the local UI.
+- README: the new demo, `hexvero audit` in the quick start, and the comparison row that still said the audit checks were "not yet" available. Electronegativity was archived on 2026-10-24; `docs/comparison.md` says so.
+
 ## [0.12.0] - 2026-10-24
 
 ### Added
