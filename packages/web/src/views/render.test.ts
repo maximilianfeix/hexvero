@@ -62,4 +62,77 @@ describe("evidence panel rendering", () => {
     expect(html.match(/No source position recorded/g)).toHaveLength(2);
     expect(html).not.toContain("source-line");
   });
+
+  it("draws an interface row as window → member → channel → handler → host on its line", () => {
+    const row: ChangeRow = {
+      id: "z",
+      collection: "interfaces",
+      change: "added",
+      key: "preload.js::notesdesk::checkUpdate",
+      where: [
+        { side: "b", file: "preload.js", line: 9 },
+        { side: "b", file: "main.js", line: 30, role: "handler" },
+        { side: "b", file: `evil${RLO}sj.js`, line: 2, role: "handler" },
+      ],
+      basis: "link direct",
+      trace: { windows: ["main.js:win"], channel: `update:check${HOSTILE}` },
+    };
+    const host: ChangeRow = {
+      id: "h",
+      collection: "endpoints",
+      change: "added",
+      key: "main.js::fetch::https://updates.notesdesk.example/latest.json",
+      where: [{ side: "b", file: "main.js", line: 30 }],
+    };
+    const other: ChangeRow = {
+      ...host,
+      id: "o",
+      key: "x.js::fetch::https://elsewhere.example/",
+      where: [{ side: "b", file: "x.js", line: 1 }],
+    };
+    const r = {
+      a: target("t_a", "a"),
+      b: target("t_b", "b"),
+      changes: [row, host, other],
+    } as unknown as ReleaseComparison;
+    const html = renderToStaticMarkup(
+      createElement(EvidencePanel, { row, r, position: "1 of 3", onClose: () => undefined }),
+    );
+    const path = /<ol class="trace-path"[^>]*>([\s\S]*?)<\/ol>/.exec(html)![1]!;
+    const steps = [
+      ...path.matchAll(/<span class="trace-role">([^<]*)<\/span><code>([^<]*)<\/code>/g),
+    ].map((m) => `${m[1]} ${m[2]}`);
+    expect(steps).toEqual([
+      "window main.js:win",
+      "preload member notesdesk.checkUpdate",
+      "channel update:check&lt;img src=x onerror=alert(1)&gt;",
+      "handler main.js:30",
+      "handler evil⟨U+202E⟩sj.js:2",
+      "host on the handler&#x27;s line https://updates.notesdesk.example/latest.json",
+    ]);
+    expect(path).toContain('<span class="trace-at">preload.js:9</span>');
+    expect(path).not.toContain("elsewhere");
+    expect(path).not.toContain(RLO);
+    // the member's own place is target text as well
+    const spoofed = renderToStaticMarkup(
+      createElement(EvidencePanel, {
+        row: { ...row, where: [{ side: "b", file: `pre${RLO}sj.load.js`, line: 9 }] },
+        r,
+        position: "1 of 3",
+        onClose: () => undefined,
+      }),
+    );
+    expect(spoofed).toContain('<span class="trace-at">pre⟨U+202E⟩sj.load.js:9</span>');
+    // a row from an older server, without trace: no path
+    const { trace: _drop, ...withoutTrace } = row;
+    const plain = renderToStaticMarkup(
+      createElement(EvidencePanel, {
+        row: withoutTrace,
+        r,
+        position: "1 of 3",
+        onClose: () => undefined,
+      }),
+    );
+    expect(plain).not.toContain("trace-path");
+  });
 });

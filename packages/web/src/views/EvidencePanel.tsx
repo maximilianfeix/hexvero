@@ -60,6 +60,7 @@ export function EvidencePanel({
           </div>
         )}
       </dl>
+      <TracePath row={row} r={r} />
       {row.fields && row.fields.length > 0 && (
         <div className="table-wrap auto">
           <table className="counts evidence-fields">
@@ -105,6 +106,51 @@ export function EvidencePanel({
         are written out as ⟨U+…⟩. Nothing was executed.
       </p>
     </aside>
+  );
+}
+
+/** `file:line`, or the file alone when no line was recorded. */
+const at = (p: Place): string => `${p.file}${p.line === undefined ? "" : `:${p.line}`}`;
+
+/**
+ * An interface row as window → member → channel → handler, and an added host on a handler's own
+ * line (an inference from place, said in the title). Nothing for other rows or older servers.
+ */
+function TracePath({ row, r }: { row: ChangeRow; r: ReleaseComparison }): ReactElement | null {
+  if (row.collection !== "interfaces" || !row.trace) return null;
+  const own = row.where.find((p) => p.role === undefined);
+  const handlers = row.where.filter((p) => p.role === "handler");
+  const hosts = r.changes.filter(
+    (c) =>
+      c.collection === "endpoints" &&
+      c.change === "added" &&
+      c.where.some((p) => handlers.some((h) => h.file === p.file && h.line === p.line)),
+  );
+  const steps: Array<{ role: string; value: string; at?: string; title?: string }> = [];
+  if (row.trace.windows.length) steps.push({ role: "window", value: row.trace.windows.join(", ") });
+  steps.push({
+    role: "preload member",
+    value: row.key.split("::").slice(-2).join("."),
+    ...(own ? { at: at(own) } : {}),
+  });
+  if (row.trace.channel) steps.push({ role: "channel", value: row.trace.channel });
+  for (const h of handlers) steps.push({ role: "handler", value: at(h) });
+  for (const host of hosts)
+    steps.push({
+      role: "host on the handler's line",
+      value: host.key.split("::").slice(2).join("::"),
+      title: "on the handler's line: an inference from place, not a traced call",
+    });
+  return (
+    <ol className="trace-path" aria-label="Path from the window to the main process">
+      {steps.map((s, i) => (
+        <li key={i} title={s.title}>
+          <span className="trace-role">{s.role}</span>
+          <code>{visible(s.value)}</code>
+          {s.at && <span className="trace-at">{visible(s.at)}</span>}
+        </li>
+      ))}
+    </ol>
   );
 }
 
