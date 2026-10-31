@@ -101,8 +101,11 @@ describe("JavaScript scan performance", () => {
     const small = bundle(1, 2_000);
     const large = bundle(1, 8_000);
     best(small); // warm up the JIT
-    const ratio = best(large) / best(small);
-    // four times the input; a quadratic step would show as ~16. Generous for busy machines.
+    // Four times the input; a quadratic step shows as ~16 on every try. A load spike during
+    // one measurement does not repeat, so the lowest of up to three ratios is compared.
+    let ratio = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < 3 && ratio >= 9; attempt++)
+      ratio = Math.min(ratio, best(large) / best(small));
     expect(ratio).toBeLessThan(9);
   });
 
