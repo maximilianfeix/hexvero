@@ -62,6 +62,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- `electron` reached through a lazy getter is read like `require("electron")`: webpack 5's
+  `n.cw(function(e,t){e.exports=require("electron")})`, `() => n(id)`, `n.n(r)`, function and
+  Babel lazy-import getters, and `new (X().BrowserWindow)(opts)`. GitHub Desktop 3.6.10 bundles
+  electron this way; 0.12.0 lost its windows and reported a certificate-error handler as new
+  (#279). Case study: `docs/case-studies/github-desktop-3.6.7-to-3.6.10.md`.
 - `!0x0` and `!0x1`, what javascript-obfuscator writes for `true` and `false`, are read as booleans
   in window settings and resolved values; before, an obfuscated app's `sandbox`,
   `contextIsolation` and `nodeIntegration` were all "computed" (#271).

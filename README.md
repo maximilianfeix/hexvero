@@ -152,7 +152,7 @@ Electronegativity was archived on 2026-10-24. `hexvero audit <build>` runs part 
 
 ## Accuracy and limits
 
-On the newest blind set, written by someone without access to hexvero, it found 52 of 64 IPC channels with none false, and it misses and misreports rows in other lists ([all numbers](docs/accuracy.md)). It reads files and never runs them, so a finding is what the code contains, not what it does at run time or whether it is exploitable; a passing check is not a security verdict. Parsing a hostile file still processes attacker-controlled bytes, within size, depth and time limits. The full list: [docs/accuracy.md](docs/accuracy.md#limits).
+On the newest blind set, written by someone without access to hexvero, it found 52 of 64 IPC channels with none false, and it misses and misreports rows in other lists ([all numbers](docs/accuracy.md)). On real releases it is checked against the source ([GitHub Desktop 3.6.7 → 3.6.10](docs/case-studies/github-desktop-3.6.7-to-3.6.10.md), [Electron Fiddle 0.38 → 0.39](docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md)), misses included. It reads files and never runs them, so a finding is what the code contains, not what it does at run time or whether it is exploitable; a passing check is not a security verdict. Parsing a hostile file still processes attacker-controlled bytes, within size, depth and time limits. The full list: [docs/accuracy.md](docs/accuracy.md#limits).
 
 ## Docs
 
