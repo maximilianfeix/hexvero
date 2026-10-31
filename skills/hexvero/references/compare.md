@@ -11,7 +11,7 @@
 
 ## Release gate
 
-`hexvero_check {targetA, targetB, policy}` (a policy JSON object, or `policyPath`; optional `baselinePath`) applies a release policy and returns `status` `pass`, `fail` or `incomplete` with findings, paged by `offset` (`findingsPage.next`). `incomplete` means undecided, not passed. The tool only reads a baseline; accepting findings into one is `hexvero check … --baseline <file> --update-baseline`, run by a person.
+`hexvero_check {targetA, targetB, policy}` (a policy JSON object, or `policyPath`; optional `baselinePath`) applies a release policy and returns `status` `pass`, `fail` or `incomplete` with findings, paged by `offset` (`findingsPage.next`). `incomplete` means undecided, not passed. The tool only reads a baseline; accepting findings into one is `hexvero check … --baseline <file> --update-baseline`, run by a person. Without `targetB` the same tool audits one build (`hexvero audit`, see [electron.md](electron.md#security-audit)).
 
 ## Explaining a difference
 

@@ -189,14 +189,21 @@ export const toolSchemas = {
   hexvero_check: {
     title: "Check release policy",
     description:
-      "Apply a release policy (inline JSON or file) to two builds, as `hexvero check`: status pass, fail or incomplete, and findings paged by offset. Reads a baseline, never writes one.",
+      "Apply a release policy (inline JSON or file) to two builds, as `hexvero check`; omit targetB to audit targetA alone against the Electron security rules, as `hexvero audit` (policy optional). Status pass, fail or incomplete, findings paged by offset. Reads a baseline, never writes one.",
     input: {
       targetA: targetId,
-      targetB: targetId,
+      targetB: targetId.optional(),
       policy: z.record(z.string(), z.unknown()).optional().describe("Policy JSON object"),
       policyPath: z.string().optional().describe("Or: absolute path of a policy file"),
       baselinePath: z.string().optional().describe("Absolute path of a baseline file"),
-      format: z.enum(["json", "markdown", "sarif"]).optional().describe("Default json"),
+      unknown: z
+        .enum(["fail", "warn", "allow"])
+        .optional()
+        .describe("Audit only: how undecidable rules count (default: policy, else fail)"),
+      format: z
+        .enum(["json", "markdown", "sarif"])
+        .optional()
+        .describe("Default json; markdown for two builds only"),
       offset: z.number().int().min(0).optional().describe("First finding (default 0)"),
       limit: z.number().int().min(1).max(500).optional().describe("Findings (default 100)"),
     },

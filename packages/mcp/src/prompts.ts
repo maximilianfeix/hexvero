@@ -104,7 +104,8 @@ ${argumentsBlock(a)}
 1. hexvero_open { path: ${q(a["path"])} } + hexvero_analyze. Read electron facts (version, preload scripts, nodeIntegration, contextIsolation, sandbox, remote) and findings.
 2. hexvero_collection ipcChannels: list every channel with its senders and receivers; then ipc for the call sites, contextBridge for what the preload exposes to pages, webPreferences for window settings as written, modules for roles (main/preload/renderer) and edges for the import graph.
 3. For bundled renderers, hexvero_recover the bundle and read the module files that register handlers; hexvero_collection endpoints and storage for network and persistence surfaces.
-4. Report: which privileged operations a renderer can reach through IPC, which checks exist on the main side, and which preload APIs are exposed via contextBridge.
+4. hexvero_check { targetA } without targetB audits the build against the Electron security rules (pass, fail or incomplete; incomplete is undecided, not passed); cite each finding's places.
+5. Report: which privileged operations a renderer can reach through IPC, which checks exist on the main side, and which preload APIs are exposed via contextBridge.
 
 ${honesty}`,
   },
