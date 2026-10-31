@@ -108,6 +108,37 @@ export function formatChanges(io: Io, r: ReleaseComparison, maxPerCollection = 8
   return out;
 }
 
+/**
+ * Each added or changed preload member as window → member (place) → channel → handler, and an
+ * added host on a handler's own line, as `check --format markdown` and the reports draw it.
+ */
+function tracePaths(r: ReleaseComparison): string[] {
+  const at = (p: { file: string; line?: number }): string =>
+    `${printable(p.file)}${p.line === undefined ? "" : `:${p.line}`}`;
+  const hosts = r.changes.filter((c) => c.collection === "endpoints" && c.change === "added");
+  return r.changes
+    .filter(
+      (c) => c.collection === "interfaces" && (c.change === "added" || c.change === "changed"),
+    )
+    .map((row) => {
+      const own = row.where.find((p) => p.role === undefined);
+      const handlers = row.where.filter((p) => p.role === "handler");
+      const steps: string[] = [];
+      if (row.trace?.windows.length) steps.push(printable(row.trace.windows.join(", ")));
+      steps.push(
+        `${printable(row.key.split("::").slice(-2).join("."))}${own ? ` (${at(own)})` : ""}`,
+      );
+      if (row.trace?.channel) steps.push(printable(row.trace.channel));
+      for (const h of handlers) steps.push(`handler ${at(h)}`);
+      for (const host of hosts)
+        if (host.where.some((p) => handlers.some((h) => h.file === p.file && h.line === p.line)))
+          steps.push(
+            `host ${printable(host.key.split("::").slice(2).join("::"))} (on the handler's line)`,
+          );
+      return steps.join(" → ");
+    });
+}
+
 /** A path as it can be pasted into a shell. */
 const q = shellWord;
 
@@ -123,6 +154,11 @@ export function formatDemo(io: Io, r: ReleaseComparison, a: string, b: string): 
     "",
     ...formatChanges(io, r, 4),
   ];
+  const paths = tracePaths(r);
+  if (paths.length) {
+    lines.push("", paint(io, "bold", "  New ways pages reach the main process"));
+    for (const path of paths) lines.push(`    ${path}`);
+  }
   if (r.overview.windowChanges.length) {
     lines.push("", paint(io, "bold", "  Window settings to review"));
     for (const w of r.overview.windowChanges)

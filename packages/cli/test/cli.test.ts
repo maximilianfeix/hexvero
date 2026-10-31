@@ -51,6 +51,9 @@ describe("hexvero CLI", () => {
     expect(await main(["demo", target], first)).toBe(0);
     const text = first.stdout.join("\n");
     expect(text).toContain("+ notesdesk::checkUpdate");
+    expect(text).toContain(
+      "main.js:win → notesdesk.checkUpdate (preload.js:9) → update:check → handler main.js:30 → host https://updates.notesdesk.example/latest.json (on the handler's line)",
+    );
     expect(text).toContain("ipc_channel_unresolved");
     expect(text).toContain(`--report report.md`);
     // a second run with the same files is fine; a different file under that name is kept
