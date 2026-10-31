@@ -3806,15 +3806,27 @@ export class ExpressionResolver {
     const out: Array<{ name: string; start: number; end: number }> = [];
     for (let k = 0; k + 2 < this.tokens.length; k++) {
       if (!this.is(k, "ident", "class")) continue;
+      // a property named class (`x.class`, `{ class: … }`, `class = …`) is no class
+      if (
+        this.punct(k - 1, ".") ||
+        this.punct(k - 1, "?.") ||
+        this.punct(k + 1, ":") ||
+        this.punct(k + 1, "=") ||
+        this.punct(k + 1, "(")
+      )
+        continue;
       // `class Name {`, or `var Name = class {` as bundlers write it (the variable names it)
-      // or `exports.Name = class {`, as tsc writes an exported class expression
+      // or `exports.Name = class {`, as tsc writes an exported class expression; `S = new class
+      // {…}` names it by the instance's variable (#302). Any other class expression gets a name
+      // no identifier has, so its methods are still functions of their own.
       const name =
         this.is(k + 1, "ident") && !this.is(k + 1, "ident", "extends")
           ? this.tokens[k + 1]!.value
           : this.punct(k - 1, "=") && this.is(k - 2, "ident")
             ? this.tokens[k - 2]!.value
-            : null;
-      if (name === null) continue;
+            : this.is(k - 1, "ident", "new") && this.punct(k - 2, "=") && this.is(k - 3, "ident")
+              ? this.tokens[k - 3]!.value
+              : `(class@${k})`;
       let open = k + 1;
       while (open < this.tokens.length && open < k + 20 && !this.punct(open, "{")) open++;
       const close = this.match[open] ?? -1;
