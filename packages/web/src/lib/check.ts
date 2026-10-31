@@ -35,6 +35,8 @@ export const RULE: Record<string, string> = {
     "a Content Security Policy weakness the before build did not have, or a policy that is gone",
   "new-unsafe-switch":
     "a dangerous command-line switch, or certificate errors accepted, that the before build did not have",
+  "navigation-limit-removed":
+    "a will-navigate listener or window open handler the before build had and the after build dropped, or a window open handler that newly allows every window",
 };
 
 const STATE: Record<PolicyFinding["state"], string> = {

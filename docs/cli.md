@@ -368,10 +368,13 @@ Rules:
   be new". A value not read at all, a relative one (`/${p}` may become `//elsewhere.example`) or one
   computed before its host ends keeps it open.
 - **`window-more-permissive`**: A window present in both builds whose derived `nodeIntegration`,
-  `contextIsolation`, `sandbox` or page `require` changed so its pages may do more, and a new window
-  (or one renamed: matched windows are matched by file and name) whose own settings already let its
-  pages do more (`nodeIntegrationInEffect` on, `contextIsolationInEffect` off, `sandboxInEffect`
-  off, `pageRequire` yes, or their defaults), with its file and line. When a removed window had the
+  `contextIsolation`, `sandbox`, page `require`, `webSecurity` or `allowRunningInsecureContent`
+  changed so its pages may do more (`webSecurityInEffect` `default on` or `on` → `off`,
+  `allowRunningInsecureContentInEffect` `default off` or `off` → `on`; never the reverse), and a
+  new window (or one renamed: matched windows are matched by file and name) whose own settings
+  already let its pages do more (`nodeIntegrationInEffect` on, `contextIsolationInEffect` off,
+  `sandboxInEffect` off, `pageRequire` yes, or their defaults; `webSecurityInEffect` off,
+  `allowRunningInsecureContentInEffect` on), with its file and line. When a removed window had the
   same permissive setting, the new one may be that window renamed, and the finding is unknown; so is
   a change whose direction cannot be told, a window row on a side that was not read, and a new
   window whose settings are not known.
@@ -430,6 +433,15 @@ Rules:
   (`html_unread`) or a capped list (`csp_truncated`) leaves it undecidable.
 
   The last three were added after 0.11.1: a policy that does not list them runs them at `warn`.
+
+- **`navigation-limit-removed`**: The before build listens for `will-navigate` or
+  `will-frame-navigate` and the after build does not, anywhere in the files read; the before
+  build sets a `setWindowOpenHandler` and the after build sets none; or a `setWindowOpenHandler`
+  of the after build returns `{ action: "allow" }` on every path where the before build had none
+  such for that window (or receiver kind) (Electron's security guide, sections 13 and 14; see
+  [Electron findings](electron-findings.md#navigation-and-new-window-handlers-navigationhandlers)).
+  A listener moved to another line or file is no change. Added after 0.12.0: a policy that does
+  not list it runs it at `warn`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
 app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a
@@ -542,22 +554,23 @@ asks what is there; the facts are the same lists, read the same way
 ([electron-findings.md](electron-findings.md)), and [audit-plan.md](engineering/audit-plan.md)
 maps each of Electronegativity's checks to them.
 
-| Rule                            | Reports                                                                                                                                                                                | List                 |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `window-permissive`             | a window with `nodeIntegrationInEffect` on, `contextIsolationInEffect` or `sandboxInEffect` off, or `pageRequire` yes (also by default); a setting not read is unknown                 | `windows`            |
-| `remote-enabled`                | an `enable` of `@electron/remote`                                                                                                                                                      | `remoteEnabled`      |
-| `unsafe-switch`                 | a dangerous switch, accepted certificate errors, an accepting verify proc; a row whose danger is not read is unknown                                                                   | `switches`           |
-| `open-external`                 | `shell.openExternal` with a URL that is not a literal and whose known start does not fix `http`, `https` or `mailto`; on a receiver not read as `shell` unknown                        | `openExternal`       |
-| `permission-handler-missing`    | no `setPermissionRequestHandler` in the files read; unknown when none is read on `session.defaultSession` (only partitions, webContents' sessions, unproven receivers)                 | `permissionHandlers` |
-| `permission-handler-grants-all` | a handler that grants every request (or is cleared with `null`); one whose answer is not read is unknown                                                                               | `permissionHandlers` |
-| `csp-missing`                   | no `<meta>` policy in a head of the app's HTML (any HTML file outside node_modules counts) and no `onHeadersReceived` header; unknown when a policy is set only where it may not apply | `csp`                |
-| `csp-weak`                      | an applied policy with weaknesses; one not read, or weak where it may not apply, is unknown                                                                                            | `csp`                |
+| Rule                            | Reports                                                                                                                                                                                                                                                                                                                                              | List                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `window-permissive`             | a window with `nodeIntegrationInEffect` on, `contextIsolationInEffect` or `sandboxInEffect` off, or `pageRequire` yes (also by default), `webSecurityInEffect` off or `allowRunningInsecureContentInEffect` on (as written, or on because `webSecurity: false` and it is not written); a setting not read is unknown                                 | `windows`            |
+| `remote-enabled`                | an `enable` of `@electron/remote`                                                                                                                                                                                                                                                                                                                    | `remoteEnabled`      |
+| `unsafe-switch`                 | a dangerous switch, accepted certificate errors, an accepting verify proc; a row whose danger is not read is unknown                                                                                                                                                                                                                                 | `switches`           |
+| `open-external`                 | `shell.openExternal` with a URL that is not a literal and whose known start does not fix `http`, `https` or `mailto`; on a receiver not read as `shell` unknown                                                                                                                                                                                      | `openExternal`       |
+| `permission-handler-missing`    | no `setPermissionRequestHandler` in the files read; unknown when none is read on `session.defaultSession` (only partitions, webContents' sessions, unproven receivers)                                                                                                                                                                               | `permissionHandlers` |
+| `permission-handler-grants-all` | a handler that grants every request (or is cleared with `null`); one whose answer is not read is unknown                                                                                                                                                                                                                                             | `permissionHandlers` |
+| `csp-missing`                   | no `<meta>` policy in a head of the app's HTML (any HTML file outside node_modules counts) and no `onHeadersReceived` header; unknown when a policy is set only where it may not apply                                                                                                                                                               | `csp`                |
+| `csp-weak`                      | an applied policy with weaknesses; one not read, or weak where it may not apply, is unknown                                                                                                                                                                                                                                                          | `csp`                |
+| `navigation-unlimited`          | for an app with a window or handler read: no `will-navigate` / `will-frame-navigate` listener, or no `setWindowOpenHandler`, in the files read (for the app, or a window when others have one); a `setWindowOpenHandler` that returns `{ action: "allow" }` on every path; unknown when the only listeners are on a webContents not read as a window | `navigationHandlers` |
 
 **Status and exit codes** are `check`'s: `fail` (exit `3`) when any finding is not unknown;
 otherwise `incomplete` (exit `4`) when `--unknown fail` and an unknown finding or a gap remains;
 otherwise `pass` (exit `0`). A rule whose list may be missing rows is not decidable (gaps
 `scan_partial`, `files_unreadable`, `values_unresolved`, listed under "Not decidable"), and an
-absence (`permission-handler-missing`, `csp-missing`) is never reported while its rule is: a
+absence (`permission-handler-missing`, `csp-missing`, `navigation-unlimited`'s missing listener or handler) is never reported while its rule is: a
 partial scan reads as "not decided", not as "missing". `--unknown warn` or `allow` lets unknowns
 pass; they stay listed. A build that is not an Electron application, or one with no JavaScript to
 read, is refused with exit `1`.
@@ -571,7 +584,9 @@ however the code moves. Fingerprints are `sha256(rule \0 identity)` (first 32 he
 naming the item, never the line: file, window and setting for windows; file and the URL as far
 as it is read for `open-external` (two calls of one URL kind in one file are one finding with two
 places); file, kind and session for permission handlers; file, kind, `via` and the policy text
-for `csp-weak` (an edit of the policy, even of its spacing, is a new finding).
+for `csp-weak` (an edit of the policy, even of its spacing, is a new finding); for
+`navigation-unlimited` the missing kind (and the window's file and name), or the handler's file,
+receiver kind and window.
 
 **Why a command of its own.** `check` evaluates a comparison and every rule there means "new in
 the after build"; a single build has no comparison and its rules mean "present". Suppressions
