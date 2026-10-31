@@ -157,6 +157,42 @@ describe("hexvero audit", () => {
     expect(r.code).toBe(1);
     expect(r.io.text()).toContain("Electron application");
   });
+
+  it("--all reads a partly scanned app to the end before judging it", async () => {
+    const cache = mkdtempSync(join(tmpdir(), "hexvero-audit-all-"));
+    const previous = process.env["HEXVERO_CACHE_DIR"];
+    process.env["HEXVERO_CACHE_DIR"] = cache;
+    try {
+      const app = join(dir, "big.asar");
+      writeFileSync(
+        app,
+        buildAsar({
+          "package.json": JSON.stringify({
+            name: "big",
+            main: "main.js",
+            devDependencies: { electron: "^33.0.0" },
+          }),
+          "main.js": SAFE,
+          "index.html": CSP,
+          ...Object.fromEntries(
+            Array.from({ length: 4 }, (_, i) => [`src/part${i}.js`, `module.exports = ${i};`]),
+          ),
+        }),
+      );
+      // a stored scan of 2 of 5 files, as a large app leaves it after the first batch
+      expect(await main(["analyze", app, "--batch", "2", "--continue"], capture())).toBe(0);
+      const partial = await audit(app);
+      expect(partial.code).toBe(4);
+      expect(partial.io.text()).toContain("audit again with --all");
+      const all = await audit(app, "--all");
+      expect(all.code).toBe(0);
+      expect(all.io.text()).not.toContain("scan_partial");
+    } finally {
+      if (previous === undefined) delete process.env["HEXVERO_CACHE_DIR"];
+      else process.env["HEXVERO_CACHE_DIR"] = previous;
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
 });
 
 /** A policy file with the given `audit` section. */
