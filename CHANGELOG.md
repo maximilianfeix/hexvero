@@ -23,6 +23,13 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- Audit rule `http-resource` and check rule `new-http-resource` (Electronegativity's
+  `HTTP_RESOURCES_JS_CHECK`, `_HTML_CHECK`, `_WITH_NODE_INTEGRATION_GLOBAL_CHECK`; security guide
+  sections 1 and 2), from the new `loads` collection: `loadURL` calls with their receiver and URL,
+  and absolute `<script src>`, stylesheet and `<iframe src>` sources in the app's HTML. A plain
+  `http:` URL to another host fails; `localhost`, `127.0.0.0/8`, `[::1]` and `0.0.0.0` are taken
+  as dev servers (hexvero's choice); a window with Node integration in effect is named in the
+  message and the fingerprint (#311).
 - `experimentalFeatures: true` and `enableBlinkFeatures` in a window's webPreferences
   (Electronegativity's `EXPERIMENTAL_FEATURES_JS_CHECK`, `BLINK_FEATURES_JS_CHECK`; security guide
   sections 9 and 10): `audit`'s `window-permissive` fails on them as written (the Blink features
