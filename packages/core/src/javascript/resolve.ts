@@ -4226,6 +4226,8 @@ export class ExpressionResolver {
 
   /** Whether the name at j (after a `,`) is a declarator of a `const`, `let` or `var` list. */
   private inDeclarationList(j: number): boolean {
+    // `: function` read as an expression that still needs the `?` of its conditional (#281)
+    let elses = 0;
     for (let i = j - 1, steps = 0; i >= 0 && steps < 4000; i--, steps++) {
       const t = this.tokens[i]!;
       if (t.type === "punct") {
@@ -4235,17 +4237,21 @@ export class ExpressionResolver {
           i = o;
         } else if (t.value === "(" || t.value === "[" || t.value === "{" || t.value === ";")
           return false;
-      } else if (t.type === "ident" && /^(const|let|var)$/.test(t.value)) return true;
-      else if (
-        t.type === "ident" &&
-        STATEMENT_WORDS.has(t.value) &&
-        // `var s = class {…}, i = new s`: a class or function expression is no statement
-        !(
-          (t.value === "class" || t.value === "function") &&
-          (this.punct(i - 1, "=") || this.punct(i - 1, ",") || this.punct(i - 1, "("))
+        else if (t.value === "?" && elses > 0) elses--;
+      } else if (t.type === "ident" && /^(const|let|var)$/.test(t.value)) return elses === 0;
+      else if (t.type === "ident" && STATEMENT_WORDS.has(t.value)) {
+        // `var s = class {…}, i = new s`, `b = x ? function (r) {…}(y) : z, f = …`: a class or
+        // function expression is no statement. One follows an operator; a declaration follows
+        // the end of a statement or block, a `)` of `if (…)`, or a label's or case's `:`.
+        const before = this.tokens[i - 1];
+        if (
+          (t.value !== "class" && t.value !== "function") ||
+          before?.type !== "punct" ||
+          /^(;|\{|\}|\))$/.test(before.value)
         )
-      )
-        return false;
+          return false;
+        if (before.value === ":") elses++;
+      }
     }
     return false;
   }
