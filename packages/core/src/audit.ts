@@ -63,7 +63,7 @@ export interface AuditFinding {
   state: "new" | "baselined" | "suppressed" | "suppression-expired";
   /** For a suppressed or expired finding: the reason given in the policy. */
   suppression?: { reason: string; expires?: string };
-  /** With a baseline only: whether the baseline has the finding (SARIF `baselineState`). */
+  /** With a baseline only: whether the baseline has the finding (`unchanged`) or not (`new`). */
   baselineState?: "new" | "unchanged";
 }
 

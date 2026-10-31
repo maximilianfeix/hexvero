@@ -128,12 +128,11 @@ adds.
    `unknown`, `suppressions` by fingerprint with reason and expiry, validated in
    `docs/policy.schema.json`), and `--baseline <file> [--update-baseline]` accepts known findings
    with check's semantics (#78). The baseline is check's format with `"command": "audit"` and
-   `build` in place of `a`/`b`; each command refuses the other's file. SARIF marks suppressed
-   results with `suppressions` (kind `external`, the reason as justification) and, against a
-   baseline, every result with `baselineState`. Still open: an MCP parameter (hexvero has no audit
-   tool in MCP yet; `hexvero_check` with one target would add one without a new tool, catalog
-   stays at 16) and the UI; whether GitHub code scanning closes alerts for results with SARIF
-   `suppressions` is not verified (its documentation does not list the property).
+   `build` in place of `a`/`b`; each command refuses the other's file. SARIF, as check's, has
+   only the findings that count and counts baselined and suppressed ones in `notReported`, so an
+   accepted finding never reopens a code-scanning alert. Still open: an MCP parameter (hexvero
+   has no audit tool in MCP yet; `hexvero_check` with one target would add one without a new
+   tool, catalog stays at 16) and the UI.
 2. **`window-permissive` extended** with `experimentalFeatures` and `enableBlinkFeatures` (new
    keys). `webSecurity: false` and `allowRunningInsecureContent: true` are judged since the second
    slice (below).

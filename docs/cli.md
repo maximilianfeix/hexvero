@@ -662,15 +662,12 @@ command never matches the other's fingerprints. Keep them in separate files, e.g
 `incomplete`; `policy` and `baseline` when given). `--format sarif` is SARIF 2.1.0 with one run:
 places are paths inside the build under `hexvero-build/build/<archive>/` (uriBaseId
 `HEXVERO_TARGET`), as `check` does for its two sides, and `partialFingerprints` carry the
-fingerprint, so a code-scanning alert stays one alert however the code moves. Every finding of a
-rule that is not `off` is a result: a suppressed one carries `suppressions: [{ "kind": "external",
-"status": "accepted", "justification": <reason> }]` (SARIF 2.1.0 §3.27.23); with a baseline every
-result has `baselineState` `unchanged` (in the baseline) or `new` (§3.27.24). An expired
-suppression gives no `suppressions` entry and `properties.suppressionExpired`. The run's
-`properties.hexvero.states` counts each state. This differs from `check`'s SARIF, which leaves
-baselined and suppressed findings out: GitHub code scanning does not list `suppressions` or
-`baselineState` among the properties it reads, so on GitHub an accepted audit finding may still
-show as an alert (see [ci.md](ci.md)). Fingerprints are `sha256(rule \0 identity)` (first 32 hex), the identity
+fingerprint, so a code-scanning alert stays one alert however the code moves. As in `check`'s
+SARIF, only findings that count (`new`, `suppression-expired`) are results, each with its `state`
+and `level` in `properties` (an expired one also with `properties.suppressionExpired`); baselined
+and suppressed findings are counted in `properties.hexvero.notReported`, because code scanning
+ignores SARIF suppressions and would reopen them as alerts ([ci.md](ci.md)). The text and JSON
+output list them. Fingerprints are `sha256(rule \0 identity)` (first 32 hex), the identity
 naming the item, never the line: file, window and setting for windows; file and the URL as far
 as it is read for `open-external` (two calls of one URL kind in one file are one finding with two
 places); file, kind and session for permission handlers; file, kind, `via` and the policy text

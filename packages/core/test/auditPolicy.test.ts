@@ -412,7 +412,7 @@ describe("audit SARIF with a policy and a baseline", () => {
   addFormats(ajv);
   const validate = ajv.compile(schema);
 
-  it("marks suppressed results with suppressions and every result with baselineState", async () => {
+  it("leaves baselined and suppressed findings out of the results and counts them, as check", async () => {
     const first = await run(v15);
     const csp = first.findings.find((f) => f.rule === "csp-missing")!;
     const policy = policyOf({
@@ -421,27 +421,40 @@ describe("audit SARIF with a policy and a baseline", () => {
         { rule: "csp-missing", fingerprint: csp.fingerprint, reason: "server sets it" },
       ],
     });
-    const r = await run(v15, { policy, baseline: baselineWithout(first, OPEN) });
-    const log = auditToSarif(r, { version: "0.0.0" }) as any;
-    expect(validate.errors ?? []).toEqual([]);
-    expect(validate(log)).toBe(true);
-    const results = log.runs[0].results as any[];
-    // every finding of a rule that is not off is a result
-    expect(results.map((x) => x.ruleId)).toEqual(r.findings.map((f) => f.rule));
-    const byRule = (rule: string) => results.find((x) => x.ruleId === rule);
-    expect(byRule("csp-missing").suppressions).toEqual([
-      { kind: "external", status: "accepted", justification: "server sets it" },
+    // a baseline that accepts only permission-handler-missing
+    const file = createAuditBaseline(first);
+    file.fingerprints = file.fingerprints.filter((f) => f.rule === "permission-handler-missing");
+    const baseline = parseAuditBaseline(JSON.stringify(file), "audit-baseline.json");
+    const r = await run(v15, { policy, baseline });
+    expect(states(r)).toEqual([
+      "open-external new",
+      "permission-handler-missing baselined",
+      "csp-missing suppressed",
+      "navigation-unlimited new",
     ]);
-    expect(byRule(OPEN).baselineState).toBe("new");
-    expect(byRule(OPEN).suppressions).toBeUndefined();
-    expect(byRule("permission-handler-missing").baselineState).toBe("unchanged");
-    expect(byRule("navigation-unlimited").level).toBe("warning");
-    expect(byRule(OPEN).level).toBe("error");
-    expect(log.runs[0].properties.hexvero.states).toMatchObject({ suppressed: 1 });
+    const log = auditToSarif(r, { version: "0.0.0" }) as any;
+    const ok = validate(log);
+    expect(validate.errors ?? []).toEqual([]);
+    expect(ok).toBe(true);
+    const results = log.runs[0].results as any[];
+    // code scanning reads neither suppressions nor baselineState: an accepted finding there
+    // would reopen an alert, so only counted findings are results
+    expect(results.map((x) => x.ruleId)).toEqual([OPEN, "navigation-unlimited"]);
+    expect(results.every((x) => x.suppressions === undefined)).toBe(true);
+    expect(results.every((x) => x.baselineState === undefined)).toBe(true);
+    expect(results[0].level).toBe("error");
+    expect(results[1].level).toBe("warning");
+    expect(log.runs[0].properties.hexvero.notReported).toEqual({ baselined: 1, suppressed: 1 });
     expect(log.runs[0].properties.hexvero.policy).toBe(policy.sha256);
+    // everything accepted: no results at all, still valid
+    const all = await run(v15, { baseline: baselineOf(first) });
+    const empty = auditToSarif(all, { version: "0.0.0" }) as any;
+    expect(empty.runs[0].results).toEqual([]);
+    expect(empty.runs[0].properties.hexvero.notReported).toEqual({ baselined: 4, suppressed: 0 });
+    expect(validate(empty)).toBe(true);
   });
 
-  it("keeps an expired suppression out of suppressions and says it expired", async () => {
+  it("reports a finding whose suppression expired, and says it expired", async () => {
     const first = await run(v15);
     const open = first.findings.find((f) => f.rule === OPEN)!;
     const policy = policyOf({

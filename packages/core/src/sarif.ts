@@ -14,10 +14,8 @@
  * ignores SARIF `suppressions`, so a baselined or suppressed finding there would reopen an alert.
  * Their numbers are in the run's properties.
  *
- * `auditToSarif` differs: every finding of a rule that is not off is a result, a suppressed one
- * with a SARIF `suppressions` entry (kind `external`, the policy's reason as justification) and,
- * against a baseline, every one with `baselineState` (`unchanged` when the baseline has it,
- * else `new`), so a SARIF reader that honours them sees what was accepted and why.
+ * `auditToSarif` does the same: baselined and suppressed audit findings are counted in
+ * `properties.hexvero.notReported`, never results.
  *
  * Checked against the OASIS schema (test fixture) and GitHub's list of supported fields:
  * https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
@@ -319,6 +317,10 @@ const AUDIT_TEXT: Record<
 /** The SARIF uriBaseId of an audited build. */
 export const SARIF_AUDIT_BASE = "HEXVERO_TARGET";
 
+/** An audit finding that counts: new, or its suppression expired. */
+const counted = (f: AuditFinding): boolean =>
+  f.state === "new" || f.state === "suppression-expired";
+
 /** A SARIF 2.1.0 log with one run for `hexvero audit`. */
 export function auditToSarif(
   result: AuditResult,
@@ -390,7 +392,8 @@ export function auditToSarif(
             })),
           },
         ],
-        results: result.findings.map((f) => {
+        // as check's: only counted findings, so an accepted one never reopens an alert
+        results: result.findings.filter(counted).map((f) => {
           const [first, ...rest] = f.where;
           return {
             ruleId: f.rule,
@@ -407,23 +410,6 @@ export function auditToSarif(
               "hexveroFingerprint/v1": f.fingerprint,
               primaryLocationLineHash: `${f.fingerprint}:1`,
             },
-            // SARIF 2.1.0 §3.27.23: a suppression the policy states (an expired one states none)
-            ...(f.state === "suppressed" && f.suppression
-              ? {
-                  suppressions: [
-                    {
-                      kind: "external",
-                      status: "accepted",
-                      justification: plain(f.suppression.reason),
-                      ...(f.suppression.expires
-                        ? { properties: { expires: f.suppression.expires } }
-                        : {}),
-                    },
-                  ],
-                }
-              : {}),
-            // §3.27.24: only against a baseline
-            ...(f.baselineState ? { baselineState: f.baselineState } : {}),
             properties: {
               unknown: f.unknown,
               collection: f.collection,
@@ -459,12 +445,7 @@ export function auditToSarif(
                   },
                 }
               : {}),
-            states: {
-              new: states("new"),
-              baselined: states("baselined"),
-              suppressed: states("suppressed"),
-              suppressionExpired: states("suppression-expired"),
-            },
+            notReported: { baselined: states("baselined"), suppressed: states("suppressed") },
           },
         },
       },

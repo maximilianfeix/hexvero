@@ -330,7 +330,7 @@ describe("hexvero audit --policy / --baseline", () => {
     rmSync(elsewhere, { recursive: true, force: true });
   });
 
-  it("writes SARIF with suppressions and baselineState", async () => {
+  it("writes SARIF with only the findings that count, as check", async () => {
     const plain = await findingsOf();
     const csp = plain.findings.find((f) => f.rule === "csp-missing")!;
     const policy = policyFile("sarif.json", {
@@ -343,12 +343,33 @@ describe("hexvero audit --policy / --baseline", () => {
     const r = await audit(example, "--policy", policy, "--baseline", baseline, "--format", "sarif");
     expect(r.code).toBe(0);
     const log = JSON.parse(r.io.stdout.join("\n"));
-    const results = log.runs[0].results as Array<Record<string, unknown>>;
-    expect(results).toHaveLength(4);
-    expect(results.every((x) => x["baselineState"] === "unchanged")).toBe(true);
-    expect(results.find((x) => x["ruleId"] === "csp-missing")?.["suppressions"]).toEqual([
-      { kind: "external", status: "accepted", justification: "server sets it" },
+    // as check: accepted findings are no results (code scanning would reopen them), only counted
+    expect(log.runs[0].results).toEqual([]);
+    expect(log.runs[0].properties.hexvero.notReported).toEqual({ baselined: 3, suppressed: 1 });
+    // the JSON keeps every finding with its state
+    const json = await findingsOf("--policy", policy, "--baseline", baseline);
+    expect(json.findings.map((f) => f.state).toSorted()).toEqual([
+      "baselined",
+      "baselined",
+      "baselined",
+      "suppressed",
     ]);
+    // a finding the baseline does not have is a result
+    const written = JSON.parse(readFileSync(baseline, "utf8"));
+    const less = join(dir, "sarif-less.json");
+    writeFileSync(
+      less,
+      JSON.stringify({
+        ...written,
+        fingerprints: written.fingerprints.filter(
+          (f: { rule: string }) => f.rule !== "open-external",
+        ),
+      }),
+    );
+    const fresh = await audit(example, "--policy", policy, "--baseline", less, "--format", "sarif");
+    expect(fresh.code).toBe(3);
+    const results = JSON.parse(fresh.io.stdout.join("\n")).runs[0].results;
+    expect(results.map((x: { ruleId: string }) => x.ruleId)).toEqual(["open-external"]);
     // the baseline was written without the policy: said on stderr, not in the data
     expect(r.io.stderr.join("\n")).toContain("the baseline was written without a policy");
   });

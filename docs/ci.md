@@ -202,14 +202,11 @@ without it every audit rule runs at `fail`. The policy's `audit.rules` sets a ru
 ```
 
 Upload `hexvero-audit.sarif` as in the workflow above, with `category: hexvero-audit`.
-Unlike `check`'s SARIF, the audit SARIF lists every finding of a rule that is not `off`: a
-suppressed one with a SARIF `suppressions` entry (kind `external`, the policy's reason as
-`justification`), and every one with `baselineState` (`unchanged` when the baseline has it,
-`new` otherwise). SARIF readers that honour these see what was accepted and why. GitHub code
-scanning does not list either property among those it reads, so there an accepted finding may
-show as an open alert; the job's exit code is the gate, and it counts only new and expired
-findings. Whether code scanning closes alerts for results with `suppressions` has not been
-verified.
+As with `check`, only findings that count (`new`, `suppression-expired`) are results;
+baselined and suppressed findings are counted in `properties.hexvero.notReported`, because code
+scanning reads neither SARIF `suppressions` nor `baselineState` and would reopen them as
+alerts. The text and JSON output still list them, with their state and the suppression's
+reason.
 
 ## Reading the result
 
