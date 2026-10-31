@@ -65,6 +65,9 @@ const constants = [
   // and so do the pinning examples for the MCP server
   ["README.md", /hexvero@\d+\.\d+\.\d+(-[\w.]+)?/g, `hexvero@${version}`],
   ["docs/mcp.md", /hexvero@\d+\.\d+\.\d+(-[\w.]+)?/g, `hexvero@${version}`],
+  // the reusable action runs this release unless a workflow pins another one
+  ["action.yml", /default: "\d+\.\d+\.\d+(-[\w.]+)?"/, `default: "${version}"`],
+  [".github/actions/check/run.mjs", /\|\| "\d+\.\d+\.\d+(-[\w.]+)?"/, `|| "${version}"`],
 ];
 for (const [file, re, replacement] of constants)
   writeFileSync(file, readFileSync(file, "utf8").replace(re, replacement));

@@ -23,6 +23,9 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- The reusable action audits one build when `before` is left out (`hexvero audit` with a
+  Markdown job summary and SARIF; `policy` and `baseline` optional; needs `version` 0.13.0 or
+  later). The release script now also moves the action's default version, which stayed at 0.12.0.
 - `hexvero audit --format markdown`: the result as Markdown for a job summary (findings with
   places, messages and fingerprints, what could not be decided), as `check --format markdown`.
 - Audit rule `dangerous-call` and check rule `new-dangerous-call` (Electronegativity's
