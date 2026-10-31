@@ -9,14 +9,20 @@ branding:
 
 inputs:
   before:
-    description: The build you shipped last (an .asar, an .app, an application directory, ...).
-    required: true
+    description: >-
+      The build you shipped last (an .asar, an .app, an application directory, ...). Leave it out
+      to audit the after build alone with `hexvero audit` (needs version 0.13.0 or later).
+    required: false
+    default: ""
   after:
     description: The build you are about to ship.
     required: true
   policy:
-    description: The policy file, for example .hexvero/policy.json (create one with `hexvero init`).
-    required: true
+    description: >-
+      The policy file, for example .hexvero/policy.json (create one with `hexvero init`). Required
+      with a before build; optional for an audit, where its `audit` section applies.
+    required: false
+    default: ""
   baseline:
     description: A committed baseline file of accepted findings. Optional; never written by the action.
     required: false
@@ -32,7 +38,7 @@ inputs:
 
 outputs:
   exit-code:
-    description: "The exit code of hexvero check: 0 pass, 1 technical error, 2 usage error or invalid policy, 3 violated, 4 not decidable."
+    description: "The exit code of hexvero check (or audit): 0 pass, 1 technical error, 2 usage error or invalid policy, 3 violated, 4 not decidable."
     value: ${{ steps.check.outputs.exit-code }}
   sarif:
     description: The path of the SARIF file, empty when none was written.

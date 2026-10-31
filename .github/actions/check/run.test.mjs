@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { checkArgs, main } from "./run.mjs";
+import { auditArgs, auditSupported, checkArgs, main } from "./run.mjs";
 
 const root = resolve(import.meta.dirname, "../../..");
 const cli = join(root, "packages/cli/bin/hexvero.js");
@@ -73,6 +73,31 @@ describe("checkArgs", () => {
   });
 });
 
+describe("auditArgs", () => {
+  test("audits the after build alone; policy and baseline are optional", () => {
+    assert.deepEqual(auditArgs({ after: "--b c", policy: "", baseline: "" }, ["--x=1"]), [
+      "audit",
+      "--x=1",
+      "--",
+      "--b c",
+    ]);
+    assert.deepEqual(auditArgs({ after: "b", policy: "p", baseline: "base" }, []), [
+      "audit",
+      "--policy=p",
+      "--baseline=base",
+      "--",
+      "b",
+    ]);
+  });
+
+  test("needs 0.13.0 or later", () => {
+    assert.equal(auditSupported("0.12.0"), false);
+    assert.equal(auditSupported("0.13.0"), true);
+    assert.equal(auditSupported("0.13.0-rc.1"), true);
+    assert.equal(auditSupported("1.0.0"), true);
+  });
+});
+
 describe("with the built CLI on the demo builds", { skip: !built && "run npm run build" }, () => {
   let demo;
   before(async () => {
@@ -104,6 +129,34 @@ describe("with the built CLI on the demo builds", { skip: !built && "run npm run
       await readFile(env.GITHUB_STEP_SUMMARY, "utf8"),
     );
     assert.equal(JSON.parse(await readFile(out.sarif, "utf8")).version, "2.1.0");
+  });
+
+  test("audit of one build: no before input, exit 3, audit summary and SARIF", async () => {
+    const { dir, env } = await setup(
+      "audit",
+      { INPUT_AFTER: join(demo, "notesdesk-1.5.0.asar"), INPUT_VERSION: "0.13.0" },
+      cli,
+    );
+    env.INPUT_SARIF = join(dir, "hexvero.sarif");
+    assert.equal(await main(env), 3);
+    const out = await outputs(env.GITHUB_OUTPUT);
+    assert.equal(out["exit-code"], "3");
+    const summary = await readFile(env.GITHUB_STEP_SUMMARY, "utf8");
+    assert.match(summary, /# hexvero audit: fail/);
+    assert.match(summary, /\| open-external \|/);
+    const sarif = JSON.parse(await readFile(out.sarif, "utf8"));
+    assert.ok(sarif.runs[0].results.some((r) => r.ruleId === "csp-missing"));
+  });
+
+  test("audit through npx is refused before 0.13.0, with a clear message (exit 2)", async () => {
+    const { env } = await setup(
+      "audit-old",
+      { INPUT_AFTER: join(demo, "notesdesk-1.5.0.asar"), INPUT_VERSION: "0.12.0" },
+      "",
+    );
+    delete env.HEXVERO_ACTION_CLI;
+    assert.equal(await main(env), 2);
+    assert.equal((await outputs(env.GITHUB_OUTPUT))["exit-code"], "2");
   });
 
   test("violation: exit 3, summary and SARIF still written", async () => {

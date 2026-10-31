@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The reusable action `hexvero release check` (action.yml at the repository root) runs this file.
 // It reads its inputs from INPUT_* variables that action.yml passes explicitly, runs
-// `hexvero check` without a shell (every input is one argument, whatever it contains), writes the
+// `hexvero check` (or, without `before`, `hexvero audit` on the one build) without a shell (every input is one argument, whatever it contains), writes the
 // Markdown result to the job summary and a SARIF file, sets the step outputs, and exits with the
 // check's own code: 0 pass, 1 technical error, 2 usage error or invalid policy, 3 policy violated,
 // 4 not decidable. A failure while writing the summary or the SARIF file is reported but never
@@ -42,6 +42,24 @@ export function checkArgs({ before, after, policy, baseline }, extra) {
   if (baseline) args.push(`--baseline=${baseline}`);
   args.push(...extra, "--", before, after);
   return args;
+}
+
+/**
+ * The arguments of `hexvero audit` on one build (no `before`): the policy is optional there, its
+ * `audit` section sets levels and suppressions. The build follows `--`, as in `checkArgs`.
+ */
+export function auditArgs({ after, policy, baseline }, extra) {
+  const args = ["audit"];
+  if (policy) args.push(`--policy=${policy}`);
+  if (baseline) args.push(`--baseline=${baseline}`);
+  args.push(...extra, "--", after);
+  return args;
+}
+
+/** Audit mode needs `audit --format markdown` and `--policy`, both new in 0.13.0. */
+export function auditSupported(version) {
+  const [major, minor] = version.split(/[.-]/).map(Number);
+  return major > 0 || minor >= 13;
 }
 
 /** Runs a command without a shell; stderr goes to the log, stdout is returned when captured. */
@@ -93,7 +111,11 @@ export async function main(env = process.env) {
   };
   const version = (env.INPUT_VERSION ?? "").trim() || "0.12.0";
   const sarif = env.INPUT_SARIF ?? "hexvero.sarif";
-  const missing = ["before", "after", "policy"].filter((name) => !inputs[name]);
+  // Without a before build the action audits the one build; the policy is optional then.
+  const audit = !inputs.before;
+  const missing = (audit ? ["after"] : ["before", "after", "policy"]).filter(
+    (name) => !inputs[name],
+  );
   if (missing.length > 0) {
     fail(`missing input: ${missing.join(", ")}`);
     await setOutputs(env.GITHUB_OUTPUT, { "exit-code": "2", sarif: "", summary: "" });
@@ -104,10 +126,17 @@ export async function main(env = process.env) {
     await setOutputs(env.GITHUB_OUTPUT, { "exit-code": "2", sarif: "", summary: "" });
     return 2;
   }
+  // the version is only what npx runs: a CLI given by path (tests, this repository) is this one
+  if (audit && !env.HEXVERO_ACTION_CLI && !auditSupported(version)) {
+    fail(`auditing one build (no before input) needs hexvero 0.13.0 or later, got ${version}`);
+    await setOutputs(env.GITHUB_OUTPUT, { "exit-code": "2", sarif: "", summary: "" });
+    return 2;
+  }
   const [file, lead] = hexveroCommand(env, version);
+  const argsFor = (extra) => (audit ? auditArgs(inputs, extra) : checkArgs(inputs, extra));
 
   // The check itself, as Markdown: its exit code is the action's.
-  const primary = await run(file, [...lead, ...checkArgs(inputs, ["--format=markdown"])], {
+  const primary = await run(file, [...lead, ...argsFor(["--format=markdown"])], {
     capture: true,
     env,
   });
@@ -135,7 +164,7 @@ export async function main(env = process.env) {
       await mkdir(dirname(resolve(sarif)), { recursive: true });
       const second = await run(
         file,
-        [...lead, ...checkArgs(inputs, ["--format=sarif", `--out=${sarif}`, "--force"])],
+        [...lead, ...argsFor(["--format=sarif", `--out=${sarif}`, "--force"])],
         { capture: false, env },
       );
       if (second.error) throw second.error;

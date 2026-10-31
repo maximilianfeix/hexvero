@@ -139,6 +139,18 @@ Markdown result). The SARIF upload stays a separate job with `security-events: w
 workflow above. To read the outputs after a violation instead of failing the job at once, set
 `continue-on-error: true` on the step and test `steps.hexvero.outputs.exit-code` later.
 
+**One build instead of two.** Leave `before` out and the action runs `hexvero audit` on the
+`after` build: the Markdown result goes to the job summary, SARIF to the file, and the step exits
+with the audit's code. `policy` is optional then (its `audit` section sets levels and
+suppressions), and `baseline` takes an audit baseline. This needs `version` 0.13.0 or later.
+
+```yaml
+- uses: maximilianfeix/hexvero@<sha>
+  with:
+    after: dist/app.asar
+    policy: .hexvero/policy.json # optional for an audit
+```
+
 This repository runs its own action (from its own build, without a baseline) on its two
 synthetic example builds in
 [`.github/workflows/check-example.yml`](../.github/workflows/check-example.yml) (expected exit:

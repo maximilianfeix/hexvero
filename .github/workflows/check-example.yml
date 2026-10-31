@@ -57,6 +57,24 @@ jobs:
           echo "exit-code=$EXIT_CODE sarif=$SARIF"
           test "$EXIT_CODE" = 3
           test -s "$SARIF"
+      # The same action without a before build audits the one build (hexvero audit).
+      - name: Audit the 1.5.0 example build alone
+        id: audit
+        uses: ./
+        continue-on-error: true
+        env:
+          HEXVERO_ACTION_CLI: packages/cli/bin/hexvero.js
+        with:
+          after: examples/notesdesk-1.5.0.asar
+          sarif: hexvero-audit.sarif
+      - name: The audit exited 3 and wrote its SARIF file
+        env:
+          EXIT_CODE: ${{ steps.audit.outputs.exit-code }}
+          SARIF: ${{ steps.audit.outputs.sarif }}
+        run: |
+          echo "exit-code=$EXIT_CODE sarif=$SARIF"
+          test "$EXIT_CODE" = 3
+          test -s "$SARIF"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hexvero-sarif
