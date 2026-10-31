@@ -133,8 +133,20 @@ Two more columns, with the settings as written next to them (`webSecurity`,
   set it); else `default off` (its default is `false`). `unknown` when either
   setting is computed and the value follows from it ([WebPreferences][wp]).
 
+Two more pairs for the features a window turns on, both off by default in every version
+([WebPreferences][wp]: `experimentalFeatures` "Default is `false`"; `enableBlinkFeatures` is "A
+list of feature strings separated by `,`" and names none unless written):
+
+- `experimentalFeatures` as written (`true`, `false`, `computed`, `conflicting`, `not written`)
+  and `experimentalFeaturesInEffect`: the literal; else `default off`; `unknown` when computed.
+- `enableBlinkFeatures` as written: the feature names of the string literal (or a template
+  literal without substitutions), split at `,`, trimmed, sorted and without empty names; or
+  `computed` (any other value, also a concatenation), `conflicting` or `not written`.
+  `blinkFeaturesInEffect`: `on` when a name is listed, `off` for an empty string, else
+  `default off`; `unknown` when computed. The `webPreferences` row keeps the string as written.
+
 `basis` states, per window, which of these rules produced each value (for the two web security
-columns only where the value is not a default).
+columns only where the value is not a default; the feature columns add nothing to it).
 
 The audit rule `window-permissive` reports `webSecurityInEffect` off ([Security, 6][sec]) and
 `allowRunningInsecureContentInEffect` on ([Security, 8][sec]), and a computed value as an unknown
@@ -144,6 +156,21 @@ or in window options that could not be followed) gives one unknown finding, for 
 `on`, from `default off` or `off`), never the reverse, and a move from or to `unknown` as an
 unknown finding; there too a move of `allowRunningInsecureContentInEffect` to `unknown` that only
 follows `webSecurity` is folded into the `webSecurity` finding.
+
+The same two rules judge the feature columns: `window-permissive` reports
+`experimentalFeaturesInEffect` on ([Security, 9][sec]: "Do not enable experimental features") and
+`blinkFeaturesInEffect` on, naming the features ([Security, 10][sec]: "Do not use
+`enableBlinkFeatures`"), and a computed value as an unknown finding; nothing when the setting is
+not written, `false`, or an empty string. A feature setting that is unknown only because the
+window's options could not be followed (no row of its own) is said by that window's unknown
+`webSecurity` finding, not by one more finding each, in `audit` and in `check`; one written as a
+computed value keeps its own. A Blink finding's fingerprint has the feature names, so
+a baseline or suppression of one list does not hide a feature added later. `window-more-permissive`
+reports `experimentalFeaturesInEffect` → `on`, `blinkFeaturesInEffect` → `on`, and, for a window
+that names features in both builds, `enableBlinkFeatures` when the after build names one the
+before build does not (the same names in another order are no change); never the reverse. A
+change between two known values that lets pages do no more (`default off` → `off`: the default
+written out) is no finding.
 
 Two things the columns do not say, because the documentation makes them independent of these
 settings: a preload script that is not sandboxed "will always have access to node APIs no matter
@@ -584,9 +611,10 @@ e.appendSwitch(t, …) }` called as `F1(T.app.commandLine, …)` gives an `unkno
 `for (let s of switches) app.commandLine.appendSwitch(s)` is a row with `name: null`), a
 certificate handler or verify proc passed by name (`app.on("certificate-error", onCertError)`:
 `accepts: "unknown"`), `session.setCertificateVerifyProc` judged per session (the receiver is kept
-as written), `<webview allowpopups>`, `will-attach-webview` handlers, and the `webPreferences`
-keys `experimentalFeatures`, `enableBlinkFeatures` and `commandLineSwitches` (see
-[Not read](#not-read); [Security, 9–12][sec]).
+as written), and the `webPreferences` key `commandLineSwitches` (see [Not read](#not-read)).
+`experimentalFeatures` and `enableBlinkFeatures` are window columns
+([derived columns](#the-derived-columns-of-windows); [Security, 9 and 10][sec]); `<webview>`
+attributes and `will-attach-webview` handlers are [`webviews`](#webviews-webviews).
 
 The policy rule `new-unsafe-switch` ([cli.md](cli.md)) reports a dangerous row (a switch by name
 and value, a certificate handler or verify proc by what it accepts) that no row of the before
@@ -1826,7 +1854,8 @@ What a navigation or window-open handler checks, `will-redirect` and the removed
 event, `<webview>` attributes, whether an IPC handler validates its sender
 ([Security, 17][sec]), and `webPreferences` keys other than `preload`, `nodeIntegration`,
 `contextIsolation`, `sandbox`, `webSecurity`, `allowRunningInsecureContent`, `webviewTag`,
-`nodeIntegrationInSubFrames`, `nodeIntegrationInWorker` and `enableRemoteModule`.
+`nodeIntegrationInSubFrames`, `nodeIntegrationInWorker`, `enableRemoteModule`,
+`experimentalFeatures` and `enableBlinkFeatures`.
 
 A change to an options object made in another module is not seen: a window that takes
 `SECURE` from `require("./prefs")` reads the values `prefs.js` writes there, and a module that

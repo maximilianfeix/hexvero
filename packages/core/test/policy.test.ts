@@ -978,6 +978,8 @@ const SAFE = {
   pageRequire: "no",
   webSecurityInEffect: "default on",
   allowRunningInsecureContentInEffect: "default off",
+  experimentalFeaturesInEffect: "default off",
+  blinkFeaturesInEffect: "default off",
 };
 const OPEN = {
   nodeIntegrationInEffect: "on",
@@ -986,6 +988,8 @@ const OPEN = {
   pageRequire: "yes",
   webSecurityInEffect: "default on",
   allowRunningInsecureContentInEffect: "default off",
+  experimentalFeaturesInEffect: "default off",
+  blinkFeaturesInEffect: "default off",
 };
 const win = (name: string, settings: Record<string, string>, line = 2) => ({
   file: "main.js",
