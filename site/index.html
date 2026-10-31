@@ -55,7 +55,7 @@
         "name": "hexvero",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS, Linux, Windows",
-        "description": "Electron release diff for security review: compares two builds of an Electron app and reports what changed in IPC, contextBridge, window settings and network hosts, with the file and line behind each change, what could not be established, and a release policy check for CI. A single-build audit judges most of Electronegativity's checks. Reads files only. CLI, MCP server for coding agents and a local web UI.",
+        "description": "Electron release diff for security review: compares two builds of an Electron app and reports what changed in IPC, contextBridge, window settings and network hosts, with the file and line behind each change, what could not be established, and a release policy check for CI. A single-build audit judges Electronegativity's security checks. Reads files only. CLI, MCP server for coding agents and a local web UI.",
         "url": "https://maximilianfeix.github.io/hexvero/",
         "codeRepository": "https://github.com/maximilianfeix/hexvero",
         "license": "https://opensource.org/licenses/MIT",
@@ -361,9 +361,9 @@ jobs:
         <p class="sub">
           Electronegativity, Doyensec's open-source checker, has been archived since 2026-10-24; its
           last npm release is from March 2023. <code>hexvero audit</code> reads one packaged build
-          with the same exit codes and SARIF as <code>check</code>. It judges most of
-          Electronegativity's checks; HTTP resources and an outdated Electron line are read but not
-          judged yet, and the list below says which.
+          with the same exit codes and SARIF as <code>check</code>. It judges Electronegativity's
+          checks except two for options Electron removed and its 27 API-upgrade checks, and the list
+          below says how.
         </p>
         <div class="two">
           <div>
