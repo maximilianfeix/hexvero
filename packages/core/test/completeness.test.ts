@@ -19,6 +19,7 @@ import { scanJavaScript, tokenize } from "../src/javascript/scan.js";
 import { normalizeCallGraph } from "../src/providers/graph.js";
 import { buildAsar } from "./fixtures/asar.js";
 import { Session } from "../src/session.js";
+import { timeLimit } from "./timeLimit.js";
 
 const ipc = (source: string): string[] =>
   scanJavaScript(source)
@@ -117,7 +118,7 @@ describe("a scan that did not read everything says so", () => {
     const tree = app({ "main.js": "1;", [path]: "2;" });
     const started = performance.now();
     const info = analyzeJavaScriptTree(tree, { include: ["*a*a*a*a*a*a*a*a*a*b"] });
-    expect(performance.now() - started).toBeLessThan(1000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(1000));
     expect(info.coverage.scanned).toBe(0);
     expect(analyzeJavaScriptTree(tree, { include: ["a*a.js"] }).coverage.scanned).toBe(1);
   });
@@ -331,7 +332,7 @@ describe("hostile input stays fast", () => {
         const started = performance.now();
         analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
         // about 0.3 s each here; unbounded, the last one takes minutes
-        expect(performance.now() - started).toBeLessThan(5_000);
+        expect(performance.now() - started).toBeLessThan(timeLimit(5_000));
       }
     },
   );
@@ -346,7 +347,7 @@ describe("hostile input stays fast", () => {
       const hostile = `const { ipcMain } = require("electron");\nlet CH = "c:x";\n${`function q(${params}){`.repeat(63)}${"CH += 1;".repeat(80_000)}${"}".repeat(63)}\nipcMain.on(CH, f);\n`;
       const started = performance.now();
       const info = analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
-      expect(performance.now() - started).toBeLessThan(5_000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(5_000));
       expect(info.modules.flatMap((m) => m.ipc.map((u) => u.channel))).toEqual([null]);
     },
   );
@@ -377,7 +378,7 @@ describe("hostile input stays fast", () => {
       const started = performance.now();
       analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
       // generous, because CI machines are slow and busy; unbounded, these take minutes
-      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     }
   });
 });

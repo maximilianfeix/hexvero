@@ -12,6 +12,7 @@ import {
 import { scanJavaScript, tokenize } from "../src/javascript/scan.js";
 import { decodeVlq, originalPositionFor, summarizeSourceMap } from "../src/javascript/sourcemap.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 const mainJs = `const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require('path');
@@ -433,7 +434,7 @@ describe("directory analysis", () => {
     });
     const started = performance.now();
     const info = analyzeJavaScriptTree(asarTree(hostile, "app.asar"));
-    expect(performance.now() - started).toBeLessThan(5000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(5000));
     expect(info.webPreferences.length).toBeLessThanOrEqual(200);
     expect(info.limitations.map((l) => l.code)).toContain("web_preferences_truncated");
     // with a window in the file, objects no window takes are named, briefly, not listed
@@ -526,7 +527,7 @@ describe("directory analysis", () => {
     ]) {
       const started = performance.now();
       expect(bridgeMembers(hostile, "p.js").truncated).toBe(true);
-      expect(performance.now() - started).toBeLessThan(2000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(2000));
     }
     const many = `x.exposeInMainWorld("a", {${Array.from({ length: 700 }, (_, i) => `m${i}: 1`).join(",")}});`;
     const scan = bridgeMembers(many, "p.js");

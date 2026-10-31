@@ -5,6 +5,7 @@ import { buildSync } from "esbuild";
 import { afterAll, describe, expect, it } from "vitest";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 /**
  * Regressions from the review of the cross-module IPC rules (R1, R3, R4, R5): each case gave a
@@ -258,7 +259,7 @@ describe("R1: page scripts and preloads that may give the api something else", (
     ).join("\n");
     const started = performance.now();
     const info = analyze({ ...base, "renderer.js": page });
-    expect(performance.now() - started).toBeLessThan(8_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(8_000));
     expect(info.modules.find((m) => m.id === "renderer.js")).toBeDefined();
   });
 });

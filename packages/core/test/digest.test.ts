@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { directoryDigest } from "../src/digest.js";
+import { timeLimit } from "./timeLimit.js";
 
 describe("directory digest", () => {
   const dir = mkdtempSync(join(tmpdir(), "hexvero-digest-"));
@@ -43,7 +44,7 @@ describe("directory digest", () => {
     const root = app("many", many);
     const started = performance.now();
     const cut = directoryDigest(root, { maxFiles: 100 });
-    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(5_000));
     expect(cut.partial).toContain("more than 100 files");
     const bytes = directoryDigest(root, { maxBytes: 50 });
     expect(bytes.partial).toContain("byte budget");

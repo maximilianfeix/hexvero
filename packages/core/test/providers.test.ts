@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { detectProviders } from "../src/providers/index.js";
 import { loadCallGraph, runProvider, sharedGraphWaiters } from "../src/providers/run.js";
+import { timeLimit } from "./timeLimit.js";
 
 const unixOnly = process.platform === "win32" ? describe.skip : describe;
 
@@ -332,7 +333,7 @@ esac
         signal: controller.signal,
       }),
     ).rejects.toThrow(/cancelled/);
-    expect(performance.now() - started).toBeLessThan(3000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(3000));
   });
 
   it("stops a shared call-graph run once every waiting caller has cancelled", async () => {

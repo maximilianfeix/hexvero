@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
 import { checkRelease, parsePolicy, Session } from "../src/index.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 /**
  * Command-line switches, accepted certificate errors, verify procs and security warnings
@@ -261,7 +262,7 @@ module.exports = { setup, apply };
       const started = performance.now();
       const info = analyze(hostile);
       expect(info.switches.length).toBeLessThanOrEqual(200);
-      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     }
   });
 

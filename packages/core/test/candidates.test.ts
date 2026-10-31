@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Constants, resolveAliases } from "../src/javascript/aliases.js";
 import { findCandidates, resolvePending } from "../src/javascript/candidates.js";
 import { scanJavaScript, tokenize } from "../src/javascript/scan.js";
+import { timeLimit } from "./timeLimit.js";
 
 const known = (specifier: string, property: string): string | null =>
   specifier === "./net.js" && property === "API" ? "https://api.example/v2" : null;
@@ -86,7 +87,7 @@ describe("endpoints", () => {
     const started = performance.now();
     const hostile = find(`${"fetch(`${a}".repeat(50_000)}`);
     // generous: the point is linear against quadratic, and test machines are busy
-    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     expect(hostile.endpoints.length).toBeLessThanOrEqual(2000);
   });
 
@@ -629,7 +630,7 @@ describe("storage through wrapper methods and enums", () => {
     const started = performance.now();
     const found = find(source);
     // generous: the point is linear against quadratic, and test machines are busy
-    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     expect(found.storage.length).toBeLessThanOrEqual(2000);
   });
 });
@@ -701,7 +702,7 @@ describe("names and scope", () => {
       // eslint-disable-next-line no-new
       new Constants(tokens);
       // generous: the point is linear against quadratic, and test machines are busy
-      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     }
   });
 

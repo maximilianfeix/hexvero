@@ -11,6 +11,7 @@ import { Session, electronInZip, loadTarget, targetFromBytes } from "../src/inde
 import { buildAsar } from "./fixtures/asar.js";
 import { buildMacho } from "./fixtures/macho.js";
 import { buildZip } from "./fixtures/zip.js";
+import { timeLimit } from "./timeLimit.js";
 
 const dir = mkdtempSync(join(tmpdir(), "hexvero-container-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -449,7 +450,7 @@ describe("the Electron app inside a packaged build", () => {
     const opened = openZip(buildZip(files));
     const started = performance.now();
     for (let i = 0; i < 40_000; i++) expect(opened.find(`d/f${i}.store`)).toBeDefined();
-    expect(performance.now() - started).toBeLessThan(2000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(2000));
   });
 
   it("does not take a source tree with a copied runtime file for an install directory", async () => {

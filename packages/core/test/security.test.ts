@@ -7,6 +7,7 @@ import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascri
 import { cspMetaRows, cspWeaknesses, schemeOf } from "../src/javascript/security.js";
 import { auditBuild, checkRelease, parsePolicy, Session } from "../src/index.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 /**
  * shell.openExternal calls, permission handlers and Content Security Policies (`openExternal`,
@@ -171,7 +172,7 @@ shell.openExternal(url);
     const source = `const { shell } = require("electron");\n${calls.join("\n")}\nshell.openExternal(userUrl);\n`;
     const t = performance.now();
     const info = analyze(source);
-    expect(performance.now() - t).toBeLessThan(20_000);
+    expect(performance.now() - t).toBeLessThan(timeLimit(20_000));
     expect(info.openExternal.some((r) => r.argumentKind === "unknown")).toBe(true);
     expect(info.limitations.map((l) => l.code)).toContain("open_external_truncated");
   });
@@ -330,7 +331,7 @@ const server = { "Content-Security-Policy": "script-src *" };
     const hostile = `${"<meta ".repeat(200_000)}${"<!--".repeat(10_000)}<meta http-equiv="Content-Security-Policy" content="x`;
     const t = performance.now();
     const { rows } = cspMetaRows(hostile, "x.html");
-    expect(performance.now() - t).toBeLessThan(10_000);
+    expect(performance.now() - t).toBeLessThan(timeLimit(10_000));
     expect(rows.length).toBeLessThanOrEqual(50);
   });
 });
@@ -780,7 +781,7 @@ ses.webRequest.onHeadersReceived((d, cb) => cb({ responseHeaders: { ...d.respons
     const source = `${"w.webRequest.onHeadersReceived(()=>{});".repeat(n)}${'({"content-security-policy":1});'.repeat(n)}`;
     const t = performance.now();
     analyze(source);
-    expect(performance.now() - t).toBeLessThan(15_000);
+    expect(performance.now() - t).toBeLessThan(timeLimit(15_000));
   });
 });
 

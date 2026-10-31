@@ -15,6 +15,7 @@ import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascri
 import { NOT_READ, PayloadReader } from "../src/javascript/payload.js";
 import { scanJavaScript, tokenize } from "../src/javascript/scan.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 /**
  * The payload shape of an IPC call (`args`): what the arguments after the channel look like as
@@ -327,6 +328,6 @@ describe("hostile input", () => {
     expect(result.ipc.find((u) => u.channel === "deep")?.args).toBe("({a})");
     expect(result.ipc.filter((u) => u.channel === "n").every((u) => u.args === "({k})")).toBe(true);
     expect(result.ipc.find((u) => u.channel === "c7")?.args).toBe("({a7, b, …}, ...)");
-    expect(elapsed).toBeLessThan(15_000);
+    expect(elapsed).toBeLessThan(timeLimit(15_000));
   });
 });

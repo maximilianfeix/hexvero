@@ -26,6 +26,7 @@ import { Session, checkRelease, parsePolicy } from "../src/index.js";
 import { buildAsar } from "./fixtures/asar.js";
 import { buildMacho } from "./fixtures/macho.js";
 import { buildZip } from "./fixtures/zip.js";
+import { timeLimit } from "./timeLimit.js";
 
 const dir = mkdtempSync(join(tmpdir(), "hexvero-runtime-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -1033,7 +1034,7 @@ describe("files that are not regular", () => {
       expect(() => openAsarFile(join(root, "resources", "app.asar"))).toThrow(/not a regular file/);
       const { runtime } = readRuntimeOnDisk(root, "windows-linux", "resources/app.asar", "asar");
       expect(runtime.binary).toBe("Fixture.exe");
-      expect(performance.now() - started).toBeLessThan(5000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(5000));
     },
   );
 });
@@ -1244,7 +1245,7 @@ describe("review RF: the order change in 15.0.0-beta.6, and more", () => {
     const bytes = Buffer.concat(Array.from({ length: MAX_ANCHORS + 10 }, () => repeat));
     const started = performance.now();
     const scan = scanRuntimeBinary(bytesSource(bytes));
-    expect(performance.now() - started).toBeLessThan(2000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(2000));
     expect(scan.overflow.electron).toBe(true);
     expect(scan.overflowWhy?.electron).toBe(`more than ${MAX_ANCHORS} " Electron/" strings`);
   });

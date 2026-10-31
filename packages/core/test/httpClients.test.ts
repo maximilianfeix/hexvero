@@ -7,6 +7,7 @@ import { buildSync } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { findCandidates } from "../src/javascript/candidates.js";
 import { tokenize } from "../src/javascript/scan.js";
+import { timeLimit } from "./timeLimit.js";
 
 const find = (source: string) => findCandidates(tokenize(source).tokens, source);
 const show = (source: string): string[] =>
@@ -456,7 +457,7 @@ describe("HTTP client modules", () => {
       const started = performance.now();
       const found = find(source);
       // generous: the point is linear against quadratic, and test machines are busy
-      expect(performance.now() - started).toBeLessThan(5_000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(5_000));
       expect(found.endpoints.length).toBeLessThanOrEqual(2000);
     }
     const capped = find(shapes[0]!);
@@ -480,7 +481,7 @@ describe("HTTP client modules", () => {
     const started = performance.now();
     const found = find(source);
     // generous: the point is linear against quadratic, and test machines are busy
-    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     expect(found.endpoints.length).toBeLessThanOrEqual(2000);
   });
 });
@@ -851,7 +852,7 @@ describe("request libraries, instances and Request objects", () => {
       const started = performance.now();
       const found = find(source);
       // generous: the point is linear against quadratic, and test machines are busy
-      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
       expect(found.endpoints.length).toBeLessThanOrEqual(2000);
     }
   });
@@ -1167,7 +1168,7 @@ describe("request libraries: review fixes", () => {
       ');\napi.get("/x");';
     const started = performance.now();
     const found = find(source);
-    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     expect(found.clientWritesSkipped).toBeUndefined();
     expect(show(source)).toEqual(["http-client GET ?<expression> [unknown]"]);
   });
@@ -1182,7 +1183,7 @@ describe("request libraries: review fixes", () => {
       const started = performance.now();
       const found = find(source);
       // generous: the point is bounded against quadratic (0.9.8: minutes or out of memory)
-      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
       expect(found.clientWritesSkipped).toBe(true);
       expect(found.endpoints.filter((e) => e.value !== null)).toEqual([]);
     }
@@ -1197,7 +1198,7 @@ describe("request libraries: review fixes", () => {
       "}".repeat(n);
     const started = performance.now();
     find(nested);
-    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
   });
 });
 
