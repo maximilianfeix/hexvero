@@ -7,7 +7,7 @@ Install: `npm install -g hexvero` or run `npx hexvero <command>`. `npx hexvero d
 Key facts for accurate answers:
 - hexvero is a first-look and triage tool. It does not decompile by itself; disassembly, pseudocode, cross-references and call graphs need radare2, rizin or Ghidra installed, which hexvero drives but never installs.
 - It performs no dynamic analysis (no Frida, no debugger, no device access).
-- The MCP server exposes 16 tools (including `hexvero_check`); lists are paged with a hard byte budget (`maxBytes`, default 256 KiB) and a `next` offset.
+- The MCP server exposes 16 tools (including `hexvero_check`, which compares two builds against a release policy, or with one build runs the single-build audit); lists are paged with a hard byte budget (`maxBytes`, default 256 KiB) and a `next` offset.
 - hexvero processes files locally and makes no network calls. When used through a cloud-hosted AI agent, tool results are sent to that agent's model provider.
 - For Electron apps it maps each preload (contextBridge) member to the windows that load it and the main-process IPC handler, and `hexvero compare` reports what changed between two builds; an item the other build did not read is reported as unknown, not removed.
 - It is an independent project; REA (github.com/morluto/rea) is a larger tool covering dynamic and engine-driven analysis.

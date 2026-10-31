@@ -21,6 +21,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- MCP: `hexvero_check` with `targetA` alone audits that build, as `hexvero audit` does
+  (`unknown`, an inline policy or `policyPath` with an `audit` section, a read-only audit
+  `baselinePath`, SARIF); the answer says `hexvero: "audit"`. Still 16 tools; the catalog grows
+  from 15,637 to 15,908 bytes (#277).
 - `hexvero audit --policy <file> --baseline <file> [--update-baseline]`: a policy's new `audit`
   section sets levels (`fail`, `warn`, `off`) per audit rule, `unknown`, and suppressions
   (fingerprint, reason, optional expiry; an expired one counts again); a baseline accepts the
