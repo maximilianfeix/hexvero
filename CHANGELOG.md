@@ -6,6 +6,12 @@ All notable changes to hexvero are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Web UI start screen: "Review an Electron release." with "Compare example releases" first (it opens the comparison of the two example builds, as `hexvero ui --demo` does) and "Open your build" second. One line names the Electron inputs (`app.asar`, a `.app` bundle, an install directory, a release ZIP); the other formats moved from a wall of pills into an "Other formats" disclosure.
+- Web UI comparison reaches the first change sooner: the change-type chips and the search stay in view, list and basis moved into a "More filters" disclosure (a button with `aria-expanded`) that says how many of them are on while it is closed, and the row count and key hints share one line. "Not compared whole" still sits above the changes, with a shorter lead ("3 lists may hold more changes than shown") and one line per reason, naming every list it applies to.
+- Web UI motion: opening the evidence panel fades in and rises 4 px over 160 ms; the 220 ms verdict settle is unchanged. Under `prefers-reduced-motion` every animation and transition stops, including the mobile sidebar slide (it ran before) and the drop zone highlight.
+
 ## [0.12.0] - 2026-10-24
 
 ### Added
