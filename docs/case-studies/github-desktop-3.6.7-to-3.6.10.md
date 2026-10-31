@@ -110,8 +110,11 @@ on the same two builds:
   gives a `webContents.send` row only where the object passed is provably a webContents; all 22
   calls in 3.6.10's `main.js` are read, none extra.
 - Reading `main.js` as the sender of 16 more channels turned their `?` rows into `~ receivers: []
-  → ["renderer.js"]`: the renderer side of those channels is what differs between the builds, which
-  has not been checked against the source here.
+  → ["renderer.js"]`. Checked against the bundles afterwards: **these 16 rows are wrong.** Both
+  builds register the same receivers through a forwarder (`function y(e,t){m.ipcRenderer.on(e,t)}`
+  in 3.6.7, `function Ne(e,t){Oe.ipcRenderer.on(e,t)}` in 3.6.10); hexvero reads 3.6.10's and not
+  3.6.7's, so a difference in its reading shows as a change. Tracked in
+  [#298](https://github.com/maximilianfeix/hexvero/issues/298).
 
 ## What this shows
 
