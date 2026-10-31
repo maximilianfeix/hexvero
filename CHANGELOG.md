@@ -19,6 +19,10 @@ All notable changes to hexvero are listed here. The format follows
 - New social preview built around the same trace; new 30-second demo (`docs/demo/release-review.mp4` and `.gif`) recorded from the CLI and the local UI.
 - README: the new demo, `hexvero audit` in the quick start, and the comparison row that still said the audit checks were "not yet" available. Electronegativity was archived on 2026-10-24; `docs/comparison.md` says so.
 
+### Added
+
+- A reusable GitHub Action at the repository root (`uses: maximilianfeix/hexvero@<sha>`, composite, `action.yml`): runs `hexvero check` from npm (`version`, default `0.12.0`) on `before`, `after`, `policy` and an optional `baseline`, writes the Markdown result to the job summary and a SARIF file (`sarif`, default `hexvero.sarif`), sets the outputs `exit-code`, `sarif` and `summary`, and exits with the check's code (0, 1, 2, 3 or 4); a failure while writing the summary or the SARIF file never changes it. Inputs reach the script only as environment variables and hexvero runs without a shell. `.github/workflows/check-example.yml` now runs this action; docs/ci.md, section Reusable action.
+
 ## [0.12.0] - 2026-10-24
 
 ### Added
