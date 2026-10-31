@@ -92,6 +92,27 @@ costs two real additions their label. A reviewer still sees both rows, with `mai
 - [#281](https://github.com/maximilianfeix/hexvero/issues/281): crash.js's senders of `crash-quit` and `crash-ready` are lost in 3.6.10, where the minified
   forwarder's short name is shared by three functions instead of two.
 
+## Re-run after the fixes (#284, #287)
+
+Both misses were fixed the same evening, with hand-written regression fixtures (plain, bundled,
+minified) and the corpus gate unchanged (392 rows, none worse). `hexvero compare … ipcChannels`
+on the same two builds:
+
+|                             | before the fixes                    | after                               |
+| --------------------------- | ----------------------------------- | ----------------------------------- |
+| summary                     | 7 changed, 50 unchanged, 19 unknown | 22 changed, 52 unchanged, 3 unknown |
+| `resolve-image-token`       | not listed                          | `? only in b`, sender `main.js`     |
+| `crash-quit`, `crash-ready` | `senders: ["crash.js"] → []`        | unchanged (no row)                  |
+
+- **#281** was not a short-name limit: a local `f` declared after a function expression behind
+  `?` (`u=n?function(…){…}(…):z, …, f=…`) was read as a write of the module-level helper `f`.
+- **#280**: the helper `ut(e, t, ...n)` calls `e.send(t, ...n)` on a bare parameter. A call now
+  gives a `webContents.send` row only where the object passed is provably a webContents; all 22
+  calls in 3.6.10's `main.js` are read, none extra.
+- Reading `main.js` as the sender of 16 more channels turned their `?` rows into `~ receivers: []
+  → ["renderer.js"]`: the renderer side of those channels is what differs between the builds, which
+  has not been checked against the source here.
+
 ## What this shows
 
 - The release changes that matter for a review were visible from the files: a new Electron line,
