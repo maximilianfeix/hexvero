@@ -399,6 +399,27 @@ describe("hostile input stays fast", () => {
   );
 
   it(
+    "reads names after a comma as declarators without walking a long list once per name (#298)",
+    { timeout: 30_000 },
+    () => {
+      // a forwarder's name tens of thousands of times after a comma in one list, array or object
+      // literal: each is asked whether it declares the name; the walk back to the list's keyword
+      // is shared, not repeated (several seconds each here when it was)
+      const forwarder = "function y(e,t){ipcRenderer.on(e,t)}";
+      const calls = 'y("c",f);'.repeat(200);
+      for (const hostile of [
+        `function m(){${forwarder}var z=[${"q,y,".repeat(60_000)}];${calls}}`,
+        `function m(){${forwarder}function n(){var a${",y".repeat(60_000)};return a}${calls}}`,
+        `function m(){${forwarder}var z={${"q,y,".repeat(60_000)}};${calls}}`,
+      ]) {
+        const started = performance.now();
+        analyzeJavaScriptTree(app({ "main.js": hostile }) as FileTree);
+        expect(performance.now() - started).toBeLessThan(timeLimit(2_000));
+      }
+    },
+  );
+
+  it(
     "bounds the reading of lazy getters (`X().app`, `new (X().BrowserWindow)(…)`)",
     { timeout: 30_000 },
     () => {
