@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#1b1d21" />
+    <title>Moving from Electronegativity to hexvero</title>
+    <meta
+      name="description"
+      content="Electronegativity was archived on 2026-10-24. How to run its single-build checks with hexvero audit, which checks are covered and which are not, and how to review the next release with hexvero compare and check."
+    />
+    <link rel="icon" href="../../favicon.svg" type="image/svg+xml" />
+    <link
+      rel="canonical"
+      href="https://maximilianfeix.github.io/hexvero/compare/electronegativity/"
+    />
+    <meta property="og:title" content="Moving from Electronegativity to hexvero" />
+    <meta
+      property="og:description"
+      content="Electronegativity was archived on 2026-10-24. How to run its single-build checks with hexvero audit, which checks are covered and which are not, and how to review the next release with hexvero compare and check."
+    />
+    <meta
+      property="og:image"
+      content="https://maximilianfeix.github.io/hexvero/social-preview.png"
+    />
+    <meta
+      property="og:url"
+      content="https://maximilianfeix.github.io/hexvero/compare/electronegativity/"
+    />
+    <meta property="og:type" content="article" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="../../home.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="bar scrolled">
+      <div class="bar-in">
+        <a class="wordmark" href="../../"
+          ><img src="../../logo-mark.svg" width="26" height="26" alt="" />hexvero</a
+        >
+        <nav aria-label="Site">
+          <a class="wide" href="../../#trace">How it works</a
+          ><a class="wide" href="../electronegativity/">From Electronegativity</a
+          ><a class="wide" href="../rea/">hexvero and REA</a
+          ><a class="gh" href="https://github.com/maximilianfeix/hexvero">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <main id="main">
+      <section class="doc">
+        <p class="kicker">Checked 2026-10-31 · hexvero 0.12.0</p>
+        <h1>Moving from Electronegativity to hexvero</h1>
+        <p class="answer">
+          Run <code>npx hexvero audit</code> on one packaged build for the single-build checks, then
+          <code>hexvero check</code> on the last release and the next one, so CI fails only on what
+          a release changes. hexvero covers part of Electronegativity's checks, not all; the list
+          below says which.
+        </p>
+
+        <h2>Why look for a replacement at all</h2>
+        <p>
+          <a href="https://github.com/doyensec/electronegativity">Electronegativity</a> by Doyensec
+          was the best-known open-source static checker for Electron. Its README says it is no
+          longer actively maintained, the repository was archived on 2026-10-24, and the last npm
+          release, <code>@doyensec/electronegativity</code> 1.10.3, is from 2023-03-09. Doyensec's
+          commercial successor is ElectroNG. hexvero is an independent MIT project, not affiliated
+          with Doyensec and sharing no code with Electronegativity.
+        </p>
+
+        <h2>The same job on one build</h2>
+        <pre
+          class="mini"
+        ><span class="pr">$</span> <span class="c">npx hexvero audit dist/mac/YourApp.app</span>                 <span class="pr"># text</span>
+<span class="pr">$</span> <span class="c">npx hexvero audit dist/mac/YourApp.app --format sarif</span>  <span class="pr"># for code scanning</span></pre>
+        <p>
+          Exit codes: <code>0</code> pass, <code>3</code> a rule is violated, <code>4</code> not
+          decidable with <code>--unknown fail</code>, <code>1</code> error, <code>2</code> usage. It
+          reads an <code>app.asar</code>, a <code>.app</code>, a Windows or Linux install directory
+          or a release ZIP, and bundled or minified JavaScript inside them. Nothing is executed.
+        </p>
+
+        <h2>What is covered in 0.12.0</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Electronegativity check</th>
+                <th scope="col">hexvero</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">NODE_INTEGRATION, CONTEXT_ISOLATION, SANDBOX (JS)</th>
+                <td class="yes">covered, per window, with the Electron version's defaults</td>
+              </tr>
+              <tr>
+                <th scope="row">REMOTE_MODULE</th>
+                <td class="yes">covered</td>
+              </tr>
+              <tr>
+                <th scope="row">CSP (HTML, JS, global)</th>
+                <td class="yes">covered: missing or weak, meta tag and header</td>
+              </tr>
+              <tr>
+                <th scope="row">OPEN_EXTERNAL</th>
+                <td class="yes">covered</td>
+              </tr>
+              <tr>
+                <th scope="row">PERMISSION_REQUEST_HANDLER</th>
+                <td class="yes">covered: missing, or granting everything</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  CERTIFICATE_ERROR_EVENT, CERTIFICATE_VERIFY_PROC, CUSTOM_ARGUMENTS (JS)
+                </th>
+                <td class="yes">covered</td>
+              </tr>
+              <tr>
+                <th scope="row">WEB_SECURITY, INSECURE_CONTENT (JS), LIMIT_NAVIGATION</th>
+                <td>read, not judged by a rule yet</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  webview attributes, PROTOCOL_HANDLER, DANGEROUS_FUNCTIONS, EXPERIMENTAL and BLINK
+                  features, JSON script switches
+                </th>
+                <td class="no">not read yet</td>
+              </tr>
+              <tr>
+                <th scope="row">AUXCLICK, AFFINITY, 27 upgrade checks (Electron 5–8)</th>
+                <td class="no">not planned: obsolete options or API migration</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine">
+          Every row with its check id and the planned rule:
+          <a
+            href="https://github.com/maximilianfeix/hexvero/blob/main/docs/engineering/audit-plan.md"
+            >docs/engineering/audit-plan.md</a
+          >. Audit baselines and suppressions are not shipped yet; <code>check</code> has both.
+        </p>
+
+        <h2>What changes in how you work</h2>
+        <ul>
+          <li>
+            <strong>From one build to two.</strong>
+            <code>hexvero check previous.asar next.asar --policy policy.json</code> fails on a new
+            preload member, a new external host, a more permissive window, a weakened fuse, a new
+            <code>openExternal</code>, an allow-all permission handler or a weaker CSP, not on what
+            was already there.
+          </li>
+          <li>
+            <strong>No source comments.</strong> Suppressions live in the policy, keyed by a
+            fingerprint that names the item, never the line, with a reason and an optional expiry.
+            Reformatting with Prettier changes nothing (Electronegativity issue #93).
+          </li>
+          <li>
+            <strong>Unknown stays unknown.</strong> A value computed at run time is reported as
+            unresolved, and an Electron line hexvero has no data for is unknown, not an error (issue
+            #106).
+          </li>
+          <li>
+            <strong>The line in both builds.</strong> Every change carries the file and line it was
+            read from in the old and the new build; <code>--report report.html</code> shows both
+            side by side.
+          </li>
+        </ul>
+
+        <h2>Try it first on the example</h2>
+        <pre class="mini"><span class="pr">$</span> <span class="c">npx hexvero demo</span>
+<span class="pr">$</span> <span class="c">npx hexvero audit hexvero-demo/notesdesk-1.5.0.asar</span></pre>
+        <p>
+          NotesDesk is a small synthetic app shipped with hexvero; the audit reports an
+          <code>openExternal</code> call at <code>main.js:20</code>, no permission handler and no
+          CSP, and exits <code>3</code>.
+        </p>
+      </section>
+    </main>
+    <footer>
+      <span>hexvero · MIT</span>
+      <a href="../../">Home</a>
+      <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/comparison.md"
+        >docs/comparison.md</a
+      >
+      <span class="sp"></span>
+      <a href="https://github.com/maximilianfeix/hexvero/blob/main/DISCLAIMER.md"
+        >Use only on software you may examine</a
+      >
+    </footer>
+  </body>
+</html>

@@ -95,3 +95,30 @@ Decided 2026-10-24 with the README rewrite.
   the PNG to `docs/` and `site/`).
 - **README order**: hero and demo GIF, a 10-second try, why, what it reads, own app, CI, agents,
   comparison, accuracy and limits, docs, contributing. Depth lives in `docs/`.
+
+## Website (site/)
+
+Decided 2026-10-31 with the site redesign. The site is dark only; the UI keeps its light theme.
+
+- **Proof first.** Every visual on the landing page is real output on the NotesDesk example:
+  the hero terminal (`compare`, `check`, `audit` tabs), the five-step trace (window → preload
+  member → channel → handler → host), the two-build source split and the exit code. Nothing is
+  a mock-up; long lines are shortened, never rewritten.
+- **Section kickers are the command** that produces what the section shows
+  (`$ hexvero check … --policy …`), in mono, with the flag that matters in amber. No numbered
+  eyebrows, no all-caps labels.
+- **Fonts** are served from `site/fonts/` (IBM Plex Sans 400/500/600, Mono 400/500, SIL OFL,
+  from `@fontsource` 5.3.0); nothing is fetched from another origin.
+- **Motion**, three authored moments, all off under `prefers-reduced-motion` and all optional:
+  without JavaScript every section shows its final state.
+  - The hero terminal replays its own output once when it is first on screen: the command types
+    in at most 650 ms, then lines appear 55 ms apart, each rising 3 px over 240 ms. Tabs and
+    "replay" run it again; a new run cancels the old one.
+  - The trace nodes settle in 150 ms apart (opacity and 6 px, 360 ms), then the arrows between
+    them draw in (320 ms each).
+  - The exit code `3` fades in once (300 ms, 500 ms delay).
+  - Easing everywhere: `cubic-bezier(0.2, 0.7, 0.2, 1)`. No parallax, no scroll-jacking, no
+    animated counters, and a filled (confirmed) dot never animates out of a hollow one.
+- **Comparison pages** (`site/compare/electronegativity/`, `site/compare/rea/`) open with a
+  one-paragraph answer, date their sources, and never rank: they say which tool answers which
+  question.

@@ -19,9 +19,9 @@ Diff two builds of an Electron app and see the IPC channels, preload bridge, win
 
 <br>
 
-![Terminal: hexvero demo, then compare showing a new preload member with its preload and handler lines and an IPC channel reported as unknown, then hexvero check failing the policy with exit 3](docs/demo/release-gate.gif)
+![30 seconds of real output: npx hexvero demo lists what changed between two builds of an example Electron app, including a new preload member with its preload and handler lines and an IPC channel reported as unknown; hexvero check fails the release policy with exit 3; then the local web UI opens the new member and the changed window with the source lines of both builds](docs/demo/release-review.gif)
 
-<sub>25 seconds, real output · [mp4](docs/demo/release-gate.mp4) · recorded with [`release-gate.tape`](docs/demo/release-gate.tape)</sub>
+<sub>30 seconds of real output: a terminal recording and a browser recording, joined with a fade · [mp4](docs/demo/release-review.mp4) · terminal: [`release-review-terminal.tape`](docs/demo/release-review-terminal.tape), UI: [`record-release-review.mjs`](docs/demo/record-release-review.mjs)</sub>
 
 </div>
 
@@ -97,6 +97,12 @@ npx hexvero check old/YourApp.app new/YourApp.app --policy .hexvero/policy.json
 
 To accept what is there today, add `--baseline .hexvero/baseline.json --update-baseline` once; later runs fail only on new findings.
 
+One build instead of two, with the single-build checks known from Electronegativity (CSP, `shell.openExternal`, permission handlers, window settings, certificate and command-line switches):
+
+```bash
+npx hexvero audit YourApp.app --format sarif > audit.sarif   # exit 3 when a rule is violated
+```
+
 ## Use it in CI
 
 Pinned to a version so a release cannot change your results unannounced:
@@ -139,10 +145,10 @@ Elsewhere, `npx hexvero setup --apply` registers the MCP server with the coding 
 | Compares two builds of one app                 | yes, list by list               | no (one build; checks between Electron versions)                   | yes (`compare_application_versions`)          | yes, minified bytes   |
 | Bridge member → IPC channel, blind `holdout2`  | 65 of 78                        | not measured                                                       | 6 of 66                                       | no                    |
 | Release policy with CI exit codes              | yes (`0`/`3`/`4`, SARIF)        | SARIF output                                                       | not compared                                  | no                    |
-| CSP, `shell.openExternal`, permission handlers | not yet                         | yes                                                                | not compared                                  | no                    |
-| Status                                         | active, MIT                     | README: "no longer actively maintaining"                           | active                                        | n/a                   |
+| CSP, `shell.openExternal`, permission handlers | yes, `hexvero audit` (0.12)     | yes                                                                | not compared                                  | no                    |
+| Status                                         | active, MIT                     | archived 2026-10-24, last release 2023                             | active                                        | n/a                   |
 
-Electronegativity's README says it is no longer maintained. hexvero covers its use case for release review; parity with its full list of checks is in progress, not shipped. REA does much that hexvero does not (dynamic analysis, devices, decompilers); use it for that. Sources, dates and every caveat: [docs/comparison.md](docs/comparison.md).
+Electronegativity was archived on 2026-10-24. `hexvero audit <build>` runs part of its single-build checks with the same exit codes and SARIF as `check`; which checks are covered and which are not is listed in [the migration page](https://maximilianfeix.github.io/hexvero/compare/electronegativity/). REA does much that hexvero does not (dynamic analysis, devices, decompilers); use it for that. Sources, dates and every caveat: [docs/comparison.md](docs/comparison.md).
 
 ## Accuracy and limits
 
