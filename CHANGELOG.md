@@ -23,6 +23,15 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- Audit rule `webview-insecure` and check rule `new-insecure-webview` (Electronegativity's webview
+  checks, security guide sections 11 and 12), from the new `webviews` collection: `<webview>`
+  tags in HTML, in strings of the code, created with `createElement`, and framework props, judged
+  as Electron's guest-view code applies their attributes; `will-attach-webview` listeners with
+  whether they block, drop the preload or turn off Node. With `webviewTag: true` written and no
+  listener found, the absence is reported (never on a partial scan) (#293).
+- Audit rule `custom-protocol` and check rule `new-custom-protocol` (`PROTOCOL_HANDLER_JS_CHECK`,
+  sections 7 and 18), from the new `protocols` collection: protocol handlers, privileged schemes
+  with their literal privileges, `setAsDefaultProtocolClient`. Only `bypassCSP: true` fails (#293).
 - The reusable action audits one build when `before` is left out (`hexvero audit` with a
   Markdown job summary and SARIF; `policy` and `baseline` optional; needs `version` 0.13.0 or
   later). The release script now also moves the action's default version, which stayed at 0.12.0.
