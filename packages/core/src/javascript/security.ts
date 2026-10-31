@@ -337,6 +337,11 @@ class FileReader {
       x + 4 === y
     )
       return true;
+    // a lazy getter of it: `X()` with `X = n.cw(function (e) { e.exports = require("electron") })`
+    if (this.ident(x) && x + 3 === y && depth < 3 && this.spend()) {
+      const given = this.resolver.lazyValueAt(x);
+      if (given) return this.moduleExpr(given[0], given[1], depth + 1);
+    }
     if (this.ident(x) && x + 1 === y) return this.moduleName(x, depth + 1);
     return false;
   }

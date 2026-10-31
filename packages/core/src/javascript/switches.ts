@@ -262,7 +262,7 @@ export function switchRows(
   }
 
   /** The tokens [a, b) are an expression for the electron module. */
-  const moduleExpr = (a: number, b: number): boolean => {
+  const moduleExpr = (a: number, b: number, depth = 0): boolean => {
     let x = a;
     let y = b;
     while (is(y - 1, ";") || is(y - 1, ",")) y--;
@@ -291,18 +291,23 @@ export function switchRows(
       x + 4 === y
     )
       return true;
+    // a lazy getter of it: `X()` with `X = n.cw(function (e) { e.exports = require("electron") })`
+    if (ident(x) && x + 3 === y && depth < 8 && spend()) {
+      const given = resolver.lazyValueAt(x);
+      if (given) return moduleExpr(given[0], given[1], depth + 1);
+    }
     // another name of it
-    if (ident(x) && x + 1 === y) return moduleName(x, 1);
+    if (ident(x) && x + 1 === y) return moduleName(x, depth + 1);
     return false;
   };
   /** The name at k is bound, by scope, to the electron module. */
   const moduleName = (k: number, depth = 0): boolean => {
     const name = ident(k);
-    if (!name || depth > 3 || !spend()) return false;
+    if (!name || depth > 8 || !spend()) return false;
     if (resolver.boundAround(k, name)?.kind === "param") return false;
     if (constants.requireOf(name, k) === "electron") return true;
     const bound = resolver.binding(k, name, true);
-    if (bound?.kind === "value") return moduleExpr(bound.range[0], bound.range[1]);
+    if (bound?.kind === "value") return moduleExpr(bound.range[0], bound.range[1], depth);
     return bound === null && importedModule.has(name);
   };
   /** The name at k is Electron's `app`: `{ app } = require("electron")`, `import { app }`, `x = electron.app`. */
@@ -334,11 +339,12 @@ export function switchRows(
     if (!ident(d - 1)) return -1;
     if (!dot(d - 2)) return appName(d - 1) ? d - 1 : -1;
     if (ident(d - 1) !== "app") return -1;
-    // `X.app`, `require("electron").app`, `(0, X.app)` is not read
+    // `X.app`, `require("electron").app`, `X().app` (a lazy getter), `(0, X.app)` is not read
     if (ident(d - 3) && !dot(d - 4)) return moduleName(d - 3) ? d - 3 : -1;
     if (is(d - 3, ")")) {
       const open = resolver.openOf(d - 3);
-      if (open > 0 && ident(open - 1) === "require" && moduleExpr(open - 1, d - 2)) return open - 1;
+      if (open > 0 && ident(open - 1) && !dot(open - 2) && moduleExpr(open - 1, d - 2))
+        return open - 1;
     }
     return -1;
   };

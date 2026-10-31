@@ -39,7 +39,8 @@ The classes of finding that are checked:
   and look-alikes that are not IPC: comments, strings, unrelated objects, unused constants, names
   computed at run time.
 - Window settings per window, including options built in a variable, spread from a base object or
-  returned by a helper, and an unrelated object with the same keys.
+  returned by a helper, a window class reached through a lazy getter of the electron module, and
+  an unrelated object with the same keys.
 - contextBridge members and the channel each forwards to.
 - Network endpoints (fully known, partly known, and calls whose address is unknown), with
   look-alikes: URLs that are only displayed, routes of a server-side router, cache lookups.

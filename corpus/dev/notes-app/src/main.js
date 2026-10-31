@@ -25,6 +25,21 @@ function createMainWindow() {
   return win;
 }
 
+// Electron loaded on first use, as Babel's lazy CommonJS imports write it (webpack 5's lazy
+// wrapper does the same): `lazyElectron()` is the electron module.
+function lazyElectron() {
+  const data = require("electron");
+  lazyElectron = function () {
+    return data;
+  };
+  return data;
+}
+
+function createAboutWindow() {
+  const aboutPrefs = { webviewTag: true, webSecurity: true };
+  return new (lazyElectron().BrowserWindow)({ width: 420, webPreferences: aboutPrefs });
+}
+
 function createPrintWindow() {
   // The settings object is built first and passed by name.
   const prefs = { nodeIntegration: true, contextIsolation: false, sandbox: false };
@@ -60,5 +75,6 @@ app.whenReady().then(() => {
   fake.handle("ghost:fake", help);
 
   createPrintWindow();
+  createAboutWindow();
   console.log(paymentOptions.environment);
 });

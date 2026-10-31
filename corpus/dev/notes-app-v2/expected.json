@@ -13,7 +13,7 @@
         "added": [],
         "removed": [],
         "changed": ["nodeIntegration: true -> false", "sandbox: false -> true"],
-        "why": "only the print window's settings change; the main window's four settings and the print window's contextIsolation only move"
+        "why": "only the print window's settings change; the main window's four settings, the print window's contextIsolation and the about window's two settings (reached through a lazy getter of electron) only move"
       },
       "endpoints": {
         "added": ["https://api.notes.example/v2/search", "wss://live.notes.example/v2/socket"],
