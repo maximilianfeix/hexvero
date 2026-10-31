@@ -320,6 +320,7 @@ export function auditApp(
     | "permissionHandlers"
     | "csp"
     | "navigationHandlers"
+    | "webPreferences"
   >,
 ): AuditDraft[] {
   type Draft = AuditDraft;
@@ -327,12 +328,26 @@ export function auditApp(
 
   for (const w of app.windows ?? []) {
     const fields = w as unknown as Record<string, unknown>;
+    // allowRunningInsecureContent that is not written as a value of its own (not written, or not
+    // read because the window's options could not be followed) follows webSecurity: when that is
+    // unknown, one finding (webSecurity's) says both, not two per window. One written as a
+    // computed value keeps its own.
+    const insecure = fields["allowRunningInsecureContent"];
+    const follows =
+      fields["webSecurityInEffect"] === "unknown" &&
+      (insecure === "not written" ||
+        (insecure === "computed" &&
+          !(app.webPreferences ?? []).some(
+            (p) =>
+              p.key === "allowRunningInsecureContent" && p.file === w.file && p.window === w.window,
+          )));
     for (const [setting, open] of Object.entries(PERMISSIVE)) {
       // a window row of an older shape has no web security columns: nothing is read there
       if (!(setting in fields)) continue;
       const value = String(fields[setting]);
       const unknown = value === "unknown";
       if (!unknown && !open.includes(value)) continue;
+      if (follows && setting === "allowRunningInsecureContentInEffect") continue;
       const assumed = value.includes("default");
       const web = CONSEQUENCE[setting];
       out.push({
@@ -342,7 +357,7 @@ export function auditApp(
         key: `${w.windowName} ${setting} ${value}`,
         message: web
           ? unknown
-            ? `Window ${w.windowName}: ${web.key} cannot be told (a value computed at run time).`
+            ? `Window ${w.windowName}: ${web.key} cannot be told (a value computed at run time)${follows && setting === "webSecurityInEffect" ? "; allowRunningInsecureContent is not read as a value of its own and depends on it (webSecurity: false turns it on), so it cannot be told either" : ""}.`
             : `Window ${w.windowName}: ${webSecurityWhy(fields, setting)}, so ${web.effect}.`
           : unknown
             ? `Window ${w.windowName}: ${setting} cannot be told (a value computed at run time, or no Electron version named in package.json for its default).`

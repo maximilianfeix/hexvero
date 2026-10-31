@@ -28,7 +28,10 @@ All notable changes to hexvero are listed here. The format follows
 - `hexvero audit` judges `webSecurity` and `allowRunningInsecureContent` (Electronegativity's
   `WEB_SECURITY_JS_CHECK`, `INSECURE_CONTENT_JS_CHECK`): `window-permissive` reports a window that
   writes `webSecurity: false` (the same-origin policy is off; Electron's security guide, section 6) or `allowRunningInsecureContent: true` (section 8; also on where `webSecurity: false` is
-  written and it is not), and a computed value as unknown. `windows` rows carry the new columns
+  written and it is not), and a computed value as unknown: a computed `webSecurity` with
+  `allowRunningInsecureContent` not written as a value of its own (not written, or in options that
+  could not be followed) is one unknown finding per window (its message says
+  that insecure content depends on it), not two. `windows` rows carry the new columns
   `webSecurity`, `allowRunningInsecureContent`, `webSecurityInEffect` and
   `allowRunningInsecureContentInEffect` (`default on` / `default off` when not written: the
   default is the same in every Electron version). `hexvero check`'s `window-more-permissive`
