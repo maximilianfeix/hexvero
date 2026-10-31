@@ -66,6 +66,19 @@ const hostile = (v2: boolean): Record<string, string> => ({
   ].join("\n"),
 });
 
+/** A build with one IPC handler and no preload member. */
+const plain = (v2: boolean): string => {
+  const path = join(dir, `plain-${v2}.asar`);
+  writeFileSync(
+    path,
+    buildAsar({
+      "package.json": JSON.stringify({ name: "p", main: "main.js" }),
+      "main.js": `require("electron").ipcMain.handle("${v2 ? "b" : "a"}", () => 1);`,
+    }),
+  );
+  return path;
+};
+
 describe("escapeHtml", () => {
   it("turns markup into text in element content and attribute values", () => {
     expect(escapeHtml("<script>alert(1)</script>")).toBe("&lt;script&gt;alert(1)&lt;/script&gt;");
@@ -91,6 +104,37 @@ describe("escapeHtml", () => {
 });
 
 describe("HTML release report", () => {
+  it("draws a new preload member from window to handler, and a host on the handler's line", async () => {
+    const { r, html } = await example();
+    const row = r.changes.find((c) => c.key === "preload.js::notesdesk::checkUpdate")!;
+    expect(row.trace).toEqual({ windows: ["main.js:win"], channel: "update:check" });
+    const section = /<section id="paths">([\s\S]*?)<\/section>/.exec(html)![1]!;
+    const nodes = [
+      ...section.matchAll(
+        /<li class="tnode[^"]*"><span class="trole">([^<]*)<\/span><code>([^<]*)<\/code>(?:<span class="tat">([^<]*)<\/span>)?/g,
+      ),
+    ].map((m) => [m[1], m[2], m[3] ?? ""]);
+    expect(nodes).toEqual([
+      ["window", "main.js:win", ""],
+      ["preload member", "notesdesk.checkUpdate", "preload.js:9"],
+      ["IPC channel", "update:check", "link direct"],
+      ["handler", "main.js:30", ""],
+      [
+        "host on the handler&#39;s line",
+        "https://updates.notesdesk.example/latest.json",
+        "main.js:30",
+      ],
+    ]);
+    // a removed member is not drawn: the section is about what pages can newly reach
+    expect(section).not.toContain("openInShell");
+    expect(section).toContain("an inference from place, not a traced call");
+  });
+
+  it("leaves the section out when no preload member was added or changed", async () => {
+    const { html } = await render(plain(false), plain(true));
+    expect(html).not.toContain('<section id="paths">');
+  });
+
   it("renders the example builds with places, excerpts, gaps, page and reproduce command", async () => {
     const { r, html } = await example();
     expect(html.startsWith("<!doctype html>")).toBe(true);
