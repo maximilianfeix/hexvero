@@ -130,9 +130,9 @@ adds.
    with check's semantics (#78). The baseline is check's format with `"command": "audit"` and
    `build` in place of `a`/`b`; each command refuses the other's file. SARIF, as check's, has
    only the findings that count and counts baselined and suppressed ones in `notReported`, so an
-   accepted finding never reopens a code-scanning alert. Still open: an MCP parameter (hexvero
-   has no audit tool in MCP yet; `hexvero_check` with one target would add one without a new
-   tool, catalog stays at 16) and the UI.
+   accepted finding never reopens a code-scanning alert. Over MCP, `hexvero_check` without
+   `targetB` audits `targetA` (policy, baseline and `unknown` as in the CLI; no new tool, the
+   catalog stays at 16; [mcp.md](../mcp.md#audit-of-one-build)). Still open: the UI.
 2. **`window-permissive` extended** with `experimentalFeatures` and `enableBlinkFeatures` (new
    keys). `webSecurity: false` and `allowRunningInsecureContent: true` are judged since the second
    slice (below).

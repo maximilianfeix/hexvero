@@ -22,6 +22,10 @@ The first `hexvero_analyze` reads up to 5,000 JavaScript files (entry file first
 - `include: ["src/main/"]` reads only unread files under a path, when the question is about one area.
 - Every collection page of a partial scan carries `partial`; say "in the scanned part" until the scan is complete.
 
+## Security audit
+
+`hexvero_check {targetA}` without `targetB` audits one build against the Electron security rules (permissive windows, `remote`, unsafe switches, `openExternal`, permission handler, CSP, navigation limits), as `hexvero audit`. `policy` or `policyPath` (optional) applies the policy's `audit` section (levels, suppressions); `baselinePath` reads an audit baseline; `unknown` (`fail`, `warn`, `allow`) says how undecidable rules count. `status` is `pass`, `fail` or `incomplete`; `incomplete` means a rule could not be decided, not that it passed. Findings are paged by `offset` (`findingsPage.next`); each has a `fingerprint` and its places. Accepting findings is `hexvero audit <build> --baseline <file> --update-baseline`, run by a person.
+
 ## Reading the evidence
 
 - A security finding such as `nodeIntegration: true` is a setting written in the code, attributed to a window. It is not proof that a page can reach Node; say what would have to be true (a page with injected script, no `contextIsolation`).

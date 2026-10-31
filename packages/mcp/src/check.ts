@@ -1,7 +1,9 @@
 /**
- * `hexvero_check`: the release-policy check of `hexvero check` (contracts C5, C7) for an agent.
- * Read-only: the policy and the baseline are read, never written; accepting findings into a
- * baseline stays a CLI action (`--update-baseline`), where a person decides.
+ * `hexvero_check`: the release-policy check of `hexvero check` (contracts C5, C7) for an agent,
+ * and, without targetB, `hexvero audit` of one build (the Electron security rules, the policy's
+ * `audit` section, audit baselines). Read-only: the policy and the baseline are read, never
+ * written; accepting findings into a baseline stays a CLI action (`--update-baseline`), where a
+ * person decides.
  *
  * The status is decided on every finding; the result shows a page of them (`findingsPage`) and
  * stays within CHECK_RESULT_BYTES, so a large check never floods the agent's context.
@@ -13,14 +15,18 @@ import {
   AnalysisError,
   CORE_VERSION,
   PolicyError,
+  auditBuild,
+  auditToSarif,
   checkRelease,
+  parseAuditBaseline,
   parseBaseline,
   parsePolicy,
   renderPolicyMarkdown,
   toSarif,
+  type AuditResult,
+  type LoadedAuditBaseline,
   type LoadedBaseline,
   type LoadedPolicy,
-  type PolicyFinding,
   type PolicyResult,
   type Session,
 } from "@hexvero/core";
@@ -83,6 +89,7 @@ async function readJsonFile(
   path: string,
   what: "policy" | "baseline",
   session: Session,
+  create = "hexvero check <before> <after> --policy <file>",
 ): Promise<string> {
   const opened = session.list().map((t) => {
     // A packaged build counts as what was opened: the bundle or install directory itself, or
@@ -122,7 +129,7 @@ async function readJsonFile(
       code === "ENOENT" ? "not_found" : "invalid_input",
       `cannot read the ${what} ${real}: ${code ?? "read failed"}${
         code === "ENOENT" && what === "baseline"
-          ? "; a baseline is created with the CLI: hexvero check <before> <after> --policy <file> --baseline <file> --update-baseline"
+          ? `; a baseline is created with the CLI: ${create} --baseline <file> --update-baseline`
           : ""
       }`,
       { path: real },
@@ -153,14 +160,22 @@ async function readJsonFile(
   return text;
 }
 
+/** Exactly one of `policy` and `policyPath`; for an audit (`optional`) also neither. */
 export async function loadPolicy(
   args: Record<string, unknown>,
   session: Session,
-): Promise<LoadedPolicy> {
+  optional = false,
+): Promise<LoadedPolicy | undefined> {
   const inline = args["policy"];
   const path = args["policyPath"];
+  if (optional && inline === undefined && path === undefined) return undefined;
   if ((inline === undefined) === (path === undefined))
-    throw new AnalysisError("invalid_input", "pass exactly one of policy or policyPath");
+    throw new AnalysisError(
+      "invalid_input",
+      optional
+        ? "pass at most one of policy or policyPath"
+        : "pass exactly one of policy or policyPath (or omit targetB to audit targetA alone)",
+    );
   try {
     if (typeof path === "string")
       return parsePolicy(await readJsonFile(path, "policy", session), resolve(path));
@@ -179,26 +194,117 @@ async function loadBaseline(path: unknown, session: Session): Promise<LoadedBase
   }
 }
 
-const bounded = (f: PolicyFinding): PolicyFinding & { whereTotal?: number } =>
+async function loadAuditBaseline(
+  path: unknown,
+  session: Session,
+): Promise<LoadedAuditBaseline | undefined> {
+  if (typeof path !== "string") return undefined;
+  try {
+    const text = await readJsonFile(path, "baseline", session, "hexvero audit <build>");
+    return parseAuditBaseline(text, resolve(path));
+  } catch (error) {
+    throw error instanceof PolicyError ? invalid(error) : error;
+  }
+}
+
+/** What a check finding and an audit finding share, for paging and counting. */
+interface Countable {
+  state: string;
+  level: "fail" | "warn";
+  unknown?: boolean;
+  where: unknown[];
+}
+
+const bounded = <F extends Countable>(f: F): F & { whereTotal?: number } =>
   f.where.length > MAX_PLACES
     ? { ...f, where: f.where.slice(0, MAX_PLACES), whereTotal: f.where.length }
     : f;
 
-function counts(findings: PolicyFinding[]): Record<string, number> {
+function counts(findings: Countable[]): Record<string, number> {
   const out: Record<string, number> = { fail: 0, warn: 0, unknown: 0 };
   for (const f of findings) {
     out[f.state] = (out[f.state] ?? 0) + 1;
-    out[f.level]! += 1;
+    out[f.level] = (out[f.level] ?? 0) + 1;
     if (f.unknown) out["unknown"]! += 1;
   }
   return out;
+}
+
+/**
+ * One page of `all` (offset, limit) put into the answer by `render`, with `findingsPage` and
+ * `counts`. The counts are over every finding, not the page. Hard budget: the page is halved until
+ * the answer fits CHECK_RESULT_BYTES; at least one finding is always shown.
+ */
+function pageFindings<F extends Countable>(
+  all: F[],
+  args: Record<string, unknown>,
+  render: (findings: F[], common: Record<string, unknown>) => Record<string, unknown>,
+): Record<string, unknown> {
+  const offset = typeof args["offset"] === "number" ? args["offset"] : 0;
+  let limit = typeof args["limit"] === "number" ? args["limit"] : DEFAULT_FINDINGS;
+  const total = all.length;
+  const shape = (size: number): Record<string, unknown> => {
+    const findings = all.slice(offset, offset + size).map(bounded);
+    const next = offset + findings.length < total ? offset + findings.length : null;
+    const findingsPage = {
+      offset,
+      limit: size,
+      total,
+      next,
+      shown: `${findings.length} of ${total} findings shown${next === null ? "" : `; pass offset: ${next} for the rest`}`,
+    };
+    return render(findings, { findingsPage, counts: counts(all) });
+  };
+  let out = shape(limit);
+  while (limit > 1 && Buffer.byteLength(JSON.stringify(out)) > CHECK_RESULT_BYTES) {
+    limit = Math.max(1, Math.floor(limit / 2));
+    out = shape(limit);
+  }
+  return out;
+}
+
+/**
+ * `hexvero audit <build>` of targetA: the CLI's `--format json` (an `AuditResult`) or SARIF.
+ * The policy is optional (without one every rule is at fail); `unknown` is `--unknown`.
+ */
+async function runAuditTool(session: Session, args: Record<string, unknown>): Promise<unknown> {
+  const format = args["format"] ?? "json";
+  if (format !== "json" && format !== "sarif")
+    throw new AnalysisError(
+      "invalid_input",
+      `an audit (no targetB) returns json or sarif, not ${String(format)}`,
+    );
+  const policy = await loadPolicy(args, session, true);
+  const baseline = await loadAuditBaseline(args["baselinePath"], session);
+  const result = await auditBuild(session, String(args["targetA"]), {
+    policy,
+    baseline,
+    unknown: args["unknown"] as AuditResult["unknown"] | undefined,
+  });
+  return pageFindings(result.findings, args, (findings, common) => {
+    const paged: AuditResult = { ...result, findings };
+    if (format === "sarif")
+      return {
+        status: result.status,
+        format,
+        ...common,
+        sarif: auditToSarif(paged, { version: CORE_VERSION }),
+      };
+    return { ...paged, ...common };
+  });
 }
 
 export async function runCheckTool(
   session: Session,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  const policy = await loadPolicy(args, session);
+  if (args["targetB"] === undefined) return runAuditTool(session, args);
+  if (args["unknown"] !== undefined)
+    throw new AnalysisError(
+      "invalid_input",
+      'unknown applies to an audit (no targetB); for two builds set "unknown" in the policy',
+    );
+  const policy = (await loadPolicy(args, session))!;
   const baseline = await loadBaseline(args["baselinePath"], session);
   const result = await checkRelease(
     session,
@@ -211,22 +317,9 @@ export async function runCheckTool(
   );
   const format =
     args["format"] === "markdown" || args["format"] === "sarif" ? args["format"] : "json";
-  const offset = typeof args["offset"] === "number" ? args["offset"] : 0;
-  let limit = typeof args["limit"] === "number" ? args["limit"] : DEFAULT_FINDINGS;
-  const total = result.findings.length;
-  const shape = (size: number): Record<string, unknown> => {
-    const findings = result.findings.slice(offset, offset + size).map(bounded);
-    const next = offset + findings.length < total ? offset + findings.length : null;
-    const findingsPage = {
-      offset,
-      limit: size,
-      total,
-      next,
-      shown: `${findings.length} of ${total} findings shown${next === null ? "" : `; pass offset: ${next} for the rest`}`,
-    };
+  return pageFindings(result.findings, args, (findings, common) => {
     // The status and counts come from every finding, not from the page.
     const paged: PolicyResult = { ...result, findings };
-    const common = { findingsPage, counts: counts(result.findings) };
     if (format === "markdown")
       return {
         status: result.status,
@@ -242,12 +335,5 @@ export async function runCheckTool(
         sarif: toSarif(paged, { version: CORE_VERSION, unknown: policy.policy.unknown }),
       };
     return { ...paged, ...common };
-  };
-  let out = shape(limit);
-  // Hard budget: halve the page until it fits; at least one finding is always shown.
-  while (limit > 1 && Buffer.byteLength(JSON.stringify(out)) > CHECK_RESULT_BYTES) {
-    limit = Math.max(1, Math.floor(limit / 2));
-    out = shape(limit);
-  }
-  return out;
+  });
 }

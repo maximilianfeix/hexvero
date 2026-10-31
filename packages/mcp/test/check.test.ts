@@ -73,6 +73,7 @@ describe("hexvero_check", () => {
       "policy",
       "policyPath",
       "baselinePath",
+      "unknown",
       "format",
       "offset",
       "limit",

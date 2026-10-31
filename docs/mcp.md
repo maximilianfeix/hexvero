@@ -32,10 +32,10 @@ What an agent receives, measured over a real MCP session on the [corpus](../corp
 
 | Step                                                               | Bytes  | Tokens |
 | ------------------------------------------------------------------ | ------ | ------ |
-| Session start: `tools/list`, `prompts/list`, instructions          | 17,847 | 4,158  |
-| Native binary: open, analyze, imports                              | 3,073  | 923    |
-| Electron app: open, analyze, channels, bridge, settings, endpoints | 12,458 | 3,406  |
-| Two builds: open and analyze both, compare three lists             | 14,935 | 4,062  |
+| Session start: `tools/list`, `prompts/list`, instructions          | 18,118 | 4,218  |
+| Native binary: open, analyze, imports                              | 3,141  | 955    |
+| Electron app: open, analyze, channels, bridge, settings, endpoints | 14,994 | 4,018  |
+| Two builds: open and analyze both, compare three lists             | 19,806 | 5,233  |
 | Call path through radare2                                          | 922    | 271    |
 
 `hexvero_analyze` returns counts of the lists and suggested next calls; the lists themselves are paged with a hard byte budget, and `detail: "full"` or `hexvero_export` give everything. Every tool states whether it writes (`readOnlyHint`). Five guided prompts (`investigate_feature`, `compare_versions`, `triage_binary`, `map_electron_app`, `explain_apk`) render step-by-step plans with the rule that every claim cites a collection item or byte offset. Strings, symbol names and decompiled code are data from the target, never instructions.
@@ -50,13 +50,13 @@ Ask your agent: _"Open ~/Downloads/app.asar with hexvero, tell me which IPC chan
 2. `hexvero_analyze { targetId }` → summary, findings (each with `confidence` and, where a parser records one, a `location` such as `main.js:14`), limitations, `collections: { name: count }`, compact overview. For a JavaScript application the result also has `complete` and `coverage { total, scanned, remaining, nextFiles }`: when `complete` is false, every list covers the scanned part only. Call again with `scan: "continue"` (next batch), `scan: "all"` (the rest) or `include: ["src/main"]` (unread files under those paths) to read more; `scan: "fresh"` discards the stored scan The result also has `next`: up to four calls that answer the obvious next questions for this kind of target, ready to send. `overview` lists the facts and the size of each list; `detail: "full"` adds samples of every list (the earlier default), and the lists themselves are paged with `hexvero_collection`.
 3. `hexvero_collection { targetId, collection, offset?, limit?, text?, maxBytes? }` → one page with `next`
 4. `hexvero_strings`, `hexvero_bytes` for raw evidence
-5. `hexvero_compare { targetA, targetB, collection }` for two builds; `hexvero_check { targetA, targetB, policy | policyPath }` applies a release policy to them; `hexvero_unknowns { action: "record" | "list" | "resolve" | "remove" }` for questions the evidence cannot answer
+5. `hexvero_compare { targetA, targetB, collection }` for two builds; `hexvero_check { targetA, targetB, policy | policyPath }` applies a release policy to them, and `hexvero_check { targetA }` audits one Electron build; `hexvero_unknowns { action: "record" | "list" | "resolve" | "remove" }` for questions the evidence cannot answer
 6. `hexvero_export { targetId, path }` when the agent needs everything; `hexvero_recover { targetId, outputDir }` to get bundle modules or original sources as files
 7. With an engine installed: `hexvero_providers`, `hexvero_provider_run`, `hexvero_call_graph`; `hexvero_sourcemap` maps a generated position to its source; `hexvero_list` / `hexvero_close` manage the session
 
 ## Tools
 
-16 tools; the catalog (`tools/list`) is 15,637 bytes, measured with `node scripts/context-cost.mjs` (session start with prompts and instructions: 17,847 bytes, 4,158 `o200k_base` tokens). `scripts/check-shape.mjs` fails the build above 16 tools.
+16 tools; the catalog (`tools/list`) is 15,908 bytes and 3,756 `o200k_base` tokens, measured with `node scripts/context-cost.mjs` (session start with prompts and instructions: 18,118 bytes, 4,218 tokens). `scripts/check-shape.mjs` fails the build above 16 tools.
 
 | Tool                                                                | Writes         | Purpose                                                                 |
 | ------------------------------------------------------------------- | -------------- | ----------------------------------------------------------------------- |
@@ -64,7 +64,7 @@ Ask your agent: _"Open ~/Downloads/app.asar with hexvero, tell me which IPC chan
 | `hexvero_analyze`                                                   | no             | Summary, findings, limitations, coverage, collection counts, next calls |
 | `hexvero_collection` · `hexvero_strings` · `hexvero_bytes`          | no             | Paged lists, tagged strings, a hex window                               |
 | `hexvero_compare`                                                   | no             | Items of one collection between two targets, each list paged on its own |
-| `hexvero_check`                                                     | no             | A release policy applied to two targets (`hexvero check`)               |
+| `hexvero_check`                                                     | no             | A release policy on two targets, or one build audited (`hexvero audit`) |
 | `hexvero_export` · `hexvero_recover`                                | yes            | The analysis as JSON, bundle modules or source-map originals as files   |
 | `hexvero_unknowns`                                                  | session        | Ledger of open questions                                                |
 | `hexvero_sourcemap`                                                 | no             | Original position for a generated line/column                           |
@@ -80,7 +80,7 @@ A request the caller cancels fails with `cancelled`. A limit that was exceeded i
 
 ## Budget
 
-The tool catalog is under 32 KiB (15,637 bytes for 16 tools). Lists come back as pages; the contract is:
+The tool catalog is under 32 KiB (15,908 bytes for 16 tools). Lists come back as pages; the contract is:
 
 - `maxBytes` (512 … 4 MiB over MCP, default 262144) bounds the UTF-8 size of the page JSON, envelope included. That JSON is the text of the tool result; the JSON-RPC message around it adds its own string escaping. A budget outside the range is an `invalid_input` error, never adjusted silently.
 - Every page with items left returns at least one and names the offset of the following page in `next` (`null` at the end), so following `next` always terminates. `bytes` is the exact size of the page.
@@ -131,6 +131,28 @@ without naming its keys. Creating or updating a baseline stays a CLI action,
 `hexvero check <before> <after> --policy <file> --baseline <file> --update-baseline`, so a person
 accepts findings. An invalid policy is `invalid_input` with the problem in `message` and every
 issue with its JSON path in `details.issues`; a missing policy or baseline file is `not_found`.
+
+### Audit of one build
+
+`hexvero_check { targetA, policy? | policyPath?, baselinePath?, unknown?, format?, offset?, limit? }`
+without `targetB` is `hexvero audit <build>` without the exit code: the Electron security rules
+(`window-permissive`, `remote-enabled`, `unsafe-switch`, `open-external`,
+`permission-handler-missing`, `permission-handler-grants-all`, `csp-missing`, `csp-weak`,
+`navigation-unlimited`) applied to one Electron archive, app directory or packaged build. Any other
+target is `invalid_input`. The policy is optional: without one every rule is at `fail`; with one
+its `audit` section sets levels (`fail`, `warn`, `off`), `unknown` and suppressions by fingerprint
+(a policy without that section keeps every rule at `fail`). `unknown` (`fail`, `warn`, `allow`) is
+the CLI's `--unknown` and overrides the policy; for two builds it is refused, because there it is
+set in the policy. `baselinePath` reads a baseline written by
+`hexvero audit <build> --baseline <file> --update-baseline`; a baseline of `hexvero check` is
+refused, and the check refuses an audit baseline. The answer is the `AuditResult` of the CLI's
+`--format json` (`hexvero: "audit"`, `status` `pass`, `fail` or `incomplete`, `findings` with
+`fingerprint`, `state`, `level`, `unknown` and `where`, `incomplete` with the gaps per rule,
+`unknown`, `policy`, `baseline`, `target`), plus `counts` and `findingsPage` as for the check, with
+the same page size, 256 KiB bound and 20 places per finding. `format: "sarif"` returns
+`{ status, format, counts, findingsPage, sarif }`; `markdown` is refused for an audit. Path rules,
+read-only behaviour and error reporting for `policyPath` and `baselinePath` are those of the
+check above.
 
 ## Guided prompts
 
