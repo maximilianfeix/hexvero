@@ -95,6 +95,8 @@ export interface ChangeRow {
   basis?: string;
   fields?: Array<{ field: string; before: unknown; after: unknown }>;
   reason?: string;
+  /** Interface rows: the windows that load the member and its channel. Absent from older servers. */
+  trace?: { windows: string[]; channel: string | null };
 }
 /** How much of one collection was compared (contract C1). */
 export interface CompareCompleteness {
