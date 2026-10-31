@@ -23,8 +23,6 @@ All notable changes to hexvero are listed here. The format follows
 
 - A reusable GitHub Action at the repository root (`uses: maximilianfeix/hexvero@<sha>`, composite, `action.yml`): runs `hexvero check` from npm (`version`, default `0.12.0`) on `before`, `after`, `policy` and an optional `baseline`, writes the Markdown result to the job summary and a SARIF file (`sarif`, default `hexvero.sarif`), sets the outputs `exit-code`, `sarif` and `summary`, and exits with the check's code (0, 1, 2, 3 or 4); a failure while writing the summary or the SARIF file never changes it. Inputs reach the script only as environment variables and hexvero runs without a shell. `.github/workflows/check-example.yml` now runs this action; docs/ci.md, section Reusable action.
 
-### Added
-
 - `hexvero audit` judges `webSecurity` and `allowRunningInsecureContent` (Electronegativity's
   `WEB_SECURITY_JS_CHECK`, `INSECURE_CONTENT_JS_CHECK`): `window-permissive` reports a window that
   writes `webSecurity: false` (the same-origin policy is off; Electron's security guide, section 6) or `allowRunningInsecureContent: true` (section 8; also on where `webSecurity: false` is
