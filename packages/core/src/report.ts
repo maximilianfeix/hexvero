@@ -588,6 +588,33 @@ const code = (text: string): string => {
 /** Prose from a target (a file name, a limitation naming a channel): no Markdown of its own. */
 const cell = (text: string): string =>
   visibleControls(text.replace(/[\r\n]+/g, " ")).replace(/[\\`*_[\]<>|]/g, (c) => `\\${c}`);
+/**
+ * One path a page gains, as a Markdown list item: window → member (place) → channel → handler,
+ * then each host whose place is a handler's own file and line. Shared by the release report and
+ * `check`'s Markdown; `label` names the member, a host's `label` its host or URL.
+ */
+export function traceMarkdownLine(
+  member: { label: string; where: readonly Place[]; trace?: ChangeRow["trace"] },
+  hosts: ReadonlyArray<{ label: string; where: readonly Place[] }>,
+): string {
+  const at = (p: Place): string => `${p.file}${p.line === undefined ? "" : `:${p.line}`}`;
+  const own = member.where.find((p) => p.role === undefined);
+  const handlers = member.where.filter((p) => p.role === "handler");
+  const steps: string[] = [];
+  if (member.trace?.windows.length) steps.push(member.trace.windows.map(code).join(", "));
+  steps.push(`${code(member.label)}${own ? ` (${code(at(own))})` : ""}`);
+  if (member.trace?.channel) steps.push(code(member.trace.channel));
+  for (const h of handlers) steps.push(`handler ${code(at(h))}`);
+  for (const host of hosts)
+    if (host.where.some((p) => handlers.some((h) => h.file === p.file && h.line === p.line)))
+      steps.push(`host ${code(host.label)} on the handler's line`);
+  return `- ${steps.join(" → ")}`;
+}
+
+/** The note under a list of traces: the host link is read from place, not traced. */
+export const TRACE_HOST_NOTE =
+  "A host is listed when a new one sits on the same file and line as the handler: an inference from place, not a traced call.";
+
 /** Characters a pasted word must not carry: controls, and bidi and zero-width marks. */
 // oxlint-disable-next-line no-control-regex -- finding control characters is the point
 const UNSHOWABLE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/;
@@ -678,6 +705,24 @@ export function renderReleaseReport(r: ReleaseComparison): string {
       "Whether a change matters depends on what the window loads; this is a fact to review, not a verdict.",
       "",
     );
+  }
+
+  const members = r.changes.filter(
+    (c) => c.collection === "interfaces" && (c.change === "added" || c.change === "changed"),
+  );
+  if (members.length) {
+    const hosts = r.changes
+      .filter((c) => c.collection === "endpoints" && c.change === "added")
+      .map((c) => ({ label: c.key.split("::").slice(2).join("::"), where: c.where }));
+    out.push("## New ways pages reach the main process", "");
+    for (const row of members)
+      out.push(
+        traceMarkdownLine(
+          { label: row.key.split("::").slice(-2).join("."), where: row.where, trace: row.trace },
+          hosts,
+        ),
+      );
+    out.push("", TRACE_HOST_NOTE, "");
   }
 
   out.push("## Changes", "");
