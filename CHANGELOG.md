@@ -21,6 +21,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- `check --format markdown` (and so the GitHub Action's job summary) ends with "New ways pages
+  reach the main process": each new interface member that counts as window → member → channel →
+  handler, with a new host on the handler's line. Findings of `new-interface-member` carry
+  `trace: { windows, channel }`.
 - The HTML report (`compare --report report.html`) opens with "New ways pages reach the main
   process": each new or changed preload member drawn as window → member → channel → handler,
   with file and line at each step, and an added endpoint on the handler's own line (marked as an

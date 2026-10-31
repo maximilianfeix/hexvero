@@ -953,7 +953,14 @@ describe("the example builds", () => {
     expect(r.incomplete).toEqual([]);
     // accepted in a baseline, the same builds pass
     const baseline = parseBaseline(JSON.stringify(createBaseline(r)), "b.json");
-    expect((await checkRelease(session, a.id, b.id, loaded, { baseline })).status).toBe("pass");
+    const accepted = await checkRelease(session, a.id, b.id, loaded, { baseline });
+    expect(accepted.status).toBe("pass");
+    // the Markdown draws the new member's path; a baselined member is not drawn
+    expect(r.findings[0]!.trace).toEqual({ windows: ["main.js:win"], channel: "update:check" });
+    expect(renderPolicyMarkdown(r)).toContain(
+      "- `main.js:win` → `notesdesk.checkUpdate` (`preload.js:9`) → `update:check` → handler `main.js:30` → host `updates.notesdesk.example` on the handler's line",
+    );
+    expect(renderPolicyMarkdown(accepted)).not.toContain("New ways pages reach the main process");
   });
 });
 

@@ -147,6 +147,8 @@ export interface PolicyFinding {
   basis?: string;
   /** For a suppressed or expired finding: the reason given in the policy. */
   suppression?: { reason: string; expires?: string };
+  /** For an interface member: the windows that load it and its channel (`ChangeRow.trace`). */
+  trace?: { windows: string[]; channel: string | null };
 }
 
 export interface PolicyResult {
@@ -2242,6 +2244,7 @@ export function evaluatePolicy(
       where: d.where,
       unknown: d.unknown,
       ...(d.row.basis ? { basis: d.row.basis } : {}),
+      ...(d.rule === "new-interface-member" && d.row.trace ? { trace: d.row.trace } : {}),
       ...(sup
         ? { suppression: { reason: sup.reason, ...(sup.expires ? { expires: sup.expires } : {}) } }
         : {}),
@@ -2531,6 +2534,8 @@ const code = (text: string): string => {
 const cellCode = (text: string): string => code(text).replace(/\|/g, "\\|");
 /** Prose from a target with every Markdown and HTML character escaped. */
 const cell = (text: string): string => plain(text).replace(/[\\`*_[\]<>|#!~&()]/g, (c) => `\\${c}`);
+/** `file:line`, or the file alone when no line was recorded. */
+const fileLine = (p: Place): string => `${p.file}${p.line === undefined ? "" : `:${p.line}`}`;
 const placeText = (p: Place): string =>
   `${p.role ? `${p.role} ` : ""}${p.file}${p.line === undefined ? "" : `:${p.line}`}`;
 
@@ -2540,6 +2545,41 @@ export const STATUS_TEXT: Record<PolicyResult["status"], string> = {
   incomplete: "incomplete: the check could not be decided (unknown: fail)",
   error: "error: the check did not run",
 };
+
+/**
+ * New interface members that count, as window → member → channel → handler, and a new host on a
+ * handler's own line (an inference from place, labelled so). Empty when there is none.
+ */
+function traceMarkdown(findings: readonly PolicyFinding[]): string[] {
+  const counts = (f: PolicyFinding): boolean =>
+    f.state === "new" || f.state === "suppression-expired";
+  const members = findings.filter(
+    (f) => f.rule === "new-interface-member" && counts(f) && !f.unknown,
+  );
+  if (members.length === 0) return [];
+  const hosts = findings.filter((f) => f.rule === "new-external-host" && counts(f));
+  const out = ["## New ways pages reach the main process", ""];
+  for (const f of members) {
+    const member = f.where.find((p) => p.role === undefined);
+    const handlers = f.where.filter((p) => p.role === "handler");
+    const steps: string[] = [];
+    if (f.trace?.windows.length) steps.push(f.trace.windows.map(code).join(", "));
+    steps.push(`${code(f.key)}${member ? ` (${code(fileLine(member))})` : ""}`);
+    if (f.trace?.channel) steps.push(code(f.trace.channel));
+    for (const h of handlers) steps.push(`handler ${code(fileLine(h))}`);
+    const onLine = hosts.filter((h) =>
+      h.where.some((p) => handlers.some((x) => x.file === p.file && x.line === p.line)),
+    );
+    for (const h of onLine) steps.push(`host ${code(h.key)} on the handler's line`);
+    out.push(`- ${steps.join(" → ")}`);
+  }
+  out.push(
+    "",
+    "A host is listed when a new one sits on the same file and line as the handler: an inference from place, not a traced call.",
+    "",
+  );
+  return out;
+}
 
 /** The result as Markdown, e.g. for a pull-request comment or a job summary. Deterministic. */
 export function renderPolicyMarkdown(result: PolicyResult): string {
@@ -2580,6 +2620,7 @@ export function renderPolicyMarkdown(result: PolicyResult): string {
         );
     }
     out.push("", "</details>", "");
+    out.push(...traceMarkdown(result.findings));
   }
   if (result.warnings?.length) {
     out.push("## Warnings", "");
