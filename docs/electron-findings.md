@@ -142,7 +142,8 @@ finding. A computed `webSecurity` with `allowRunningInsecureContent` not written
 or in window options that could not be followed) gives one unknown finding, for `webSecurity`, whose message says that insecure content depends on it; an
 `allowRunningInsecureContent` written as a computed value keeps its own. The check rule `window-more-permissive` reports a move to either (from `default on` or
 `on`, from `default off` or `off`), never the reverse, and a move from or to `unknown` as an
-unknown finding.
+unknown finding; there too a move of `allowRunningInsecureContentInEffect` to `unknown` that only
+follows `webSecurity` is folded into the `webSecurity` finding.
 
 Two things the columns do not say, because the documentation makes them independent of these
 settings: a preload script that is not sandboxed "will always have access to node APIs no matter

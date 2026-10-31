@@ -423,7 +423,52 @@ describe("check: window-more-permissive and navigation-limit-removed", () => {
     // a value computed at run time is a change whose direction cannot be told
     const computed = write(win("webSecurity: !app.isPackaged, "));
     expect(ofRule(await check(safe, computed), "window-more-permissive")).toEqual([
+      "fail unknown main.js::win webSecurityInEffect",
+    ]);
+  });
+
+  it("folds insecure content that follows a computed webSecurity into one unknown per window", async () => {
+    const safe = write(win(""));
+    const computed = await check(safe, write(win("webSecurity: !app.isPackaged, ")));
+    const only = computed.findings.find((f) => f.rule === "window-more-permissive")!;
+    expect(only.message).toBe(
+      "Window main.js::win: webSecurityInEffect changed from default on to unknown; whether pages may now do more is not known. allowRunningInsecureContent is not read as a value of its own and depends on it (webSecurity: false turns it on), so it cannot be told either.",
+    );
+    // the identity is the window, setting and value, as before the dependent one was folded in
+    expect(only.fingerprint).toBe(
+      createHash("sha256")
+        .update("window-more-permissive\0maybe\0window\0main.js::win\0webSecurityInEffect\0unknown")
+        .digest("hex")
+        .slice(0, 32),
+    );
+    // written as a computed value, allowRunningInsecureContent keeps its own unknown
+    const both = write(
+      win("webSecurity: !app.isPackaged, allowRunningInsecureContent: !app.isPackaged, "),
+    );
+    expect(ofRule(await check(safe, both), "window-more-permissive")).toEqual([
       "fail unknown main.js::win allowRunningInsecureContentInEffect",
+      "fail unknown main.js::win webSecurityInEffect",
+    ]);
+  });
+
+  it("folds it for windows whose options could not be followed, changed or new", async () => {
+    const shape = (options: string) => `const { app, BrowserWindow, session } = require("electron");
+${LIMITS}function open(opts) {
+  const win = new BrowserWindow(${options});
+  win.loadFile("index.html");
+}
+`;
+    const before = write(shape("{ webPreferences: { contextIsolation: true, sandbox: true } }"));
+    const after = write(shape("{ ...opts, webPreferences: { ...opts.prefs } }"));
+    const web = (r: Awaited<ReturnType<typeof check>>) =>
+      ofRule(r, "window-more-permissive").filter((k) => /webSecurity|InsecureContent/.test(k));
+    expect(web(await check(before, after))).toEqual([
+      "fail unknown main.js::win webSecurityInEffect",
+    ]);
+    // a window new in the after build
+    const none = write(`const { app, session } = require("electron");
+${LIMITS}`);
+    expect(web(await check(none, after))).toEqual([
       "fail unknown main.js::win webSecurityInEffect",
     ]);
   });

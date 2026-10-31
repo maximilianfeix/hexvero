@@ -1564,6 +1564,41 @@ function cspDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[]
   return out;
 }
 
+/** Added to the webSecurity finding that also stands for allowRunningInsecureContent. */
+const INSECURE_FOLLOWS =
+  " allowRunningInsecureContent is not read as a value of its own and depends on it (webSecurity: false turns it on), so it cannot be told either.";
+
+/**
+ * Whether a window's allowRunningInsecureContent is unknown only because its webSecurity is:
+ * not written, or computed with no webPreferences row of its own (options that could not be
+ * followed). One finding, webSecurity's, then says both, as `audit` does. Without the side's
+ * webPreferences a computed one keeps its own finding.
+ */
+function insecureFollows(
+  item: Record<string, unknown> | null,
+  sides: CheckSides | undefined,
+  side: "a" | "b",
+): boolean {
+  if (
+    !item ||
+    item["webSecurityInEffect"] !== "unknown" ||
+    item["allowRunningInsecureContentInEffect"] !== "unknown"
+  )
+    return false;
+  const state = item["allowRunningInsecureContent"];
+  if (state === "not written") return true;
+  const prefs = sides?.items[side]["webPreferences"];
+  if (state !== "computed" || !prefs) return false;
+  return !prefs
+    .filter(isRecord)
+    .some(
+      (p) =>
+        p["key"] === "allowRunningInsecureContent" &&
+        p["file"] === item["file"] &&
+        p["window"] === item["window"],
+    );
+}
+
 function windowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
   const out: Draft[] = [];
   for (const w of r.overview.windowChanges) {
@@ -1578,6 +1613,16 @@ function windowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draf
       key: w.window,
       where: [],
     };
+    const follows =
+      w.after === "unknown" &&
+      (w.setting === "webSecurityInEffect" ||
+        w.setting === "allowRunningInsecureContentInEffect") &&
+      r.overview.windowChanges.some(
+        (x) =>
+          x.window === w.window && x.setting === "webSecurityInEffect" && x.after === "unknown",
+      ) &&
+      insecureFollows(windowItem(r, row, "b", sides), sides, "b");
+    if (follows && w.setting === "allowRunningInsecureContentInEffect") continue;
     const unknown = w.direction === "unclear";
     out.push({
       rule: "window-more-permissive",
@@ -1585,7 +1630,7 @@ function windowDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draf
       row,
       key: `${w.window} ${w.setting}`,
       message: unknown
-        ? `Window ${plain(w.window)}: ${w.setting} changed from ${plain(w.before)} to ${plain(w.after)}; whether pages may now do more is not known.`
+        ? `Window ${plain(w.window)}: ${w.setting} changed from ${plain(w.before)} to ${plain(w.after)}; whether pages may now do more is not known.${follows ? INSECURE_FOLLOWS : ""}`
         : `Window ${plain(w.window)} lets its pages do more: ${w.setting} ${plain(w.before)} → ${plain(w.after)}.`,
       where: row.where,
       unknown,
@@ -1667,10 +1712,13 @@ function unmatchedWindowDrafts(r: ReleaseComparison, sides: CheckSides | undefin
       });
       continue;
     }
+    const follows = insecureFollows(item, sides, side);
     for (const setting of Object.keys(PERMISSIVE)) {
       const value = String(item[setting] ?? "unknown");
       const open = PERMISSIVE[setting]!.includes(value);
       if (!open && value !== "unknown") continue;
+      if (follows && setting === "allowRunningInsecureContentInEffect") continue;
+      const also = follows && setting === "webSecurityInEffect" ? INSECURE_FOLLOWS : "";
       const twin = open && row.change === "added" ? removedOpen(setting) : undefined;
       const unknown = row.change === "unknown" || value === "unknown" || twin !== undefined;
       out.push({
@@ -1680,9 +1728,9 @@ function unmatchedWindowDrafts(r: ReleaseComparison, sides: CheckSides | undefin
         key: `${row.key} ${setting}`,
         message:
           row.change === "unknown"
-            ? `Window ${label} may be new (${plain(row.reason ?? "the comparison could not tell")}): ${setting} is ${plain(value)}.`
+            ? `Window ${label} may be new (${plain(row.reason ?? "the comparison could not tell")}): ${setting} is ${plain(value)}.${also}`
             : value === "unknown"
-              ? `New window ${label}: whether ${setting} lets its pages do more is not known.`
+              ? `New window ${label}: whether ${setting} lets its pages do more is not known.${also}`
               : twin !== undefined
                 ? `New window ${label} has ${setting} ${plain(value)}; it may be ${plain(twin)} renamed, which had it too.`
                 : `New window ${label} lets its pages do more: ${setting} is ${plain(value)}.`,
@@ -2098,6 +2146,7 @@ const RULE_LISTS = [
   "csp",
   "navigationHandlers",
   "windows",
+  "webPreferences",
   "endpoints",
   "urls",
   "runtime",
