@@ -314,6 +314,16 @@ describe("a guess is not reported as a fact", () => {
 });
 
 describe("hostile input stays fast", () => {
+  it("bounds the dangerous-call reader and caps its rows", { timeout: 60_000 }, () => {
+    const started = performance.now();
+    const info = analyzeJavaScriptTree(
+      app({ "main.js": "w.webContents.executeJavaScript(c);".repeat(40_000) }) as FileTree,
+    );
+    expect(performance.now() - started).toBeLessThan(timeLimit(10_000));
+    expect(info.dangerousCalls.length).toBeLessThanOrEqual(2000);
+    expect(info.limitations.map((l) => l.code)).toContain("dangerous_calls_truncated");
+  });
+
   it(
     "bounds the reading of short-named enums and of bindings by scope",
     { timeout: 30_000 },

@@ -9,13 +9,15 @@
  * maps them): windows whose pages may do more, @electron/remote enabled, dangerous command-line
  * switches and accepted certificate errors, shell.openExternal with a URL the app does not fix,
  * permission handlers missing or granting everything, a Content Security Policy missing or
- * weak, and navigation or window creation that the app does not limit.
+ * weak, navigation or window creation that the app does not limit, and code that is not a
+ * literal run in a page.
  */
 import { createHash } from "node:crypto";
 import type { SideCoverage, UnresolvedFamily } from "./compare.js";
 import { directoryDigest } from "./digest.js";
 import type {
   CspRow,
+  DangerousCallRow,
   JsAppInfo,
   NavigationHandler,
   OpenExternalRow,
@@ -35,8 +37,16 @@ export const AUDIT_RULES = [
   "csp-missing",
   "csp-weak",
   "navigation-unlimited",
+  "dangerous-call",
 ] as const;
 export type AuditRuleId = (typeof AUDIT_RULES)[number];
+
+/**
+ * Audit rules added after a policy's `audit` section could be written (0.12.0): a section that
+ * does not list them runs them at warn, so an upgrade never turns a passing audit red. Without a
+ * policy every rule runs at fail, as before.
+ */
+export const AUDIT_LATER_RULES: ReadonlySet<AuditRuleId> = new Set(["dangerous-call"]);
 
 export interface AuditPlace {
   file: string;
@@ -193,6 +203,15 @@ export function cspRisk(row: CspRow): "fail" | "unknown" | null {
   return row.weaknesses.length ? "fail" : null;
 }
 
+/**
+ * Whether a call runs code or styles in a page that are not a literal: `fail` on a receiver read
+ * as a webContents, a frame or webFrame, `unknown` on any other; null for literal code.
+ */
+export function dangerousCallRisk(row: DangerousCallRow): "fail" | "unknown" | null {
+  if (row.argumentKind === "literal") return null;
+  return row.targetKind === "unknown" ? "unknown" : "fail";
+}
+
 const fingerprint = (rule: AuditRuleId, identity: string): string =>
   createHash("sha256").update(`${rule}\0${identity}`).digest("hex").slice(0, 32);
 
@@ -212,6 +231,7 @@ const RULE_FAMILY: Record<AuditRuleId, UnresolvedFamily | null> = {
   "csp-missing": "csp",
   "csp-weak": "csp",
   "navigation-unlimited": null,
+  "dangerous-call": "dangerousCalls",
 };
 
 const RULE_COLLECTION: Record<AuditRuleId, string> = {
@@ -224,6 +244,7 @@ const RULE_COLLECTION: Record<AuditRuleId, string> = {
   "csp-missing": "csp",
   "csp-weak": "csp",
   "navigation-unlimited": "navigationHandlers",
+  "dangerous-call": "dangerousCalls",
 };
 
 /** The gaps of one rule on one build, in check's codes and order. */
@@ -368,6 +389,7 @@ export function auditApp(
     | "csp"
     | "navigationHandlers"
     | "webPreferences"
+    | "dangerousCalls"
   >,
 ): AuditDraft[] {
   type Draft = AuditDraft;
@@ -566,6 +588,27 @@ export function auditApp(
   }
 
   out.push(...navigationDrafts(app.navigationHandlers ?? [], app.windows ?? []));
+
+  for (const r of app.dangerousCalls ?? []) {
+    const risk = dangerousCallRisk(r);
+    if (!risk) continue;
+    const code =
+      r.argumentKind === "inferred"
+        ? `code starting ${JSON.stringify(r.argument)}`
+        : "code that is not read";
+    out.push({
+      rule: "dangerous-call",
+      identity: `${r.file}\0${r.method}\0${r.targetKind}\0${r.argumentKind}\0${String(r.argument)}`,
+      unknown: risk === "unknown",
+      key: `${r.method} on ${r.targetKind}: ${r.argumentKind === "inferred" ? `code starting ${JSON.stringify(r.argument)}` : "code not read"}`,
+      message:
+        risk === "fail"
+          ? `${r.method} runs ${code} in a page (on ${r.targetKind}): text from a page, a message or a file that reaches it runs with the page's rights. Whether the code escapes what it builds in is not read.`
+          : `${r.target}.${r.method} runs ${code}; the receiver is not read as a webContents, a frame or webFrame, so whether it is Electron's is not known.`,
+      collection: "dangerousCalls",
+      where: [place(r)],
+    });
+  }
   return out;
 }
 

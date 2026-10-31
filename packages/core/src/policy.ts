@@ -33,14 +33,21 @@ import {
 } from "./report.js";
 import { judgeSwitch, splitSwitch } from "./javascript/switches.js";
 import {
+  AUDIT_LATER_RULES,
   AUDIT_RULES,
   cspRisk,
+  dangerousCallRisk,
   openExternalRisk,
   permissionRisk,
   type AuditResult,
   type AuditRuleId,
 } from "./audit.js";
-import type { CspRow, OpenExternalRow, PermissionHandlerRow } from "./javascript/app.js";
+import type {
+  CspRow,
+  DangerousCallRow,
+  OpenExternalRow,
+  PermissionHandlerRow,
+} from "./javascript/app.js";
 import { UNRESOLVED_LIMITATIONS, type Session, type TargetRecord } from "./session.js";
 
 export const POLICY_RULES = [
@@ -55,6 +62,7 @@ export const POLICY_RULES = [
   "permission-handler-grants-all",
   "csp-weakened",
   "navigation-limit-removed",
+  "new-dangerous-call",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
 
@@ -68,6 +76,7 @@ const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set([
   "permission-handler-grants-all",
   "csp-weakened",
   "navigation-limit-removed",
+  "new-dangerous-call",
 ]);
 
 export type RuleLevel = "fail" | "warn" | "off";
@@ -327,6 +336,8 @@ function parseAuditSection(
       issues.push(`audit.${k}: unknown key (allowed: rules, unknown, suppressions)`);
   const section = auditPolicyOf(undefined);
   section.unknown = inherited;
+  // rules added after the section could be written run at warn when it does not list them
+  for (const id of AUDIT_LATER_RULES) section.rules[id] = { level: "warn" };
   const rawRules = raw["rules"];
   if (rawRules !== undefined && !isRecord(rawRules)) issues.push(`audit.rules: must be an object`);
   else
@@ -688,6 +699,7 @@ const KIND_LISTS: Record<string, ReadonlySet<string>> = {
     "permissionHandlers",
     "csp",
     "navigationHandlers",
+    "dangerousCalls",
     "windows",
     "endpoints",
     "urls",
@@ -719,6 +731,7 @@ const DEFAULT_KEYS: Record<string, string> = {
   openExternal: "file+targetKind+argumentKind+argument",
   permissionHandlers: "file+kind+targetKind+session",
   csp: "file+kind+via",
+  dangerousCalls: "file+method+targetKind+argumentKind+argument",
   interfaces: "file+api+member",
   contextBridge: "api+member",
   windows: "file+windowName",
@@ -991,6 +1004,7 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   "permission-handler-grants-all": () => ["permissionHandlers"],
   "csp-weakened": () => ["csp"],
   "navigation-limit-removed": () => ["navigationHandlers"],
+  "new-dangerous-call": () => ["dangerousCalls"],
 };
 
 /**
@@ -1010,6 +1024,7 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   "permission-handler-grants-all": () => [],
   "csp-weakened": () => [],
   "navigation-limit-removed": () => [],
+  "new-dangerous-call": () => [],
 };
 
 /**
@@ -1683,6 +1698,51 @@ function navigationDrafts(r: ReleaseComparison, sides: CheckSides | undefined): 
   return out;
 }
 
+/**
+ * A call that runs code or styles in a page that are not a literal (`dangerousCallRisk`) and that
+ * the before build does not have: by method, receiver kind and as much of the code as is read, in
+ * any file. A call on a receiver not read as a webContents, a frame or webFrame is unknown.
+ */
+const callIdentity = (f: Record<string, unknown>): string =>
+  `call\0${String(f["method"])}\0${String(f["targetKind"])}\0${String(f["argumentKind"])}\0${String(f["argument"])}`;
+
+function dangerousCallDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const before = counts(beforeItems(r, "dangerousCalls", sides).map(callIdentity));
+  const after = counts((sides?.items.b["dangerousCalls"] ?? []).filter(isRecord).map(callIdentity));
+  for (const row of changedRows(r, "dangerousCalls")) {
+    const items = afterItems(r, row, sides);
+    if (!items) {
+      out.push(
+        unreadDraft("new-dangerous-call", row, "A call that runs code in a page may be new"),
+      );
+      continue;
+    }
+    for (const f of items) {
+      const risk = dangerousCallRisk(f as unknown as DangerousCallRow);
+      const identity = callIdentity(f);
+      if (!risk || (after.get(identity) ?? 1) <= (before.get(identity) ?? 0)) continue;
+      const unknown = risk === "unknown" || row.change === "unknown";
+      const code =
+        f["argumentKind"] === "inferred" && typeof f["argument"] === "string"
+          ? `code starting ${plain(JSON.stringify(f["argument"]))}`
+          : "code that is not read";
+      out.push({
+        rule: "new-dangerous-call",
+        identity,
+        row,
+        key: `${String(f["method"])} ${String(f["targetKind"])} ${String(f["argumentKind"])}${typeof f["argument"] === "string" ? ` ${String(f["argument"])}` : ""}`,
+        message: unknown
+          ? `The after build may newly run ${code} in a page with ${String(f["method"])}: ${f["targetKind"] === "unknown" ? "the receiver is not read as a webContents, a frame or webFrame" : plain(row.reason ?? "the comparison could not tell")}.`
+          : `The after build newly runs ${code} in a page with ${String(f["method"])}: text that reaches it runs with the page's rights.`,
+        where: row.where,
+        unknown,
+      });
+    }
+  }
+  return out;
+}
+
 /** A CSP row that applies to the app's pages: enforced, in a <meta> tag or onHeadersReceived. */
 const appliedCsp = (f: unknown): boolean =>
   isRecord(f) &&
@@ -2223,6 +2283,7 @@ export function evaluatePolicy(
     if (rule === "permission-handler-grants-all") drafts.push(...permissionDrafts(r, sides));
     if (rule === "csp-weakened") drafts.push(...cspDrafts(r, sides));
     if (rule === "navigation-limit-removed") drafts.push(...navigationDrafts(r, sides));
+    if (rule === "new-dangerous-call") drafts.push(...dangerousCallDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -2391,6 +2452,7 @@ const RULE_LISTS = [
   "permissionHandlers",
   "csp",
   "navigationHandlers",
+  "dangerousCalls",
   "windows",
   "webPreferences",
   "endpoints",

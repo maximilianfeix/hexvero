@@ -98,7 +98,8 @@ What Electronegativity checks that hexvero does not (yet):
 - `webPreferences` keys outside the ten hexvero reads (`enableBlinkFeatures`,
   `experimentalFeatures`, `affinity` …), `<webview>` attributes in HTML (`allowpopups`,
   `nodeintegration`, `disablewebsecurity` …), and `will-attach-webview` handlers.
-- `executeJavaScript`, `insertCSS` and `eval`-like calls, resources loaded over plain HTTP, and the
+- `eval`-like calls (`executeJavaScript` and `insertCSS` are read: `dangerousCalls`), resources
+  loaded over plain HTTP, and the
   Electron version against known security fixes (hexvero reads only whether a packaged build's
   Electron line is past its end of support).
 - A severity for each finding. hexvero rates nothing by severity; a rule fails or it does not.

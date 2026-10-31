@@ -62,7 +62,7 @@ adds.
 | `SECURITY_WARNINGS_DISABLED_JSON_CHECK`                           | —                                                             | —                                                           | missing                                      | `switches` kind `script`       |
 | `LIMIT_NAVIGATION_JS_CHECK`, `LIMIT_NAVIGATION_GLOBAL_CHECK`      | `navigationHandlers` (presence, `returns` deny/allow)         | `navigation-unlimited` / `navigation-limit-removed`         | covered (what a listener checks is not read) |                                |
 | `PROTOCOL_HANDLER_JS_CHECK`                                       | —                                                             | —                                                           | missing                                      | `protocols`, `custom-protocol` |
-| `DANGEROUS_FUNCTIONS_JS_CHECK` (`executeJavaScript`, `insertCSS`) | —                                                             | —                                                           | missing                                      | `dangerous-call`               |
+| `DANGEROUS_FUNCTIONS_JS_CHECK` (`executeJavaScript`, `insertCSS`) | `dangerousCalls`                                              | `dangerous-call` / `new-dangerous-call`                     | covered                                      |                                |
 | `HTTP_RESOURCES_JS_CHECK` / `_HTML_CHECK`                         | `urls` (URL literals; `http:` visible)                        | —                                                           | read in part                                 | `http-resource`                |
 | `HTTP_RESOURCES_WITH_NODE_INTEGRATION_GLOBAL_CHECK`               | `urls`, `windows`                                             | —                                                           | read in part                                 | `http-resource`                |
 | `ELECTRON_VERSION_JSON_CHECK`                                     | `runtime` (packaged builds), package.json `electron` range    | — / `fuse-weakened` (end of support)                        | read                                         | `electron-outdated`            |
@@ -143,8 +143,11 @@ adds.
    (`navigation-unlimited` itself is in the second slice).
 5. **`protocols`**: `protocol.handle`, `registerFileProtocol` and the others,
    `setAsDefaultProtocolClient`; rule `custom-protocol`.
-6. **`dangerous-call`**: `executeJavaScript` and `insertCSS` with an argument that is not a
-   literal.
+6. **`dangerous-call`** (done): collection `dangerousCalls` (`javascript/dangerous.ts`:
+   `executeJavaScript`, `executeJavaScriptInIsolatedWorld`, `insertCSS` with whether the code is a
+   literal, limitation `dangerous_calls_truncated`, JS_SCAN_SCHEMA 41), audit rule `dangerous-call`
+   (runs at `warn` when a policy's `audit` section does not list it) and check rule
+   `new-dangerous-call` (warn when unlisted).
 7. **`http-resource`**: `loadURL("http:…")` and `http:` script and style sources in HTML.
 8. **package.json scripts**: switches and `ELECTRON_DISABLE_SECURITY_WARNINGS` in scripts.
 9. **`electron-outdated`** from `runtime` for packaged builds.

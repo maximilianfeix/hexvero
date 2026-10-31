@@ -209,6 +209,7 @@ describe("list meanings", () => {
       "permissionHandlers",
       "openExternal",
       "csp",
+      "dangerousCalls",
       "webPreferences",
       "endpoints",
       "storage",

@@ -447,6 +447,12 @@ Rules:
   [Electron findings](electron-findings.md#navigation-and-new-window-handlers-navigationhandlers)).
   A listener moved to another line or file is no change. Added after 0.12.0: a policy that does
   not list it runs it at `warn`.
+- **`new-dangerous-call`**: An `executeJavaScript`, `executeJavaScriptInIsolatedWorld` or
+  `insertCSS` call whose code is not a literal, more often than the before build has such calls
+  (counted by method, receiver kind and as much of the code as is read, in any file; see [Electron
+  findings](electron-findings.md#code-run-in-a-page-dangerouscalls)). On a receiver not read as a
+  webContents, a frame or `webFrame` it is an unknown finding. Added after 0.12.0: a policy that
+  does not list it runs it at `warn`.
 
 **What can be checked.** Both builds must be JavaScript applications (an Electron `.asar` or an
 app directory) or both single JavaScript bundles. Anything else (a README, a JSON file, a
@@ -571,6 +577,7 @@ maps each of Electronegativity's checks to them.
 | `csp-missing`                   | no `<meta>` policy in a head of the app's HTML (any HTML file outside node_modules counts) and no `onHeadersReceived` header; unknown when a policy is set only where it may not apply                                                                                                                                                               | `csp`                |
 | `csp-weak`                      | an applied policy with weaknesses; one not read, or weak where it may not apply, is unknown                                                                                                                                                                                                                                                          | `csp`                |
 | `navigation-unlimited`          | for an app with a window or handler read: no `will-navigate` / `will-frame-navigate` listener, or no `setWindowOpenHandler`, in the files read (for the app, or a window when others have one); a `setWindowOpenHandler` that returns `{ action: "allow" }` on every path; unknown when the only listeners are on a webContents not read as a window | `navigationHandlers` |
+| `dangerous-call`                | `executeJavaScript`, `executeJavaScriptInIsolatedWorld` or `insertCSS` with code that is not a literal; on a receiver not read as a webContents, a frame or `webFrame` unknown                                                                                                                                                                       | `dangerousCalls`     |
 
 **Status and exit codes** are `check`'s: `fail` (exit `3`) when a counted finding (state `new` or
 `suppression-expired`) of a rule at level `fail` is not unknown; otherwise `incomplete` (exit `4`)
@@ -610,7 +617,9 @@ meanings ("is there" here, "is new" in `check`), and the fingerprints differ.
 
 - `audit.rules`: one entry per audit rule, `level` `fail` (counts), `warn` (listed, never changes
   the status; a SARIF `warning`) or `off` (not run: no finding and no gap). A rule not listed runs
-  at `fail`. A check rule id here is an error.
+  at `fail`, except `dangerous-call` (added after 0.12.0), which runs at `warn` when a section
+  does not list it, so an upgrade never turns a passing audit red. Without `--policy` every rule
+  runs at `fail`. A check rule id here is an error.
 - `audit.unknown`: as the top-level `unknown`, for `audit`; default the top-level `unknown`, which
   defaults to `fail`. `--unknown` on the command line overrides both.
 - `audit.suppressions`: `rule` (an audit rule), `fingerprint` (from the text, JSON or SARIF
@@ -675,7 +684,8 @@ as it is read for `open-external` (two calls of one URL kind in one file are one
 places); file, kind and session for permission handlers; file, kind, `via` and the policy text
 for `csp-weak` (an edit of the policy, even of its spacing, is a new finding); for
 `navigation-unlimited` the missing kind (and the window's file and name), or the handler's file,
-receiver kind and window.
+receiver kind and window; file, method, receiver kind and the code as far as it is read for
+`dangerous-call`.
 
 **Why a command of its own.** `check` evaluates a comparison and every rule there means "new in
 the after build"; a single build has no comparison and its rules mean "present". To adopt it in

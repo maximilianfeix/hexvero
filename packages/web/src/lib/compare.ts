@@ -282,6 +282,8 @@ export const MEANING: Record<string, string> = {
     "Permission request and check handlers of sessions, and whether they grant every request",
   openExternal: "URLs the app opens in the system's default application (shell.openExternal)",
   csp: "Content Security Policies, in HTML <meta> tags and in response headers set in code",
+  dangerousCalls:
+    "executeJavaScript and insertCSS calls, with whether the code they run in a page is a literal",
   webPreferences: "webPreferences keys as written in the code",
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",

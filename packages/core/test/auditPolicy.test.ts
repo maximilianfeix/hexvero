@@ -257,6 +257,10 @@ describe("audit baselines", () => {
   });
 });
 
+/** A policy with only an audit section of these rules. */
+const parse = (rules: Record<string, unknown>) =>
+  parsePolicy(JSON.stringify({ hexvero: "policy", version: 1, audit: { rules } }), "p.json").policy;
+
 describe("the policy's audit section", () => {
   const schema = JSON.parse(readFileSync(join(root, "docs", "policy.schema.json"), "utf8"));
   const ajv = new Ajv2020({ allErrors: true, strict: true, allowMatchingProperties: true });
@@ -282,6 +286,14 @@ describe("the policy's audit section", () => {
     expect(p.audit?.unknown).toBe("fail");
     // a policy without an audit section still needs rules
     expect(validate({ hexvero: "policy", version: 1 })).toBe(false);
+  });
+
+  it("runs audit rules added after 0.12.0 at warn when a section does not list them", () => {
+    expect(parse({}).audit?.rules["dangerous-call"].level).toBe("warn");
+    expect(parse({}).audit?.rules["navigation-unlimited"].level).toBe("fail");
+    expect(
+      parse({ "dangerous-call": { level: "fail" } }).audit?.rules["dangerous-call"].level,
+    ).toBe("fail");
   });
 
   it("accepts the valid sections the schema accepts", () => {
