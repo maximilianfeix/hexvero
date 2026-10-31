@@ -54,8 +54,8 @@
         <p class="answer">
           Run <code>npx hexvero audit</code> on one packaged build for the single-build checks, then
           <code>hexvero check</code> on the last release and the next one, so CI fails only on what
-          a release changes. hexvero covers part of Electronegativity's checks, not all; the list
-          below says which.
+          a release changes. hexvero judges most of Electronegativity's checks; HTTP resources and
+          an outdated Electron line are read but not judged yet, and the list below says which.
         </p>
 
         <h2>Why look for a replacement at all</h2>
@@ -131,8 +131,11 @@
                 <td class="yes">covered (0.13)</td>
               </tr>
               <tr>
-                <th scope="row">EXPERIMENTAL and BLINK features, JSON script switches</th>
-                <td class="no">not read yet</td>
+                <th scope="row">
+                  EXPERIMENTAL and BLINK features (JS), CUSTOM_ARGUMENTS and SECURITY_WARNINGS in
+                  package.json scripts
+                </th>
+                <td class="yes">covered (0.13)</td>
               </tr>
               <tr>
                 <th scope="row">AUXCLICK, AFFINITY, 27 upgrade checks (Electron 5–8)</th>
