@@ -9,6 +9,7 @@
 import { Constants, type Evaluator, type Resolved, resolveAliases } from "./aliases.js";
 import { PayloadReader } from "./payload.js";
 import { ExpressionResolver, type ResolveMethod, type Val } from "./resolve.js";
+import { MAX_SEND_HELPER_SITES, type SendHelperCall, sendHelperCalls } from "./sendHelpers.js";
 import { writesName } from "./writes.js";
 import {
   channelArg,
@@ -1813,6 +1814,50 @@ export function scanJavaScript(
     ipc.sort((x, y) => x.line - y.line);
   }
 
+  // Calls of the file's send helpers whose IPC object and channel are both parameters
+  // (`function ut(e, t, ...n) { e.send(t, ...n) }`, #280): a row where the object passed is a
+  // webContents by what is written (sendHelpers.ts). A helper whose call inside the scan reads as
+  // `webContents.send` by its name is resolved there first; its calls are read below only when
+  // that leaves the channel open.
+  const helperRow = (call: SendHelperCall): { usage: IpcUsage; named: Resolved } => {
+    const named = channelAt(call.arg);
+    const usage: IpcUsage = {
+      api: "webContents.send",
+      channel: named && "value" in named ? named.value : null,
+      line: tokens[call.at]!.line,
+      via: "wrapper",
+      wrapper: call.helper,
+    };
+    if (named && "ref" in named) usage.channelRef = named.ref;
+    return { usage, named };
+  };
+  const namedHelperCalls: SendHelperCall[] = [];
+  if (/webContents/.test(source) && /\.send\(/.test(source)) {
+    resolver ??= new ExpressionResolver(tokens, constants);
+    const helpers = sendHelperCalls(tokens, resolver, (k) =>
+      IPC_APIS.has(`${aliases.get(k) ?? tokens[k]!.value}.send`),
+    );
+    for (const call of helpers.calls) {
+      if (call.named) {
+        namedHelperCalls.push(call);
+        continue;
+      }
+      const { usage, named } = helperRow(call);
+      ipc.push(usage);
+      if (named === null) open.push({ usage, at: call.arg });
+    }
+    for (const cut of helpers.capped)
+      ipc.push({
+        api: "webContents.send",
+        channel: null,
+        line: tokens[cut.at]!.line,
+        via: "wrapper",
+        wrapper: cut.helper,
+        reason: `more calls of the send helper than are read (${MAX_SEND_HELPER_SITES})`,
+      });
+    if (helpers.calls.length || helpers.capped.length) ipc.sort((x, y) => x.line - y.line);
+  }
+
   // The slow path, only for the calls the fast scan left open: a bounded expression resolver.
   if (open.length) {
     resolver ??= new ExpressionResolver(tokens, constants);
@@ -1881,6 +1926,25 @@ export function scanJavaScript(
         })),
       );
     }
+  }
+  // A send helper whose own `webContents.send(channel, …)` the resolver left without a channel
+  // (not every call site read): its calls with a webContents give the channels it did not read.
+  if (namedHelperCalls.length) {
+    const added = new Set<string>();
+    for (const call of namedHelperCalls) {
+      const inner = tokens[call.inner]!;
+      const rows = ipc.filter((u) => u.api === "webContents.send" && u.line === inner.line);
+      if (!rows.some((u) => u.channel === null && !u.channelRef)) continue;
+      const { usage, named } = helperRow(call);
+      if (named === null) continue;
+      const channel = usage.channel ?? usage.channelRef?.property ?? "";
+      const key = `${call.inner}\u0000${channel}\u0000${usage.line}`;
+      if (rows.some((u) => u.channel !== null && u.channel === usage.channel) || added.has(key))
+        continue;
+      added.add(key);
+      ipc.push(usage);
+    }
+    ipc.sort((x, y) => x.line - y.line);
   }
   const sourceMappingUrl =
     /\/\/[#@]\s*sourceMappingURL=(\S+)\s*$/.exec(source.slice(-2000))?.[1] ?? null;
