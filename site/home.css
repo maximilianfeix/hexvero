@@ -1058,3 +1058,10 @@ main > section.doc {
 .doc .table-wrap table {
   min-width: 560px;
 }
+
+/* line numbers on tinted rows: --ink-3 drops below 4.5:1 there */
+.split .ln.add i,
+.split .ln.del i,
+.split .ln.ev i {
+  color: var(--ink-2);
+}
