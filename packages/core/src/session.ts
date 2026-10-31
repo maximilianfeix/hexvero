@@ -97,7 +97,9 @@ export interface WindowChange {
     | "nodeIntegrationInEffect"
     | "contextIsolationInEffect"
     | "sandboxInEffect"
-    | "pageRequire";
+    | "pageRequire"
+    | "webSecurityInEffect"
+    | "allowRunningInsecureContentInEffect";
   before: string;
   after: string;
   /** `unclear` when either side is unknown. */
@@ -110,6 +112,8 @@ const PERMISSIVE: Record<WindowChange["setting"], readonly string[]> = {
   contextIsolationInEffect: ["off", "default off"],
   sandboxInEffect: ["off", "default off"],
   pageRequire: ["yes", "yes by default"],
+  webSecurityInEffect: ["off", "default off"],
+  allowRunningInsecureContentInEffect: ["on", "default on"],
 };
 
 /** One collection of two targets compared, as `Session.compareCollection` returns it. */

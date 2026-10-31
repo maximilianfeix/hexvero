@@ -46,6 +46,10 @@ const write = (name: string, source: string, html?: string): string => {
 };
 
 const SAFE = `const { app, BrowserWindow, session } = require("electron");
+app.on("web-contents-created", (e, contents) => {
+  contents.on("will-navigate", (ev) => ev.preventDefault());
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+});
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((wc, p, cb) => cb(false));
   new BrowserWindow({ webPreferences: { sandbox: true, contextIsolation: true } }).loadFile("index.html");
@@ -67,6 +71,7 @@ describe("hexvero audit", () => {
     expect(io.text()).toContain("@ main.js:");
     expect(io.text()).toContain("permission-handler-missing");
     expect(io.text()).toContain("csp-missing");
+    expect(io.text()).toContain("navigation-unlimited  no will-navigate listener");
   });
 
   it("is not decidable (exit 4) on unknowns only, and passes with --unknown warn", async () => {
