@@ -42,7 +42,7 @@ const baseName = (path: string): string => path.split(/[\\/]/).pop() ?? path;
 /** What each gap needs before a rule can be decided. */
 const GAP_STEP: Record<string, string> = {
   scan_partial:
-    'the build was read only in part: run "hexvero analyze <build> --all", then audit again',
+    'the build was read only in part: run audit again with --all (or "hexvero analyze <build> --all" first)',
   files_unreadable:
     'a file could not be read ("hexvero collection <build> limitations" says which and why)',
   values_unresolved:
@@ -205,6 +205,8 @@ export async function runAudit(args: ParsedArgs, io: Io, session: Session): Prom
   }
 
   const target = await session.open(build);
+  // --all reads every JavaScript file of a large app first, as `analyze --all` does.
+  if (args.flags["all"]) await session.continueAnalysis(target.id, { all: true });
   const options = {
     unknown: unknownFlag as (typeof UNKNOWN)[number] | undefined,
     policy,

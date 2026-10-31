@@ -511,7 +511,9 @@ describe("hexvero check", () => {
       a: { path: "a", size: 0, sha256: "", format: "asar" },
       b: { path: "b", size: 0, sha256: "", format: "asar" },
     });
-    expect(steps.join("\n")).toContain('run "hexvero analyze <build> --all" on both');
+    expect(steps.join("\n")).toContain(
+      'run check again with --all (or "hexvero analyze <build> --all" on both)',
+    );
     expect(steps.join("\n")).not.toContain("--update-baseline");
   });
 });

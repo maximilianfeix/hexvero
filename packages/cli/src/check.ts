@@ -128,9 +128,9 @@ const GAP_STEP: Record<string, string> = {
   values_unresolved:
     "a value in the list is computed at run time or could not be read; no run of hexvero reads it",
   scan_partial:
-    'a build was read only in part: run "hexvero analyze <build> --all" on both, then check again',
+    'a build was read only in part: run check again with --all (or "hexvero analyze <build> --all" on both)',
   files_unread:
-    'a file was read in one build only: run "hexvero analyze <build> --all" on both, then check again',
+    'a file was read in one build only: run check again with --all (or "hexvero analyze <build> --all" on both)',
   files_unreadable:
     'a file could not be read ("hexvero collection <build> limitations" says which and why)',
   budget: "the comparison has more rows than a check reads",
@@ -270,6 +270,12 @@ export async function runCheck(args: ParsedArgs, io: Io, session: Session): Prom
 
   const a = await session.open(before);
   const b = await session.open(after);
+  // --all reads every JavaScript file of both builds first, as `analyze --all` does.
+  if (args.flags["all"])
+    await Promise.all([
+      session.continueAnalysis(a.id, { all: true }),
+      session.continueAnalysis(b.id, { all: true }),
+    ]);
   // Directory digests read every file: only for a baseline, which is what compares them.
   let result = await checkRelease(session, a.id, b.id, policy, {
     baseline,

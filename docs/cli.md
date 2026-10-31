@@ -172,7 +172,7 @@ without the filters.
 ### `check`
 
 ```text
-hexvero check <before> <after> --policy <file> [--baseline file] [--update-baseline] [--format text|json|markdown|sarif] [--out file] [--force]
+hexvero check <before> <after> --policy <file> [--baseline file] [--update-baseline] [--format text|json|markdown|sarif] [--out file] [--force] [--all]
 ```
 
 Applies a release policy to the comparison of two builds: new interface members, new external
@@ -185,7 +185,7 @@ policies](#release-policies-hexvero-check).
 
 ```text
 hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--policy file]
-              [--baseline file] [--update-baseline] [--out file] [--force]
+              [--baseline file] [--update-baseline] [--out file] [--force] [--all]
 ```
 
 Applies the rules that make sense on one build to its own lists, with no before build:
@@ -193,7 +193,9 @@ Electronegativity's checks that hexvero reads. `--policy` reads levels and suppr
 policy's `audit` section; `--baseline` accepts the findings a file lists. Exit `0` pass, `1`
 technical error, `2` usage error or invalid policy or baseline, `3` a rule violated, `4` not
 decidable under `unknown: fail` (the default). See [Single-build
-audit](#single-build-audit-hexvero-audit).
+audit](#single-build-audit-hexvero-audit). A large app is read 5,000 JavaScript files at a time; `--all`
+reads the rest first, so the rules are not undecided only because the scan stopped (`check --all`
+does the same for both builds).
 
 ### `init`
 
@@ -549,7 +551,7 @@ a host built at run time, a window setting whose direction is unclear, or a part
 
 ```bash
 hexvero audit <build> [--format text|json|sarif] [--unknown fail|warn|allow] [--policy <file>]
-              [--baseline <file>] [--update-baseline] [--out <file>] [--force]
+              [--baseline <file>] [--update-baseline] [--out <file>] [--force] [--all]
 ```
 
 `audit` reads one build (an Electron `.asar`, an app directory, a packaged `.app`, install
