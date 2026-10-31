@@ -23,6 +23,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Added
 
+- Audit rule `electron-outdated` (Electronegativity's `ELECTRON_VERSION_JSON_CHECK`, security
+  guide section 16): a packaged build whose Electron runtime is past its end of support by the
+  dated release snapshot fails; unknown when its support cannot be told. An `.asar` alone has no
+  runtime and is not judged from `package.json`. Runs at warn in a policy `audit` section that
+  does not list it.
 - Audit rule `webview-insecure` and check rule `new-insecure-webview` (Electronegativity's webview
   checks, security guide sections 11 and 12), from the new `webviews` collection: `<webview>`
   tags in HTML, in strings of the code, created with `createElement`, and framework props, judged

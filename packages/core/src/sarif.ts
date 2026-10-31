@@ -349,6 +349,12 @@ const AUDIT_TEXT: Record<
     full: "protocol.registerSchemesAsPrivileged gives a scheme bypassCSP: true, so pages and resources loaded from it are not held to the Content Security Policy. A scheme whose privileges hexvero could not read is reported as unknown. Protocol handlers and default protocol clients are listed in the protocols collection without a finding: what a handler serves is not read.",
     help: "Electron's security guide, section 18 (serve local pages from a custom protocol rather than file://, limited to the files it should serve) and section 7 (define a Content Security Policy): drop bypassCSP unless the scheme serves only content that must not be restricted. See docs/electron-findings.md of hexvero for what is read and what is not.",
   },
+  "electron-outdated": {
+    name: "ElectronOutdated",
+    short: "The build runs an Electron line past its end of support.",
+    full: "By Electron's release schedule in hexvero's dated snapshot, the Electron line the build runs is past its end of support, so it no longer receives security fixes from the Electron project. Read from the packaged runtime (a .app, an install directory or a release ZIP); an .asar or app directory alone has no runtime, and package.json's electron range is not judged. No claim is made about which vulnerabilities apply.",
+    help: "Electron's security guide, section 16 (use a current version of Electron): move to a supported major line. See docs/electron-findings.md of hexvero for the snapshot date and how the line is read.",
+  },
 };
 
 /** The SARIF uriBaseId of an audited build. */

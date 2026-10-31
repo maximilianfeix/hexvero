@@ -151,7 +151,7 @@
         "rules": {
           "type": "object",
           "additionalProperties": false,
-          "description": "One entry per audit rule. A rule that is not listed runs at level fail, except dangerous-call, webview-insecure and custom-protocol (added after 0.12.0), which run at warn when not listed.",
+          "description": "One entry per audit rule. A rule that is not listed runs at level fail, except dangerous-call, webview-insecure, custom-protocol and electron-outdated (added after 0.12.0), which run at warn when not listed.",
           "properties": {
             "window-permissive": {
               "$ref": "#/$defs/rule"
@@ -188,6 +188,9 @@
             },
             "custom-protocol": {
               "$ref": "#/$defs/rule"
+            },
+            "electron-outdated": {
+              "$ref": "#/$defs/rule"
             }
           }
         },
@@ -215,7 +218,8 @@
                   "navigation-unlimited",
                   "dangerous-call",
                   "webview-insecure",
-                  "custom-protocol"
+                  "custom-protocol",
+                  "electron-outdated"
                 ]
               },
               "fingerprint": {
