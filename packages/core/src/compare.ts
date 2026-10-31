@@ -70,7 +70,8 @@ export type UnresolvedFamily =
   | "csp"
   | "dangerousCalls"
   | "webviews"
-  | "protocols";
+  | "protocols"
+  | "loads";
 
 /**
  * How the storage family records an unread value: by file and storage kind, since a key of one
@@ -100,6 +101,7 @@ export const COLLECTION_FAMILY: Readonly<Record<string, UnresolvedFamily>> = {
   dangerousCalls: "dangerousCalls",
   webviews: "webviews",
   protocols: "protocols",
+  loads: "loads",
 };
 
 /** Machine codes of `CompareCompleteness.gaps`, in the order they are listed. */
@@ -234,6 +236,7 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   dangerousCalls: ["line"],
   webviews: ["line"],
   protocols: ["line"],
+  loads: ["line"],
   interfaces: ["line"],
   ipc: ["line"],
   webPreferences: ["line", "window"],
@@ -280,6 +283,9 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   // the tag or call as written, and the receiver (renamed by minifiers)
   webviews: ["evidence", "target"],
   protocols: ["evidence", "target"],
+  // the call or tag as written, its receiver (renamed by minifiers; `targetKind` and `window`
+  // carry the fact), and the scheme the URL restates
+  loads: ["evidence", "target", "scheme"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -415,6 +421,15 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   protocols: [
     ["file", "kind", "scheme"],
     ["kind", "scheme"],
+  ],
+  // a load by where it is (a window of the file by name, another receiver, an HTML file) and the
+  // URL as far as it is read; the same load twice is matched as a multiset
+  loads: [
+    ["file", "kind", "targetKind", "window", "argumentKind", "argument"],
+    // no row is on a window read by name
+    ["file", "kind", "targetKind", "argumentKind", "argument"],
+    // no URL is read in part (every row unknown, or only lists of values)
+    ["file", "kind", "targetKind", "argumentKind"],
   ],
   interfaces: [["file", "api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.

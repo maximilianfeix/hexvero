@@ -305,6 +305,7 @@ describe("the policy's audit section", () => {
     expect(p.audit?.rules["webview-insecure"].level).toBe("warn");
     expect(p.audit?.rules["custom-protocol"].level).toBe("fail");
     expect(p.audit?.rules["navigation-unlimited"].level).toBe("fail");
+    expect(p.audit?.rules["http-resource"].level).toBe("warn");
   });
 
   it("accepts the valid sections the schema accepts", () => {

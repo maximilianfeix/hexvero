@@ -324,6 +324,27 @@ describe("hostile input stays fast", () => {
     expect(info.limitations.map((l) => l.code)).toContain("dangerous_calls_truncated");
   });
 
+  it("bounds the loadURL and HTML source readers and caps their rows", { timeout: 60_000 }, () => {
+    for (const files of [
+      // thousands of loadURL calls over http on a window, and on receivers that are not read
+      {
+        "main.js": `const { BrowserWindow } = require("electron");const win=new BrowserWindow();${'win.loadURL("http://a.example.com/");x.webContents.loadURL(u+"/");y.loadURL(`http://${h}`);'.repeat(20_000)}`,
+      },
+      // an HTML file of thousands of scripts over http, one with an unclosed tag at the end,
+      // and a loadURL call whose argument never closes
+      {
+        "main.js": `win.loadURL(${"(".repeat(50_000)}`,
+        "index.html": `${'<script src="http://cdn.example.com/x.js"></script><link rel=stylesheet href=http://cdn.example.com/a.css>'.repeat(50_000)}<iframe src="http://f.example.com/`,
+      },
+    ]) {
+      const started = performance.now();
+      const info = analyzeJavaScriptTree(app(files) as FileTree);
+      expect(performance.now() - started).toBeLessThan(timeLimit(10_000));
+      expect(info.loads.length).toBeLessThanOrEqual(2000);
+      expect(info.limitations.map((l) => l.code)).toContain("loads_truncated");
+    }
+  });
+
   it("bounds the webview and protocol readers and caps their rows", { timeout: 60_000 }, () => {
     for (const [files, list] of [
       // thousands of webviews created under one name, each with setAttribute calls after it

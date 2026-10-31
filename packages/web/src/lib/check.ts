@@ -43,6 +43,8 @@ export const RULE: Record<string, string> = {
     "a <webview> attribute that weakens its pages' settings and the before build did not set, or a will-attach-webview listener the after build dropped",
   "new-custom-protocol":
     "a scheme newly registered as privileged or as the app's default protocol client, or bypassCSP newly given to a privileged scheme",
+  "new-http-resource":
+    "a page, script, stylesheet or iframe loaded over plain http from another host, that the before build did not load",
 };
 
 const STATE: Record<PolicyFinding["state"], string> = {

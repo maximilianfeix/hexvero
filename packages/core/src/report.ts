@@ -164,6 +164,7 @@ const ORDER = [
   "dangerousCalls",
   "webviews",
   "protocols",
+  "loads",
   "webPreferences",
   "endpoints",
   "storage",

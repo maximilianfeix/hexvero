@@ -938,6 +938,53 @@ scheme of the before build.
 
 [protocol]: https://www.electronjs.org/docs/latest/api/protocol
 
+## Pages and resources loaded over http (`loads`)
+
+Electron's security guide, section 1: "Any resources not included with your application should be
+loaded using a secure protocol like `HTTPS`. In other words, do not use insecure protocols like
+`HTTP`" ([Security, 1][sec]; read 2026-10-31), and section 2: "Under no circumstances should you
+load and execute remote code with Node.js integration enabled". Electronegativity's
+`HTTP_RESOURCES_JS_CHECK`, `HTTP_RESOURCES_HTML_CHECK` and
+`HTTP_RESOURCES_WITH_NODE_INTEGRATION_GLOBAL_CHECK`. One row per load:
+
+| Written                                                                               | `kind`       | `targetKind`                       |
+| ------------------------------------------------------------------------------------- | ------------ | ---------------------------------- |
+| `X.loadURL(url)`, `X["loadURL"](url)`, `X.loadURL?.(url)`                             | `loadURL`    | `window`, `webContents`, `unknown` |
+| `<script src>` of an HTML file of the app (outside node_modules) with an absolute URL | `script`     | `html`                             |
+| `<link rel="stylesheet" href>` with an absolute URL                                   | `stylesheet` | `html`                             |
+| `<iframe src>` with an absolute URL                                                   | `iframe`     | `html`                             |
+
+`targetKind` `window` is a window of the file by name (`win.loadURL`, `win.webContents.loadURL`,
+also `this.win.…`), as `windows` gives it (a `BrowserView` or `WebContentsView` is one), with
+`window` its name; a parameter or another local of that name is not the window. `webContents` is
+any other `X.webContents.loadURL`; `unknown` any other receiver (a parameter, a `<webview>`
+element, a name not read). A function of an object literal of the file is a look-alike and gives
+no row. `argumentKind` is `literal` (a string or constant read whole), `inferred` (a template or a
+concatenation that starts with a literal: `argument` is that start; or a conditional of literals
+and constants: `values`, at most 8) or `unknown`; `scheme` is the URL's scheme when the known part
+names one. HTML is read with the tag reader of `csp` (comments, raw text, `<template>` and
+`<noscript>` content are not markup); a relative source is resolved against the first `<base href>`
+when that is absolute, and otherwise gives no row (it loads from wherever the page came from), as
+does a protocol-relative one (`//host/x.js`). `<img>`, `<a href>`, `xmlns` and other URLs that are
+not loaded as a script, style or frame give no row. URLs are cut at 300 characters. Per file at
+most 200 rows, 2,000 in all (`loads_truncated`; only rows that load nothing over http from another
+host are dropped); an HTML file not read (`html_unread`) leaves the list undecided.
+
+The audit rule `http-resource` reports a row whose URL is `http:` with a host that is not this
+machine: `localhost`, a name under `.localhost`, `127.0.0.0/8`, `[::1]` and `0.0.0.0` are taken as
+dev servers and give no finding (hexvero's choice: nobody on the network path sits between the
+app and them; the guide names no exception). It is unknown on a receiver `unknown`, and for an
+`inferred` URL whose known start is `http://` without its whole host (`"http://" + host`), which
+may be a dev server; a conditional is judged by its worst value. A URL that is not read at all, or
+whose scheme is not `http` (`https:`, `file:`, a custom protocol, `ws:`), gives no finding: an
+unknown for every `loadURL(variable)` would say nothing. For a window read by name the finding
+links the window (`where` has its place) and says when it has Node integration in effect (`on` or
+`default on`): a page replaced on the way then runs with Node.js. That is part of the fingerprint,
+so a baseline of the weaker finding does not hide it. Any other load names the windows read with
+Node integration in effect, since which window it is in is not read. The check rule
+`new-http-resource` reports such a load more often than the before build has it (by kind, receiver
+kind and the URL as far as it is read, in any file, without lines or window names).
+
 ## Storage keys through wrappers and enums (`storage`)
 
 A storage call whose key is (or is built from) a parameter of the function or method it is in
