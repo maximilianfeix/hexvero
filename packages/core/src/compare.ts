@@ -67,7 +67,8 @@ export type UnresolvedFamily =
   | "switches"
   | "openExternal"
   | "permissions"
-  | "csp";
+  | "csp"
+  | "dangerousCalls";
 
 /**
  * How the storage family records an unread value: by file and storage kind, since a key of one
@@ -94,6 +95,7 @@ export const COLLECTION_FAMILY: Readonly<Record<string, UnresolvedFamily>> = {
   openExternal: "openExternal",
   permissionHandlers: "permissions",
   csp: "csp",
+  dangerousCalls: "dangerousCalls",
 };
 
 /** Machine codes of `CompareCompleteness.gaps`, in the order they are listed. */
@@ -225,6 +227,7 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   openExternal: ["line"],
   permissionHandlers: ["line"],
   csp: ["line"],
+  dangerousCalls: ["line"],
   interfaces: ["line"],
   ipc: ["line"],
   webPreferences: ["line", "window"],
@@ -266,6 +269,8 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   openExternal: ["evidence", "target", "scheme"],
   permissionHandlers: ["evidence", "target"],
   csp: ["evidence"],
+  // the call as written, and its receiver (renamed by minifiers)
+  dangerousCalls: ["evidence", "target"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -384,6 +389,11 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   csp: [
     ["file", "kind", "via"],
     ["kind", "via"],
+  ],
+  // a call by the code as far as it is read; the same call twice is matched as a multiset
+  dangerousCalls: [
+    ["file", "method", "targetKind", "argumentKind", "argument"],
+    ["method", "targetKind", "argumentKind", "argument"],
   ],
   interfaces: [["file", "api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.

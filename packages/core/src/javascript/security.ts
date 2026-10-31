@@ -166,7 +166,7 @@ const startsStatement = (t: Token): boolean =>
   t.type === "ident" || t.type === "string" || t.type === "number";
 const GLOBALS = new Set(["window", "globalThis", "self"]);
 
-const short = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
+export const short = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
 
 /**
  * Keeps rows up to `max` so that the cap only ever drops rows `harmless` says are harmless: any
@@ -206,7 +206,7 @@ export const harmlessCsp = (): boolean => false;
  * Electron's module and its members (`shell`, `session`). Every step is charged to one bounded
  * budget; past it nothing more is proven and `capped` is set.
  */
-class FileReader {
+export class FileReader {
   work = WORK;
   capped = false;
   private readonly webpackElectron = new Set<string>();

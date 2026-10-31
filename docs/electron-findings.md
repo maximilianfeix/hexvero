@@ -784,6 +784,29 @@ an `onHeadersReceived` listener passed by name (its header keys give `via: other
 
 [session]: https://www.electronjs.org/docs/latest/api/session
 
+## Code run in a page (`dangerousCalls`)
+
+Electronegativity's `DANGEROUS_FUNCTIONS_JS_CHECK`: `executeJavaScript` and `insertCSS` run what
+they are given in a page ([webContents][webcontents], [webFrame][webframe]); Electron's security
+guide has no section of its own on them. One row per call of `executeJavaScript(code)`,
+`executeJavaScriptInIsolatedWorld(worldId, [{ code }, …])` or `insertCSS(css)`, with `targetKind`
+`webContents` (`X.webContents.…`), `frame` (`X.mainFrame`, `X.focusedFrame`), `webFrame`
+(Electron's renderer `webFrame` by scope) or `unknown` (a parameter, a `<webview>` element, a name
+not read). `argumentKind` is `literal` (a string or constant read whole; for an isolated world
+every source's `code`), `inferred` (a template or a concatenation that starts with a literal:
+`argument` is that start) or `unknown`. A function of an object literal of the file is a
+look-alike and gives no row. Per file at most 200 rows, 2,000 in all (`dangerous_calls_truncated`;
+only calls with literal code are dropped). In a comparison a call is matched by method, receiver
+kind and the code as far as it is read, as a multiset.
+
+The audit rule `dangerous-call` reports a call whose code is not a literal, unknown on a receiver
+`unknown`; a literal is the app's own code and no finding. Whether the code escapes what it builds
+in (`JSON.stringify`) is not read. The check rule `new-dangerous-call` reports such a call more
+often than the before build has it.
+
+[webcontents]: https://www.electronjs.org/docs/latest/api/web-contents
+[webframe]: https://www.electronjs.org/docs/latest/api/web-frame
+
 ## Storage keys through wrappers and enums (`storage`)
 
 A storage call whose key is (or is built from) a parameter of the function or method it is in

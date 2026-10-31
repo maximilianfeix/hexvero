@@ -76,6 +76,7 @@ export {
 export type {
   AppCandidate,
   CspRow,
+  DangerousCallRow,
   JsCoverage,
   JsScanFacts,
   OpenExternalRow,
@@ -279,6 +280,7 @@ export {
   auditApp,
   auditBuild,
   cspRisk,
+  dangerousCallRisk,
   openExternalRisk,
   permissionRisk,
   type AuditFinding,

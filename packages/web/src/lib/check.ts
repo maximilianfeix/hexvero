@@ -37,6 +37,8 @@ export const RULE: Record<string, string> = {
     "a dangerous command-line switch, or certificate errors accepted, that the before build did not have",
   "navigation-limit-removed":
     "a will-navigate listener or window open handler the before build had and the after build dropped, or a window open handler that newly allows every window",
+  "new-dangerous-call":
+    "an executeJavaScript or insertCSS call with code that is not a literal, that the before build did not have",
 };
 
 const STATE: Record<PolicyFinding["state"], string> = {

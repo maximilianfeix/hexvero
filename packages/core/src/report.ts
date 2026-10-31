@@ -161,6 +161,7 @@ const ORDER = [
   "permissionHandlers",
   "openExternal",
   "csp",
+  "dangerousCalls",
   "webPreferences",
   "endpoints",
   "storage",

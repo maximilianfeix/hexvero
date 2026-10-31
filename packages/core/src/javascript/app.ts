@@ -56,6 +56,8 @@ import {
   type PermissionHandlerRow,
 } from "./security.js";
 export type { CspRow, OpenExternalRow, PermissionHandlerRow } from "./security.js";
+import { dangerousCallRows, harmlessDangerousCall, type DangerousCallRow } from "./dangerous.js";
+export type { DangerousCallRow } from "./dangerous.js";
 
 /** HTML files read for `<meta http-equiv="Content-Security-Policy">`, and their bytes. */
 const MAX_HTML_FILES = 2000;
@@ -5386,6 +5388,8 @@ export interface JsAppInfo {
   permissionHandlers: PermissionHandlerRow[];
   /** Content Security Policies: `<meta http-equiv>` in HTML files and headers written in code. */
   csp: CspRow[];
+  /** executeJavaScript, executeJavaScriptInIsolatedWorld and insertCSS calls. */
+  dangerousCalls: DangerousCallRow[];
   ipcChannels: Array<{
     channel: string;
     senders: string[];
@@ -5441,7 +5445,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 41;
+export const JS_SCAN_SCHEMA = 42;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and
@@ -5492,6 +5496,7 @@ export interface JsScanFacts {
   permissionHandlers?: PermissionHandlerRow[];
   /** CSP header rows read from JavaScript (meta rows are read from HTML at the end of a run). */
   cspHeaders?: CspRow[];
+  dangerousCalls?: DangerousCallRow[];
   endpoints: AppCandidate[];
   storage: AppCandidate[];
   urls: AppCandidate[];
@@ -5517,6 +5522,7 @@ export interface JsScanFacts {
   openExternalCapped?: boolean;
   permissionHandlersCapped?: boolean;
   cspCapped?: boolean;
+  dangerousCallsCapped?: boolean;
   /** Files with more calls of their own storage wrappers than are read, and the first five. */
   keyCallsCapped?: number;
   keyCallsCappedFiles?: string[];
@@ -5551,6 +5557,7 @@ export function emptyJsScanFacts(): JsScanFacts {
     openExternal: [],
     permissionHandlers: [],
     cspHeaders: [],
+    dangerousCalls: [],
     endpoints: [],
     storage: [],
     urls: [],
@@ -6020,6 +6027,7 @@ export interface FileTokenFacts {
   openExternal?: { rows: OpenExternalRow[]; capped: boolean } | null;
   permissionHandlers?: { rows: PermissionHandlerRow[]; capped: boolean } | null;
   cspHeaders?: { rows: CspRow[]; capped: boolean } | null;
+  dangerousCalls?: { rows: DangerousCallRow[]; capped: boolean } | null;
   /** Methods of the file's storage wrappers the file replaces (`Class.method:line`, at most 20). */
   keyReplaced?: string[];
   /** Writes that may replace one of them were not all read within the budget. */
@@ -6064,6 +6072,7 @@ export function readFileTokens(
   let openExternal: { rows: OpenExternalRow[]; capped: boolean } | null = null;
   let permissionHandlers: { rows: PermissionHandlerRow[]; capped: boolean } | null = null;
   let cspHeaders: { rows: CspRow[]; capped: boolean } | null = null;
+  let dangerousCalls: { rows: DangerousCallRow[]; capped: boolean } | null = null;
   const scan = scanJavaScript(source, {
     ...(maxTokens === undefined ? {} : { maxTokens }),
     onTokens: (tokens, truncated, context) => {
@@ -6615,6 +6624,13 @@ export function readFileTokens(
           new ExpressionResolver(tokens, context.constants),
           context.constants,
         );
+      if (/executeJavaScript|insertCSS/.test(source))
+        dangerousCalls = dangerousCallRows(
+          tokens,
+          path,
+          new ExpressionResolver(tokens, context.constants),
+          context.constants,
+        );
       if (!source.includes("exposeIn")) return;
       bridge = bridgeMembers({ tokens, truncated, context }, path);
     },
@@ -6640,6 +6656,7 @@ export function readFileTokens(
     openExternal,
     permissionHandlers,
     cspHeaders,
+    dangerousCalls,
     remote,
   };
 }
@@ -6956,6 +6973,14 @@ export function analyzeJavaScriptTree(
         tokenFacts.cspHeaders.capped
       )
         facts.cspCapped = true;
+    }
+    if (tokenFacts.dangerousCalls) {
+      const rows = (facts.dangerousCalls ??= []);
+      if (
+        keepRows(rows, tokenFacts.dangerousCalls.rows, MAX_PREFS, harmlessDangerousCall) ||
+        tokenFacts.dangerousCalls.capped
+      )
+        facts.dangerousCallsCapped = true;
     }
     if (tokenFacts.keyReplaced)
       fileLimitation(facts, file.path, {
@@ -7632,6 +7657,7 @@ export function analyzeJavaScriptTree(
   const switchList = facts.switches ?? [];
   const openExternalList = facts.openExternal ?? [];
   const permissionList = facts.permissionHandlers ?? [];
+  const dangerousList = facts.dangerousCalls ?? [];
   // CSP <meta> tags of the app's HTML files (outside node_modules), read whole on every run: they
   // are few and small, and a continued scan would otherwise need them stored
   const cspList: CspRow[] = [...(facts.cspHeaders ?? [])];
@@ -7678,6 +7704,11 @@ export function analyzeJavaScriptTree(
     limitations.push({
       code: "csp_truncated",
       message: `More Content-Security-Policy rows exist than the ${MAX_SECURITY_ROWS_PER_FILE} per JavaScript file, ${MAX_META_PER_FILE} per HTML file or ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection csp).`,
+    });
+  if (facts.dangerousCallsCapped)
+    limitations.push({
+      code: "dangerous_calls_truncated",
+      message: `More executeJavaScript / insertCSS calls exist than the ${MAX_SECURITY_ROWS_PER_FILE} per file / ${MAX_PREFS} in total that are recorded, or a file's reading of them ran out of its budget (collection dangerousCalls); only calls with literal code were dropped.`,
     });
   if (htmlUnread.length)
     limitations.push({
@@ -8594,6 +8625,7 @@ export function analyzeJavaScriptTree(
     openExternal: openExternalList,
     permissionHandlers: permissionList,
     csp: cspList,
+    dangerousCalls: dangerousList,
     endpoints,
     storage,
     urls: facts.urls,

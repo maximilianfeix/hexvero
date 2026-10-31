@@ -108,6 +108,12 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       full: "The previous build listens for will-navigate or will-frame-navigate, or sets a setWindowOpenHandler, and this build does neither (by kind, anywhere in the files read); or a setWindowOpenHandler of this build returns { action: \"allow\" } on every path where the previous build's for that window did not. Pages may then navigate to or open a URL the app does not expect (Electron's security guide, sections 13 and 14).",
       help: 'Restore the listener or the handler (call event.preventDefault() for URLs the app does not expect; return { action: "deny" } for windows it does not expect). If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.',
     },
+    "new-dangerous-call": {
+      name: "NewDangerousCall",
+      short: "The build newly runs code it does not fix in a page.",
+      full: "The build calls executeJavaScript, executeJavaScriptInIsolatedWorld or insertCSS with code that is not a literal (a value or a template built at run time), and the previous build had no such call (by method, receiver and as much of the code as is read). Text from a page, a message or a file that reaches the code runs with the page's rights. A call on a receiver not read as a webContents, a frame or webFrame is reported as unknown.",
+      help: "Pass data to the page through IPC or a preload instead of building code, or escape what is built in (JSON.stringify for values). If the call is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
   };
 
 const uriOf = (file: string): string =>
@@ -311,6 +317,12 @@ const AUDIT_TEXT: Record<
     short: "Navigation or window creation is not limited.",
     full: 'No will-navigate or will-frame-navigate listener, or no setWindowOpenHandler, was found in the files read (for the app, or for a window when other windows have one), or a setWindowOpenHandler returns { action: "allow" } on every path. A listener on a webContents not read as a window leaves windows without their own unknown. Whether a handler checks the URL is not read.',
     help: "Electron's security guide, section 13 (limit navigation: call event.preventDefault() in a will-navigate handler for URLs the app does not expect) and section 14 (limit the creation of new windows: register a setWindowOpenHandler that denies unexpected windows). See docs/electron-findings.md of hexvero for what is read and what is not.",
+  },
+  "dangerous-call": {
+    name: "DangerousCall",
+    short: "Code that is not a literal runs in a page.",
+    full: "executeJavaScript, executeJavaScriptInIsolatedWorld or insertCSS of a webContents, a frame or webFrame is called with code that is not a literal (a value or a template built at run time), so text from a page, a message or a file that reaches it runs with the page's rights. A literal is no finding. A call on a receiver not read as one of these is reported as unknown; whether the code escapes what it builds in is not read.",
+    help: "Pass data to the page through IPC or a preload instead of building code, or escape what is built in (JSON.stringify for values). Electron's security guide has no section of its own on these calls; Electronegativity's DANGEROUS_FUNCTIONS_JS_CHECK flags them. See docs/electron-findings.md of hexvero for what is read and what is not.",
   },
 };
 
