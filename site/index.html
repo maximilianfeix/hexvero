@@ -59,7 +59,7 @@
         "url": "https://maximilianfeix.github.io/hexvero/",
         "codeRepository": "https://github.com/maximilianfeix/hexvero",
         "license": "https://opensource.org/licenses/MIT",
-        "softwareVersion": "0.12.0",
+        "softwareVersion": "0.13.0",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "softwareRequirements": "Node.js 22.12 or newer"
       }
@@ -71,7 +71,7 @@
       <div class="bar-in">
         <a class="wordmark" href="./"
           ><img src="logo-mark.svg" width="26" height="26" alt="" />hexvero
-          <span class="ver">0.12.0</span></a
+          <span class="ver">0.13.0</span></a
         >
         <nav aria-label="Sections">
           <a class="wide" href="#trace">Trace</a><a class="wide" href="#gate">Release gate</a
@@ -182,7 +182,7 @@
             aria-labelledby="tab-audit"
             tabindex="0"
             hidden
-          ><span class="l cl"><span class="pr">$ </span><span class="typed">hexvero audit notesdesk-1.5.0.asar</span></span><span class="l"><span class="fail">hexvero audit fail:</span> <span class="h">a rule is violated</span></span><span class="l dim">  build notesdesk-1.5.0.asar · unknown fail</span><span class="l"> </span><span class="l">  <span class="fail">✗</span> <span class="c">open-external</span>  shell.openExternal(unknown)</span><span class="l">      opens a URL that is not read, whose scheme the app does not fix</span><span class="l">      to http, https or mailto (Electron's security guide, section 15)</span><span class="l dim">      @ main.js:20</span><span class="l">  <span class="fail">✗</span> <span class="c">permission-handler-missing</span>  no setPermissionRequestHandler</span><span class="l">      without one, Electron grants every permission a page asks for</span><span class="l dim">      no place: an absence in the files read</span><span class="l">  <span class="fail">✗</span> <span class="c">csp-missing</span>  no Content-Security-Policy</span><span class="l">      no &lt;meta http-equiv&gt; in the app's HTML, no header set in</span><span class="l">      webRequest.onHeadersReceived</span><span class="l dim">      no place: an absence in the files read</span></pre>
+          ><span class="l cl"><span class="pr">$ </span><span class="typed">hexvero audit notesdesk-1.5.0.asar</span></span><span class="l"><span class="fail">hexvero audit fail:</span> <span class="h">a rule is violated</span></span><span class="l dim">  build notesdesk-1.5.0.asar · unknown fail</span><span class="l"> </span><span class="l">  <span class="fail">✗</span> <span class="c">open-external</span>  shell.openExternal(unknown)</span><span class="l">      opens a URL that is not read, whose scheme the app does not fix</span><span class="l">      to http, https or mailto (Electron's security guide, section 15)</span><span class="l dim">      @ main.js:20</span><span class="l">  <span class="fail">✗</span> <span class="c">permission-handler-missing</span>  no setPermissionRequestHandler</span><span class="l">      without one, Electron grants every permission a page asks for</span><span class="l dim">      no place: an absence in the files read</span><span class="l">  <span class="fail">✗</span> <span class="c">csp-missing</span>  no Content-Security-Policy</span><span class="l">      no &lt;meta http-equiv&gt; in the app's HTML, no header set in</span><span class="l">      webRequest.onHeadersReceived</span><span class="l dim">      no place: an absence in the files read</span><span class="l">  <span class="fail">✗</span> <span class="c">navigation-unlimited</span>  no will-navigate listener</span><span class="l">      a page may navigate its window to a URL the app does not expect</span><span class="l">      (Electron's security guide, section 13)</span><span class="l dim">      no place: an absence in the files read</span></pre>
           <figcaption class="term-foot">
             Real output on NotesDesk 1.4.0 and 1.5.0, the example builds in
             <code>npx hexvero demo</code>; long lines shortened.
@@ -366,7 +366,7 @@ jobs:
         </p>
         <div class="two">
           <div>
-            <h3>Judged by an audit rule in 0.12.0</h3>
+            <h3>Judged by an audit rule in 0.13.0</h3>
             <ul class="checks">
               <li>
                 <span>nodeIntegration, contextIsolation, sandbox in effect per window</span
@@ -389,12 +389,13 @@ jobs:
                 ><span class="y">covered</span>
               </li>
               <li>
-                <span>webSecurity, allowRunningInsecureContent</span
-                ><span>read, not judged yet</span>
+                <span>webSecurity, allowRunningInsecureContent</span><span class="y">covered</span>
               </li>
               <li>
-                <span>navigation limits (<code>will-navigate</code>)</span
-                ><span>read, not judged yet</span>
+                <span
+                  >navigation limits (<code>will-navigate</code>,
+                  <code>setWindowOpenHandler</code>)</span
+                ><span class="y">covered</span>
               </li>
               <li>
                 <span
@@ -408,7 +409,7 @@ jobs:
               <a
                 href="https://github.com/maximilianfeix/hexvero/blob/main/docs/engineering/audit-plan.md"
                 >docs/engineering/audit-plan.md</a
-              >. Audit baselines and suppressions are not shipped yet. ElectroNG is Doyensec's
+              >. Baselines and suppressions work as in <code>check</code>. ElectroNG is Doyensec's
               commercial successor; hexvero is not affiliated with Doyensec.
             </p>
           </div>
@@ -459,7 +460,7 @@ jobs:
             <thead>
               <tr>
                 <th scope="col"><span class="skip">Question</span></th>
-                <th scope="col" class="us">hexvero 0.12</th>
+                <th scope="col" class="us">hexvero 0.13</th>
                 <th scope="col">REA</th>
                 <th scope="col">Electronegativity</th>
               </tr>
