@@ -138,7 +138,9 @@ columns only where the value is not a default).
 
 The audit rule `window-permissive` reports `webSecurityInEffect` off ([Security, 6][sec]) and
 `allowRunningInsecureContentInEffect` on ([Security, 8][sec]), and a computed value as an unknown
-finding; the check rule `window-more-permissive` reports a move to either (from `default on` or
+finding. A computed `webSecurity` with `allowRunningInsecureContent` not written as a value of its own (not written,
+or in window options that could not be followed) gives one unknown finding, for `webSecurity`, whose message says that insecure content depends on it; an
+`allowRunningInsecureContent` written as a computed value keeps its own. The check rule `window-more-permissive` reports a move to either (from `default on` or
 `on`, from `default off` or `off`), never the reverse, and a move from or to `unknown` as an
 unknown finding.
 

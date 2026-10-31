@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -134,7 +135,7 @@ describe("audit window-permissive: webSecurity and allowRunningInsecureContent",
   it("reports the literal settings as findings and the computed one as unknown", async () => {
     const r = await audit(write(WEB));
     expect(ruleList(r, "window-permissive")).toEqual([
-      "dev allowRunningInsecureContentInEffect unknown ?",
+      // allowRunningInsecureContent of dev is unknown only through webSecurity: one finding
       "dev webSecurityInEffect unknown ?",
       "loose allowRunningInsecureContentInEffect on",
       "loose webSecurityInEffect off",
@@ -151,7 +152,14 @@ describe("audit window-permissive: webSecurity and allowRunningInsecureContent",
       "Window mixed: allowRunningInsecureContent is true as written, so its https pages may run scripts, styles and plugins loaded over http (Electron's security guide, section 8).",
     );
     expect(byKey("dev webSecurityInEffect unknown").message).toBe(
-      "Window dev: webSecurity cannot be told (a value computed at run time).",
+      "Window dev: webSecurity cannot be told (a value computed at run time); allowRunningInsecureContent is not read as a value of its own and depends on it (webSecurity: false turns it on), so it cannot be told either.",
+    );
+    // the identity is the window and setting, as before the dependent finding was folded in
+    expect(byKey("dev webSecurityInEffect unknown").fingerprint).toBe(
+      createHash("sha256")
+        .update("window-permissive\0maybe\0main.js\0dev\0webSecurityInEffect")
+        .digest("hex")
+        .slice(0, 32),
     );
     expect(byKey("loose webSecurityInEffect off").where).toEqual([{ file: "main.js", line: 8 }]);
     expect(r.status).toBe("fail");
@@ -167,11 +175,41 @@ describe("audit window-permissive: webSecurity and allowRunningInsecureContent",
       expect(values, name).toEqual([
         "allowRunningInsecureContentInEffect on",
         "allowRunningInsecureContentInEffect on",
-        "allowRunningInsecureContentInEffect unknown",
         "webSecurityInEffect off",
         "webSecurityInEffect unknown",
       ]);
     }
+  });
+
+  it("keeps an unknown of its own for allowRunningInsecureContent written as a computed value", async () => {
+    const r = await audit(
+      write(`const { app, BrowserWindow, session } = require("electron");
+${LIMITS}const both = new BrowserWindow({ webPreferences: { webSecurity: !app.isPackaged, allowRunningInsecureContent: !app.isPackaged, contextIsolation: true, sandbox: true } });
+const mixedOnly = new BrowserWindow({ webPreferences: { allowRunningInsecureContent: process.env.DEV === "1", contextIsolation: true, sandbox: true } });
+function open(options) {
+  const opaque = new BrowserWindow({ ...options, webPreferences: { ...options.prefs } });
+  return opaque;
+}
+`),
+    );
+    expect(ruleList(r, "window-permissive").filter((k) => !k.startsWith("opaque"))).toEqual([
+      "both allowRunningInsecureContentInEffect unknown ?",
+      "both webSecurityInEffect unknown ?",
+      "mixedOnly allowRunningInsecureContentInEffect unknown ?",
+    ]);
+    // options that could not be followed hide both settings: one finding, not two
+    expect(
+      ruleList(r, "window-permissive").filter((k) => /^opaque (webSecurity|allowRunning)/.test(k)),
+    ).toEqual(["opaque webSecurityInEffect unknown ?"]);
+    expect(r.findings.find((f) => f.key === "both webSecurityInEffect unknown")!.message).toBe(
+      "Window both: webSecurity cannot be told (a value computed at run time).",
+    );
+    expect(
+      r.findings.find((f) => f.key === "mixedOnly allowRunningInsecureContentInEffect unknown")!
+        .message,
+    ).toBe(
+      "Window mixedOnly: allowRunningInsecureContent cannot be told (a value computed at run time).",
+    );
   });
 
   it("keeps fingerprints when the code moves", async () => {
