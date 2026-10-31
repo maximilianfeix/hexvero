@@ -2551,13 +2551,13 @@ export const STATUS_TEXT: Record<PolicyResult["status"], string> = {
  * handler's own line (an inference from place, labelled so). Empty when there is none.
  */
 function traceMarkdown(findings: readonly PolicyFinding[]): string[] {
-  const counts = (f: PolicyFinding): boolean =>
+  const live = (f: PolicyFinding): boolean =>
     f.state === "new" || f.state === "suppression-expired";
   const members = findings.filter(
-    (f) => f.rule === "new-interface-member" && counts(f) && !f.unknown,
+    (f) => f.rule === "new-interface-member" && live(f) && !f.unknown,
   );
   if (members.length === 0) return [];
-  const hosts = findings.filter((f) => f.rule === "new-external-host" && counts(f));
+  const hosts = findings.filter((f) => f.rule === "new-external-host" && live(f));
   const out = ["## New ways pages reach the main process", ""];
   for (const f of members) {
     const member = f.where.find((p) => p.role === undefined);
