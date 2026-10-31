@@ -29,6 +29,7 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
+      - run: npm run test:action
 
   platforms:
     name: Tests (${{ matrix.os }})
@@ -48,6 +49,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:action
 
   e2e:
     name: End-to-end flows (${{ matrix.os }})
