@@ -116,6 +116,21 @@ on the same two builds:
   3.6.7's, so a difference in its reading shows as a change. Tracked in
   [#298](https://github.com/maximilianfeix/hexvero/issues/298).
 
+## Re-run after #301 and #304
+
+Two more reader fixes the same night: a declarator without a value in a `let`/`var` list
+(`let g, y;`) is a declaration (#301, fixes #298), and the methods of a class created in place
+(`S = new class extends B {…}`) are functions of their own (#304, fixes #302). Same builds, fresh
+cache, hexvero at `ab34fc0`:
+
+| `ipcChannels` | after #284/#287                     | after #301/#304                    |
+| ------------- | ----------------------------------- | ---------------------------------- |
+| summary       | 22 changed, 52 unchanged, 3 unknown | 1 changed, 73 unchanged, 3 unknown |
+
+The one row left, `update-window-background-color  senders: [] → ["renderer.js"]`, is also
+wrong: both bundles send it the same way (`f(…)` in 3.6.7, `Be(…)` in 3.6.10). Tracked in
+[#306](https://github.com/maximilianfeix/hexvero/issues/306).
+
 ## What this shows
 
 - The release changes that matter for a review were visible from the files: a new Electron line,
