@@ -717,6 +717,8 @@ describe("evaluating a policy", () => {
         "csp",
         "navigationHandlers",
         "dangerousCalls",
+        "webviews",
+        "protocols",
       ]);
     });
     it("uses the comparison's own completeness once it carries one (contract C1/C3)", () => {
@@ -1120,6 +1122,8 @@ describe("review H4: a target of another kind never passes", () => {
       ["csp", ["collection_missing"]],
       ["navigationHandlers", ["collection_missing"]],
       ["dangerousCalls", ["collection_missing"]],
+      ["webviews", ["collection_missing"]],
+      ["protocols", ["collection_missing"]],
     ]);
   });
 
@@ -1140,6 +1144,8 @@ describe("review H4: a target of another kind never passes", () => {
       "csp",
       "navigationHandlers",
       "dangerousCalls",
+      "webviews",
+      "protocols",
     ]);
     expect(r.incomplete.every((i) => i.gaps.includes("collection_missing"))).toBe(true);
     expect(r.status).toBe("incomplete");

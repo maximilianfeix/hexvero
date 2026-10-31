@@ -324,6 +324,38 @@ describe("hostile input stays fast", () => {
     expect(info.limitations.map((l) => l.code)).toContain("dangerous_calls_truncated");
   });
 
+  it("bounds the webview and protocol readers and caps their rows", { timeout: 60_000 }, () => {
+    for (const [files, list] of [
+      // thousands of webviews created under one name, each with setAttribute calls after it
+      [
+        {
+          "main.js": `function f(){${'var w=document.createElement("webview");w.setAttribute("allowpopups","");w.setAttribute(k,"");'.repeat(20_000)}}`,
+        },
+        "webviews",
+      ],
+      // markup in thousands of strings, and an HTML file of thousands of tags
+      [
+        {
+          "main.js": `${'x.innerHTML="<webview allowpopups src=\\"a\\">";'.repeat(20_000)}`,
+          "index.html": "<webview disablewebsecurity></webview>".repeat(50_000),
+        },
+        "webviews",
+      ],
+      [
+        {
+          "main.js": `const { protocol } = require("electron");${'protocol.registerSchemesAsPrivileged([{scheme:"a",privileges:{bypassCSP:true}}]);'.repeat(20_000)}`,
+        },
+        "protocols",
+      ],
+    ] as const) {
+      const started = performance.now();
+      const info = analyzeJavaScriptTree(app(files) as FileTree);
+      expect(performance.now() - started).toBeLessThan(timeLimit(10_000));
+      expect(info[list].length).toBeLessThanOrEqual(2000);
+      expect(info.limitations.map((l) => l.code)).toContain(`${list}_truncated`);
+    }
+  });
+
   it(
     "bounds the reading of short-named enums and of bindings by scope",
     { timeout: 30_000 },

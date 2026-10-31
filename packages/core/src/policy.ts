@@ -64,6 +64,8 @@ export const POLICY_RULES = [
   "csp-weakened",
   "navigation-limit-removed",
   "new-dangerous-call",
+  "new-insecure-webview",
+  "new-custom-protocol",
 ] as const;
 export type PolicyRuleId = (typeof POLICY_RULES)[number];
 
@@ -78,6 +80,8 @@ const LATER_RULES: ReadonlySet<PolicyRuleId> = new Set([
   "csp-weakened",
   "navigation-limit-removed",
   "new-dangerous-call",
+  "new-insecure-webview",
+  "new-custom-protocol",
 ]);
 
 export type RuleLevel = "fail" | "warn" | "off";
@@ -701,6 +705,8 @@ const KIND_LISTS: Record<string, ReadonlySet<string>> = {
     "csp",
     "navigationHandlers",
     "dangerousCalls",
+    "webviews",
+    "protocols",
     "windows",
     "endpoints",
     "urls",
@@ -733,6 +739,8 @@ const DEFAULT_KEYS: Record<string, string> = {
   permissionHandlers: "file+kind+targetKind+session",
   csp: "file+kind+via",
   dangerousCalls: "file+method+targetKind+argumentKind+argument",
+  webviews: "file+kind+src",
+  protocols: "file+kind+scheme",
   interfaces: "file+api+member",
   contextBridge: "api+member",
   windows: "file+windowName",
@@ -1006,6 +1014,8 @@ const RULE_COLLECTIONS: Record<PolicyRuleId, (r: ReleaseComparison) => string[]>
   "csp-weakened": () => ["csp"],
   "navigation-limit-removed": () => ["navigationHandlers"],
   "new-dangerous-call": () => ["dangerousCalls"],
+  "new-insecure-webview": () => ["webviews"],
+  "new-custom-protocol": () => ["protocols"],
 };
 
 /**
@@ -1026,6 +1036,8 @@ const RULE_COVERAGE: Record<PolicyRuleId, (r: ReleaseComparison) => string[]> = 
   "csp-weakened": () => [],
   "navigation-limit-removed": () => [],
   "new-dangerous-call": () => [],
+  "new-insecure-webview": () => [],
+  "new-custom-protocol": () => [],
 };
 
 /**
@@ -1744,6 +1756,190 @@ function dangerousCallDrafts(r: ReleaseComparison, sides: CheckSides | undefined
   return out;
 }
 
+/** A webview weakness by where the webview is written, its src and the weakness. */
+const webviewIdentity = (f: Record<string, unknown>, reason: string): string =>
+  `webview\0${String(f["kind"])}\0${String(f["src"] ?? null)}\0${reason}`;
+
+/** The weaknesses of a webviews item: those that take effect as written, then host-dependent. */
+const webviewReasons = (f: Record<string, unknown>): Array<{ reason: string; host: boolean }> => [
+  ...(Array.isArray(f["insecure"]) ? f["insecure"] : []).map((x) => ({
+    reason: String(x),
+    host: false,
+  })),
+  ...(Array.isArray(f["hostDependent"]) ? f["hostDependent"] : []).map((x) => ({
+    reason: String(x),
+    host: true,
+  })),
+];
+
+/** How often each webview weakness identity occurs in a list. */
+const webviewIds = (list: Array<Record<string, unknown>>): Map<string, number> =>
+  counts(list.flatMap((f) => webviewReasons(f).map((w) => webviewIdentity(f, w.reason))));
+
+/** The will-attach-webview listeners of a webviews list. */
+const attachListeners = (list: Array<Record<string, unknown>>): number =>
+  list.filter((f) => f["kind"] === "attach-listener").length;
+
+/** A privileged scheme or default protocol client by kind and scheme. */
+const protocolIdentity = (f: Record<string, unknown>): string =>
+  `protocol\0${String(f["kind"])}\0${String(f["scheme"] ?? null)}`;
+
+/** A privileged scheme given `bypassCSP: true`. */
+const bypassesCsp = (f: Record<string, unknown>): boolean =>
+  f["kind"] === "privileged" &&
+  isRecord(f["privileges"]) &&
+  (f["privileges"] as Record<string, unknown>)["bypassCSP"] === true;
+
+/** The protocols rows `new-custom-protocol` watches: privileged schemes and default clients. */
+const protocolWatched = (f: Record<string, unknown>): boolean =>
+  f["kind"] === "privileged" || f["kind"] === "default-client";
+
+/**
+ * A webview weakness (by kind, src and weakness, in any file) that the before build does not
+ * have, and a before build's will-attach-webview listeners all gone. A weakness that takes effect
+ * only in a hosting window with the same setting, or in an after build where no window is read to
+ * enable webviewTag, is unknown.
+ */
+function webviewDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const beforeList = beforeItems(r, "webviews", sides);
+  const afterList = (sides?.items.b["webviews"] ?? []).filter(isRecord);
+  const before = webviewIds(beforeList);
+  const after = webviewIds(afterList);
+  const tagOn = (sides?.items.b["webPreferences"] ?? []).some(
+    (p) => isRecord(p) && p["key"] === "webviewTag" && p["value"] === true,
+  );
+  for (const row of changedRows(r, "webviews")) {
+    const items = afterItems(r, row, sides);
+    if (!items) {
+      out.push(unreadDraft("new-insecure-webview", row, "A webview may be newly insecure"));
+      continue;
+    }
+    for (const f of items)
+      for (const { reason, host } of webviewReasons(f)) {
+        const identity = webviewIdentity(f, reason);
+        if ((after.get(identity) ?? 1) <= (before.get(identity) ?? 0)) continue;
+        const src = typeof f["src"] === "string" ? ` (src ${plain(JSON.stringify(f["src"]))})` : "";
+        const doubts = [
+          ...(row.change === "unknown"
+            ? [plain(row.reason ?? "the comparison could not tell")]
+            : []),
+          ...(host
+            ? ["it takes effect only in a hosting window that has the same setting itself"]
+            : []),
+          ...(tagOn ? [] : ["no window of the after build is read to enable webviewTag"]),
+        ];
+        out.push({
+          rule: "new-insecure-webview",
+          identity,
+          row,
+          key: `${String(f["kind"])} webview${src}: ${reason}`,
+          message: `The after build's ${String(f["kind"]) === "html" ? "<webview> tag" : "webview"}${src} newly sets ${plain(reason)} (Electron's security guide, sections 11 and 12)${doubts.length ? `; ${doubts.join("; ")}` : ""}.`,
+          where: row.where,
+          unknown: doubts.length > 0,
+        });
+      }
+  }
+  const listeners = attachListeners;
+  const anchor =
+    r.changes.find((row) => row.collection === "webviews" && row.change === "removed") ??
+    r.changes.find((row) => row.collection === "webviews");
+  if (
+    sides?.items.a["webviews"] &&
+    sides.items.b["webviews"] &&
+    anchor &&
+    listeners(beforeList) > 0 &&
+    listeners(afterList) === 0
+  ) {
+    const removedWhere = r.changes
+      .filter(
+        (row) =>
+          row.collection === "webviews" &&
+          row.change === "removed" &&
+          fieldsOf(r, row)?.["kind"] === "attach-listener",
+      )
+      .flatMap((row) => row.where);
+    out.push({
+      rule: "new-insecure-webview",
+      identity: "webview\0listener-removed",
+      row: anchor,
+      key: "will-attach-webview listener removed",
+      message:
+        "The before build listens for will-attach-webview and the after build does not: the app no longer checks the options and URL of a <webview> before it is created (Electron's security guide, section 12).",
+      where: removedWhere.length ? removedWhere : anchor.where,
+      unknown: false,
+    });
+  }
+  return out;
+}
+
+/**
+ * A scheme newly registered as privileged or as the app's default protocol client (by scheme, in
+ * any file), and `bypassCSP` newly given to a privileged scheme the before build has. A scheme
+ * that is not read, or a receiver not read as Electron's protocol or app, is unknown.
+ */
+function protocolDrafts(r: ReleaseComparison, sides: CheckSides | undefined): Draft[] {
+  const out: Draft[] = [];
+  const beforeList = beforeItems(r, "protocols", sides);
+  const afterList = (sides?.items.b["protocols"] ?? []).filter(isRecord);
+  const schemeId = protocolIdentity;
+  const bypass = bypassesCsp;
+  const watched = protocolWatched;
+  const before = counts(beforeList.filter(watched).map(schemeId));
+  const after = counts(afterList.filter(watched).map(schemeId));
+  const bypassBefore = new Set(beforeList.filter(bypass).map((f) => String(f["scheme"] ?? null)));
+  for (const row of changedRows(r, "protocols")) {
+    const items = afterItems(r, row, sides);
+    if (!items) {
+      out.push(unreadDraft("new-custom-protocol", row, "A custom protocol may be new"));
+      continue;
+    }
+    for (const f of items) {
+      if (!watched(f)) continue;
+      const scheme = typeof f["scheme"] === "string" ? f["scheme"] : null;
+      const proven = f["targetKind"] === "protocol" || f["targetKind"] === "app";
+      const doubts = [
+        ...(row.change === "unknown" ? [plain(row.reason ?? "the comparison could not tell")] : []),
+        ...(scheme === null ? ["its scheme is not read"] : []),
+        ...(proven ? [] : ["the receiver is not read as Electron's"]),
+      ];
+      const name = scheme === null ? "a scheme" : `the scheme ${plain(JSON.stringify(scheme))}`;
+      const identity = schemeId(f);
+      if ((after.get(identity) ?? 1) > (before.get(identity) ?? 0)) {
+        const privileged = f["kind"] === "privileged";
+        const granted = isRecord(f["privileges"])
+          ? Object.entries(f["privileges"] as Record<string, unknown>)
+              .filter(([, v]) => v === true)
+              .map(([k]) => k)
+          : null;
+        out.push({
+          rule: "new-custom-protocol",
+          identity,
+          row,
+          key: `${privileged ? "privileged scheme" : "default protocol client"} ${scheme ?? "(not read)"}`,
+          message: privileged
+            ? `The after build newly registers ${name} as privileged (${granted === null ? "privileges not read" : granted.length ? plain(granted.join(", ")) : "no privileges"})${granted?.includes("bypassCSP") ? ": its content is not held to the Content Security Policy" : ""}${doubts.length ? `; ${doubts.join("; ")}` : ""}.`
+            : `The after build newly makes the app the default client of ${name}: the operating system hands it URLs of that scheme from browsers and other programs, which reach the app's handling of them${doubts.length ? `; ${doubts.join("; ")}` : ""}.`,
+          where: row.where,
+          unknown: doubts.length > 0,
+        });
+        continue;
+      }
+      if (!bypass(f) || bypassBefore.has(String(scheme))) continue;
+      out.push({
+        rule: "new-custom-protocol",
+        identity: `protocol\0bypassCSP\0${String(scheme)}`,
+        row,
+        key: `privileged scheme ${scheme ?? "(not read)"} bypassCSP`,
+        message: `The after build newly gives ${name} the privilege bypassCSP: its content is not held to the Content Security Policy (Electron's security guide, sections 7 and 18)${doubts.length ? `; ${doubts.join("; ")}` : ""}.`,
+        where: row.where,
+        unknown: doubts.length > 0,
+      });
+    }
+  }
+  return out;
+}
+
 /** A CSP row that applies to the app's pages: enforced, in a <meta> tag or onHeadersReceived. */
 const appliedCsp = (f: unknown): boolean =>
   isRecord(f) &&
@@ -2285,6 +2481,8 @@ export function evaluatePolicy(
     if (rule === "csp-weakened") drafts.push(...cspDrafts(r, sides));
     if (rule === "navigation-limit-removed") drafts.push(...navigationDrafts(r, sides));
     if (rule === "new-dangerous-call") drafts.push(...dangerousCallDrafts(r, sides));
+    if (rule === "new-insecure-webview") drafts.push(...webviewDrafts(r, sides));
+    if (rule === "new-custom-protocol") drafts.push(...protocolDrafts(r, sides));
   }
 
   const accepted = new Set(
@@ -2454,6 +2652,8 @@ const RULE_LISTS = [
   "csp",
   "navigationHandlers",
   "dangerousCalls",
+  "webviews",
+  "protocols",
   "windows",
   "webPreferences",
   "endpoints",

@@ -1058,6 +1058,9 @@ export function collectionsOf(
       if (d.app.windows?.length || d.app.csp?.length) out["csp"] = d.app.csp ?? [];
       if (d.app.windows?.length || d.app.dangerousCalls?.length)
         out["dangerousCalls"] = d.app.dangerousCalls ?? [];
+      if (d.app.windows?.length || d.app.webviews?.length) out["webviews"] = d.app.webviews ?? [];
+      if (d.app.windows?.length || d.app.protocols?.length)
+        out["protocols"] = d.app.protocols ?? [];
       out["ipc"] = d.app.modules.flatMap((m) => m.ipc.map((u) => ({ module: m.id, ...u })));
       if (d.app.endpoints.length) out["endpoints"] = d.app.endpoints;
       if (d.app.storage.length) out["storage"] = d.app.storage;
@@ -1142,9 +1145,11 @@ export const UNRESOLVED_LIMITATIONS: Readonly<Record<string, UnresolvedFamily>> 
   open_external_truncated: "openExternal",
   permission_handlers_truncated: "permissions",
   csp_truncated: "csp",
-  // an HTML file not read may hold a <meta> policy
+  // an HTML file not read may hold a <meta> policy (and a <webview>: `fromLimitations`)
   html_unread: "csp",
   dangerous_calls_truncated: "dangerousCalls",
+  webviews_truncated: "webviews",
+  protocols_truncated: "protocols",
 };
 
 /**
@@ -1239,6 +1244,8 @@ export class Unresolved {
       const family = UNRESOLVED_LIMITATIONS[l.code];
       if (!family) continue;
       if (l.code === "candidates_truncated") this.add("storage", "*");
+      // an HTML file not read may hold a <webview> as well as a <meta> policy
+      if (l.code === "html_unread") this.add("webviews", "*");
       const files = [...l.message.matchAll(/ at (.+?):\d+(?=, | …|\.$|$)/g)].map((m) => m[1]!);
       for (const f of files) this.add(family, f);
       if (

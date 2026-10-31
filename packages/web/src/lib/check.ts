@@ -39,6 +39,10 @@ export const RULE: Record<string, string> = {
     "a will-navigate listener or window open handler the before build had and the after build dropped, or a window open handler that newly allows every window",
   "new-dangerous-call":
     "an executeJavaScript or insertCSS call with code that is not a literal, that the before build did not have",
+  "new-insecure-webview":
+    "a <webview> attribute that weakens its pages' settings and the before build did not set, or a will-attach-webview listener the after build dropped",
+  "new-custom-protocol":
+    "a scheme newly registered as privileged or as the app's default protocol client, or bypassCSP newly given to a privileged scheme",
 };
 
 const STATE: Record<PolicyFinding["state"], string> = {

@@ -807,6 +807,109 @@ often than the before build has it.
 [webcontents]: https://www.electronjs.org/docs/latest/api/web-contents
 [webframe]: https://www.electronjs.org/docs/latest/api/web-frame
 
+## Webviews (`webviews`)
+
+Electron's security guide, section 11: "Do not use `allowpopups` for WebViews", and section 12:
+"Verify WebView options before creation", with a `will-attach-webview` listener that strips the
+preload, turns Node integration off and refuses unexpected sources ([Security, 11 and 12][sec];
+read 2026-10-31). Electronegativity's `NODE_INTEGRATION_HTML_CHECK`, `WEB_SECURITY_HTML_CHECK`,
+`INSECURE_CONTENT_HTML_CHECK`, `ALLOWPOPUPS_HTML_CHECK`, the `<webview>` parts of
+`EXPERIMENTAL_FEATURES_HTML_CHECK` and `BLINK_FEATURES_HTML_CHECK`, and
+`NODE_INTEGRATION_ATTACH_EVENT_JS_CHECK`. One row per webview or listener:
+
+| Written                                                                                                                                                                          | `kind`            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `<webview …>` in an `.html`/`.htm` file outside node_modules (also inside `<template>`, which a script may clone)                                                                | `html`            |
+| `<webview …>` in a string or template literal of the code (`innerHTML`)                                                                                                          | `markup`          |
+| `X.createElement("webview")` assigned to a name, with that name's `setAttribute("attr", …)` calls and attribute properties (`wv.allowpopups = true`)                             | `element`         |
+| a framework's element call with a props object: `createElement("webview", {…})`, `jsx`/`jsxs`/`jsxDEV("webview", {…})`, Vue's `createVNode`/`createElementVNode("webview", {…})` | `element`         |
+| `X.on("will-attach-webview", listener)` (also `once`, `addListener`, `prependListener`)                                                                                          | `attach-listener` |
+
+The attributes kept are `src`, `preload`, `partition`, `nodeintegration`,
+`nodeintegrationinsubframes`, `allowpopups`, `disablewebsecurity`, `webpreferences` and
+`blinkfeatures`, lowercased. What they do is Electron's own code (`lib/browser/guest-view-manager.ts`,
+`makeWebPreferences`, and `lib/renderer/web-view/web-view-attributes.ts`, read 2026-10-31):
+
+- `nodeintegration`, `nodeintegrationinsubframes`, `allowpopups` and `disablewebsecurity` are
+  boolean attributes: on when present, whatever their value (`nodeintegration="false"` is on);
+- `webpreferences` is a comma-separated list of `key=value` pairs (keys as written, case
+  matters; `true`, `1`, `yes` or no value are true, `false`, `0`, `no` false), applied over the
+  attributes;
+- nodeIntegration, nodeIntegrationInSubFrames, contextIsolation and sandbox are taken from the
+  hosting window wherever it has the safe value: a webview's `nodeintegration` takes effect only
+  in a window with Node integration on itself.
+
+`insecure` lists what takes effect as written: `allowpopups`, `disablewebsecurity`, and the
+`webpreferences` keys `webSecurity=false`, `allowRunningInsecureContent=true`,
+`experimentalFeatures=true`, `enableBlinkFeatures=…` (and the `blinkfeatures` attribute).
+`hostDependent` lists what depends on the hosting window: `nodeintegration`,
+`nodeintegrationinsubframes`, and `nodeIntegration=true`, `nodeIntegrationInSubFrames=true`,
+`contextIsolation=false`, `sandbox=false` in `webpreferences`. `unread` names what may be set but
+is not read: `webpreferences` with a value built at run time, a framework prop whose value is not
+a string literal (React drops a boolean on an unknown attribute, other frameworks set it), and `*`
+for a `setAttribute` with a computed name, a spread in the props, or a tag a string of the code
+ends inside (a concatenation, a template cut at a substitution; the values read there are kept
+as not read). A listener's `preventsDefault` (`event.preventDefault()`), `deletesPreload`
+(`delete webPreferences.preload` or `preloadURL`, or `preload` set to a falsy literal) and
+`disablesNodeIntegration` (`webPreferences.nodeIntegration = false`) are `always`, `conditional`,
+`unknown` (in a nested function, or the listener is not a function literal written there) or
+`no`. What the listener checks of `params.src` is not read beyond `preventDefault` behind a
+condition.
+
+Whether a window enables `<webview>` at all is its `webviewTag` key in `webPreferences` (off by
+default since Electron 5, Breaking changes 5.0); the finding `electron.webview-tag` already names
+it. Per file at most 200 rows and 1,000 created elements, 2,000 in all; HTML files as for `csp`.
+Past these `webviews_truncated` says so (only rows with nothing insecure and nothing unread are
+dropped), and `html_unread` also leaves the webview rules undecidable. In a comparison a row is
+matched by file, kind and `src`; its attributes and what a listener does are a change of the row.
+
+The audit rule `webview-insecure` reports a webview with a weakness in `insecure`, and one in
+`hostDependent` only while a window read has the same setting (or one that cannot be told), since
+which window hosts the page is not read; a finding is unknown when it rests only on such a
+weakness, while no window read writes `webviewTag: true`, or while a `will-attach-webview` listener
+read may change or refuse the webview. A webview with only unread attributes is an unknown finding.
+With `webviewTag: true` written and no `will-attach-webview` listener in the files read, it reports
+that absence (never on a partial scan or a capped list). The check rule `new-insecure-webview`
+reports a weakness more often than the before build has it (by kind, `src` and weakness), unknown
+when it depends on the hosting window or no window of the after build is read to enable
+`webviewTag`, and a before build's listeners all gone.
+
+Not read: which page hosts a webview, attributes set through a helper or on another object,
+`removeAttribute(…)`, and what a webview's preload script does.
+
+## Custom protocols (`protocols`)
+
+Electron's security guide, section 18: "Avoid usage of the `file://` protocol and prefer usage of
+custom protocols", served "limited to a specific set of files" ([Security, 18][sec]; read
+2026-10-31), and the `CustomScheme.privileges` of [protocol][protocol]. Electronegativity's
+`PROTOCOL_HANDLER_JS_CHECK`. One row per registration:
+
+| Written                                                                                                                                                                                         | `kind`           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `protocol.handle`, `registerFileProtocol`, `registerHttpProtocol`, `registerStringProtocol`, `registerBufferProtocol`, `registerStreamProtocol` and the `intercept…Protocol` methods (`scheme`) | `handler`        |
+| each object of `protocol.registerSchemesAsPrivileged([{ scheme, privileges }])`, also a name bound to such an array                                                                             | `privileged`     |
+| `app.setAsDefaultProtocolClient(scheme)`                                                                                                                                                        | `default-client` |
+
+`targetKind` is `protocol` for Electron's `protocol` by scope (as `shell` for `openExternal`),
+`session` for `X.protocol` (a session's), `app` for Electron's `app`, else `unknown`; `handle` is a
+method of many objects (`ipcMain.handle`), so it gives a row only on a protocol. A function of an
+object literal of the file is a look-alike and gives none. `scheme` is the literal (or constant),
+else null. `privileges` holds each of `standard`, `secure`, `bypassCSP`, `allowServiceWorkers`,
+`supportFetchAPI`, `corsEnabled`, `stream`, `codeCache` that is written, as a literal or null; an
+object with a spread or a computed key, or an array that is not a literal, is `privileges: null`.
+Per file at most 200 rows, 2,000 in all (`protocols_truncated`; only handlers are dropped). In a
+comparison a row is matched by file, kind and scheme; the method and the privileges are a change.
+
+The audit rule `custom-protocol` reports a privileged scheme with `bypassCSP: true` (its content is
+not held to the Content Security Policy, sections 7 and 18), and as unknown privileges that are not
+read or a receiver not read as Electron's `protocol`. Handlers and default protocol clients give no
+audit finding: what a handler serves, and whether it checks the path it is asked for, is not read.
+The check rule `new-custom-protocol` reports a scheme newly registered as privileged or as a
+default protocol client (by kind and scheme), and `bypassCSP: true` newly given to a privileged
+scheme of the before build.
+
+[protocol]: https://www.electronjs.org/docs/latest/api/protocol
+
 ## Storage keys through wrappers and enums (`storage`)
 
 A storage call whose key is (or is built from) a parameter of the function or method it is in

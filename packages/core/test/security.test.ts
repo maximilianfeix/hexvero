@@ -512,7 +512,12 @@ session.defaultSession.setPermissionCheckHandler(() => true);
     expect(r.status).toBe("incomplete");
     const session = new Session();
     const audit = await auditBuild(session, (await session.open(b)).id);
-    expect(audit.incomplete.map((i) => i.rule)).toEqual(["csp-missing", "csp-weak"]);
+    // an HTML file not read may hold a <webview> as well
+    expect(audit.incomplete.map((i) => i.rule)).toEqual([
+      "csp-missing",
+      "csp-weak",
+      "webview-insecure",
+    ]);
   });
 });
 

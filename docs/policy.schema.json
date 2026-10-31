@@ -34,7 +34,7 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "description": "One entry per rule. A rule that is not listed runs at level fail, except new-bridge-exposure (added in 0.9.7), fuse-weakened and remote-enabled (added after 0.9.9) new-unsafe-switch (added after 0.10.1), new-open-external, permission-handler-grants-all and csp-weakened (added after 0.11.1), and navigation-limit-removed and new-dangerous-call (added after 0.12.0), which run at warn when not listed.",
+      "description": "One entry per rule. A rule that is not listed runs at level fail, except new-bridge-exposure (added in 0.9.7), fuse-weakened and remote-enabled (added after 0.9.9) new-unsafe-switch (added after 0.10.1), new-open-external, permission-handler-grants-all and csp-weakened (added after 0.11.1), and navigation-limit-removed, new-dangerous-call, new-insecure-webview and new-custom-protocol (added after 0.12.0), which run at warn when not listed.",
       "properties": {
         "new-interface-member": {
           "$ref": "#/$defs/rule"
@@ -85,6 +85,12 @@
         },
         "new-dangerous-call": {
           "$ref": "#/$defs/rule"
+        },
+        "new-insecure-webview": {
+          "$ref": "#/$defs/rule"
+        },
+        "new-custom-protocol": {
+          "$ref": "#/$defs/rule"
         }
       }
     },
@@ -113,7 +119,9 @@
               "permission-handler-grants-all",
               "csp-weakened",
               "navigation-limit-removed",
-              "new-dangerous-call"
+              "new-dangerous-call",
+              "new-insecure-webview",
+              "new-custom-protocol"
             ]
           },
           "fingerprint": {
@@ -143,7 +151,7 @@
         "rules": {
           "type": "object",
           "additionalProperties": false,
-          "description": "One entry per audit rule. A rule that is not listed runs at level fail, except dangerous-call (added after 0.12.0), which runs at warn when not listed.",
+          "description": "One entry per audit rule. A rule that is not listed runs at level fail, except dangerous-call, webview-insecure and custom-protocol (added after 0.12.0), which run at warn when not listed.",
           "properties": {
             "window-permissive": {
               "$ref": "#/$defs/rule"
@@ -174,6 +182,12 @@
             },
             "dangerous-call": {
               "$ref": "#/$defs/rule"
+            },
+            "webview-insecure": {
+              "$ref": "#/$defs/rule"
+            },
+            "custom-protocol": {
+              "$ref": "#/$defs/rule"
             }
           }
         },
@@ -199,7 +213,9 @@
                   "csp-missing",
                   "csp-weak",
                   "navigation-unlimited",
-                  "dangerous-call"
+                  "dangerous-call",
+                  "webview-insecure",
+                  "custom-protocol"
                 ]
               },
               "fingerprint": {

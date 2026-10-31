@@ -9,8 +9,9 @@
  * maps them): windows whose pages may do more, @electron/remote enabled, dangerous command-line
  * switches and accepted certificate errors, shell.openExternal with a URL the app does not fix,
  * permission handlers missing or granting everything, a Content Security Policy missing or
- * weak, navigation or window creation that the app does not limit, and code that is not a
- * literal run in a page.
+ * weak, navigation or window creation that the app does not limit, code that is not a literal
+ * run in a page, `<webview>` attributes that weaken a page's settings, and privileged schemes
+ * that bypass the CSP.
  */
 import { createHash } from "node:crypto";
 import type { SideCoverage, UnresolvedFamily } from "./compare.js";
@@ -22,6 +23,8 @@ import type {
   NavigationHandler,
   OpenExternalRow,
   PermissionHandlerRow,
+  ProtocolRow,
+  WebviewRow,
 } from "./javascript/app.js";
 import { AnalysisError, type Limitation } from "./model.js";
 import type { AuditPolicy, LoadedAuditBaseline, LoadedPolicy } from "./policy.js";
@@ -38,6 +41,8 @@ export const AUDIT_RULES = [
   "csp-weak",
   "navigation-unlimited",
   "dangerous-call",
+  "webview-insecure",
+  "custom-protocol",
 ] as const;
 export type AuditRuleId = (typeof AUDIT_RULES)[number];
 
@@ -46,7 +51,11 @@ export type AuditRuleId = (typeof AUDIT_RULES)[number];
  * does not list them runs them at warn, so an upgrade never turns a passing audit red. Without a
  * policy every rule runs at fail, as before.
  */
-export const AUDIT_LATER_RULES: ReadonlySet<AuditRuleId> = new Set(["dangerous-call"]);
+export const AUDIT_LATER_RULES: ReadonlySet<AuditRuleId> = new Set([
+  "dangerous-call",
+  "webview-insecure",
+  "custom-protocol",
+]);
 
 export interface AuditPlace {
   file: string;
@@ -212,6 +221,124 @@ export function dangerousCallRisk(row: DangerousCallRow): "fail" | "unknown" | n
   return row.targetKind === "unknown" ? "unknown" : "fail";
 }
 
+/**
+ * Whether a privileged scheme bypasses the Content Security Policy: `fail` when its privileges
+ * say `bypassCSP: true` on Electron's protocol, `unknown` when its privileges are not read (or the
+ * receiver is not read as Electron's protocol); null for any other row.
+ */
+export function protocolRisk(row: ProtocolRow): "fail" | "unknown" | null {
+  if (row.kind !== "privileged") return null;
+  const bypass = row.privileges ? row.privileges["bypassCSP"] : null;
+  if (bypass === undefined || bypass === false) return null;
+  if (bypass === null) return "unknown";
+  return row.targetKind === "protocol" ? "fail" : "unknown";
+}
+
+/** Window settings a webview's host-dependent weakness needs in its hosting window. */
+const HOST_SETTINGS: ReadonlyArray<{ test: RegExp; setting: string; values: readonly string[] }> = [
+  // nodeIntegrationInSubFrames has no derived column: its webPreferences rows are read
+  { test: /subframes/i, setting: "nodeIntegrationInSubFrames", values: [] },
+  { test: /nodeintegration/i, setting: "nodeIntegrationInEffect", values: ["on", "default on"] },
+  {
+    test: /contextisolation/i,
+    setting: "contextIsolationInEffect",
+    values: ["off", "default off"],
+  },
+  { test: /sandbox/i, setting: "sandboxInEffect", values: ["off", "default off"] },
+];
+
+/**
+ * `webview-insecure`: a `<webview>` whose attributes weaken a setting (Electron's security guide,
+ * sections 11 and 12), and, when a window enables `webviewTag`, no will-attach-webview listener
+ * in the files read. A weakness Electron takes from the hosting window wherever that has the safe
+ * value (nodeIntegration, contextIsolation, sandbox) counts only while a window read has the
+ * same setting, or one that cannot be told; which window hosts the page is not read, so such a
+ * weakness alone is unknown. A finding is unknown, too, while no window read enables `webviewTag`
+ * (off by default since Electron 5: the tag may not be created) or while a will-attach-webview
+ * listener read may change or refuse the webview.
+ */
+function webviewDrafts(
+  rows: readonly WebviewRow[],
+  windows: JsAppInfo["windows"],
+  prefs: JsAppInfo["webPreferences"],
+): AuditDraft[] {
+  const out: AuditDraft[] = [];
+  const tagOn = prefs.some((p) => p.key === "webviewTag" && p.value === true);
+  const listeners = rows.filter((r) => r.kind === "attach-listener");
+  const guarded = listeners.some(
+    (l) =>
+      l.preventsDefault !== "no" || l.disablesNodeIntegration !== "no" || l.deletesPreload !== "no",
+  );
+  /** A host-dependent weakness some window read may give effect (or may not be told). */
+  const hostMay = (via: string): boolean => {
+    const need = HOST_SETTINGS.find((h) => h.test.test(via));
+    if (!need || windows.length === 0) return true;
+    if (need.setting === "nodeIntegrationInSubFrames")
+      return prefs.some(
+        (p) => p.key === "nodeIntegrationInSubFrames" && (p.value === true || p.value === null),
+      );
+    return windows.some((w) => {
+      const v = String((w as unknown as Record<string, unknown>)[need.setting]);
+      return v === "unknown" || need.values.includes(v);
+    });
+  };
+  for (const r of rows) {
+    if (r.kind === "attach-listener") continue;
+    const host = r.hostDependent.filter(hostMay);
+    const reasons = [...r.insecure, ...host];
+    const unread = r.unread ?? [];
+    if (reasons.length === 0 && unread.length === 0) continue;
+    const what = `${r.kind === "html" ? "<webview> tag" : r.kind === "markup" ? "<webview> markup in the code" : "webview created in code"}${r.src ? ` (src ${JSON.stringify(r.src)})` : ""}`;
+    if (reasons.length === 0) {
+      out.push({
+        rule: "webview-insecure",
+        identity: `unread\0${r.file}\0${r.kind}\0${String(r.src)}`,
+        unknown: true,
+        key: `${r.kind} ${r.src ?? "-"} attributes not read`,
+        message: `A ${what}: ${unread.includes("*") ? "attributes set where hexvero does not read them (a computed name, a spread, a value built at run time)" : `the value of ${unread.join(", ")} is not read`}, so whether it weakens a setting is not known.`,
+        collection: "webviews",
+        where: [place(r)],
+      });
+      continue;
+    }
+    const doubts: string[] = [];
+    if (!tagOn)
+      doubts.push(
+        "no window read enables webviewTag (off by default since Electron 5), so whether the tag is created is not known",
+      );
+    if (r.insecure.length === 0)
+      doubts.push(
+        `${host.join(", ")} take${host.length === 1 ? "s" : ""} effect only in a window that has the same setting itself, and which window hosts this webview is not read`,
+      );
+    if (guarded)
+      doubts.push("a will-attach-webview listener read may change or refuse the webview");
+    out.push({
+      rule: "webview-insecure",
+      identity: `${r.file}\0${r.kind}\0${String(r.src)}\0${reasons.toSorted().join("\0")}`,
+      unknown: doubts.length > 0,
+      key: `${r.kind} ${r.src ?? "-"}: ${reasons.join(", ")}`,
+      message: `A ${what} weakens its pages' settings: ${reasons.join(", ")}${unread.length ? ` (and ${unread.includes("*") ? "attributes that are not read" : unread.join(", ")})` : ""} (Electron's security guide, sections 11 and 12${r.insecure.some((x) => /websecurity/i.test(x)) ? ", 6" : ""}${r.insecure.some((x) => /insecurecontent/i.test(x)) ? ", 8" : ""})${doubts.length ? `; ${doubts.join("; ")}` : ""}.`,
+      collection: "webviews",
+      where: [place(r)],
+    });
+  }
+  if (tagOn && listeners.length === 0) {
+    const on = prefs.filter((p) => p.key === "webviewTag" && p.value === true);
+    out.push({
+      rule: "webview-insecure",
+      identity: "no-attach-listener",
+      unknown: false,
+      absence: true,
+      key: "webviewTag on, no will-attach-webview listener",
+      message:
+        "A window enables webviewTag and no will-attach-webview listener was found in the files read: without one, the app does not check the options and URL of a <webview> before it is created, so a page that can add one (through script injection) chooses its preload and settings (Electron's security guide, section 12).",
+      collection: "webviews",
+      where: on.slice(0, 10).map(place),
+    });
+  }
+  return out;
+}
+
 const fingerprint = (rule: AuditRuleId, identity: string): string =>
   createHash("sha256").update(`${rule}\0${identity}`).digest("hex").slice(0, 32);
 
@@ -232,6 +359,8 @@ const RULE_FAMILY: Record<AuditRuleId, UnresolvedFamily | null> = {
   "csp-weak": "csp",
   "navigation-unlimited": null,
   "dangerous-call": "dangerousCalls",
+  "webview-insecure": "webviews",
+  "custom-protocol": "protocols",
 };
 
 const RULE_COLLECTION: Record<AuditRuleId, string> = {
@@ -245,6 +374,8 @@ const RULE_COLLECTION: Record<AuditRuleId, string> = {
   "csp-weak": "csp",
   "navigation-unlimited": "navigationHandlers",
   "dangerous-call": "dangerousCalls",
+  "webview-insecure": "webviews",
+  "custom-protocol": "protocols",
 };
 
 /** The gaps of one rule on one build, in check's codes and order. */
@@ -390,6 +521,8 @@ export function auditApp(
     | "navigationHandlers"
     | "webPreferences"
     | "dangerousCalls"
+    | "webviews"
+    | "protocols"
   >,
 ): AuditDraft[] {
   type Draft = AuditDraft;
@@ -606,6 +739,28 @@ export function auditApp(
           ? `${r.method} runs ${code} in a page (on ${r.targetKind}): text from a page, a message or a file that reaches it runs with the page's rights. Whether the code escapes what it builds in is not read.`
           : `${r.target}.${r.method} runs ${code}; the receiver is not read as a webContents, a frame or webFrame, so whether it is Electron's is not known.`,
       collection: "dangerousCalls",
+      where: [place(r)],
+    });
+  }
+  out.push(...webviewDrafts(app.webviews ?? [], app.windows ?? [], app.webPreferences ?? []));
+
+  for (const r of app.protocols ?? []) {
+    const risk = protocolRisk(r);
+    if (!risk) continue;
+    out.push({
+      rule: "custom-protocol",
+      identity: `${r.file}\0privileged\0${String(r.scheme)}`,
+      unknown: risk === "unknown",
+      key: `privileged scheme ${r.scheme ?? "(not read)"}${risk === "fail" ? " bypassCSP" : ""}`,
+      message:
+        risk === "fail"
+          ? `The scheme ${r.scheme ?? "(name not read)"} is registered as privileged with bypassCSP: true: pages and resources loaded from it are not held to the Content Security Policy (Electron's security guide, sections 7 and 18).`
+          : r.privileges === null || r.privileges === undefined
+            ? `A scheme${r.scheme ? ` (${r.scheme})` : ""} is registered as privileged with privileges that are not read (a list or object built at run time), so whether it bypasses the Content Security Policy is not known.`
+            : r.privileges["bypassCSP"] === null
+              ? `The scheme ${r.scheme ?? "(name not read)"} is registered as privileged with a bypassCSP value computed at run time, so whether it bypasses the Content Security Policy is not known.`
+              : `${r.target}.registerSchemesAsPrivileged gives ${r.scheme ?? "a scheme"} bypassCSP: true; the receiver is not read as Electron's protocol, so whether it is Electron's is not known.`,
+      collection: "protocols",
       where: [place(r)],
     });
   }

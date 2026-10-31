@@ -162,6 +162,8 @@ const ORDER = [
   "openExternal",
   "csp",
   "dangerousCalls",
+  "webviews",
+  "protocols",
   "webPreferences",
   "endpoints",
   "storage",

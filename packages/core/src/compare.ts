@@ -68,7 +68,9 @@ export type UnresolvedFamily =
   | "openExternal"
   | "permissions"
   | "csp"
-  | "dangerousCalls";
+  | "dangerousCalls"
+  | "webviews"
+  | "protocols";
 
 /**
  * How the storage family records an unread value: by file and storage kind, since a key of one
@@ -96,6 +98,8 @@ export const COLLECTION_FAMILY: Readonly<Record<string, UnresolvedFamily>> = {
   permissionHandlers: "permissions",
   csp: "csp",
   dangerousCalls: "dangerousCalls",
+  webviews: "webviews",
+  protocols: "protocols",
 };
 
 /** Machine codes of `CompareCompleteness.gaps`, in the order they are listed. */
@@ -228,6 +232,8 @@ const SOURCE_LINE_FIELDS: Record<string, readonly string[]> = {
   permissionHandlers: ["line"],
   csp: ["line"],
   dangerousCalls: ["line"],
+  webviews: ["line"],
+  protocols: ["line"],
   interfaces: ["line"],
   ipc: ["line"],
   webPreferences: ["line", "window"],
@@ -271,6 +277,9 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   csp: ["evidence"],
   // the call as written, and its receiver (renamed by minifiers)
   dangerousCalls: ["evidence", "target"],
+  // the tag or call as written, and the receiver (renamed by minifiers)
+  webviews: ["evidence", "target"],
+  protocols: ["evidence", "target"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -394,6 +403,18 @@ const COMPOSITE_KEYS: Record<string, readonly string[][]> = {
   dangerousCalls: [
     ["file", "method", "targetKind", "argumentKind", "argument"],
     ["method", "targetKind", "argumentKind", "argument"],
+  ],
+  // a webview by where it is written and its src (a listener by its file); its attributes and
+  // what a listener does are a change of the row
+  webviews: [
+    ["file", "kind", "src"],
+    ["kind", "src"],
+  ],
+  // a scheme by what registers it; the method (registerFileProtocol to handle) and the
+  // privileges are a change of the row
+  protocols: [
+    ["file", "kind", "scheme"],
+    ["kind", "scheme"],
   ],
   interfaces: [["file", "api", "member"]],
   // The same URL or key in two files is two facts; without a file (a single bundle) it is one.
