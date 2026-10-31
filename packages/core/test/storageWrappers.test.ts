@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
 import { REPLACEMENT_APP_WORK } from "../src/javascript/wrappers.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 /**
  * Storage keys passed through a wrapper class or object that another module defines: read at
@@ -670,7 +671,7 @@ local.get("x");
       files[`p${i}.js`] = `const { store } = require("./store");\n${writes}\n`;
     const started = performance.now();
     const info = analyze(files);
-    expect(performance.now() - started).toBeLessThan(30_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(30_000));
     const read = info.storage.some((r) => r.value === "app.ok_key");
     const lim = info.limitations.find((l) => l.code === "wrapper_method_replaced");
     // either every importing module was read (no write there is on the store), or the rest is
@@ -773,7 +774,7 @@ local.get("x");
       ).join("\n");
     const started = performance.now();
     const info = analyze({ "e.js": source });
-    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(10_000));
     expect(info.limitations.map((l) => l.code)).toContain("storage_wrappers_capped");
   });
 
@@ -784,7 +785,7 @@ local.get("x");
       "web-store.js": WEB_STORE,
       "renderer.js": `import { local } from "./web-store.js";\n${calls}\n`,
     });
-    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(10_000));
     const rows = info.storage.filter((r) => r.file === "renderer.js");
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThanOrEqual(2000);

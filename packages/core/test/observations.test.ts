@@ -8,6 +8,7 @@ import { compareReleases, renderReleaseReport, Session } from "../src/index.js";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
 import { ExpressionResolver } from "../src/javascript/resolve.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 /**
  * Two Electron observations: privileged objects a preload hands to pages as they are
@@ -643,7 +644,7 @@ describe("review regressions, undecided scope", () => {
     ].join("\n");
     const started = performance.now();
     const info = analyze({ "main.js": "", "preload.js": source });
-    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     expect(info.bridgeExposures).toHaveLength(400);
     expect(info.bridgeExposures.every((x) => x.exposed === "ipcRenderer")).toBe(true);
     expect(info.limitations.some((l) => l.code === "bridge_exposures_undecided")).toBe(true);
@@ -666,7 +667,7 @@ describe("review regressions, undecided scope", () => {
     ].join("\n");
     const started = performance.now();
     const info = analyze({ "main.js": "", "preload.js": source });
-    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     expect(info.bridgeExposures).toHaveLength(400);
     expect(info.bridgeExposures.every((x) => x.exposed === "ipcRenderer" && x.undecided)).toBe(
       true,
@@ -693,7 +694,7 @@ describe("review regressions, undecided scope", () => {
     const source = `const{contextBridge:c,ipcRenderer:r}=require("electron");${"var a=r,b=r;".repeat(20_000)}c.exposeInMainWorld("x",{${"m:r,".repeat(20_000)}});`;
     const started = performance.now();
     const info = analyze({ "main.js": "", "preload.js": source });
-    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(15_000));
     // the per-file cap: the inventory says it is cut
     expect(info.bridgeExposures).toHaveLength(500);
     expect(info.bridgeExposures.every((x) => x.exposed === "ipcRenderer")).toBe(true);

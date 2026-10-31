@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { analyzeJavaScriptTree, asarTree, type JsAppInfo } from "../src/javascript/app.js";
 import { checkRelease, parsePolicy, Session } from "../src/index.js";
 import { buildAsar } from "./fixtures/asar.js";
+import { timeLimit } from "./timeLimit.js";
 
 /**
  * `@electron/remote` turned on (`remoteEnabled`), as Joplin (`require("@electron/remote/main")
@@ -165,7 +166,7 @@ const s = "require('@electron/remote/main').enable(x)";
     const info = analyze({
       "main.js": `(()=>{var m={${modules}};${requires}a0.enable(w.webContents)})();`,
     });
-    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(10_000));
     expect(info.remoteEnabled.some((r) => r.kind === "enable")).toBe(true);
   });
 
@@ -176,7 +177,7 @@ const s = "require('@electron/remote/main').enable(x)";
     // a cost bound, not a timing assertion: rows are capped per file and the cap is said
     expect(info.remoteEnabled.length).toBe(200);
     expect(info.limitations.map((l) => l.code)).toContain("remote_enabled_truncated");
-    expect(performance.now() - started).toBeLessThan(60_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(60_000));
   });
 });
 

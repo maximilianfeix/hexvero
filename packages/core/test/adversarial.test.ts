@@ -14,6 +14,7 @@ import { parseBaseline, parsePolicy, PolicyError } from "../src/policy.js";
 import { compareReleases, renderReleaseReport, visibleControls } from "../src/report.js";
 import { Session } from "../src/session.js";
 import { targetFromBytes } from "../src/target.js";
+import { timeLimit } from "./timeLimit.js";
 
 /** An ASAR from header JSON text as written, so forged node types and values survive. */
 function rawAsar(headerText: string, data = "abcdefgh"): Uint8Array {
@@ -60,7 +61,7 @@ describe("ASAR header with forged node types", () => {
     const started = performance.now();
     for (const f of archive.files) expect(archive.find(f.path)).toBe(f);
     // a linear search per lookup made this loop quadratic
-    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(5_000));
   });
 
   it("parses an archive's header once for many source windows", async () => {
@@ -75,7 +76,7 @@ describe("ASAR header with forged node types", () => {
     for (let i = 0; i < 200; i++)
       expect((await session.source(id, "main.js", 2)).lines).toHaveLength(3);
     // parsing the 100,000-entry header for each of the 200 windows an HTML report reads took 15 s
-    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(5_000));
   });
 
   it("keeps only string integrity hashes", () => {
@@ -272,7 +273,7 @@ describe("interface map of an archive with thousands of copies of one preload", 
       [],
     );
     // a filter and sort of all 20,000 ends per member took 75 s
-    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(performance.now() - started).toBeLessThan(timeLimit(2_000));
     expect(rows).toHaveLength(n);
     expect(rows[0]).toMatchObject({ direction: "to-main", endsTotal: n - 1, endsTruncated: true });
     expect(rows[0]!.ends.map((e) => e.file)).toEqual(
