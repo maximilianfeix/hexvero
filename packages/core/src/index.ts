@@ -81,6 +81,8 @@ export type {
   JsScanFacts,
   OpenExternalRow,
   PermissionHandlerRow,
+  ProtocolRow,
+  WebviewRow,
 } from "./javascript/app.js";
 export {
   Session,
@@ -284,6 +286,7 @@ export {
   dangerousCallRisk,
   openExternalRisk,
   permissionRisk,
+  protocolRisk,
   type AuditFinding,
   type AuditOptions,
   type AuditPlace,

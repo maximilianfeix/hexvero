@@ -91,13 +91,15 @@ applies them to one build; `check` reports what changed; the mapping of every ch
 
 What Electronegativity checks that hexvero does not (yet):
 
-- Custom protocol handlers (`setAsDefaultProtocolClient`, `registerFileProtocol` and related).
+- What a custom protocol handler serves. hexvero lists handlers, privileged schemes and default
+  protocol clients (`protocols`) and judges `bypassCSP`, but does not read which files a
+  handler hands out.
 - Command-line switches written into `package.json` scripts.
 - What navigation handlers check. hexvero reports where they are missing and a window open
   handler that returns a literal `allow`, but not which URLs a listener lets through.
 - `webPreferences` keys outside the ten hexvero reads (`enableBlinkFeatures`,
-  `experimentalFeatures`, `affinity` …), `<webview>` attributes in HTML (`allowpopups`,
-  `nodeintegration`, `disablewebsecurity` …), and `will-attach-webview` handlers.
+  `experimentalFeatures`, `affinity` …) in a window's options. In `<webview>` attributes they are
+  read (`webviews`), with `will-attach-webview` listeners.
 - `eval`-like calls (`executeJavaScript` and `insertCSS` are read: `dangerousCalls`), resources
   loaded over plain HTTP, and the
   Electron version against known security fixes (hexvero reads only whether a packaged build's

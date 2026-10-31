@@ -284,6 +284,10 @@ export const MEANING: Record<string, string> = {
   csp: "Content Security Policies, in HTML <meta> tags and in response headers set in code",
   dangerousCalls:
     "executeJavaScript and insertCSS calls, with whether the code they run in a page is a literal",
+  webviews:
+    "<webview> tags (HTML, markup in code, elements created in code) with their attributes, and will-attach-webview listeners",
+  protocols:
+    "Custom protocols: handlers, schemes registered as privileged with their privileges, and schemes the app is the default client of",
   webPreferences: "webPreferences keys as written in the code",
   endpoints: "Network endpoints the code calls",
   storage: "Storage keys the code reads or writes",

@@ -16,7 +16,9 @@
     "permission-handler-grants-all": { "level": "fail" },
     "csp-weakened": { "level": "fail" },
     "navigation-limit-removed": { "level": "fail" },
-    "new-dangerous-call": { "level": "fail" }
+    "new-dangerous-call": { "level": "fail" },
+    "new-insecure-webview": { "level": "fail" },
+    "new-custom-protocol": { "level": "fail" }
   },
   "unknown": "fail",
   "suppressions": []

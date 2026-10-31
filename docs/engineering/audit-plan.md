@@ -33,41 +33,41 @@ single build has no comparison. Faking an empty before build would make every ru
 rule judges it yet; `missing` = not read. "Planned id" is the rule (or collection) a follow-up
 adds.
 
-| Electronegativity check                                           | hexvero collection                                            | hexvero rule (audit / check)                                | Status                                       | Planned id                     |
-| ----------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------- | ------------------------------ |
-| `NODE_INTEGRATION_JS_CHECK`                                       | `windows` (`nodeIntegrationInEffect`), `webPreferences`       | `window-permissive` / `window-more-permissive`              | covered                                      |                                |
-| `NODE_INTEGRATION_HTML_CHECK` (`<webview nodeintegration>`)       | —                                                             | —                                                           | missing                                      | `webviews`, `webview-insecure` |
-| `NODE_INTEGRATION_ATTACH_EVENT_JS_CHECK` (`will-attach-webview`)  | —                                                             | —                                                           | missing                                      | `webviews`, `webview-insecure` |
-| `CONTEXT_ISOLATION_JS_CHECK`                                      | `windows` (`contextIsolationInEffect`)                        | `window-permissive` / `window-more-permissive`              | covered                                      |                                |
-| `SANDBOX_JS_CHECK`                                                | `windows` (`sandboxInEffect`, `app.enableSandbox()`)          | `window-permissive` / `window-more-permissive`              | covered                                      |                                |
-| `PRELOAD_JS_CHECK`                                                | `windows` (`preload`), `contextBridge`, `bridgeExposures`     | — / `new-bridge-exposure`, `new-interface-member`           | read (what a preload exposes is judged)      |                                |
-| `REMOTE_MODULE_JS_CHECK`                                          | `remoteEnabled`, `webPreferences` (`enableRemoteModule`)      | `remote-enabled` / `remote-enabled`                         | covered                                      |                                |
-| `WEB_SECURITY_JS_CHECK`                                           | `windows` (`webSecurityInEffect`), `webPreferences`           | `window-permissive` / `window-more-permissive`              | covered                                      |                                |
-| `WEB_SECURITY_HTML_CHECK` (`<webview disablewebsecurity>`)        | —                                                             | —                                                           | missing                                      | `webview-insecure`             |
-| `INSECURE_CONTENT_JS_CHECK`                                       | `windows` (`allowRunningInsecureContentInEffect`)             | `window-permissive` / `window-more-permissive`              | covered                                      |                                |
-| `INSECURE_CONTENT_HTML_CHECK` (webview `webpreferences`)          | —                                                             | —                                                           | missing                                      | `webview-insecure`             |
-| `EXPERIMENTAL_FEATURES_JS_CHECK` / `_HTML_CHECK`                  | —                                                             | —                                                           | missing                                      | `window-permissive` (extended) |
-| `BLINK_FEATURES_JS_CHECK` / `_HTML_CHECK`                         | —                                                             | —                                                           | missing                                      | `window-permissive` (extended) |
-| `AUXCLICK_JS_CHECK` / `_HTML_CHECK`                               | —                                                             | —                                                           | missing (obsolete since `auxclick` default)  | none planned                   |
-| `AFFINITY_JS_CHECK` / `_HTML_CHECK` / `AFFINITY_GLOBAL_CHECK`     | —                                                             | —                                                           | missing (option removed in Electron 14)      | none planned                   |
-| `ALLOWPOPUPS_HTML_CHECK`                                          | —                                                             | —                                                           | missing                                      | `webview-insecure`             |
-| `CSP_HTML_CHECK`, `CSP_JS_CHECK`, `CSP_GLOBAL_CHECK`              | `csp` (this slice)                                            | `csp-missing`, `csp-weak` / `csp-weakened`                  | covered                                      |                                |
-| `OPEN_EXTERNAL_JS_CHECK`                                          | `openExternal` (this slice)                                   | `open-external` / `new-open-external`                       | covered                                      |                                |
-| `PERMISSION_REQUEST_HANDLER_JS_CHECK`, `_GLOBAL_CHECK`            | `permissionHandlers` (this slice)                             | `permission-handler-missing`, `-grants-all` / `-grants-all` | covered                                      |                                |
-| `CERTIFICATE_ERROR_EVENT_JS_CHECK`                                | `switches` (`certificate-error`)                              | `unsafe-switch` / `new-unsafe-switch`                       | covered                                      |                                |
-| `CERTIFICATE_VERIFY_PROC_JS_CHECK`                                | `switches` (`certificate-verify-proc`)                        | `unsafe-switch` / `new-unsafe-switch`                       | covered                                      |                                |
-| `CUSTOM_ARGUMENTS_JS_CHECK`                                       | `switches` (`switch`, `argument`)                             | `unsafe-switch` / `new-unsafe-switch`                       | covered                                      |                                |
-| `CUSTOM_ARGUMENTS_JSON_CHECK` (switches in package.json scripts)  | —                                                             | —                                                           | missing                                      | `switches` kind `script`       |
-| `SECURITY_WARNINGS_DISABLED_JS_CHECK`                             | `switches` (`security-warnings`)                              | — (it hides console warnings only)                          | read                                         |                                |
-| `SECURITY_WARNINGS_DISABLED_JSON_CHECK`                           | —                                                             | —                                                           | missing                                      | `switches` kind `script`       |
-| `LIMIT_NAVIGATION_JS_CHECK`, `LIMIT_NAVIGATION_GLOBAL_CHECK`      | `navigationHandlers` (presence, `returns` deny/allow)         | `navigation-unlimited` / `navigation-limit-removed`         | covered (what a listener checks is not read) |                                |
-| `PROTOCOL_HANDLER_JS_CHECK`                                       | —                                                             | —                                                           | missing                                      | `protocols`, `custom-protocol` |
-| `DANGEROUS_FUNCTIONS_JS_CHECK` (`executeJavaScript`, `insertCSS`) | `dangerousCalls`                                              | `dangerous-call` / `new-dangerous-call`                     | covered                                      |                                |
-| `HTTP_RESOURCES_JS_CHECK` / `_HTML_CHECK`                         | `urls` (URL literals; `http:` visible)                        | —                                                           | read in part                                 | `http-resource`                |
-| `HTTP_RESOURCES_WITH_NODE_INTEGRATION_GLOBAL_CHECK`               | `urls`, `windows`                                             | —                                                           | read in part                                 | `http-resource`                |
-| `ELECTRON_VERSION_JSON_CHECK`                                     | `runtime` (packaged builds), package.json `electron` range    | — / `fuse-weakened` (end of support)                        | read                                         | `electron-outdated`            |
-| `AVAILABLE_SECURITY_FIXES_GLOBAL_CHECK`                           | `runtime` (end of support from a dated release-data snapshot) | — / `fuse-weakened`                                         | read in part (no CVE list, by design)        | `electron-outdated`            |
-| 27 upgrade checks (`ElectronAtomicUpgradeChecks`, Electron 5–8)   | —                                                             | —                                                           | not planned (API migration, not security)    | none                           |
+| Electronegativity check                                           | hexvero collection                                              | hexvero rule (audit / check)                                        | Status                                                  | Planned id                     |
+| ----------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------ |
+| `NODE_INTEGRATION_JS_CHECK`                                       | `windows` (`nodeIntegrationInEffect`), `webPreferences`         | `window-permissive` / `window-more-permissive`                      | covered                                                 |                                |
+| `NODE_INTEGRATION_HTML_CHECK` (`<webview nodeintegration>`)       | `webviews` (`hostDependent`)                                    | `webview-insecure` / `new-insecure-webview`                         | covered (counts where a window has Node integration on) |                                |
+| `NODE_INTEGRATION_ATTACH_EVENT_JS_CHECK` (`will-attach-webview`)  | `webviews` (`attach-listener`), `webPreferences` (`webviewTag`) | `webview-insecure` (no listener) / `new-insecure-webview` (removed) | covered (what a listener does is read where literal)    |                                |
+| `CONTEXT_ISOLATION_JS_CHECK`                                      | `windows` (`contextIsolationInEffect`)                          | `window-permissive` / `window-more-permissive`                      | covered                                                 |                                |
+| `SANDBOX_JS_CHECK`                                                | `windows` (`sandboxInEffect`, `app.enableSandbox()`)            | `window-permissive` / `window-more-permissive`                      | covered                                                 |                                |
+| `PRELOAD_JS_CHECK`                                                | `windows` (`preload`), `contextBridge`, `bridgeExposures`       | — / `new-bridge-exposure`, `new-interface-member`                   | read (what a preload exposes is judged)                 |                                |
+| `REMOTE_MODULE_JS_CHECK`                                          | `remoteEnabled`, `webPreferences` (`enableRemoteModule`)        | `remote-enabled` / `remote-enabled`                                 | covered                                                 |                                |
+| `WEB_SECURITY_JS_CHECK`                                           | `windows` (`webSecurityInEffect`), `webPreferences`             | `window-permissive` / `window-more-permissive`                      | covered                                                 |                                |
+| `WEB_SECURITY_HTML_CHECK` (`<webview disablewebsecurity>`)        | `webviews` (`insecure`)                                         | `webview-insecure` / `new-insecure-webview`                         | covered                                                 |                                |
+| `INSECURE_CONTENT_JS_CHECK`                                       | `windows` (`allowRunningInsecureContentInEffect`)               | `window-permissive` / `window-more-permissive`                      | covered                                                 |                                |
+| `INSECURE_CONTENT_HTML_CHECK` (webview `webpreferences`)          | `webviews` (`insecure`)                                         | `webview-insecure` / `new-insecure-webview`                         | covered                                                 |                                |
+| `EXPERIMENTAL_FEATURES_JS_CHECK` / `_HTML_CHECK`                  | `webviews` (`webpreferences experimentalFeatures`, HTML part)   | `webview-insecure` (HTML part)                                      | HTML part covered; JS part missing                      | `window-permissive` (extended) |
+| `BLINK_FEATURES_JS_CHECK` / `_HTML_CHECK`                         | `webviews` (`blinkfeatures`, `enableBlinkFeatures`, HTML part)  | `webview-insecure` (HTML part)                                      | HTML part covered; JS part missing                      | `window-permissive` (extended) |
+| `AUXCLICK_JS_CHECK` / `_HTML_CHECK`                               | —                                                               | —                                                                   | missing (obsolete since `auxclick` default)             | none planned                   |
+| `AFFINITY_JS_CHECK` / `_HTML_CHECK` / `AFFINITY_GLOBAL_CHECK`     | —                                                               | —                                                                   | missing (option removed in Electron 14)                 | none planned                   |
+| `ALLOWPOPUPS_HTML_CHECK`                                          | `webviews` (`insecure`)                                         | `webview-insecure` / `new-insecure-webview`                         | covered                                                 |                                |
+| `CSP_HTML_CHECK`, `CSP_JS_CHECK`, `CSP_GLOBAL_CHECK`              | `csp` (this slice)                                              | `csp-missing`, `csp-weak` / `csp-weakened`                          | covered                                                 |                                |
+| `OPEN_EXTERNAL_JS_CHECK`                                          | `openExternal` (this slice)                                     | `open-external` / `new-open-external`                               | covered                                                 |                                |
+| `PERMISSION_REQUEST_HANDLER_JS_CHECK`, `_GLOBAL_CHECK`            | `permissionHandlers` (this slice)                               | `permission-handler-missing`, `-grants-all` / `-grants-all`         | covered                                                 |                                |
+| `CERTIFICATE_ERROR_EVENT_JS_CHECK`                                | `switches` (`certificate-error`)                                | `unsafe-switch` / `new-unsafe-switch`                               | covered                                                 |                                |
+| `CERTIFICATE_VERIFY_PROC_JS_CHECK`                                | `switches` (`certificate-verify-proc`)                          | `unsafe-switch` / `new-unsafe-switch`                               | covered                                                 |                                |
+| `CUSTOM_ARGUMENTS_JS_CHECK`                                       | `switches` (`switch`, `argument`)                               | `unsafe-switch` / `new-unsafe-switch`                               | covered                                                 |                                |
+| `CUSTOM_ARGUMENTS_JSON_CHECK` (switches in package.json scripts)  | —                                                               | —                                                                   | missing                                                 | `switches` kind `script`       |
+| `SECURITY_WARNINGS_DISABLED_JS_CHECK`                             | `switches` (`security-warnings`)                                | — (it hides console warnings only)                                  | read                                                    |                                |
+| `SECURITY_WARNINGS_DISABLED_JSON_CHECK`                           | —                                                               | —                                                                   | missing                                                 | `switches` kind `script`       |
+| `LIMIT_NAVIGATION_JS_CHECK`, `LIMIT_NAVIGATION_GLOBAL_CHECK`      | `navigationHandlers` (presence, `returns` deny/allow)           | `navigation-unlimited` / `navigation-limit-removed`                 | covered (what a listener checks is not read)            |                                |
+| `PROTOCOL_HANDLER_JS_CHECK`                                       | `protocols`                                                     | `custom-protocol` (`bypassCSP`) / `new-custom-protocol`             | covered (handlers listed, what they serve not read)     |                                |
+| `DANGEROUS_FUNCTIONS_JS_CHECK` (`executeJavaScript`, `insertCSS`) | `dangerousCalls`                                                | `dangerous-call` / `new-dangerous-call`                             | covered                                                 |                                |
+| `HTTP_RESOURCES_JS_CHECK` / `_HTML_CHECK`                         | `urls` (URL literals; `http:` visible)                          | —                                                                   | read in part                                            | `http-resource`                |
+| `HTTP_RESOURCES_WITH_NODE_INTEGRATION_GLOBAL_CHECK`               | `urls`, `windows`                                               | —                                                                   | read in part                                            | `http-resource`                |
+| `ELECTRON_VERSION_JSON_CHECK`                                     | `runtime` (packaged builds), package.json `electron` range      | — / `fuse-weakened` (end of support)                                | read                                                    | `electron-outdated`            |
+| `AVAILABLE_SECURITY_FIXES_GLOBAL_CHECK`                           | `runtime` (end of support from a dated release-data snapshot)   | — / `fuse-weakened`                                                 | read in part (no CVE list, by design)                   | `electron-outdated`            |
+| 27 upgrade checks (`ElectronAtomicUpgradeChecks`, Electron 5–8)   | —                                                               | —                                                                   | not planned (API migration, not security)               | none                           |
 
 ## Electronegativity's open issues
 
@@ -121,6 +121,23 @@ adds.
    returns `allow`. Schema, `examples/policy.json`, `hexvero init`, SARIF texts (sections 13 and
    14), web labels.
 
+## Third slice: webviews and custom protocols
+
+1. Collections `webviews` (`javascript/webviews.ts`: `<webview>` tags of the app's HTML files,
+   markup in strings of the code, webviews created with `createElement("webview")` and their
+   `setAttribute` calls or a framework's props, `will-attach-webview` listeners with what they do)
+   and `protocols` (`javascript/protocols.ts`: handlers, privileged schemes with their privileges,
+   default protocol clients). JS_SCAN_SCHEMA 43; limitations `webviews_truncated`,
+   `protocols_truncated`; `html_unread` also leaves the webview rules undecidable. The HTML tag
+   reader of `csp` is shared (`htmlStartTags`).
+2. Audit rules `webview-insecure` (sections 11 and 12; an attribute Electron takes from the hosting
+   window counts only while a window read has the same setting; unknown without `webviewTag: true`
+   read; with it and no `will-attach-webview` listener, an absence) and `custom-protocol`
+   (`bypassCSP: true`, sections 7 and 18). They run at `warn` when a policy's `audit` section does
+   not list them.
+3. Check rules `new-insecure-webview` and `new-custom-protocol` (warn when a policy does not list
+   them): schema, `examples/policy.json`, `hexvero init`, SARIF texts, web labels.
+
 ## Follow-ups, in order of value
 
 1. **Audit suppressions and baselines** (done): `hexvero audit --policy <file>` reads the
@@ -136,16 +153,13 @@ adds.
 2. **`window-permissive` extended** with `experimentalFeatures` and `enableBlinkFeatures` (new
    keys). `webSecurity: false` and `allowRunningInsecureContent: true` are judged since the second
    slice (below).
-3. **`webviews`**: `<webview>` tags in HTML (`nodeintegration`, `disablewebsecurity`,
-   `allowpopups`, `webpreferences`), `webviewTag`, and `will-attach-webview` handlers; rule
-   `webview-insecure`.
+3. **`webviews`** (done, third slice below).
 4. **What navigation handlers check**: which URLs a `will-navigate` listener lets through
    (`navigation-unlimited` itself is in the second slice).
-5. **`protocols`**: `protocol.handle`, `registerFileProtocol` and the others,
-   `setAsDefaultProtocolClient`; rule `custom-protocol`.
+5. **`protocols`** (done, third slice below).
 6. **`dangerous-call`** (done): collection `dangerousCalls` (`javascript/dangerous.ts`:
    `executeJavaScript`, `executeJavaScriptInIsolatedWorld`, `insertCSS` with whether the code is a
-   literal, limitation `dangerous_calls_truncated`, JS_SCAN_SCHEMA 41), audit rule `dangerous-call`
+   literal, limitation `dangerous_calls_truncated`, JS_SCAN_SCHEMA 42), audit rule `dangerous-call`
    (runs at `warn` when a policy's `audit` section does not list it) and check rule
    `new-dangerous-call` (warn when unlisted).
 7. **`http-resource`**: `loadURL("http:…")` and `http:` script and style sources in HTML.

@@ -114,6 +114,19 @@ const RULE_TEXT: Record<PolicyRuleId, { name: string; short: string; full: strin
       full: "The build calls executeJavaScript, executeJavaScriptInIsolatedWorld or insertCSS with code that is not a literal (a value or a template built at run time), and the previous build had no such call (by method, receiver and as much of the code as is read). Text from a page, a message or a file that reaches the code runs with the page's rights. A call on a receiver not read as a webContents, a frame or webFrame is reported as unknown.",
       help: "Pass data to the page through IPC or a preload instead of building code, or escape what is built in (JSON.stringify for values). If the call is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
     },
+    "new-insecure-webview": {
+      name: "NewInsecureWebview",
+      short:
+        "A <webview> newly weakens its pages' settings, or the will-attach-webview listener is gone.",
+      full: "A <webview> of the build (a tag in an HTML file, markup in the code, or one created in code) sets an attribute that weakens its pages' settings (allowpopups, disablewebsecurity, nodeintegration, nodeintegrationinsubframes, blinkfeatures, or a webpreferences key such as allowRunningInsecureContent, webSecurity=no, contextIsolation=no) that the previous build's webviews did not set; or the previous build listens for will-attach-webview and this build does not (Electron's security guide, sections 11 and 12). A setting Electron takes from the hosting window (nodeIntegration, contextIsolation, sandbox), or a webview where no window is read to enable webviewTag, is reported as unknown.",
+      help: "Remove the attribute, or check webviews in a will-attach-webview listener (delete webPreferences.preload, set nodeIntegration to false, call event.preventDefault() for URLs the app does not expect). If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
+    "new-custom-protocol": {
+      name: "NewCustomProtocol",
+      short: "The build newly registers a privileged scheme or a default protocol client.",
+      full: "The build registers a scheme as privileged (protocol.registerSchemesAsPrivileged) or makes the app the default client of a scheme (app.setAsDefaultProtocolClient) that the previous build did not, or newly gives a privileged scheme bypassCSP: true, which exempts its content from the Content Security Policy (Electron's security guide, sections 7 and 18). A scheme hexvero could not read, or a receiver not read as Electron's protocol or app, is reported as unknown.",
+      help: "Check what the scheme serves and which privileges it needs; a default protocol client receives URLs from other programs, so check how the app handles them (open-url, second-instance). If the change is intended, accept it with `hexvero check --update-baseline` or a suppression in the policy.",
+    },
   };
 
 const uriOf = (file: string): string =>
@@ -323,6 +336,18 @@ const AUDIT_TEXT: Record<
     short: "Code that is not a literal runs in a page.",
     full: "executeJavaScript, executeJavaScriptInIsolatedWorld or insertCSS of a webContents, a frame or webFrame is called with code that is not a literal (a value or a template built at run time), so text from a page, a message or a file that reaches it runs with the page's rights. A literal is no finding. A call on a receiver not read as one of these is reported as unknown; whether the code escapes what it builds in is not read.",
     help: "Pass data to the page through IPC or a preload instead of building code, or escape what is built in (JSON.stringify for values). Electron's security guide has no section of its own on these calls; Electronegativity's DANGEROUS_FUNCTIONS_JS_CHECK flags them. See docs/electron-findings.md of hexvero for what is read and what is not.",
+  },
+  "webview-insecure": {
+    name: "WebviewInsecure",
+    short: "A <webview> weakens its pages' settings, or webviews are not checked before creation.",
+    full: "A <webview> (a tag in an HTML file, markup in the code, or one created in code) sets allowpopups, disablewebsecurity, blinkfeatures, nodeintegration, nodeintegrationinsubframes or a webpreferences key that weakens a setting (allowRunningInsecureContent, webSecurity=no, experimentalFeatures, enableBlinkFeatures, nodeIntegration, contextIsolation=no, sandbox=no); or a window enables webviewTag and no will-attach-webview listener was found in the files read. nodeIntegration, contextIsolation and sandbox are taken from the hosting window wherever it has the safe value, so they count only while a window read has the same setting, and such a finding is unknown. A finding is also unknown while no window read enables webviewTag or a will-attach-webview listener may change the webview.",
+    help: "Electron's security guide: section 11 (do not use allowpopups), section 12 (verify webview options before creation: in a will-attach-webview listener, delete webPreferences.preload, set nodeIntegration to false and call event.preventDefault() for a src the app does not expect). Better still, do not use <webview> (a WebContentsView in the main process). See docs/electron-findings.md of hexvero for what is read and what is not.",
+  },
+  "custom-protocol": {
+    name: "CustomProtocol",
+    short: "A privileged scheme bypasses the Content Security Policy.",
+    full: "protocol.registerSchemesAsPrivileged gives a scheme bypassCSP: true, so pages and resources loaded from it are not held to the Content Security Policy. A scheme whose privileges hexvero could not read is reported as unknown. Protocol handlers and default protocol clients are listed in the protocols collection without a finding: what a handler serves is not read.",
+    help: "Electron's security guide, section 18 (serve local pages from a custom protocol rather than file://, limited to the files it should serve) and section 7 (define a Content Security Policy): drop bypassCSP unless the scheme serves only content that must not be restricted. See docs/electron-findings.md of hexvero for what is read and what is not.",
   },
 };
 

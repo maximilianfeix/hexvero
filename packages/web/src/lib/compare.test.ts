@@ -210,6 +210,8 @@ describe("list meanings", () => {
       "openExternal",
       "csp",
       "dangerousCalls",
+      "webviews",
+      "protocols",
       "webPreferences",
       "endpoints",
       "storage",

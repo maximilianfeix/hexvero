@@ -294,6 +294,17 @@ describe("the policy's audit section", () => {
     expect(
       parse({ "dangerous-call": { level: "fail" } }).audit?.rules["dangerous-call"].level,
     ).toBe("fail");
+    const p = parsePolicy(
+      JSON.stringify({
+        hexvero: "policy",
+        version: 1,
+        audit: { rules: { "custom-protocol": { level: "fail" } } },
+      }),
+      "p.json",
+    ).policy;
+    expect(p.audit?.rules["webview-insecure"].level).toBe("warn");
+    expect(p.audit?.rules["custom-protocol"].level).toBe("fail");
+    expect(p.audit?.rules["navigation-unlimited"].level).toBe("fail");
   });
 
   it("accepts the valid sections the schema accepts", () => {

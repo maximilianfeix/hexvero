@@ -1502,21 +1502,34 @@ function decodeEntities(text: string): string {
   });
 }
 
+/** A start tag of an HTML text, as `htmlStartTags` reads it. */
+export interface HtmlStartTag {
+  /** The tag name, lowercased. */
+  name: string;
+  /**
+   * Attributes by lowercased name, values with character references decoded; an attribute
+   * written without a value is `""`. The first of two attributes of one name counts, as in HTML.
+   */
+  attrs: Map<string, string>;
+  /** Offset of the tag's `<`, and of its `>` (the end of the text when it is not closed). */
+  start: number;
+  end: number;
+  /** No text and no element that ends a document's head stands before the tag. */
+  inHead: boolean;
+}
+
 /**
- * `<meta http-equiv="Content-Security-Policy" content="…">` of an HTML file, read with a
- * tokenizer for tags and attributes: comments and the content of raw-text elements (`<script>`,
- * `<style>`, `<textarea>` …) are skipped, attribute values are read quoted or unquoted, and
- * character references in them are decoded. One pass over the text; nothing else is parsed.
+ * The start tags of an HTML text, read with a tokenizer for tags and attributes: comments and
+ * the content of raw-text elements (`<script>`, `<style>`, `<textarea>` …) are skipped, attribute
+ * values are read quoted or unquoted, and character references in them are decoded. The content
+ * of `<template>` and `<noscript>` is skipped as well unless `inert` is set: it is not applied as
+ * the document's own markup, but a script may still clone it. One pass over the text; nothing
+ * else is parsed.
  */
-export function cspMetaRows(text: string, file: string): { rows: CspRow[]; capped: boolean } {
-  const rows: CspRow[] = [];
-  let capped = false;
-  let line = 1;
-  let counted = 0;
-  const lineAt = (offset: number): number => {
-    for (; counted < offset; counted++) if (text.charCodeAt(counted) === 10) line++;
-    return line;
-  };
+export function* htmlStartTags(
+  text: string,
+  options: { inert?: boolean } = {},
+): Generator<HtmlStartTag> {
   const lower = text.toLowerCase();
   let i = 0;
   let inHead = true;
@@ -1587,32 +1600,57 @@ export function cspMetaRows(text: string, file: string): { rows: CspRow[]; cappe
       j = Math.max(k, j + 1);
     }
     i = j + 1;
+    yield { name, attrs, start: lt, end: j, inHead };
     // everything after <plaintext> is text
     if (name === "plaintext") break;
-    if (RAW_TEXT.includes(name) || INERT.includes(name)) {
+    if (RAW_TEXT.includes(name) || (!options.inert && INERT.includes(name))) {
       // raw text is no markup; a template's or noscript's content is not applied
       const end = lower.indexOf(`</${name}`, i);
       i = end < 0 ? text.length : end;
-      continue;
     }
-    if (name !== "meta") continue;
+  }
+}
+
+/** The line (from 1) of increasing offsets of a text: each call continues the count. */
+export function lineCounter(text: string): (offset: number) => number {
+  let line = 1;
+  let counted = 0;
+  return (offset: number): number => {
+    for (; counted < offset; counted++) if (text.charCodeAt(counted) === 10) line++;
+    return line;
+  };
+}
+
+/**
+ * `<meta http-equiv="Content-Security-Policy" content="…">` of an HTML file, read with
+ * `htmlStartTags` (comments, raw text and the content of `<template>` and `<noscript>` are not
+ * read as markup).
+ */
+export function cspMetaRows(text: string, file: string): { rows: CspRow[]; capped: boolean } {
+  const rows: CspRow[] = [];
+  let capped = false;
+  const lineAt = lineCounter(text);
+  for (const tag of htmlStartTags(text)) {
+    if (tag.name !== "meta") continue;
     // HTML compares the keyword ASCII case-insensitively, without trimming
-    const equiv = attrs.get("http-equiv")?.toLowerCase();
+    const equiv = tag.attrs.get("http-equiv")?.toLowerCase();
     // a report-only policy in <meta> is ignored by browsers (CSP3, 6.1.1)
     if (equiv !== CSP_HEADER) continue;
-    const policy = attrs.get("content") ?? null;
+    const policy = tag.attrs.get("content") ?? null;
     if (rows.length >= MAX_META_PER_FILE) {
       capped = true;
       break;
     }
     rows.push({
       kind: "meta",
-      ...(inHead ? {} : { outsideHead: true }),
+      ...(tag.inHead ? {} : { outsideHead: true }),
       policy,
       weaknesses: policy === null ? null : cspWeaknesses(policy),
-      evidence: short(text.slice(lt, Math.min(j + 1, lt + 200)).replace(/\s+/g, " ")),
+      evidence: short(
+        text.slice(tag.start, Math.min(tag.end + 1, tag.start + 200)).replace(/\s+/g, " "),
+      ),
       file,
-      line: lineAt(lt),
+      line: lineAt(tag.start),
     });
   }
   return { rows, capped };
