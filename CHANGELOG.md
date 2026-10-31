@@ -66,6 +66,12 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- IPC calls through a send helper whose object and channel are both parameters
+  (`function ut(e,t,...n){… e.send(t,...n)}`, called as `ut(win.webContents, "x", …)`) give a
+  `webContents.send` row where the object passed is provably a webContents (#287, fixes #280).
+- A function expression behind `?` or `:`, or an `async function` expression, in a declarator list
+  no longer ends the list, so a later declarator of the same name is not taken as a write of an
+  outer helper (#284, #288, fixes #281).
 - `electron` reached through a lazy getter is read like `require("electron")`: webpack 5's
   `n.cw(function(e,t){e.exports=require("electron")})`, `() => n(id)`, `n.n(r)`, function and
   Babel lazy-import getters, and `new (X().BrowserWindow)(opts)`. GitHub Desktop 3.6.10 bundles
