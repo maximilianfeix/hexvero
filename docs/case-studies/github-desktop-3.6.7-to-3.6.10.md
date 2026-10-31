@@ -131,6 +131,12 @@ The one row left, `update-window-background-color  senders: [] → ["renderer.js
 wrong: both bundles send it the same way (`f(…)` in 3.6.7, `Be(…)` in 3.6.10). Tracked in
 [#306](https://github.com/maximilianfeix/hexvero/issues/306).
 
+**Fixed by #309:** a default inside a declaration's pattern (`{flipAlignment: f = !0} = …` in
+Floating UI's flip middleware, in the same webpack module) was read as a write of the module's
+`f`. With it, `ipcChannels` is **0 changed, 74 unchanged, 3 unknown**: every row that differed
+between the two builds' readings is gone, and the three unknown rows are the new main-process
+channels named above.
+
 ## What this shows
 
 - The release changes that matter for a review were visible from the files: a new Electron line,

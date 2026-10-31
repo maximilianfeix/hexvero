@@ -108,6 +108,10 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- A default in a declaration's pattern (`const { k: f = 1 } = o`) or a class field
+  (`class A { f = 1 }`) is no write of an outer `f`, so a forwarder of that name keeps its calls;
+  a call of such a pattern-declared local no longer counts as a forwarder call (#309, fixes #306).
+  GitHub Desktop 3.6.7 → 3.6.10: `ipcChannels` has no false change row left.
 - A declarator without a value in a `let`/`var` list (`let g, y;`) is a declaration, so a
   local of that name no longer counts as a write or a call of an outer forwarder (#301, fixes
   #298); the methods of a class created in place (`S = new class extends B {…}`) are functions of
