@@ -3,18 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#1b1d21" />
     <title>hexvero: Electron release diff for security review</title>
     <meta
       name="description"
-      content="Diff two builds of an Electron app (app.asar, .app, install directory, release ZIP) for security review: what changed in IPC, contextBridge, window settings and network hosts, with the file and line on both sides, and a CI policy gate. Reads files only; nothing is executed."
+      content="Compare two builds of an Electron app (app.asar, .app, install directory, release ZIP): what changed in IPC, contextBridge, window settings and network hosts, with the file and line in both builds, and a CI policy gate with SARIF. Neither build is run. MIT."
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://maximilianfeix.github.io/hexvero/" />
+    <link
+      rel="preload"
+      href="fonts/ibm-plex-sans-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="fonts/ibm-plex-mono-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <meta property="og:title" content="hexvero: know what changed inside your Electron release" />
     <meta
       property="og:description"
-      content="What changed in IPC, contextBridge, window settings and hosts between two Electron builds, with file and line on both sides, and a CI policy gate. Reads files only; nothing is executed."
+      content="What changed in IPC, contextBridge, window settings and hosts between two Electron builds, with file and line in both, and a CI policy gate. Neither build is run."
     />
     <meta
       property="og:image"
@@ -29,7 +44,10 @@
       content="https://maximilianfeix.github.io/hexvero/social-preview.png"
     />
     <link rel="alternate" type="text/plain" href="llms.txt" title="llms.txt" />
-    <link rel="stylesheet" href="site.css" />
+    <link rel="stylesheet" href="home.css" />
+    <script>
+      document.documentElement.classList.add("js");
+    </script>
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -37,241 +55,294 @@
         "name": "hexvero",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS, Linux, Windows",
-        "description": "Electron release diff for security review: compares two builds of an Electron app and reports what changed in IPC, contextBridge, window settings and network hosts, with the file and line behind each change, what could not be established, and a release policy check for CI. Reads files only. Also inspects binaries. CLI, MCP server for coding agents and a local web UI.",
+        "description": "Electron release diff for security review: compares two builds of an Electron app and reports what changed in IPC, contextBridge, window settings and network hosts, with the file and line behind each change, what could not be established, and a release policy check for CI. A single-build audit covers part of Electronegativity's checks. Reads files only. CLI, MCP server for coding agents and a local web UI.",
         "url": "https://maximilianfeix.github.io/hexvero/",
         "codeRepository": "https://github.com/maximilianfeix/hexvero",
         "license": "https://opensource.org/licenses/MIT",
+        "softwareVersion": "0.12.0",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "softwareRequirements": "Node.js 22.12 or newer"
       }
     </script>
   </head>
   <body>
-    <div class="wrap">
-      <header>
-        <a class="mark" href="./"
-          ><img src="logo-mark.svg" width="26" height="26" alt="" />hexvero</a
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="bar">
+      <div class="bar-in">
+        <a class="wordmark" href="./"
+          ><img src="logo-mark.svg" width="26" height="26" alt="" />hexvero
+          <span class="ver">0.12.0</span></a
         >
-        <nav>
-          <a class="wide" href="#how">How it works</a><a class="wide" href="#gate">Release gate</a
+        <nav aria-label="Sections">
+          <a class="wide" href="#trace">Trace</a><a class="wide" href="#gate">Release gate</a
+          ><a class="wide" href="#audit">Audit</a><a class="wide" href="#compare">Compared</a
           ><a class="wide" href="#limits">Limits</a
-          ><a href="https://github.com/maximilianfeix/hexvero">GitHub</a>
+          ><a class="gh" href="https://github.com/maximilianfeix/hexvero">GitHub</a>
         </nav>
-      </header>
+      </div>
+    </header>
 
-      <section style="border-top: 0; padding-top: 36px">
-        <h1>Know what changed inside your Electron release.</h1>
-        <p class="lede">
-          Diff two builds of an Electron app and see the IPC channels, preload bridge, window
-          settings and network hosts that changed, with file and line on both sides, what could not
-          be established, and a policy gate for CI. It takes an <code>app.asar</code>, a
-          <code>.app</code>, an install directory or a release ZIP.
-        </p>
-        <div class="cta">
-          <a class="btn primary" href="demo/">See an example comparison</a>
-          <a class="btn" href="demo/report.html">Example HTML report</a>
-          <a class="btn" href="https://github.com/maximilianfeix/hexvero#readme">Docs</a>
+    <main id="main">
+      <section class="hero">
+        <div>
+          <p class="kicker">Electron release review · MIT</p>
+          <h1>Know what changed inside your Electron release.</h1>
+          <p class="lede">
+            Give hexvero the build you shipped and the one you are about to ship. It lists the IPC
+            channels, preload members, window settings and hosts that changed, points at the line in
+            both builds, and fails CI when a change breaks your policy. Neither build is run.
+          </p>
+          <div class="start">
+            <div class="cmd">
+              <span><span class="pr">$</span> <code id="start">npx hexvero demo</code></span>
+              <button class="btn" type="button" data-copy="start" hidden>Copy</button>
+            </div>
+            <a class="btn primary" href="demo/">Open the example comparison</a>
+          </div>
+          <ul class="facts">
+            <li>
+              <span
+                >Reads an <code>app.asar</code>, a <code>.app</code>, an install directory or the
+                release ZIP</span
+              >
+            </li>
+            <li>
+              <span>Every change with its file and line, in the old build and the new one</span>
+            </li>
+            <li class="inf">
+              <span>What it cannot resolve is reported as unknown, never as removed</span>
+            </li>
+            <li>
+              <span
+                >Exit <code>3</code> when your policy is violated; SARIF 2.1.0 for code
+                scanning</span
+              >
+            </li>
+          </ul>
         </div>
-        <div class="cmd">
-          <code id="start">npx hexvero demo</code>
-          <button class="btn copy" type="button" data-copy="start" hidden>Copy</button>
-        </div>
-        <p class="note">
-          hexvero only reads files. Where this page says <em>target</em>, it means the build you
-          give it; nothing in it is executed, and nothing is uploaded.
-        </p>
-        <p class="note">
-          Needs Node.js 22.12 or newer. Copies two builds of an example Electron app and a policy
-          into <code>./hexvero-demo</code> and shows what changed between them.
-        </p>
-        <figure class="shot" style="margin-left: 0; margin-right: 0">
-          <img
-            src="ui-compare.png"
-            width="1440"
-            height="900"
-            alt="The hexvero web UI comparing two builds of an Electron app: counts of changed interfaces, window settings and hosts, the lists that were not compared whole, window settings to review, and the change filters"
-          />
+
+        <figure
+          class="term"
+          aria-label="Real terminal output of hexvero on two example builds"
+          style="margin: 0"
+        >
+          <div class="term-top">
+            <div class="tabs" role="tablist" aria-label="Command">
+              <button
+                class="tab"
+                role="tab"
+                aria-selected="true"
+                aria-controls="t-compare"
+                id="tab-compare"
+                data-scene="compare"
+              >
+                compare
+              </button>
+              <button
+                class="tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="t-check"
+                id="tab-check"
+                data-scene="check"
+                tabindex="-1"
+              >
+                check
+              </button>
+              <button
+                class="tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="t-audit"
+                id="tab-audit"
+                data-scene="audit"
+                tabindex="-1"
+              >
+                audit
+              </button>
+            </div>
+            <button class="replay" type="button" hidden>↻ replay</button>
+          </div>
+          <pre
+            id="t-compare"
+            role="tabpanel"
+            aria-labelledby="tab-compare"
+            tabindex="0"
+          ><span class="l cl"><span class="pr">$ </span><span class="typed">hexvero compare notesdesk-1.4.0.asar notesdesk-1.5.0.asar</span></span><span class="l"><span class="h">What changed between notesdesk-1.4.0.asar and notesdesk-1.5.0.asar</span></span><span class="l dim">  Two builds of a small example Electron app, read statically. Nothing was executed.</span><span class="l"> </span><span class="l">  <span class="h">interfaces</span> <span class="dim">(2)</span></span><span class="l">    <span class="add">+</span> <span class="c">preload.js::notesdesk::checkUpdate</span>  <span class="dim">@ b: preload.js:9, handler main.js:30 · link direct</span></span><span class="l">    <span class="del">-</span> <span class="c">preload.js::notesdesk::openInShell</span>  <span class="dim">@ a: preload.js:9, handler main.js:30 · link direct</span></span><span class="l">  <span class="h">ipcChannels</span> <span class="dim">(2)</span></span><span class="l">    <span class="add">+</span> <span class="c">update:check</span>  <span class="dim">@ b: receiver main.js:30, sender preload.js:9</span></span><span class="l">    <span class="unk">?</span> <span class="c">shell:open</span>  <span class="dim">@ a: receiver main.js:30, sender preload.js:9</span></span><span class="l unk">        the other side has values there that could not be resolved</span><span class="l">  <span class="h">windows</span> <span class="dim">(1)</span></span><span class="l">    ~ <span class="c">main.js::win</span>  <span class="dim">@ b: main.js:8</span></span><span class="l">        nodeIntegration: true → false, sandbox: false → true</span><span class="l">  <span class="h">endpoints</span> <span class="dim">(1)</span></span><span class="l">    <span class="add">+</span> <span class="c">https://updates.notesdesk.example/latest.json</span>  <span class="dim">@ b: main.js:30 · literal</span></span><span class="l"> </span><span class="l">  <span class="h">Not established</span></span><span class="l">    <span class="unk">!</span> b: an IPC channel at main.js:33 comes from <span class="c">process.env</span> <span class="dim">(ipc_channel_unresolved)</span></span></pre>
+          <pre
+            id="t-check"
+            role="tabpanel"
+            aria-labelledby="tab-check"
+            tabindex="0"
+            hidden
+          ><span class="l cl"><span class="pr">$ </span><span class="typed">hexvero check notesdesk-1.4.0.asar notesdesk-1.5.0.asar --policy policy.json</span></span><span class="l"><span class="fail">hexvero check fail:</span> <span class="h">the policy is violated</span></span><span class="l dim">  before notesdesk-1.4.0.asar · after notesdesk-1.5.0.asar · policy policy.json</span><span class="l"> </span><span class="l">  <span class="fail">✗</span> <span class="c">new-interface-member</span>  notesdesk.checkUpdate  <span class="dim">new · fail</span></span><span class="l">      New interface member notesdesk.checkUpdate is exposed to pages.</span><span class="l dim">      @ b: preload.js:9, handler main.js:30 · link direct</span><span class="l dim">      fingerprint 40aa15f76bfd9988f9302d187c03c61d</span><span class="l">  <span class="fail">✗</span> <span class="c">new-external-host</span>  updates.notesdesk.example  <span class="dim">new · fail</span></span><span class="l">      New external host updates.notesdesk.example, not in the allow list.</span><span class="l dim">      @ b: main.js:30 · literal</span><span class="l dim">      fingerprint 68312dcec55422c3b8affec165b21b83</span><span class="l"> </span><span class="l dim">  Accept what is there now: --baseline &lt;file&gt; --update-baseline,</span><span class="l dim">  or a suppression with the fingerprint and a reason in the policy.</span><span class="l cl"><span class="pr">$ </span><span class="typed">echo $?</span></span><span class="l"><span class="exit">3</span></span></pre>
+          <pre
+            id="t-audit"
+            role="tabpanel"
+            aria-labelledby="tab-audit"
+            tabindex="0"
+            hidden
+          ><span class="l cl"><span class="pr">$ </span><span class="typed">hexvero audit notesdesk-1.5.0.asar</span></span><span class="l"><span class="fail">hexvero audit fail:</span> <span class="h">a rule is violated</span></span><span class="l dim">  build notesdesk-1.5.0.asar · unknown fail</span><span class="l"> </span><span class="l">  <span class="fail">✗</span> <span class="c">open-external</span>  shell.openExternal(unknown)</span><span class="l">      opens a URL that is not read, whose scheme the app does not fix</span><span class="l">      to http, https or mailto (Electron's security guide, section 15)</span><span class="l dim">      @ main.js:20</span><span class="l">  <span class="fail">✗</span> <span class="c">permission-handler-missing</span>  no setPermissionRequestHandler</span><span class="l">      without one, Electron grants every permission a page asks for</span><span class="l dim">      no place: an absence in the files read</span><span class="l">  <span class="fail">✗</span> <span class="c">csp-missing</span>  no Content-Security-Policy</span><span class="l">      no &lt;meta http-equiv&gt; in the app's HTML, no header set in</span><span class="l">      webRequest.onHeadersReceived</span><span class="l dim">      no place: an absence in the files read</span></pre>
+          <figcaption class="term-foot">
+            Real output on NotesDesk 1.4.0 and 1.5.0, the example builds in
+            <code>npx hexvero demo</code>; long lines shortened.
+          </figcaption>
         </figure>
-        <p class="caption">
-          The local web UI comparing NotesDesk 1.4.0 and 1.5.0, the example builds in the
-          repository. A screenshot of real output.
-        </p>
       </section>
 
-      <section id="how">
-        <h2>Demo, compare, gate</h2>
+      <section class="strip" aria-label="At a glance">
+        <ul>
+          <li><b>npx</b>no install, Node 22.12+</li>
+          <li><b>0 · 3 · 4</b>pass · violated · cannot decide</li>
+          <li><b>SARIF</b>2.1.0, for code scanning</li>
+          <li><b>16</b>MCP tools for coding agents</li>
+          <li><b>1 file</b>offline HTML report</li>
+          <li><b>MIT</b>local, no account, no upload</li>
+        </ul>
+      </section>
+
+      <section id="trace">
+        <p class="kicker">$ hexvero compare … <b>interfaces</b></p>
+        <h2>From a page to the network, in five places you can open.</h2>
         <p class="sub">
-          For Electron developers and security engineers who review what a release changed, and for
-          coding agents doing the same work over MCP.
+          Release 1.5.0 of the example gives pages one new function. hexvero follows it from the
+          window that loads the preload to the main-process handler and the host it calls, and names
+          the file and line at every step.
         </p>
-        <ol class="steps">
-          <li>
-            <h3>Demo</h3>
-            <p>Two releases of an example app and a policy, in one command.</p>
-            <pre><span class="dim">$</span> npx hexvero demo
-  interfaces (2)
-    + preload.js::notesdesk::checkUpdate  @ b: preload.js:9, handler main.js:30 · link direct
-  …
-  ipcChannels (2)
-    + update:check  @ b: receiver main.js:30, sender preload.js:9
-    ? shell:open  @ a: receiver main.js:30, sender preload.js:9
-        the other side has values there that could not be resolved</pre>
-          </li>
-          <li>
-            <h3>Compare</h3>
-            <p>
-              Every change with the place it was read from. In the UI and the HTML report, the lines
-              of both builds side by side.
-            </p>
-            <pre><span class="dim">$</span> hexvero compare hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --report report.html
-  …
-✓ report.html (33298 bytes)</pre>
-          </li>
-          <li>
-            <h3>Gate</h3>
-            <p>
-              A JSON policy over the same comparison: exit <code>3</code> on a new member, host or
-              more permissive window; <code>4</code> when it cannot decide.
-            </p>
-            <pre><span class="dim">$</span> hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --policy hexvero-demo/policy.json
-hexvero check fail: the policy is violated
-  …
-<span class="dim">$</span> echo $?
-3</pre>
-          </li>
-        </ol>
+        <div class="trace reveal" data-reveal>
+          <svg aria-hidden="true">
+            <path />
+            <path />
+            <path />
+            <path />
+          </svg>
+          <div class="node" style="--i: 0">
+            <div class="role"><span class="dot"></span>window</div>
+            <div class="name">main.js::win</div>
+            <div class="at">main.js:8</div>
+            <div class="why">loads preload.js (main.js:12); sandbox and contextIsolation on</div>
+          </div>
+          <div class="node" style="--i: 1">
+            <span class="badge">+ new</span>
+            <div class="role"><span class="dot"></span>preload member</div>
+            <div class="name">window.notesdesk .checkUpdate</div>
+            <div class="at">preload.js:9</div>
+            <div class="why">exposed through contextBridge.exposeInMainWorld</div>
+          </div>
+          <div class="node" style="--i: 2">
+            <span class="badge">+ new</span>
+            <div class="role"><span class="dot"></span>IPC channel</div>
+            <div class="name">update:check</div>
+            <div class="at">preload.js:9 → main.js:30</div>
+            <div class="why">
+              ipcRenderer.invoke on one side, ipcMain.handle on the other: link direct
+            </div>
+          </div>
+          <div class="node" style="--i: 3">
+            <div class="role"><span class="dot"></span>handler</div>
+            <div class="name">ipcMain.handle</div>
+            <div class="at">main.js:30</div>
+            <div class="why">the only receiver of the channel in the files read</div>
+          </div>
+          <div class="node" style="--i: 4">
+            <span class="badge">+ new</span>
+            <div class="role"><span class="dot"></span>host</div>
+            <div class="name">updates.notesdesk .example</div>
+            <div class="at">main.js:30 · literal</div>
+            <div class="why">
+              fetch of a URL written in the code, not in the policy's allow list
+            </div>
+          </div>
+        </div>
+        <div class="trace-legend">
+          <span><i></i>a link read from the code</span>
+          <span><i class="d"></i>confirmed: read as written</span>
+          <span><i class="d inf"></i>inferred: derived, and marked so everywhere</span>
+        </div>
       </section>
 
       <section id="evidence">
-        <h2>One change, with its evidence</h2>
+        <p class="kicker">$ hexvero compare … <b>--report report.html</b></p>
+        <h2>Both builds, side by side, at the line that changed.</h2>
         <p class="sub">
-          From the example: release 1.5.0 adds an IPC channel whose handler fetches a URL.
+          The HTML report and the local UI open each change at its place in the old build and the
+          new one. Here, the main window of 1.4.0 and 1.5.0, read from inside the archives.
         </p>
-        <div class="evidence">
-          <ul class="legend">
-            <li>
-              <b>Fact.</b> <code>main.js</code> line 30 registers a handler for
-              <code>update:check</code>; <code>preload.js</code> line 9 sends on it. Both were read
-              from the archive as written.
-            </li>
-            <li>
-              <b>Inference.</b> A page can reach it as <code>window.notesdesk.checkUpdate</code>:
-              the preload member and the handler use the same channel (<code>link direct</code>).
-              Whether any page calls it is not something a static reading can show.
-            </li>
-            <li>
-              <b>Unknown, not removed.</b> 1.5.0 registers channels whose names come from an
-              environment variable (<code>main.js:33</code>, <code>ipc_channel_unresolved</code>).
-              So <code>shell:open</code>, present only in 1.4.0, is reported as unknown: the other
-              build has a channel there that could not be named.
-            </li>
-          </ul>
+        <div class="split">
           <div>
-            <ul class="changes">
-              <li class="change added">
-                <span class="sign" aria-hidden="true">+</span>
-                <div>
-                  <div>
-                    <span class="word">added</span> <code class="key">update:check</code>
-                    <span class="tag">ipcChannels</span>
-                  </div>
-                  <div class="places">
-                    <span class="side">in 1.5.0</span
-                    ><span class="place"
-                      ><span class="role">receiver</span> <code>main.js:30</code></span
-                    ><span class="place"
-                      ><span class="role">sender</span> <code>preload.js:9</code></span
-                    >
-                  </div>
-                </div>
-              </li>
-            </ul>
-            <pre
-              class="src"
-            ><span class="ln"><i>28</i>ipcMain.handle("notes:save", (_e, note) =&gt; store.push("notes", note));</span><span class="ln"><i>29</i>ipcMain.on("app:quit", () =&gt; app.quit());</span><span class="ln hit"><i>30</i>ipcMain.handle("update:check", async () =&gt; fetch("https://updates.notesdesk.example/latest.json").then((r) =&gt; r.json()));</span><span class="ln"><i>31</i>// The channel name comes from the environment at run time, so no static reading can name it.</span><span class="ln"><i>32</i>for (const plugin of (process.env.NOTESDESK_PLUGINS ?? "").split(",").filter(Boolean))</span></pre>
-            <p class="note">
+            <h3><b>notesdesk-1.4.0.asar</b> · main.js</h3>
+            <pre><span class="ln"><i>8</i>  const win = new BrowserWindow({</span><span class="ln"><i>9</i>    width: 1100,</span><span class="ln"><i>10</i>    height: 720,</span><span class="ln"><i>11</i>    webPreferences: {</span><span class="ln"><i>12</i>      preload: path.join(__dirname, "preload.js"),</span><span class="ln"><i>13</i>      contextIsolation: true,</span><span class="ln del"><i>14</i>      nodeIntegration: true,</span><span class="ln del"><i>15</i>      sandbox: false,</span><span class="ln"><i>16</i>    },</span><span class="ln"><i>17</i>  });</span></pre>
+          </div>
+          <div>
+            <h3><b>notesdesk-1.5.0.asar</b> · main.js</h3>
+            <pre><span class="ln"><i>8</i>  const win = new BrowserWindow({</span><span class="ln"><i>9</i>    width: 1100,</span><span class="ln"><i>10</i>    height: 720,</span><span class="ln"><i>11</i>    webPreferences: {</span><span class="ln"><i>12</i>      preload: path.join(__dirname, "preload.js"),</span><span class="ln"><i>13</i>      contextIsolation: true,</span><span class="ln add"><i>14</i>      nodeIntegration: false,</span><span class="ln add"><i>15</i>      sandbox: true,</span><span class="ln"><i>16</i>    },</span><span class="ln"><i>17</i>  });</span></pre>
+          </div>
+        </div>
+        <div class="notes">
+          <div>
+            <h3><span class="sym mod">~</span>Changed, and in which direction</h3>
+            <p>
+              <code>nodeIntegration</code> on → off, <code>sandbox</code> off → on: reported as less
+              permissive. The same change the other way fails <code>window-more-permissive</code>.
+            </p>
+          </div>
+          <div>
+            <h3><span class="sym unk">?</span>Unknown is not removed</h3>
+            <p>
+              <code>shell:open</code> exists only in 1.4.0, but 1.5.0 registers channels named from
+              an environment variable (<code>main.js:33</code>). It may be one of them, so it is
+              reported as unknown, with the reason.
+            </p>
+          </div>
+          <div>
+            <h3><span class="sym add">+</span>A fact, not a verdict</h3>
+            <p>
               A static finding says what the code contains. It does not show that the code runs, or
-              that anything is exploitable.
+              that anything is exploitable. That judgement stays with the reviewer.
             </p>
           </div>
         </div>
-        <figure class="shot" style="margin-left: 0; margin-right: 0">
-          <img
-            src="ui-evidence-before-after.png"
-            width="1440"
-            height="900"
-            loading="lazy"
-            alt="The changed window main.js::win in the web UI: nodeIntegration true to false and sandbox false to true, with the source lines of main.js:8 in the build before and the build after side by side"
-          />
-        </figure>
-        <p class="caption">
-          Before and after: the changed window with <code>main.js:8</code> of both builds. Real
-          output.
-        </p>
-        <figure class="shot" style="margin-left: 0; margin-right: 0">
-          <img
-            src="ui-interface-map.png"
-            width="1440"
-            height="900"
-            loading="lazy"
-            alt="The interface map of NotesDesk 1.5.0: the window main.js:win, the six preload members it loads, their IPC channels and the main-process handlers, with checkUpdate selected and linked to update:check and main.js:30"
-          />
-        </figure>
-        <p class="caption">
-          The interface map: window → preload member → channel → main-process handler, and how each
-          link was read. Real output for NotesDesk 1.5.0.
-        </p>
       </section>
 
       <section id="gate">
-        <h2>The release gate</h2>
+        <p class="kicker">$ hexvero check … <b>--policy .hexvero/policy.json</b></p>
+        <h2>A release gate that fails on what changed, not on what was always there.</h2>
         <p class="sub">
-          <code>hexvero check</code> applies a policy to the comparison of the build you shipped and
-          the build you are about to ship. A real run on the example builds:
+          A JSON policy over the comparison: new preload member, new external host, more permissive
+          window, weakened fuse, new <code>openExternal</code>, a permission handler that grants
+          everything, a weaker CSP. Accept today's state once with a baseline; later runs fail only
+          on new findings.
         </p>
-        <pre
-          class="cmd"
-        ><code><span class="dim">$</span> hexvero check hexvero-demo/notesdesk-1.4.0.asar hexvero-demo/notesdesk-1.5.0.asar --policy hexvero-demo/policy.json
-hexvero check fail: the policy is violated
-  before notesdesk-1.4.0.asar · after notesdesk-1.5.0.asar · policy policy.json
-
-  ✗ new-interface-member  notesdesk.checkUpdate  new · fail
-      New interface member notesdesk.checkUpdate is exposed to pages.
-      @ b: preload.js:9, handler main.js:30 · link direct · fingerprint 40aa15f76bfd9988f9302d187c03c61d
-  ✗ new-external-host  updates.notesdesk.example  new · fail
-      New external host updates.notesdesk.example, not in the allow list (https://updates.notesdesk.example/latest.json).
-      @ b: main.js:30 · literal · fingerprint 68312dcec55422c3b8affec165b21b83
-
-  Accept what is there now: add --baseline &lt;file&gt; --update-baseline, or a suppression with the fingerprint and a reason in the policy.</code></pre>
-        <p class="note">
-          Exit <code>3</code>. After
-          <code>--baseline .hexvero/baseline.json --update-baseline</code> accepts the two findings,
-          the same run exits <code>0</code>. Exit codes: <code>0</code> pass,
-          <code>1</code> technical error, <code>2</code> usage or invalid policy,
-          <code>3</code> violated, <code>4</code> not decidable (an unknown under
-          <code>"unknown": "fail"</code>). Output as text, JSON, Markdown or SARIF 2.1.0.
-        </p>
-        <h3>In GitHub Actions</h3>
-        <p class="note">
-          From
-          <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/ci.md">docs/ci.md</a>:
-          the check job with <code>contents: read</code>, the SARIF upload as a separate job with
-          <code>security-events: write</code>, skipped for pull requests from forks.
-          <code>hexvero check</code> is in hexvero 0.9.0 and later.
-        </p>
-        <pre class="cmd"><code>name: Release policy
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions:
-  contents: read
-
+        <div class="gate">
+          <div class="term">
+            <pre><span class="l"><span class="pr">$ </span><span class="typed">npx hexvero init old/YourApp.app</span>   <span class="dim"># a starting policy, current hosts allowed</span></span><span class="l"><span class="pr">$ </span><span class="typed">npx hexvero check old/YourApp.app new/YourApp.app \</span></span><span class="l"><span class="typed">    --policy .hexvero/policy.json --baseline .hexvero/baseline.json \</span></span><span class="l"><span class="typed">    --format sarif &gt; hexvero.sarif</span></span><span class="l"> </span><span class="l dim"># Inputs: app.asar, a macOS .app, a Windows or Linux install directory,</span><span class="l dim"># or the release .zip. Installers (.dmg, setup .exe, AppImage) need unpacking first.</span></pre>
+          </div>
+          <div class="codes" data-reveal>
+            <span class="label">exit code of the example</span>
+            <span class="big">3</span>
+            <dl>
+              <dt>0</dt>
+              <dd>the policy passes</dd>
+              <dt class="hot">3</dt>
+              <dd>violated: a finding at level fail</dd>
+              <dt>4</dt>
+              <dd>cannot decide: an unknown under <code>"unknown": "fail"</code></dd>
+              <dt>1 · 2</dt>
+              <dd>technical error · usage or invalid policy</dd>
+            </dl>
+          </div>
+        </div>
+        <details class="yaml">
+          <summary>
+            The GitHub Actions job, pinned to a version (<code>docs/ci.md</code> has the SARIF
+            upload)
+          </summary>
+          <pre>
 jobs:
-  check:
+  hexvero:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -280,191 +351,298 @@ jobs:
         with:
           node-version: 24
       # Build your app and fetch the previous release here, e.g. into previous/ and dist/.
-      - name: hexvero check
-        run: |
-          set +e
-          npx --yes hexvero@0.12.0 check previous/app.asar dist/app.asar \
-            --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
-            --format sarif --out hexvero.sarif
-          code=$?
-          set -e
-          npx --yes hexvero@0.12.0 check previous/app.asar dist/app.asar \
-            --policy .hexvero/policy.json --baseline .hexvero/baseline.json \
-            --format markdown &gt;&gt; "$GITHUB_STEP_SUMMARY" || true
-          exit "$code"
-      - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: hexvero-sarif
-          path: hexvero.sarif
-          if-no-files-found: ignore
-
-  upload:
-    needs: check
-    if: &gt;-
-      always() &amp;&amp;
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: hexvero-sarif
-      - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
-        with:
-          sarif_file: hexvero.sarif
-          category: hexvero-check</code></pre>
-        <p class="note">
-          A pass means hexvero found nothing new against the policy in what it read. It is not a
-          proof that the app cannot do these things at run time. SARIF locations are paths inside
-          the analyzed build (<code>hexvero-build/after/…</code>), never mapped onto your sources.
-        </p>
+      - run: npx --yes hexvero@0.12.0 check previous/app.asar dist/app.asar --policy .hexvero/policy.json</pre>
+        </details>
       </section>
 
-      <section id="agents">
-        <h2>CLI, local UI, and an MCP server for coding agents</h2>
+      <section id="audit">
+        <p class="kicker">$ hexvero <b>audit</b> YourApp.app</p>
+        <h2>One build, the checks people know from Electronegativity.</h2>
+        <p class="sub">
+          Electronegativity, Doyensec's open-source checker, has been archived since 2026-10-24; its
+          last npm release is from March 2023. <code>hexvero audit</code> reads one packaged build
+          with the same exit codes and SARIF as <code>check</code>. It covers part of
+          Electronegativity's checks, not all of them, and the list below says which.
+        </p>
         <div class="two">
           <div>
-            <h3>CLI and UI</h3>
-            <pre>
-npx hexvero compare old.asar new.asar --report report.html
-npx hexvero check old.asar new.asar --policy policy.json
-npx hexvero ui --demo --open</pre>
-            <p class="note">
-              The UI binds to 127.0.0.1 with a per-session token. Fonts are bundled; nothing is
-              loaded from the network. The HTML report is one offline file.
+            <h3>Judged by an audit rule in 0.12.0</h3>
+            <ul class="checks">
+              <li>
+                <span>nodeIntegration, contextIsolation, sandbox in effect per window</span
+                ><span class="y">covered</span>
+              </li>
+              <li>
+                <span><code>shell.openExternal</code> with a URL that is not fixed</span
+                ><span class="y">covered</span>
+              </li>
+              <li>
+                <span>missing or allow-all <code>setPermissionRequestHandler</code></span
+                ><span class="y">covered</span>
+              </li>
+              <li>
+                <span>missing or weak Content-Security-Policy (meta and header)</span
+                ><span class="y">covered</span>
+              </li>
+              <li>
+                <span>remote module, certificate bypasses, unsafe command-line switches</span
+                ><span class="y">covered</span>
+              </li>
+              <li>
+                <span>webSecurity, allowRunningInsecureContent</span
+                ><span>read, not judged yet</span>
+              </li>
+              <li>
+                <span>navigation limits (<code>will-navigate</code>)</span
+                ><span>read, not judged yet</span>
+              </li>
+              <li>
+                <span
+                  ><code>&lt;webview&gt;</code> attributes, protocol handlers,
+                  <code>executeJavaScript</code></span
+                ><span>not read yet</span>
+              </li>
+            </ul>
+            <p class="fine">
+              Every row, with its Electronegativity check id:
+              <a
+                href="https://github.com/maximilianfeix/hexvero/blob/main/docs/engineering/audit-plan.md"
+                >docs/engineering/audit-plan.md</a
+              >. Audit baselines and suppressions are not shipped yet. ElectroNG is Doyensec's
+              commercial successor; hexvero is not affiliated with Doyensec.
             </p>
           </div>
           <div>
-            <h3>MCP</h3>
-            <pre>
-npx hexvero setup --apply          # registers the server
-npx hexvero setup --skill --apply  # installs the skill</pre>
-            <p class="note">
-              16 tools, including <code>hexvero_check</code> for the same policy. Answers are small
-              pages with suggested next calls; text from the target is marked as data, not
-              instructions. With a cloud-hosted agent, what the agent reads goes to its model
-              provider.
-            </p>
+            <h3>Open Electronegativity issues, and what hexvero does</h3>
+            <ul class="issues">
+              <li>
+                <a href="https://github.com/doyensec/electronegativity/issues/113">#113</a>
+                Packaged, minified <code>.app</code> reported as having no CSP: hexvero opens the
+                <code>.app</code>, a directory or the ZIP and reads bundled and minified code by
+                scope.
+              </li>
+              <li>
+                <a href="https://github.com/doyensec/electronegativity/issues/108">#108</a> An exit
+                code when issues are found: <code>0</code>, <code>3</code>, <code>4</code>, as in
+                <code>check</code>.
+              </li>
+              <li>
+                <a href="https://github.com/doyensec/electronegativity/issues/106">#106</a> Unknown
+                Electron release breaks the run: an unknown line is reported as unknown, not as an
+                error.
+              </li>
+              <li>
+                <a href="https://github.com/doyensec/electronegativity/issues/93">#93</a>
+                Suppression comments broken by Prettier: fingerprints name the item, never the line.
+              </li>
+              <li>
+                <a href="https://github.com/doyensec/electronegativity/issues/58">#58</a> Old
+                <code>webPreferences</code> defaults assumed: defaults follow the Electron major in
+                <code>package.json</code>, and say so.
+              </li>
+            </ul>
           </div>
         </div>
       </section>
 
+      <section id="compare">
+        <p class="kicker">Which tool for which question</p>
+        <h2>Compared with REA and Electronegativity.</h2>
+        <p class="sub">
+          Different tools answer different questions. If you want to know how a feature of someone
+          else's app works, down to decompiled functions and run-time traffic, REA is built for
+          that. If you need to know what your release changed and whether it may ship, that is the
+          job hexvero is built around.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col"><span class="skip">Question</span></th>
+                <th scope="col" class="us">hexvero 0.12</th>
+                <th scope="col">REA</th>
+                <th scope="col">Electronegativity</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Main question</th>
+                <td>What changed between two Electron builds, and may it ship?</td>
+                <td>How does this app work, and how can an agent rebuild it?</td>
+                <td>Which known anti-patterns does this code contain?</td>
+              </tr>
+              <tr>
+                <th scope="row">Runs the target</th>
+                <td class="no">never, by design</td>
+                <td>static by default; runtime capture runs or interacts with it</td>
+                <td class="no">no</td>
+              </tr>
+              <tr>
+                <th scope="row">Two-version comparison</th>
+                <td class="yes">per list, file and line in both builds</td>
+                <td class="yes">documented (<code>compare_application_versions</code>)</td>
+                <td>Electron API upgrade checks only</td>
+              </tr>
+              <tr>
+                <th scope="row">Preload → channel → handler map</th>
+                <td class="yes">with how each link was read</td>
+                <td class="yes">documented IPC and bridge tracing</td>
+                <td class="no">not found</td>
+              </tr>
+              <tr>
+                <th scope="row">Release policy, baseline, suppressions</th>
+                <td class="yes"><code>hexvero check</code></td>
+                <td class="no">not found in its docs</td>
+                <td>per-line comments</td>
+              </tr>
+              <tr>
+                <th scope="row">SARIF</th>
+                <td class="yes">2.1.0</td>
+                <td class="no">not found in its docs</td>
+                <td class="yes">yes</td>
+              </tr>
+              <tr>
+                <th scope="row">Decompiler and runtime capture</th>
+                <td class="no">no (radare2, rizin or Ghidra if installed)</td>
+                <td class="yes">Hopper, Ghidra, IDA; browser, process, adb</td>
+                <td class="no">no</td>
+              </tr>
+              <tr>
+                <th scope="row">Maintained</th>
+                <td class="yes">yes</td>
+                <td class="yes">yes</td>
+                <td class="no">archived 2026-10-24</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine">
+          REA and Electronegativity cells come from their own documentation, read 2026-10-17;
+          Electronegativity's archive status checked 2026-10-31. "Not found" means their docs did
+          not show it, which is not proof it is absent. Details and measurements on the same inputs:
+          <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/comparison.md"
+            >docs/comparison.md</a
+          >.
+        </p>
+      </section>
+
+      <section id="ui">
+        <p class="kicker">$ hexvero <b>ui</b> --demo --open</p>
+        <h2>The same review in a local UI, a report, or your coding agent.</h2>
+        <p class="sub">
+          The UI binds to 127.0.0.1 with a per-session token and loads nothing from the network. The
+          HTML report is one offline file. The MCP server gives an agent the same comparison and the
+          same policy in small, paged answers.
+        </p>
+        <figure class="shot">
+          <img
+            src="ui-evidence-before-after.png"
+            width="1440"
+            height="900"
+            loading="lazy"
+            decoding="async"
+            alt="The changed window main.js::win in the hexvero web UI: nodeIntegration true to false and sandbox false to true, with the source lines of main.js:8 in the build before and the build after"
+          />
+          <figcaption>
+            The local UI on the example builds: the changed window, with both builds' source. A
+            screenshot of real output.
+          </figcaption>
+        </figure>
+        <div class="two">
+          <pre
+            class="mini"
+          ><span class="pr">$</span> <span class="c">npx hexvero setup --apply</span>          <span class="pr"># register the MCP server</span>
+<span class="pr">$</span> <span class="c">npx hexvero setup --skill --apply</span>  <span class="pr"># install the skill</span></pre>
+          <p class="sub" style="margin: 0; font-size: 15px">
+            16 tools, including <code>hexvero_check</code>. Text read from a target is marked as
+            data, not instructions. With a cloud-hosted agent, what the agent reads goes to its
+            model provider.
+          </p>
+        </div>
+      </section>
+
       <section id="limits">
-        <h2>What it reads, and what it cannot tell you</h2>
-        <ul class="chips">
-          <li>Electron ASAR (with <code>app.asar.unpacked</code>) and app folders</li>
-          <li>JavaScript bundles and source maps</li>
-          <li>ELF</li>
-          <li>PE</li>
-          <li>Mach-O and .app bundles</li>
-          <li>Go</li>
-          <li>.NET</li>
-          <li>Android APK and DEX</li>
-          <li>Java class and JAR</li>
-          <li>WebAssembly</li>
-          <li>SQLite, plist, ZIP, HAR</li>
-        </ul>
-        <ul class="limits" style="margin-top: 22px">
+        <p class="kicker">Accuracy and limits</p>
+        <h2>What it cannot tell you.</h2>
+        <ul class="limits">
           <li>
             It reads files and never observes a running program. A finding is what the code
-            contains, not what it does, and not whether anything is exploitable.
+            contains, not what it does.
           </li>
           <li>
-            It misses things, and it can be wrong. On the newest blind set (a screenshot annotator
-            in three builds and a later version, written by someone without access to hexvero,
-            measured once on 2026-10-17) it found 52 of 64 IPC channels and 22 of 41 storage keys
-            with none false, but 44 of 52 window settings with 15 false: duplicate rows of literals
-            that were right for their window, fixed after that measurement. On the blind set before
-            it, 49 of 54 IPC channels and only 14 of 39 window settings. Absence from a list is
-            weaker evidence than presence.
+            Values computed at run time are listed as unresolved, never guessed; an item they might
+            hide is unknown, not removed.
           </li>
           <li>
-            On a real update, Electron Fiddle 0.38.0 to 0.39.0, 0.8.0 missed four changes: a new
-            field in an IPC payload, a new setting stored through the app's own wrapper, the request
-            of a bundled CLI, and that CLI's file. 0.9.6 reports all four, each checked against the
-            source. A scan takes about 24 % longer than with 0.8.0 for it.
+            It misses things. On a blind set written by someone without access to hexvero (measured
+            once, 2026-10-17) it found 52 of 64 IPC channels with none false, and 22 of 41 storage
+            keys.
           </li>
           <li>
-            Values computed at run time are shown as <code>${…}</code> or listed as unresolved,
-            never guessed; an item they might hide is <code>unknown</code>, not removed.
+            Window settings were weaker on that set: 44 of 52, with 15 false rows, fixed after the
+            measurement. Absence from a list is weaker evidence than presence.
           </li>
           <li>
             Not executing the target is not a safety guarantee: parsing a hostile file still
             processes attacker-controlled bytes, within size, depth and time limits.
           </li>
-          <li>No disassembly without radare2, rizin or Ghidra; no dynamic analysis.</li>
+          <li>
+            No disassembly without radare2, rizin or Ghidra installed, and no dynamic analysis.
+          </li>
         </ul>
-        <p class="note">
-          Methods and numbers:
+        <p class="fine">
           <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/accuracy.md"
             >Accuracy and limits</a
           >
           ·
           <a
             href="https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round5/README.md"
-            >blind set holdout6 (round 5)</a
-          >
-          ·
-          <a
-            href="https://github.com/maximilianfeix/hexvero/blob/main/corpus/results/round4/README.md"
-            >blind set holdout5 (round 4)</a
+            >blind set holdout6</a
           >
           ·
           <a
             href="https://github.com/maximilianfeix/hexvero/blob/main/docs/case-studies/electron-fiddle-0.38.0-to-0.39.0.md"
-            >Electron Fiddle case study</a
+            >Electron Fiddle 0.38 → 0.39 case study</a
           >
-          ·
-          <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/electron-findings.md"
-            >Electron rules</a
-          >
+          · also reads ELF, PE, Mach-O, Go, .NET, APK, Wasm, SQLite and more:
+          <a href="https://github.com/maximilianfeix/hexvero/blob/main/docs/formats.md">formats</a>
         </p>
       </section>
 
-      <section>
-        <div class="star">
+      <section class="end">
+        <div class="box">
+          <h2>Try it on the example, then on your last two releases.</h2>
           <p>
-            Open source under MIT. If it showed you something true about a release, a star on GitHub
-            helps other people find it. A bug report naming a wrong or missing fact helps more.
+            If it showed you something true about a release, a star helps other people find it. A
+            report naming a wrong or missing fact helps more.
           </p>
-          <a class="btn" href="https://github.com/maximilianfeix/hexvero">GitHub</a>
-          <a
-            class="btn"
-            href="https://github.com/maximilianfeix/hexvero/issues/new?template=bug.yml"
-            >Report a wrong fact</a
-          >
+          <div class="start">
+            <div class="cmd">
+              <span><span class="pr">$</span> <code id="start2">npx hexvero demo</code></span>
+              <button class="btn" type="button" data-copy="start2" hidden>Copy</button>
+            </div>
+            <a class="btn" href="https://github.com/maximilianfeix/hexvero">GitHub</a>
+            <a
+              class="btn"
+              href="https://github.com/maximilianfeix/hexvero/issues/new?template=bug.yml"
+              >Report a wrong fact</a
+            >
+          </div>
         </div>
       </section>
+    </main>
 
-      <footer>
-        <span>hexvero · MIT</span>
-        <a href="https://www.npmjs.com/package/hexvero">npm</a>
-        <a href="https://github.com/maximilianfeix/hexvero/blob/main/CHANGELOG.md">Changelog</a>
-        <a href="https://github.com/maximilianfeix/hexvero/blob/main/DISCLAIMER.md"
-          >Use only on software you may examine</a
-        >
-      </footer>
-    </div>
-    <script>
-      // Progressive enhancement: the command stays selectable without it.
-      for (const button of document.querySelectorAll("[data-copy]")) {
-        if (!navigator.clipboard) continue;
-        button.hidden = false;
-        button.addEventListener("click", async () => {
-          const text = document.getElementById(button.dataset.copy).textContent;
-          try {
-            await navigator.clipboard.writeText(text);
-            button.textContent = "Copied";
-          } catch {
-            button.textContent = "Select and copy";
-          }
-          setTimeout(() => (button.textContent = "Copy"), 1600);
-        });
-      }
-    </script>
+    <footer>
+      <span>hexvero · MIT</span>
+      <a href="https://www.npmjs.com/package/hexvero">npm</a>
+      <a href="https://github.com/maximilianfeix/hexvero/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="compare/electronegativity/">From Electronegativity</a>
+      <a href="compare/rea/">hexvero and REA</a>
+      <span class="sp"></span>
+      <a href="https://github.com/maximilianfeix/hexvero/blob/main/DISCLAIMER.md"
+        >Use only on software you may examine</a
+      >
+    </footer>
+    <script src="home.js" defer></script>
   </body>
 </html>
