@@ -69,7 +69,7 @@ npx hexvero audit YourApp.app --format sarif > audit.sarif                  # on
 
 ## 비교와 한계
 
-- **Electronegativity**는 2026-10-24부터 아카이브되었습니다. `hexvero audit`는 그 검사의 일부를 다루며 전부는 아닙니다: [어떤 검사인지](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
+- **Electronegativity**는 2026-10-24부터 아카이브되었습니다. 0.13부터 `hexvero audit`는 그 보안 검사를 다룹니다. 단, Electron이 제거한 옵션에 대한 2개 검사와 27개 API 업그레이드 검사는 제외합니다: [목록](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
 - **REA**는 다른 질문에 답합니다(남의 앱이 어떻게 동작하는지, 디컴파일러와 실행 중 캡처 사용): [비교](https://maximilianfeix.github.io/hexvero/compare/rea/).
 - hexvero는 파일을 읽을 뿐 실행 중인 프로그램을 관찰하지 않습니다. 발견 사항은 코드에 무엇이 들어 있는지를 말해 줄 뿐, 코드가 무엇을 하는지나 악용 가능한지는 말해 주지 않습니다. 놓치는 것도 있습니다: [수치](docs/accuracy.md).
 - 그 밖에 ELF, PE, Mach-O, Go, .NET, APK, WebAssembly, SQLite 등도 읽습니다: [형식](docs/formats.md).

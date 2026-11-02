@@ -69,7 +69,7 @@ Códigos de saída: `0` aprovado, `3` política violada, `4` não decidível, `1
 
 ## Comparação e limites
 
-- **Electronegativity** está arquivado desde 2026-10-24. O `hexvero audit` cobre parte das verificações dele, não todas: [quais](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
+- **Electronegativity** está arquivado desde 2026-10-24. Desde a 0.13, o `hexvero audit` cobre as verificações de segurança dele, exceto duas de opções que o Electron removeu e as 27 verificações de atualização de API: [lista](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
 - **REA** responde a outra pergunta (como funciona um app de terceiros, com decompiladores e captura em execução): [comparação](https://maximilianfeix.github.io/hexvero/compare/rea/).
 - O hexvero lê arquivos e nunca observa um programa em execução. Um achado diz o que o código contém, não o que ele faz nem se é explorável. Ele deixa coisas passar: [números](docs/accuracy.md).
 - Além disso, lê ELF, PE, Mach-O, Go, .NET, APK, WebAssembly, SQLite e mais: [formatos](docs/formats.md).

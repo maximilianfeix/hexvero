@@ -69,7 +69,7 @@ Exit-Codes: `0` bestanden, `3` verletzt, `4` nicht entscheidbar, `1` technischer
 
 ## Vergleich und Grenzen
 
-- **Electronegativity** ist seit 2026-10-24 archiviert. `hexvero audit` deckt einen Teil seiner Checks ab, nicht alle: [welche](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
+- **Electronegativity** ist seit 2026-10-24 archiviert. `hexvero audit` deckt ab 0.13 seine Sicherheits-Checks ab, außer zwei für Optionen, die Electron entfernt hat, und den 27 API-Upgrade-Checks: [Liste](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
 - **REA** beantwortet eine andere Frage (wie eine fremde App funktioniert, mit Decompilern und Laufzeit-Mitschnitt): [Einordnung](https://maximilianfeix.github.io/hexvero/compare/rea/).
 - hexvero liest Dateien und beobachtet nie ein laufendes Programm. Ein Befund sagt, was der Code enthält, nicht, was er tut oder ob etwas ausnutzbar ist. Es verpasst Dinge: [Zahlen](docs/accuracy.md).
 - Daneben liest es ELF, PE, Mach-O, Go, .NET, APK, WebAssembly, SQLite und mehr: [Formate](docs/formats.md).

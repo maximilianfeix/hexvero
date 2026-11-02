@@ -69,7 +69,7 @@ npx hexvero audit YourApp.app --format sarif > audit.sarif                  # on
 
 ## 对比与局限
 
-- **Electronegativity** 自 2026-10-24 起已归档。`hexvero audit` 覆盖了它的一部分检查，而非全部：[覆盖哪些](https://maximilianfeix.github.io/hexvero/compare/electronegativity/)。
+- **Electronegativity** 自 2026-10-24 起已归档。从 0.13 起，`hexvero audit` 覆盖它的安全检查，但不包括针对 Electron 已移除选项的两项检查和 27 项 API 升级检查：[列表](https://maximilianfeix.github.io/hexvero/compare/electronegativity/)。
 - **REA** 回答的是另一个问题（别人的应用是如何工作的，带反编译器和运行时捕获）：[对比](https://maximilianfeix.github.io/hexvero/compare/rea/)。
 - hexvero 读取文件，从不观察运行中的程序。一项发现说明代码里有什么，而不是它做了什么，也不代表可被利用。它会有遗漏：[数据](docs/accuracy.md)。
 - 此外它还能读取 ELF、PE、Mach-O、Go、.NET、APK、WebAssembly、SQLite 等：[格式](docs/formats.md)。

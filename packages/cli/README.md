@@ -8,8 +8,8 @@ hexvero compares two builds of an Electron app (an `app.asar`, a `.app`, an inst
 a release ZIP) and reports what changed in IPC channels, `contextBridge` members, window settings,
 network hosts and storage, with the file and line in both builds. A JSON policy turns that into a
 CI gate (exit `3` when violated, `4` when it cannot decide; text, JSON, Markdown, SARIF 2.1.0).
-`hexvero audit` applies single-build checks known from Electronegativity. It only reads the
-files; nothing is executed.
+`hexvero audit` applies Electronegativity's security checks to one build (from 0.13 all but two
+for removed options and its API-upgrade checks). It only reads the files; nothing is executed.
 
 ```bash
 npx hexvero demo                                                     # two example builds, what changed

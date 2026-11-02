@@ -97,7 +97,7 @@ npx hexvero check old/YourApp.app new/YourApp.app --policy .hexvero/policy.json
 
 To accept what is there today, add `--baseline .hexvero/baseline.json --update-baseline` once; later runs fail only on new findings.
 
-One build instead of two, with the single-build checks known from Electronegativity (CSP, `shell.openExternal`, permission handlers, window settings, certificate and command-line switches):
+One build instead of two, with the single-build checks known from Electronegativity (CSP, `shell.openExternal`, permission handlers, window settings, certificate and command-line switches; from 0.13 also `<webview>`, custom protocols, `executeJavaScript` with code that is not a literal, resources over plain http and an Electron runtime past its end of support):
 
 ```bash
 npx hexvero audit YourApp.app --format sarif > audit.sarif   # exit 3 when a rule is violated
@@ -146,9 +146,10 @@ Elsewhere, `npx hexvero setup --apply` registers the MCP server with the coding 
 | Bridge member → IPC channel, blind `holdout2`  | 65 of 78                        | not measured                                                       | 6 of 66                                       | no                    |
 | Release policy with CI exit codes              | yes (`0`/`3`/`4`, SARIF)        | SARIF output                                                       | not compared                                  | no                    |
 | CSP, `shell.openExternal`, permission handlers | yes, `hexvero audit` (0.12)     | yes                                                                | not compared                                  | no                    |
+| `<webview>`, protocols, `executeJavaScript`    | yes, `hexvero audit` (0.13)     | yes                                                                | not compared                                  | no                    |
 | Status                                         | active, MIT                     | archived 2026-10-24, last release 2023                             | active                                        | n/a                   |
 
-Electronegativity was archived on 2026-10-24. `hexvero audit <build>` runs part of its single-build checks with the same exit codes and SARIF as `check`; which checks are covered and which are not is listed in [the migration page](https://maximilianfeix.github.io/hexvero/compare/electronegativity/). REA does much that hexvero does not (dynamic analysis, devices, decompilers); use it for that. Sources, dates and every caveat: [docs/comparison.md](docs/comparison.md).
+Electronegativity was archived on 2026-10-24. From 0.13, `hexvero audit <build>` runs its security checks with the same exit codes and SARIF as `check`, except two for options Electron has removed (affinity, auxclick) and its 27 API-upgrade checks; the check-by-check list is in [the migration page](https://maximilianfeix.github.io/hexvero/compare/electronegativity/). REA does much that hexvero does not (dynamic analysis, devices, decompilers); use it for that. Sources, dates and every caveat: [docs/comparison.md](docs/comparison.md).
 
 ## Accuracy and limits
 
