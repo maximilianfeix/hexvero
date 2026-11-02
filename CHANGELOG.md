@@ -117,6 +117,12 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- `compare` keeps a collection's known identity when many rows have an empty part (a storage
+  access whose key was not read); before, such rows made the identity look repeated and every
+  row was matched by its full content, so a moved column or a renamed wrapper made it unknown.
+  `via` and `expression` of a storage row are the code as written and no longer a change.
+  GitHub Desktop 3.6.7 → 3.6.10: `storage` went from 377 unknown rows to 204 moved and 1 unknown
+  (fixes #314).
 - A window constructed without an argument list (`new X.BrowserView;`, as esbuild minifies
   `new BrowserView()`) is a window with default options, and a `loadURL` on it is that
   window's (fixes #313).
