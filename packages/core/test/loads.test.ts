@@ -136,6 +136,42 @@ describe("loads", () => {
     expect(info.windows.map((w) => w.windowName)).toEqual(["win", "view"]);
   });
 
+  it("reads a window constructed without an argument list (esbuild's minified print)", () => {
+    const source = `import { BrowserView, BrowserWindow, WebContentsView } from "electron";
+const view = new BrowserView();
+view.webContents.loadURL("http://view.example.com/");
+const win = new BrowserWindow();
+win.loadURL("http://win.example.com/");
+const pane = new WebContentsView();
+pane.webContents.loadURL("http://pane.example.com/");
+`;
+    for (const [name, code] of variants(source)) {
+      if (name === "minified") expect(code, name).toMatch(/new \w+\.BrowserView[;,]/);
+      const info = analyze(code);
+      expect(
+        info.windows.map((w) => w.windowName),
+        name,
+      ).toHaveLength(3);
+      expect(
+        info.loads.map((r) => r.targetKind),
+        name,
+      ).toEqual(["window", "window", "window"]);
+    }
+    expect(analyze(source).windows.map((w) => `${w.windowName}:${w.line}`)).toEqual([
+      "view:2",
+      "win:4",
+      "pane:6",
+    ]);
+  });
+
+  it("does not read a member of a window class as a window", () => {
+    const info = analyze(`const e = require("electron");
+const a = new e.BrowserWindow.Thing;
+const b = new e.BrowserView[k];
+`);
+    expect(info.windows).toEqual([]);
+  });
+
   it("does not take a parameter or a local of a window's name for the window", () => {
     const info = analyze(`const { BrowserWindow } = require("electron");
 const win = new BrowserWindow();
