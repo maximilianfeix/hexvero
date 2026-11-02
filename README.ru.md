@@ -69,7 +69,7 @@ npx hexvero audit YourApp.app --format sarif > audit.sarif                  # on
 
 ## Сравнение и ограничения
 
-- **Electronegativity** в архиве с 2026-10-24. `hexvero audit` покрывает часть его проверок, но не все: [какие именно](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
+- **Electronegativity** в архиве с 2026-10-24. Начиная с 0.13, `hexvero audit` покрывает его проверки безопасности, кроме двух для опций, удалённых из Electron, и 27 проверок обновления API: [список](https://maximilianfeix.github.io/hexvero/compare/electronegativity/).
 - **REA** отвечает на другой вопрос (как устроено чужое приложение, с декомпиляторами и записью во время выполнения): [сравнение](https://maximilianfeix.github.io/hexvero/compare/rea/).
 - hexvero читает файлы и никогда не наблюдает работающую программу. Находка говорит, что содержит код, а не что он делает и можно ли это использовать. Он кое-что пропускает: [цифры](docs/accuracy.md).
 - Кроме того, он читает ELF, PE, Mach-O, Go, .NET, APK, WebAssembly, SQLite и другое: [форматы](docs/formats.md).
