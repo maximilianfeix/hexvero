@@ -286,6 +286,9 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   // the call or tag as written, its receiver (renamed by minifiers; `targetKind` and `window`
   // carry the fact), and the scheme the URL restates
   loads: ["evidence", "target", "scheme"],
+  // the name of the helper a call was made through, as written (renamed by minifiers: `ne(…)`
+  // in one build is `ut(…)` in the next); `via` says that it was a wrapper
+  ipc: ["wrapper"],
   // the wrapper a key was read through and an unread key's expression, both as written
   // (renamed by minifiers: `as(…)` in one build is `Ai(…)` in the next)
   storage: ["via", "expression"],
