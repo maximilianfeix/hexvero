@@ -109,6 +109,16 @@ const storageSide = (via: string, shift: number) => [
   })),
 ];
 
+/** An IPC send through a helper named `wrapper`. */
+const wrappedSend = (channel: string, wrapper: string) => ({
+  module: "main.js",
+  api: "webContents.send",
+  channel,
+  line: 2,
+  via: "wrapper",
+  wrapper,
+});
+
 const interfaceRow = (link: string, reason: string) => ({
   file: "preload.js",
   api: "api",
@@ -810,6 +820,26 @@ describe("items on one side only", () => {
     expect(same.unknown.map((u) => [u.key, u.file])).toEqual([
       ["index.js::localStorage::isUsingSocketFirewall::read", "index.js"],
     ]);
+  });
+
+  it("does not call an IPC row changed when only its wrapper's minified name differs", () => {
+    // GitHub Desktop 3.6.7 → 3.6.10: 19 sends through a helper the minifier renamed `ne` → `ut`
+    const diff = compareItems(
+      [
+        wrappedSend("focus", "ne"),
+        wrappedSend("menu-event", "ne"),
+        wrappedSend("menu-event", "ne"),
+      ],
+      [
+        wrappedSend("focus", "ut"),
+        wrappedSend("menu-event", "ut"),
+        wrappedSend("menu-event", "ut"),
+      ],
+      { collection: "ipc", positional: ["line"] },
+    );
+    expect(diff.changed).toEqual([]);
+    expect(diff.unknown).toEqual([]);
+    expect(diff.unchanged).toBe(3);
   });
 
   it("keeps the storage identity when many rows have no readable key", () => {

@@ -117,6 +117,11 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- An IPC row's `wrapper` (the helper a call was made through, as written) is no longer a change:
+  a minifier renaming it made every send through it "changed", and repeated sends of one channel
+  unknown. GitHub Desktop 3.6.7 → 3.6.10: `ipc` went from 17 changed and 12 unknown rows to 0
+  changed and 4 unknown (the three new channels of the source and one `once` whose channel is not
+  read).
 - `compare` keeps a collection's known identity when many rows have an empty part (a storage
   access whose key was not read); before, such rows made the identity look repeated and every
   row was matched by its full content, so a moved column or a renamed wrapper made it unknown.

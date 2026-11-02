@@ -146,6 +146,11 @@ rows have no readable key; they shared one identity, which made `compare` drop t
 match by full content, where every column differs. With #320 the list reads **204 moved, 1
 unknown** (an unread write that 3.6.7 has once more).
 
+The per-call list `ipc` had the same kind of noise: 19 sends go through a helper the minifier
+called `ne` in 3.6.7 and `ut` in 3.6.10, and that name made 17 rows "changed" and 8 unknown.
+With #322 `ipc` reads **0 changed, 4 unknown**: the three new main-process channels named above
+and one new `ipcRenderer.once` in renderer.js whose channel is not read.
+
 ## What this shows
 
 - The release changes that matter for a review were visible from the files: a new Electron line,
