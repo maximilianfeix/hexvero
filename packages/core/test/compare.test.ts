@@ -89,6 +89,26 @@ const storageRow = (kind: string, value: string) => ({
   count: 1,
 });
 
+/** Storage rows of one build: 30 read keys through wrapper `via`, 15 unread ones. */
+const storageSide = (via: string, shift: number) => [
+  ...Array.from({ length: 30 }, (_, i) => ({
+    ...storageRow("localStorage", `key-${i}`),
+    via,
+    column: 100 + i + shift,
+  })),
+  ...Array.from({ length: 15 }, (_, i) => ({
+    file: "index.js",
+    kind: "localStorage",
+    value: null,
+    expression: `e${i}`,
+    op: "read",
+    evidence: "unknown",
+    line: 2,
+    column: 10 + i + shift,
+    count: 1,
+  })),
+];
+
 const interfaceRow = (link: string, reason: string) => ({
   file: "preload.js",
   api: "api",
@@ -790,6 +810,22 @@ describe("items on one side only", () => {
     expect(same.unknown.map((u) => [u.key, u.file])).toEqual([
       ["index.js::localStorage::isUsingSocketFirewall::read", "index.js"],
     ]);
+  });
+
+  it("keeps the storage identity when many rows have no readable key", () => {
+    // GitHub Desktop 3.6.7 → 3.6.10: 57 of 205 rows have no key; the same keys, read through a
+    // wrapper the minifier renamed (`as` → `Ai`), at other columns
+    const a = storageSide("as", 0);
+    const b = storageSide("Ai", 500);
+    expect(detectKey(a, b, "storage")).toBe("file+kind+value+op");
+    const diff = compareItems(a, b, {
+      collection: "storage",
+      positional: ["line", "column"],
+    });
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual([]);
+    expect(diff.changed).toEqual([]);
+    expect(diff.unknown).toEqual([]);
   });
 
   it("does not call an interface row changed when only the explanation of its link differs", () => {

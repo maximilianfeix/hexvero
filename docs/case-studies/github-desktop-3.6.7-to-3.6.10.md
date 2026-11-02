@@ -137,6 +137,15 @@ Floating UI's flip middleware, in the same webpack module) was read as a write o
 between the two builds' readings is gone, and the three unknown rows are the new main-process
 channels named above.
 
+## Storage after #320
+
+The same builds' `storage` list read the same keys on both sides (204 and 205 rows, among them
+`tutorial-paused`, read through a wrapper that the minifier called `as` in 3.6.7 and `Ai` in
+3.6.10), yet `compare … storage` reported 377 unknown rows and none unchanged. A quarter of the
+rows have no readable key; they shared one identity, which made `compare` drop the identity and
+match by full content, where every column differs. With #320 the list reads **204 moved, 1
+unknown** (an unread write that 3.6.7 has once more).
+
 ## What this shows
 
 - The release changes that matter for a review were visible from the files: a new Electron line,

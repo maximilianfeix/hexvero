@@ -286,6 +286,9 @@ const DERIVED_FIELDS: Record<string, readonly string[]> = {
   // the call or tag as written, its receiver (renamed by minifiers; `targetKind` and `window`
   // carry the fact), and the scheme the URL restates
   loads: ["evidence", "target", "scheme"],
+  // the wrapper a key was read through and an unread key's expression, both as written
+  // (renamed by minifiers: `as(…)` in one build is `Ai(…)` in the next)
+  storage: ["via", "expression"],
   // hexvero's explanation of `link` (which blind spots the analysis has): it changes whenever a
   // limitation appears anywhere, while the row itself stays the same; `link` carries the fact
   interfaces: ["reason"],
@@ -567,14 +570,23 @@ function qualifies(
   /** The key is the collection's known identity, not a guess from the field names. */
   curated = false,
 ): boolean {
+  const parts = key.split("+");
   for (const side of sides) {
     if (side.length === 0) continue;
     const values = side.map((o) => keyValue(o, key)).filter((v) => v !== undefined);
     if (values.length < side.length * 0.9) return false;
+    // A known identity is judged by the items it names whole: items with an empty part (a
+    // storage access whose key was not read) share one identity by design and are matched as a
+    // multiset. GitHub Desktop 3.6.10 has 56 such rows among 204.
+    const named = curated
+      ? side
+          .filter((o) => parts.every((p) => o[p] !== null && o[p] !== undefined))
+          .map((o) => keyValue(o, key))
+      : values;
     // In a short list one repeated item is already more than a tenth. A known identity keeps its
     // role there as long as most items are distinct; repeats are matched as multisets.
-    const distinct = curated && values.length <= 20 ? 0.5 : 0.9;
-    if (new Set(values).size < values.length * distinct) return false;
+    const distinct = curated && named.length <= 20 ? 0.5 : 0.9;
+    if (new Set(named).size < named.length * distinct) return false;
   }
   return true;
 }
