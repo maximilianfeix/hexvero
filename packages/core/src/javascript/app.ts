@@ -661,18 +661,28 @@ const WINDOW_CLASSES = new Set(["BrowserWindow", "BrowserView", "WebContentsView
 /**
  * The class a `new` at k constructs and the `(` of its arguments: `new C(`, `new X.C(`, and with
  * the callee in parentheses, as bundlers write a member of a lazily loaded module:
- * `new (X.C)(`, `new (X().C)(` (webpack 5's `new (le().BrowserWindow)(t)`). Null for any other
+ * `new (X.C)(`, `new (X().C)(` (webpack 5's `new (le().BrowserWindow)(t)`). Without arguments
+ * esbuild drops the parentheses (`new X.BrowserView;`): `open` is then -1. Null for any other
  * callee. Whether C is a window class is the caller's to read.
  */
 function windowCallee(tokens: readonly Token[], k: number): { ctor: number; open: number } | null {
   const is = (i: number, v: string): boolean =>
     tokens[i]?.type === "punct" && tokens[i]!.value === v;
   const ident = (i: number): boolean => tokens[i]?.type === "ident";
+  /** The callee ends before i: `(` opens its arguments, and a token that cannot continue it means none. */
+  const after = (ctor: number, i: number): { ctor: number; open: number } | null => {
+    if (is(i, "(")) return { ctor, open: i };
+    const t = tokens[i];
+    if (t === undefined) return { ctor, open: -1 };
+    return t.type === "punct" && ![".", "?.", "[", "("].includes(t.value)
+      ? { ctor, open: -1 }
+      : null;
+  };
   if (tokens[k]?.type !== "ident" || tokens[k]!.value !== "new") return null;
   let c = k + 1;
   if (ident(c)) {
     if (is(c + 1, ".") && ident(c + 2)) c += 2;
-    return is(c + 1, "(") ? { ctor: c, open: c + 1 } : null;
+    return after(c, c + 1);
   }
   if (!is(c, "(") || !ident(c + 1)) return null;
   // `(X)`, `(X.C)`, `(X().C)`
@@ -682,9 +692,8 @@ function windowCallee(tokens: readonly Token[], k: number): { ctor: number; open
   if (!is(j + 1, ")")) return null;
   const close = j + 1;
   // `(X()).C(`: esbuild's minified print of `new (X().C)(…)`, the same construction
-  if (is(close + 1, ".") && ident(close + 2))
-    return j > c + 1 && is(close + 3, "(") ? { ctor: close + 2, open: close + 3 } : null;
-  return ident(j) && is(close + 1, "(") ? { ctor: j, open: close + 1 } : null;
+  if (is(close + 1, ".") && ident(close + 2)) return j > c + 1 ? after(close + 2, close + 3) : null;
+  return ident(j) ? after(j, close + 1) : null;
 }
 
 /** The class constructed by the `new` whose arguments open at `open` (see `windowCallee`), or -1. */
@@ -1435,6 +1444,19 @@ function windowRanges(
         const seen = (named.get(target.value) ?? 0) + 1;
         named.set(target.value, seen);
         names.set(window, seen === 1 ? target.value : `${target.value}#${seen}`);
+      }
+      if (callee.open === -1) {
+        // `new X.BrowserView`: no options, so the range is the class name alone
+        if (ranges.length < 2000)
+          ranges.push({
+            start: ctor.start,
+            end: ctor.end,
+            window,
+            name: names.get(window) ?? `#${window}`,
+            inherited: false,
+            at: null,
+          });
+        continue;
       }
       const first = tokens[c + 2];
       if (
@@ -5530,7 +5552,7 @@ export interface JsCoverage {
 }
 
 /** Bump when the facts change shape or a detector changes what it reads. */
-export const JS_SCAN_SCHEMA = 48;
+export const JS_SCAN_SCHEMA = 49;
 
 /**
  * Everything read from the files scanned so far. It is plain JSON, so a scan can be stored and

@@ -117,6 +117,9 @@ All notable changes to hexvero are listed here. The format follows
 
 ### Accuracy
 
+- A window constructed without an argument list (`new X.BrowserView;`, as esbuild minifies
+  `new BrowserView()`) is a window with default options, and a `loadURL` on it is that
+  window's (fixes #313).
 - A default in a declaration's pattern (`const { k: f = 1 } = o`) or a class field
   (`class A { f = 1 }`) is no write of an outer `f`, so a forwarder of that name keeps its calls;
   a call of such a pattern-declared local no longer counts as a forwarder call (#309, fixes #306).
