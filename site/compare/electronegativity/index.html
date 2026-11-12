@@ -49,13 +49,13 @@
     </header>
     <main id="main">
       <section class="doc">
-        <p class="kicker">Checked 2026-10-31 · hexvero 0.12.0</p>
+        <p class="kicker">Checked 2026-10-31 · hexvero 0.13.0</p>
         <h1>Moving from Electronegativity to hexvero</h1>
         <p class="answer">
           Run <code>npx hexvero audit</code> on one packaged build for the single-build checks, then
           <code>hexvero check</code> on the last release and the next one, so CI fails only on what
-          a release changes. hexvero covers part of Electronegativity's checks, not all; the list
-          below says which.
+          a release changes. hexvero judges Electronegativity's checks except two for options
+          Electron removed and its 27 API-upgrade checks; the list below says how.
         </p>
 
         <h2>Why look for a replacement at all</h2>
@@ -80,7 +80,7 @@
           or a release ZIP, and bundled or minified JavaScript inside them. Nothing is executed.
         </p>
 
-        <h2>What is covered in 0.12.0</h2>
+        <h2>What is covered in 0.13.0</h2>
         <div class="table-wrap">
           <table>
             <thead>
@@ -118,14 +118,30 @@
               </tr>
               <tr>
                 <th scope="row">WEB_SECURITY, INSECURE_CONTENT (JS), LIMIT_NAVIGATION</th>
-                <td>read, not judged by a rule yet</td>
+                <td class="yes">covered (0.13)</td>
+              </tr>
+              <tr>
+                <th scope="row">DANGEROUS_FUNCTIONS (executeJavaScript, insertCSS)</th>
+                <td class="yes">covered (0.13)</td>
               </tr>
               <tr>
                 <th scope="row">
-                  webview attributes, PROTOCOL_HANDLER, DANGEROUS_FUNCTIONS, EXPERIMENTAL and BLINK
-                  features, JSON script switches
+                  webview attributes (HTML and JS), NODE_INTEGRATION_ATTACH_EVENT, PROTOCOL_HANDLER
                 </th>
-                <td class="no">not read yet</td>
+                <td class="yes">covered (0.13)</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  EXPERIMENTAL and BLINK features (JS), CUSTOM_ARGUMENTS and SECURITY_WARNINGS in
+                  package.json scripts
+                </th>
+                <td class="yes">covered (0.13)</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  HTTP_RESOURCES (JS, HTML, with Node integration), ELECTRON_VERSION
+                </th>
+                <td class="yes">covered (0.13; Electron version from the packaged runtime)</td>
               </tr>
               <tr>
                 <th scope="row">AUXCLICK, AFFINITY, 27 upgrade checks (Electron 5–8)</th>
@@ -139,7 +155,8 @@
           <a
             href="https://github.com/maximilianfeix/hexvero/blob/main/docs/engineering/audit-plan.md"
             >docs/engineering/audit-plan.md</a
-          >. Audit baselines and suppressions are not shipped yet; <code>check</code> has both.
+          >. Since 0.13, <code>audit --policy … --baseline …</code> accepts today's findings and
+          suppresses single ones with a reason, as <code>check</code> does.
         </p>
 
         <h2>What changes in how you work</h2>
