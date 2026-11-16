@@ -30,7 +30,7 @@
     "site:demo": "npm run build && node scripts/build-site-demo.mjs"
   },
   "devDependencies": {
-    "@electron/asar": "4.3.1",
+    "@electron/asar": "4.3.2",
     "@types/node": "^26.6.6",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
